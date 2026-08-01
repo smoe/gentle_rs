@@ -30,6 +30,11 @@ understand what changed.
   preserves circular/linear direct-digest semantics, creates individually
   openable sequences with per-source lineage, and never implies a pooled
   physical container.
+- Made direct and collection digest convergence independent of machine load by
+  replacing the per-enzyme wall-clock deadline with deterministic fragment,
+  round, repeated-state, and progress guards.
+- Standardized A5-A7 collection output wrappers as additive, version-tolerant
+  report contracts while keeping their member-binding request records strict.
 - Added the direct shared-shell `digest` parity route, made unknown restriction
   enzymes fail closed before mutation, and removed digest progress text from
   stdout so MCP stdio framing remains valid.

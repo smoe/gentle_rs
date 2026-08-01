@@ -1801,7 +1801,7 @@ pub struct RestrictionSiteScanCollectionMemberBinding {
 
 /// One successful wrapper-owned child restriction-site scan.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default, deny_unknown_fields)]
+#[serde(default)]
 pub struct CollectionRestrictionSiteScanMemberReport {
     pub stable_member_id: String,
     pub seq_id: String,
@@ -1814,7 +1814,7 @@ pub struct CollectionRestrictionSiteScanMemberReport {
 /// store. Successful child reports therefore live in this wrapper and generic
 /// `per_member_status[].produced_report_ids` remains empty.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default, deny_unknown_fields)]
+#[serde(default)]
 pub struct CollectionRestrictionSiteScanReport {
     pub schema: String,
     pub collection_operation: CollectionOperationReport,

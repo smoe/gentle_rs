@@ -745,22 +745,12 @@ impl GentleEngine {
             let mut seen_states: HashSet<u64> = HashSet::new();
             let mut rounds: usize = 0;
             let mut last_fragment_count = fragments.len();
-            let enzyme_started = Instant::now();
-            // Conservative guard against non-converging digest loops.
+            // Keep digest acceptance independent of machine load. Fragment,
+            // round, repeated-state, and progress guards bound the work
+            // deterministically for direct and collection callers alike.
             let max_rounds = max_fragments.min(1_024).max(64);
             loop {
                 rounds += 1;
-                if enzyme_started.elapsed().as_millis() > 750 {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "Digest timed out for enzyme '{}' (>{} ms)",
-                            enzyme.name, 750
-                        ),
-
-                        cause_chain: vec![],
-                    });
-                }
                 if rounds > max_rounds {
                     return Err(EngineError {
                         code: ErrorCode::InvalidInput,

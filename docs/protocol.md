@@ -1075,6 +1075,10 @@ Implemented collection-lifting baseline:
   enzyme disclosure. Its `gentle.collection_restriction_site_scan.v1` wrapper
   owns successful child reports because restriction scans have no persisted
   report store; generic `produced_report_ids` therefore remains empty.
+- Collection domain-result wrappers are additive wire contracts: A5
+  restriction-scan, A6 TFBS-scan, and A7 digest reports default missing fields
+  and ignore unknown future output fields. Their member-binding request
+  records remain strict and reject unknown fields.
 - Restriction scanning is biological-context agnostic because it has no
   genome-scoped parameter. Missing gene-set member bindings are typed dynamic
   member failures, while unknown/duplicate bindings and unknown enzymes reject
@@ -1100,6 +1104,10 @@ Implemented collection-lifting baseline:
   topology-aware `Digest` implementation, rejects unknown enzymes before
   member execution, and retains typed member failures for member-local digest
   errors.
+- Digest convergence is guarded by deterministic fragment-count, round-count,
+  repeated-state, and no-progress checks. No wall-clock deadline participates
+  in direct or collection digest acceptance, so machine load cannot make the
+  same member succeed directly and fail when mapped over a collection.
 - Preview is the default for `collections run digest`. The portable
   `gentle.collection_digest.v1` report owns per-member source snapshot hashes,
   effective output prefixes, planned fragment ids, lengths, topology,

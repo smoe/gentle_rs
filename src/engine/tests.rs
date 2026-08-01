@@ -54414,6 +54414,150 @@ fn collection_digest_preview_apply_matches_direct_digest_and_preserves_lineage()
 }
 
 #[test]
+fn collection_map_reports_accept_additive_fields_but_member_bindings_remain_strict() {
+    fn add_unknown_field(value: &mut serde_json::Value, key: &str) {
+        value
+            .as_object_mut()
+            .expect("test value is an object")
+            .insert(key.to_string(), serde_json::json!("future extension"));
+    }
+
+    fn assert_unknown_binding_field_rejected<T>(value: serde_json::Value)
+    where
+        T: serde::de::DeserializeOwned + std::fmt::Debug,
+    {
+        let error = serde_json::from_value::<T>(value)
+            .expect_err("collection member bindings reject unknown request fields");
+        assert!(error.to_string().contains("unknown field"));
+    }
+
+    let mut restriction = serde_json::to_value(CollectionRestrictionSiteScanReport {
+        member_reports: vec![CollectionRestrictionSiteScanMemberReport::default()],
+        ..CollectionRestrictionSiteScanReport::default()
+    })
+    .expect("serialize restriction collection report");
+    add_unknown_field(&mut restriction, "future_report_field");
+    add_unknown_field(&mut restriction["member_reports"][0], "future_member_field");
+    let restriction_decoded: CollectionRestrictionSiteScanReport =
+        serde_json::from_value(restriction).expect("A5 report accepts additive fields");
+    assert_eq!(restriction_decoded.member_reports.len(), 1);
+
+    let mut tfbs = serde_json::to_value(CollectionTfbsHitScanReport {
+        member_reports: vec![CollectionTfbsHitScanMemberReport::default()],
+        ..CollectionTfbsHitScanReport::default()
+    })
+    .expect("serialize TFBS collection report");
+    add_unknown_field(&mut tfbs, "future_report_field");
+    add_unknown_field(&mut tfbs["member_reports"][0], "future_member_field");
+    let tfbs_decoded: CollectionTfbsHitScanReport =
+        serde_json::from_value(tfbs).expect("A6 report accepts additive fields");
+    assert_eq!(tfbs_decoded.member_reports.len(), 1);
+
+    let mut digest = serde_json::to_value(CollectionDigestReport {
+        member_reports: vec![CollectionDigestMemberReport {
+            fragments: vec![CollectionDigestFragmentRow::default()],
+            ..CollectionDigestMemberReport::default()
+        }],
+        ..CollectionDigestReport::default()
+    })
+    .expect("serialize digest collection report");
+    add_unknown_field(&mut digest, "future_report_field");
+    add_unknown_field(&mut digest["member_reports"][0], "future_member_field");
+    add_unknown_field(
+        &mut digest["member_reports"][0]["fragments"][0],
+        "future_fragment_field",
+    );
+    let digest_decoded: CollectionDigestReport =
+        serde_json::from_value(digest).expect("A7 report accepts additive fields");
+    assert_eq!(digest_decoded.member_reports.len(), 1);
+    assert_eq!(digest_decoded.member_reports[0].fragments.len(), 1);
+
+    assert_unknown_binding_field_rejected::<RestrictionSiteScanCollectionMemberBinding>(
+        serde_json::json!({
+            "stable_member_id": "member",
+            "seq_id": "seq",
+            "future_request_field": true,
+        }),
+    );
+    assert_unknown_binding_field_rejected::<TfbsHitScanCollectionMemberBinding>(
+        serde_json::json!({
+            "stable_member_id": "member",
+            "seq_id": "seq",
+            "future_request_field": true,
+        }),
+    );
+    assert_unknown_binding_field_rejected::<DigestCollectionMemberBinding>(serde_json::json!({
+        "stable_member_id": "member",
+        "seq_id": "seq",
+        "future_request_field": true,
+    }));
+}
+
+#[test]
+fn collection_digest_dense_members_use_load_independent_shared_guards() {
+    let dense_sequence =
+        DNAsequence::from_sequence(&"ATGGATCCGC".repeat(128)).expect("dense BamHI sequence");
+    let source_ids = ["dense_a", "dense_b"];
+    let mut state = ProjectState::default();
+    for source_id in source_ids {
+        state
+            .sequences
+            .insert(source_id.to_string(), dense_sequence.clone());
+    }
+
+    let subject = CollectionSubjectRef::ProjectSequences {
+        seq_ids: source_ids.iter().map(|value| value.to_string()).collect(),
+    };
+    let mut collection_engine = GentleEngine::from_state(state.clone());
+    let preview = collection_engine
+        .apply(Operation::DigestCollection {
+            collection_subject: subject,
+            member_bindings: vec![],
+            enzymes: vec!["BamHI".to_string()],
+            output_prefix: Some("dense".to_string()),
+            dry_run: true,
+            expected_plan_fingerprint_sha256: None,
+            path: None,
+        })
+        .expect("preview dense collection digest")
+        .collection_digest
+        .expect("dense collection digest report");
+    assert!(preview.aggregate_counts_complete);
+    assert_eq!(preview.member_reports.len(), source_ids.len());
+
+    let mut direct_engine = GentleEngine::from_state(state);
+    for member in &preview.member_reports {
+        let direct = direct_engine
+            .apply(Operation::Digest {
+                input: member.source_seq_id.clone(),
+                enzymes: vec!["BamHI".to_string()],
+                output_prefix: Some(member.effective_output_prefix.clone()),
+            })
+            .expect("direct dense member digest");
+        let direct_lengths = direct
+            .created_seq_ids
+            .iter()
+            .map(|seq_id| {
+                direct_engine
+                    .state()
+                    .sequences
+                    .get(seq_id)
+                    .expect("direct dense fragment")
+                    .len()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            member
+                .fragments
+                .iter()
+                .map(|fragment| fragment.length_bp)
+                .collect::<Vec<_>>(),
+            direct_lengths
+        );
+    }
+}
+
+#[test]
 fn collection_digest_plan_lock_and_gene_set_failures_are_explicit() {
     let mut state = ProjectState::default();
     state.sequences.insert(
