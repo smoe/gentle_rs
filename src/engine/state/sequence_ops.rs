@@ -742,7 +742,6 @@ impl GentleEngine {
     ) -> Result<Vec<DNAsequence>, EngineError> {
         let mut fragments = vec![dna.clone()];
         for enzyme in &enzymes {
-            println!("Digesting with enzyme: {}", enzyme.name);
             let mut seen_states: HashSet<u64> = HashSet::new();
             let mut rounds: usize = 0;
             let mut last_fragment_count = fragments.len();
@@ -824,10 +823,6 @@ impl GentleEngine {
                 let current_count = fragments.len();
 
                 if !found_one {
-                    println!(
-                        "Digest enzyme '{}' completed in {} round(s), fragments: {}",
-                        enzyme.name, rounds, current_count
-                    );
                     break;
                 }
                 // For linear-digest progression, total fragment count should increase.

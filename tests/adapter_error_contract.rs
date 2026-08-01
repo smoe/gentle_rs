@@ -1,4 +1,5 @@
 use gentle_protocol::{CapabilityAdapter, CapabilitySource, EngineError};
+use gentle::{dna_sequence::DNAsequence, engine::ProjectState};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeSet,
@@ -41,7 +42,58 @@ fn run_mcp_once(request: Value) -> Value {
         "gentle_mcp failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    assert!(
+        output.stdout.starts_with(b"Content-Length: "),
+        "MCP stdout must contain framed protocol output only: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
     read_framed_response(&output.stdout)
+}
+
+#[test]
+fn mcp_digest_keeps_stdout_protocol_framed() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let state_path = temp.path().join("digest_state.gentle.json");
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "digest_input".to_string(),
+        DNAsequence::from_sequence("ATGGATCCGCATGGATCCGC")
+            .expect("digest input sequence"),
+    );
+    state
+        .save_to_path(&state_path.to_string_lossy())
+        .expect("save digest state");
+
+    let response = run_mcp_once(json!({
+        "jsonrpc": "2.0",
+        "id": 77,
+        "method": "tools/call",
+        "params": {
+            "name": "op",
+            "arguments": {
+                "confirm": true,
+                "state_path": state_path.to_string_lossy(),
+                "operation": {
+                    "Digest": {
+                        "input": "digest_input",
+                        "enzymes": ["BamHI"],
+                        "output_prefix": "digest_fragment"
+                    }
+                }
+            }
+        }
+    }));
+    assert_eq!(
+        response.pointer("/result/isError").and_then(Value::as_bool),
+        Some(false)
+    );
+    assert_eq!(
+        response
+            .pointer("/result/structuredContent/result/created_seq_ids")
+            .and_then(Value::as_array)
+            .map(Vec::len),
+        Some(3)
+    );
 }
 
 #[test]
