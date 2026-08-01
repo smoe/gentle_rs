@@ -1,10 +1,18 @@
 # GENtle CLI Manual
 
+## Multi-gene publication bundle
+
+`gentle_publication_report REQUEST.json OUTPUT_DIR [--pdf]` resolves one
+portable gene-set manifest into a responsive HTML report, complete primer
+tables, copied assets, and an optional printable companion. HTML and print
+derive from the same `resolved-report.json`; see
+[`gene_set_publication_reports.md`](gene_set_publication_reports.md).
+
 This page documents command-line entry points for GENtle.
 
 ## Overview
 
-GENtle currently provides six binaries:
+GENtle currently provides seven binaries:
 
 - `gentle`: graphical desktop app (GUI)
 - `gentle_cli`: JSON operation/workflow CLI for automation and AI tools
@@ -16,6 +24,8 @@ GENtle currently provides six binaries:
 - `gentle_mcp`: MCP stdio server (guarded mutating + UI-intent parity baseline;
   includes standardized capability discovery via `tools/list`,
   `capabilities`, and `help`)
+- `gentle_publication_report`: manifest-driven responsive HTML and printable
+  gene-set report bundle generator
 
 In addition, the GUI includes an embedded `Shell` panel that uses the same
 shared shell parser/executor as `gentle_cli shell`.

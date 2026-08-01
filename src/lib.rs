@@ -67,6 +67,8 @@ pub mod feature_record_curation;
 pub mod gc_contents;
 /// Catalog-extensible gene-group knowledge records and validation helpers.
 pub mod gene_groups;
+/// Manifest-driven HTML and print publication bundles for reusable gene sets.
+pub mod gene_set_publication;
 /// Genome catalog, preparation, indexing, extraction, and BLAST integration.
 pub mod genomes;
 /// Gibson assembly planning contracts and deterministic preview derivation.
