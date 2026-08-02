@@ -551,7 +551,7 @@ impl GENtleApp {
             self.gene_set_inspector.resolve_form.cache_dir = self.genome_cache_dir.clone();
         }
         self.refresh_gene_set_inspector_catalog(true);
-        self.seed_gene_set_promoter_form_from_selection();
+        self.seed_gene_set_promoter_form_from_selection(false);
         if self.gene_set_inspector.resolutions.is_empty() {
             self.gene_set_inspector.mode = GeneSetInspectorMode::Resolve;
         }
@@ -589,12 +589,12 @@ impl GENtleApp {
         self.gene_set_inspector.catalog_execution_revision = Some(execution_revision);
         self.gene_set_inspector.resolutions = resolutions;
         self.gene_set_inspector.primer_reports = primer_reports;
-        if !self
+        let selection_changed = !self
             .gene_set_inspector
             .resolutions
             .iter()
-            .any(|choice| choice.report_id == self.gene_set_inspector.selected_resolution_id)
-        {
+            .any(|choice| choice.report_id == self.gene_set_inspector.selected_resolution_id);
+        if selection_changed {
             self.gene_set_inspector.selected_resolution_id = self
                 .gene_set_inspector
                 .resolutions
@@ -604,6 +604,9 @@ impl GENtleApp {
             self.gene_set_inspector.last_result = None;
         }
         self.reconcile_gene_set_inspector_bindings();
+        if selection_changed {
+            self.seed_gene_set_promoter_form_from_selection(true);
+        }
     }
 
     fn selected_gene_set_resolution(&self) -> Option<&GeneSetResolutionChoice> {
@@ -693,6 +696,7 @@ impl GENtleApp {
                 self.gene_set_inspector.selected_resolution_id = report_id.clone();
                 self.gene_set_inspector.last_result = None;
                 self.reconcile_gene_set_inspector_bindings();
+                self.seed_gene_set_promoter_form_from_selection(true);
                 self.gene_set_inspector.mode = GeneSetInspectorMode::Inspect;
                 self.gene_set_inspector.resolve_status = format!(
                     "Resolved and persisted {resolved_count} member(s) in {elapsed:.1}s; {unresolved_count} unresolved."
@@ -1238,14 +1242,14 @@ impl GENtleApp {
         })
     }
 
-    fn seed_gene_set_promoter_form_from_selection(&mut self) {
+    fn seed_gene_set_promoter_form_from_selection(&mut self, selection_changed: bool) {
         let selected_genome_id = self
             .selected_gene_set_resolution()
             .and_then(|choice| choice.report.genome_id.clone())
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| self.genome_id.clone());
         let form = &mut self.gene_set_inspector.promoter_form;
-        if form.genome_id.trim().is_empty() {
+        if selection_changed || form.genome_id.trim().is_empty() {
             form.genome_id = selected_genome_id;
         }
         if form.genome_catalog_path.trim().is_empty() {
@@ -1292,9 +1296,9 @@ impl GENtleApp {
         report: &GeneSetResolutionReport,
         requirement: CollectionContextRequirement,
         target_genome_id: &str,
-    ) -> Result<(), crate::engine::CollectionContextValidationError> {
+    ) -> CollectionLauncherReadiness {
         match requirement {
-            CollectionContextRequirement::ContextAgnostic => Ok(()),
+            CollectionContextRequirement::ContextAgnostic => CollectionLauncherReadiness::Ready,
             CollectionContextRequirement::Homogeneous => {
                 let members = report
                     .resolved_members
@@ -1305,23 +1309,29 @@ impl GENtleApp {
                         ..CollectionMemberRef::default()
                     })
                     .collect::<Vec<_>>();
-                let context = homogeneous_collection_biological_context(
+                match homogeneous_collection_biological_context(
                     &report.biological_contexts,
                     &members,
-                )?;
-                validate_collection_context_target_genome(&context, target_genome_id)
+                )
+                .and_then(|context| {
+                    validate_collection_context_target_genome(&context, target_genome_id)
+                }) {
+                    Ok(()) => CollectionLauncherReadiness::Ready,
+                    Err(error) => CollectionLauncherReadiness::PolicyRejected {
+                        reason: error.reason,
+                        detail: error.detail,
+                    },
+                }
             }
             CollectionContextRequirement::NotReviewed
             | CollectionContextRequirement::Partitionable
             | CollectionContextRequirement::ExplicitCrossContext => {
-                Err(crate::engine::CollectionContextValidationError {
-                    reason: CollectionLiftRejectionReason::UnsupportedSubjectKind,
-                    member_id: None,
+                CollectionLauncherReadiness::AdapterUnavailable {
                     detail: format!(
                         "The GUI launcher does not implement {:?} collection-context readiness",
                         requirement
                     ),
-                })
+                }
             }
         }
     }
@@ -1462,17 +1472,11 @@ impl GENtleApp {
         } else {
             None
         };
-        match Self::gene_set_collection_context_readiness(
+        Self::gene_set_collection_context_readiness(
             normalized_report.as_ref().unwrap_or(report),
             row.policy.context_requirement,
             target_genome_id,
-        ) {
-            Ok(()) => CollectionLauncherReadiness::Ready,
-            Err(error) => CollectionLauncherReadiness::PolicyRejected {
-                reason: error.reason,
-                detail: error.detail,
-            },
-        }
+        )
     }
 
     fn selected_gene_set_collection_shell_command(&self) -> Result<ShellCommand, String> {
@@ -1909,8 +1913,13 @@ impl GENtleApp {
                     self.gene_set_inspector.pool_form.apply_change = false;
                 }
                 self.refresh_gene_set_inspector_catalog(true);
+                let selection_changed =
+                    self.gene_set_inspector.selected_resolution_id != task.resolution_id;
                 self.gene_set_inspector.selected_resolution_id = task.resolution_id.clone();
                 self.reconcile_gene_set_inspector_bindings();
+                if selection_changed {
+                    self.seed_gene_set_promoter_form_from_selection(true);
+                }
                 self.gene_set_inspector.last_result = Some(result);
                 self.push_job_event(
                     BackgroundJobKind::CollectionOperation,
@@ -3544,7 +3553,7 @@ impl GENtleApp {
         let readiness = presented
             .iter()
             .find(|(row, _)| row.adapter == Some(self.gene_set_inspector.selected_operation))
-            .map(|(row, _)| self.gene_set_collection_operation_readiness(row, &choice.report))
+            .map(|(_, readiness)| readiness.clone())
             .unwrap_or_else(|| CollectionLauncherReadiness::AdapterUnavailable {
                 detail: "The selected operation is absent from the shared policy registry"
                     .to_string(),
@@ -3691,7 +3700,7 @@ impl GENtleApp {
                 .clicked()
             {
                 self.refresh_gene_set_inspector_catalog(true);
-                self.seed_gene_set_promoter_form_from_selection();
+                self.seed_gene_set_promoter_form_from_selection(false);
             }
         });
         if selection_changed {
@@ -3707,7 +3716,7 @@ impl GENtleApp {
                 .clear();
             self.gene_set_inspector.pool_form.apply_change = false;
             self.reconcile_gene_set_inspector_bindings();
-            self.seed_gene_set_promoter_form_from_selection();
+            self.seed_gene_set_promoter_form_from_selection(true);
         }
 
         let selected = self.selected_gene_set_resolution().cloned();
@@ -4309,6 +4318,43 @@ mod tests {
             }),
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn gene_set_promoter_genome_follows_selection_changes_only() {
+        let mut app = seeded_app();
+        let mut mouse_report = app
+            .selected_gene_set_resolution()
+            .expect("selected resolution")
+            .report
+            .clone();
+        mouse_report.op_id = Some("resolution:mouse".to_string());
+        mouse_report.genome_id = Some("GRCm39".to_string());
+        mouse_report.biological_contexts = BiologicalContextRegistry::default();
+        for member in &mut mouse_report.resolved_members {
+            member.context_id = None;
+        }
+        mouse_report
+            .ensure_default_biological_context()
+            .expect("mouse biological context");
+        app.gene_set_inspector
+            .resolutions
+            .push(GeneSetResolutionChoice {
+                report_id: "resolution:mouse".to_string(),
+                report: mouse_report,
+            });
+
+        app.gene_set_inspector.promoter_form.genome_id = "manual-genome".to_string();
+        app.seed_gene_set_promoter_form_from_selection(false);
+        assert_eq!(
+            app.gene_set_inspector.promoter_form.genome_id,
+            "manual-genome",
+            "opening or reloading the same selection preserves an explicit form value"
+        );
+
+        app.gene_set_inspector.selected_resolution_id = "resolution:mouse".to_string();
+        app.seed_gene_set_promoter_form_from_selection(true);
+        assert_eq!(app.gene_set_inspector.promoter_form.genome_id, "GRCm39");
     }
 
     fn restriction_scan_command_projection(command: &ShellCommand) -> serde_json::Value {
@@ -4974,6 +5020,25 @@ mod tests {
     }
 
     #[test]
+    fn collection_operation_launcher_reports_unimplemented_context_as_adapter_gap() {
+        let app = seeded_app();
+        let report = &app
+            .selected_gene_set_resolution()
+            .expect("selected resolution")
+            .report;
+        let readiness = GENtleApp::gene_set_collection_context_readiness(
+            report,
+            CollectionContextRequirement::Partitionable,
+            "GRCh38",
+        );
+        assert!(matches!(
+            readiness,
+            CollectionLauncherReadiness::AdapterUnavailable { detail }
+                if detail.contains("Partitionable")
+        ));
+    }
+
+    #[test]
     fn collection_operation_launcher_promoter_subject_identity_and_success_refresh_are_preserved() {
         let mut app = seeded_app();
         app.gene_set_inspector.selected_operation = CollectionLauncherAdapter::PromoterCohort;
@@ -4985,27 +5050,25 @@ mod tests {
             .report
             .clone();
         let expected_subject = CollectionSubjectRef::GeneSetResolution {
-            report_id: "resolution:genes".to_string(),
+            report_id: GentleEngine::gene_set_resolution_artifact_id(&selected_report),
         };
-        let collection_report = CollectionOperationReport {
-            report_id: "collection:promoters".to_string(),
-            collection_subject: expected_subject.clone(),
-            per_member_status: vec![crate::engine::CollectionMemberStatusRow {
-                outcome: CollectionMemberOutcome::Succeeded,
-                ..crate::engine::CollectionMemberStatusRow::default()
-            }],
-            ..CollectionOperationReport::default()
-        };
-        let promoter_report = GeneSetPromoterCohortReport {
+        let mut promoter_report = GeneSetPromoterCohortReport {
             genome_id: "GRCh38".to_string(),
             upstream_bp: 777,
             downstream_bp: 123,
             gene_set_resolution: selected_report,
             requested_member_count: 2,
-            returned_window_count: 1,
-            collection_operation: Some(Box::new(collection_report)),
             ..GeneSetPromoterCohortReport::default()
         };
+        let collection_report = GentleEngine::build_gene_set_promoter_collection_operation_report(
+            &promoter_report,
+            "promoter_cohort:test",
+            "promoter:test",
+            "run:test",
+        )
+        .expect("build production collection wrapper");
+        assert_eq!(collection_report.collection_subject, expected_subject);
+        promoter_report.collection_operation = Some(Box::new(collection_report));
         let parsed = {
             let engine = app.engine.read().expect("engine");
             GENtleApp::collection_operation_task_result_from_output(

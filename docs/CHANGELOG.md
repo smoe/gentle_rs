@@ -39,6 +39,10 @@ understand what changed.
 - Prevented in-silico `Selection` containers from being exported as physical
   `gentle.pool.v1` artifacts; engine and Lineage GUI readiness now accept only
   exhaustive physical singleton or pool containers.
+- Fixed Gene Set Inspector collection readiness so promoter forms follow actual
+  gene-set selection changes, unsupported GUI context modes are identified as
+  adapter gaps rather than biological policy rejections, and the selected
+  operation reuses its already computed readiness.
 
 ## 2026-08-01
 
