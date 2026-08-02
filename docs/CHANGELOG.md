@@ -22,6 +22,16 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
 understand what changed.
 
+## 2026-08-03
+
+- Added a fail-closed two-phase approval contract for confirmation-gated
+  ClawBio delegation. Scientific PCR routes now emit a content-addressed
+  `gentle.clawbio_execution_proposal.v1`, execute only an exact caller-approved
+  proposal, and reject route/runtime/state/input/backend drift; list, show, and
+  preflight diagnostics remain automatic, while direct structured GENtle use
+  is unchanged. Local Cargo launchers are pinned to their built executable and
+  OCI execution requires an immutable image digest before approval.
+
 ## 2026-08-02
 
 - Added a bounded external-primer handoff mode to the co-shipped ClawBio skill.

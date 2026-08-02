@@ -10,6 +10,7 @@ without copying GENtle science or the `gentle-cloning` Python wrapper.
 user request
     -> gentle-pcr-primer-design/INTENTS.json
     -> one or more skill_run steps targeting gentle-cloning
+    -> digest-bound proposal and caller approval when confirmation is required
     -> gentle_cloning.py
     -> parser-validated gentle_cli command or workflow
     -> GENtle report, evidence state, provenance, and artifacts
@@ -26,6 +27,21 @@ wrapper contract. A stale or partial deployment fails closed. The resulting
 `gentle.clawbio_execution_manifest.v1` records those hashes and the resolved
 request; it records the selected route but does not claim that natural-language
 routing itself is deterministic.
+
+Natural-language routing therefore produces a draft request, not authority to
+run scientific work. Routes that select a target/pair/backend, mutate state, or
+write an artifact first return `approval_required` plus a
+`gentle.clawbio_execution_proposal.v1`. The caller must approve that exact
+digest, after which the generic runner executes the proposal's stored request
+without rerouting. Only list/show/preflight diagnostics remain automatic. See
+the generic runner's
+[execution-approval contract](../gentle-cloning/references/execution_approval.md).
+
+Primer backends and pair ranks have no conversational default. An explicitly
+requested `auto` backend is resolved to a path/version-pinned Primer3 or the
+internal backend before approval. An unknown 5-prime capture method is
+`unspecified`; `none` is retained only for an explicit assertion that no such
+method was used.
 
 The specialized skill therefore cannot:
 

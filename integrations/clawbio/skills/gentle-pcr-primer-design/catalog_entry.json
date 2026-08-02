@@ -2,7 +2,7 @@
   "name": "gentle-pcr-primer-design",
   "cli_alias": "gentle-pcr-primer-design",
   "description": "Focused OpenClaw/ClawBio primer-design orchestration that delegates deterministic PCR, RT-PCR, SYBR, TaqMan, imported-primer review, specificity, and assay-composition work to GENtle through the existing gentle-cloning runtime.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "status": "mvp",
   "has_script": false,
   "has_tests": true,
@@ -11,7 +11,7 @@
   "execution_delegate": "gentle-cloning",
   "delegate_contract": {
     "skill": "gentle-cloning",
-    "skill_version": "0.2.0",
+    "skill_version": "0.3.0",
     "request_schema": "gentle.clawbio_skill_request.v1",
     "result_schema": "gentle.clawbio_skill_result.v1",
     "execution_manifest_schema": "gentle.clawbio_execution_manifest.v1"

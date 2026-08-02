@@ -83,7 +83,7 @@ def _write_provider_bundle(
         },
         "delegation": {
             "source_skill": "gentle-pcr-primer-design",
-            "source_skill_version": "0.3.0",
+            "source_skill_version": "0.4.0",
             "intent_id": "imported_primer_review",
             "plan_step_index": 0,
             "descriptor_sha256": "sha256:" + "3" * 64,
@@ -93,7 +93,7 @@ def _write_provider_bundle(
         },
         "wrapper": {
             "skill": "gentle-cloning",
-            "skill_version": "0.2.0",
+            "skill_version": "0.3.0",
             "request_schema": "gentle.clawbio_skill_request.v1",
             "contract_files_complete": True,
             "files": [

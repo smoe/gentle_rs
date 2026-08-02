@@ -1,9 +1,8 @@
 # GENtle Roadmap
 
-Last session: 2026-07-31 - completed ortholog Promoter design ambiguity/export
-parity and the fail-closed normalized cross-species CUT&RUN contract; manual
-GUI smoke for the unreleased `v0.1.0-internal.10` release remains before the
-tag
+Last session: 2026-08-03 - added fail-closed proposal/digest approval for
+confirmation-gated ClawBio delegation; manual GUI smoke for the unreleased
+`v0.1.0-internal.10` release remains before the tag
 
 Purpose: fast session orientation. This file answers "what next?" and should be
 readable in under two minutes. Completed work belongs in

@@ -169,6 +169,96 @@ def _fake_cli_with_svg_png(main_body: str) -> str:
     )
 
 
+def _write_approval_gate_fake_cli(path: Path, execution_marker: Path) -> None:
+    path.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json\n"
+        "from pathlib import Path\n"
+        "import sys\n"
+        f"MARKER = Path({str(execution_marker)!r})\n"
+        "INVOCATIONS = MARKER.with_name('invocations.log')\n"
+        "args = sys.argv[1:]\n"
+        "with INVOCATIONS.open('a', encoding='utf-8') as handle:\n"
+        "    handle.write(json.dumps(args) + '\\n')\n"
+        "if args == ['--version']:\n"
+        "    print('gentle_cli 9.9.approval-test')\n"
+        "    raise SystemExit(0)\n"
+        "if 'shell' not in args:\n"
+        "    raise SystemExit('expected shell request')\n"
+        "shell_line = args[args.index('shell') + 1]\n"
+        "if shell_line.startswith('primers preflight '):\n"
+        "    print(json.dumps({'schema': 'gentle.primer3_preflight.v1', 'preflight': {\n"
+        "        'backend': 'auto', 'configured_executable': None,\n"
+        "        'used_default_executable': True, 'executable': 'primer3_core',\n"
+        "        'resolved_path': None, 'working_directory': str(Path.cwd()),\n"
+        "        'reachable': False, 'version_probe_ok': False,\n"
+        "        'status_code': None, 'version': None, 'detail': None,\n"
+        "        'error': 'synthetic unavailable', 'probe_time_ms': 0}}))\n"
+        "    raise SystemExit(0)\n"
+        "if shell_line.startswith('primers design '):\n"
+        "    MARKER.write_text(shell_line + '\\n', encoding='utf-8')\n"
+        "    print(json.dumps({'schema': 'gentle.synthetic_primer_result.v1',\n"
+        "        'report_id': 'primer_report_approved', 'status': 'ok',\n"
+        "        'summary_lines': ['Approved primer design executed.']}))\n"
+        "    raise SystemExit(0)\n"
+        "raise SystemExit('unexpected shell line: ' + shell_line)\n",
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
+
+
+def _approval_gated_design_request(tmp_path: Path) -> tuple[Path, Path]:
+    operation_path = tmp_path / "operation.json"
+    operation_path.write_text(
+        '{"DesignPrimerPairs":{"report_id":"synthetic_approved"}}\n',
+        encoding="utf-8",
+    )
+    source_skill_root = _skill_script().parents[1] / "gentle-pcr-primer-design"
+    descriptor = json.loads(
+        (source_skill_root / "INTENTS.json").read_text(encoding="utf-8")
+    )
+    route = next(
+        row
+        for row in descriptor["routes"]
+        if row["intent_id"] == "conventional_pcr_design"
+    )
+    request = json.loads(json.dumps(route["plan"][0]["input_template"]))
+    request["shell_line"] = "primers design @operation.json --backend auto"
+    request["delegation"]["resolved_slots"] = {
+        "request_path": "operation.json",
+        "backend": "auto",
+    }
+    request_path = tmp_path / "delegated_request.json"
+    request_path.write_text(json.dumps(request) + "\n", encoding="utf-8")
+    return request_path, operation_path
+
+
+def _write_approved_execution_request(
+    path: Path,
+    proposal_path: Path,
+    proposal_digest: str,
+    *,
+    approval_id: str,
+) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_approved_execution_request.v1",
+                "proposal_path": str(proposal_path),
+                "approval": {
+                    "schema": "gentle.clawbio_execution_approval.v1",
+                    "approval_scope": "execute_exact_proposal",
+                    "proposal_digest": proposal_digest,
+                    "approval_id": approval_id,
+                    "approved_by": "synthetic-test-reviewer",
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
 def _write_external_primer_handoff_fake_cli(
     path: Path, *, tamper_sequence: bool = False, tamper_target: bool = False
 ) -> None:
@@ -1211,6 +1301,551 @@ def test_delegated_run_binds_route_runtime_state_and_native_verdict(
     assert claim["evidence"]["source_value_sha256"].startswith("sha256:")
 
 
+def test_confirmation_gated_delegation_proposes_then_executes_exact_approval(
+    tmp_path: Path,
+) -> None:
+    request_path, _ = _approval_gated_design_request(tmp_path)
+    marker = tmp_path / "executed.txt"
+    fake_cli = tmp_path / "fake_cli.py"
+    _write_approval_gate_fake_cli(fake_cli, marker)
+    proposal_output = tmp_path / "proposal"
+
+    proposed = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(proposal_output),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proposed.returncode == 0, proposed.stderr
+    assert not marker.exists()
+    proposal_result = json.loads(
+        (proposal_output / "result.json").read_text(encoding="utf-8")
+    )
+    assert proposal_result["status"] == "approval_required"
+    proposal_path = Path(
+        proposal_result["artifacts"]["execution_proposal_json"]
+    )
+    proposal = json.loads(proposal_path.read_text(encoding="utf-8"))
+    assert proposal["schema"] == "gentle.clawbio_execution_proposal.v1"
+    assert proposal["proposal_digest"].startswith("sha256:")
+    assert proposal["approval_basis"]["normalized_request"]["state_path"] == str(
+        (tmp_path / ".gentle_state.json").resolve()
+    )
+    shell_line = proposal["approval_basis"]["normalized_request"]["shell_line"]
+    assert "--backend internal" in shell_line
+    assert "--backend auto" not in shell_line
+    assert proposal["review"]["backend_resolution"]["selected_backend"] == (
+        "internal"
+    )
+    wrapper_contract = proposal["approval_basis"]["wrapper_contract"]
+    assert wrapper_contract["contract_files_complete"] is True
+    assert {record["contract_part"] for record in wrapper_contract["files"]} == {
+        "runner",
+        "catalog_entry",
+        "intent_descriptor",
+    }
+    assert proposal["review"]["wrapper_contract"] == wrapper_contract
+    assert "PATH" in proposal["review"]["execution_environment"]
+    assert proposal_result["execution_manifest"]["execution_outcome"] == (
+        "not_executed"
+    )
+
+    repeat_output = tmp_path / "proposal_repeat"
+    repeated = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(repeat_output),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert repeated.returncode == 0, repeated.stderr
+    repeated_proposal = json.loads(
+        (
+            repeat_output / "reproducibility" / "execution_proposal.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert repeated_proposal["proposal_digest"] == proposal["proposal_digest"]
+
+    approval_path = tmp_path / "approval.json"
+    approval_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_approved_execution_request.v1",
+                "proposal_path": str(proposal_path),
+                "approval": {
+                    "schema": "gentle.clawbio_execution_approval.v1",
+                    "approval_scope": "execute_exact_proposal",
+                    "proposal_digest": proposal["proposal_digest"],
+                    "approval_id": "human-review-1",
+                    "approved_by": "synthetic-test-reviewer",
+                    "approved_at_utc": "2026-08-03T12:00:00Z",
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    execution_output = tmp_path / "execution"
+    executed = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(approval_path),
+            "--output",
+            str(execution_output),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert executed.returncode == 0, executed.stderr
+    assert marker.read_text(encoding="utf-8").strip() == shell_line
+    result = json.loads((execution_output / "result.json").read_text(encoding="utf-8"))
+    assert result["status"] == "ok"
+    assert result["execution_approval"]["status"] == "approved"
+    assert result["execution_approval"]["proposal_digest"] == proposal[
+        "proposal_digest"
+    ]
+    proposed_request = dict(proposal["approval_basis"]["normalized_request"])
+    assert proposed_request.pop("schema") == "gentle.clawbio_skill_request.v1"
+    assert result["request"] == proposed_request
+    assert result["execution_manifest"]["execution_approval"]["approval"][
+        "approval_id"
+    ] == "human-review-1"
+
+
+def test_approved_execution_rejects_tampered_proposal_before_command(
+    tmp_path: Path,
+) -> None:
+    module = _skill_module()
+    proposal_path = tmp_path / "proposal.json"
+    proposal = {
+        "schema": module.EXECUTION_PROPOSAL_SCHEMA,
+        "created_utc": "2026-08-03T12:00:00Z",
+        "proposal_digest": "sha256:" + "0" * 64,
+        "proposal_digest_scope": "synthetic",
+        "approval_basis": {"normalized_request": {"mode": "shell"}},
+        "review": {},
+    }
+    proposal_path.write_text(json.dumps(proposal) + "\n", encoding="utf-8")
+    envelope_path = tmp_path / "approval.json"
+    envelope = {
+        "schema": module.APPROVED_EXECUTION_REQUEST_SCHEMA,
+        "proposal_path": str(proposal_path),
+        "approval": {
+            "schema": module.EXECUTION_APPROVAL_SCHEMA,
+            "approval_scope": "execute_exact_proposal",
+            "proposal_digest": "sha256:" + "0" * 64,
+            "approval_id": "synthetic",
+            "approved_by": "synthetic",
+        },
+    }
+
+    with pytest.raises(module.SkillError, match="stored proposal was altered"):
+        module._load_approved_execution(envelope, envelope_path, _skill_script())
+
+
+def test_approved_execution_rejects_tampered_review_projection(
+    tmp_path: Path,
+) -> None:
+    module = _skill_module()
+    request_path, _ = _approval_gated_design_request(tmp_path)
+    marker = tmp_path / "executed.txt"
+    fake_cli = tmp_path / "fake_cli.py"
+    _write_approval_gate_fake_cli(fake_cli, marker)
+    proposal_output = tmp_path / "proposal"
+    proposed = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(proposal_output),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proposed.returncode == 0, proposed.stderr
+    proposal_path = proposal_output / "reproducibility" / "execution_proposal.json"
+    proposal = json.loads(proposal_path.read_text(encoding="utf-8"))
+    proposal["review"]["exact_command_text"] = "gentle_cli shell 'different command'"
+    proposal_path.write_text(json.dumps(proposal) + "\n", encoding="utf-8")
+    envelope_path = tmp_path / "approval.json"
+    envelope = {
+        "schema": module.APPROVED_EXECUTION_REQUEST_SCHEMA,
+        "proposal_path": str(proposal_path),
+        "approval": {
+            "schema": module.EXECUTION_APPROVAL_SCHEMA,
+            "approval_scope": "execute_exact_proposal",
+            "proposal_digest": proposal["proposal_digest"],
+            "approval_id": "tampered-review",
+            "approved_by": "synthetic-test-reviewer",
+        },
+    }
+
+    with pytest.raises(module.SkillError, match="review projection mismatch"):
+        module._load_approved_execution(envelope, envelope_path, _skill_script())
+    assert not marker.exists()
+
+
+def test_approved_execution_rejects_approval_for_another_proposal(
+    tmp_path: Path,
+) -> None:
+    module = _skill_module()
+    approval_basis = {"normalized_request": {"schema": module.REQUEST_SCHEMA}}
+    proposal_digest = module._sha256_prefixed_json(approval_basis)
+    proposal_path = tmp_path / "proposal.json"
+    proposal_path.write_text(
+        json.dumps(
+            {
+                "schema": module.EXECUTION_PROPOSAL_SCHEMA,
+                "created_utc": "2026-08-03T12:00:00Z",
+                "proposal_digest": proposal_digest,
+                "proposal_digest_scope": "synthetic",
+                "approval_basis": approval_basis,
+                "review": {},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    envelope_path = tmp_path / "approval.json"
+    envelope = {
+        "schema": module.APPROVED_EXECUTION_REQUEST_SCHEMA,
+        "proposal_path": str(proposal_path),
+        "approval": {
+            "schema": module.EXECUTION_APPROVAL_SCHEMA,
+            "approval_scope": "execute_exact_proposal",
+            "proposal_digest": "sha256:" + "f" * 64,
+            "approval_id": "wrong-run",
+            "approved_by": "synthetic",
+        },
+    }
+
+    with pytest.raises(module.SkillError, match="different proposal digest"):
+        module._load_approved_execution(envelope, envelope_path, _skill_script())
+
+
+def test_approved_execution_rejects_input_drift_before_command(
+    tmp_path: Path,
+) -> None:
+    request_path, operation_path = _approval_gated_design_request(tmp_path)
+    marker = tmp_path / "executed.txt"
+    fake_cli = tmp_path / "fake_cli.py"
+    _write_approval_gate_fake_cli(fake_cli, marker)
+    proposal_output = tmp_path / "proposal"
+    proposed = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(proposal_output),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proposed.returncode == 0, proposed.stderr
+    proposal_path = proposal_output / "reproducibility" / "execution_proposal.json"
+    proposal = json.loads(proposal_path.read_text(encoding="utf-8"))
+    operation_path.write_text('{"changed":true}\n', encoding="utf-8")
+    approval_path = tmp_path / "approval.json"
+    approval_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_approved_execution_request.v1",
+                "proposal_path": str(proposal_path),
+                "approval": {
+                    "schema": "gentle.clawbio_execution_approval.v1",
+                    "approval_scope": "execute_exact_proposal",
+                    "proposal_digest": proposal["proposal_digest"],
+                    "approval_id": "human-review-drift",
+                    "approved_by": "synthetic-test-reviewer",
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    execution_output = tmp_path / "execution"
+    executed = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(approval_path),
+            "--output",
+            str(execution_output),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert executed.returncode == 1
+    assert not marker.exists()
+    result = json.loads((execution_output / "result.json").read_text(encoding="utf-8"))
+    assert result["status"] == "failed"
+    assert "content-bound scientific inputs changed" in result["error"]
+
+
+def test_approved_execution_rejects_state_drift_before_version_probe(
+    tmp_path: Path,
+) -> None:
+    request_path, _ = _approval_gated_design_request(tmp_path)
+    state_path = tmp_path / ".gentle_state.json"
+    state_path.write_text('{"schema":"synthetic.state.v1","revision":1}\n')
+    marker = tmp_path / "executed.txt"
+    invocation_log = tmp_path / "invocations.log"
+    fake_cli = tmp_path / "fake_cli.py"
+    _write_approval_gate_fake_cli(fake_cli, marker)
+    proposal_output = tmp_path / "proposal"
+    proposed = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(proposal_output),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proposed.returncode == 0, proposed.stderr
+    invocation_count_before = len(
+        invocation_log.read_text(encoding="utf-8").splitlines()
+    )
+    proposal_path = proposal_output / "reproducibility" / "execution_proposal.json"
+    proposal = json.loads(proposal_path.read_text(encoding="utf-8"))
+    state_path.write_text('{"schema":"synthetic.state.v1","revision":2}\n')
+    approval_path = tmp_path / "approval.json"
+    _write_approved_execution_request(
+        approval_path,
+        proposal_path,
+        proposal["proposal_digest"],
+        approval_id="human-review-state",
+    )
+    execution_output = tmp_path / "execution"
+    executed = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(approval_path),
+            "--output",
+            str(execution_output),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert executed.returncode == 1
+    assert not marker.exists()
+    assert len(invocation_log.read_text(encoding="utf-8").splitlines()) == (
+        invocation_count_before
+    )
+    result = json.loads((execution_output / "result.json").read_text(encoding="utf-8"))
+    assert "project state changed" in result["error"]
+
+
+def test_approved_execution_rejects_environment_drift_before_version_probe(
+    tmp_path: Path,
+) -> None:
+    request_path, _ = _approval_gated_design_request(tmp_path)
+    marker = tmp_path / "executed.txt"
+    invocation_log = tmp_path / "invocations.log"
+    fake_cli = tmp_path / "fake_cli.py"
+    _write_approval_gate_fake_cli(fake_cli, marker)
+    proposal_output = tmp_path / "proposal"
+    proposal_env = dict(os.environ)
+    proposal_env["GENTLE_REFERENCE_CACHE_DIR"] = str(tmp_path / "reference-a")
+    proposed = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(proposal_output),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        env=proposal_env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proposed.returncode == 0, proposed.stderr
+    invocation_count_before = len(
+        invocation_log.read_text(encoding="utf-8").splitlines()
+    )
+    proposal_path = proposal_output / "reproducibility" / "execution_proposal.json"
+    proposal = json.loads(proposal_path.read_text(encoding="utf-8"))
+    approval_path = tmp_path / "approval.json"
+    _write_approved_execution_request(
+        approval_path,
+        proposal_path,
+        proposal["proposal_digest"],
+        approval_id="human-review-environment",
+    )
+    execution_env = dict(proposal_env)
+    execution_env["GENTLE_REFERENCE_CACHE_DIR"] = str(tmp_path / "reference-b")
+    execution_output = tmp_path / "execution"
+    executed = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(approval_path),
+            "--output",
+            str(execution_output),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        env=execution_env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert executed.returncode == 1
+    assert not marker.exists()
+    assert len(invocation_log.read_text(encoding="utf-8").splitlines()) == (
+        invocation_count_before
+    )
+    result = json.loads((execution_output / "result.json").read_text(encoding="utf-8"))
+    assert "execution environment changed" in result["error"]
+
+
+def test_approved_execution_rejects_runtime_drift_before_version_probe(
+    tmp_path: Path,
+) -> None:
+    request_path, _ = _approval_gated_design_request(tmp_path)
+    marker = tmp_path / "executed.txt"
+    invocation_log = tmp_path / "invocations.log"
+    fake_cli = tmp_path / "fake_cli.py"
+    _write_approval_gate_fake_cli(fake_cli, marker)
+    proposal_output = tmp_path / "proposal"
+    proposed = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(proposal_output),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proposed.returncode == 0, proposed.stderr
+    invocation_count_before = len(
+        invocation_log.read_text(encoding="utf-8").splitlines()
+    )
+    proposal_path = proposal_output / "reproducibility" / "execution_proposal.json"
+    proposal = json.loads(proposal_path.read_text(encoding="utf-8"))
+    fake_cli.write_text(
+        fake_cli.read_text(encoding="utf-8") + "# changed after approval\n",
+        encoding="utf-8",
+    )
+    approval_path = tmp_path / "approval.json"
+    approval_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_approved_execution_request.v1",
+                "proposal_path": str(proposal_path),
+                "approval": {
+                    "schema": "gentle.clawbio_execution_approval.v1",
+                    "approval_scope": "execute_exact_proposal",
+                    "proposal_digest": proposal["proposal_digest"],
+                    "approval_id": "human-review-runtime",
+                    "approved_by": "synthetic-test-reviewer",
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    execution_output = tmp_path / "execution"
+    executed = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(approval_path),
+            "--output",
+            str(execution_output),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert executed.returncode == 1
+    assert not marker.exists()
+    assert len(invocation_log.read_text(encoding="utf-8").splitlines()) == (
+        invocation_count_before
+    )
+    result = json.loads((execution_output / "result.json").read_text(encoding="utf-8"))
+    assert "runtime file identity changed" in result["error"]
+
+
 def test_delegation_rejects_wrong_source_skill_version() -> None:
     module = _skill_module()
     request = module.Request(
@@ -1479,10 +2114,16 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
     assert payload["stdout_json"] == {
         "schema": "gentle.clawbio_skill_info.v1",
         "name": "gentle-cloning",
-        "version": "0.2.0",
+        "version": "0.3.0",
         "status": "mvp",
         "request_schema": "gentle.clawbio_skill_request.v1",
         "result_schema": "gentle.clawbio_skill_result.v1",
+        "execution_manifest_schema": "gentle.clawbio_execution_manifest.v1",
+        "execution_proposal_schema": "gentle.clawbio_execution_proposal.v1",
+        "execution_approval_schema": "gentle.clawbio_execution_approval.v1",
+        "approved_execution_request_schema": (
+            "gentle.clawbio_approved_execution_request.v1"
+        ),
         "supported_request_modes": [
             "skill-info",
             "intents",
@@ -1567,7 +2208,7 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
         },
     }
     assert payload["chat_summary_lines"] == [
-        "gentle-cloning skill version 0.2.0 (mvp).",
+            "gentle-cloning skill version 0.3.0 (mvp).",
         "Request schema: gentle.clawbio_skill_request.v1; result schema: gentle.clawbio_skill_result.v1.",
         "Use request mode `version` when you need the installed local GENtle rewrite runtime version.",
         "Use request mode `intents` to compare the installed wrapper's live intent descriptor with ClawBio's on-disk snapshot.",
@@ -1611,7 +2252,7 @@ def test_skill_info_request_mode_reports_catalog_version(
     assert payload["status"] == "ok"
     assert payload["request"]["mode"] == "skill-info"
     assert payload["stdout_json"]["schema"] == "gentle.clawbio_skill_info.v1"
-    assert payload["stdout_json"]["version"] == "0.2.0"
+    assert payload["stdout_json"]["version"] == "0.3.0"
     assert payload["resolver"] is None
     assert payload["command"] is None
 
@@ -3868,6 +4509,95 @@ def test_local_checkout_launcher_uses_repo_root_defaults(tmp_path: Path) -> None
         f"GENTLE_REFERENCE_CACHE_DIR={fake_repo / 'data' / 'genomes'}",
         f"GENTLE_HELPER_CACHE_DIR={fake_repo / 'data' / 'helper_genomes'}",
     ]
+
+
+def test_approval_gate_pins_local_launcher_to_built_binary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _skill_module()
+    fake_repo = tmp_path / "GENtle"
+    binary = fake_repo / "target" / "debug" / (
+        "gentle_cli.exe" if os.name == "nt" else "gentle_cli"
+    )
+    binary.parent.mkdir(parents=True)
+    binary.write_bytes(b"synthetic gentle runtime")
+    launcher = tmp_path / "gentle_local_checkout_cli.sh"
+    launcher.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+    monkeypatch.setenv("GENTLE_REPO_ROOT", str(fake_repo))
+    monkeypatch.delenv("CARGO_TARGET_DIR", raising=False)
+    monkeypatch.delenv("GENTLE_REFERENCE_CACHE_DIR", raising=False)
+    monkeypatch.delenv("GENTLE_HELPER_CACHE_DIR", raising=False)
+    resolution = module.CliResolution(
+        argv_prefix=["bash", str(launcher)],
+        cwd=None,
+        label="synthetic local launcher",
+    )
+
+    pinned = module._pin_delegated_runtime(
+        resolution,
+        tmp_path,
+        _skill_script(),
+        require_local_binary=True,
+    )
+
+    assert pinned.argv_prefix == [str(binary.resolve())]
+    assert os.environ["GENTLE_REFERENCE_CACHE_DIR"] == str(
+        (fake_repo / "data" / "genomes").resolve()
+    )
+    assert os.environ["GENTLE_HELPER_CACHE_DIR"] == str(
+        (fake_repo / "data" / "helper_genomes").resolve()
+    )
+    bindings = module._runtime_file_bindings(pinned, tmp_path)
+    assert bindings == [
+        {
+            "binding_id": "argv_prefix_0",
+            "path": str(binary.resolve()),
+            "size_bytes": binary.stat().st_size,
+            "sha256": module._sha256_file_prefixed(binary),
+        }
+    ]
+
+
+def test_approval_gate_rejects_mutable_oci_image_reference(tmp_path: Path) -> None:
+    module = _skill_module()
+    resolution = module.CliResolution(
+        argv_prefix=[
+            "docker",
+            "run",
+            "--rm",
+            "ghcr.io/smoe/gentle_rs:latest",
+        ],
+        cwd=None,
+        label="synthetic mutable OCI tag",
+    )
+
+    with pytest.raises(module.SkillError, match="immutable image digest"):
+        module._pin_delegated_runtime(
+            resolution,
+            tmp_path,
+            _skill_script(),
+            require_local_binary=False,
+        )
+
+    immutable = module.CliResolution(
+        argv_prefix=[
+            "docker",
+            "run",
+            "--rm",
+            "ghcr.io/smoe/gentle_rs@sha256:" + "a" * 64,
+        ],
+        cwd=None,
+        label="synthetic immutable OCI digest",
+    )
+    assert (
+        module._pin_delegated_runtime(
+            immutable,
+            tmp_path,
+            _skill_script(),
+            require_local_binary=False,
+        )
+        == immutable
+    )
 
 
 def test_workflow_request_resolves_against_gentle_repo_root(tmp_path: Path) -> None:

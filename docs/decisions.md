@@ -477,3 +477,28 @@ cross-run identities.
 
 A generic relation hierarchy or paralog contract still requires a concrete
 resolver/consumer and is not inferred from the ortholog contract.
+
+## DEC-032: Conversational Scientific Delegation Is Proposal-Then-Execute
+
+Status: active
+
+Natural-language routing may draft a structured GENtle request, but it is not
+execution authority for a delegated route that selects biological material, a
+pair or backend, mutates project state, or writes/replaces an artifact. Such a
+route first emits a content-addressed proposal binding the normalized request,
+exact command, delegated descriptor/route, runtime, state, scientific inputs,
+resolved paths, reference context, and pinned backend. Execution consumes that
+stored request only after a caller-supplied approval assertion names the exact
+proposal digest; it must not reconstruct slots from prose a second time.
+For this gated path, known local Cargo launchers are reduced to the already
+built, hash-bound `gentle_cli` executable before the proposal is issued, and
+OCI execution requires an immutable image digest. Approval must never authorize
+a later source rebuild or mutable image-tag resolution.
+
+GENtle verifies the digest and fails on bound-context drift. The caller or
+OpenClaw control plane owns approver identity, authentication, authorization,
+and proof that a human actually reviewed the proposal. Read-only list, show,
+and preflight routes may remain automatic. Direct structured GENtle and
+`gentle_cli` use remains independent of this conversational delegation gate.
+Material cache/tool environment overrides are part of the approved context;
+GENtle does not claim to bind arbitrary unlisted operating-system state.

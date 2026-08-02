@@ -25,9 +25,28 @@ import xml.etree.ElementTree as ET
 REQUEST_SCHEMA = "gentle.clawbio_skill_request.v1"
 RESULT_SCHEMA = "gentle.clawbio_skill_result.v1"
 EXECUTION_MANIFEST_SCHEMA = "gentle.clawbio_execution_manifest.v1"
+EXECUTION_PROPOSAL_SCHEMA = "gentle.clawbio_execution_proposal.v1"
+EXECUTION_APPROVAL_SCHEMA = "gentle.clawbio_execution_approval.v1"
+APPROVED_EXECUTION_REQUEST_SCHEMA = "gentle.clawbio_approved_execution_request.v1"
 DELEGATION_SCHEMA = "gentle.clawbio_skill_delegation.v1"
 CLAIM_LEDGER_SCHEMA = "gentle.clawbio_claim_ledger.v1"
-SKILL_CONTRACT_VERSION = "0.2.0"
+SKILL_CONTRACT_VERSION = "0.3.0"
+APPROVAL_ENVIRONMENT_VARIABLES = (
+    "PATH",
+    "GENTLE_ASSET_ROOT",
+    "GENTLE_PROJECT_ROOT",
+    "GENTLE_SYSTEM_CONFIG_ROOT",
+    "GENTLE_REFERENCE_CACHE_DIR",
+    "GENTLE_HELPER_CACHE_DIR",
+    "GENTLE_CUTRUN_CACHE_DIR",
+    "GENTLE_BLASTN_BIN",
+    "GENTLE_MAKEBLASTDB_BIN",
+    "GENTLE_BLASTDBCMD_BIN",
+    "GENTLE_BIGWIG_TO_BEDGRAPH_BIN",
+    "GENTLE_RNAFOLD_BIN",
+    "GENTLE_RNAPKIN_BIN",
+    "GENTLE_SHA1_TOOL",
+)
 STRICT_CLAIM_ATTRIBUTION_MODE = "strict"
 PCR_PRIMER_PRESENTATION_PROFILE = "pcr_primer_design"
 CLAIM_SOURCE_PREFIXES = {
@@ -206,6 +225,10 @@ class SkillError(RuntimeError):
     """Base skill error with deterministic message formatting."""
 
 
+class ApprovalRequired(SkillError):
+    """Stop before scientific execution after emitting a reviewable proposal."""
+
+
 @dataclasses.dataclass
 class Request:
     mode: str
@@ -320,6 +343,14 @@ class CliResolution:
     argv_prefix: list[str]
     cwd: str | None
     label: str
+
+
+@dataclasses.dataclass
+class ApprovedExecution:
+    proposal_path: Path
+    proposal: dict[str, Any]
+    approval: dict[str, Any]
+    envelope_path: Path
 
 
 def _format_command_text(command: list[str] | None) -> str:
@@ -917,6 +948,10 @@ def _skill_info_payload(script_path: Path) -> dict[str, Any]:
         "status": str(catalog_entry.get("status") or "unknown"),
         "request_schema": REQUEST_SCHEMA,
         "result_schema": RESULT_SCHEMA,
+        "execution_manifest_schema": EXECUTION_MANIFEST_SCHEMA,
+        "execution_proposal_schema": EXECUTION_PROPOSAL_SCHEMA,
+        "execution_approval_schema": EXECUTION_APPROVAL_SCHEMA,
+        "approved_execution_request_schema": APPROVED_EXECUTION_REQUEST_SCHEMA,
         "supported_request_modes": list(SUPPORTED_REQUEST_MODES),
         "intents_runtime_schema": INTENTS_RUNTIME_SCHEMA,
         "intents_runtime_request_mode": "intents",
@@ -1226,6 +1261,163 @@ def _resolve_cli(explicit: str | None, script_path: Path) -> CliResolution:
         "Alternatives: use --gentle-cli, install gentle_cli on PATH, or run "
         "from a local repo with cargo available."
     )
+
+
+def _local_source_runtime_repo_root(
+    resolution: CliResolution, script_path: Path
+) -> Path | None:
+    tokens = resolution.argv_prefix
+    if not tokens:
+        return None
+    executable_name = Path(tokens[0]).name
+    uses_cargo_run = executable_name in {"cargo", "cargo.exe"} and "run" in tokens[1:]
+    launcher_token = next(
+        (
+            token
+            for token in tokens
+            if Path(token).name == "gentle_local_checkout_cli.sh"
+        ),
+        None,
+    )
+    uses_local_launcher = launcher_token is not None
+    if not uses_cargo_run and not uses_local_launcher:
+        return None
+    if "--manifest-path" in tokens:
+        index = tokens.index("--manifest-path")
+        if index + 1 < len(tokens):
+            manifest = Path(tokens[index + 1]).expanduser()
+            if not manifest.is_absolute():
+                manifest = Path(resolution.cwd or Path.cwd()) / manifest
+            return manifest.resolve().parent
+    configured = os.environ.get("GENTLE_REPO_ROOT", "").strip()
+    if configured:
+        return Path(configured).expanduser().resolve()
+    if resolution.cwd:
+        repo_root = _find_repo_root_from_path(Path(resolution.cwd))
+        if repo_root is not None:
+            return repo_root
+    executable = Path(launcher_token or tokens[0]).expanduser()
+    if executable.exists():
+        repo_root = _find_repo_root_from_path(executable)
+        if repo_root is not None:
+            return repo_root
+    return _find_repo_root(script_path)
+
+
+def _pin_delegated_runtime(
+    resolution: CliResolution,
+    execution_cwd: Path,
+    script_path: Path,
+    *,
+    require_local_binary: bool,
+) -> CliResolution:
+    tokens = resolution.argv_prefix
+    if not tokens:
+        raise SkillError("delegated GENtle runtime command is empty")
+    executable_name = Path(tokens[0]).name
+    if executable_name in {"docker", "podman", "nerdctl"} and "run" in tokens[1:]:
+        immutable_image = any(
+            re.search(r"@sha256:[0-9a-fA-F]{64}$", token)
+            or re.fullmatch(r"sha256:[0-9a-fA-F]{64}", token)
+            for token in tokens[1:]
+        )
+        if not immutable_image:
+            raise SkillError(
+                "approval-gated OCI execution requires an immutable image digest "
+                "such as ghcr.io/owner/image@sha256:..."
+            )
+    repo_root = _local_source_runtime_repo_root(resolution, script_path)
+    if repo_root is None:
+        return resolution
+    uses_local_launcher = any(
+        Path(token).name == "gentle_local_checkout_cli.sh" for token in tokens
+    )
+    if uses_local_launcher:
+        os.environ.setdefault(
+            "GENTLE_REFERENCE_CACHE_DIR", str((repo_root / "data" / "genomes").resolve())
+        )
+        os.environ.setdefault(
+            "GENTLE_HELPER_CACHE_DIR",
+            str((repo_root / "data" / "helper_genomes").resolve()),
+        )
+    configured_target = os.environ.get("CARGO_TARGET_DIR", "").strip()
+    if configured_target:
+        target_dir = Path(configured_target).expanduser()
+        if not target_dir.is_absolute():
+            target_dir = execution_cwd / target_dir
+    else:
+        target_dir = repo_root / "target"
+    executable = target_dir / "debug" / (
+        "gentle_cli.exe" if os.name == "nt" else "gentle_cli"
+    )
+    if not executable.is_file():
+        if not require_local_binary:
+            return resolution
+        raise SkillError(
+            "the local Cargo launcher completed without producing the expected "
+            f"gentle_cli executable at '{executable.resolve()}'"
+        )
+    return CliResolution(
+        argv_prefix=[str(executable.resolve())],
+        cwd=resolution.cwd,
+        label=f"content-pinned executable produced by {resolution.label}",
+    )
+
+
+def _approval_environment_binding(execution_cwd: Path) -> dict[str, Any]:
+    binding: dict[str, Any] = {}
+    for name in APPROVAL_ENVIRONMENT_VARIABLES:
+        value = os.environ.get(name)
+        if value is None:
+            continue
+        record: dict[str, Any] = {"value": value}
+        if name.endswith("_BIN") or name.endswith("_TOOL"):
+            candidate = Path(value).expanduser()
+            if not candidate.is_absolute():
+                relative = execution_cwd / candidate
+                if relative.is_file():
+                    candidate = relative
+                else:
+                    located = shutil.which(value)
+                    if located:
+                        candidate = Path(located)
+            if candidate.is_file():
+                resolved = candidate.resolve()
+                record.update(
+                    {
+                        "resolved_path": str(resolved),
+                        "size_bytes": resolved.stat().st_size,
+                        "sha256": _sha256_file_prefixed(resolved),
+                    }
+                )
+        binding[name] = record
+    return binding
+
+
+def _wrapper_contract_binding(script_path: Path) -> dict[str, Any]:
+    candidates = [
+        (script_path.resolve(), "runner"),
+        (_catalog_entry_path(script_path).resolve(), "catalog_entry"),
+        (_intents_descriptor_path(script_path).resolve(), "intent_descriptor"),
+    ]
+    files = [
+        _content_artifact_record(path, "wrapper_contract", script_path.parent)
+        | {"contract_part": contract_part}
+        for path, contract_part in candidates
+        if path.is_file()
+    ]
+    missing_files = [
+        {"contract_part": contract_part, "path": str(path)}
+        for path, contract_part in candidates
+        if not path.is_file()
+    ]
+    return {
+        "skill": SKILL_NAME,
+        "skill_version": SKILL_CONTRACT_VERSION,
+        "contract_files_complete": not missing_files,
+        "files": files,
+        "missing_files": missing_files,
+    }
 
 
 def _safe_id_component(value: str, fallback: str) -> str:
@@ -3903,6 +4095,9 @@ def _verified_delegation(
     )
     if route is None:
         raise SkillError("delegation intent_id is absent from the source descriptor")
+    requires_confirmation = route.get("requires_confirmation", False)
+    if not isinstance(requires_confirmation, bool):
+        raise SkillError("delegation route requires_confirmation must be boolean")
     plan = route.get("plan")
     step_index = delegation["plan_step_index"]
     if not isinstance(plan, list) or step_index >= len(plan):
@@ -3910,6 +4105,21 @@ def _verified_delegation(
     step = plan[step_index]
     if not isinstance(step, dict) or step.get("kind") != "skill_run" or step.get("skill") != SKILL_NAME:
         raise SkillError("delegation plan step does not target gentle-cloning")
+    confirmation = step.get("confirmation")
+    if requires_confirmation:
+        if not isinstance(confirmation, dict) or confirmation.get("required") is not True:
+            raise SkillError(
+                "confirmation-gated delegation lacks a matching plan-step confirmation"
+            )
+        confirmation_reason = _required_handoff_string(
+            confirmation.get("reason"), "delegation confirmation reason"
+        )
+    else:
+        if isinstance(confirmation, dict) and confirmation.get("required") is True:
+            raise SkillError(
+                "delegation route and plan step disagree on confirmation policy"
+            )
+        confirmation_reason = None
     declared_request: Any = None
     if isinstance(step.get("input_template"), dict):
         declared_request = step["input_template"]
@@ -3945,9 +4155,619 @@ def _verified_delegation(
         "route_sha256": _sha256_prefixed_json(route),
         "plan_step_sha256": _sha256_prefixed_json(step),
         "delegate_contract": expected_contract,
+        "requires_confirmation": requires_confirmation,
+        "confirmation_reason": confirmation_reason,
+        "execution_policy": (
+            "proposal_then_approved_execution"
+            if requires_confirmation
+            else "automatic_read_only"
+        ),
         "routing_scope": "selected_route_record_only_not_natural_language_reproduction",
         "compatibility_status": "verified",
     }
+
+
+def _load_approved_execution(
+    payload: dict[str, Any], envelope_path: Path, script_path: Path
+) -> ApprovedExecution:
+    _reject_unknown_fields(
+        payload,
+        {"schema", "proposal_path", "approval"},
+        "approved execution request",
+    )
+    if payload.get("schema") != APPROVED_EXECUTION_REQUEST_SCHEMA:
+        raise SkillError(
+            f"approved execution request schema must be '{APPROVED_EXECUTION_REQUEST_SCHEMA}'"
+        )
+    raw_proposal_path = _required_handoff_string(
+        payload.get("proposal_path"), "approved execution proposal_path"
+    )
+    proposal_path = _resolve_existing_request_file(raw_proposal_path, script_path)
+    proposal = _read_json(proposal_path)
+    _reject_unknown_fields(
+        proposal,
+        {
+            "schema",
+            "created_utc",
+            "proposal_digest",
+            "proposal_digest_scope",
+            "approval_basis",
+            "review",
+        },
+        "execution proposal",
+    )
+    if proposal.get("schema") != EXECUTION_PROPOSAL_SCHEMA:
+        raise SkillError(
+            f"execution proposal schema must be '{EXECUTION_PROPOSAL_SCHEMA}'"
+        )
+    approval_basis = proposal.get("approval_basis")
+    if not isinstance(approval_basis, dict):
+        raise SkillError("execution proposal approval_basis must be an object")
+    observed_digest = _sha256_prefixed_json(approval_basis)
+    declared_digest = _normalise_expected_sha256(
+        proposal.get("proposal_digest"), "execution proposal proposal_digest"
+    )
+    if declared_digest != observed_digest:
+        raise SkillError(
+            "execution proposal digest mismatch; the stored proposal was altered"
+        )
+
+    approval = payload.get("approval")
+    if not isinstance(approval, dict):
+        raise SkillError("approved execution request approval must be an object")
+    _reject_unknown_fields(
+        approval,
+        {
+            "schema",
+            "approval_scope",
+            "proposal_digest",
+            "approval_id",
+            "approved_by",
+            "approved_at_utc",
+        },
+        "execution approval",
+    )
+    if approval.get("schema") != EXECUTION_APPROVAL_SCHEMA:
+        raise SkillError(
+            f"execution approval schema must be '{EXECUTION_APPROVAL_SCHEMA}'"
+        )
+    if approval.get("approval_scope") != "execute_exact_proposal":
+        raise SkillError(
+            "execution approval approval_scope must be 'execute_exact_proposal'"
+        )
+    approved_digest = _normalise_expected_sha256(
+        approval.get("proposal_digest"), "execution approval proposal_digest"
+    )
+    if approved_digest != observed_digest:
+        raise SkillError(
+            "execution approval refers to a different proposal digest"
+        )
+    _verify_execution_proposal_review(proposal)
+    for field_name in ("approval_id", "approved_by"):
+        value = _required_handoff_string(
+            approval.get(field_name), f"execution approval {field_name}"
+        )
+        if len(value) > 256:
+            raise SkillError(f"execution approval {field_name} exceeds 256 characters")
+        approval[field_name] = value
+    approved_at_utc = _optional_handoff_string(
+        approval.get("approved_at_utc"), "execution approval approved_at_utc"
+    )
+    approval["approved_at_utc"] = approved_at_utc
+    approval["proposal_digest"] = approved_digest
+    return ApprovedExecution(
+        proposal_path=proposal_path.resolve(),
+        proposal=proposal,
+        approval=approval,
+        envelope_path=envelope_path.resolve(),
+    )
+
+
+def _verify_execution_proposal_review(proposal: dict[str, Any]) -> None:
+    basis = proposal["approval_basis"]
+    review = proposal.get("review")
+    if not isinstance(review, dict):
+        raise SkillError("execution proposal review must be an object")
+    _reject_unknown_fields(
+        review,
+        {
+            "status",
+            "source_request",
+            "source_skill",
+            "intent_id",
+            "confirmation_reason",
+            "exact_command",
+            "exact_command_text",
+            "input_assumptions",
+            "selection_context",
+            "resolved_paths",
+            "backend_resolution",
+            "execution_environment",
+            "wrapper_contract",
+            "trust_boundary",
+            "execution_instruction",
+        },
+        "execution proposal review",
+    )
+    delegation = basis.get("delegation")
+    normalized_request = basis.get("normalized_request")
+    execution = basis.get("execution")
+    if not isinstance(delegation, dict) or not isinstance(normalized_request, dict):
+        raise SkillError("execution proposal review source records are incomplete")
+    if not isinstance(execution, dict):
+        raise SkillError("execution proposal execution binding is incomplete")
+    expected = {
+        "status": "approval_required",
+        "source_request": basis.get("source_request"),
+        "source_skill": delegation.get("source_skill"),
+        "intent_id": delegation.get("intent_id"),
+        "confirmation_reason": delegation.get("confirmation_reason"),
+        "exact_command": execution.get("command"),
+        "exact_command_text": _format_command_text(execution.get("command")),
+        "input_assumptions": list(normalized_request.get("input_claims") or []),
+        "selection_context": _proposal_selection_context(delegation),
+        "resolved_paths": execution.get("resolved_paths"),
+        "backend_resolution": basis.get("backend_resolution"),
+        "execution_environment": basis.get("execution_environment"),
+        "wrapper_contract": basis.get("wrapper_contract"),
+        "trust_boundary": (
+            "GENtle verifies the proposal and approval digest; the caller control "
+            "plane is responsible for obtaining and attesting human approval."
+        ),
+    }
+    for field_name, expected_value in expected.items():
+        if review.get(field_name) != expected_value:
+            raise SkillError(
+                f"execution proposal review projection mismatch: {field_name}"
+            )
+    instruction = review.get("execution_instruction")
+    if instruction != _proposal_execution_instruction(proposal["proposal_digest"]):
+        raise SkillError("execution proposal review instruction is inconsistent")
+
+
+def _proposal_execution_instruction(proposal_digest: str) -> dict[str, Any]:
+    return {
+        "schema": APPROVED_EXECUTION_REQUEST_SCHEMA,
+        "proposal_path": "ABSOLUTE_PATH_TO_THIS_PROPOSAL",
+        "approval": {
+            "schema": EXECUTION_APPROVAL_SCHEMA,
+            "approval_scope": "execute_exact_proposal",
+            "proposal_digest": proposal_digest,
+            "approval_id": "CALLER_ISSUED_APPROVAL_ID",
+            "approved_by": "CALLER_ATTESTED_APPROVER",
+            "approved_at_utc": None,
+        },
+    }
+
+
+def _proposal_content_bindings(
+    records: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    proposal_records: list[dict[str, Any]] = []
+    for record in records:
+        if "wrapper_request" in record.get("binding_ids", []):
+            continue
+        if "approval_control" in record.get("roles", []):
+            continue
+        proposal_records.append(
+            {
+                key: value
+                for key, value in record.items()
+                if key != "post_execution_verification"
+            }
+        )
+    return proposal_records
+
+
+def _approval_control_binding(
+    path: Path, binding_id: str
+) -> dict[str, Any]:
+    resolved = path.resolve()
+    return {
+        "resolved_path": str(resolved),
+        "size_bytes": resolved.stat().st_size,
+        "sha256": _sha256_file_prefixed(resolved),
+        "binding_ids": [binding_id],
+        "declared_paths": [str(path)],
+        "roles": ["approval_control"],
+        "media_types": ["application/json"],
+        "expected_sha256_values": [],
+    }
+
+
+def _resolved_execution_paths(
+    request: Request, execution_cwd: Path
+) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+
+    def add(kind: str, declared: str) -> None:
+        raw = Path(declared).expanduser()
+        resolved = raw if raw.is_absolute() else execution_cwd / raw
+        records.append(
+            {
+                "kind": kind,
+                "declared_path": declared,
+                "resolved_path": str(resolved.resolve()),
+            }
+        )
+
+    if request.state_path:
+        add("project_state", request.state_path)
+    for path in request.expected_artifacts or []:
+        add("expected_artifact", path)
+    for field_name in (
+        "workflow_path",
+        "plan_path",
+        "catalog_path",
+        "output_path",
+        "output_prefix",
+        "svg_path",
+        "render_svg_path",
+        "product_output_prefix",
+        "product_gel_svg_path",
+    ):
+        value = getattr(request, field_name)
+        if isinstance(value, str) and value:
+            add(field_name, value)
+
+    shell_tokens: list[str] = []
+    if request.shell_line:
+        try:
+            shell_tokens = shlex.split(request.shell_line)
+        except ValueError as e:
+            raise SkillError(f"shell_line cannot be tokenized for path review: {e}") from e
+    path_flags = {
+        "--path",
+        "--output",
+        "--output-dir",
+        "--order-table",
+        "--gel-svg",
+        "--checkpoint-path",
+        "--primer3-exec",
+    }
+    for index, token in enumerate(shell_tokens[:-1]):
+        if token in path_flags:
+            add(f"shell_option:{token}", shell_tokens[index + 1])
+    for token in shell_tokens:
+        if token.startswith("@") and len(token) > 1:
+            add("shell_at_input", token[1:])
+
+    resolved_slots = None
+    if isinstance(request.delegation, dict):
+        resolved_slots = request.delegation.get("resolved_slots")
+    if isinstance(resolved_slots, dict):
+        for key, value in sorted(resolved_slots.items()):
+            if not isinstance(value, str) or not value:
+                continue
+            if key.endswith(("_path", "_dir", "_prefix")):
+                add(f"resolved_slot:{key}", value)
+
+    deduplicated = {
+        (record["kind"], record["declared_path"], record["resolved_path"]): record
+        for record in records
+    }
+    return [deduplicated[key] for key in sorted(deduplicated)]
+
+
+def _assert_delegated_request_is_resolved(request: Request) -> None:
+    payload_text = json.dumps(dataclasses.asdict(request), ensure_ascii=True)
+    placeholders = sorted(set(re.findall(r"\{[A-Za-z_][A-Za-z0-9_]*\}", payload_text)))
+    if placeholders:
+        raise SkillError(
+            "delegated request still contains unresolved slot placeholder(s): "
+            + ", ".join(placeholders)
+        )
+
+
+def _pin_delegated_primer_backend(
+    request: Request,
+    resolution: CliResolution,
+    execution_cwd: Path,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    if request.mode != "shell" or not request.shell_line:
+        return None, None
+    try:
+        tokens = shlex.split(request.shell_line)
+    except ValueError as e:
+        raise SkillError(f"shell_line cannot be tokenized for backend pinning: {e}") from e
+    if "--backend" not in tokens:
+        return None, None
+    backend_index = tokens.index("--backend")
+    if backend_index + 1 >= len(tokens):
+        raise SkillError("delegated --backend option has no value")
+    requested_backend = tokens[backend_index + 1].strip().lower()
+    if requested_backend not in {"auto", "internal", "primer3"}:
+        raise SkillError(
+            "delegated primer backend must be one of auto|internal|primer3"
+        )
+    primer3_executable: str | None = None
+    if "--primer3-exec" in tokens:
+        executable_index = tokens.index("--primer3-exec")
+        if executable_index + 1 >= len(tokens):
+            raise SkillError("delegated --primer3-exec option has no value")
+        primer3_executable = tokens[executable_index + 1]
+
+    if requested_backend == "internal":
+        return (
+            {
+                "requested_backend": "internal",
+                "selected_backend": "internal",
+                "selection_basis": "explicit_request",
+                "selected_backend_version": "GENtle runtime version bound separately",
+                "primer3_preflight": None,
+                "primer3_executable": None,
+            },
+            None,
+        )
+
+    preflight_tokens = ["primers", "preflight", "--backend", requested_backend]
+    if primer3_executable:
+        preflight_tokens.extend(["--primer3-exec", primer3_executable])
+    run_result, step = _run_cli_command(
+        resolution,
+        ["shell", shlex.join(preflight_tokens)],
+        execution_cwd,
+        min(request.timeout_secs, 180),
+    )
+    if run_result.returncode != 0:
+        raise SkillError("delegated primer backend preflight failed")
+    payload = _parse_json_stdout(
+        run_result.stdout, "delegated primer backend preflight"
+    )
+    preflight = payload.get("preflight") if isinstance(payload, dict) else None
+    if not isinstance(preflight, dict):
+        raise SkillError("delegated primer backend preflight returned no preflight record")
+    preflight = {
+        key: value for key, value in preflight.items() if key != "probe_time_ms"
+    }
+    primer3_ready = bool(preflight.get("version_probe_ok")) and isinstance(
+        preflight.get("resolved_path"), str
+    )
+    if requested_backend == "primer3" and not primer3_ready:
+        raise SkillError(
+            "explicit Primer3 backend is not version-probed and path-resolved; "
+            "review the preflight before proposing execution"
+        )
+    selected_backend = "primer3" if primer3_ready else "internal"
+    tokens[backend_index + 1] = selected_backend
+    selected_executable: dict[str, Any] | None = None
+    if selected_backend == "primer3":
+        resolved_executable = Path(str(preflight["resolved_path"])).resolve()
+        if not resolved_executable.is_file():
+            raise SkillError(
+                "Primer3 preflight resolved path is not a regular file"
+            )
+        if "--primer3-exec" in tokens:
+            executable_index = tokens.index("--primer3-exec")
+            tokens[executable_index + 1] = str(resolved_executable)
+        else:
+            tokens.extend(["--primer3-exec", str(resolved_executable)])
+        selected_executable = {
+            "path": str(resolved_executable),
+            "size_bytes": resolved_executable.stat().st_size,
+            "sha256": _sha256_file_prefixed(resolved_executable),
+        }
+    request.shell_line = shlex.join(tokens)
+    return (
+        {
+            "requested_backend": requested_backend,
+            "selected_backend": selected_backend,
+            "selection_basis": (
+                "primer3_version_probe" if primer3_ready else "deterministic_internal_fallback"
+            ),
+            "selected_backend_version": (
+                preflight.get("version")
+                if selected_backend == "primer3"
+                else "GENtle runtime version bound separately"
+            ),
+            "primer3_preflight": preflight,
+            "primer3_executable": selected_executable,
+        },
+        step,
+    )
+
+
+def _proposal_selection_context(delegation: dict[str, Any]) -> dict[str, Any]:
+    slots = delegation.get("resolved_slots")
+    if not isinstance(slots, dict):
+        return {"selected_material": {}, "specificity_spaces": {}}
+    selected_keys = {
+        "pair_id",
+        "pair_rank",
+        "report_id",
+        "panel_report_id",
+        "seq_id",
+        "seq_ids",
+        "feature_id",
+        "protocol_id",
+    }
+    selected = {
+        key: slots[key]
+        for key in sorted(slots)
+        if key in selected_keys or key.endswith("_pair_id")
+    }
+    specificity = {
+        key: slots[key]
+        for key in sorted(slots)
+        if "reference" in key or key.endswith("_genome_id")
+    }
+    return {
+        "selected_material": selected,
+        "specificity_spaces": specificity,
+    }
+
+
+def _proposal_request_payload(request: Request) -> dict[str, Any]:
+    return {"schema": REQUEST_SCHEMA, **dataclasses.asdict(request)}
+
+
+def _build_execution_proposal(
+    *,
+    request: Request,
+    request_source_path: Path | None,
+    content_bound_inputs: list[dict[str, Any]],
+    delegation: dict[str, Any],
+    resolution: CliResolution,
+    gentle_version: str,
+    execution_cwd: Path,
+    state_before: dict[str, Any],
+    backend_resolution: dict[str, Any] | None,
+) -> dict[str, Any]:
+    request_payload = _proposal_request_payload(request)
+    command = resolution.argv_prefix + _build_cli_args(request, Path(__file__))
+    runtime_files = _runtime_file_bindings(resolution, execution_cwd)
+    source_record = None
+    if request_source_path is not None:
+        source_record = {
+            "path": str(request_source_path.resolve()),
+            "sha256": _sha256_file_prefixed(request_source_path.resolve()),
+        }
+    approval_basis = {
+        "normalized_request": request_payload,
+        "normalized_request_sha256": _sha256_prefixed_json(request_payload),
+        "source_request": source_record,
+        "delegation": delegation,
+        "execution": {
+            "command": command,
+            "execution_cwd": str(execution_cwd.resolve()),
+            "resolved_paths": _resolved_execution_paths(request, execution_cwd),
+        },
+        "runtime": {
+            "gentle_version": gentle_version,
+            "resolver": dataclasses.asdict(resolution),
+            "content_bound_runtime_files": runtime_files,
+        },
+        "execution_environment": _approval_environment_binding(execution_cwd),
+        "wrapper_contract": _wrapper_contract_binding(Path(__file__)),
+        "state_before": state_before,
+        "content_bound_inputs": _proposal_content_bindings(content_bound_inputs),
+        "backend_resolution": backend_resolution,
+        "reference_request": (
+            dataclasses.asdict(request.ensure_reference_prepared)
+            if isinstance(request.ensure_reference_prepared, EnsureReferencePrepared)
+            else None
+        ),
+    }
+    proposal_digest = _sha256_prefixed_json(approval_basis)
+    return {
+        "schema": EXECUTION_PROPOSAL_SCHEMA,
+        "created_utc": _now_utc_iso(),
+        "proposal_digest": proposal_digest,
+        "proposal_digest_scope": (
+            "canonical approval_basis; timestamps and proposal file location excluded"
+        ),
+        "approval_basis": approval_basis,
+        "review": {
+            "status": "approval_required",
+            "source_request": source_record,
+            "source_skill": delegation.get("source_skill"),
+            "intent_id": delegation.get("intent_id"),
+            "confirmation_reason": delegation.get("confirmation_reason"),
+            "exact_command": command,
+            "exact_command_text": _format_command_text(command),
+            "input_assumptions": list(request.input_claims or []),
+            "selection_context": _proposal_selection_context(delegation),
+            "resolved_paths": approval_basis["execution"]["resolved_paths"],
+            "backend_resolution": backend_resolution,
+            "execution_environment": approval_basis["execution_environment"],
+            "wrapper_contract": approval_basis["wrapper_contract"],
+            "trust_boundary": (
+                "GENtle verifies the proposal and approval digest; the caller control "
+                "plane is responsible for obtaining and attesting human approval."
+            ),
+            "execution_instruction": _proposal_execution_instruction(
+                proposal_digest
+            ),
+        },
+    }
+
+
+def _verify_backend_binding(backend_resolution: dict[str, Any] | None) -> None:
+    if not isinstance(backend_resolution, dict):
+        return
+    executable = backend_resolution.get("primer3_executable")
+    if not isinstance(executable, dict):
+        return
+    path = Path(str(executable.get("path", "")))
+    if not path.is_file():
+        raise SkillError("approved Primer3 executable is missing")
+    observed = {
+        "path": str(path.resolve()),
+        "size_bytes": path.stat().st_size,
+        "sha256": _sha256_file_prefixed(path.resolve()),
+    }
+    if observed != executable:
+        raise SkillError("approved Primer3 executable identity changed")
+
+
+def _verify_approved_execution_context(
+    *,
+    approved: ApprovedExecution,
+    request: Request,
+    content_bound_inputs: list[dict[str, Any]],
+    delegation: dict[str, Any],
+    resolution: CliResolution,
+    gentle_version: str | None,
+    execution_cwd: Path,
+    state_before: dict[str, Any],
+) -> None:
+    basis = approved.proposal["approval_basis"]
+    request_payload = _proposal_request_payload(request)
+    checks = {
+        "normalized request": (
+            basis.get("normalized_request"),
+            request_payload,
+        ),
+        "normalized request digest": (
+            basis.get("normalized_request_sha256"),
+            _sha256_prefixed_json(request_payload),
+        ),
+        "delegated route metadata": (basis.get("delegation"), delegation),
+        "exact command": (
+            (basis.get("execution") or {}).get("command"),
+            resolution.argv_prefix + _build_cli_args(request, Path(__file__)),
+        ),
+        "execution working directory": (
+            (basis.get("execution") or {}).get("execution_cwd"),
+            str(execution_cwd.resolve()),
+        ),
+        "resolved execution paths": (
+            (basis.get("execution") or {}).get("resolved_paths"),
+            _resolved_execution_paths(request, execution_cwd),
+        ),
+        "runtime resolver": (
+            (basis.get("runtime") or {}).get("resolver"),
+            dataclasses.asdict(resolution),
+        ),
+        "runtime file identity": (
+            (basis.get("runtime") or {}).get("content_bound_runtime_files"),
+            _runtime_file_bindings(resolution, execution_cwd),
+        ),
+        "execution environment": (
+            basis.get("execution_environment"),
+            _approval_environment_binding(execution_cwd),
+        ),
+        "wrapper contract": (
+            basis.get("wrapper_contract"),
+            _wrapper_contract_binding(Path(__file__)),
+        ),
+        "project state": (basis.get("state_before"), state_before),
+        "content-bound scientific inputs": (
+            basis.get("content_bound_inputs"),
+            _proposal_content_bindings(content_bound_inputs),
+        ),
+    }
+    if gentle_version is not None:
+        checks["GENtle runtime version"] = (
+            (basis.get("runtime") or {}).get("gentle_version"),
+            gentle_version,
+        )
+    for label, (expected, observed) in checks.items():
+        if expected != observed:
+            raise SkillError(
+                f"approved execution context drifted after approval: {label} changed"
+            )
+    _verify_backend_binding(basis.get("backend_resolution"))
 
 
 def _execution_step_manifest(step: dict[str, Any]) -> dict[str, Any]:
@@ -4085,6 +4905,8 @@ def _runtime_file_bindings(
 def _execution_outcome(status: str) -> str:
     if status in {"ok", "degraded_demo"}:
         return "completed"
+    if status == "approval_required":
+        return "not_executed"
     if status == "incomplete":
         return "incomplete"
     return "failed"
@@ -4096,6 +4918,7 @@ def _build_execution_manifest(
     request_source_path: Path | None,
     content_bound_inputs: list[dict[str, Any]],
     delegation: dict[str, Any] | None,
+    execution_approval: dict[str, Any] | None,
     script_path: Path,
     resolution: CliResolution | None,
     gentle_version: str | None,
@@ -4115,32 +4938,9 @@ def _build_execution_manifest(
     claim_ledger_path: Path | None,
 ) -> dict[str, Any]:
     request_payload = dataclasses.asdict(request) if request is not None else None
-    catalog_path = _catalog_entry_path(script_path)
-    intents_path = _intents_descriptor_path(script_path)
-    wrapper_file_candidates = [
-        (script_path.resolve(), "runner"),
-        (catalog_path.resolve(), "catalog_entry"),
-        (intents_path.resolve(), "intent_descriptor"),
-    ]
-    wrapper_files = [
-        _content_artifact_record(path, "wrapper_contract", script_path.parent)
-        | {"contract_part": contract_part}
-        for path, contract_part in wrapper_file_candidates
-        if path.is_file()
-    ]
-    missing_wrapper_files = [
-        {"contract_part": contract_part, "path": str(path)}
-        for path, contract_part in wrapper_file_candidates
-        if not path.is_file()
-    ]
-    wrapper_identity = {
-        "skill": SKILL_NAME,
-        "skill_version": SKILL_CONTRACT_VERSION,
+    wrapper_identity = _wrapper_contract_binding(script_path) | {
         "request_schema": REQUEST_SCHEMA,
         "result_schema": RESULT_SCHEMA,
-        "contract_files_complete": not missing_wrapper_files,
-        "files": wrapper_files,
-        "missing_files": missing_wrapper_files,
     }
     output_artifacts = list(artifacts)
     if claim_ledger_path is not None and claim_ledger_path.is_file():
@@ -4171,6 +4971,7 @@ def _build_execution_manifest(
             "content_bound_inputs": content_bound_inputs,
         },
         "delegation": delegation,
+        "execution_approval": execution_approval,
         "wrapper": wrapper_identity,
         "runtime": {
             "gentle_version": gentle_version,
@@ -7108,6 +7909,11 @@ def main() -> int:
     external_primer_handoff_gentle_version: str | None = None
     gentle_runtime_version: str | None = None
     verified_delegation: dict[str, Any] | None = None
+    approved_execution: ApprovedExecution | None = None
+    execution_proposal: dict[str, Any] | None = None
+    execution_proposal_path: Path | None = None
+    execution_approval: dict[str, Any] | None = None
+    backend_resolution: dict[str, Any] | None = None
     content_bound_inputs: list[dict[str, Any]] = []
     state_before = _state_content_snapshot(None, execution_cwd)
     state_after = _state_content_snapshot(None, execution_cwd)
@@ -7127,7 +7933,41 @@ def main() -> int:
                 args.input, Path(__file__)
             )
             payload = _read_json(request_source_path)
-            request = _coerce_request(payload)
+            if payload.get("schema") == APPROVED_EXECUTION_REQUEST_SCHEMA:
+                approved_execution = _load_approved_execution(
+                    payload, request_source_path, Path(__file__)
+                )
+                normalized_request = approved_execution.proposal[
+                    "approval_basis"
+                ].get("normalized_request")
+                if not isinstance(normalized_request, dict):
+                    raise SkillError(
+                        "execution proposal contains no normalized request"
+                    )
+                request = _coerce_request(normalized_request)
+                execution_approval = {
+                    "status": "approved",
+                    "proposal_path": str(approved_execution.proposal_path),
+                    "proposal_file_sha256": _sha256_file_prefixed(
+                        approved_execution.proposal_path
+                    ),
+                    "proposal_digest": approved_execution.proposal[
+                        "proposal_digest"
+                    ],
+                    "approval": approved_execution.approval,
+                    "approval_envelope_path": str(
+                        approved_execution.envelope_path
+                    ),
+                    "approval_envelope_sha256": _sha256_file_prefixed(
+                        approved_execution.envelope_path
+                    ),
+                    "trust_boundary": (
+                        "caller attests approval identity; GENtle verifies the "
+                        "approved proposal digest and execution context"
+                    ),
+                }
+            else:
+                request = _coerce_request(payload)
         warnings.extend(_request_mode_warnings(request))
 
         own_catalog = _read_catalog_entry(Path(__file__))
@@ -7190,22 +8030,61 @@ def main() -> int:
                 raise
 
             execution_cwd = _resolve_execution_cwd(request, resolution, Path(__file__))
+            confirmation_gated = bool(
+                verified_delegation
+                and verified_delegation.get("requires_confirmation")
+            )
+            if confirmation_gated:
+                _assert_delegated_request_is_resolved(request)
+                if approved_execution is None:
+                    if request.state_path:
+                        state_path = Path(request.state_path).expanduser()
+                        if not state_path.is_absolute():
+                            state_path = execution_cwd / state_path
+                        request.state_path = str(state_path.resolve())
+                    backend_resolution, backend_step = _pin_delegated_primer_backend(
+                        request, resolution, execution_cwd
+                    )
+                    if backend_step is not None:
+                        pre_execution_steps.append(backend_step)
+                resolution = _pin_delegated_runtime(
+                    resolution,
+                    execution_cwd,
+                    Path(__file__),
+                    require_local_binary=approved_execution is not None,
+                )
+            elif approved_execution is not None:
+                raise SkillError(
+                    "approved execution envelope is only valid for a "
+                    "confirmation-gated delegated route"
+                )
+
             content_bound_inputs = _prepare_content_bound_inputs(
                 request,
                 request_source_path=request_source_path,
                 execution_cwd=execution_cwd,
                 script_path=Path(__file__),
             )
-            state_before = _state_content_snapshot(request, execution_cwd)
-            if request.ensure_reference_prepared is not None:
-                reference_preflight = _reference_preflight_record(
-                    request.ensure_reference_prepared
+            if approved_execution is not None:
+                content_bound_inputs.append(
+                    _approval_control_binding(
+                        approved_execution.proposal_path, "execution_proposal"
+                    )
                 )
-                _ensure_reference_prepared(
-                    request.ensure_reference_prepared,
-                    resolution,
-                    execution_cwd,
-                    reference_preflight,
+                content_bound_inputs.sort(
+                    key=lambda row: (row["binding_ids"], row["resolved_path"])
+                )
+            state_before = _state_content_snapshot(request, execution_cwd)
+            if confirmation_gated and approved_execution is not None:
+                _verify_approved_execution_context(
+                    approved=approved_execution,
+                    request=request,
+                    content_bound_inputs=content_bound_inputs,
+                    delegation=verified_delegation,
+                    resolution=resolution,
+                    gentle_version=None,
+                    execution_cwd=execution_cwd,
+                    state_before=state_before,
                 )
 
             if verified_delegation is not None and request.mode != "external-primer-handoff":
@@ -7238,6 +8117,81 @@ def main() -> int:
                     raise SkillError(
                         "GENtle runtime version preflight returned no version text"
                     )
+
+            if confirmation_gated:
+                if approved_execution is None:
+                    resolution = _pin_delegated_runtime(
+                        resolution,
+                        execution_cwd,
+                        Path(__file__),
+                        require_local_binary=True,
+                    )
+                    execution_proposal = _build_execution_proposal(
+                        request=request,
+                        request_source_path=request_source_path,
+                        content_bound_inputs=content_bound_inputs,
+                        delegation=verified_delegation,
+                        resolution=resolution,
+                        gentle_version=gentle_runtime_version or "",
+                        execution_cwd=execution_cwd,
+                        state_before=state_before,
+                        backend_resolution=backend_resolution,
+                    )
+                    execution_proposal_path = (
+                        repro_dir / "execution_proposal.json"
+                    )
+                    execution_proposal_path.write_text(
+                        json.dumps(execution_proposal, indent=2, ensure_ascii=True)
+                        + "\n",
+                        encoding="utf-8",
+                    )
+                    execution_approval = {
+                        "status": "approval_required",
+                        "proposal_path": str(execution_proposal_path),
+                        "proposal_file_sha256": _sha256_file_prefixed(
+                            execution_proposal_path
+                        ),
+                        "proposal_digest": execution_proposal["proposal_digest"],
+                        "trust_boundary": execution_proposal["review"][
+                            "trust_boundary"
+                        ],
+                    }
+                    stdout_json = execution_proposal
+                    chat_summary_lines = [
+                        "Prepared an exact GENtle execution proposal; no scientific command was run.",
+                        (
+                            "Approval is required for proposal digest "
+                            + execution_proposal["proposal_digest"]
+                            + "."
+                        ),
+                    ]
+                    chat_summary_source_kind = "clawbio_presentation"
+                    status = "approval_required"
+                    raise ApprovalRequired("approval required before execution")
+                backend_resolution = approved_execution.proposal[
+                    "approval_basis"
+                ].get("backend_resolution")
+                _verify_approved_execution_context(
+                    approved=approved_execution,
+                    request=request,
+                    content_bound_inputs=content_bound_inputs,
+                    delegation=verified_delegation,
+                    resolution=resolution,
+                    gentle_version=gentle_runtime_version or "",
+                    execution_cwd=execution_cwd,
+                    state_before=state_before,
+                )
+
+            if request.ensure_reference_prepared is not None:
+                reference_preflight = _reference_preflight_record(
+                    request.ensure_reference_prepared
+                )
+                _ensure_reference_prepared(
+                    request.ensure_reference_prepared,
+                    resolution,
+                    execution_cwd,
+                    reference_preflight,
+                )
 
             if request.mode == "external-primer-handoff":
                 external_primer_handoff_context = _prepare_external_primer_handoff(
@@ -7512,6 +8466,9 @@ def main() -> int:
         request = request if request is not None else _default_demo_request()
         error_message = f"command timed out after {e.timeout} seconds"
         status = "timeout"
+    except ApprovalRequired:
+        error_message = None
+        status = "approval_required"
     except SkillError as e:
         if (
             failure_summary is None
@@ -7673,6 +8630,12 @@ def main() -> int:
         _content_artifact_record(commands_path, "replay_commands", output_dir),
         _content_artifact_record(env_path, "runtime_environment", output_dir),
     ]
+    if execution_proposal_path is not None and execution_proposal_path.is_file():
+        manifest_artifacts.append(
+            _content_artifact_record(
+                execution_proposal_path, "execution_proposal", output_dir
+            )
+        )
     manifest_artifacts.extend(
         _content_artifact_record(
             Path(artifact["copied_path"]), "collected_output", output_dir
@@ -7699,6 +8662,7 @@ def main() -> int:
         request_source_path=request_source_path,
         content_bound_inputs=content_bound_inputs,
         delegation=verified_delegation,
+        execution_approval=execution_approval,
         script_path=Path(__file__).resolve(),
         resolution=resolution,
         gentle_version=gentle_runtime_version,
@@ -7738,6 +8702,8 @@ def main() -> int:
         "chat_summary_lines": chat_summary_lines,
         "claim_ledger": claim_ledger,
         "execution_manifest": execution_manifest,
+        "execution_proposal": execution_proposal,
+        "execution_approval": execution_approval,
         "artifact_summary": artifact_summary,
         "preferred_artifacts": preferred_artifacts,
         "suggested_actions": suggested_actions,
@@ -7759,6 +8725,11 @@ def main() -> int:
                 str(claim_ledger_path) if claim_ledger is not None else None
             ),
             "execution_manifest_json": str(execution_manifest_path),
+            "execution_proposal_json": (
+                str(execution_proposal_path)
+                if execution_proposal_path is not None
+                else None
+            ),
             "repro_commands": str(commands_path),
             "repro_environment": str(env_path),
             "repro_checksums": str(checksums_path),
@@ -7798,6 +8769,8 @@ def main() -> int:
         )
     if claim_ledger is not None:
         checksum_paths.append(claim_ledger_path)
+    if execution_proposal_path is not None:
+        checksum_paths.append(execution_proposal_path)
     checksums: list[tuple[str, str]] = []
     seen_checksum_paths: set[Path] = set()
     for artifact in checksum_paths:
@@ -7816,7 +8789,7 @@ def main() -> int:
 
     print(json.dumps(result_payload, indent=2, ensure_ascii=True))
 
-    return 0 if status in ("ok", "degraded_demo") else 1
+    return 0 if status in ("ok", "degraded_demo", "approval_required") else 1
 
 
 if __name__ == "__main__":

@@ -66,7 +66,7 @@ request:
 {
   "schema": "gentle.clawbio_skill_delegation.v1",
   "source_skill": "gentle-pcr-primer-design",
-  "source_skill_version": "0.3.0",
+  "source_skill_version": "0.4.0",
   "intent_id": "primer_report_list",
   "plan_step_index": 0,
   "resolved_slots": null
@@ -84,6 +84,14 @@ an expected deployment even more tightly.
 request is always bound independently. The receipt records the selected route;
 it does not claim that an LLM or chat router will select the same route from the
 same prose on replay.
+
+When the selected route requires confirmation, the receipt's
+`execution_approval` block records either `approval_required` or the approved
+proposal path, proposal/file digests, approval assertion, and caller trust
+boundary. The proposal itself uses
+`gentle.clawbio_execution_proposal.v1`; see
+[Delegated Execution Approval](execution_approval.md). The manifest records the
+assertion but does not claim that GENtle authenticated the approver.
 
 ## Exact Claim Attribution
 

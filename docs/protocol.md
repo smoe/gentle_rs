@@ -5888,6 +5888,27 @@ ClawBio/OpenClaw integration scaffold schemas:
       wrapper request is always bound independently
     - routing provenance records the selected route but does not claim that
       natural-language dispatch is deterministic
+    - confirmation-gated delegated routes return `approval_required` without
+      running the scientific command and write
+      `gentle.clawbio_execution_proposal.v1`; its canonical
+      `approval_basis` binds the normalized request, exact command,
+      source and generic-wrapper descriptors/contracts, runtime, state,
+      scientific inputs, resolved paths, selected material/reference spaces,
+      material tool/cache environment, and pinned primer backend
+      - the included local Cargo launcher/fallback is reduced to the built,
+        hash-bound `gentle_cli` executable before proposal creation; an OCI
+        runtime must use an immutable image digest rather than a mutable tag
+    - `gentle.clawbio_approved_execution_request.v1` references the stored
+      proposal and carries a `gentle.clawbio_execution_approval.v1` assertion
+      for its exact digest. The wrapper reloads the request from that proposal
+      and rejects descriptor, command, runtime, material-environment, state,
+      input, path, or backend drift before execution
+    - approver identity and authorization belong to the caller/OpenClaw
+      control plane. GENtle verifies the assertion/digest binding but does not
+      claim to authenticate the approver
+    - direct structured requests without delegation remain backward
+      compatible; read-only delegated list/show/preflight routes may remain
+      automatic
   - optional post-run discussion-moderation handoff:
     - `discussion_moderation_handoff.py` consumes an explicit
       `gentle.clawbio_skill_result.v1`, its matching

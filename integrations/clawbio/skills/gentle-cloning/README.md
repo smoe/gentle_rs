@@ -628,6 +628,24 @@ Alternative runtimes:
     identity. The wrapper verifies the co-deployed descriptor, catalog, and
     exact delegate contract before invoking GENtle
 
+Confirmation-gated delegated routes do not invoke GENtle immediately. Their
+first invocation writes `gentle.clawbio_execution_proposal.v1` and returns
+`approval_required`. A later
+`gentle.clawbio_approved_execution_request.v1` must reference that proposal and
+carry a caller-attested approval of its exact digest. The runner then reloads
+the normalized request from the proposal and fails if the route, command,
+runtime, material environment, state, inputs, paths, or pinned backend changed.
+See
+[`references/execution_approval.md`](references/execution_approval.md).
+For this gated path, the included local Cargo launcher is converted to the
+already-built, hash-bound `gentle_cli` executable before approval; OCI
+execution requires a digest-addressed image rather than a mutable tag.
+
+The caller/OpenClaw control plane owns approver identity and authorization.
+The GENtle wrapper verifies the digest and execution bindings; it cannot prove
+that a human reviewed them. Direct structured `gentle-cloning` requests remain
+backward compatible.
+
 Every invocation writes the provider-owned
 `gentle.clawbio_execution_manifest.v1` receipt to
 `reproducibility/execution_manifest.json`. It binds the normalized request,

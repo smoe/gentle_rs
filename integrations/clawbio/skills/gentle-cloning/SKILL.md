@@ -46,7 +46,7 @@ description: >-
   rather than fabricated execution. Adversarial content in imported sequence
   records or external documents therefore cannot extend the skill's
   effective vocabulary.
-version: 0.2.0
+version: 0.3.0
 author: GENtle project
 license: MIT
 tags: [cloning, dna-design, primer-design, gibson, pcr, qpcr, cdna, genome-context, reproducibility, tfbs, restriction-sites, ensembl, protein-gel, protein-analysis, protease-digest, rna-structure, viennarna, rnapkin, bench-handoff, external-services, geneart, metabion, lineage-provenance]
@@ -479,7 +479,8 @@ them without hidden improvisation, and return an auditable skill bundle.
 
 ## Execution Contract
 
-This skill is execution-first.
+This skill is execution-first for direct structured requests and automatic
+read-only routes. Confirmation-gated delegated routes are proposal-first.
 
 - Unless the user explicitly asks for documentation-only guidance, do not
   answer as if you can merely explain how GENtle would be used.
@@ -489,6 +490,12 @@ This skill is execution-first.
   answer.
 - If the request is too broad, start with the lightest executable status route
   that meaningfully answers it, then report what GENtle found.
+- Never execute a confirmation-gated delegated route from natural-language
+  reconstruction. Produce its digest-bound proposal, obtain caller-attested
+  approval for that digest, and execute only the stored normalized request.
+- For that gated path, pin the included local Cargo launcher to its built
+  `gentle_cli` binary before approval and require immutable OCI image digests;
+  do not approve a command that can silently rebuild or retag its runtime.
 
 ClawBio shared chat adapters should consume `INTENTS.json` first. That
 `clawbio.skill_intents.v1` descriptor maps runtime-version, service-readiness,
@@ -1292,12 +1299,17 @@ Reporter/synthetic-biology bridge pipeline:
 | Optional presentation profile | string | `presentation_profile`; currently `pcr_primer_design` arranges GENtle graphics without recalculating scientific content | `"pcr_primer_design"` |
 | Optional delegated-skill identity | object | `delegation` using `gentle.clawbio_skill_delegation.v1`; verifies the co-deployed source skill, version, intent, plan step, and delegate contract before execution | `{"source_skill":"gentle-pcr-primer-design",...}` |
 | Optional content-bound files | object array | `input_bindings[]` with stable `binding_id`, path, optional role/media type, and optional expected SHA-256 | `[{"binding_id":"request","path":"input.json"}]` |
+| Approved delegated execution | `.json` | `gentle.clawbio_approved_execution_request.v1`, absolute proposal path, and caller-attested approval of the exact proposal digest | See the execution-approval reference |
 
 Every run returns a topic-neutral, content-bound
 `gentle.clawbio_execution_manifest.v1` receipt. Read the
 [execution-manifest reference](references/execution_manifest.md) before
 building a delegated skill or storing GENtle results in another provenance
 system. Ordinary standalone requests do not require delegation metadata.
+Confirmation-gated delegated requests instead use the
+[proposal and approved-execution contract](references/execution_approval.md).
+The caller owns approval identity and policy; GENtle verifies the bound digest
+and execution context.
 
 When an explicitly supplied, permitted caller collection must return to a
 discussion-moderation provenance store, do not inspect or mutate that store.
@@ -1365,20 +1377,24 @@ task:
      from that repo root so repo-relative assets referenced by the workflow
      keep working after the scaffold is copied into a separate ClawBio
      checkout.
-5. **Run optional reference preflight**: when `ensure_reference_prepared` is
+5. **Gate delegated scientific execution**: for a confirmation-gated delegated
+   route, write `gentle.clawbio_execution_proposal.v1` and stop. Execute later
+   only from a matching `gentle.clawbio_approved_execution_request.v1`; recheck
+   runtime, state, input, route, backend, path, and command bindings first.
+6. **Run optional reference preflight**: when `ensure_reference_prepared` is
    present, run `genomes status ...` first and automatically run
    `genomes prepare ...` only when the requested reference is not yet prepared.
    Record the before/after status payloads and exact preflight commands in the
    output bundle.
-6. **Execute exactly once**: run the main command with the declared timeout and
+7. **Execute exactly once**: run the main command with the declared timeout and
    no hidden retries or silent fallback behavior beyond the resolver order
    above.
-7. **Capture provenance**: record resolver metadata, full command, timestamps,
+8. **Capture provenance**: record resolver metadata, full command, timestamps,
    exit code, stdout, stderr, and any execution error.
-8. **Write the ClawBio bundle**: generate `report.md`, `result.json`,
+9. **Write the ClawBio bundle**: generate `report.md`, `result.json`,
    `reproducibility/commands.sh`, `reproducibility/environment.yml`, and
    `reproducibility/checksums.sha256`.
-9. **Summarize for the user**: explain what GENtle actually ran, what state or
+10. **Summarize for the user**: explain what GENtle actually ran, what state or
    workflow it touched, and what the next deterministic validation step should
    be.
 

@@ -6,7 +6,7 @@ description: >-
   scientific operation to GENtle through the registered gentle-cloning skill,
   preserving GENtle's typed reports, evidence states, provenance, and review
   gates.
-version: 0.3.0
+version: 0.4.0
 author: GENtle project
 license: MIT
 tags: [primer-design, pcr, rt-pcr, sybr, qpcr, taqman, isoforms, specificity, provenance]
@@ -94,28 +94,40 @@ This skill owns:
    5-prime capture or enrichment method.
 3. Run the GENtle primer preflight before an expensive design. Report the exact
    missing executable, resource, or input. Never install it automatically.
-4. Dispatch a reviewed request through `gentle-cloning`:
+4. Treat natural-language routing as a draft. For every route that selects
+   biological material, a pair rank, or a backend, mutates state, or writes an
+   artifact, ask `gentle-cloning` for an execution proposal. Show its exact
+   operation, assumptions, resolved paths, selected material/reference spaces,
+   pinned backend/runtime, hashes, and proposal digest. Broad phrases such as
+   "primer design" never authorize immediate execution.
+   For a local Cargo launcher, review the hash-bound built `gentle_cli` path;
+   for OCI, require an immutable image digest rather than a mutable tag.
+5. After the caller attests approval of that exact digest, execute only the
+   normalized request stored in the proposal. Do not reconstruct slots or the
+   command from prose a second time. List/show/preflight routes may remain
+   automatic.
+6. Dispatch the approved request through `gentle-cloning`:
    - `primers design` for conventional PCR;
    - `primers design-qpcr` for generic TaqMan-style assays;
    - `primers design-transcript-assay-panel` for endpoint RT-PCR and
      transcript-aware SYBR/TaqMan panels;
    - `primers import-external-pairs` for supplied primers;
    - `primers compose-gene-assay-routine` for evidence-backed composition.
-5. Inspect the persisted GENtle report. Preserve all warnings, uncovered
+7. Inspect the persisted GENtle report. Preserve all warnings, uncovered
    transcript classes, unresolved junctions, cDNA-reach cautions, and review
    states.
-6. When specificity is required, prepare genomic-DNA and transcriptome/cDNA
+8. When specificity is required, prepare genomic-DNA and transcriptome/cDNA
    handoffs separately. A `specificity-plan` result is a plan, not evidence.
    An external runner may execute BLAST; GENtle must then import/finalize the
    result before the corresponding specificity space can pass.
-7. For multiple genes or sequences, use GENtle's collection specificity
+9. For multiple genes or sequences, use GENtle's collection specificity
    operation rather than looping through ad hoc shell commands.
-8. Present order preparation only after the required GENtle review and
+10. Present order preparation only after the required GENtle review and
    specificity gates are complete. Never place an order.
-9. For a reviewed transcript panel, use `primers experimental-handoff` with
+11. For a reviewed transcript panel, use `primers experimental-handoff` with
    JSON, order-table, and virtual-gel outputs. The default skill route requests
    one comparable gel lane per primer pair under one shared GENtle gel model.
-10. Preserve the route's `gentle.clawbio_skill_delegation.v1` object. The
+12. Preserve the route's `gentle.clawbio_skill_delegation.v1` object. The
     generic runtime must verify this skill's co-deployed descriptor, catalog,
     version, intent, plan step, and delegate contract before GENtle runs.
 

@@ -55,7 +55,7 @@ def test_skill_metadata_and_descriptor_are_consistent() -> None:
     assert catalog["execution_delegate"] == "gentle-cloning"
     assert catalog["delegate_contract"] == {
         "skill": "gentle-cloning",
-        "skill_version": "0.2.0",
+        "skill_version": "0.3.0",
         "request_schema": "gentle.clawbio_skill_request.v1",
         "result_schema": "gentle.clawbio_skill_result.v1",
         "execution_manifest_schema": "gentle.clawbio_execution_manifest.v1",
@@ -89,7 +89,7 @@ def test_every_execution_delegates_to_registered_generic_runtime() -> None:
             assert template["delegation"] == {
                 "schema": "gentle.clawbio_skill_delegation.v1",
                 "source_skill": "gentle-pcr-primer-design",
-                "source_skill_version": "0.3.0",
+                "source_skill_version": "0.4.0",
                 "intent_id": route["intent_id"],
                 "plan_step_index": step_index,
             }
@@ -103,6 +103,62 @@ def test_every_execution_delegates_to_registered_generic_runtime() -> None:
                 template = _json(SKILL_ROOT / step["input"])
             parsed = wrapper._coerce_request(template)
             assert parsed.delegation["intent_id"] == route["intent_id"]
+
+
+def test_only_read_only_or_diagnostic_routes_execute_without_approval() -> None:
+    routes = _routes()
+    automatic_routes = {
+        route_id
+        for route_id, route in routes.items()
+        if not route.get("requires_confirmation", False)
+    }
+
+    assert automatic_routes == {
+        "primer_design_preflight",
+        "primer_report_list",
+        "primer_report_show",
+        "qpcr_report_list",
+        "qpcr_report_show",
+        "missing_primer3_preflight_demo",
+    }
+    for route_id, route in routes.items():
+        expected = route_id not in automatic_routes
+        assert route.get("requires_confirmation", False) is expected
+        assert all(
+            step.get("confirmation", {}).get("required", False) is expected
+            for step in route["plan"]
+        )
+
+
+def test_biological_selection_defaults_are_explicit_or_unspecified() -> None:
+    routes = _routes()
+    for route_id in (
+        "conventional_pcr_design",
+        "qpcr_taqman_design",
+        "transcript_assay_panel_design",
+    ):
+        backend = routes[route_id]["plan"][0]["slots"]["backend"]
+        assert backend["required"] is True
+        assert "default" not in backend
+
+    for route_id in (
+        "genomic_specificity_plan",
+        "transcriptome_specificity_plan",
+        "collection_primer_specificity",
+    ):
+        pair_rank = routes[route_id]["plan"][0]["slots"]["pair_rank"]
+        assert pair_rank["required"] is True
+        assert "default" not in pair_rank
+    for step in routes["dual_space_specificity_plan"]["plan"]:
+        pair_rank = step["slots"]["pair_rank"]
+        assert pair_rank["required"] is True
+        assert "default" not in pair_rank
+
+    capture = routes["transcript_assay_panel_design"]["plan"][0]["slots"][
+        "five_prime_capture_method"
+    ]
+    assert capture["default"] == "unspecified"
+    assert "none" in capture["choices"]
 
 
 def test_experimental_assay_report_requests_gentle_gel_and_attributed_bundle() -> None:
@@ -141,7 +197,7 @@ def test_transcript_panel_separates_rt_priming_from_5prime_capture_claims() -> N
     ]
     assert slots["cdna_priming_strategy"]["default"] == "unspecified"
     assert "oligo_dt" in slots["cdna_priming_strategy"]["choices"]
-    assert slots["five_prime_capture_method"]["default"] == "none"
+    assert slots["five_prime_capture_method"]["default"] == "unspecified"
     assert {
         "cap_dependent_5prime_race",
         "rlm_race",
@@ -161,7 +217,7 @@ def test_patz1_example_marks_oligo_dt_and_missing_cap_evidence_as_input() -> Non
     claims = request["input_claims"]
 
     assert any("oligo-dT" in claim for claim in claims)
-    assert any("capture method: none" in claim for claim in claims)
+    assert any("capture method: unspecified" in claim for claim in claims)
     assert any("not supplied" in claim for claim in claims)
     assert request["claim_attribution_mode"] == "strict"
 
