@@ -30,6 +30,12 @@ understand what changed.
   and artifact bindings; cloning/sequencing oligos remain typed
   `not_submitted`, with no discussion-state or interpretation logic added to
   the engine.
+- Declared the existing serial-arrangement gel renderer as a
+  context-agnostic collection `arrange` while retaining container `combine`
+  semantics and explicit physical-pool rejections for project selections and
+  logical gene sets. Arrangement gel preview/export now shares the engine's
+  serial-mode readiness check, preserves tested lane order, and stays disabled
+  for plate layouts without affecting their rack/plate actions.
 - Added explicit physical pooling for complete resolved gene sets.
   `CreateGeneSetPool` and `gene-sets create-pool` preview a deterministic,
   fingerprint-locked plan from one exclusive singleton source container per

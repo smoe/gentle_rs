@@ -4689,7 +4689,14 @@ Rendering export commands:
   - Calls engine operation `RenderPoolGelSvg`.
   - Use `IDS` as a comma-separated sequence-id list, or pass `-`/`_` when using `--containers` or `--arrangement`.
   - `--containers` renders one lane per container ID.
-  - `--arrangement` renders lanes from a stored serial arrangement.
+  - `--arrangement` renders lanes from a stored serial arrangement in its
+    declared lane and role-label order. Plate arrangements are rejected with a
+    serial-only readiness error.
+  - Collection lifting classifies an explicit container as `combine` and a
+    serial arrangement as `arrange`. A project sequence selection is not
+    automatically lifted because the direct `IDS` form deliberately
+    co-migrates every supplied sequence in one lane; invoking that form is the
+    caller's explicit pooling choice.
   - Optional `--ladders` overrides both auto mode and any saved arrangement
     ladder pair.
   - If `--ladders` is omitted for `--arrangement`, engine uses the saved

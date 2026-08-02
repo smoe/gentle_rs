@@ -27877,6 +27877,26 @@ fn test_render_pool_gel_svg_operation_from_containers_and_arrangement() {
     );
     let mut engine = GentleEngine::from_state(state);
 
+    let arrangement_layout = engine
+        .build_serial_gel_layout_for_render(
+            &[],
+            None,
+            Some("arr-1"),
+            None,
+            Some(&GelRunConditions::default()),
+        )
+        .expect("build arrangement gel layout");
+    let ordered_sample_lanes = arrangement_layout
+        .lanes
+        .iter()
+        .filter(|lane| !lane.is_ladder)
+        .map(|lane| (lane.name.as_str(), lane.role_label.as_deref()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        ordered_sample_lanes,
+        vec![("Tube A", Some("lane_1")), ("Tube B", Some("lane_2"))]
+    );
+
     let tmp_container = tempfile::NamedTempFile::new().unwrap();
     let path_container = tmp_container.path().with_extension("container.gel.svg");
     let path_container_text = path_container.display().to_string();

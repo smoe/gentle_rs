@@ -415,4 +415,42 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn arrangement_projection_declares_ordered_gel_without_generic_launcher_adapter() {
+        let row = collection_launcher_rows(CollectionSubjectKind::Arrangement)
+            .into_iter()
+            .find(|row| row.capability_name == "RenderPoolGelSvg")
+            .expect("arrangement gel policy row");
+        assert!(matches!(
+            row.policy.support,
+            CollectionLiftSupport::Supported {
+                mode: CollectionLiftingMode::Arrange,
+                ref result_payload_kind,
+            } if result_payload_kind == "gentle.pool_gel_svg.v1"
+        ));
+        assert_eq!(
+            row.policy.context_requirement,
+            gentle_protocol::CollectionContextRequirement::ContextAgnostic
+        );
+        assert!(matches!(
+            row.baseline_readiness(),
+            CollectionLauncherReadiness::AdapterUnavailable { .. }
+        ));
+
+        let project_row = collection_launcher_rows(CollectionSubjectKind::ProjectSequences)
+            .into_iter()
+            .find(|row| row.capability_name == "RenderPoolGelSvg")
+            .expect("project-sequence gel policy row");
+        assert_eq!(
+            project_row.baseline_readiness().rejection_reason(),
+            Some(CollectionLiftRejectionReason::RequiresPhysicalPool)
+        );
+        assert!(
+            project_row
+                .baseline_readiness()
+                .detail()
+                .is_some_and(|detail| detail.contains("co-migrating member of one lane"))
+        );
+    }
 }

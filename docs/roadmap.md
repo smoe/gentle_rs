@@ -328,8 +328,9 @@ wet-lab conclusions or unconfirmed mutations.
 - Expand the landed policy-driven collection surface beyond promoter
   derivation, primer specificity, restriction-site and TFBS hit scanning,
   fingerprint-locked restriction digestion, and atomic physical-container
-  pool export plus explicit gene-set-to-pool aliquoting to later shared BLAST,
-  arrangement, and storage-projection adapters described in
+  pool export plus explicit gene-set-to-pool aliquoting and registry-declared
+  serial-arrangement gel rendering to later shared BLAST, generic arrangement,
+  and storage-projection adapters described in
   [`gui_gene_set_collection_operations_plan.md`](gui_gene_set_collection_operations_plan.md).
 - Gene-set enrichment analysis over resolved logical sets, with an explicit
   background universe, identifier namespace/mapping audit, ontology and cache

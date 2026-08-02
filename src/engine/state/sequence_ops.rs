@@ -943,6 +943,24 @@ impl GentleEngine {
         Ok(samples)
     }
 
+    pub(crate) fn validate_arrangement_gel_mode(
+        arrangement_id: &str,
+        mode: &ArrangementMode,
+    ) -> Result<(), EngineError> {
+        if mode != &ArrangementMode::Serial {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Arrangement '{}' is mode '{:?}', only serial arrangements can render gels",
+                    arrangement_id, mode
+                ),
+
+                cause_chain: vec![],
+            });
+        }
+        Ok(())
+    }
+
     pub(super) fn gel_samples_from_arrangement(
         &self,
         arrangement_id: &str,
@@ -958,17 +976,7 @@ impl GentleEngine {
 
                 cause_chain: vec![],
             })?;
-        if arrangement.mode != ArrangementMode::Serial {
-            return Err(EngineError {
-                code: ErrorCode::InvalidInput,
-                message: format!(
-                    "Arrangement '{}' is mode '{:?}', only serial arrangements can render gels",
-                    arrangement_id, arrangement.mode
-                ),
-
-                cause_chain: vec![],
-            });
-        }
+        Self::validate_arrangement_gel_mode(arrangement_id, &arrangement.mode)?;
         let mut samples = self.gel_samples_from_container_ids(&arrangement.lane_container_ids)?;
         for (idx, sample) in samples.iter_mut().enumerate() {
             sample.role_label = arrangement

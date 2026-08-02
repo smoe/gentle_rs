@@ -3990,7 +3990,7 @@ impl GENtleApp {
                                     ui.end_row();
                                     for arrangement in &arrangement_rows {
                                         ui.monospace(&arrangement.arrangement_id);
-                                        ui.label(&arrangement.mode);
+                                        ui.label(format!("{:?}", arrangement.mode));
                                         ui.label(if arrangement.name.trim().is_empty() {
                                             "-".to_string()
                                         } else {
@@ -4014,23 +4014,43 @@ impl GENtleApp {
                                                 .unwrap_or_else(|| "draft on demand".to_string()),
                                         );
                                         ui.horizontal(|ui| {
-                                            if ui
-                                                .button(self.tr("lineage.action.preview_gel"))
-                                                .on_hover_text(
+                                            let gel_blocker = Self::arrangement_gel_readiness(
+                                                &arrangement.arrangement_id,
+                                                &arrangement.mode,
+                                            )
+                                            .err()
+                                            .map(|error| error.message);
+                                            let preview_response = ui.add_enabled(
+                                                gel_blocker.is_none(),
+                                                egui::Button::new(
+                                                    self.tr("lineage.action.preview_gel"),
+                                                ),
+                                            );
+                                            let preview_response = match &gel_blocker {
+                                                Some(detail) => preview_response
+                                                    .on_disabled_hover_text(detail),
+                                                None => preview_response.on_hover_text(
                                                     "Open an in-app gel preview where left/right ladder choices update the visual result together",
-                                                )
-                                                .clicked()
-                                            {
+                                                ),
+                                            };
+                                            if preview_response.clicked() {
                                                 open_arrangement_gel_preview =
                                                     Some(arrangement.arrangement_id.clone());
                                             }
-                                            if ui
-                                                .button(self.tr("lineage.action.export_gel"))
-                                                .on_hover_text(
+                                            let export_response = ui.add_enabled(
+                                                gel_blocker.is_none(),
+                                                egui::Button::new(
+                                                    self.tr("lineage.action.export_gel"),
+                                                ),
+                                            );
+                                            let export_response = match &gel_blocker {
+                                                Some(detail) => export_response
+                                                    .on_disabled_hover_text(detail),
+                                                None => export_response.on_hover_text(
                                                     "Export one serial gel using this arrangement",
-                                                )
-                                                .clicked()
-                                            {
+                                                ),
+                                            };
+                                            if export_response.clicked() {
                                                 let stem = if arrangement.name.trim().is_empty() {
                                                     arrangement.arrangement_id.clone()
                                                 } else {

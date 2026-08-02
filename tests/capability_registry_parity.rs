@@ -402,6 +402,51 @@ fn physical_container_pool_actions_are_declared_as_context_agnostic_combines() {
     }
 }
 
+#[test]
+fn serial_arrangement_gel_actions_are_declared_as_context_agnostic_arranges() {
+    for (source, name) in [
+        (CapabilitySource::EngineOperation, "RenderPoolGelSvg"),
+        (CapabilitySource::GlossaryCommand, "render-pool-gel-svg"),
+    ] {
+        let arrangement = collection_lift_policy(source, name, CollectionSubjectKind::Arrangement)
+            .unwrap_or_else(|| panic!("missing arrangement gel policy for {source:?} `{name}`"));
+        assert!(matches!(
+            arrangement.support,
+            CollectionLiftSupport::Supported {
+                mode: CollectionLiftingMode::Arrange,
+                ref result_payload_kind,
+            } if result_payload_kind == "gentle.pool_gel_svg.v1"
+        ));
+        assert_eq!(
+            arrangement.context_requirement,
+            CollectionContextRequirement::ContextAgnostic
+        );
+
+        let project = collection_lift_policy(source, name, CollectionSubjectKind::ProjectSequences)
+            .unwrap_or_else(|| {
+                panic!("missing project-sequence gel policy for {source:?} `{name}`")
+            });
+        assert!(matches!(
+            &project.support,
+            CollectionLiftSupport::Rejected {
+                reason: CollectionLiftRejectionReason::RequiresPhysicalPool,
+                detail,
+            } if detail.contains("co-migrating member of one lane")
+        ));
+
+        let gene_set =
+            collection_lift_policy(source, name, CollectionSubjectKind::GeneSetResolution)
+                .unwrap_or_else(|| panic!("missing gene-set gel policy for {source:?} `{name}`"));
+        assert!(matches!(
+            gene_set.support,
+            CollectionLiftSupport::Rejected {
+                reason: CollectionLiftRejectionReason::RequiresPhysicalPool,
+                ..
+            }
+        ));
+    }
+}
+
 fn mcp_tool_names() -> BTreeSet<String> {
     gentle::mcp_server::mcp_tool_list_for_capability_surface_tests()
         .as_array()

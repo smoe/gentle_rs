@@ -7782,6 +7782,65 @@ fn arrangement_gel_preview_coerces_one_sided_choice_to_symmetric_ladder() {
 }
 
 #[test]
+fn arrangement_gel_readiness_matches_engine_serial_mode_rejection() {
+    assert!(GENtleApp::arrangement_gel_readiness("arr-serial", &ArrangementMode::Serial).is_ok());
+
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "seq_a".to_string(),
+        DNAsequence::from_sequence(&"ATGC".repeat(40)).unwrap(),
+    );
+    state.container_state.containers.insert(
+        "container-1".to_string(),
+        Container {
+            container_id: "container-1".to_string(),
+            kind: ContainerKind::Singleton,
+            name: Some("Well A1".to_string()),
+            members: vec!["seq_a".to_string()],
+            declared_contents_exclusive: true,
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    state.container_state.arrangements.insert(
+        "arr-plate".to_string(),
+        Arrangement {
+            arrangement_id: "arr-plate".to_string(),
+            mode: ArrangementMode::Plate,
+            name: Some("Plate layout".to_string()),
+            lane_container_ids: vec!["container-1".to_string()],
+            ladders: vec![],
+            lane_role_labels: vec!["A1".to_string()],
+            default_rack_id: None,
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let gui_error = GENtleApp::arrangement_gel_readiness("arr-plate", &ArrangementMode::Plate)
+        .expect_err("plate arrangement should not be gel-ready");
+    let temp = tempdir().expect("tempdir");
+    let output = temp.path().join("plate.gel.svg");
+    let mut engine = GentleEngine::from_state(state);
+    let engine_error = engine
+        .apply(Operation::RenderPoolGelSvg {
+            inputs: vec![],
+            path: output.display().to_string(),
+            ladders: None,
+            container_ids: None,
+            arrangement_id: Some("arr-plate".to_string()),
+            conditions: None,
+            render_options: None,
+        })
+        .expect_err("plate arrangement render should fail");
+
+    assert_eq!(gui_error.code, ErrorCode::InvalidInput);
+    assert_eq!(gui_error.code, engine_error.code);
+    assert_eq!(gui_error.message, engine_error.message);
+    assert!(gui_error.message.contains("only serial arrangements"));
+    assert!(!output.exists());
+}
+
+#[test]
 fn open_arrangement_gel_preview_dialog_seeds_ladder_controls_and_preview() {
     let mut state = ProjectState::default();
     state.sequences.insert(

@@ -421,7 +421,10 @@ The project main window (lineage page) supports two views:
 - container contents mode is editable directly from the lineage `Containers` panel:
   - `Declared only`: the listed members are intended to be the full known contents of a clean vial/tube
   - `Known subset`: the listed members are known/measured constituents of a more complex sample that may also contain unlisted material
-- `Arrangements`: serial lane setups across containers, with arrangement-level gel export and linked physical rack drafts
+- `Arrangements`: ordered layouts across containers, with arrangement-level
+  gel preview/export for `Serial` layouts and linked physical rack drafts for
+  serial or plate layouts. `Plate` rows keep gel actions disabled with the
+  shared engine explanation that only serial arrangements can render gels.
 - Rack placement is a linked physical layer on top of arrangements, not a replacement for them:
   - arrangements keep the semantic sample order
   - racks/plates keep the physical A1-slot placement
@@ -3719,6 +3722,10 @@ Serial gel export is available in two places:
   - `Arrangements` table: `Preview Gel` opens an in-app serial-gel preview with
     live left/right ladder selectors, a rendered gel image, `Save to
     Arrangement`, and `Export SVG...`.
+    Preview and gel-export controls are enabled only for `Serial`
+    arrangements; `Plate` arrangements remain available for rack/plate work
+    and show the engine-owned serial-only readiness explanation on the disabled
+    gel controls.
   - `Containers` table: `Gel SVG` exports one lane for that container;
     `Export Pool` calls `collections run export-pool` and writes one
     `gentle.pool.v1` artifact. The action is disabled for empty or
@@ -3730,7 +3737,8 @@ Serial gel export is available in two places:
     destination path.
   - `Arrangements` table: `Export Gel` exports all lanes defined in that
     arrangement, using the arrangement's saved ladder pair when present or auto
-    ladder selection otherwise.
+    ladder selection otherwise. The canonical collection policy classifies
+    this as context-agnostic `arrange`, preserving the declared lane order.
   - `Arrangements` table: `Open Lanes` lets you open one chosen lane or all lanes as compact DNA windows instead of always opening every lane at once.
   - `Arrangements` table: `Open Rack` opens the linked physical rack draft for
     that arrangement, creating the default rack on demand for older/legacy

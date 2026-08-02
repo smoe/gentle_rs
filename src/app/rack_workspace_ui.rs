@@ -228,6 +228,13 @@ pub(super) struct PersistedRackWorkspace {
 }
 
 impl GENtleApp {
+    pub(super) fn arrangement_gel_readiness(
+        arrangement_id: &str,
+        mode: &ArrangementMode,
+    ) -> std::result::Result<(), EngineError> {
+        GentleEngine::validate_arrangement_gel_mode(arrangement_id, mode)
+    }
+
     pub(super) fn prompt_export_container_pool(&mut self, container_id: &str) {
         if self.container_pool_export_task.is_some() {
             self.app_status = "A container pool export is already running".to_string();

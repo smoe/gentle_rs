@@ -256,7 +256,7 @@ Tests:
 - GUI helper test that promoter derivation uses `BuildGeneSetPromoterCohort`
 - parity test for `gene-sets promoter-cohort` GUI affordance
 
-### Phase 5: collection operation launcher (gene-set A4a/A5/A6/A7/A9 and container A8 landed)
+### Phase 5: collection operation launcher (gene-set A4a/A5/A6/A7/A9, container A8, and arrangement A10 landed)
 
 - Landed A4a: the Gene Set Inspector projects every canonical gene-set
   engine-operation policy and displays its lifting mode, payload kind, and
@@ -289,11 +289,17 @@ Tests:
   distinct exclusive singleton source container. Preview locks exact source
   snapshots, derived aliquot ids, and the reserved pool id; apply retains the
   source tubes and creates lineage-linked aliquots in one new physical pool.
+- A10 declares the already-shipped `RenderPoolGelSvg` arrangement route as a
+  context-agnostic ordered `arrange`, while the container form remains
+  `combine`. Project selections and logical gene sets retain explicit
+  `requires_physical_pool` rejections rather than being silently co-migrated.
+  The existing Lineage preview/export controls consume the engine's
+  serial-only readiness check and are disabled for plate arrangements. A
+  generic arrangement collection-launcher adapter and collection-report
+  wrapper remain future work; the registry reports the missing adapter without
+  hiding the executable shared-shell route.
 - Remaining Phase 5 work is to add shared engine policies/routes and typed GUI
   adapters for BLAST and non-gene subjects when those contracts are ready.
-- Before extending the arrangement launcher, declare the `RenderPoolGelSvg`
-  policy for arrangement subjects; the shipped arrangement gel action must not
-  remain an implicit exception to the collection policy registry.
 
 File targets:
 

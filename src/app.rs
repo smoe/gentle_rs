@@ -144,9 +144,9 @@ use crate::{
     },
     dna_sequence::{self, DNAsequence},
     engine::{
-        BIGWIG_TO_BEDGRAPH_ENV_BIN, BlastHitFeatureInput, BlastInvocationProvenance,
-        ConstructReasoningGraph, DEFAULT_BIGWIG_TO_BEDGRAPH_BIN, DEFAULT_HOST_PROFILE_CATALOG_PATH,
-        DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
+        ArrangementMode, BIGWIG_TO_BEDGRAPH_ENV_BIN, BlastHitFeatureInput,
+        BlastInvocationProvenance, ConstructReasoningGraph, DEFAULT_BIGWIG_TO_BEDGRAPH_BIN,
+        DEFAULT_HOST_PROFILE_CATALOG_PATH, DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
         DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP, DbSnpFetchProgress, DbSnpFetchStage,
         DisplaySettings, DisplayTarget, DotplotInspectionProvenanceStatus, Engine, EngineError,
         EngineHistorySummary, ErrorCode, FeatureExpertTarget, GenomeAnnotationScope,
@@ -2313,7 +2313,7 @@ struct ContainerRow {
 #[derive(Clone)]
 struct ArrangementRow {
     arrangement_id: String,
-    mode: String,
+    mode: ArrangementMode,
     name: String,
     created_by_op: String,
     created_at: u128,
@@ -17104,7 +17104,7 @@ Error: `{err}`"
                 pool_size: 1,
                 pool_members: vec![],
                 arrangement_id: Some(arrangement.arrangement_id.clone()),
-                arrangement_mode: Some(arrangement.mode.clone()),
+                arrangement_mode: Some(format!("{:?}", arrangement.mode)),
                 lane_container_ids: arrangement.lane_container_ids.clone(),
                 ladders: arrangement.ladders.clone(),
                 genome_anchor_summary: None,
@@ -18667,7 +18667,7 @@ Error: `{err}`"
                 .iter()
                 .map(|(id, arrangement)| ArrangementRow {
                     arrangement_id: id.clone(),
-                    mode: format!("{:?}", arrangement.mode),
+                    mode: arrangement.mode.clone(),
                     name: arrangement.name.clone().unwrap_or_default(),
                     created_by_op: arrangement
                         .created_by_op

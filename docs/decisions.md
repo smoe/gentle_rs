@@ -415,6 +415,17 @@ before export; physical `singleton` and `pool` containers remain eligible.
 non-exclusive known subset is rejected before writing rather than silently
 losing that meaning at the artifact boundary.
 
+Gel-render lift modes follow the resulting lane geometry. An explicit
+container is a `combine` into one physical lane; a serial arrangement is an
+`arrange` that preserves its declared lane and role-label order. A bare project
+sequence selection is not a valid collection lift because the direct input
+form co-migrates every supplied sequence in one lane without proving that the
+sequences share a physical sample. `ArrangementMode::Plate` incompatibility is
+a dynamic readiness/execution error, not a permanent arrangement-subject
+policy rejection. The shared `render-pool-gel-svg --arrangement` route remains
+executable even while the generic collection launcher reports that it has no
+typed arrangement adapter.
+
 Explicit gene-set pooling is a physical aliquoting operation, not an inference
 from logical membership. Every resolved member must bind to a distinct,
 exclusive singleton source container, and incomplete resolutions reject the

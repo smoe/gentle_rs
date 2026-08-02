@@ -1045,6 +1045,13 @@ Implemented collection-lifting baseline:
 - Dynamic readiness remains in the normal fact/precondition and operation
   error machinery. A temporary missing input is not encoded as a static
   collection-policy rejection.
+- `RenderPoolGelSvg` makes the lane geometry explicit in that registry:
+  physical containers are `combine`, serial arrangements are ordered
+  `arrange`, and project selections plus logical gene sets are rejected with
+  `requires_physical_pool`. A plate-mode arrangement is instead a dynamic
+  serial-only readiness error. The existing shared shell operation is
+  executable by arrangement id even though the generic collection launcher
+  does not yet have a typed arrangement adapter or collection-report wrapper.
 - `gentle.collection_operation.v1` records the selected subject, capability,
   lifting mode, policy, source-membership lock, per-member outcomes and typed
   errors, produced report ids, warnings, and provenance. `dry_run` and
@@ -6324,9 +6331,13 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 
 `RenderPoolGelSvg` semantics:
 
-- Accepts explicit `inputs` (sequence ids) and an output `path`.
+- Accepts explicit `inputs` (sequence ids) and an output `path`; all explicit
+  inputs become co-migrating members of one sample lane.
 - Optional `container_ids` renders one lane per referenced stored container.
-- Optional `arrangement_id` renders one lane per stored serial-arrangement lane.
+- Optional `arrangement_id` renders one lane per stored serial-arrangement lane
+  in declared `lane_container_ids` order and carries matching role labels.
+  `ArrangementMode::Plate` is rejected dynamically because plate placement is
+  not a serial gel lane layout.
 - Optional `conditions` carries one shared gel-run profile for the whole render:
   - `agarose_percent`
   - `buffer_model` (`tae` / `tbe`)

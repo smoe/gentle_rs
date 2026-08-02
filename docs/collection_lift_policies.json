@@ -556,11 +556,28 @@
       "name": "RenderPoolGelSvg",
       "subjects": [
         {
+          "subject_kind": "project_sequences",
+          "support": {
+            "status": "rejected",
+            "reason": "requires_physical_pool",
+            "detail": "The direct sequence-input route renders every selected sequence as a co-migrating member of one lane, but a project selection does not establish that its members share one physical sample. Select an explicit container or serial arrangement instead."
+          }
+        },
+        {
           "subject_kind": "container",
           "context_requirement": "context_agnostic",
           "support": {
             "status": "supported",
             "mode": "combine",
+            "result_payload_kind": "gentle.pool_gel_svg.v1"
+          }
+        },
+        {
+          "subject_kind": "arrangement",
+          "context_requirement": "context_agnostic",
+          "support": {
+            "status": "supported",
+            "mode": "arrange",
             "result_payload_kind": "gentle.pool_gel_svg.v1"
           }
         },
@@ -579,11 +596,28 @@
       "name": "render-pool-gel-svg",
       "subjects": [
         {
+          "subject_kind": "project_sequences",
+          "support": {
+            "status": "rejected",
+            "reason": "requires_physical_pool",
+            "detail": "The direct sequence-input route renders every selected sequence as a co-migrating member of one lane, but a project selection does not establish that its members share one physical sample. Select an explicit container or serial arrangement instead."
+          }
+        },
+        {
           "subject_kind": "container",
           "context_requirement": "context_agnostic",
           "support": {
             "status": "supported",
             "mode": "combine",
+            "result_payload_kind": "gentle.pool_gel_svg.v1"
+          }
+        },
+        {
+          "subject_kind": "arrangement",
+          "context_requirement": "context_agnostic",
+          "support": {
+            "status": "supported",
+            "mode": "arrange",
             "result_payload_kind": "gentle.pool_gel_svg.v1"
           }
         },
