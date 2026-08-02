@@ -11579,6 +11579,12 @@ impl GentleEngine {
                 message: format!("Container '{container_id}' not found"),
                 cause_chain: vec![],
             })?;
+        if matches!(container.kind, ContainerKind::Selection) {
+            return Err(EngineError::invalid_input(format!(
+                "Container '{container_id}' is an in-silico selection, not a physical singleton or pool"
+            ))
+            .with_cause("container_kind=selection"));
+        }
         if !container.declared_contents_exclusive {
             return Err(EngineError::invalid_input(format!(
                 "Container '{container_id}' is a known subset, but gentle.pool.v1 cannot preserve incomplete physical-container provenance"

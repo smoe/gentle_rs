@@ -30,6 +30,9 @@ understand what changed.
   schema-checked `gentle.collection_pool_export.v1` report whose container and
   artifact path match the request. Missing container members are also covered
   by an atomic no-output regression test.
+- Prevented in-silico `Selection` containers from being exported as physical
+  `gentle.pool.v1` artifacts; engine and Lineage GUI readiness now accept only
+  exhaustive physical singleton or pool containers.
 
 ## 2026-08-01
 

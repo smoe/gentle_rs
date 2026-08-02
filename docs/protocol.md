@@ -1140,8 +1140,10 @@ Implemented collection-lifting baseline:
   silently asserts that their products occupy one tube or gel lane.
 - `ExportPoolCollection` is the first physical-container `combine`. It accepts
   only `CollectionSubjectRef::Container`, requires context-agnostic policy and
-  declared exhaustive contents, validates every member, then delegates one
-  atomic write to the existing `ExportPool` implementation. Its additive
+  declared exhaustive contents, rejects in-silico `selection` containers,
+  validates every member, then delegates one atomic write to the existing
+  `ExportPool` implementation. Physical `singleton` and `pool` containers are
+  eligible. Its additive
   `gentle.collection_pool_export.v1` report embeds the generic collection
   report, identifies the `gentle.pool.v1` artifact/path and source container,
   and links every successful member to the same wrapper report id. It does not

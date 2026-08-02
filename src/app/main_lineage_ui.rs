@@ -10,6 +10,22 @@ fn lineage_graph_canvas_width(base_width: f32, graph_zoom: f32, viewport_width: 
     (base_width * graph_zoom + 280.0 * graph_zoom).max(viewport_width.max(1.0))
 }
 
+fn container_pool_export_readiness(
+    kind: &str,
+    member_count: usize,
+    declared_contents_exclusive: bool,
+) -> Result<(), &'static str> {
+    if kind == "Selection" {
+        Err("Pool export requires a physical singleton or pool, not an in-silico selection")
+    } else if !declared_contents_exclusive {
+        Err("Pool export requires declared exhaustive container contents")
+    } else if member_count == 0 {
+        Err("Pool export requires at least one container member")
+    } else {
+        Ok(())
+    }
+}
+
 impl GENtleApp {
     pub(super) fn render_lineage_node_rename_window(
         &mut self,
@@ -3791,22 +3807,24 @@ impl GENtleApp {
                                                 vec![c.container_id.clone()],
                                             ));
                                         }
-                                        let pool_export_ready =
-                                            c.member_count > 0 && c.declared_contents_exclusive;
+                                        let pool_export_readiness =
+                                            container_pool_export_readiness(
+                                                &c.kind,
+                                                c.member_count,
+                                                c.declared_contents_exclusive,
+                                            );
                                         let pool_export = ui
                                             .add_enabled(
-                                                pool_export_ready,
+                                                pool_export_readiness.is_ok(),
                                                 egui::Button::new(
                                                     self.tr("lineage.action.export_pool"),
                                                 ),
                                             )
-                                            .on_hover_text(if !c.declared_contents_exclusive {
-                                                "Pool export requires declared exhaustive container contents"
-                                            } else if c.member_count == 0 {
-                                                "Pool export requires at least one container member"
-                                            } else {
-                                                "Export this physical container as one GENtle pool artifact"
-                                            });
+                                            .on_hover_text(
+                                                pool_export_readiness.err().unwrap_or(
+                                                    "Export this physical container as one GENtle pool artifact",
+                                                ),
+                                            );
                                         if pool_export.clicked() {
                                             export_container_pool = Some(c.container_id.clone());
                                         }
@@ -4278,7 +4296,7 @@ impl GENtleApp {
 
 #[cfg(test)]
 mod tests {
-    use super::lineage_graph_canvas_width;
+    use super::{container_pool_export_readiness, lineage_graph_canvas_width};
 
     #[test]
     fn lineage_graph_canvas_width_uses_parent_viewport_snapshot() {
@@ -4294,6 +4312,16 @@ mod tests {
         assert_ne!(
             lineage_graph_canvas_width(base_width, zoom, parent_viewport_width),
             inflated_child_available_width
+        );
+    }
+
+    #[test]
+    fn pool_export_readiness_rejects_in_silico_selection_containers() {
+        assert!(container_pool_export_readiness("Pool", 2, true).is_ok());
+        assert!(container_pool_export_readiness("Singleton", 1, true).is_ok());
+        assert_eq!(
+            container_pool_export_readiness("Selection", 1, true),
+            Err("Pool export requires a physical singleton or pool, not an in-silico selection")
         );
     }
 }

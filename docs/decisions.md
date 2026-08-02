@@ -377,6 +377,8 @@ A collection `combine` that writes one external artifact is atomic rather than
 partially successful: all members validate before the single write, and a
 successful report links every member to the same wrapper report. Pool export
 requires an explicit physical container whose declared contents are exclusive.
+In-silico `selection` containers are not physical pool sources and are rejected
+before export; physical `singleton` and `pool` containers remain eligible.
 `gentle.pool.v1` has no incompleteness/provenance slot, so exporting a
 non-exclusive known subset is rejected before writing rather than silently
 losing that meaning at the artifact boundary.

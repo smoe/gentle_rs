@@ -3707,7 +3707,9 @@ Shared shell command:
         provenance, the canonical membership fingerprint, and one common
         report link for all successful members. Non-exclusive containers are
         rejected before the artifact is written because `gentle.pool.v1`
-        cannot represent unknown/unlisted physical contents.
+        cannot represent unknown/unlisted physical contents. In-silico
+        `selection` containers are also rejected; physical `singleton` and
+        `pool` containers remain eligible.
       - the report follows GENtle's computational-artifact contract with
         `op_id`, `run_id`, sequence links, external inputs/database
         fingerprints, request/effective-setting summaries, a reopen hint, and

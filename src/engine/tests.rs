@@ -28208,8 +28208,21 @@ fn collection_pool_export_rejects_nonexclusive_or_nonphysical_subjects_before_wr
             created_at_unix_ms: 0,
         },
     );
+    state.container_state.containers.insert(
+        "in-silico-selection".to_string(),
+        Container {
+            container_id: "in-silico-selection".to_string(),
+            kind: ContainerKind::Selection,
+            name: None,
+            members: vec!["a".to_string()],
+            declared_contents_exclusive: true,
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
     let temp = tempdir().expect("tempdir");
     let subset_path = temp.path().join("subset.pool.gentle.json");
+    let selection_path = temp.path().join("selection.pool.gentle.json");
     let logical_path = temp.path().join("logical.pool.gentle.json");
     let mut engine = GentleEngine::from_state(state);
 
@@ -28230,6 +28243,24 @@ fn collection_pool_export_rejects_nonexclusive_or_nonphysical_subjects_before_wr
             .any(|cause| cause == "container_declared_contents_exclusive=false")
     );
     assert!(!subset_path.exists());
+
+    let selection_error = engine
+        .apply(Operation::ExportPoolCollection {
+            collection_subject: CollectionSubjectRef::Container {
+                container_id: "in-silico-selection".to_string(),
+            },
+            path: selection_path.display().to_string(),
+            pool_id: None,
+            human_id: None,
+        })
+        .expect_err("in-silico selection must be rejected");
+    assert!(
+        selection_error
+            .cause_chain
+            .iter()
+            .any(|cause| cause == "container_kind=selection")
+    );
+    assert!(!selection_path.exists());
 
     let logical_error = engine
         .apply(Operation::ExportPoolCollection {
