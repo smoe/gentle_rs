@@ -1,0 +1,47 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "external-primer-handoff",
+  "state_path": ".gentle_state.json",
+  "timeout_secs": 300,
+  "external_primer_handoff": {
+    "schema": "gentle.external_primer_handoff_request.v1",
+    "collection_id": "synthetic-primer-evidence",
+    "target": {
+      "seq_id": "SYNTHETIC_TARGET",
+      "source_feature_id": 7,
+      "transcript_id": "SYNTHETIC_TX.1",
+      "reference_label": "synthetic transcript fixture",
+      "reference_release": "fixture-2026-08"
+    },
+    "evaluation": {
+      "min_amplicon_bp": 60,
+      "max_amplicon_bp": 250,
+      "max_mismatches": 2,
+      "require_3prime_exact_bases": 4,
+      "map_coordinate_mode": "genomic_aligned"
+    },
+    "records": [
+      {
+        "record_id": "synthetic-literature-pair",
+        "assay_purpose": "qpcr",
+        "source_kind": "literature",
+        "provider": "Synthetic Methods Journal",
+        "source_url": "https://example.invalid/synthetic-method",
+        "claimed_target": "SYNTHETIC_TARGET",
+        "validation_claims": [
+          "Reported amplification in source"
+        ],
+        "forward_sequence_5_to_3": "ACGTACGTACGTACGTAC",
+        "reverse_sequence_5_to_3": "TGCATGCATGCATGCATG"
+      },
+      {
+        "record_id": "synthetic-sequencing-oligo",
+        "assay_purpose": "sequencing",
+        "source_kind": "external",
+        "provider": "Synthetic teaching fixture",
+        "sequence_5_to_3": "GATTACAGATTACAGATT",
+        "role": "sequencing primer"
+      }
+    ]
+  }
+}

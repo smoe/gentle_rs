@@ -26,6 +26,17 @@ REQUEST_SCHEMA = "gentle.clawbio_skill_request.v1"
 RESULT_SCHEMA = "gentle.clawbio_skill_result.v1"
 SKILL_INFO_SCHEMA = "gentle.clawbio_skill_info.v1"
 INTENTS_RUNTIME_SCHEMA = "gentle.clawbio_skill_intents_runtime.v1"
+EXTERNAL_PRIMER_HANDOFF_REQUEST_SCHEMA = "gentle.external_primer_handoff_request.v1"
+EXTERNAL_PRIMER_HANDOFF_RESULT_SCHEMA = "gentle.external_primer_handoff_result.v1"
+EXTERNAL_PRIMER_PAIR_BATCH_SCHEMA = "gentle.external_primer_pair_batch.v1"
+EXTERNAL_PRIMER_PAIR_IMPORT_COMMAND_SCHEMA = (
+    "gentle.external_primer_pair_import_command.v1"
+)
+EXTERNAL_PRIMER_PAIR_IMPORT_REPORT_SCHEMA = (
+    "gentle.external_primer_pair_import_report.v1"
+)
+CDNA_ASSAY_TEST_REPORT_SCHEMA = "gentle.cdna_assay_test_report.v1"
+PRIMER_SPECIFICITY_REPORT_SCHEMA = "gentle.primer_specificity_report.v4"
 SKILL_NAME = "gentle-cloning"
 INVOCATION_MARKER = "GENtle ClawBio skill wrapper invoked"
 UI_INTENT_CATALOG_SCHEMA = "gentle.ui_intents.v1"
@@ -56,6 +67,7 @@ SUPPORTED_REQUEST_MODES = (
     "qpcr-report-export",
     "cdna-pcr-test",
     "cdna-qpcr-test",
+    "external-primer-handoff",
     "protein-residue-genomic-coordinates",
     "transcript-qpcr-panel",
     "restriction-cloning-pcr-handoff",
@@ -155,6 +167,24 @@ EXTERNAL_TOOL_RESOURCES = [
     },
 ]
 
+EXTERNAL_PRIMER_HANDOFF_SUBMITTED_PURPOSES = {"qpcr", "endpoint_pcr"}
+EXTERNAL_PRIMER_HANDOFF_NOT_SUBMITTED_PURPOSES = {"cloning", "sequencing"}
+EXTERNAL_PRIMER_HANDOFF_SOURCE_KINDS = {
+    "external",
+    "commercial_catalogue",
+    "literature",
+    "laboratory",
+}
+EXTERNAL_PRIMER_HANDOFF_ANNOTATION_RECORD_ID = "gentle.handoff.record_id"
+EXTERNAL_PRIMER_HANDOFF_ANNOTATION_ASSAY_PURPOSE = "gentle.handoff.assay_purpose"
+EXTERNAL_PRIMER_HANDOFF_ANNOTATION_COLLECTION_ID = "gentle.handoff.collection_id"
+EXTERNAL_PRIMER_HANDOFF_RESERVED_ANNOTATIONS = {
+    EXTERNAL_PRIMER_HANDOFF_ANNOTATION_RECORD_ID,
+    EXTERNAL_PRIMER_HANDOFF_ANNOTATION_ASSAY_PURPOSE,
+    EXTERNAL_PRIMER_HANDOFF_ANNOTATION_COLLECTION_ID,
+}
+EXTERNAL_PRIMER_HANDOFF_IUPAC = frozenset("ACGTRYSWKMBDHVN")
+
 
 class SkillError(RuntimeError):
     """Base skill error with deterministic message formatting."""
@@ -208,6 +238,7 @@ class Request:
     return_items: list[str] | None = None
     expected_artifacts: list[str] | None = None
     ensure_reference_prepared: Any = None
+    external_primer_handoff: Any = None
     gene_symbol: str | None = None
     species: str | None = None
     source: str | None = None
@@ -296,6 +327,436 @@ def _read_json(path: Path) -> dict[str, Any]:
         raise SkillError(f"request JSON file '{path}' does not exist") from e
     except json.JSONDecodeError as e:
         raise SkillError(f"invalid JSON in '{path}': {e}") from e
+
+
+def _canonical_json_bytes(value: Any) -> bytes:
+    return json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode("utf-8")
+
+
+def _sha256_prefixed_bytes(value: bytes) -> str:
+    return "sha256:" + hashlib.sha256(value).hexdigest()
+
+
+def _sha256_prefixed_json(value: Any) -> str:
+    return _sha256_prefixed_bytes(_canonical_json_bytes(value))
+
+
+def _reject_unknown_fields(
+    value: dict[str, Any], allowed: set[str], context: str
+) -> None:
+    unknown = sorted(set(value) - allowed)
+    if unknown:
+        raise SkillError(
+            f"{context} contains unsupported field(s): {', '.join(unknown)}"
+        )
+
+
+def _required_handoff_string(value: Any, field_name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise SkillError(f"{field_name} must be a non-empty string")
+    return value.strip()
+
+
+def _optional_handoff_string(value: Any, field_name: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise SkillError(f"{field_name} must be a string when present")
+    trimmed = value.strip()
+    return trimmed or None
+
+
+def _handoff_string_list(value: Any, field_name: str) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise SkillError(f"{field_name} must be a string array when present")
+    if not all(isinstance(item, str) for item in value):
+        raise SkillError(f"{field_name} must contain only strings")
+    return sorted({item.strip() for item in value if item.strip()})
+
+
+def _handoff_annotations(value: Any, field_name: str) -> dict[str, str]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise SkillError(f"{field_name} must be a string-to-string object")
+    annotations: dict[str, str] = {}
+    for raw_key, raw_value in value.items():
+        if not isinstance(raw_key, str) or not raw_key.strip():
+            raise SkillError(f"{field_name} keys must be non-empty strings")
+        if not isinstance(raw_value, str):
+            raise SkillError(f"{field_name}.{raw_key} must be a string")
+        key = raw_key.strip()
+        if key in EXTERNAL_PRIMER_HANDOFF_RESERVED_ANNOTATIONS:
+            raise SkillError(
+                f"{field_name}.{key} is reserved for the GENtle handoff join"
+            )
+        annotations[key] = raw_value
+    return dict(sorted(annotations.items()))
+
+
+def _normalise_handoff_sequence(value: Any, field_name: str) -> str:
+    if not isinstance(value, str):
+        raise SkillError(f"{field_name} must be a 5'-to-3' IUPAC sequence")
+    normalized: list[str] = []
+    for index, character in enumerate(value):
+        if character.isspace() or (
+            character.isascii() and character.isdigit()
+        ):
+            continue
+        if not character.isascii():
+            raise SkillError(
+                f"{field_name} contains a non-ASCII character at position {index + 1}"
+            )
+        upper = character.upper()
+        if upper == "U":
+            upper = "T"
+        if upper not in EXTERNAL_PRIMER_HANDOFF_IUPAC:
+            raise SkillError(
+                f"{field_name} contains invalid IUPAC character "
+                f"'{character}' at position {index + 1}"
+            )
+        normalized.append(upper)
+    if not normalized:
+        raise SkillError(f"{field_name} contains no IUPAC bases after normalization")
+    return "".join(normalized)
+
+
+def _normalise_expected_sha256(value: Any, field_name: str) -> str | None:
+    raw = _optional_handoff_string(value, field_name)
+    if raw is None:
+        return None
+    digest = raw[7:] if raw.lower().startswith("sha256:") else raw
+    if len(digest) != 64 or any(ch not in "0123456789abcdefABCDEF" for ch in digest):
+        raise SkillError(f"{field_name} must be a SHA-256 digest")
+    return "sha256:" + digest.lower()
+
+
+def _normalise_handoff_nonnegative_int(
+    value: Any, field_name: str, *, positive: bool = False
+) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise SkillError(f"{field_name} must be an integer")
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as e:
+        raise SkillError(f"{field_name} must be an integer") from e
+    if positive and parsed <= 0:
+        raise SkillError(f"{field_name} must be > 0")
+    if not positive and parsed < 0:
+        raise SkillError(f"{field_name} must be >= 0")
+    return parsed
+
+
+def _normalise_external_primer_handoff_record(
+    value: Any, index: int
+) -> dict[str, Any]:
+    context = f"external_primer_handoff.records[{index}]"
+    if not isinstance(value, dict):
+        raise SkillError(f"{context} must be an object")
+    _reject_unknown_fields(
+        value,
+        {
+            "record_id",
+            "assay_purpose",
+            "source_kind",
+            "provider",
+            "catalogue_id",
+            "source_url",
+            "claimed_accession",
+            "aliases",
+            "claimed_target",
+            "validation_claims",
+            "annotations",
+            "forward_sequence_5_to_3",
+            "reverse_sequence_5_to_3",
+            "sequence_5_to_3",
+            "role",
+        },
+        context,
+    )
+    record_id = _required_handoff_string(value.get("record_id"), f"{context}.record_id")
+    assay_purpose = _required_handoff_string(
+        value.get("assay_purpose"), f"{context}.assay_purpose"
+    ).lower()
+    allowed_purposes = (
+        EXTERNAL_PRIMER_HANDOFF_SUBMITTED_PURPOSES
+        | EXTERNAL_PRIMER_HANDOFF_NOT_SUBMITTED_PURPOSES
+    )
+    if assay_purpose not in allowed_purposes:
+        raise SkillError(
+            f"{context}.assay_purpose must be one of: "
+            + ", ".join(sorted(allowed_purposes))
+        )
+    source_kind = _required_handoff_string(
+        value.get("source_kind", "external"), f"{context}.source_kind"
+    ).lower()
+    if source_kind not in EXTERNAL_PRIMER_HANDOFF_SOURCE_KINDS:
+        raise SkillError(
+            f"{context}.source_kind must be one of: "
+            + ", ".join(sorted(EXTERNAL_PRIMER_HANDOFF_SOURCE_KINDS))
+        )
+    provider = _required_handoff_string(value.get("provider"), f"{context}.provider")
+    catalogue_id = _optional_handoff_string(
+        value.get("catalogue_id"), f"{context}.catalogue_id"
+    )
+    if source_kind == "commercial_catalogue" and catalogue_id is None:
+        raise SkillError(
+            f"{context}.catalogue_id is required for commercial_catalogue records"
+        )
+
+    standalone_raw = value.get("sequence_5_to_3")
+    forward_raw = value.get("forward_sequence_5_to_3")
+    reverse_raw = value.get("reverse_sequence_5_to_3")
+    has_standalone = standalone_raw is not None
+    has_pair = forward_raw is not None or reverse_raw is not None
+    if has_standalone and has_pair:
+        raise SkillError(
+            f"{context} must use either sequence_5_to_3 or a forward/reverse pair, not both"
+        )
+    if has_pair and (forward_raw is None or reverse_raw is None):
+        raise SkillError(
+            f"{context} requires both forward_sequence_5_to_3 and "
+            "reverse_sequence_5_to_3"
+        )
+    if not has_standalone and not has_pair:
+        raise SkillError(
+            f"{context} requires sequence_5_to_3 or a forward/reverse sequence pair"
+        )
+    if assay_purpose in EXTERNAL_PRIMER_HANDOFF_SUBMITTED_PURPOSES and not has_pair:
+        raise SkillError(
+            f"{context} uses assay_purpose={assay_purpose} and therefore requires "
+            "an explicit forward/reverse primer pair"
+        )
+
+    normalized: dict[str, Any] = {
+        "record_id": record_id,
+        "assay_purpose": assay_purpose,
+        "source_kind": source_kind,
+        "provider": provider,
+        "catalogue_id": catalogue_id or "",
+        "source_url": _optional_handoff_string(
+            value.get("source_url"), f"{context}.source_url"
+        )
+        or "",
+        "claimed_accession": _optional_handoff_string(
+            value.get("claimed_accession"), f"{context}.claimed_accession"
+        )
+        or "",
+        "aliases": _handoff_string_list(value.get("aliases"), f"{context}.aliases"),
+        "claimed_target": _optional_handoff_string(
+            value.get("claimed_target"), f"{context}.claimed_target"
+        )
+        or "",
+        "validation_claims": _handoff_string_list(
+            value.get("validation_claims"), f"{context}.validation_claims"
+        ),
+        "annotations": _handoff_annotations(
+            value.get("annotations"), f"{context}.annotations"
+        ),
+        "role": _optional_handoff_string(value.get("role"), f"{context}.role"),
+    }
+    if has_standalone:
+        normalized["record_kind"] = "oligo"
+        normalized["sequence_5_to_3"] = _normalise_handoff_sequence(
+            standalone_raw, f"{context}.sequence_5_to_3"
+        )
+    else:
+        normalized["record_kind"] = "primer_pair"
+        normalized["forward_sequence_5_to_3"] = _normalise_handoff_sequence(
+            forward_raw, f"{context}.forward_sequence_5_to_3"
+        )
+        normalized["reverse_sequence_5_to_3"] = _normalise_handoff_sequence(
+            reverse_raw, f"{context}.reverse_sequence_5_to_3"
+        )
+    return normalized
+
+
+def _normalise_external_primer_handoff(value: Any) -> dict[str, Any]:
+    context = "external_primer_handoff"
+    if not isinstance(value, dict):
+        raise SkillError(f"{context} must be an object")
+    _reject_unknown_fields(
+        value,
+        {"schema", "collection_id", "target", "evaluation", "records"},
+        context,
+    )
+    if value.get("schema") != EXTERNAL_PRIMER_HANDOFF_REQUEST_SCHEMA:
+        raise SkillError(
+            f"{context}.schema must be {EXTERNAL_PRIMER_HANDOFF_REQUEST_SCHEMA}"
+        )
+    collection_id = _required_handoff_string(
+        value.get("collection_id"), f"{context}.collection_id"
+    )
+
+    target = value.get("target")
+    if not isinstance(target, dict):
+        raise SkillError(f"{context}.target must be an object")
+    _reject_unknown_fields(
+        target,
+        {
+            "seq_id",
+            "source_feature_id",
+            "transcript_id",
+            "reference_label",
+            "reference_release",
+            "expected_state_sha256",
+        },
+        f"{context}.target",
+    )
+    source_feature_id = _normalise_handoff_nonnegative_int(
+        target.get("source_feature_id"), f"{context}.target.source_feature_id"
+    )
+    if source_feature_id is None:
+        raise SkillError(f"{context}.target.source_feature_id is required")
+    normalized_target = {
+        "seq_id": _required_handoff_string(
+            target.get("seq_id"), f"{context}.target.seq_id"
+        ),
+        "source_feature_id": source_feature_id,
+        "transcript_id": _optional_handoff_string(
+            target.get("transcript_id"), f"{context}.target.transcript_id"
+        ),
+        "reference_label": _optional_handoff_string(
+            target.get("reference_label"), f"{context}.target.reference_label"
+        ),
+        "reference_release": _optional_handoff_string(
+            target.get("reference_release"), f"{context}.target.reference_release"
+        ),
+        "expected_state_sha256": _normalise_expected_sha256(
+            target.get("expected_state_sha256"),
+            f"{context}.target.expected_state_sha256",
+        ),
+    }
+
+    evaluation = value.get("evaluation", {})
+    if not isinstance(evaluation, dict):
+        raise SkillError(f"{context}.evaluation must be an object when present")
+    _reject_unknown_fields(
+        evaluation,
+        {
+            "min_amplicon_bp",
+            "max_amplicon_bp",
+            "max_mismatches",
+            "require_3prime_exact_bases",
+            "transcript_order",
+            "map_coordinate_mode",
+            "specificity_target_genome_id",
+            "specificity_catalog_path",
+            "specificity_cache_dir",
+            "materialize_products",
+            "product_gel_ladders",
+        },
+        f"{context}.evaluation",
+    )
+    normalized_evaluation = {
+        "min_amplicon_bp": _normalise_handoff_nonnegative_int(
+            evaluation.get("min_amplicon_bp"),
+            f"{context}.evaluation.min_amplicon_bp",
+            positive=True,
+        ),
+        "max_amplicon_bp": _normalise_handoff_nonnegative_int(
+            evaluation.get("max_amplicon_bp"),
+            f"{context}.evaluation.max_amplicon_bp",
+            positive=True,
+        ),
+        "max_mismatches": _normalise_handoff_nonnegative_int(
+            evaluation.get("max_mismatches"),
+            f"{context}.evaluation.max_mismatches",
+        ),
+        "require_3prime_exact_bases": _normalise_handoff_nonnegative_int(
+            evaluation.get("require_3prime_exact_bases"),
+            f"{context}.evaluation.require_3prime_exact_bases",
+        ),
+        "transcript_order": _optional_handoff_string(
+            evaluation.get("transcript_order"),
+            f"{context}.evaluation.transcript_order",
+        ),
+        "map_coordinate_mode": _optional_handoff_string(
+            evaluation.get("map_coordinate_mode"),
+            f"{context}.evaluation.map_coordinate_mode",
+        ),
+        "specificity_target_genome_id": _optional_handoff_string(
+            evaluation.get("specificity_target_genome_id"),
+            f"{context}.evaluation.specificity_target_genome_id",
+        ),
+        "specificity_catalog_path": _optional_handoff_string(
+            evaluation.get("specificity_catalog_path"),
+            f"{context}.evaluation.specificity_catalog_path",
+        ),
+        "specificity_cache_dir": _optional_handoff_string(
+            evaluation.get("specificity_cache_dir"),
+            f"{context}.evaluation.specificity_cache_dir",
+        ),
+        "materialize_products": evaluation.get("materialize_products", False),
+        "product_gel_ladders": _handoff_string_list(
+            evaluation.get("product_gel_ladders"),
+            f"{context}.evaluation.product_gel_ladders",
+        ),
+    }
+    if not isinstance(normalized_evaluation["materialize_products"], bool):
+        raise SkillError(f"{context}.evaluation.materialize_products must be boolean")
+    if normalized_evaluation["transcript_order"] not in {
+        None,
+        "transcript_id",
+        "genomic_first_exon",
+        "genomic_last_exon",
+        "antisense_first_exon",
+    }:
+        raise SkillError(f"{context}.evaluation.transcript_order is unsupported")
+    if normalized_evaluation["map_coordinate_mode"] not in {
+        None,
+        "cdna",
+        "genomic_aligned",
+    }:
+        raise SkillError(f"{context}.evaluation.map_coordinate_mode is unsupported")
+    if (
+        normalized_evaluation["min_amplicon_bp"] is not None
+        and normalized_evaluation["max_amplicon_bp"] is not None
+        and normalized_evaluation["min_amplicon_bp"]
+        > normalized_evaluation["max_amplicon_bp"]
+    ):
+        raise SkillError(
+            f"{context}.evaluation.min_amplicon_bp must be <= max_amplicon_bp"
+        )
+    if (
+        normalized_evaluation["specificity_target_genome_id"] is None
+        and (
+            normalized_evaluation["specificity_catalog_path"] is not None
+            or normalized_evaluation["specificity_cache_dir"] is not None
+        )
+    ):
+        raise SkillError(
+            f"{context}.evaluation specificity catalog/cache requires "
+            "specificity_target_genome_id"
+        )
+
+    records = value.get("records")
+    if not isinstance(records, list) or not records:
+        raise SkillError(f"{context}.records must be a non-empty array")
+    normalized_records = [
+        _normalise_external_primer_handoff_record(record, index)
+        for index, record in enumerate(records)
+    ]
+    record_ids = [record["record_id"] for record in normalized_records]
+    if len(record_ids) != len(set(record_ids)):
+        raise SkillError(f"{context}.records contains duplicate record_id values")
+    normalized_records.sort(key=lambda record: record["record_id"])
+    return {
+        "schema": EXTERNAL_PRIMER_HANDOFF_REQUEST_SCHEMA,
+        "collection_id": collection_id,
+        "target": normalized_target,
+        "evaluation": normalized_evaluation,
+        "records": normalized_records,
+    }
 
 
 def _catalog_entry_path(script_path: Path) -> Path:
@@ -1185,6 +1646,7 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         return_items=payload.get("return_items", payload.get("return")),
         expected_artifacts=payload.get("expected_artifacts"),
         ensure_reference_prepared=payload.get("ensure_reference_prepared"),
+        external_primer_handoff=payload.get("external_primer_handoff"),
         gene_symbol=payload.get("gene_symbol"),
         species=payload.get("species"),
         source=payload.get("source"),
@@ -1255,6 +1717,15 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
     elif request.mode == "workflow":
         if request.workflow is None and not request.workflow_path:
             raise SkillError("mode=workflow requires 'workflow' or 'workflow_path'")
+    elif request.mode == "external-primer-handoff":
+        if not isinstance(request.state_path, str) or not request.state_path.strip():
+            raise SkillError(
+                "mode=external-primer-handoff requires explicit non-empty state_path"
+            )
+        request.state_path = request.state_path.strip()
+        request.external_primer_handoff = _normalise_external_primer_handoff(
+            request.external_primer_handoff
+        )
     elif request.mode in {
         "construct-reasoning-list-inspections",
         "construct-reasoning-run-inspection",
@@ -2486,6 +2957,185 @@ def _augment_artifacts_with_storyboard(
     return updated_collected, merged_preferred
 
 
+def _external_primer_batch_record(
+    record: dict[str, Any], collection_id: str
+) -> dict[str, Any]:
+    annotations = dict(record["annotations"])
+    annotations.update(
+        {
+            EXTERNAL_PRIMER_HANDOFF_ANNOTATION_RECORD_ID: record["record_id"],
+            EXTERNAL_PRIMER_HANDOFF_ANNOTATION_ASSAY_PURPOSE: record[
+                "assay_purpose"
+            ],
+            EXTERNAL_PRIMER_HANDOFF_ANNOTATION_COLLECTION_ID: collection_id,
+        }
+    )
+    return {
+        "source_kind": record["source_kind"],
+        "provider": record["provider"],
+        "catalogue_id": record["catalogue_id"],
+        "source_url": record["source_url"],
+        "claimed_accession": record["claimed_accession"],
+        "aliases": record["aliases"],
+        "forward_sequence_5_to_3": record["forward_sequence_5_to_3"],
+        "reverse_sequence_5_to_3": record["reverse_sequence_5_to_3"],
+        "claimed_target": record["claimed_target"],
+        "validation_claims": record["validation_claims"],
+        "annotations": dict(sorted(annotations.items())),
+    }
+
+
+def _external_primer_not_submitted_record(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "record_id": record["record_id"],
+        "assay_purpose": record["assay_purpose"],
+        "record_kind": record["record_kind"],
+        "status": "not_submitted",
+        "status_reason": (
+            "assay_purpose_not_supported_by_external_primer_pair_importer"
+        ),
+        "record": record,
+    }
+
+
+def _resolve_external_primer_state_path(raw_path: str, execution_cwd: Path) -> Path:
+    path = Path(raw_path).expanduser()
+    if not path.is_absolute():
+        path = execution_cwd / path
+    resolved = path.resolve()
+    if not resolved.exists():
+        raise SkillError(
+            f"external-primer handoff state_path '{resolved}' does not exist"
+        )
+    if not resolved.is_file():
+        raise SkillError(
+            f"external-primer handoff state_path '{resolved}' is not a file"
+        )
+    return resolved
+
+
+def _external_primer_handoff_shell_line(context: dict[str, Any]) -> str:
+    target = context["request"]["target"]
+    evaluation = context["request"]["evaluation"]
+    tokens = [
+        "primers",
+        "import-external-pairs",
+        context["batch_path"],
+        target["seq_id"],
+        str(target["source_feature_id"]),
+        "--format",
+        "json",
+    ]
+    optional_flags = (
+        ("transcript_id", "--transcript-id"),
+        ("min_amplicon_bp", "--min-amplicon-bp"),
+        ("max_amplicon_bp", "--max-amplicon-bp"),
+        ("max_mismatches", "--max-mismatches"),
+        ("require_3prime_exact_bases", "--require-3prime-exact-bases"),
+        ("transcript_order", "--transcript-order"),
+        ("map_coordinate_mode", "--map-coordinate-mode"),
+        ("specificity_target_genome_id", "--specificity-target-genome"),
+        ("specificity_catalog_path", "--specificity-catalog"),
+        ("specificity_cache_dir", "--specificity-cache-dir"),
+    )
+    values = dict(evaluation)
+    values["transcript_id"] = target["transcript_id"]
+    for key, flag in optional_flags:
+        value = values.get(key)
+        if value is not None:
+            tokens.extend([flag, str(value)])
+    tokens.extend(["--artifact-output-dir", context["artifact_output_dir"]])
+    if evaluation["materialize_products"]:
+        tokens.append("--materialize-products")
+    for ladder in evaluation["product_gel_ladders"]:
+        tokens.extend(["--product-gel-ladder", ladder])
+    tokens.extend(["--path", context["report_path"]])
+    return shlex.join(tokens)
+
+
+def _prepare_external_primer_handoff(
+    request: Request, output_dir: Path, execution_cwd: Path
+) -> dict[str, Any]:
+    handoff = request.external_primer_handoff
+    if not isinstance(handoff, dict):
+        raise SkillError("external-primer handoff request was not normalized")
+    state_path = _resolve_external_primer_state_path(request.state_path or "", execution_cwd)
+    request.state_path = str(state_path)
+    state_sha256_before = _sha256_file_prefixed(state_path)
+    expected_state_sha256 = handoff["target"]["expected_state_sha256"]
+    if expected_state_sha256 is not None and expected_state_sha256 != state_sha256_before:
+        raise SkillError(
+            "external-primer handoff target state SHA-256 mismatch: expected "
+            f"{expected_state_sha256}, observed {state_sha256_before}"
+        )
+
+    handoff_dir = output_dir / "external_primer_handoff"
+    artifact_output_dir = handoff_dir / "scientific_artifacts"
+    handoff_dir.mkdir(parents=True, exist_ok=True)
+    artifact_output_dir.mkdir(parents=True, exist_ok=True)
+    request_snapshot_path = handoff_dir / "canonical_request.json"
+    request_snapshot_path.write_bytes(
+        json.dumps(handoff, indent=2, sort_keys=True, ensure_ascii=True).encode("utf-8")
+        + b"\n"
+    )
+
+    submitted_records = [
+        record
+        for record in handoff["records"]
+        if record["assay_purpose"] in EXTERNAL_PRIMER_HANDOFF_SUBMITTED_PURPOSES
+    ]
+    not_submitted_records = [
+        _external_primer_not_submitted_record(record)
+        for record in handoff["records"]
+        if record["assay_purpose"]
+        in EXTERNAL_PRIMER_HANDOFF_NOT_SUBMITTED_PURPOSES
+    ]
+    batch_path = handoff_dir / "submitted_external_primer_pairs.json"
+    report_path = handoff_dir / "external_primer_import_report.json"
+    batch_payload: dict[str, Any] | None = None
+    batch_file_sha256: str | None = None
+    if submitted_records:
+        batch_payload = {
+            "schema": EXTERNAL_PRIMER_PAIR_BATCH_SCHEMA,
+            "batch_id": handoff["collection_id"],
+            "pairs": [
+                _external_primer_batch_record(record, handoff["collection_id"])
+                for record in submitted_records
+            ],
+        }
+        batch_path.write_bytes(
+            json.dumps(
+                batch_payload,
+                indent=2,
+                sort_keys=True,
+                ensure_ascii=True,
+            ).encode("utf-8")
+            + b"\n"
+        )
+        batch_file_sha256 = _sha256_file_prefixed(batch_path)
+
+    context = {
+        "request": handoff,
+        "canonical_request_sha256": _sha256_prefixed_json(handoff),
+        "request_snapshot_path": str(request_snapshot_path),
+        "request_snapshot_sha256": _sha256_file_prefixed(request_snapshot_path),
+        "state_path": str(state_path),
+        "state_sha256_before": state_sha256_before,
+        "expected_state_sha256": expected_state_sha256,
+        "submitted_records": submitted_records,
+        "not_submitted_records": not_submitted_records,
+        "batch": batch_payload,
+        "batch_path": str(batch_path),
+        "batch_file_sha256": batch_file_sha256,
+        "report_path": str(report_path),
+        "artifact_output_dir": str(artifact_output_dir),
+    }
+    if submitted_records:
+        context["shell_line"] = _external_primer_handoff_shell_line(context)
+        request.shell_line = context["shell_line"]
+    return context
+
+
 def _build_cli_args(request: Request, script_path: Path) -> list[str]:
     args: list[str] = []
     if request.state_path:
@@ -2496,7 +3146,9 @@ def _build_cli_args(request: Request, script_path: Path) -> list[str]:
         args.append("--version")
     elif request.mode == "state-summary":
         args.append("state-summary")
-    elif request.mode == "shell":
+    elif request.mode in {"shell", "external-primer-handoff"}:
+        if not isinstance(request.shell_line, str) or not request.shell_line.strip():
+            raise SkillError(f"mode={request.mode} has no prepared shell command")
         args.extend(["shell", request.shell_line.strip()])
     elif request.mode == "op":
         args.extend(["op", _json_arg(request.operation)])
@@ -2793,6 +3445,10 @@ def _sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def _sha256_file_prefixed(path: Path) -> str:
+    return "sha256:" + _sha256_file(path)
+
+
 def _write_repro_environment(path: Path) -> None:
     lines = [
         "name: gentle-clawbio-skill",
@@ -2816,6 +3472,606 @@ def _parse_stdout_json(stdout: str) -> Any | None:
         return json.loads(trimmed)
     except json.JSONDecodeError:
         return None
+
+
+def _external_primer_handoff_base_result(
+    context: dict[str, Any],
+    *,
+    status: str,
+    gentle_version: str | None,
+    state_sha256_after: str | None,
+) -> dict[str, Any]:
+    target = context["request"]["target"]
+    return {
+        "schema": EXTERNAL_PRIMER_HANDOFF_RESULT_SCHEMA,
+        "status": status,
+        "operation": "primers import-external-pairs",
+        "collection_id": context["request"]["collection_id"],
+        "canonical_request_sha256": context["canonical_request_sha256"],
+        "request_snapshot_path": context["request_snapshot_path"],
+        "request_snapshot_sha256": context["request_snapshot_sha256"],
+        "runtime": {
+            "gentle_version": gentle_version,
+        },
+        "target_state": {
+            "state_path": context["state_path"],
+            "state_sha256_before": context["state_sha256_before"],
+            "state_sha256_after": state_sha256_after,
+            "expected_state_sha256": context["expected_state_sha256"],
+            "expected_state_match": (
+                context["expected_state_sha256"] is None
+                or context["expected_state_sha256"]
+                == context["state_sha256_before"]
+            ),
+            "binding_scope": "entire_explicit_state_file",
+            "seq_id": target["seq_id"],
+            "source_feature_id": target["source_feature_id"],
+            "transcript_id": target["transcript_id"],
+            "reference_label": target["reference_label"],
+            "reference_release": target["reference_release"],
+            "reference_declaration_status": (
+                "caller_declared_and_bound_to_state_sha256"
+                if target["reference_label"] or target["reference_release"]
+                else "not_declared"
+            ),
+        },
+        "submitted_record_count": len(context["submitted_records"]),
+        "not_submitted_record_count": len(context["not_submitted_records"]),
+        "submitted_record_joins": [],
+        "not_submitted_records": context["not_submitted_records"],
+        "native_result_locator": "stdout_json",
+        "report_binding": None,
+        "scientific_artifacts": [],
+        "warnings": [],
+    }
+
+
+def _external_primer_handoff_not_run_result(
+    context: dict[str, Any]
+) -> dict[str, Any]:
+    result = _external_primer_handoff_base_result(
+        context,
+        status="not_run",
+        gentle_version=None,
+        state_sha256_after=context["state_sha256_before"],
+    )
+    result["execution_binding_sha256"] = _sha256_prefixed_json(
+        {
+            "canonical_request_sha256": context["canonical_request_sha256"],
+            "state_sha256_before": context["state_sha256_before"],
+            "submitted_record_count": 0,
+        }
+    )
+    result["analysis_completeness"] = "no_pcr_compatible_records"
+    result["warnings"] = [
+        "No qPCR or endpoint-PCR pair was submitted to GENtle; cloning and "
+        "sequencing oligos remain typed not_submitted records."
+    ]
+    return result
+
+
+def _external_primer_handoff_failure_result(
+    context: dict[str, Any], gentle_version: str | None, diagnostic: str
+) -> dict[str, Any]:
+    state_path = Path(context["state_path"])
+    state_sha256_after = (
+        _sha256_file_prefixed(state_path) if state_path.is_file() else None
+    )
+    result = _external_primer_handoff_base_result(
+        context,
+        status="verification_failed",
+        gentle_version=gentle_version,
+        state_sha256_after=state_sha256_after,
+    )
+    result["analysis_completeness"] = "unverified"
+    result["warnings"] = [diagnostic]
+    return result
+
+
+def _external_primer_handoff_artifact_record(
+    *,
+    path: Path,
+    artifact_kind: str,
+    pair_id: str | None = None,
+    media_type: str,
+) -> dict[str, Any]:
+    record: dict[str, Any] = {
+        "artifact_kind": artifact_kind,
+        "path": str(path),
+        "media_type": media_type,
+        "size_bytes": path.stat().st_size,
+        "sha256": _sha256_file_prefixed(path),
+    }
+    if pair_id is not None:
+        record["pair_id"] = pair_id
+    return record
+
+
+def _verify_external_primer_handoff(
+    context: dict[str, Any], stdout_json: Any, gentle_version: str
+) -> dict[str, Any]:
+    if not isinstance(stdout_json, dict):
+        raise SkillError("external-primer handoff returned no JSON object")
+    if stdout_json.get("schema") != EXTERNAL_PRIMER_PAIR_IMPORT_COMMAND_SCHEMA:
+        raise SkillError(
+            "external-primer handoff returned unexpected command schema "
+            f"'{stdout_json.get('schema')}'"
+        )
+    report = stdout_json.get("report")
+    if not isinstance(report, dict):
+        raise SkillError("external-primer handoff command returned no report object")
+    if report.get("schema") != EXTERNAL_PRIMER_PAIR_IMPORT_REPORT_SCHEMA:
+        raise SkillError(
+            "external-primer handoff returned unexpected report schema "
+            f"'{report.get('schema')}'"
+        )
+    if stdout_json.get("path") != context["report_path"]:
+        raise SkillError("external-primer handoff command report path mismatch")
+    report_id = report.get("report_id")
+    if not isinstance(report_id, str) or not report_id.startswith(
+        "external_primer_import_"
+    ):
+        raise SkillError(
+            "external-primer handoff did not return an automatically derived report identity"
+        )
+    if "--report-id" in str(context.get("shell_line") or ""):
+        raise SkillError("external-primer handoff command unexpectedly supplied --report-id")
+
+    target = context["request"]["target"]
+    if report.get("batch_id") != context["request"]["collection_id"]:
+        raise SkillError("external-primer handoff report batch_id mismatch")
+    if report.get("seq_id") != target["seq_id"]:
+        raise SkillError("external-primer handoff report seq_id mismatch")
+    if report.get("source_feature_id") != target["source_feature_id"]:
+        raise SkillError("external-primer handoff report source_feature_id mismatch")
+    if report.get("source_record_count") != len(context["submitted_records"]):
+        raise SkillError("external-primer handoff report source-record count mismatch")
+
+    provenance = report.get("input_provenance")
+    if not isinstance(provenance, dict):
+        raise SkillError("external-primer handoff report lacks input provenance")
+    if provenance.get("input_format") != "json":
+        raise SkillError("external-primer handoff report input format is not JSON")
+    if provenance.get("source_path") != context["batch_path"]:
+        raise SkillError("external-primer handoff report source path mismatch")
+    if provenance.get("source_sha256") != context["batch_file_sha256"]:
+        raise SkillError("external-primer handoff report source SHA-256 mismatch")
+
+    pairs = report.get("pairs")
+    if not isinstance(pairs, list) or not pairs:
+        raise SkillError("external-primer handoff report contains no computed pair rows")
+    expected_unique_pair_count = len(
+        {
+            (
+                record["forward_sequence_5_to_3"],
+                record["reverse_sequence_5_to_3"],
+            )
+            for record in context["submitted_records"]
+        }
+    )
+    if report.get("unique_pair_count") != expected_unique_pair_count:
+        raise SkillError("external-primer handoff report unique-pair count mismatch")
+    if report.get("duplicate_source_record_count") != (
+        len(context["submitted_records"]) - expected_unique_pair_count
+    ):
+        raise SkillError("external-primer handoff report duplicate count mismatch")
+
+    expected_by_record_id = {
+        record["record_id"]: record for record in context["submitted_records"]
+    }
+    joins: list[dict[str, Any]] = []
+    digest_rows: list[list[str]] = []
+    seen_record_ids: set[str] = set()
+    seen_source_record_ids: set[str] = set()
+    specificity_status_counts: dict[str, int] = {}
+    artifact_root = Path(context["artifact_output_dir"]).resolve()
+    scientific_artifacts: list[dict[str, Any]] = []
+
+    for pair in pairs:
+        if not isinstance(pair, dict):
+            raise SkillError("external-primer handoff report contains a non-object pair row")
+        pair_id = pair.get("pair_id")
+        if not isinstance(pair_id, str) or not pair_id:
+            raise SkillError("external-primer handoff pair row lacks pair_id")
+        forward = pair.get("forward")
+        reverse = pair.get("reverse")
+        if not isinstance(forward, dict) or not isinstance(reverse, dict):
+            raise SkillError(f"external-primer handoff pair {pair_id} lacks oligo rows")
+        forward_sequence = forward.get("sequence_5_to_3")
+        reverse_sequence = reverse.get("sequence_5_to_3")
+        if not isinstance(forward_sequence, str) or not isinstance(
+            reverse_sequence, str
+        ):
+            raise SkillError(f"external-primer handoff pair {pair_id} lacks sequences")
+        sources = pair.get("sources")
+        if not isinstance(sources, list) or not sources:
+            raise SkillError(f"external-primer handoff pair {pair_id} lacks source rows")
+        if pair.get("vendor_claims_used_as_biological_evidence") is not False:
+            raise SkillError(
+                f"external-primer handoff pair {pair_id} did not preserve claim isolation"
+            )
+        specificity = pair.get("specificity")
+        specificity_status = (
+            str(specificity.get("status") or "missing")
+            if isinstance(specificity, dict)
+            else "missing"
+        )
+        specificity_status_counts[specificity_status] = (
+            specificity_status_counts.get(specificity_status, 0) + 1
+        )
+
+        assay = pair.get("cdna_assay")
+        assay_test_id = assay.get("assay_test_id") if isinstance(assay, dict) else None
+        if not isinstance(assay_test_id, str) or not assay_test_id:
+            raise SkillError(
+                f"external-primer handoff pair {pair_id} lacks cDNA assay identity"
+            )
+        if assay.get("schema") != CDNA_ASSAY_TEST_REPORT_SCHEMA:
+            raise SkillError(
+                f"external-primer handoff pair {pair_id} has unexpected cDNA assay schema"
+            )
+        expected_assay_fields = {
+            "assay_kind": "pcr",
+            "source_seq_id": target["seq_id"],
+            "source_feature_id": target["source_feature_id"],
+            "requested_transcript_id": target["transcript_id"],
+            "forward_primer": forward_sequence,
+            "reverse_primer": reverse_sequence,
+        }
+        evaluation = context["request"]["evaluation"]
+        optional_assay_fields = {
+            "min_amplicon_bp": evaluation["min_amplicon_bp"],
+            "max_amplicon_bp": evaluation["max_amplicon_bp"],
+            "max_mismatches": evaluation["max_mismatches"],
+            "require_3prime_exact_bases": evaluation[
+                "require_3prime_exact_bases"
+            ],
+            "transcript_order": evaluation["transcript_order"],
+            "transcript_map_coordinate_mode": evaluation[
+                "map_coordinate_mode"
+            ],
+        }
+        expected_assay_fields.update(
+            {
+                field: value
+                for field, value in optional_assay_fields.items()
+                if value is not None
+            }
+        )
+        for field, expected_value in expected_assay_fields.items():
+            if assay.get(field) != expected_value:
+                raise SkillError(
+                    f"external-primer handoff pair {pair_id} cDNA assay "
+                    f"field mismatch: {field}"
+                )
+
+        specificity_report = (
+            specificity.get("report") if isinstance(specificity, dict) else None
+        )
+        specificity_target = evaluation["specificity_target_genome_id"]
+        if specificity_target is None:
+            if specificity_status != "not_run" or specificity_report is not None:
+                raise SkillError(
+                    f"external-primer handoff pair {pair_id} returned unrequested "
+                    "specificity evidence"
+                )
+        elif specificity_status == "not_run":
+            raise SkillError(
+                f"external-primer handoff pair {pair_id} omitted requested specificity"
+            )
+        elif specificity_report is not None:
+            if not isinstance(specificity_report, dict):
+                raise SkillError(
+                    f"external-primer handoff pair {pair_id} has invalid specificity report"
+                )
+            expected_specificity_fields = {
+                "schema": PRIMER_SPECIFICITY_REPORT_SCHEMA,
+                "target_genome_id": specificity_target,
+                "catalog_path": evaluation["specificity_catalog_path"],
+                "cache_dir": evaluation["specificity_cache_dir"],
+            }
+            for field, expected_value in expected_specificity_fields.items():
+                if specificity_report.get(field) != expected_value:
+                    raise SkillError(
+                        f"external-primer handoff pair {pair_id} specificity "
+                        f"field mismatch: {field}"
+                    )
+
+        materialization = pair.get("product_materialization")
+        if evaluation["materialize_products"]:
+            if not isinstance(materialization, dict):
+                raise SkillError(
+                    f"external-primer handoff pair {pair_id} omitted requested "
+                    "product materialization"
+                )
+        elif materialization is not None:
+            raise SkillError(
+                f"external-primer handoff pair {pair_id} returned unrequested "
+                "product materialization"
+            )
+        for source in sources:
+            if not isinstance(source, dict):
+                raise SkillError(
+                    f"external-primer handoff pair {pair_id} contains invalid source row"
+                )
+            annotations = source.get("annotations")
+            if not isinstance(annotations, dict):
+                raise SkillError(
+                    f"external-primer handoff pair {pair_id} source lacks annotations"
+                )
+            record_id = annotations.get(EXTERNAL_PRIMER_HANDOFF_ANNOTATION_RECORD_ID)
+            if not isinstance(record_id, str) or record_id not in expected_by_record_id:
+                raise SkillError(
+                    f"external-primer handoff pair {pair_id} returned unknown record_id"
+                )
+            if record_id in seen_record_ids:
+                raise SkillError(
+                    f"external-primer handoff record_id '{record_id}' was returned more than once"
+                )
+            expected = expected_by_record_id[record_id]
+            expected_batch = _external_primer_batch_record(
+                expected, context["request"]["collection_id"]
+            )
+            for field in (
+                "source_kind",
+                "provider",
+                "catalogue_id",
+                "source_url",
+                "claimed_accession",
+                "aliases",
+                "claimed_target",
+                "validation_claims",
+                "annotations",
+            ):
+                if source.get(field) != expected_batch[field]:
+                    raise SkillError(
+                        f"external-primer handoff source field mismatch for "
+                        f"record_id '{record_id}': {field}"
+                    )
+            if source.get("input_format") != "json":
+                raise SkillError(
+                    f"external-primer handoff record_id '{record_id}' lost input format"
+                )
+            if source.get("source_path") != context["batch_path"]:
+                raise SkillError(
+                    f"external-primer handoff record_id '{record_id}' lost source path"
+                )
+            if source.get("source_sha256") != context["batch_file_sha256"]:
+                raise SkillError(
+                    f"external-primer handoff record_id '{record_id}' lost source digest"
+                )
+            if (
+                source.get("claim_evidence_status")
+                != "provenance_only_not_used_for_coverage_or_specificity"
+            ):
+                raise SkillError(
+                    f"external-primer handoff record_id '{record_id}' lost claim isolation"
+                )
+            if forward_sequence != expected["forward_sequence_5_to_3"] or (
+                reverse_sequence != expected["reverse_sequence_5_to_3"]
+            ):
+                raise SkillError(
+                    f"external-primer handoff sequence mismatch for record_id '{record_id}'"
+                )
+            source_record_id = source.get("source_record_id")
+            if not isinstance(source_record_id, str) or not source_record_id:
+                raise SkillError(
+                    f"external-primer handoff record_id '{record_id}' lacks source_record_id"
+                )
+            if source_record_id in seen_source_record_ids:
+                raise SkillError(
+                    f"external-primer handoff source_record_id '{source_record_id}' is duplicated"
+                )
+            seen_record_ids.add(record_id)
+            seen_source_record_ids.add(source_record_id)
+            digest_rows.append([source_record_id, forward_sequence, reverse_sequence])
+            joins.append(
+                {
+                    "record_id": record_id,
+                    "assay_purpose": expected["assay_purpose"],
+                    "source_record_id": source_record_id,
+                    "pair_id": pair_id,
+                    "forward_sequence_5_to_3": forward_sequence,
+                    "reverse_sequence_5_to_3": reverse_sequence,
+                    "assay_test_id": assay_test_id,
+                    "report_id": report_id,
+                    "status": "computed",
+                }
+            )
+
+        artifacts = pair.get("artifacts")
+        if not isinstance(artifacts, dict):
+            raise SkillError(f"external-primer handoff pair {pair_id} lacks artifact paths")
+        artifact_specs = (
+            ("cdna_report_json_path", "cdna_assay_report", "application/json"),
+            ("transcript_map_svg_path", "transcript_map", "image/svg+xml"),
+            ("product_gel_svg_path", "product_gel", "image/svg+xml"),
+        )
+        for field, artifact_kind, media_type in artifact_specs:
+            raw_path = artifacts.get(field)
+            if raw_path is None:
+                product_gel_required = (
+                    field == "product_gel_svg_path"
+                    and context["request"]["evaluation"]["materialize_products"]
+                )
+                if field != "product_gel_svg_path" or product_gel_required:
+                    raise SkillError(
+                        f"external-primer handoff pair {pair_id} lacks {field}"
+                    )
+                continue
+            if not isinstance(raw_path, str) or not raw_path:
+                raise SkillError(
+                    f"external-primer handoff pair {pair_id} has invalid {field}"
+                )
+            artifact_path = Path(raw_path).resolve()
+            if not artifact_path.is_relative_to(artifact_root):
+                raise SkillError(
+                    f"external-primer handoff pair {pair_id} artifact escaped output root"
+                )
+            if not artifact_path.is_file():
+                raise SkillError(
+                    f"external-primer handoff pair {pair_id} artifact is missing: {artifact_path}"
+                )
+            if field == "cdna_report_json_path":
+                try:
+                    artifact_payload = json.loads(
+                        artifact_path.read_text(encoding="utf-8")
+                    )
+                except json.JSONDecodeError as e:
+                    raise SkillError(
+                        f"external-primer handoff pair {pair_id} cDNA artifact is invalid JSON"
+                    ) from e
+                if artifact_payload != assay:
+                    raise SkillError(
+                        f"external-primer handoff pair {pair_id} cDNA artifact/report mismatch"
+                    )
+            scientific_artifacts.append(
+                _external_primer_handoff_artifact_record(
+                    path=artifact_path,
+                    artifact_kind=artifact_kind,
+                    pair_id=pair_id,
+                    media_type=media_type,
+                )
+            )
+
+    if seen_record_ids != set(expected_by_record_id):
+        missing = sorted(set(expected_by_record_id) - seen_record_ids)
+        raise SkillError(
+            "external-primer handoff report omitted submitted record_id value(s): "
+            + ", ".join(missing)
+        )
+    digest_rows.sort()
+    expected_normalized_batch_sha256 = _sha256_prefixed_bytes(
+        json.dumps(digest_rows, separators=(",", ":"), ensure_ascii=True).encode(
+            "utf-8"
+        )
+    )
+    if report.get("normalized_batch_sha256") != expected_normalized_batch_sha256:
+        raise SkillError("external-primer handoff normalized batch SHA-256 mismatch")
+
+    operation_result = stdout_json.get("result")
+    if not isinstance(operation_result, dict):
+        raise SkillError("external-primer handoff command returned no operation result")
+    op_id = operation_result.get("op_id")
+    if not isinstance(op_id, str) or not op_id:
+        raise SkillError("external-primer handoff operation result lacks op_id")
+    if operation_result.get("external_primer_pair_import_report") != report:
+        raise SkillError(
+            "external-primer handoff command report and operation report differ"
+        )
+
+    report_path = Path(context["report_path"])
+    if not report_path.is_file():
+        raise SkillError("external-primer handoff report artifact is missing")
+    try:
+        report_file_payload = json.loads(report_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        raise SkillError("external-primer handoff report artifact is invalid JSON") from e
+    if report_file_payload != report:
+        raise SkillError("external-primer handoff report artifact does not match native result")
+    scientific_artifacts.insert(
+        0,
+        _external_primer_handoff_artifact_record(
+            path=report_path,
+            artifact_kind="external_primer_import_report",
+            media_type="application/json",
+        ),
+    )
+
+    state_path = Path(context["state_path"])
+    state_sha256_after = _sha256_file_prefixed(state_path)
+    report_payload_sha256 = _sha256_prefixed_json(report)
+    execution_binding_sha256 = _sha256_prefixed_json(
+        {
+            "canonical_request_sha256": context["canonical_request_sha256"],
+            "state_sha256_before": context["state_sha256_before"],
+            "submitted_batch_file_sha256": context["batch_file_sha256"],
+            "normalized_batch_sha256": report["normalized_batch_sha256"],
+            "report_id": report_id,
+            "report_payload_sha256": report_payload_sha256,
+            "op_id": op_id,
+            "gentle_version": gentle_version,
+            "state_sha256_after": state_sha256_after,
+        }
+    )
+    incomplete_specificity = {
+        status
+        for status in specificity_status_counts
+        if status in {"error", "incomplete", "missing"}
+    }
+    result = _external_primer_handoff_base_result(
+        context,
+        status="incomplete" if incomplete_specificity else "complete",
+        gentle_version=gentle_version,
+        state_sha256_after=state_sha256_after,
+    )
+    result.update(
+        {
+            "analysis_completeness": (
+                "incomplete_specificity"
+                if incomplete_specificity
+                else "complete_for_requested_scope"
+            ),
+            "execution_binding_sha256": execution_binding_sha256,
+            "submitted_batch_path": context["batch_path"],
+            "submitted_batch_file_sha256": context["batch_file_sha256"],
+            "submitted_record_joins": sorted(
+                joins, key=lambda row: row["record_id"]
+            ),
+            "report_binding": {
+                "report_id": report_id,
+                "report_schema": report["schema"],
+                "normalized_batch_sha256": report["normalized_batch_sha256"],
+                "report_payload_sha256": report_payload_sha256,
+                "report_file_path": str(report_path),
+                "report_file_sha256": _sha256_file_prefixed(report_path),
+                "op_id": op_id,
+            },
+            "specificity_requested": bool(
+                context["request"]["evaluation"]["specificity_target_genome_id"]
+            ),
+            "specificity_status_counts": dict(
+                sorted(specificity_status_counts.items())
+            ),
+            "scientific_artifacts": sorted(
+                scientific_artifacts,
+                key=lambda artifact: (
+                    artifact.get("pair_id", ""),
+                    artifact["artifact_kind"],
+                    artifact["path"],
+                ),
+            ),
+        }
+    )
+    result["warnings"] = list(report.get("warnings") or [])
+    if context["not_submitted_records"]:
+        result["warnings"].append(
+            "Cloning/sequencing records were retained as not_submitted and were "
+            "not analyzed by the PCR importer."
+        )
+    return result
+
+
+def _external_primer_handoff_chat_summary_lines(
+    result: dict[str, Any]
+) -> list[str]:
+    lines = [
+        "External-primer handoff status: "
+        f"{result['status']} ({result.get('analysis_completeness', 'unknown')}).",
+        "Submitted PCR-compatible records: "
+        f"{result['submitted_record_count']}; not submitted: "
+        f"{result['not_submitted_record_count']}.",
+    ]
+    report_binding = result.get("report_binding")
+    if isinstance(report_binding, dict):
+        lines.append(
+            "Bound GENtle report: "
+            f"{report_binding.get('report_id')} at "
+            f"{report_binding.get('normalized_batch_sha256')}."
+        )
+    else:
+        lines.append("No GENtle biological evaluation was produced.")
+    return lines
 
 
 def _summary_lines_from_sequence_context_view(candidate: Any) -> list[str] | None:
@@ -3211,7 +4467,7 @@ def _make_shell_request(shell_line: str, timeout_secs: int) -> dict[str, Any]:
 def _request_rerun_shell_line(request: Request | None) -> str:
     if request is None:
         return "(unknown)"
-    if request.mode == "shell" and request.shell_line:
+    if request.mode in {"shell", "external-primer-handoff"} and request.shell_line:
         return request.shell_line.strip()
     if request.mode == "workflow":
         if request.workflow_path:
@@ -4271,6 +5527,7 @@ def _write_report(
     blocked_actions: list[dict[str, Any]] | None,
     ui_intent_catalog: dict[str, Any] | None,
     ui_intent_catalog_error: str | None,
+    external_primer_handoff: dict[str, Any] | None,
     warnings: list[str] | None,
 ) -> None:
     command_text = _format_command_text(command)
@@ -4355,6 +5612,39 @@ def _write_report(
     if chat_summary_lines:
         lines.extend(["", "## Chat Summary", ""])
         lines.extend(f"- {line}" for line in chat_summary_lines)
+    if external_primer_handoff:
+        report_binding = external_primer_handoff.get("report_binding")
+        lines.extend(
+            [
+                "",
+                "## External Primer Handoff",
+                "",
+                f"- Status: `{external_primer_handoff.get('status', 'unknown')}`",
+                "- Canonical request SHA-256: "
+                f"`{external_primer_handoff.get('canonical_request_sha256', '')}`",
+                "- Submitted records: "
+                f"`{external_primer_handoff.get('submitted_record_count', 0)}`",
+                "- Not submitted records: "
+                f"`{external_primer_handoff.get('not_submitted_record_count', 0)}`",
+            ]
+        )
+        if isinstance(report_binding, dict):
+            lines.append(
+                f"- GENtle report: `{report_binding.get('report_id', '')}`"
+            )
+            lines.append(
+                "- Normalized batch SHA-256: "
+                f"`{report_binding.get('normalized_batch_sha256', '')}`"
+            )
+        if external_primer_handoff.get("execution_binding_sha256"):
+            lines.append(
+                "- Execution binding SHA-256: "
+                f"`{external_primer_handoff['execution_binding_sha256']}`"
+            )
+        lines.append(
+            "- Scientific artifact hashes: "
+            f"`{len(external_primer_handoff.get('scientific_artifacts', []))}`"
+        )
     if warnings:
         lines.extend(["", "## Warnings", ""])
         lines.extend(f"- {line}" for line in warnings)
@@ -4628,6 +5918,10 @@ def main() -> int:
     artifact_summary: dict[str, Any] | None = None
     ui_intent_catalog: dict[str, Any] | None = None
     ui_intent_catalog_error: str | None = None
+    external_primer_handoff_context: dict[str, Any] | None = None
+    external_primer_handoff_result: dict[str, Any] | None = None
+    external_primer_handoff_gentle_version: str | None = None
+    pre_execution_steps: list[dict[str, Any]] = []
     auxiliary_steps: list[dict[str, Any]] = []
     warnings: list[str] = []
 
@@ -4675,6 +5969,54 @@ def main() -> int:
                     reference_preflight,
                 )
 
+            if request.mode == "external-primer-handoff":
+                external_primer_handoff_context = _prepare_external_primer_handoff(
+                    request, output_dir, execution_cwd
+                )
+                if not external_primer_handoff_context["submitted_records"]:
+                    external_primer_handoff_result = (
+                        _external_primer_handoff_not_run_result(
+                            external_primer_handoff_context
+                        )
+                    )
+                    chat_summary_lines = _external_primer_handoff_chat_summary_lines(
+                        external_primer_handoff_result
+                    )
+                    status = "incomplete"
+                    raise SkillError(
+                        "No qPCR or endpoint-PCR pair was eligible for the GENtle "
+                        "external-primer importer; no biological evaluation was run."
+                    )
+                version_result, version_step = _run_cli_command(
+                    resolution,
+                    ["--version"],
+                    execution_cwd,
+                    min(request.timeout_secs, 180),
+                )
+                pre_execution_steps.append(version_step)
+                if version_result.returncode != 0:
+                    failure_summary = _build_failure_summary(
+                        stage="external_primer_handoff_version_preflight",
+                        step=version_step,
+                        execution_cwd=execution_cwd,
+                    )
+                    raise SkillError(
+                        _build_failure_message(
+                            headline=(
+                                "GENtle runtime version preflight failed for the "
+                                "external-primer handoff."
+                            ),
+                            failure_summary=failure_summary,
+                        )
+                    )
+                external_primer_handoff_gentle_version = (
+                    version_result.stdout.strip() or version_result.stderr.strip()
+                )
+                if not external_primer_handoff_gentle_version:
+                    raise SkillError(
+                        "GENtle runtime version preflight returned no version text"
+                    )
+
             cli_args = _build_cli_args(request, Path(__file__))
             _prepare_expected_artifact_parent_dirs(request, execution_cwd)
             run_result, main_step = _run_cli_command(
@@ -4696,7 +6038,71 @@ def main() -> int:
                     failure_summary=failure_summary,
                 )
             stdout_json = _parse_stdout_json(run_result.stdout)
-            chat_summary_lines = _extract_chat_summary_lines(stdout_json)
+            if (
+                request.mode == "external-primer-handoff"
+                and external_primer_handoff_context is not None
+            ):
+                if run_result.returncode == 0:
+                    try:
+                        external_primer_handoff_result = (
+                            _verify_external_primer_handoff(
+                                external_primer_handoff_context,
+                                stdout_json,
+                                external_primer_handoff_gentle_version or "",
+                            )
+                        )
+                    except SkillError as verification_error:
+                        external_primer_handoff_result = (
+                            _external_primer_handoff_failure_result(
+                                external_primer_handoff_context,
+                                external_primer_handoff_gentle_version,
+                                str(verification_error),
+                            )
+                        )
+                        status = "verification_failed"
+                        error_message = str(verification_error)
+                        failure_summary = {
+                            "stage": "external_primer_handoff_verification",
+                            "note": str(verification_error),
+                            "command": command,
+                            "command_text": _format_command_text(command),
+                            "execution_cwd": str(execution_cwd),
+                            "exit_code": run_result.returncode,
+                            "stderr_preview": _one_line_preview(run_result.stderr),
+                            "stdout_preview": _one_line_preview(run_result.stdout),
+                        }
+                    else:
+                        if external_primer_handoff_result["status"] == "incomplete":
+                            status = "incomplete"
+                            error_message = (
+                                "GENtle returned an incomplete requested specificity "
+                                "evaluation; the verified partial result was retained."
+                            )
+                    chat_summary_lines = _external_primer_handoff_chat_summary_lines(
+                        external_primer_handoff_result
+                    )
+                else:
+                    external_primer_handoff_result = (
+                        _external_primer_handoff_base_result(
+                            external_primer_handoff_context,
+                            status="command_failed",
+                            gentle_version=external_primer_handoff_gentle_version,
+                            state_sha256_after=_sha256_file_prefixed(
+                                Path(external_primer_handoff_context["state_path"])
+                            ),
+                        )
+                    )
+                    external_primer_handoff_result["analysis_completeness"] = (
+                        "not_computed"
+                    )
+                    external_primer_handoff_result["warnings"] = [
+                        error_message or "GENtle external-primer import failed."
+                    ]
+                    chat_summary_lines = _external_primer_handoff_chat_summary_lines(
+                        external_primer_handoff_result
+                    )
+            if request.mode != "external-primer-handoff":
+                chat_summary_lines = _extract_chat_summary_lines(stdout_json)
             if chat_summary_lines is None:
                 chat_summary_lines = _runtime_version_chat_summary_lines(
                     request,
@@ -4795,7 +6201,7 @@ def main() -> int:
         ):
             failure_summary = reference_preflight["last_failure"]
         error_message = str(e)
-        if status != "degraded_demo":
+        if status not in {"degraded_demo", "incomplete", "verification_failed"}:
             status = "failed"
     except Exception as e:  # pragma: no cover - defensive boundary
         request = request if request is not None else _default_demo_request()
@@ -4837,6 +6243,7 @@ def main() -> int:
         blocked_actions=blocked_actions,
         ui_intent_catalog=ui_intent_catalog,
         ui_intent_catalog_error=ui_intent_catalog_error,
+        external_primer_handoff=external_primer_handoff_result,
         warnings=warnings,
     )
 
@@ -4845,6 +6252,11 @@ def main() -> int:
         for step in (reference_preflight or {}).get("steps", [])
         if step.get("command")
     ]
+    command_lines.extend(
+        " ".join(shlex.quote(v) for v in step.get("command", []))
+        for step in pre_execution_steps
+        if step.get("command")
+    )
     if command:
         command_lines.append(" ".join(shlex.quote(v) for v in command))
     command_lines.extend(
@@ -4890,6 +6302,7 @@ def main() -> int:
         "blocked_actions": blocked_actions,
         "ui_intent_catalog": ui_intent_catalog,
         "ui_intent_catalog_error": ui_intent_catalog_error,
+        "external_primer_handoff": external_primer_handoff_result,
         "warnings": warnings or None,
         "error": error_message,
         "failure_summary": failure_summary,
@@ -4910,9 +6323,39 @@ def main() -> int:
         encoding="utf-8",
     )
 
+    checksum_paths = [report_path, result_path, commands_path, env_path]
+    checksum_paths.extend(
+        Path(artifact["copied_path"])
+        for artifact in collected_artifacts
+        if isinstance(artifact, dict) and artifact.get("copied_path")
+    )
+    if external_primer_handoff_context is not None:
+        checksum_paths.append(
+            Path(external_primer_handoff_context["request_snapshot_path"])
+        )
+        if external_primer_handoff_context.get("batch_file_sha256"):
+            checksum_paths.append(Path(external_primer_handoff_context["batch_path"]))
+    if external_primer_handoff_result is not None:
+        checksum_paths.extend(
+            Path(artifact["path"])
+            for artifact in external_primer_handoff_result.get(
+                "scientific_artifacts", []
+            )
+            if isinstance(artifact, dict) and artifact.get("path")
+        )
     checksums: list[tuple[str, str]] = []
-    for artifact in [report_path, result_path, commands_path, env_path]:
-        checksums.append((artifact.name, _sha256_file(artifact)))
+    seen_checksum_paths: set[Path] = set()
+    for artifact in checksum_paths:
+        resolved = artifact.resolve()
+        if resolved in seen_checksum_paths or not resolved.is_file():
+            continue
+        seen_checksum_paths.add(resolved)
+        try:
+            label = resolved.relative_to(output_dir).as_posix()
+        except ValueError:
+            label = resolved.name
+        checksums.append((label, _sha256_file(resolved)))
+    checksums.sort(key=lambda row: row[0])
     checksums_lines = [f"{digest}  {name}" for name, digest in checksums]
     checksums_path.write_text("\n".join(checksums_lines) + "\n", encoding="utf-8")
 

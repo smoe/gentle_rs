@@ -24,6 +24,12 @@ understand what changed.
 
 ## 2026-08-02
 
+- Added a bounded external-primer handoff mode to the co-shipped ClawBio skill.
+  Explicit qPCR/endpoint-PCR records now retain GENtle's native provenance and
+  return an input-to-result ID/hash join with verified report, state, runtime,
+  and artifact bindings; cloning/sequencing oligos remain typed
+  `not_submitted`, with no discussion-state or interpretation logic added to
+  the engine.
 - Added explicit physical pooling for complete resolved gene sets.
   `CreateGeneSetPool` and `gene-sets create-pool` preview a deterministic,
   fingerprint-locked plan from one exclusive singleton source container per

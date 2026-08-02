@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -60,6 +61,7 @@ def _examples_dir() -> Path:
 # bootstrap, follow-on, direct-mode, or documentation/development examples that
 # remain callable by path but should not widen ClawBio's chat intent surface.
 INTENT_EXAMPLE_ALLOWLIST = {
+    "request_external_primer_handoff_synthetic.json",
     "request_cdna_pcr_products_gel_demo_direct.json",
     "request_cdna_qpcr_taqman_products_gel_demo_direct.json",
     "request_construct_reasoning_list_inspections.json",
@@ -165,6 +167,592 @@ def _fake_cli_with_svg_png(main_body: str) -> str:
         "fi\n"
         f"{main_body}"
     )
+
+
+def _write_external_primer_handoff_fake_cli(
+    path: Path, *, tamper_sequence: bool = False, tamper_target: bool = False
+) -> None:
+    script = r'''#!/usr/bin/env python3
+import hashlib
+import json
+from pathlib import Path
+import shlex
+import sys
+
+TAMPER_SEQUENCE = False
+TAMPER_TARGET = False
+
+
+def sha256_prefixed_bytes(value):
+    return "sha256:" + hashlib.sha256(value).hexdigest()
+
+
+def short_id(prefix, value):
+    return prefix + "_" + hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
+
+
+if sys.argv[1:] == ["--version"]:
+    print("gentle_cli 0.1.synthetic-handoff-test")
+    raise SystemExit(0)
+
+state_index = sys.argv.index("--state")
+state_path = Path(sys.argv[state_index + 1])
+shell_index = sys.argv.index("shell")
+tokens = shlex.split(sys.argv[shell_index + 1])
+if tokens[:2] != ["primers", "import-external-pairs"]:
+    raise SystemExit("unexpected command")
+
+
+def option(flag):
+    return tokens[tokens.index(flag) + 1]
+
+
+def optional_option(flag, default=None):
+    return option(flag) if flag in tokens else default
+
+
+batch_path = Path(tokens[2])
+seq_id = tokens[3]
+source_feature_id = int(tokens[4])
+artifact_dir = Path(option("--artifact-output-dir"))
+report_path = Path(option("--path"))
+batch_bytes = batch_path.read_bytes()
+batch = json.loads(batch_bytes)
+source_sha256 = sha256_prefixed_bytes(batch_bytes)
+artifact_dir.mkdir(parents=True, exist_ok=True)
+
+grouped = {}
+for row_number, source in enumerate(batch["pairs"], start=1):
+    key = (
+        source["forward_sequence_5_to_3"],
+        source["reverse_sequence_5_to_3"],
+    )
+    source_record_id = short_id(
+        "external_primer_source",
+        json.dumps(source, sort_keys=True, separators=(",", ":")),
+    )
+    provenance = {
+        "source_record_id": source_record_id,
+        "input_row_number": row_number,
+        "source_kind": source["source_kind"],
+        "provider": source["provider"],
+        "catalogue_id": source["catalogue_id"],
+        "source_url": source["source_url"],
+        "claimed_accession": source["claimed_accession"],
+        "aliases": sorted(set(source["aliases"])),
+        "claimed_target": source["claimed_target"],
+        "validation_claims": sorted(set(source["validation_claims"])),
+        "annotations": source["annotations"],
+        "input_format": "json",
+        "source_path": str(batch_path),
+        "source_sha256": source_sha256,
+        "claim_evidence_status": "provenance_only_not_used_for_coverage_or_specificity",
+    }
+    grouped.setdefault(key, []).append(provenance)
+
+pairs = []
+digest_rows = []
+for (forward, reverse), sources in sorted(grouped.items()):
+    pair_id = short_id("primer_pair", forward + "\n" + reverse)
+    output_forward = "TTTT" if TAMPER_SEQUENCE else forward
+    assay = {
+        "schema": "gentle.cdna_assay_test_report.v1",
+        "assay_test_id": short_id("assay_test_sha256", pair_id + seq_id),
+        "pair_id": short_id("pair_sha256", forward + reverse),
+        "assay_kind": "pcr",
+        "source_seq_id": seq_id,
+        "source_feature_id": source_feature_id,
+        "requested_transcript_id": optional_option("--transcript-id"),
+        "forward_primer": output_forward,
+        "reverse_primer": reverse,
+        "min_amplicon_bp": int(optional_option("--min-amplicon-bp", 1)),
+        "max_amplicon_bp": int(optional_option("--max-amplicon-bp", 10000)),
+        "max_mismatches": int(optional_option("--max-mismatches", 0)),
+        "require_3prime_exact_bases": int(
+            optional_option("--require-3prime-exact-bases", 0)
+        ),
+        "transcript_order": optional_option("--transcript-order", "transcript_id"),
+        "transcript_map_coordinate_mode": optional_option(
+            "--map-coordinate-mode", "cdna"
+        ),
+        "overall_status": "single_product",
+        "product_count": 1,
+    }
+    cdna_path = artifact_dir / f"{pair_id}.cdna_assay.json"
+    map_path = artifact_dir / f"{pair_id}.transcript_map.svg"
+    cdna_path.write_text(json.dumps(assay, indent=2) + "\n", encoding="utf-8")
+    map_path.write_text(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\"><text>synthetic map</text></svg>\n",
+        encoding="utf-8",
+    )
+    product_path = None
+    if "--materialize-products" in tokens:
+        product = artifact_dir / f"{pair_id}.product_gel.svg"
+        product.write_text(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\"><text>synthetic gel</text></svg>\n",
+            encoding="utf-8",
+        )
+        product_path = str(product)
+    pairs.append(
+        {
+            "pair_id": pair_id,
+            "sources": sorted(sources, key=lambda source: source["source_record_id"]),
+            "forward": {"sequence_5_to_3": output_forward},
+            "reverse": {"sequence_5_to_3": reverse},
+            "cdna_assay": assay,
+            "specificity": {
+                "status": "not_run",
+                "reason": "not requested in synthetic test",
+                "report": None,
+            },
+            "artifacts": {
+                "cdna_report_json_path": str(cdna_path),
+                "transcript_map_svg_path": str(map_path),
+                "product_gel_svg_path": product_path,
+            },
+            "vendor_claims_used_as_biological_evidence": False,
+            "product_materialization": (
+                {"product_count": 1} if "--materialize-products" in tokens else None
+            ),
+            "warnings": [],
+        }
+    )
+    for source in sources:
+        digest_rows.append([source["source_record_id"], forward, reverse])
+
+digest_rows.sort()
+normalized_batch_sha256 = sha256_prefixed_bytes(
+    json.dumps(digest_rows, separators=(",", ":")).encode("utf-8")
+)
+report = {
+    "schema": "gentle.external_primer_pair_import_report.v1",
+    "report_id": short_id(
+        "external_primer_import", normalized_batch_sha256 + seq_id
+    ),
+    "batch_id": batch["batch_id"],
+    "normalized_batch_sha256": normalized_batch_sha256,
+    "generated_at_unix_ms": 1,
+    "seq_id": "WRONG_TARGET" if TAMPER_TARGET else seq_id,
+    "source_feature_id": source_feature_id,
+    "input_provenance": {
+        "input_format": "json",
+        "source_path": str(batch_path),
+        "source_sha256": source_sha256,
+    },
+    "source_record_count": len(batch["pairs"]),
+    "unique_pair_count": len(pairs),
+    "duplicate_source_record_count": len(batch["pairs"]) - len(pairs),
+    "pairs": pairs,
+    "warnings": [
+        "Prepared-target specificity was not run; claims do not imply a pass."
+    ],
+}
+report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+state_path.write_text(state_path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+result = {
+    "schema": "gentle.external_primer_pair_import_command.v1",
+    "report": report,
+    "path": str(report_path),
+    "preferred_artifacts": [],
+    "result": {
+        "op_id": "op_000001",
+        "created_seq_ids": [],
+        "changed_seq_ids": [],
+        "warnings": [],
+        "messages": [],
+        "external_primer_pair_import_report": report,
+    },
+}
+print(json.dumps(result))
+'''
+    if tamper_sequence:
+        script = script.replace("TAMPER_SEQUENCE = False", "TAMPER_SEQUENCE = True")
+    if tamper_target:
+        script = script.replace("TAMPER_TARGET = False", "TAMPER_TARGET = True")
+    path.write_text(script, encoding="utf-8")
+    path.chmod(0o755)
+
+
+def _external_primer_handoff_request(
+    state_path: Path, *, expected_state_sha256: str | None = None
+) -> dict:
+    target = {
+        "seq_id": "SYNTHETIC_TARGET",
+        "source_feature_id": 7,
+        "transcript_id": "SYNTHETIC_TX.1",
+        "reference_label": "synthetic transcript fixture",
+        "reference_release": "fixture-2026-08",
+    }
+    if expected_state_sha256 is not None:
+        target["expected_state_sha256"] = expected_state_sha256
+    return {
+        "schema": "gentle.clawbio_skill_request.v1",
+        "mode": "external-primer-handoff",
+        "state_path": str(state_path),
+        "external_primer_handoff": {
+            "schema": "gentle.external_primer_handoff_request.v1",
+            "collection_id": "synthetic-primer-evidence",
+            "target": target,
+            "evaluation": {
+                "min_amplicon_bp": 60,
+                "max_amplicon_bp": 250,
+                "max_mismatches": 2,
+                "require_3prime_exact_bases": 4,
+                "transcript_order": "transcript_id",
+                "map_coordinate_mode": "cdna",
+            },
+            "records": [
+                {
+                    "record_id": "synthetic-literature-pair",
+                    "assay_purpose": "qPCR",
+                    "source_kind": "literature",
+                    "provider": "Synthetic Methods Journal",
+                    "source_url": "https://example.invalid/synthetic-method",
+                    "claimed_target": "SYNTHETIC_TARGET",
+                    "validation_claims": ["Reported amplification in source"],
+                    "forward_sequence_5_to_3": "acgt acgt acgt acgt ac",
+                    "reverse_sequence_5_to_3": "tgca tgca tgca tgca tg",
+                },
+                {
+                    "record_id": "synthetic-catalogue-pair",
+                    "assay_purpose": "endpoint_pcr",
+                    "source_kind": "commercial_catalogue",
+                    "provider": "Synthetic Oligo Catalogue",
+                    "catalogue_id": "SYN-0001",
+                    "claimed_target": "SYNTHETIC_TARGET",
+                    "validation_claims": ["Supplier-described assay"],
+                    "forward_sequence_5_to_3": "ACGTACGTACGTACGTAC",
+                    "reverse_sequence_5_to_3": "TGCATGCATGCATGCATG",
+                },
+                {
+                    "record_id": "synthetic-cloning-pair",
+                    "assay_purpose": "cloning",
+                    "source_kind": "external",
+                    "provider": "Synthetic teaching fixture",
+                    "forward_sequence_5_to_3": "AAAACCCCGGGGTTTTAA",
+                    "reverse_sequence_5_to_3": "TTTTGGGGCCCCAAAATT",
+                },
+                {
+                    "record_id": "synthetic-sequencing-oligo",
+                    "assay_purpose": "sequencing",
+                    "source_kind": "external",
+                    "provider": "Synthetic teaching fixture",
+                    "sequence_5_to_3": "GATTACAGATTACAGATT",
+                    "role": "U6 sequencing primer",
+                },
+            ],
+        },
+    }
+
+
+def test_external_primer_handoff_binds_native_results_and_preserves_non_pcr_records(
+    tmp_path: Path,
+) -> None:
+    fake_cli = tmp_path / "gentle_cli"
+    _write_external_primer_handoff_fake_cli(fake_cli)
+    state_path = tmp_path / "state.json"
+    state_path.write_text("{}\n", encoding="utf-8")
+    state_sha256 = "sha256:" + hashlib.sha256(state_path.read_bytes()).hexdigest()
+    request = _external_primer_handoff_request(
+        state_path, expected_state_sha256=state_sha256
+    )
+    request_path = tmp_path / "request.json"
+    request_path.write_text(json.dumps(request), encoding="utf-8")
+    output_dir = tmp_path / "output"
+
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert run.returncode == 0, run.stderr or run.stdout
+    payload = json.loads(run.stdout)
+    assert payload["status"] == "ok"
+    handoff = payload["external_primer_handoff"]
+    assert handoff["schema"] == "gentle.external_primer_handoff_result.v1"
+    assert handoff["status"] == "complete"
+    assert handoff["analysis_completeness"] == "complete_for_requested_scope"
+    assert handoff["runtime"]["gentle_version"] == (
+        "gentle_cli 0.1.synthetic-handoff-test"
+    )
+    assert handoff["target_state"]["state_sha256_before"] == state_sha256
+    assert handoff["target_state"]["state_sha256_after"] != state_sha256
+    assert handoff["target_state"]["reference_label"] == (
+        "synthetic transcript fixture"
+    )
+    assert handoff["target_state"]["reference_declaration_status"] == (
+        "caller_declared_and_bound_to_state_sha256"
+    )
+    assert handoff["submitted_record_count"] == 2
+    assert handoff["not_submitted_record_count"] == 2
+    joins = handoff["submitted_record_joins"]
+    assert {row["record_id"] for row in joins} == {
+        "synthetic-literature-pair",
+        "synthetic-catalogue-pair",
+    }
+    assert len({row["pair_id"] for row in joins}) == 1
+    assert len({row["source_record_id"] for row in joins}) == 2
+    assert all(row["forward_sequence_5_to_3"] == "ACGTACGTACGTACGTAC" for row in joins)
+    assert all(row["reverse_sequence_5_to_3"] == "TGCATGCATGCATGCATG" for row in joins)
+    assert all(row["status"] == "computed" for row in joins)
+
+    not_submitted = handoff["not_submitted_records"]
+    assert {row["record_id"] for row in not_submitted} == {
+        "synthetic-cloning-pair",
+        "synthetic-sequencing-oligo",
+    }
+    assert {row["assay_purpose"] for row in not_submitted} == {
+        "cloning",
+        "sequencing",
+    }
+    assert all(row["status"] == "not_submitted" for row in not_submitted)
+    assert handoff["report_binding"]["report_id"].startswith(
+        "external_primer_import_"
+    )
+    assert handoff["report_binding"]["normalized_batch_sha256"].startswith(
+        "sha256:"
+    )
+    assert handoff["canonical_request_sha256"].startswith("sha256:")
+    assert handoff["execution_binding_sha256"].startswith("sha256:")
+    assert {artifact["artifact_kind"] for artifact in handoff["scientific_artifacts"]} == {
+        "external_primer_import_report",
+        "cdna_assay_report",
+        "transcript_map",
+    }
+    assert all(
+        artifact["sha256"].startswith("sha256:")
+        for artifact in handoff["scientific_artifacts"]
+    )
+    assert "--report-id" not in " ".join(payload["command"])
+    commands = (output_dir / "reproducibility" / "commands.sh").read_text(
+        encoding="utf-8"
+    )
+    assert "--version" in commands
+    assert "primers import-external-pairs" in commands
+    checksums = (output_dir / "reproducibility" / "checksums.sha256").read_text(
+        encoding="utf-8"
+    )
+    assert "external_primer_handoff/canonical_request.json" in checksums
+    assert "external_primer_handoff/submitted_external_primer_pairs.json" in checksums
+    assert "external_primer_handoff/external_primer_import_report.json" in checksums
+    assert "external_primer_handoff/scientific_artifacts/" in checksums
+
+
+def test_external_primer_handoff_rejects_altered_native_sequence(
+    tmp_path: Path,
+) -> None:
+    fake_cli = tmp_path / "gentle_cli"
+    _write_external_primer_handoff_fake_cli(fake_cli, tamper_sequence=True)
+    state_path = tmp_path / "state.json"
+    state_path.write_text("{}\n", encoding="utf-8")
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(_external_primer_handoff_request(state_path)), encoding="utf-8"
+    )
+    output_dir = tmp_path / "output"
+
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert run.returncode == 1
+    payload = json.loads(run.stdout)
+    assert payload["status"] == "verification_failed"
+    assert "sequence mismatch" in payload["error"]
+    assert payload["external_primer_handoff"]["status"] == "verification_failed"
+    assert payload["external_primer_handoff"]["analysis_completeness"] == "unverified"
+
+
+def test_external_primer_handoff_rejects_result_from_wrong_target(
+    tmp_path: Path,
+) -> None:
+    fake_cli = tmp_path / "gentle_cli"
+    _write_external_primer_handoff_fake_cli(fake_cli, tamper_target=True)
+    state_path = tmp_path / "state.json"
+    state_path.write_text("{}\n", encoding="utf-8")
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(_external_primer_handoff_request(state_path)), encoding="utf-8"
+    )
+    output_dir = tmp_path / "output"
+
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert run.returncode == 1
+    payload = json.loads(run.stdout)
+    assert payload["status"] == "verification_failed"
+    assert "report seq_id mismatch" in payload["error"]
+    assert payload["external_primer_handoff"]["status"] == "verification_failed"
+
+
+def test_external_primer_handoff_does_not_accept_missing_requested_specificity(
+    tmp_path: Path,
+) -> None:
+    fake_cli = tmp_path / "gentle_cli"
+    _write_external_primer_handoff_fake_cli(fake_cli)
+    state_path = tmp_path / "state.json"
+    state_path.write_text("{}\n", encoding="utf-8")
+    request = _external_primer_handoff_request(state_path)
+    request["external_primer_handoff"]["evaluation"][
+        "specificity_target_genome_id"
+    ] = "synthetic_genome"
+    request_path = tmp_path / "request.json"
+    request_path.write_text(json.dumps(request), encoding="utf-8")
+    output_dir = tmp_path / "output"
+
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert run.returncode == 1
+    payload = json.loads(run.stdout)
+    assert payload["status"] == "verification_failed"
+    assert "omitted requested specificity" in payload["error"]
+    assert payload["external_primer_handoff"]["analysis_completeness"] == "unverified"
+
+
+def test_external_primer_handoff_rejects_wrong_target_state_before_invocation(
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "state.json"
+    state_path.write_text("{}\n", encoding="utf-8")
+    request = _external_primer_handoff_request(
+        state_path, expected_state_sha256="sha256:" + "0" * 64
+    )
+    request_path = tmp_path / "request.json"
+    request_path.write_text(json.dumps(request), encoding="utf-8")
+    output_dir = tmp_path / "output"
+
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            "false",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert run.returncode == 1
+    payload = json.loads(run.stdout)
+    assert payload["status"] == "failed"
+    assert "target state SHA-256 mismatch" in payload["error"]
+    assert payload["command"] is None
+
+
+def test_external_primer_handoff_keeps_non_pcr_collection_as_not_submitted(
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "state.json"
+    state_path.write_text("{}\n", encoding="utf-8")
+    request = _external_primer_handoff_request(state_path)
+    request["external_primer_handoff"]["records"] = [
+        record
+        for record in request["external_primer_handoff"]["records"]
+        if record["assay_purpose"] in {"cloning", "sequencing"}
+    ]
+    request_path = tmp_path / "request.json"
+    request_path.write_text(json.dumps(request), encoding="utf-8")
+    output_dir = tmp_path / "output"
+
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            "false",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert run.returncode == 1
+    payload = json.loads(run.stdout)
+    assert payload["status"] == "incomplete"
+    assert payload["command"] is None
+    handoff = payload["external_primer_handoff"]
+    assert handoff["status"] == "not_run"
+    assert handoff["analysis_completeness"] == "no_pcr_compatible_records"
+    assert handoff["submitted_record_count"] == 0
+    assert handoff["not_submitted_record_count"] == 2
+
+
+def test_external_primer_handoff_canonical_digest_ignores_record_order() -> None:
+    module = _skill_module()
+    request = _external_primer_handoff_request(Path("state.json"))[
+        "external_primer_handoff"
+    ]
+    reordered = json.loads(json.dumps(request))
+    reordered["records"].reverse()
+    reordered["records"][0]["validation_claims"] = list(
+        reversed(reordered["records"][0].get("validation_claims", []))
+    )
+
+    first = module._normalise_external_primer_handoff(request)
+    second = module._normalise_external_primer_handoff(reordered)
+
+    assert first == second
+    assert module._sha256_prefixed_json(first) == module._sha256_prefixed_json(second)
 
 
 def test_action_envelope_stamp_adds_skill_alias_and_confirm_invariant() -> None:
@@ -454,6 +1042,7 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
             "qpcr-report-export",
             "cdna-pcr-test",
             "cdna-qpcr-test",
+            "external-primer-handoff",
             "protein-residue-genomic-coordinates",
             "transcript-qpcr-panel",
             "restriction-cloning-pcr-handoff",

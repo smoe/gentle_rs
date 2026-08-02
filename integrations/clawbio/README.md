@@ -145,6 +145,12 @@ Local agent handoff:
   `skills/gentle-cloning/examples/*.json` request or construct the documented
   ClawBio request shape, then inspect `result.json`, `report.md`, preferred
   artifacts, and reproducibility files.
+- For caller-supplied external primer evidence, use the skill's
+  `external-primer-handoff` mode and its
+  [`references/external_primer_handoff.md`](skills/gentle-cloning/references/external_primer_handoff.md)
+  contract. This wrapper mode binds explicit source records to GENtle's native
+  external-primer result by stable IDs and hashes; it neither discovers caller
+  data nor performs permission, interpretation, or record-lifecycle work.
 
 Recognition smoke tests:
 

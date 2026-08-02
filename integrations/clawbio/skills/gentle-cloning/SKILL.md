@@ -988,6 +988,13 @@ protocol-cartoon graphic for the PCR family.
 
 Current shared GENtle routes behind this capability:
 
+- request mode `external-primer-handoff` for an explicitly supplied,
+  permitted collection of external qPCR/endpoint-PCR pairs. It preserves the
+  native GENtle provenance and returns an ID-and-hash join to the native
+  import result; cloning and sequencing oligos remain typed `not_submitted`
+  records rather than being misanalysed as PCR assays. See the
+  [external-primer handoff reference](references/external_primer_handoff.md)
+  for the bounded request and verification contract.
 - request modes `primer-preflight`, `primer-seed-from-feature`,
   `primer-seed-from-splicing`, `primer-design`, `primer-report-list`,
   `primer-report-show`, and `primer-report-export`
@@ -2158,6 +2165,10 @@ paths or state.
 
 For status/readiness outputs, `result.json` may additionally include:
 
+- `external_primer_handoff` for `mode=external-primer-handoff`, containing the
+  canonical request digest, target-state binding, native report binding,
+  input-record-to-source/pair/result joins, typed `not_submitted` records, and
+  hashes for returned scientific artifacts
 - `chat_summary_lines[]` for concise first replies
 - `preferred_artifacts[]` for best-first figures
   - graphics now use a PNG-first outward contract for messenger consumers
