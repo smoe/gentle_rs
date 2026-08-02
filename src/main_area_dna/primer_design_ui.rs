@@ -4305,6 +4305,9 @@ impl MainAreaDna {
             order_form_id: None,
             path: None,
             order_table_path: None,
+            virtual_gel_svg_path: None,
+            virtual_gel_ladders: vec![],
+            virtual_gel_render_options: Default::default(),
         }
     }
 

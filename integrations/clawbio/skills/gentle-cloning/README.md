@@ -73,6 +73,8 @@ table.
   shared Roboterri/Discord planners once `gentle-cloning` is registered in
   ClawBio's `SKILLS`
 - `gentle_cloning.py`: wrapper executable
+- `discussion_moderation_handoff.py`: optional post-run, hash-verifying intake
+  packet adapter; it never opens or mutates a ledger
 - `gentle_local_checkout_cli.sh`: local-checkout launcher for `cargo run --bin gentle_cli --`
 - `gentle_apptainer_cli.sh`: Apptainer/Singularity launcher for `gentle_cli`
 - `catalog_entry.json`: ready-to-paste object for ClawBio `skills/catalog.json`
@@ -612,6 +614,36 @@ Alternative runtimes:
   `request_skill_info.json` or `request_intents_runtime.json` to inspect the
   installed list
 - optional: `state_path`, `timeout_secs`, `ensure_reference_prepared`
+- optional provenance/presentation controls:
+  - `claim_attribution_mode: "strict"` prefixes human-facing statements by
+    source and writes `gentle.clawbio_claim_ledger.v1`;
+  - `input_claims: ["..."]` records explicit caller assumptions as `[input]`
+    rows in `report.md` and `claim_ledger.input_claims[]`; these statements
+    never become GENtle findings;
+  - `presentation_profile: "pcr_primer_design"` requests PCR-specific
+    graphical assembly without moving scientific calculations into the wrapper;
+  - `input_bindings[]` content-binds additional caller-declared input files and
+    may require an expected SHA-256 before execution;
+  - `delegation` carries a descriptor-only source skill/version/intent/plan-step
+    identity. The wrapper verifies the co-deployed descriptor, catalog, and
+    exact delegate contract before invoking GENtle
+
+Every invocation writes the provider-owned
+`gentle.clawbio_execution_manifest.v1` receipt to
+`reproducibility/execution_manifest.json`. It binds the normalized request,
+known input files, state before/after, wrapper and runtime files, command steps,
+native JSON result, native status fields, and output artifacts. It deliberately
+does not contain discussion topics, permissions, votes, freshness, or caller
+interpretation. See
+[`references/execution_manifest.md`](references/execution_manifest.md) for the
+schema and delegated-skill compatibility contract.
+
+For an explicitly caller-selected discussion-moderation evidence collection,
+the optional post-run `discussion_moderation_handoff.py` helper verifies the
+provider bundle and produces a hash-joined typed-evidence/analysis-run intake
+packet. It never opens or writes a ledger. See
+[`references/discussion_moderation_handoff.md`](references/discussion_moderation_handoff.md)
+for the bounded context schema, command, status rules, and recording order.
 
 Mode-specific fields:
 

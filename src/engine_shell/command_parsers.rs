@@ -7244,7 +7244,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             Ok(ShellCommand::PrimersComposeGeneTranscriptAssayRoutine { request_json, path })
         }
         "experimental-handoff" => {
-            const USAGE: &str = "primers experimental-handoff PANEL_REPORT_ID [--policy JSON_OR_@FILE] [--variant-evidence PATH ...] [--order-form-id ID] [--path OUTPUT.json] [--order-table OUTPUT.tsv]";
+            const USAGE: &str = "primers experimental-handoff PANEL_REPORT_ID [--policy JSON_OR_@FILE] [--variant-evidence PATH ...] [--order-form-id ID] [--path OUTPUT.json] [--order-table OUTPUT.tsv] [--gel-svg OUTPUT.svg] [--gel-ladder NAME ...]";
             if tokens.len() < 3 {
                 return Err(format!(
                     "primers experimental-handoff requires PANEL_REPORT_ID\n       {USAGE}"
@@ -7257,6 +7257,8 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             let mut order_form_id = None;
             let mut path = None;
             let mut order_table_path = None;
+            let mut virtual_gel_svg_path = None;
+            let mut virtual_gel_ladders = vec![];
             let mut idx = 3usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -7291,6 +7293,16 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                             context,
                         )?);
                     }
+                    "--gel-svg" | "--virtual-gel-svg" => {
+                        let flag = tokens[idx].clone();
+                        virtual_gel_svg_path =
+                            Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--gel-ladder" | "--virtual-gel-ladder" => {
+                        let flag = tokens[idx].clone();
+                        virtual_gel_ladders
+                            .push(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
                     other => {
                         return Err(format!(
                             "Unknown option '{other}' for {context}\n       {USAGE}"
@@ -7305,6 +7317,8 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 order_form_id,
                 path,
                 order_table_path,
+                virtual_gel_svg_path,
+                virtual_gel_ladders,
             })
         }
         other => Err(format!(

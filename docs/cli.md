@@ -3177,7 +3177,7 @@ Shared shell command:
         ```
         Save this as `analysis/patz1_assay_routine_request.json`, then run
         `primers compose-gene-assay-routine @analysis/patz1_assay_routine_request.json --path analysis/patz1_assay_routine.json`.
-    - `primers experimental-handoff PANEL_REPORT_ID [--policy JSON_OR_@FILE] [--variant-evidence PATH ...] [--order-form-id ID] [--path OUTPUT.json] [--order-table OUTPUT.tsv]`
+    - `primers experimental-handoff PANEL_REPORT_ID [--policy JSON_OR_@FILE] [--variant-evidence PATH ...] [--order-form-id ID] [--path OUTPUT.json] [--order-table OUTPUT.tsv] [--gel-svg OUTPUT.svg] [--gel-ladder NAME ...]`
     - `primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]`
     - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
       - returns `gentle.primer3_preflight.v1` with configured/effective
@@ -4047,6 +4047,11 @@ Shared shell command:
         purification, and duplicate-review state without merging order lines
       - `--path` writes the complete JSON package and `--order-table` writes a
         compact TSV. Neither route submits an order or records a wet-lab result
+      - `--gel-svg` writes a GENtle-attributed virtual gel with one sample lane
+        per primer pair under shared conditions; `--gel-ladder` may be repeated.
+        Lanes with no predicted cDNA product remain visible. Unless the policy
+        supplies named gel conditions, the figure is illustrative and does not
+        satisfy the separate gel-resolution readiness gate
       - exact cDNA product digests define sequence classes only. Gel separation
         is assessed separately and only when named gel conditions are present
         in the policy

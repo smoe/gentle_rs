@@ -58,7 +58,10 @@ use crate::{
     iupac_code::IupacCode,
     lineage_export::export_lineage_svg,
     methylation_sites::MethylationMode,
-    pool_gel::{GelSampleInput, export_pool_gel_svg, export_pool_gel_svg_with_options},
+    pool_gel::{
+        GelSampleInput, GelSampleMember, PoolGelLane, build_serial_gel_layout, export_pool_gel_svg,
+        export_pool_gel_svg_with_options,
+    },
     primerbank::PrimerBankSearchRequest,
     protease::{Protease, normalize_protease_name_token},
     protocol_cartoon::ProtocolCartoonTemplateBindings,
@@ -817,6 +820,7 @@ const OLIGO_ORDER_FORM_SCHEMA: &str = "gentle.oligo_order_form.v1";
 const CDNA_ASSAY_TEST_REPORT_SCHEMA: &str = "gentle.cdna_assay_test_report.v1";
 const EXPERIMENTAL_ASSAY_HANDOFF_SCHEMA: &str = "gentle.experimental_assay_handoff.v1";
 const EXPERIMENTAL_ASSAY_CARD_SCHEMA: &str = "gentle.experimental_assay_card.v1";
+const EXPERIMENTAL_ASSAY_VIRTUAL_GEL_SCHEMA: &str = "gentle.experimental_assay_virtual_gel.v1";
 const EXPERIMENTAL_ASSAY_READINESS_POLICY_SCHEMA: &str =
     "gentle.experimental_assay_readiness_policy.v1";
 pub const PRIMER_VARIANT_EVIDENCE_SCHEMA: &str = "gentle.primer_variant_evidence.v1";
@@ -4556,6 +4560,14 @@ pub enum Operation {
         path: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         order_table_path: Option<String>,
+        /// Optional deterministic virtual-gel projection. Each assay card is
+        /// rendered as one comparable sample lane under shared conditions.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        virtual_gel_svg_path: Option<String>,
+        #[serde(default)]
+        virtual_gel_ladders: Vec<String>,
+        #[serde(default)]
+        virtual_gel_render_options: PoolGelRenderOptions,
     },
     TestCdnaQpcrFasta {
         #[serde(default)]

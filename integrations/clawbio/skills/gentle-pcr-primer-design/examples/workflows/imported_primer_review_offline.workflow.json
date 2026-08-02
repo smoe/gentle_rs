@@ -1,0 +1,78 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "clawbio_imported_primer_review_offline",
+  "title": "Imported primer review without implied validation",
+  "summary": "Loads a synthetic cDNA locus and evaluates one externally supplied primer pair through GENtle's existing import and cDNA-assay machinery. The source claim remains provenance only, genomic specificity remains not_run, and the result is not an order-readiness decision.",
+  "test_mode": "always",
+  "required_files": [
+    "docs/examples/assets/cdna_assay_demo.gb",
+    "integrations/clawbio/skills/gentle-pcr-primer-design/examples/synthetic_imported_primer_pairs.json"
+  ],
+  "tags": [
+    "primer",
+    "import",
+    "cdna",
+    "specificity-not-run",
+    "offline",
+    "synthetic"
+  ],
+  "workflow": {
+    "run_id": "clawbio_imported_primer_review_offline",
+    "ops": [
+      {
+        "LoadFile": {
+          "path": "docs/examples/assets/cdna_assay_demo.gb",
+          "as_id": "cdna_assay_demo"
+        }
+      },
+      {
+        "ImportExternalPrimerPairs": {
+          "request": {
+            "report_id": "synthetic_imported_primer_review",
+            "seq_id": "cdna_assay_demo",
+            "source_feature_id": 2,
+            "transcript_id": "TX1",
+            "min_amplicon_bp": 20,
+            "max_amplicon_bp": 200,
+            "max_mismatches": 0,
+            "require_3prime_exact_bases": 6,
+            "transcript_order": "transcript_id",
+            "transcript_map_coordinate_mode": "genomic_aligned",
+            "artifact_output_dir": "artifacts/imported_primer_review",
+            "materialize_products": false,
+            "product_gel_ladders": [],
+            "batch": {
+              "schema": "gentle.external_primer_pair_batch.v1",
+              "batch_id": "synthetic_cdna_assay_primer_pair",
+              "pairs": [
+                {
+                  "source_kind": "laboratory",
+                  "provider": "Synthetic GENtle fixture",
+                  "catalogue_id": "",
+                  "source_url": "",
+                  "claimed_accession": "TX1",
+                  "aliases": [
+                    "synthetic_TX1_pair"
+                  ],
+                  "forward_sequence_5_to_3": "AAACCC",
+                  "reverse_sequence_5_to_3": "CCCAAA",
+                  "claimed_target": "Synthetic TX1 cDNA tutorial target",
+                  "validation_claims": [],
+                  "annotations": {
+                    "fixture_status": "synthetic_only"
+                  }
+                }
+              ]
+            },
+            "input_provenance": {
+              "input_format": "json",
+              "source_path": "integrations/clawbio/skills/gentle-pcr-primer-design/examples/synthetic_imported_primer_pairs.json",
+              "source_sha256": "sha256:d2e4b6a86306eef04a979a69597ee4824c12bbbcc0963da2580fc252924418e8"
+            }
+          },
+          "path": "artifacts/imported_primer_review.report.json"
+        }
+      }
+    ]
+  }
+}

@@ -146,6 +146,38 @@ writes reproducibility bundles. It should surface shared capabilities,
 suggested actions, and UI-intent handoffs without creating ClawBio-only biology
 logic.
 
+Every wrapper run carries a topic-neutral, content-bound provider execution
+receipt. The receipt binds the resolved request, immutable inputs, mutable
+state before and after execution, wrapper/runtime identity, command outcomes,
+native result identifiers/status fields, and emitted artifacts. It is not a
+discussion ledger, permission record, participant claim, freshness model, or
+scientific interpretation. External systems may retain the receipt, but own
+their own request identity, policy, and interpretation records.
+
+When a caller needs a policy-aware analysis-run record, the provider receipt
+and caller-owned run remain two records joined by content hashes rather than
+one shared mutable object. A post-run skill adapter may prepare a typed intake
+packet, but it must not discover or mutate the caller's store. The caller must
+revalidate current references and permissions, recompute the request digest,
+and assign replay, dependency, and freshness state through its owning commands.
+
+Descriptor-only skills may delegate to the generic runtime only through an
+explicit versioned contract whose co-deployed catalog, descriptor, selected
+route, and plan step verify before execution. This records the route that was
+selected; it does not claim deterministic replay of natural-language routing.
+Wrapper execution outcome and native biological status remain separate, so a
+successfully computed scientific `fail` is neither an execution failure nor a
+pass.
+
+When a ClawBio presentation combines scientific artifacts, the raw GENtle
+result remains authoritative. Strict-attribution presentations must label
+executable-derived statements separately from wrapper presentation, caller
+inputs, named external tools, and unverified prose. Every executable-derived
+summary requires an exact native-result pointer or scope, content hash, and
+named deterministic projection in a machine-readable claim/artifact ledger.
+Wrapper-authored graphics may arrange GENtle artifacts but must not recalculate
+or upgrade their scientific content.
+
 ## DEC-016: External AI/Automation Deployment
 
 Status: active

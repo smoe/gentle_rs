@@ -1,0 +1,1096 @@
+{
+  "schema": "clawbio.skill_intents.v1",
+  "skill": "gentle-pcr-primer-design",
+  "aliases": [
+    "gentle primers",
+    "gentle pcr",
+    "gentle primer design",
+    "pcr primer design",
+    "primer design"
+  ],
+  "routes": [
+    {
+      "intent_id": "primer_design_preflight",
+      "description": "Check the deterministic GENtle primer-design backend and Primer3 readiness before assay work.",
+      "trigger_terms": [
+        "primer preflight",
+        "primer3 preflight",
+        "pcr backend status",
+        "qpcr backend status",
+        "taqman backend status",
+        "can gentle design primers"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_primer_preflight.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "conventional_pcr_design",
+      "description": "Run one caller-reviewed DesignPrimerPairs request through GENtle; biological ROI and design assumptions must already be explicit in the request JSON.",
+      "trigger_terms": [
+        "primer design",
+        "pcr design",
+        "conventional pcr design",
+        "simple pcr",
+        "simplest pcr",
+        "continue pcr",
+        "pcr primer design",
+        "design pcr primers",
+        "pcr constraints",
+        "selected region pcr",
+        "run pcr primer design payload",
+        "design primers from json",
+        "design pcr primers from payload",
+        "execute designprimerpairs",
+        "primer design operation"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "requires_confirmation": true,
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "claim_attribution_mode": "strict",
+            "presentation_profile": "pcr_primer_design",
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.3.0", "intent_id": "conventional_pcr_design", "plan_step_index": 0},
+            "mode": "shell",
+            "state_path": ".gentle_state.json",
+            "shell_line": "primers design @{request_path} --backend {backend}",
+            "timeout_secs": 300
+          },
+          "slots": {
+            "request_path": {
+              "required": true,
+              "description": "Path to a reviewed DesignPrimerPairs operation/request JSON",
+              "pattern": "(?:request|operation)(?:[_ -]?path)?[=: ]+([A-Za-z0-9_./-]+\\.json)",
+              "ignore_case": true
+            },
+            "backend": {
+              "required": false,
+              "description": "GENtle primer backend",
+              "choices": [
+                "auto",
+                "internal",
+                "primer3"
+              ],
+              "default": "auto"
+            }
+          },
+          "confirmation": {
+            "required": true,
+            "reason": "Primer design persists a report and requires review of the stated biological ROI and constraints."
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "qpcr_taqman_design",
+      "description": "Run one caller-reviewed DesignQpcrAssays request through GENtle for a primer-plus-probe TaqMan-style assay.",
+      "trigger_terms": [
+        "qpcr design",
+        "taqman design",
+        "design taqman assay",
+        "run qpcr design payload",
+        "run taqman design payload",
+        "design qpcr from json",
+        "execute designqpcrassays",
+        "probe based qpcr design"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "requires_confirmation": true,
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "claim_attribution_mode": "strict",
+            "presentation_profile": "pcr_primer_design",
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.3.0", "intent_id": "qpcr_taqman_design", "plan_step_index": 0},
+            "mode": "shell",
+            "state_path": ".gentle_state.json",
+            "shell_line": "primers design-qpcr @{request_path} --backend {backend}",
+            "timeout_secs": 300
+          },
+          "slots": {
+            "request_path": {
+              "required": true,
+              "description": "Path to a reviewed DesignQpcrAssays operation/request JSON",
+              "pattern": "(?:request|operation)(?:[_ -]?path)?[=: ]+([A-Za-z0-9_./-]+\\.json)",
+              "ignore_case": true
+            },
+            "backend": {
+              "required": false,
+              "description": "GENtle primer backend",
+              "choices": [
+                "auto",
+                "internal",
+                "primer3"
+              ],
+              "default": "auto"
+            }
+          },
+          "confirmation": {
+            "required": true,
+            "reason": "qPCR design persists a report and requires review of primer, probe, target, and measurement assumptions."
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "transcript_assay_panel_design",
+      "description": "Run a reviewed DesignTranscriptAssayPanel request for endpoint RT-PCR, junction-aware SYBR, or TaqMan assays while retaining the complete transcript product matrix and separately recording RT priming and 5-prime cap-capture assumptions.",
+      "trigger_terms": [
+        "endpoint rt-pcr panel",
+        "endpoint rt pcr panel",
+        "isoform pcr panel",
+        "transcript assay panel",
+        "transcript pcr panel",
+        "oligo-dt cdna primer design",
+        "oligo dt cdna primer design",
+        "cap-dependent 5-prime race",
+        "cap dependent 5 prime race",
+        "rlm-race primer design",
+        "full-length cdna validation",
+        "mrna cap 5-prime assay",
+        "template-switching cdna validation",
+        "sybr junction assay",
+        "junction-aware sybr",
+        "taqman transcript panel",
+        "transcript qpcr panel",
+        "isoform qpcr panel",
+        "characteristic qpcr primers",
+        "transcript-specific qpcr primers",
+        "shared reverse probe qpcr",
+        "qpcr primer table",
+        "forward primers per transcript",
+        "exon junction taqman",
+        "short junction validation assay"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "requires_confirmation": true,
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "claim_attribution_mode": "strict",
+            "presentation_profile": "pcr_primer_design",
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.3.0", "intent_id": "transcript_assay_panel_design", "plan_step_index": 0},
+            "input_claims": [
+              "RT priming chemistry: {cdna_priming_strategy}.",
+              "5-prime capture method: {five_prime_capture_method}.",
+              "5-prime completeness evidence or protocol: {five_prime_capture_evidence}."
+            ],
+            "mode": "shell",
+            "state_path": ".gentle_state.json",
+            "shell_line": "primers design-transcript-assay-panel @{operation_path} --backend {backend}",
+            "timeout_secs": 600
+          },
+          "slots": {
+            "operation_path": {
+              "required": true,
+              "description": "Path to a reviewed DesignTranscriptAssayPanel operation JSON",
+              "pattern": "(?:request|operation)(?:[_ -]?path)?[=: ]+([A-Za-z0-9_./-]+\\.json)",
+              "ignore_case": true
+            },
+            "backend": {
+              "required": false,
+              "description": "GENtle primer backend",
+              "choices": [
+                "auto",
+                "internal",
+                "primer3"
+              ],
+              "default": "auto"
+            },
+            "cdna_priming_strategy": {
+              "required": false,
+              "description": "Declared reverse-transcription priming chemistry; it must agree with cdna_synthesis in the reviewed operation",
+              "choices": [
+                "unspecified",
+                "oligo_dt",
+                "random_hexamers",
+                "gene_specific",
+                "mixed",
+                "other"
+              ],
+              "default": "unspecified"
+            },
+            "five_prime_capture_method": {
+              "required": false,
+              "description": "Caller-declared cap-dependent or 5-prime capture method, recorded as input provenance rather than a GENtle finding",
+              "choices": [
+                "none",
+                "cap_dependent_5prime_race",
+                "rlm_race",
+                "cap_trapping",
+                "oligo_capping",
+                "cage",
+                "template_switching",
+                "other"
+              ],
+              "default": "none"
+            },
+            "five_prime_capture_evidence": {
+              "required": false,
+              "description": "Protocol, control, product-sequencing, or other evidence supporting the caller's 5-prime completeness claim",
+              "default": "not supplied"
+            }
+          },
+          "confirmation": {
+            "required": true,
+            "reason": "Transcript-panel design persists assays and requires review of transcript scope, cDNA synthesis, junction evidence, and product-size policy."
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "imported_primer_review",
+      "description": "Import supplied primer pairs and let GENtle recompute cDNA products, QC, provenance, and optional specificity without treating source claims as validation.",
+      "trigger_terms": [
+        "import primer pairs",
+        "imported primer review",
+        "review imported primers",
+        "review established primers",
+        "review literature primers",
+        "review lab primers",
+        "test cdna pcr",
+        "test cdna qpcr",
+        "cdna pcr test",
+        "cdna qpcr test",
+        "test qpcr assay",
+        "qpcr assay test",
+        "cDNA PCR qPCR",
+        "transcript cdna assay",
+        "direct cdna pcr test",
+        "test these cdna pcr primers",
+        "check cdna pcr primers",
+        "validate rt-pcr primers",
+        "rt pcr primer test",
+        "direct cdna qpcr test",
+        "direct taqman test",
+        "test these taqman primers",
+        "test these qpcr primers and probe",
+        "validate cdna taqman assay",
+        "check taqman probe",
+        "cdna pcr",
+        "cdna qpcr",
+        "rt-pcr",
+        "taqman assay test"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "requires_confirmation": true,
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "claim_attribution_mode": "strict",
+            "presentation_profile": "pcr_primer_design",
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.3.0", "intent_id": "imported_primer_review", "plan_step_index": 0},
+            "mode": "shell",
+            "state_path": ".gentle_state.json",
+            "shell_line": "primers import-external-pairs {input_path} {seq_id} {feature_id} --format auto --path {output_path}",
+            "input_bindings": [{"binding_id": "external_primer_pairs", "path": "{input_path}", "role": "external_primer_pair_source"}],
+            "timeout_secs": 300
+          },
+          "slots": {
+            "input_path": {
+              "required": true,
+              "description": "JSON or TSV file containing supplied primer pairs and provenance",
+              "pattern": "(?:input|pairs|file)(?:[_ -]?path)?[=: ]+([A-Za-z0-9_./-]+\\.(?:json|tsv))",
+              "ignore_case": true
+            },
+            "seq_id": {
+              "required": true,
+              "description": "GENtle sequence id containing the annotated target transcripts",
+              "pattern": "(?:sequence|seq(?:uence)?[_ -]?id)[=: ]+([A-Za-z0-9_.:-]+)",
+              "ignore_case": true
+            },
+            "feature_id": {
+              "required": true,
+              "description": "Zero-based source transcript/gene feature id",
+              "pattern": "(?:feature(?:[_ -]?id)?)[=: ]+(\\d+)",
+              "ignore_case": true
+            },
+            "output_path": {
+              "required": false,
+              "description": "Output report path",
+              "pattern": "(?:output|report)(?:[_ -]?path)?[=: ]+([A-Za-z0-9_./-]+\\.json)",
+              "ignore_case": true,
+              "default": "analysis/imported_primer_review.json"
+            }
+          },
+          "confirmation": {
+            "required": true,
+            "reason": "Import persists a provenance-bearing assessment; supplied validation claims remain untrusted annotations."
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "genomic_specificity_plan",
+      "description": "Prepare a non-executing specificity handoff against one prepared genomic-DNA reference; execution and finalization remain separate steps.",
+      "trigger_terms": [
+        "genomic primer specificity",
+        "plan genomic primer specificity",
+        "genomic dna primer specificity",
+        "primer genomic carryover plan"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "claim_attribution_mode": "strict",
+            "presentation_profile": "pcr_primer_design",
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.3.0", "intent_id": "genomic_specificity_plan", "plan_step_index": 0},
+            "mode": "shell",
+            "state_path": ".gentle_state.json",
+            "shell_line": "primers specificity-plan {report_id} --pair-rank {pair_rank} --target-genome {genomic_reference_id} --output-dir {genomic_output_dir}",
+            "timeout_secs": 300
+          },
+          "slots": {
+            "report_id": {
+              "required": true,
+              "description": "Persisted primer-design report id",
+              "pattern": "(?:report(?:[_ -]?id)?)[=: ]+([A-Za-z0-9_.:-]+)",
+              "ignore_case": true
+            },
+            "pair_rank": {
+              "required": false,
+              "description": "One-based primer-pair rank",
+              "pattern": "(?:pair(?:[_ -]?rank)?|rank)[=: ]+(\\d+)",
+              "ignore_case": true,
+              "default": "1"
+            },
+            "genomic_reference_id": {
+              "required": true,
+              "description": "Prepared genomic-DNA reference/index id",
+              "pattern": "(?:genomic(?:[_ -]?(?:reference|index))?)[=: ]+([A-Za-z0-9_.:-]+)",
+              "ignore_case": true
+            },
+            "genomic_output_dir": {
+              "required": false,
+              "description": "Genomic specificity handoff directory",
+              "pattern": "(?:genomic[_ -]?output)[=: ]+([A-Za-z0-9_./-]+)",
+              "ignore_case": true,
+              "default": "analysis/primer_specificity/genomic_dna"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "transcriptome_specificity_plan",
+      "description": "Prepare a non-executing specificity handoff against one prepared transcriptome/cDNA reference; execution and finalization remain separate steps.",
+      "trigger_terms": [
+        "transcriptome primer specificity",
+        "cdna primer specificity",
+        "plan transcriptome primer specificity",
+        "transcript cross-amplification plan"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "claim_attribution_mode": "strict",
+            "presentation_profile": "pcr_primer_design",
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.3.0", "intent_id": "transcriptome_specificity_plan", "plan_step_index": 0},
+            "mode": "shell",
+            "state_path": ".gentle_state.json",
+            "shell_line": "primers specificity-plan {report_id} --pair-rank {pair_rank} --target-genome {transcriptome_reference_id} --output-dir {transcriptome_output_dir}",
+            "timeout_secs": 300
+          },
+          "slots": {
+            "report_id": {
+              "required": true,
+              "description": "Persisted primer-design report id",
+              "pattern": "(?:report(?:[_ -]?id)?)[=: ]+([A-Za-z0-9_.:-]+)",
+              "ignore_case": true
+            },
+            "pair_rank": {
+              "required": false,
+              "description": "One-based primer-pair rank",
+              "pattern": "(?:pair(?:[_ -]?rank)?|rank)[=: ]+(\\d+)",
+              "ignore_case": true,
+              "default": "1"
+            },
+            "transcriptome_reference_id": {
+              "required": true,
+              "description": "Prepared transcriptome/cDNA reference/index id",
+              "pattern": "(?:transcriptome|cdna)(?:[_ -]?(?:reference|index))?[=: ]+([A-Za-z0-9_.:-]+)",
+              "ignore_case": true
+            },
+            "transcriptome_output_dir": {
+              "required": false,
+              "description": "Transcriptome specificity handoff directory",
+              "pattern": "(?:transcriptome|cdna)[_ -]?output[=: ]+([A-Za-z0-9_./-]+)",
+              "ignore_case": true,
+              "default": "analysis/primer_specificity/transcriptome_cdna"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "dual_space_specificity_plan",
+      "description": "Prepare separate non-executing BLAST handoffs for genomic-DNA carryover/off-target evidence and transcriptome/cDNA cross-amplification evidence.",
+      "trigger_terms": [
+        "primer specificity",
+        "plan genomic and transcriptome primer specificity",
+        "plan genomic and cdna primer specificity",
+        "dual-space primer specificity",
+        "genomic carryover and transcriptome specificity",
+        "primer specificity handoff",
+        "plan primer blast"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "id": "genomic_dna_specificity_plan",
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "claim_attribution_mode": "strict",
+            "presentation_profile": "pcr_primer_design",
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.3.0", "intent_id": "dual_space_specificity_plan", "plan_step_index": 0},
+            "mode": "shell",
+            "state_path": ".gentle_state.json",
+            "shell_line": "primers specificity-plan {report_id} --pair-rank {pair_rank} --target-genome {genomic_reference_id} --output-dir {genomic_output_dir}",
+            "timeout_secs": 300
+          },
+          "slots": {
+            "report_id": {
+              "required": true,
+              "description": "Persisted primer-design report id",
+              "pattern": "(?:report(?:[_ -]?id)?)[=: ]+([A-Za-z0-9_.:-]+)",
+              "ignore_case": true
+            },
+            "pair_rank": {
+              "required": false,
+              "description": "One-based primer-pair rank",
+              "pattern": "(?:pair(?:[_ -]?rank)?|rank)[=: ]+(\\d+)",
+              "ignore_case": true,
+              "default": "1"
+            },
+            "genomic_reference_id": {
+              "required": true,
+              "description": "Prepared genomic-DNA reference/index id",
+              "pattern": "(?:genomic(?:[_ -]?(?:reference|index))?)[=: ]+([A-Za-z0-9_.:-]+)",
+              "ignore_case": true
+            },
+            "genomic_output_dir": {
+              "required": false,
+              "description": "Genomic specificity handoff directory",
+              "pattern": "(?:genomic[_ -]?output)[=: ]+([A-Za-z0-9_./-]+)",
+              "ignore_case": true,
+              "default": "analysis/primer_specificity/genomic_dna"
+            }
+          }
+        },
+        {
+          "id": "transcriptome_cdna_specificity_plan",
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "claim_attribution_mode": "strict",
+            "presentation_profile": "pcr_primer_design",
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.3.0", "intent_id": "dual_space_specificity_plan", "plan_step_index": 1},
+            "mode": "shell",
+            "state_path": ".gentle_state.json",
+            "shell_line": "primers specificity-plan {report_id} --pair-rank {pair_rank} --target-genome {transcriptome_reference_id} --output-dir {transcriptome_output_dir}",
+            "timeout_secs": 300
+          },
+          "slots": {
+            "report_id": {
+              "required": true,
+              "description": "Persisted primer-design report id",
+              "pattern": "(?:report(?:[_ -]?id)?)[=: ]+([A-Za-z0-9_.:-]+)",
+              "ignore_case": true
+            },
+            "pair_rank": {
+              "required": false,
+              "description": "One-based primer-pair rank",
+              "pattern": "(?:pair(?:[_ -]?rank)?|rank)[=: ]+(\\d+)",
+              "ignore_case": true,
+              "default": "1"
+            },
+            "transcriptome_reference_id": {
+              "required": true,
+              "description": "Prepared transcriptome/cDNA reference/index id",
+              "pattern": "(?:transcriptome|cdna)(?:[_ -]?(?:reference|index))?[=: ]+([A-Za-z0-9_.:-]+)",
+              "ignore_case": true
+            },
+            "transcriptome_output_dir": {
+              "required": false,
+              "description": "Transcriptome specificity handoff directory",
+              "pattern": "(?:transcriptome|cdna)[_ -]?output[=: ]+([A-Za-z0-9_./-]+)",
+              "ignore_case": true,
+              "default": "analysis/primer_specificity/transcriptome_cdna"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "collection_primer_specificity",
+      "description": "Run the existing engine-owned collection lift for primer specificity across explicitly selected project sequences.",
+      "trigger_terms": [
+        "multi-gene primer specificity",
+        "collection primer specificity",
+        "map primer specificity across genes",
+        "batch primer specificity",
+        "panel-wide primer specificity"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "requires_confirmation": true,
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "claim_attribution_mode": "strict",
+            "presentation_profile": "pcr_primer_design",
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.3.0", "intent_id": "collection_primer_specificity", "plan_step_index": 0},
+            "mode": "shell",
+            "state_path": ".gentle_state.json",
+            "shell_line": "collections run primer-specificity --seq-ids {seq_ids} --pair-rank {pair_rank} --target-genome {target_reference_id} --path {output_path}",
+            "timeout_secs": 1800
+          },
+          "slots": {
+            "seq_ids": {
+              "required": true,
+              "description": "Comma-separated project sequence ids, each resolving to one persisted primer report",
+              "pattern": "(?:sequences|seq[_ -]?ids)[=: ]+([A-Za-z0-9_.:,-]+)",
+              "ignore_case": true
+            },
+            "pair_rank": {
+              "required": false,
+              "description": "One-based pair rank",
+              "pattern": "(?:pair(?:[_ -]?rank)?|rank)[=: ]+(\\d+)",
+              "ignore_case": true,
+              "default": "1"
+            },
+            "target_reference_id": {
+              "required": true,
+              "description": "Prepared reference id for this explicitly named target space",
+              "pattern": "(?:target|reference|index)(?:[_ -]?id)?[=: ]+([A-Za-z0-9_.:-]+)",
+              "ignore_case": true
+            },
+            "output_path": {
+              "required": false,
+              "description": "Collection report output path",
+              "pattern": "(?:output|report)(?:[_ -]?path)?[=: ]+([A-Za-z0-9_./-]+\\.json)",
+              "ignore_case": true,
+              "default": "analysis/collection_primer_specificity.json"
+            }
+          },
+          "confirmation": {
+            "required": true,
+            "reason": "Collection specificity may launch many local searches; confirm the member set and prepared target space first."
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "compose_assay_routine",
+      "description": "Compose existing isoform evidence and persisted common-control, junction, and endpoint panels into one digest-bound review report without rerunning design or specificity.",
+      "trigger_terms": [
+        "compose gene assay routine",
+        "compose primer evidence routine",
+        "combine common control junction and endpoint assays",
+        "evidence-backed assay routine",
+        "compound primer report"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "claim_attribution_mode": "strict",
+            "presentation_profile": "pcr_primer_design",
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.3.0", "intent_id": "compose_assay_routine", "plan_step_index": 0},
+            "mode": "shell",
+            "state_path": ".gentle_state.json",
+            "shell_line": "primers compose-gene-assay-routine @{request_path} --path {output_path}",
+            "timeout_secs": 300
+          },
+          "slots": {
+            "request_path": {
+              "required": true,
+              "description": "Path to a reviewed gene-assay-routine composition request",
+              "pattern": "(?:request)(?:[_ -]?path)?[=: ]+([A-Za-z0-9_./-]+\\.json)",
+              "ignore_case": true
+            },
+            "output_path": {
+              "required": false,
+              "description": "Compound report path",
+              "pattern": "(?:output|report)(?:[_ -]?path)?[=: ]+([A-Za-z0-9_./-]+\\.json)",
+              "ignore_case": true,
+              "default": "analysis/gene_assay_routine.json"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "experimental_assay_report",
+      "description": "Assemble one provenance-bound GENtle PCR design report from a persisted transcript panel, including per-pair readiness cards, an order table, and a shared-condition virtual gel with one lane per primer pair.",
+      "trigger_terms": [
+        "assemble pcr design report",
+        "build primer evidence report",
+        "experimental assay report",
+        "primer pair comparison gel",
+        "virtual gel for primer panel",
+        "primer panel virtual gel",
+        "compare primer pairs on gel"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "claim_attribution_mode": "strict",
+            "presentation_profile": "pcr_primer_design",
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.3.0", "intent_id": "experimental_assay_report", "plan_step_index": 0},
+            "mode": "shell",
+            "state_path": ".gentle_state.json",
+            "shell_line": "primers experimental-handoff {panel_report_id} --path {output_prefix}.json --order-table {output_prefix}.order.tsv --gel-svg {output_prefix}.gel.svg",
+            "expected_artifacts": [
+              "{output_prefix}.json",
+              "{output_prefix}.order.tsv",
+              "{output_prefix}.gel.svg"
+            ],
+            "timeout_secs": 600
+          },
+          "slots": {
+            "panel_report_id": {
+              "required": true,
+              "description": "Persisted gentle.transcript_assay_panel.v2 report id",
+              "pattern": "(?:panel(?:[_ -]?report)?(?:[_ -]?id)?)[=: ]+([A-Za-z0-9_.:-]+)",
+              "ignore_case": true
+            },
+            "output_prefix": {
+              "required": false,
+              "description": "Shared output prefix for the JSON, order table, and virtual gel",
+              "pattern": "(?:output(?:[_ -]?prefix)?)[=: ]+([A-Za-z0-9_./-]+)",
+              "ignore_case": true,
+              "default": "artifacts/experimental_assay_handoff"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "primer_report_list",
+      "description": "List persisted GENtle conventional-PCR and specificity reports without rerunning design or BLAST.",
+      "trigger_terms": [
+        "primer report",
+        "list primer reports",
+        "list pcr primer reports",
+        "show available primer reports",
+        "primer reports"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "claim_attribution_mode": "strict",
+            "presentation_profile": "pcr_primer_design",
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.3.0", "intent_id": "primer_report_list", "plan_step_index": 0},
+            "mode": "shell",
+            "state_path": ".gentle_state.json",
+            "shell_line": "primers list-reports",
+            "timeout_secs": 180
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "primer_report_show",
+      "description": "Inspect one persisted GENtle conventional-PCR or specificity report without rerunning design or BLAST.",
+      "trigger_terms": [
+        "show primer report",
+        "show pcr primer report",
+        "inspect primer report",
+        "primer report details"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "claim_attribution_mode": "strict",
+            "presentation_profile": "pcr_primer_design",
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.3.0", "intent_id": "primer_report_show", "plan_step_index": 0},
+            "mode": "shell",
+            "state_path": ".gentle_state.json",
+            "shell_line": "primers show-report {report_id}",
+            "timeout_secs": 180
+          },
+          "slots": {
+            "report_id": {
+              "required": true,
+              "description": "Persisted primer or specificity report id",
+              "pattern": "(?:report(?:[_ -]?id)?)[=: ]+([A-Za-z0-9_.:-]+)",
+              "ignore_case": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "primer_report_export",
+      "description": "Export one persisted GENtle conventional-PCR or specificity report without rerunning design or BLAST.",
+      "trigger_terms": [
+        "export primer report",
+        "export pcr primer report",
+        "save primer report",
+        "primer report json"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "claim_attribution_mode": "strict",
+            "presentation_profile": "pcr_primer_design",
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.3.0", "intent_id": "primer_report_export", "plan_step_index": 0},
+            "mode": "shell",
+            "state_path": ".gentle_state.json",
+            "shell_line": "primers export-report {report_id} {output_path}",
+            "timeout_secs": 180
+          },
+          "slots": {
+            "report_id": {
+              "required": true,
+              "description": "Persisted primer or specificity report id",
+              "pattern": "(?:report(?:[_ -]?id)?)[=: ]+([A-Za-z0-9_.:-]+)",
+              "ignore_case": true
+            },
+            "output_path": {
+              "required": false,
+              "description": "JSON export path",
+              "pattern": "(?:output|export)(?:[_ -]?path)?[=: ]+([A-Za-z0-9_./-]+\\.json)",
+              "ignore_case": true,
+              "default": "analysis/primer_report.json"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "qpcr_report_list",
+      "description": "List persisted GENtle qPCR/TaqMan reports without rerunning design.",
+      "trigger_terms": [
+        "qpcr report",
+        "list qpcr reports",
+        "list taqman reports",
+        "show available qpcr reports",
+        "qpcr reports",
+        "taqman reports"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "claim_attribution_mode": "strict",
+            "presentation_profile": "pcr_primer_design",
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.3.0", "intent_id": "qpcr_report_list", "plan_step_index": 0},
+            "mode": "shell",
+            "state_path": ".gentle_state.json",
+            "shell_line": "primers list-qpcr-reports",
+            "timeout_secs": 180
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "qpcr_report_show",
+      "description": "Inspect one persisted GENtle qPCR/TaqMan report without rerunning design.",
+      "trigger_terms": [
+        "show qpcr report",
+        "show taqman report",
+        "inspect qpcr report",
+        "taqman report details"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "claim_attribution_mode": "strict",
+            "presentation_profile": "pcr_primer_design",
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.3.0", "intent_id": "qpcr_report_show", "plan_step_index": 0},
+            "mode": "shell",
+            "state_path": ".gentle_state.json",
+            "shell_line": "primers show-qpcr-report {report_id}",
+            "timeout_secs": 180
+          },
+          "slots": {
+            "report_id": {
+              "required": true,
+              "description": "Persisted qPCR report id",
+              "pattern": "(?:report(?:[_ -]?id)?)[=: ]+([A-Za-z0-9_.:-]+)",
+              "ignore_case": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "qpcr_report_export",
+      "description": "Export one persisted GENtle qPCR/TaqMan report without rerunning design.",
+      "trigger_terms": [
+        "export qpcr report",
+        "export taqman report",
+        "save qpcr report",
+        "taqman report json"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "claim_attribution_mode": "strict",
+            "presentation_profile": "pcr_primer_design",
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.3.0", "intent_id": "qpcr_report_export", "plan_step_index": 0},
+            "mode": "shell",
+            "state_path": ".gentle_state.json",
+            "shell_line": "primers export-qpcr-report {report_id} {output_path}",
+            "timeout_secs": 180
+          },
+          "slots": {
+            "report_id": {
+              "required": true,
+              "description": "Persisted qPCR report id",
+              "pattern": "(?:report(?:[_ -]?id)?)[=: ]+([A-Za-z0-9_.:-]+)",
+              "ignore_case": true
+            },
+            "output_path": {
+              "required": false,
+              "description": "JSON export path",
+              "pattern": "(?:output|export)(?:[_ -]?path)?[=: ]+([A-Za-z0-9_./-]+\\.json)",
+              "ignore_case": true,
+              "default": "analysis/qpcr_report.json"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "pcr_protocol_cartoon",
+      "description": "Render a reviewed PCR/qPCR protocol cartoon through GENtle's existing deterministic renderer.",
+      "trigger_terms": [
+        "pcr protocol cartoon",
+        "render pcr cartoon",
+        "qpcr protocol cartoon",
+        "taqman protocol cartoon",
+        "show taqman graphic",
+        "probe qpcr graphic"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "claim_attribution_mode": "strict",
+            "presentation_profile": "pcr_primer_design",
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.3.0", "intent_id": "pcr_protocol_cartoon", "plan_step_index": 0},
+            "mode": "shell",
+            "shell_line": "protocol-cartoon render-svg {protocol_id} {output_path}",
+            "timeout_secs": 300
+          },
+          "slots": {
+            "protocol_id": {
+              "required": true,
+              "description": "Existing GENtle PCR/qPCR protocol-cartoon id",
+              "pattern": "(?:protocol(?:[_ -]?id)?)[=: ]+([A-Za-z0-9_.:-]+)",
+              "ignore_case": true
+            },
+            "output_path": {
+              "required": false,
+              "description": "SVG output path",
+              "pattern": "(?:output)(?:[_ -]?path)?[=: ]+([A-Za-z0-9_./-]+\\.svg)",
+              "ignore_case": true,
+              "default": "artifacts/pcr_protocol.svg"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "cdna_product_gel_workflow",
+      "description": "Run a reviewed GENtle workflow that evaluates cDNA products and renders their gel; the skill does not infer the assay or products itself.",
+      "trigger_terms": [
+        "show non-specific pcr products on a gel",
+        "show nonspecific pcr products on a gel",
+        "visualize non-specific pcr products",
+        "visualize nonspecific pcr products",
+        "pcr products gel",
+        "qpcr products gel",
+        "cdna product gel",
+        "show cdna pcr products on gel",
+        "show cdna qpcr products on gel",
+        "multiple pcr products gel",
+        "non-specific pcr products",
+        "nonspecific pcr products",
+        "show pcr products on gel"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "requires_confirmation": true,
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "claim_attribution_mode": "strict",
+            "presentation_profile": "pcr_primer_design",
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.3.0", "intent_id": "cdna_product_gel_workflow", "plan_step_index": 0},
+            "mode": "workflow",
+            "state_path": ".gentle_state.json",
+            "workflow_path": "{workflow_path}",
+            "timeout_secs": 300
+          },
+          "slots": {
+            "workflow_path": {
+              "required": true,
+              "description": "Path to a reviewed GENtle workflow containing the cDNA assay and gel operations",
+              "pattern": "(?:workflow)(?:[_ -]?path)?[=: ]+([A-Za-z0-9_./-]+\\.json)",
+              "ignore_case": true
+            }
+          },
+          "confirmation": {
+            "required": true,
+            "reason": "The selected workflow may persist or materialize PCR products; review its operations before execution."
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "offline_conventional_pcr_demo",
+      "description": "Run the committed synthetic conventional-PCR design workflow only when the user explicitly requests a demo.",
+      "trigger_terms": [
+        "conventional pcr primer demo",
+        "offline pcr primer demo",
+        "synthetic pcr primer example"
+      ],
+      "demo_policy": "only_when_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_conventional_pcr_offline.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "offline_patz1_transcript_panel_demo",
+      "description": "Run the committed synthetic PATZ1-like endpoint, junction-aware SYBR, and common-control workflow only when explicitly requested.",
+      "trigger_terms": [
+        "patz1 transcript primer demo",
+        "patz1 endpoint sybr demo",
+        "synthetic isoform pcr example"
+      ],
+      "demo_policy": "only_when_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_patz1_transcript_assay_offline.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "offline_imported_primer_demo",
+      "description": "Run the committed synthetic imported-primer review while retaining specificity as not_run; explicit demo intent is required.",
+      "trigger_terms": [
+        "imported primer review demo",
+        "synthetic established primer example",
+        "offline supplied primer demo"
+      ],
+      "demo_policy": "only_when_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_imported_primer_review_offline.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "specificity_plan_only_demo",
+      "description": "Show a non-executing specificity handoff request whose evidence remains not assessed until an external runner finishes and GENtle imports/finalizes it.",
+      "trigger_terms": [
+        "primer specificity plan only demo",
+        "primer blast handoff example",
+        "specificity not assessed example"
+      ],
+      "demo_policy": "only_when_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_specificity_plan_only.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "missing_primer3_preflight_demo",
+      "description": "Demonstrate an actionable missing-Primer3 diagnostic without installing or downloading anything.",
+      "trigger_terms": [
+        "missing primer3 preflight demo",
+        "primer dependency failure example",
+        "primer3 missing runtime example"
+      ],
+      "demo_policy": "only_when_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_missing_primer3_preflight.json"
+        }
+      ]
+    }
+  ]
+}

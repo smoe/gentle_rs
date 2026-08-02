@@ -3582,7 +3582,7 @@
          ],
          "path": "primers experimental-handoff",
          "summary": "Project a persisted transcript assay panel into deterministic per-pair assay cards and an order/readiness table, running the shared cDNA assay test for every selected pair.",
-         "usage": "primers experimental-handoff PANEL_REPORT_ID [--policy JSON_OR_@FILE] [--variant-evidence PATH ...] [--order-form-id ID] [--path OUTPUT.json] [--order-table OUTPUT.tsv]"
+         "usage": "primers experimental-handoff PANEL_REPORT_ID [--policy JSON_OR_@FILE] [--variant-evidence PATH ...] [--order-form-id ID] [--path OUTPUT.json] [--order-table OUTPUT.tsv] [--gel-svg OUTPUT.svg] [--gel-ladder NAME ...]"
       },
       {
          "aliases": [],

@@ -36,16 +36,17 @@ description: >-
 
   Each successful run produces a versioned ClawBio bundle with `report.md`,
   `result.json`, and reproducibility files (`commands.sh`, `environment.yml`,
-  `checksums.sha256`), plus a PNG-first preferred-artifacts set for
-  figure-producing runs. Operation-level provenance is tracked in a shared
-  lineage graph so every derived sequence is traceable to its source inputs
-  and the operations that produced it. The parser-validated boundary means
+  `execution_manifest.json`, `checksums.sha256`), plus a PNG-first
+  preferred-artifacts set for figure-producing runs. Operation-level
+  provenance is tracked in a shared lineage graph so every derived sequence is
+  traceable to its source inputs and the operations that produced it. The
+  parser-validated boundary means
   the skill never invents filesystem search, content scanning, or shell-like
   commands: unknown slash commands are rejected with structured suggestions
   rather than fabricated execution. Adversarial content in imported sequence
   records or external documents therefore cannot extend the skill's
   effective vocabulary.
-version: 0.1.0
+version: 0.2.0
 author: GENtle project
 license: MIT
 tags: [cloning, dna-design, primer-design, gibson, pcr, qpcr, cdna, genome-context, reproducibility, tfbs, restriction-sites, ensembl, protein-gel, protein-analysis, protease-digest, rna-structure, viennarna, rnapkin, bench-handoff, external-services, geneart, metabion, lineage-provenance]
@@ -268,19 +269,19 @@ metadata:
       - isoform protein 2d gel demo
       - isoelectric point demo
       - pi vs kda demo
-      - simple pcr
-      - simplest pcr
-      - continue pcr
-      - pcr primer design
-      - design pcr primers
-      - pcr constraints
-      - selected region pcr
-      - primer preflight
-      - primer3 preflight
-      - pcr backend status
-      - qpcr backend status
-      - taqman backend status
-      - can gentle design primers
+      - gentle-cloning simple pcr
+      - gentle-cloning simplest pcr
+      - gentle-cloning continue pcr
+      - gentle-cloning pcr primer design
+      - gentle-cloning design pcr primers
+      - gentle-cloning pcr constraints
+      - gentle-cloning selected region pcr
+      - gentle-cloning primer preflight
+      - gentle-cloning primer3 preflight
+      - gentle-cloning pcr backend status
+      - gentle-cloning qpcr backend status
+      - gentle-cloning taqman backend status
+      - gentle-cloning can gentle design primers
       - seed primers from feature
       - seed pcr from feature
       - pcr seed from feature
@@ -302,84 +303,84 @@ metadata:
       - transcript-aware qpcr seed
       - junction qpcr seed
       - exon junction taqman seed
-      - run pcr primer design payload
-      - design primers from json
-      - design pcr primers from payload
-      - execute designprimerpairs
-      - primer design operation
-      - run qpcr design payload
-      - run taqman design payload
-      - design qpcr from json
-      - design taqman assay
-      - execute designqpcrassays
-      - probe based qpcr design
-      - transcript qpcr panel
-      - isoform qpcr panel
-      - characteristic qpcr primers
-      - transcript-specific qpcr primers
-      - shared reverse probe qpcr
-      - qpcr primer table
-      - forward primers per transcript
-      - test cdna pcr
-      - test cdna qpcr
-      - cdna pcr test
-      - cdna qpcr test
-      - test qpcr assay
-      - qpcr assay test
-      - cdna pcr qpcr
-      - transcript cdna assay
-      - show non-specific pcr products on a gel
-      - show nonspecific pcr products on a gel
-      - visualize non-specific pcr products
-      - visualize nonspecific pcr products
-      - pcr products gel
-      - qpcr products gel
-      - cdna product gel
-      - show cdna pcr products on gel
-      - show cdna qpcr products on gel
-      - multiple pcr products gel
-      - direct cdna pcr test
-      - test these cdna pcr primers
-      - check cdna pcr primers
-      - validate rt-pcr primers
-      - rt pcr primer test
-      - direct cdna qpcr test
-      - direct taqman test
-      - test these taqman primers
-      - test these qpcr primers and probe
-      - validate cdna taqman assay
-      - check taqman probe
-      - list primer reports
-      - list pcr primer reports
-      - show available primer reports
-      - primer reports
-      - show primer report
-      - show pcr primer report
-      - inspect primer report
-      - primer report details
-      - export primer report
-      - export pcr primer report
-      - save primer report
-      - primer report json
-      - list qpcr reports
-      - list taqman reports
-      - show available qpcr reports
-      - qpcr reports
-      - taqman reports
-      - show qpcr report
-      - show taqman report
-      - inspect qpcr report
-      - taqman report details
-      - export qpcr report
-      - export taqman report
-      - save qpcr report
-      - taqman report json
-      - pcr protocol cartoon
-      - render pcr cartoon
-      - qpcr protocol cartoon
-      - taqman protocol cartoon
-      - show taqman graphic
-      - probe qpcr graphic
+      - gentle-cloning run pcr primer design payload
+      - gentle-cloning design primers from json
+      - gentle-cloning design pcr primers from payload
+      - gentle-cloning execute designprimerpairs
+      - gentle-cloning primer design operation
+      - gentle-cloning run qpcr design payload
+      - gentle-cloning run taqman design payload
+      - gentle-cloning design qpcr from json
+      - gentle-cloning design taqman assay
+      - gentle-cloning execute designqpcrassays
+      - gentle-cloning probe based qpcr design
+      - gentle-cloning transcript qpcr panel
+      - gentle-cloning isoform qpcr panel
+      - gentle-cloning characteristic qpcr primers
+      - gentle-cloning transcript-specific qpcr primers
+      - gentle-cloning shared reverse probe qpcr
+      - gentle-cloning qpcr primer table
+      - gentle-cloning forward primers per transcript
+      - gentle-cloning test cdna pcr
+      - gentle-cloning test cdna qpcr
+      - gentle-cloning cdna pcr test
+      - gentle-cloning cdna qpcr test
+      - gentle-cloning test qpcr assay
+      - gentle-cloning qpcr assay test
+      - gentle-cloning cdna pcr qpcr
+      - gentle-cloning transcript cdna assay
+      - gentle-cloning show non-specific pcr products on a gel
+      - gentle-cloning show nonspecific pcr products on a gel
+      - gentle-cloning visualize non-specific pcr products
+      - gentle-cloning visualize nonspecific pcr products
+      - gentle-cloning pcr products gel
+      - gentle-cloning qpcr products gel
+      - gentle-cloning cdna product gel
+      - gentle-cloning show cdna pcr products on gel
+      - gentle-cloning show cdna qpcr products on gel
+      - gentle-cloning multiple pcr products gel
+      - gentle-cloning direct cdna pcr test
+      - gentle-cloning test these cdna pcr primers
+      - gentle-cloning check cdna pcr primers
+      - gentle-cloning validate rt-pcr primers
+      - gentle-cloning rt pcr primer test
+      - gentle-cloning direct cdna qpcr test
+      - gentle-cloning direct taqman test
+      - gentle-cloning test these taqman primers
+      - gentle-cloning test these qpcr primers and probe
+      - gentle-cloning validate cdna taqman assay
+      - gentle-cloning check taqman probe
+      - gentle-cloning list primer reports
+      - gentle-cloning list pcr primer reports
+      - gentle-cloning show available primer reports
+      - gentle-cloning primer reports
+      - gentle-cloning show primer report
+      - gentle-cloning show pcr primer report
+      - gentle-cloning inspect primer report
+      - gentle-cloning primer report details
+      - gentle-cloning export primer report
+      - gentle-cloning export pcr primer report
+      - gentle-cloning save primer report
+      - gentle-cloning primer report json
+      - gentle-cloning list qpcr reports
+      - gentle-cloning list taqman reports
+      - gentle-cloning show available qpcr reports
+      - gentle-cloning qpcr reports
+      - gentle-cloning taqman reports
+      - gentle-cloning show qpcr report
+      - gentle-cloning show taqman report
+      - gentle-cloning inspect qpcr report
+      - gentle-cloning taqman report details
+      - gentle-cloning export qpcr report
+      - gentle-cloning export taqman report
+      - gentle-cloning save qpcr report
+      - gentle-cloning taqman report json
+      - gentle-cloning pcr protocol cartoon
+      - gentle-cloning render pcr cartoon
+      - gentle-cloning qpcr protocol cartoon
+      - gentle-cloning taqman protocol cartoon
+      - gentle-cloning show taqman graphic
+      - gentle-cloning probe qpcr graphic
       - gene panel protein gel
       - continue panel gel
       - multi gene protein gel
@@ -419,18 +420,18 @@ metadata:
       - example
       - cloning workflow
       - gibson assembly
-      - primer design
-      - pcr design
-      - qpcr design
-      - taqman design
-      - exon junction taqman
-      - cdna pcr
-      - cdna qpcr
-      - rt-pcr
-      - taqman assay test
-      - non-specific pcr products
-      - nonspecific pcr products
-      - show pcr products on gel
+      - gentle-cloning primer design
+      - gentle-cloning pcr design
+      - gentle-cloning qpcr design
+      - gentle-cloning taqman design
+      - gentle-cloning exon junction taqman
+      - gentle-cloning cdna pcr
+      - gentle-cloning cdna qpcr
+      - gentle-cloning rt-pcr
+      - gentle-cloning taqman assay test
+      - gentle-cloning non-specific pcr products
+      - gentle-cloning nonspecific pcr products
+      - gentle-cloning show pcr products on gel
       - restriction cloning pcr handoff
       - lab assistant demo
       - analyze dna sequence
@@ -1286,6 +1287,25 @@ Reporter/synthetic-biology bridge pipeline:
 | Embedded stateless inline-sequence op | JSON object | `operation.target.kind="inline_sequence"` for non-mutating direct DNA inspection | `{"FindRestrictionSites":{"target":{"kind":"inline_sequence","sequence_text":"GAATTCCCGGG"}}}` |
 | Embedded shell command | string | `shell_line` when `mode=shell` | `"genomes prepare \"Human GRCh38 Ensembl 116\" --timeout-secs 7200"` |
 | Optional reference-preparation preflight | JSON object | `ensure_reference_prepared` when the request should first confirm a local Ensembl-backed reference is prepared | `{"genome_id":"Human GRCh38 Ensembl 116","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}` |
+| Optional strict claim attribution | string | `claim_attribution_mode="strict"`; writes source-prefixed display prose plus `gentle.clawbio_claim_ledger.v1` without rewriting raw GENtle JSON | `"strict"` |
+| Optional caller claims | string array | `input_claims[]`; strict reports preserve each non-empty statement as `[input]` with an exact request evidence pointer | `["RT priming chemistry: oligo-dT."]` |
+| Optional presentation profile | string | `presentation_profile`; currently `pcr_primer_design` arranges GENtle graphics without recalculating scientific content | `"pcr_primer_design"` |
+| Optional delegated-skill identity | object | `delegation` using `gentle.clawbio_skill_delegation.v1`; verifies the co-deployed source skill, version, intent, plan step, and delegate contract before execution | `{"source_skill":"gentle-pcr-primer-design",...}` |
+| Optional content-bound files | object array | `input_bindings[]` with stable `binding_id`, path, optional role/media type, and optional expected SHA-256 | `[{"binding_id":"request","path":"input.json"}]` |
+
+Every run returns a topic-neutral, content-bound
+`gentle.clawbio_execution_manifest.v1` receipt. Read the
+[execution-manifest reference](references/execution_manifest.md) before
+building a delegated skill or storing GENtle results in another provenance
+system. Ordinary standalone requests do not require delegation metadata.
+
+When an explicitly supplied, permitted caller collection must return to a
+discussion-moderation provenance store, do not inspect or mutate that store.
+Run GENtle normally, then use the post-run
+[discussion-moderation handoff](references/discussion_moderation_handoff.md)
+to verify exact input/result hashes and prepare a typed-evidence plus
+analysis-run intake packet. The caller still owns permissions, recording,
+freshness, and interpretation; ordinary GENtle use never requires this step.
 
 ## Workflow
 

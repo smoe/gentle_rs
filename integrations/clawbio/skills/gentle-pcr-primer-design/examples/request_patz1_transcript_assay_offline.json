@@ -1,0 +1,21 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "claim_attribution_mode": "strict",
+  "presentation_profile": "pcr_primer_design",
+  "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.3.0", "intent_id": "offline_patz1_transcript_panel_demo", "plan_step_index": 0},
+  "input_claims": [
+    "RT priming chemistry: oligo-dT, as declared by the synthetic workflow.",
+    "5-prime capture method: none.",
+    "5-prime completeness evidence: not supplied; long 5-prime products retain reverse-transcription-completeness risk."
+  ],
+  "mode": "workflow",
+  "state_path": ".gentle_state.json",
+  "workflow_path": "docs/examples/workflows/patz1_endpoint_sybr_transcript_assay_panel_offline.json",
+  "expected_artifacts": [
+    "artifacts/patz1_endpoint_end_matrix.report.json",
+    "artifacts/patz1_sybr_juc_panel.report.json",
+    "artifacts/patz1_routine_common_region_screen.report.json",
+    "artifacts/patz1_gene_transcript_assay_routine.report.json"
+  ],
+  "timeout_secs": 600
+}

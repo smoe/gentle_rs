@@ -788,6 +788,473 @@ def test_action_envelope_stamp_adds_skill_alias_and_confirm_invariant() -> None:
     assert stamped[1]["requires_confirmation"] is True
 
 
+def test_strict_claim_attribution_prefixes_prose_and_records_tool_chain() -> None:
+    module = _skill_module()
+    request = module.Request(
+        mode="shell",
+        shell_line="primers experimental-handoff panel_1 --gel-svg panel.gel.svg",
+        claim_attribution_mode="strict",
+        presentation_profile="pcr_primer_design",
+        input_claims=[
+            "RT priming chemistry: oligo-dT.",
+            "5-prime cap-capture evidence: not supplied.",
+        ],
+    )
+    stdout_json = {
+        "summary_lines": ["Built experimental assay handoff with two cards."]
+    }
+    projection = module._extract_chat_summary_projection(stdout_json)
+
+    lines, ledger = module._strict_claim_attribution(
+        request=request,
+        lines=[
+            "Built experimental assay handoff with two cards.",
+            module.CONTINUE_ARTIFACT_NOTICE,
+        ],
+        default_source_kind="gentle_executable",
+        summary_projection=projection,
+        stdout_json=stdout_json,
+        command=[
+            "gentle_cli",
+            "primers",
+            "experimental-handoff",
+            "panel_1",
+            "--gel-svg",
+            "panel.gel.svg",
+        ],
+        collected_artifacts=[
+            {
+                "declared_path": "panel.gel.svg",
+                "bundle_path": "generated/panel.gel.svg",
+            },
+            {
+                "declared_path": "generated/clawbio_storyboard.svg",
+                "bundle_path": "generated/clawbio_storyboard.svg",
+            },
+        ],
+        warning_lines=[
+            "[gentle] One requested transcript was unresolved.",
+            "[clawbio] One optional artifact was not collected.",
+            "[external:blastn] Search completed from a provenance-backed runner.",
+        ],
+    )
+
+    assert lines == [
+        "[gentle] Built experimental assay handoff with two cards.",
+        f"[clawbio] {module.CONTINUE_ARTIFACT_NOTICE}",
+    ]
+    assert ledger["schema"] == "gentle.clawbio_claim_ledger.v1"
+    assert ledger["presentation_profile"] == "pcr_primer_design"
+    assert [claim["source_kind"] for claim in ledger["claims"]] == [
+        "gentle_executable",
+        "clawbio_presentation",
+    ]
+    assert [claim["display_text"] for claim in ledger["input_claims"]] == [
+        "[input] RT priming chemistry: oligo-dT.",
+        "[input] 5-prime cap-capture evidence: not supplied.",
+    ]
+    assert [
+        claim["evidence"]["json_pointer"]
+        for claim in ledger["input_claims"]
+    ] == [
+        "/request/input_claims/0",
+        "/request/input_claims/1",
+    ]
+    assert ledger["claims"][0]["evidence"]["json_pointer"] == (
+        "/stdout_json/summary_lines/0"
+    )
+    assert ledger["claims"][0]["evidence"]["projection_id"] == (
+        "gentle.clawbio.summary_lines.identity_trim.v1"
+    )
+    assert {
+        step["prefix"] for step in ledger["processing_steps"]
+    } == {"[input]", "[clawbio]", "[gentle]"}
+    gentle_step = next(
+        step
+        for step in ledger["processing_steps"]
+        if step["source_kind"] == "gentle_executable"
+    )
+    assert gentle_step["command"][-2:] == ["--gel-svg", "panel.gel.svg"]
+    assert [
+        artifact["scientific_content_authority"]
+        for artifact in ledger["artifacts"]
+    ] == ["gentle_executable", "none_presentation_only"]
+    assert [artifact["prefix"] for artifact in ledger["artifacts"]] == [
+        "[gentle]",
+        "[clawbio]",
+    ]
+    assert [warning["source_kind"] for warning in ledger["warning_claims"]] == [
+        "clawbio_presentation",
+        "clawbio_presentation",
+        "clawbio_presentation",
+    ]
+    assert ledger["warning_claims"][0]["display_text"].startswith(
+        "[clawbio] (literal source prefix [gentle])"
+    )
+    assert any(
+        "Unverified prose must use [unverified]" in rule
+        for rule in ledger["rules"]
+    )
+
+
+def test_strict_pcr_bundle_writes_attributed_report_and_artifact_ledger(
+    tmp_path: Path,
+) -> None:
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        _fake_cli_with_svg_png(
+            "if [ \"${1:-}\" = \"shell\" ]; then\n"
+            "  cat > handoff.json <<'JSON'\n"
+            "{\"schema\":\"gentle.experimental_assay_handoff.v1\"}\n"
+            "JSON\n"
+            "  printf 'pair_id\\treadiness_state\\n' > handoff.order.tsv\n"
+            "  cat > handoff.gel.svg <<'SVG'\n"
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"800\" height=\"600\"><text>[gentle] Serial Gel Preview</text></svg>\n"
+            "SVG\n"
+            "  cat <<'JSON'\n"
+            "{\"summary_lines\":[\"Built two GENtle assay cards.\"],\"preferred_artifacts\":[{\"artifact_id\":\"experimental_assay_virtual_gel_svg\",\"path\":\"handoff.gel.svg\",\"caption\":\"[gentle] Primer-pair product comparison\",\"is_best_first_artifact\":true}]}\n"
+            "JSON\n"
+            "  exit 0\n"
+            "fi\n"
+            "echo '{}'\n"
+        ),
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "claim_attribution_mode": "strict",
+                "presentation_profile": "pcr_primer_design",
+                "mode": "shell",
+                "input_claims": [
+                    "RT priming chemistry: oligo-dT.",
+                    "5-prime completeness evidence: not supplied.",
+                ],
+                "shell_line": (
+                    "primers experimental-handoff panel_1 "
+                    "--path handoff.json --order-table handoff.order.tsv "
+                    "--gel-svg handoff.gel.svg"
+                ),
+                "expected_artifacts": [
+                    "handoff.json",
+                    "handoff.order.tsv",
+                    "handoff.gel.svg",
+                ],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert run.returncode == 0, run.stderr
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["chat_summary_lines"] == [
+        "[gentle] Built two GENtle assay cards."
+    ]
+    assert result["stdout_json"]["summary_lines"] == [
+        "Built two GENtle assay cards."
+    ]
+    assert result["claim_ledger"]["schema"] == "gentle.clawbio_claim_ledger.v1"
+    assert result["request"]["input_claims"] == [
+        "RT priming chemistry: oligo-dT.",
+        "5-prime completeness evidence: not supplied.",
+    ]
+    assert [
+        claim["source_kind"]
+        for claim in result["claim_ledger"]["input_claims"]
+    ] == [
+        "caller_input",
+        "caller_input",
+    ]
+    assert (output_dir / "claim_ledger.json").is_file()
+    assert (output_dir / "reproducibility" / "execution_manifest.json").is_file()
+    assert result["execution_manifest"]["schema"] == (
+        "gentle.clawbio_execution_manifest.v1"
+    )
+    assert result["execution_manifest"]["delegation"] is None
+    assert all(
+        artifact["scientific_content_authority"] == "gentle_executable"
+        for artifact in result["claim_ledger"]["artifacts"]
+    )
+    assert all(
+        str(artifact["content_sha256"]).startswith("sha256:")
+        for artifact in result["claim_ledger"]["artifacts"]
+    )
+    report = (output_dir / "report.md").read_text(encoding="utf-8")
+    assert "## Claim Attribution" in report
+    assert "### Input Assumptions" in report
+    assert "[input] RT priming chemistry: oligo-dT." in report
+    assert "[input] 5-prime completeness evidence: not supplied." in report
+    assert "[gentle] Built two GENtle assay cards." in report
+
+
+def test_content_bound_inputs_hash_at_files_and_reject_digest_mismatch(
+    tmp_path: Path,
+) -> None:
+    module = _skill_module()
+    input_path = tmp_path / "operation.json"
+    input_path.write_text('{"operation":"synthetic"}\n', encoding="utf-8")
+    observed_sha256 = "sha256:" + hashlib.sha256(input_path.read_bytes()).hexdigest()
+    request = module.Request(
+        mode="shell",
+        shell_line="primers design @operation.json --backend internal",
+        input_bindings=[
+            {
+                "binding_id": "reviewed_operation",
+                "path": "operation.json",
+                "role": "operation_request",
+                "media_type": "application/json",
+                "expected_sha256": observed_sha256,
+            }
+        ],
+    )
+
+    bindings = module._prepare_content_bound_inputs(
+        request,
+        request_source_path=None,
+        execution_cwd=tmp_path,
+        script_path=_skill_script(),
+    )
+
+    assert len(bindings) == 1
+    assert bindings[0]["sha256"] == observed_sha256
+    assert bindings[0]["binding_ids"] == [
+        "reviewed_operation",
+        "shell_at_input_1",
+    ]
+
+    request.input_bindings[0]["expected_sha256"] = "sha256:" + "0" * 64
+    with pytest.raises(module.SkillError, match="SHA-256 mismatch"):
+        module._prepare_content_bound_inputs(
+            request,
+            request_source_path=None,
+            execution_cwd=tmp_path,
+            script_path=_skill_script(),
+        )
+
+
+def test_content_bound_input_mutation_fails_closed_and_keeps_original_hash(
+    tmp_path: Path,
+) -> None:
+    input_path = tmp_path / "reviewed_input.json"
+    input_path.write_text('{"value":"reviewed"}\n', encoding="utf-8")
+    original_sha256 = "sha256:" + hashlib.sha256(input_path.read_bytes()).hexdigest()
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": "state-summary",
+                "input_bindings": [
+                    {
+                        "binding_id": "reviewed_input",
+                        "path": str(input_path),
+                        "role": "reviewed_scientific_input",
+                        "media_type": "application/json",
+                        "expected_sha256": original_sha256,
+                    }
+                ],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    fake_cli = tmp_path / "mutating_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        f"printf '%s\\n' '{{\"value\":\"altered\"}}' > {shlex.quote(str(input_path))}\n"
+        "echo '{\"schema\":\"gentle.synthetic_result.v1\"}'\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+    output_dir = tmp_path / "out"
+
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert run.returncode == 1
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["status"] == "verification_failed"
+    assert result["failure_summary"]["stage"] == "content_binding_verification"
+    binding = next(
+        row
+        for row in result["execution_manifest"]["request_binding"][
+            "content_bound_inputs"
+        ]
+        if "reviewed_input" in row["binding_ids"]
+    )
+    assert binding["sha256"] == original_sha256
+    assert binding["post_execution_verification"]["status"] == "changed"
+    assert binding["post_execution_verification"]["sha256"] != original_sha256
+
+
+def test_delegated_run_binds_route_runtime_state_and_native_verdict(
+    tmp_path: Path,
+) -> None:
+    descriptor_path = (
+        _skill_script().parents[1] / "gentle-pcr-primer-design" / "INTENTS.json"
+    )
+    descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
+    route = next(
+        route
+        for route in descriptor["routes"]
+        if route["intent_id"] == "primer_report_list"
+    )
+    request = route["plan"][0]["input_template"]
+    request_path = tmp_path / "request.json"
+    request_path.write_text(json.dumps(request) + "\n", encoding="utf-8")
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "if [ \"${1:-}\" = \"--version\" ]; then\n"
+        "  echo 'gentle_cli 9.9.synthetic'\n"
+        "  exit 0\n"
+        "fi\n"
+        "cat <<'JSON'\n"
+        '{"schema":"gentle.synthetic_primer_result.v1",'
+        '"report_id":"primer_report_1","status":"specificity_fail",'
+        '"summary_lines":["Specificity review completed with a biological fail verdict."]}\n'
+        "JSON\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+    output_dir = tmp_path / "out"
+
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert run.returncode == 0, run.stderr
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    manifest = result["execution_manifest"]
+    assert manifest["execution_outcome"] == "completed"
+    assert manifest["wrapper_status"] == "ok"
+    assert manifest["runtime"]["gentle_version"] == "gentle_cli 9.9.synthetic"
+    assert manifest["delegation"]["compatibility_status"] == "verified"
+    assert manifest["delegation"]["intent_id"] == "primer_report_list"
+    assert manifest["delegation"]["routing_scope"].endswith(
+        "not_natural_language_reproduction"
+    )
+    assert manifest["state_binding"]["before"]["exists"] is False
+    assert manifest["state_binding"]["after"]["exists"] is False
+    assert [step["stage"] for step in manifest["execution_steps"]] == [
+        "runtime_preflight",
+        "main_command",
+    ]
+    assert {
+        (binding["field"], binding["value"])
+        for binding in manifest["native_result"]["reported_status_bindings"]
+    } == {("status", "specificity_fail")}
+    assert manifest["native_result"]["status_interpretation"] == (
+        "native_fields_only_no_wrapper_scientific_reclassification"
+    )
+    request_binding = next(
+        binding
+        for binding in manifest["request_binding"]["content_bound_inputs"]
+        if "wrapper_request" in binding["binding_ids"]
+    )
+    assert request_binding["sha256"].startswith("sha256:")
+    claim = result["claim_ledger"]["claims"][0]
+    assert claim["source_kind"] == "gentle_executable"
+    assert claim["evidence"]["json_pointer"] == "/stdout_json/summary_lines/0"
+    assert claim["evidence"]["source_value_sha256"].startswith("sha256:")
+
+
+def test_delegation_rejects_wrong_source_skill_version() -> None:
+    module = _skill_module()
+    request = module.Request(
+        mode="shell",
+        shell_line="primers list-reports",
+        delegation={
+            "schema": module.DELEGATION_SCHEMA,
+            "source_skill": "gentle-pcr-primer-design",
+            "source_skill_version": "999.0.0",
+            "intent_id": "primer_report_list",
+            "plan_step_index": 0,
+            "resolved_slots": None,
+            "descriptor_sha256": None,
+            "catalog_sha256": None,
+        },
+    )
+
+    with pytest.raises(module.SkillError, match="catalog version mismatch"):
+        module._verified_delegation(request, _skill_script())
+
+
+def test_claim_prefixes_from_caller_text_cannot_spoof_gentle_authority() -> None:
+    module = _skill_module()
+    request = module.Request(
+        mode="shell",
+        shell_line="primers list-reports",
+        claim_attribution_mode="strict",
+        input_claims=["[gentle] This caller statement is not computed."],
+    )
+
+    _, ledger = module._strict_claim_attribution(
+        request=request,
+        lines=None,
+        default_source_kind=None,
+        summary_projection=None,
+        stdout_json=None,
+        command=None,
+        warning_lines=[],
+    )
+
+    display = ledger["input_claims"][0]["display_text"]
+    assert display.startswith("[input] (literal source prefix [gentle])")
+
+
 def test_demo_writes_expected_artifacts(tmp_path: Path) -> None:
     output_dir = tmp_path / "demo_out"
     cmd = [
@@ -1012,7 +1479,7 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
     assert payload["stdout_json"] == {
         "schema": "gentle.clawbio_skill_info.v1",
         "name": "gentle-cloning",
-        "version": "0.1.0",
+        "version": "0.2.0",
         "status": "mvp",
         "request_schema": "gentle.clawbio_skill_request.v1",
         "result_schema": "gentle.clawbio_skill_result.v1",
@@ -1100,7 +1567,7 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
         },
     }
     assert payload["chat_summary_lines"] == [
-        "gentle-cloning skill version 0.1.0 (mvp).",
+        "gentle-cloning skill version 0.2.0 (mvp).",
         "Request schema: gentle.clawbio_skill_request.v1; result schema: gentle.clawbio_skill_result.v1.",
         "Use request mode `version` when you need the installed local GENtle rewrite runtime version.",
         "Use request mode `intents` to compare the installed wrapper's live intent descriptor with ClawBio's on-disk snapshot.",
@@ -1144,7 +1611,7 @@ def test_skill_info_request_mode_reports_catalog_version(
     assert payload["status"] == "ok"
     assert payload["request"]["mode"] == "skill-info"
     assert payload["stdout_json"]["schema"] == "gentle.clawbio_skill_info.v1"
-    assert payload["stdout_json"]["version"] == "0.1.0"
+    assert payload["stdout_json"]["version"] == "0.2.0"
     assert payload["resolver"] is None
     assert payload["command"] is None
 
@@ -3133,6 +3600,9 @@ def test_prepare_request_suggests_rechecking_services_status(tmp_path: Path) -> 
 
 
 def test_wrapper_builds_variant_storyboard_from_collected_svgs(tmp_path: Path) -> None:
+    (tmp_path / "variant_luciferase_storyboard_demo.json").write_text(
+        '{"schema":"synthetic.workflow.stub.v1"}\n', encoding="utf-8"
+    )
     request_path = tmp_path / "request.json"
     request_path.write_text(
         json.dumps(
@@ -4365,6 +4835,12 @@ def test_relative_input_path_resolves_from_copied_clawbio_skill_layout(tmp_path:
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
     assert result["status"] == "ok"
     assert result["request"]["mode"] == "capabilities"
+    wrapper = result["execution_manifest"]["wrapper"]
+    assert wrapper["contract_files_complete"] is False
+    assert {row["contract_part"] for row in wrapper["missing_files"]} == {
+        "catalog_entry",
+        "intent_descriptor",
+    }
 
 
 def test_confirmed_capabilities_action_gets_telegram_safe_summary(
@@ -5818,33 +6294,33 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "services status" in trigger_keywords
     assert "readiness" in trigger_keywords
     assert "local resources" in trigger_keywords
-    assert "simple pcr" in trigger_keywords
-    assert "primer preflight" in trigger_keywords
-    assert "primer3 preflight" in trigger_keywords
+    assert "gentle-cloning simple pcr" in trigger_keywords
+    assert "gentle-cloning primer preflight" in trigger_keywords
+    assert "gentle-cloning primer3 preflight" in trigger_keywords
     assert "seed pcr from feature" in trigger_keywords
     assert "seed pcr from splicing" in trigger_keywords
-    assert "design pcr primers" in trigger_keywords
-    assert "design primers from json" in trigger_keywords
-    assert "pcr constraints" in trigger_keywords
+    assert "gentle-cloning design pcr primers" in trigger_keywords
+    assert "gentle-cloning design primers from json" in trigger_keywords
+    assert "gentle-cloning pcr constraints" in trigger_keywords
     assert "seed qpcr from feature" in trigger_keywords
     assert "seed qpcr from splicing" in trigger_keywords
     assert "seed taqman from feature" in trigger_keywords
     assert "seed taqman from splicing" in trigger_keywords
-    assert "design taqman assay" in trigger_keywords
-    assert "exon junction taqman" in trigger_keywords
-    assert "test cdna pcr" in trigger_keywords
-    assert "test cdna qpcr" in trigger_keywords
-    assert "direct taqman test" in trigger_keywords
-    assert "qpcr assay test" in trigger_keywords
-    assert "taqman assay test" in trigger_keywords
-    assert "qpcr reports" in trigger_keywords
-    assert "taqman reports" in trigger_keywords
-    assert "show primer report" in trigger_keywords
-    assert "export primer report" in trigger_keywords
-    assert "show taqman report" in trigger_keywords
-    assert "export taqman report" in trigger_keywords
-    assert "pcr protocol cartoon" in trigger_keywords
-    assert "taqman protocol cartoon" in trigger_keywords
+    assert "gentle-cloning design taqman assay" in trigger_keywords
+    assert "gentle-cloning exon junction taqman" in trigger_keywords
+    assert "gentle-cloning test cdna pcr" in trigger_keywords
+    assert "gentle-cloning test cdna qpcr" in trigger_keywords
+    assert "gentle-cloning direct taqman test" in trigger_keywords
+    assert "gentle-cloning qpcr assay test" in trigger_keywords
+    assert "gentle-cloning taqman assay test" in trigger_keywords
+    assert "gentle-cloning qpcr reports" in trigger_keywords
+    assert "gentle-cloning taqman reports" in trigger_keywords
+    assert "gentle-cloning show primer report" in trigger_keywords
+    assert "gentle-cloning export primer report" in trigger_keywords
+    assert "gentle-cloning show taqman report" in trigger_keywords
+    assert "gentle-cloning export taqman report" in trigger_keywords
+    assert "gentle-cloning pcr protocol cartoon" in trigger_keywords
+    assert "gentle-cloning taqman protocol cartoon" in trigger_keywords
     assert "restriction cloning pcr handoff" in trigger_keywords
     assert "lab assistant handoff" in trigger_keywords
     assert "lab assistant instructions" in trigger_keywords
@@ -5880,8 +6356,8 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "trypsin digest" in trigger_keywords
     assert "trypsin digest gel" in trigger_keywords
     assert "pi vs kda" in trigger_keywords
-    assert "transcript qpcr panel" in trigger_keywords
-    assert "characteristic qpcr primers" in trigger_keywords
+    assert "gentle-cloning transcript qpcr panel" in trigger_keywords
+    assert "gentle-cloning characteristic qpcr primers" in trigger_keywords
 
 
 def _route_input_paths(intents: dict) -> list[str]:
@@ -6351,9 +6827,15 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
     assert "isoelectric point demo" in routes["demo_isoform_protein_2d_gel"][
         "trigger_terms"
     ]
-    assert "simple pcr" in routes["simple_pcr_primer_design"]["trigger_terms"]
-    assert "continue pcr" in routes["simple_pcr_primer_design"]["trigger_terms"]
-    assert "primer preflight" in routes["primer_preflight"]["trigger_terms"]
+    assert "gentle-cloning simple pcr" in routes["simple_pcr_primer_design"][
+        "trigger_terms"
+    ]
+    assert "gentle-cloning continue pcr" in routes["simple_pcr_primer_design"][
+        "trigger_terms"
+    ]
+    assert "gentle-cloning primer preflight" in routes["primer_preflight"][
+        "trigger_terms"
+    ]
     assert "seed pcr from feature" in routes["primer_seed_from_feature"][
         "trigger_terms"
     ]
@@ -6366,27 +6848,43 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
     assert "exon junction taqman seed" in routes["qpcr_taqman_seed_from_splicing"][
         "trigger_terms"
     ]
-    assert "execute designprimerpairs" in routes["pcr_primer_design_operation"][
+    assert "gentle-cloning execute designprimerpairs" in routes[
+        "pcr_primer_design_operation"
+    ]["trigger_terms"]
+    assert "gentle-cloning design taqman assay" in routes[
+        "qpcr_taqman_design_operation"
+    ]["trigger_terms"]
+    assert "gentle-cloning test cdna pcr" in routes[
+        "cdna_pcr_qpcr_assay_test"
+    ]["trigger_terms"]
+    assert "gentle-cloning test cdna qpcr" in routes[
+        "cdna_pcr_qpcr_assay_test"
+    ]["trigger_terms"]
+    assert "gentle-cloning direct cdna pcr test" in routes["cdna_pcr_direct_test"][
         "trigger_terms"
     ]
-    assert "design taqman assay" in routes["qpcr_taqman_design_operation"][
+    assert "gentle-cloning direct taqman test" in routes[
+        "cdna_qpcr_taqman_direct_test"
+    ]["trigger_terms"]
+    assert "gentle-cloning list pcr primer reports" in routes["primer_report_list"][
         "trigger_terms"
     ]
-    assert "test cdna pcr" in routes["cdna_pcr_qpcr_assay_test"]["trigger_terms"]
-    assert "test cdna qpcr" in routes["cdna_pcr_qpcr_assay_test"]["trigger_terms"]
-    assert "direct cdna pcr test" in routes["cdna_pcr_direct_test"]["trigger_terms"]
-    assert "direct taqman test" in routes["cdna_qpcr_taqman_direct_test"][
+    assert "gentle-cloning show pcr primer report" in routes["primer_report_show"][
         "trigger_terms"
     ]
-    assert "list pcr primer reports" in routes["primer_report_list"]["trigger_terms"]
-    assert "show pcr primer report" in routes["primer_report_show"]["trigger_terms"]
-    assert "export pcr primer report" in routes["primer_report_export"][
+    assert "gentle-cloning export pcr primer report" in routes["primer_report_export"][
         "trigger_terms"
     ]
-    assert "taqman reports" in routes["qpcr_report_list"]["trigger_terms"]
-    assert "show taqman report" in routes["qpcr_report_show"]["trigger_terms"]
-    assert "export taqman report" in routes["qpcr_report_export"]["trigger_terms"]
-    assert "taqman protocol cartoon" in routes["pcr_protocol_cartoon"][
+    assert "gentle-cloning taqman reports" in routes["qpcr_report_list"][
+        "trigger_terms"
+    ]
+    assert "gentle-cloning show taqman report" in routes["qpcr_report_show"][
+        "trigger_terms"
+    ]
+    assert "gentle-cloning export taqman report" in routes["qpcr_report_export"][
+        "trigger_terms"
+    ]
+    assert "gentle-cloning taqman protocol cartoon" in routes["pcr_protocol_cartoon"][
         "trigger_terms"
     ]
     assert "gene panel protein gel" in routes["ensembl_gene_panel_protein_gel"][

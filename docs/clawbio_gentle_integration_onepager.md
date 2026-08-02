@@ -102,6 +102,68 @@ The repository also carries the ClawBio-side `gentle-cloning` skill wrapper in
 adapter around deterministic `gentle_cli` command surfaces and is the default
 alias used by the GENtle-side subprocess transport.
 
+Every invocation writes `gentle.clawbio_execution_manifest.v1` as
+`reproducibility/execution_manifest.json`. This is a topic-neutral provider
+execution receipt, not a ledger record. It content-binds the resolved request,
+immutable inputs before and after execution, state before/after, wrapper and
+runtime identity, command-step outcomes, native result identifiers/statuses,
+and output artifacts. A caller remains responsible for permissions, retention,
+withdrawal/supersession, discussion state, and interpretation.
+
+The optional post-run `discussion_moderation_handoff.py` adapter maps that
+receipt onto discussion-moderation's typed-evidence and analysis-run intake
+fields without opening or mutating a ledger. It verifies exact caller
+input-file hashes against the manifest, extracts and hashes the native result,
+and emits a stable request digest using discussion-moderation's canonical
+algorithm. The provider receipt and ledger run remain separate records joined
+by hashes: the ledger must revalidate current refs and permissions, record the
+output evidence, recompute the digest, and assign replay/freshness state.
+
+## Specialized Primer Skill
+
+The descriptor-only
+`integrations/clawbio/skills/gentle-pcr-primer-design/` skill provides a
+focused conversational surface for conventional PCR, endpoint RT-PCR,
+junction-aware SYBR, TaqMan, imported-primer review, and primer-specificity
+work. It has no Python entrypoint and no biological implementation. Every
+`INTENTS.json` plan step targets the registered `gentle-cloning` skill, so the
+existing wrapper and GENtle engine remain the sole execution and scientific
+authority.
+
+Each delegated request identifies the source skill/version, selected intent,
+and plan step. Before execution, the generic runtime verifies the co-deployed
+descriptor and catalog hashes plus the exact delegate contract. This prevents
+partial or stale skill deployments from silently running. It records which
+route was selected, but does not claim that a language model would select the
+same route from the same prose during replay.
+
+Plain primer-design phrases belong to the specialized descriptor. Equivalent
+routes remain directly discoverable in the generic descriptor with an explicit
+`gentle-cloning ...` prefix, preserving low-level compatibility without
+ambiguous automatic routing. The specialized skill keeps genomic-DNA and
+transcriptome/cDNA specificity as separate evidence spaces, treats
+specificity-plan outputs as non-executing handoffs, and cannot upgrade
+`not_assessed` or `not_run` evidence to pass or order-ready.
+
+Primer requests enable strict source attribution. Human-facing lines use
+`[gentle]` for executable-derived content, `[clawbio]` for orchestration and
+presentation, `[input]` for caller assumptions, and explicit external or
+unverified prefixes where applicable. The wrapper preserves raw GENtle JSON and
+writes `gentle.clawbio_claim_ledger.v1` with the request digest, exact command,
+processing tools, exact result pointers/scopes and hashes, deterministic
+projection identifiers, and artifact-level scientific-content authority. A
+caller-supplied reserved prefix cannot self-assign `[gentle]` authority. The
+default experimental-assay report asks GENtle for a
+one-primer-pair-per-lane virtual gel; ClawBio may arrange that figure but does
+not recalculate its bands.
+
+Transcript-panel requests can also carry `input_claims[]` for RT priming,
+cap-dependent 5-prime capture, and the supplied completeness evidence. Each is
+rendered as `[input]` with an exact ledger pointer. GENtle's oligo-dT reach
+calculation remains distinct and executable-derived; the bridge does not
+reinterpret a RACE, cap-trapping, CAGE, or template-switching protocol as proof
+of a complete isoform.
+
 ## Wire Schemas
 
 Current schemas:
@@ -111,6 +173,14 @@ Current schemas:
 - Skill info: `gentle.clawbio_skill_info.v1`
 - Runtime intents: `gentle.clawbio_skill_intents_runtime.v1`
 - Intent descriptor: `clawbio.skill_intents.v1`
+- Strict claim ledger: `gentle.clawbio_claim_ledger.v1`
+- Delegation record: `gentle.clawbio_skill_delegation.v1`
+- Provider execution receipt: `gentle.clawbio_execution_manifest.v1`
+- Discussion-moderation caller context:
+  `gentle.clawbio_discussion_moderation_handoff_context.v1`
+- Discussion-moderation intake packet:
+  `gentle.clawbio_discussion_moderation_handoff.v1`
+- Extracted native result artifact: `gentle.clawbio_native_result_artifact.v1`
 
 Versioning stance:
 
@@ -219,6 +289,8 @@ than following automatically from the earliest-removal marker.
 CI checks should keep the following in sync:
 
 - every `route.plan[].input` in `INTENTS.json` resolves under `examples/`;
+- every delegated route carries a source skill/version/intent/step identity
+  matching its source descriptor and exact generic `delegate_contract`;
 - every `examples/*.json` file is either routed or explicitly allowlisted as a
   bootstrap/follow-on/dev example;
 - `SKILL.md` front-matter `trigger_keywords` is generated from

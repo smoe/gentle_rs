@@ -23349,6 +23349,7 @@ impl GentleEngine {
             cards,
             assay_tests,
             variant_evidence,
+            virtual_gel: None,
             warnings: package_warnings,
         })
     }
@@ -23383,6 +23384,168 @@ impl GentleEngine {
             ));
         }
         rows.join("\n") + "\n"
+    }
+
+    fn render_experimental_assay_virtual_gel(
+        report: &ExperimentalAssayHandoffReport,
+        path: &str,
+        requested_ladders: &[String],
+        render_options: &PoolGelRenderOptions,
+    ) -> Result<Option<ExperimentalAssayVirtualGelReport>, EngineError> {
+        let assay_tests = report
+            .assay_tests
+            .iter()
+            .map(|assay_test| (assay_test.assay_test_id.as_str(), assay_test))
+            .collect::<BTreeMap<_, _>>();
+        let mut samples = Vec::new();
+        let mut empty_lane_card_ids = Vec::new();
+        let mut rendered_product_count = 0usize;
+
+        for card in &report.cards {
+            let mut members = Vec::new();
+            if let Some(assay_test) = assay_tests.get(card.assay_test_link.assay_test_id.as_str()) {
+                for transcript in &assay_test.transcript_results {
+                    for (product_index, product) in transcript.products.iter().enumerate() {
+                        members.push(GelSampleMember {
+                            seq_id: format!(
+                                "{}__{}__product_{}",
+                                card.assay_id,
+                                transcript.transcript_id,
+                                product_index.saturating_add(1)
+                            ),
+                            bp: product.amplicon_length_bp,
+                            topology_form: GelTopologyForm::Linear,
+                        });
+                    }
+                }
+            }
+            rendered_product_count = rendered_product_count.saturating_add(members.len());
+            if members.is_empty() {
+                empty_lane_card_ids.push(card.card_id.clone());
+            }
+            samples.push(GelSampleInput {
+                name: format!("Pair {} | {}", card.pair_rank, card.display_label),
+                role_label: Some(format!(
+                    "{} | {}",
+                    card.assay_kind.as_str(),
+                    card.assay_tier.as_str()
+                )),
+                members,
+            });
+        }
+        if samples.is_empty() {
+            return Ok(None);
+        }
+
+        let non_empty_samples = samples
+            .iter()
+            .filter(|sample| !sample.members.is_empty())
+            .cloned()
+            .collect::<Vec<_>>();
+        let layout_samples = if non_empty_samples.is_empty() {
+            vec![GelSampleInput {
+                name: "__layout_only__".to_string(),
+                role_label: None,
+                members: vec![GelSampleMember {
+                    seq_id: "__layout_only__".to_string(),
+                    bp: 100,
+                    topology_form: GelTopologyForm::Linear,
+                }],
+            }]
+        } else {
+            non_empty_samples
+        };
+
+        let conditions_source = if report.policy.gel_conditions.is_some() {
+            "readiness_policy"
+        } else {
+            "default_visualization_only"
+        };
+        let conditions = report.policy.gel_conditions.clone().unwrap_or_default();
+        let mut layout =
+            build_serial_gel_layout(&layout_samples, requested_ladders, Some(&conditions))
+                .map_err(|message| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("Could not build experimental-assay virtual gel: {message}"),
+                    cause_chain: vec![],
+                })?;
+
+        // The shared renderer accepts empty lanes, while its generic builder
+        // rejects them. Reinsert them here so every primer pair retains a
+        // comparable column even when GENtle predicts no cDNA product.
+        let first_sample_index = layout
+            .lanes
+            .iter()
+            .position(|lane| !lane.is_ladder)
+            .unwrap_or(layout.lanes.len());
+        let last_sample_index = layout
+            .lanes
+            .iter()
+            .rposition(|lane| !lane.is_ladder)
+            .map(|index| index.saturating_add(1))
+            .unwrap_or(first_sample_index);
+        let left_ladders = layout.lanes[..first_sample_index].to_vec();
+        let right_ladders = layout.lanes[last_sample_index..].to_vec();
+        let mut rendered_lanes = layout.lanes[first_sample_index..last_sample_index]
+            .iter()
+            .cloned()
+            .map(|lane| (lane.name.clone(), lane))
+            .collect::<BTreeMap<_, _>>();
+        let mut lanes = left_ladders;
+        for sample in &samples {
+            lanes.push(
+                rendered_lanes
+                    .remove(&sample.name)
+                    .unwrap_or_else(|| PoolGelLane {
+                        name: sample.name.clone(),
+                        role_label: sample.role_label.clone(),
+                        is_ladder: false,
+                        bands: vec![],
+                    }),
+            );
+        }
+        lanes.extend(right_ladders);
+        layout.lanes = lanes;
+        layout.sample_count = samples.len();
+        layout.pool_member_count = rendered_product_count;
+
+        let svg = export_pool_gel_svg_with_options(&layout, render_options)
+            .replacen(
+                "<svg ",
+                "<svg data-provenance-source=\"gentle\" data-provenance-schema=\"gentle.experimental_assay_virtual_gel.v1\" ",
+                1,
+            )
+            .replacen("Serial Gel Preview", "[gentle] Serial Gel Preview", 1);
+        let svg_sha256 = format!("sha256:{}", sha256_hex_str(&svg));
+        Self::ensure_engine_output_parent_dir(path, "experimental-assay virtual gel SVG")?;
+        fs::write(path, svg).map_err(|error| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write experimental-assay virtual gel '{path}': {error}"),
+            cause_chain: vec![],
+        })?;
+
+        Ok(Some(ExperimentalAssayVirtualGelReport {
+            schema: EXPERIMENTAL_ASSAY_VIRTUAL_GEL_SCHEMA.to_string(),
+            source_package_id: report.package_id.clone(),
+            source_panel_report_id: report.source_panel_report_id.clone(),
+            source_panel_sha256: report.source_panel_sha256.clone(),
+            svg_path: path.to_string(),
+            svg_sha256,
+            conditions: layout.conditions,
+            conditions_source: conditions_source.to_string(),
+            render_options: render_options.clone(),
+            selected_ladders: layout.selected_ladders,
+            sample_lane_count: samples.len(),
+            rendered_product_count,
+            empty_lane_card_ids,
+            interpretation: if conditions_source == "readiness_policy" {
+                "Each primer pair is one sample lane under the readiness policy's shared gel conditions. Bands are GENtle-predicted cDNA products, not measured abundance."
+                    .to_string()
+            } else {
+                "Each primer pair is one sample lane under GENtle's default visualization conditions. Bands are predicted cDNA products; this illustrative gel does not satisfy the gel-resolution readiness gate."
+                    .to_string()
+            },
+        }))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -35264,14 +35427,40 @@ impl GentleEngine {
                     order_form_id,
                     path,
                     order_table_path,
+                    virtual_gel_svg_path,
+                    virtual_gel_ladders,
+                    virtual_gel_render_options,
                 } => {
-                    let report = self.build_experimental_assay_handoff(
+                    let mut report = self.build_experimental_assay_handoff(
                         &panel_report_id,
                         policy,
                         &variant_evidence_paths,
                         order_form_id.as_deref(),
                     )?;
                     parent_seq_ids.push(report.source_seq_id.clone());
+                    if let Some(gel_path) = virtual_gel_svg_path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        report.virtual_gel = Self::render_experimental_assay_virtual_gel(
+                            &report,
+                            gel_path,
+                            &virtual_gel_ladders,
+                            &virtual_gel_render_options,
+                        )?;
+                        if report.virtual_gel.is_some() {
+                            result.messages.push(format!(
+                                "Wrote one-lane-per-primer-pair virtual gel SVG to '{gel_path}'"
+                            ));
+                        } else {
+                            let warning = format!(
+                                "No experimental-assay virtual gel was written to '{gel_path}' because the source panel contains no selected primer pairs."
+                            );
+                            report.warnings.push(warning.clone());
+                            result.warnings.push(warning);
+                        }
+                    }
                     if let Some(path) = path
                         .as_deref()
                         .map(str::trim)

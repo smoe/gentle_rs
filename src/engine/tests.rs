@@ -13095,6 +13095,9 @@ fn transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_o
             order_form_id: None,
             path: None,
             order_table_path: None,
+            virtual_gel_svg_path: None,
+            virtual_gel_ladders: vec![],
+            virtual_gel_render_options: Default::default(),
         })
         .expect("build readiness handoff from genomic-only specificity evidence")
         .experimental_assay_handoff
@@ -13480,6 +13483,9 @@ fn experimental_assay_handoff_links_every_selected_pair_and_records_default_gate
         order_form_id: None,
         path: None,
         order_table_path: None,
+        virtual_gel_svg_path: None,
+        virtual_gel_ladders: vec![],
+        virtual_gel_render_options: Default::default(),
     };
     let handoff = engine
         .apply(build())
@@ -13510,6 +13516,9 @@ fn experimental_assay_handoff_links_every_selected_pair_and_records_default_gate
             order_form_id: None,
             path: None,
             order_table_path: None,
+            virtual_gel_svg_path: None,
+            virtual_gel_ladders: vec![],
+            virtual_gel_render_options: Default::default(),
         })
         .expect_err("unsupported readiness policy schema must fail closed");
     assert!(unsupported_policy_error.message.contains("policy schema"));
@@ -13599,6 +13608,7 @@ fn experimental_assay_handoff_links_every_selected_pair_and_records_default_gate
     let export_dir = tempdir().expect("experimental handoff export dir");
     let json_path = export_dir.path().join("handoff.json");
     let table_path = export_dir.path().join("handoff.tsv");
+    let gel_path = export_dir.path().join("handoff.gel.svg");
     let exported = engine
         .apply(Operation::BuildExperimentalAssayHandoff {
             panel_report_id: panel.report_id.clone(),
@@ -13607,6 +13617,9 @@ fn experimental_assay_handoff_links_every_selected_pair_and_records_default_gate
             order_form_id: None,
             path: Some(json_path.to_string_lossy().to_string()),
             order_table_path: Some(table_path.to_string_lossy().to_string()),
+            virtual_gel_svg_path: Some(gel_path.to_string_lossy().to_string()),
+            virtual_gel_ladders: vec![],
+            virtual_gel_render_options: Default::default(),
         })
         .expect("export experimental handoff")
         .experimental_assay_handoff
@@ -13623,6 +13636,29 @@ fn experimental_assay_handoff_links_every_selected_pair_and_records_default_gate
             .iter()
             .all(|card| order_table.contains(&card.pair_id))
     );
+    let virtual_gel = exported.virtual_gel.as_ref().expect("virtual gel report");
+    assert_eq!(
+        virtual_gel.schema,
+        "gentle.experimental_assay_virtual_gel.v1"
+    );
+    assert_eq!(virtual_gel.sample_lane_count, exported.cards.len());
+    assert_eq!(virtual_gel.conditions_source, "default_visualization_only");
+    assert!(virtual_gel.rendered_product_count > 0);
+    assert!(virtual_gel.svg_sha256.starts_with("sha256:"));
+    let gel_svg = fs::read_to_string(&gel_path).expect("read virtual gel SVG");
+    assert_eq!(
+        virtual_gel.svg_sha256,
+        format!("sha256:{}", sha256_hex_str(&gel_svg))
+    );
+    assert!(gel_svg.contains("[gentle] Serial Gel Preview"));
+    assert!(gel_svg.contains("data-provenance-source=\"gentle\""));
+    for card in &exported.cards {
+        assert!(
+            gel_svg.contains(&format!("Pair {} |", card.pair_rank)),
+            "missing one comparable sample lane for primer pair {}",
+            card.pair_rank
+        );
+    }
 
     let first_assay = panel.selected_assays.first().expect("selected assay");
     let first_forward = first_assay.primer_pair.forward.sequence.clone();
@@ -13659,6 +13695,9 @@ fn experimental_assay_handoff_links_every_selected_pair_and_records_default_gate
             order_form_id: Some(order_form.form_id.clone()),
             path: None,
             order_table_path: None,
+            virtual_gel_svg_path: None,
+            virtual_gel_ladders: vec![],
+            virtual_gel_render_options: Default::default(),
         })
         .expect("build order-linked handoff")
         .experimental_assay_handoff
@@ -13718,6 +13757,9 @@ fn experimental_assay_handoff_links_every_selected_pair_and_records_default_gate
             order_form_id: Some(order_form.form_id.clone()),
             path: None,
             order_table_path: None,
+            virtual_gel_svg_path: None,
+            virtual_gel_ladders: vec![],
+            virtual_gel_render_options: Default::default(),
         })
         .expect("build reviewed order-linked handoff")
         .experimental_assay_handoff
@@ -13830,6 +13872,9 @@ fn experimental_assay_handoff_links_every_selected_pair_and_records_default_gate
             order_form_id: None,
             path: None,
             order_table_path: None,
+            virtual_gel_svg_path: None,
+            virtual_gel_ladders: vec![],
+            virtual_gel_render_options: Default::default(),
         })
         .expect("build handoff with detected variant evidence")
         .experimental_assay_handoff
@@ -13888,6 +13933,9 @@ fn experimental_assay_handoff_links_every_selected_pair_and_records_default_gate
             order_form_id: None,
             path: None,
             order_table_path: None,
+            virtual_gel_svg_path: None,
+            virtual_gel_ladders: vec![],
+            virtual_gel_render_options: Default::default(),
         })
         .expect_err("variant evidence for another pair must not be silently ignored");
     assert!(error.message.contains("not selected in panel"));

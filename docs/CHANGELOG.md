@@ -158,6 +158,29 @@ understand what changed.
   source-bound value per resolved promoter, and matching selected evidence;
   otherwise GENtle retains qualitative states and reports `not_comparable`
   without comparing raw intensity.
+- Added the descriptor-only `gentle-pcr-primer-design` OpenClaw/ClawBio skill.
+  Explicit PCR, RT-PCR, SYBR, TaqMan, imported-primer, and specificity intents
+  now delegate to the existing `gentle-cloning` runtime while preserving
+  GENtle-owned evidence, provenance, and review states. Delegation now fails
+  closed on a stale or partial two-skill deployment and records only the
+  selected route, without claiming reproducible natural-language routing.
+- Added the topic-neutral `gentle.clawbio_execution_manifest.v1` provider
+  receipt. It content-binds requests and immutable inputs before and after a
+  run, mutable state snapshots, wrapper/runtime identity, command outputs,
+  native result identifiers/statuses, and artifacts while keeping execution
+  outcome separate from biological verdicts. PCR routes also use exact
+  pointer/hash/projection-backed `gentle.clawbio_claim_ledger.v1` attribution;
+  caller-supplied source prefixes cannot claim GENtle authority.
+- Added an optional, post-run discussion-moderation handoff adapter. It verifies
+  exact caller input and provider-result hashes, emits a typed computed-evidence
+  object plus a canonical analysis-run intake, and leaves permission checks,
+  recording, replay, freshness, and interpretation to the caller-owned ledger.
+- Extended the experimental assay handoff with a GENtle-attributed virtual gel
+  containing one comparable lane per primer pair and explicit predicted-empty
+  lanes.
+  Transcript-panel requests now preserve oligo-dT priming, cap-dependent
+  5-prime capture, and supplied completeness evidence as separate `[input]`
+  claims, without promoting those preparation assumptions to GENtle findings.
 
 ## 2026-07-30
 

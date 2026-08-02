@@ -9354,6 +9354,9 @@ fn transcript_assay_panel_gui_builds_default_experimental_handoff_operation() {
         order_form_id,
         path,
         order_table_path,
+        virtual_gel_svg_path,
+        virtual_gel_ladders,
+        virtual_gel_render_options,
     } = operation
     else {
         panic!("expected BuildExperimentalAssayHandoff");
@@ -9367,6 +9370,9 @@ fn transcript_assay_panel_gui_builds_default_experimental_handoff_operation() {
     assert!(order_form_id.is_none());
     assert!(path.is_none());
     assert!(order_table_path.is_none());
+    assert!(virtual_gel_svg_path.is_none());
+    assert!(virtual_gel_ladders.is_empty());
+    assert_eq!(virtual_gel_render_options, Default::default());
 }
 
 #[test]

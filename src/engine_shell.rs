@@ -2728,6 +2728,8 @@ pub enum ShellCommand {
         order_form_id: Option<String>,
         path: Option<String>,
         order_table_path: Option<String>,
+        virtual_gel_svg_path: Option<String>,
+        virtual_gel_ladders: Vec<String>,
     },
     PrimersOligoOrderCreate {
         request_json: String,
@@ -23105,7 +23107,9 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "requires_confirmation": false,
             "args": [
                 {"name": "PANEL_REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted transcript assay panel report id"},
-                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external handoff JSON path"}
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external handoff JSON path"},
+                {"name": "VIRTUAL_GEL_SVG_PATH", "required": false, "subject_kind": "other", "detail": "optional GENtle-attributed one-primer-pair-per-lane virtual-gel SVG path"},
+                {"name": "VIRTUAL_GEL_LADDERS", "required": false, "subject_kind": "other", "detail": "optional repeated DNA ladder names shared across all primer-pair lanes"}
             ],
             "reads": [
                 {"fact": "report.exists", "subject": {"arg": "PANEL_REPORT_ID"}, "equals": "transcript_assay_panel"}
@@ -23116,7 +23120,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                     {"fact": "report.exists", "subject": {"arg": "PANEL_REPORT_ID"}, "equals": "transcript_assay_panel"}
                 ]
             },
-            "description": "Project one persisted transcript assay panel into deterministic per-pair experimental cards and an order/readiness table.",
+            "description": "Project one persisted transcript assay panel into deterministic per-pair experimental cards, an order/readiness table, and an optional shared-condition virtual gel.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("BuildExperimentalAssayHandoff")
         }),
@@ -23347,7 +23351,9 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "requires_confirmation": false,
             "args": [
                 {"name": "PANEL_REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted transcript assay panel report id"},
-                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external handoff JSON path"}
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external handoff JSON path"},
+                {"name": "GEL_SVG", "required": false, "subject_kind": "other", "detail": "optional GENtle-attributed one-primer-pair-per-lane virtual-gel SVG path"},
+                {"name": "GEL_LADDER", "required": false, "subject_kind": "other", "detail": "optional repeatable DNA ladder name shared across the comparison"}
             ],
             "reads": [
                 {"fact": "report.exists", "subject": {"arg": "PANEL_REPORT_ID"}, "equals": "transcript_assay_panel"}
@@ -23358,7 +23364,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                     {"fact": "report.exists", "subject": {"arg": "PANEL_REPORT_ID"}, "equals": "transcript_assay_panel"}
                 ]
             },
-            "description": "Build deterministic experimental assay cards and an order/readiness table from a persisted transcript assay panel.",
+            "description": "Build deterministic experimental assay cards, an order/readiness table, and an optional shared-condition virtual gel from a persisted transcript assay panel.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("primers experimental-handoff")
         }),
@@ -54309,6 +54315,8 @@ fn execute_primers_command(
             order_form_id,
             path,
             order_table_path,
+            virtual_gel_svg_path,
+            virtual_gel_ladders,
         } => {
             let policy = match policy_json {
                 Some(payload) => {
@@ -54329,6 +54337,9 @@ fn execute_primers_command(
                     order_form_id: order_form_id.clone(),
                     path: path.clone(),
                     order_table_path: order_table_path.clone(),
+                    virtual_gel_svg_path: virtual_gel_svg_path.clone(),
+                    virtual_gel_ladders: virtual_gel_ladders.clone(),
+                    virtual_gel_render_options: gentle_protocol::PoolGelRenderOptions::default(),
                 })
                 .map_err(|error| error.to_string())?;
             let report = op_result
@@ -54337,12 +54348,31 @@ fn execute_primers_command(
                 .ok_or_else(|| {
                     "Experimental handoff operation returned no handoff report".to_string()
                 })?;
+            let virtual_gel_path = report.virtual_gel.as_ref().map(|gel| gel.svg_path.clone());
+            let preferred_artifacts = report
+                .virtual_gel
+                .as_ref()
+                .map(|gel| {
+                    vec![json!({
+                        "artifact_id": "experimental_assay_virtual_gel_svg",
+                        "path": gel.svg_path,
+                        "media_type": "image/svg+xml",
+                        "artifact_kind": "experimental_assay_virtual_gel",
+                        "caption": "[gentle] Primer-pair product comparison",
+                        "recommended_use": "Compare one GENtle-predicted product lane per primer pair under shared gel conditions.",
+                        "presentation_rank": 0,
+                        "is_best_first_artifact": true,
+                    })]
+                })
+                .unwrap_or_default();
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({
                     "report": report,
                     "json_path": path,
                     "order_table_path": order_table_path,
+                    "virtual_gel_svg_path": virtual_gel_path,
+                    "preferred_artifacts": preferred_artifacts,
                 }),
             })
         }

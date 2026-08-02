@@ -5798,7 +5798,7 @@ ClawBio/OpenClaw integration scaffold schemas:
       `confirm`
     - `raw`: `raw_args[]`
 - wrapper result schema: `gentle.clawbio_skill_result.v1`
-  - `status`: `ok|command_failed|timeout|failed|degraded_demo`
+  - `status`: `ok|command_failed|timeout|failed|degraded_demo|incomplete|verification_failed`
   - includes resolver details, executed command, exit code, stdout/stderr, and
     generated artifact paths
   - `stdout_json` is populated when the wrapped `gentle_cli` stdout parses as
@@ -5831,6 +5831,80 @@ ClawBio/OpenClaw integration scaffold schemas:
     - `collected_artifact_count`
     - `continuation_action_count`
     - short `summary_lines[]` suitable for chat/report previews
+  - requests may opt into `claim_attribution_mode = strict`; the wrapper then
+    emits `gentle.clawbio_claim_ledger.v1` in both
+    `result.json.claim_ledger` and `claim_ledger.json`
+    - optional request `input_claims[]` contains non-empty caller-supplied
+      statements; strict reports render each with `[input]`, and
+      `claim_ledger.input_claims[]` records its deterministic claim id plus the
+      exact `/request/input_claims/N` evidence pointer and source-value hash
+    - display prefixes distinguish `[gentle]` executable-derived statements,
+      `[clawbio]` orchestration/presentation, `[input]` caller assumptions,
+      named `[external:TOOL]` results, and `[unverified]` prose
+    - `[gentle]` attribution requires an exact JSON pointer or source scope,
+      source-value/scope SHA-256, and named deterministic projection; prose is
+      downgraded when this binding is unavailable
+    - reserved prefixes in caller text are escaped and cannot self-assign
+      `[gentle]` or `[external:TOOL]` authority
+    - `processing_steps[]` records the request digest and exact GENtle command;
+      `claims[]`, `input_claims[]`, `warning_claims[]`, and `artifacts[]`
+      retain source tool, evidence pointer, and scientific-content authority
+    - raw `stdout_json` remains unchanged; strict attribution is an additive
+      audit/presentation layer and cannot upgrade any GENtle evidence state
+  - every run carries `execution_manifest` with schema
+    `gentle.clawbio_execution_manifest.v1` and writes the same payload to
+    `reproducibility/execution_manifest.json`
+    - `request_binding` records the normalized request SHA-256, raw request-file
+      SHA-256, and content-bound input files
+    - `state_binding.before|after` records the explicit state-file path,
+      presence, size, and SHA-256
+    - `wrapper` binds the generic skill script/catalog/descriptor bytes;
+      `runtime` records resolver details, mandatory delegated-run GENtle
+      version preflight, and hashes for resolvable launcher/image/binary files
+    - `execution_steps[]` separates process execution from
+      `native_result.reported_status_bindings[]`; a completed computation may
+      retain a native biological `fail` without becoming an execution failure
+    - `native_result` binds raw stdout/stderr, parsed JSON, and stable native
+      report/run/operation identifiers; `artifacts[]` binds emitted files
+    - the receipt is topic-neutral and contains no discussion, participant,
+      permission, vote, freshness, withdrawal, or interpretation state
+  - optional request `input_bindings[]` accepts `binding_id`, `path`, optional
+    `role`/`media_type`, and optional expected SHA-256; missing or mismatched
+    files fail before GENtle execution, while mutation or removal during a run
+    produces `verification_failed` and retains both pre-run and post-run
+    observations in the receipt
+  - optional request `delegation` uses
+    `gentle.clawbio_skill_delegation.v1`
+    - the wrapper verifies the co-deployed source skill catalog, descriptor,
+      version, intent, plan step, hashes, and exact `delegate_contract`
+    - optional `resolved_slots` are recorded, while the normalized resolved
+      wrapper request is always bound independently
+    - routing provenance records the selected route but does not claim that
+      natural-language dispatch is deterministic
+  - optional post-run discussion-moderation handoff:
+    - `discussion_moderation_handoff.py` consumes an explicit
+      `gentle.clawbio_skill_result.v1`, its matching
+      `gentle.clawbio_execution_manifest.v1`, and caller context schema
+      `gentle.clawbio_discussion_moderation_handoff_context.v1`
+    - it emits `gentle.clawbio_discussion_moderation_handoff.v1` plus a
+      content-addressed `gentle.clawbio_native_result_artifact.v1`
+    - the adapter's stable ID, semantic version, and script SHA-256 are recorded
+      in both the request environment and provider receipt
+    - every caller input ref must resolve exactly once to a stable
+      `request_binding.content_bound_inputs[]` row with the same before/after
+      size and SHA-256; inferred, fuzzy, or path-only joins are rejected
+    - `analysis_run_intake.request_digest` uses discussion-moderation's
+      canonical digest fields and excludes paths, timestamps, raw request-file
+      serialization, and receipt identity so relocated exact replay remains
+      idempotent
+    - the packet carries a computed typed-evidence object and exact provider
+      hashes but does not open or edit a ledger; the consumer must validate
+      permissions/current refs, record output evidence first, recompute the
+      digest, and then record the analysis run through its owning commands
+    - provider execution outcome, evidence-envelope validation, and native
+      biological statuses stay distinct. A completed scientific `fail` remains
+      a computed failure result, while failed execution has no output evidence
+      and incomplete or `not_run` evidence is never promoted to success
   - browser/OpenClaw inline image display remains a later ClawBio-side task;
     this phase is limited to PNG-first bundle production inside `gentle_rs`
   - wrapper `agent-plan` / `agent-execute-plan` modes intentionally share the
@@ -5919,6 +5993,7 @@ ClawBio/OpenClaw integration scaffold schemas:
   - `result.json`
   - `reproducibility/commands.sh`
   - `reproducibility/environment.yml`
+  - `reproducibility/execution_manifest.json`
   - `reproducibility/checksums.sha256`
 - included bootstrap example requests:
   - `request_services_status.json`
@@ -8769,7 +8844,7 @@ Primer-design shell command family (implemented):
   - `primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]`
   - `primers design-transcript-assay-panel OPERATION_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers design-transcript-assay-panel SEQ_ID FEATURE_ID [--assay-kind endpoint-rt-pcr|sybr-qpcr|taqman-qpcr] [--cdna-synthesis oligo-dt|random-hexamers|gene-specific|mixed] [--objective pan-transcript|one-per-class|minimal-discrimination-panel|isoform-end-matrix] [--coverage-policy require-all|best-effort] [--assay-tier routine-common-region-screen|isoform-discrimination|long-range-structure-discovery] [--preferred-min-amplicon-bp N --preferred-max-amplicon-bp N] [--junctions JSON_OR_@FILE] [--junction-evidence PATH ...] [--junction-evidence-priority required|preferred] [--min-3prime-junction-overlap-bp N] [--min-5prime-junction-overlap-bp N] [--annotation-release TEXT] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--oligo-dt-5prime-risk-threshold-bp N] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]`
-  - `primers experimental-handoff PANEL_REPORT_ID [--policy JSON_OR_@FILE] [--variant-evidence PATH ...] [--order-form-id ID] [--path OUTPUT.json] [--order-table OUTPUT.tsv]`
+  - `primers experimental-handoff PANEL_REPORT_ID [--policy JSON_OR_@FILE] [--variant-evidence PATH ...] [--order-form-id ID] [--path OUTPUT.json] [--order-table OUTPUT.tsv] [--gel-svg OUTPUT.svg] [--gel-ladder NAME ...]`
   - `primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]`
   - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers prepare-restriction-cloning REQUEST_JSON_OR_@FILE`
@@ -9137,6 +9212,14 @@ Primer-design shell command family (implemented):
     Gel resolvability is evaluated separately and only when a named
     `GelRunConditions` policy is supplied. Distinct sequence digests never
     constitute a claim of visible band separation.
+  - optional `virtual_gel` uses
+    `gentle.experimental_assay_virtual_gel.v1`. It provenance-binds the source
+    package/panel digest, render options, selected ladders, gel conditions,
+    product count, predicted-empty card ids, and the emitted SVG SHA-256. Every
+    assay card retains one sample lane so primer-pair columns are comparable.
+    The SVG carries visible `[gentle]` attribution and machine-readable
+    provenance attributes. Default visualization conditions are explicitly not
+    a gel-resolution pass.
   - optional order-form formulations preserve modifications, scale, and
     purification as procurement identities. Tm, GC, secondary-structure, and
     specificity facts remain calculations for the unmodified annealing

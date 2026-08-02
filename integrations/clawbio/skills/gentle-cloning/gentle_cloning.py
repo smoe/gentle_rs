@@ -24,6 +24,19 @@ import xml.etree.ElementTree as ET
 
 REQUEST_SCHEMA = "gentle.clawbio_skill_request.v1"
 RESULT_SCHEMA = "gentle.clawbio_skill_result.v1"
+EXECUTION_MANIFEST_SCHEMA = "gentle.clawbio_execution_manifest.v1"
+DELEGATION_SCHEMA = "gentle.clawbio_skill_delegation.v1"
+CLAIM_LEDGER_SCHEMA = "gentle.clawbio_claim_ledger.v1"
+SKILL_CONTRACT_VERSION = "0.2.0"
+STRICT_CLAIM_ATTRIBUTION_MODE = "strict"
+PCR_PRIMER_PRESENTATION_PROFILE = "pcr_primer_design"
+CLAIM_SOURCE_PREFIXES = {
+    "gentle_executable": "[gentle]",
+    "clawbio_presentation": "[clawbio]",
+    "caller_input": "[input]",
+    "external_tool": "[external:<tool>]",
+    "unverified": "[unverified]",
+}
 SKILL_INFO_SCHEMA = "gentle.clawbio_skill_info.v1"
 INTENTS_RUNTIME_SCHEMA = "gentle.clawbio_skill_intents_runtime.v1"
 EXTERNAL_PRIMER_HANDOFF_REQUEST_SCHEMA = "gentle.external_primer_handoff_request.v1"
@@ -147,6 +160,9 @@ VERSION_SCOPE = "installed_local_clawbio_runtime"
 CLASSICAL_GENTLE_DISAMBIGUATION = (
     "This skill reports the locally installed ClawBio GENtle rewrite runtime, "
     "not the classical GENtle desktop release line."
+)
+CONTINUE_ARTIFACT_NOTICE = (
+    'More figures were generated; ask "Continue" or inspect report.md/result.json.'
 )
 EXTERNAL_TOOL_RESOURCES = [
     {
@@ -283,6 +299,11 @@ class Request:
     product_gel_ladders: list[str] | None = None
     residue_start_1based: int | None = None
     residue_end_1based: int | None = None
+    claim_attribution_mode: str | None = None
+    presentation_profile: str | None = None
+    input_claims: list[str] | None = None
+    delegation: Any = None
+    input_bindings: list[Any] | None = None
 
 
 @dataclasses.dataclass
@@ -436,6 +457,116 @@ def _normalise_expected_sha256(value: Any, field_name: str) -> str | None:
     if len(digest) != 64 or any(ch not in "0123456789abcdefABCDEF" for ch in digest):
         raise SkillError(f"{field_name} must be a SHA-256 digest")
     return "sha256:" + digest.lower()
+
+
+def _normalise_delegation(value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise SkillError("delegation must be an object when present")
+    _reject_unknown_fields(
+        value,
+        {
+            "schema",
+            "source_skill",
+            "source_skill_version",
+            "intent_id",
+            "plan_step_index",
+            "resolved_slots",
+            "descriptor_sha256",
+            "catalog_sha256",
+        },
+        "delegation",
+    )
+    if value.get("schema") != DELEGATION_SCHEMA:
+        raise SkillError(
+            f"delegation.schema must be '{DELEGATION_SCHEMA}'"
+        )
+
+    def identifier(field: str, *, max_len: int = 128) -> str:
+        raw = _required_handoff_string(value.get(field), f"delegation.{field}")
+        if len(raw) > max_len or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", raw):
+            raise SkillError(
+                f"delegation.{field} must be a bounded portable identifier"
+            )
+        return raw
+
+    source_skill = identifier("source_skill")
+    source_skill_version = identifier("source_skill_version", max_len=64)
+    intent_id = identifier("intent_id")
+    raw_step_index = value.get("plan_step_index", 0)
+    if isinstance(raw_step_index, bool):
+        raise SkillError("delegation.plan_step_index must be a non-negative integer")
+    try:
+        plan_step_index = int(raw_step_index)
+    except (TypeError, ValueError) as e:
+        raise SkillError(
+            "delegation.plan_step_index must be a non-negative integer"
+        ) from e
+    if plan_step_index < 0:
+        raise SkillError("delegation.plan_step_index must be a non-negative integer")
+    resolved_slots = value.get("resolved_slots")
+    if resolved_slots is not None:
+        if not isinstance(resolved_slots, dict):
+            raise SkillError("delegation.resolved_slots must be an object when present")
+        if len(_canonical_json_bytes(resolved_slots)) > 64 * 1024:
+            raise SkillError("delegation.resolved_slots exceeds the 64 KiB limit")
+    return {
+        "schema": DELEGATION_SCHEMA,
+        "source_skill": source_skill,
+        "source_skill_version": source_skill_version,
+        "intent_id": intent_id,
+        "plan_step_index": plan_step_index,
+        "resolved_slots": resolved_slots,
+        "descriptor_sha256": _normalise_expected_sha256(
+            value.get("descriptor_sha256"), "delegation.descriptor_sha256"
+        ),
+        "catalog_sha256": _normalise_expected_sha256(
+            value.get("catalog_sha256"), "delegation.catalog_sha256"
+        ),
+    }
+
+
+def _normalise_input_bindings(value: Any) -> list[dict[str, Any]] | None:
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        raise SkillError("input_bindings must be an array when present")
+    normalized: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for index, raw in enumerate(value):
+        context = f"input_bindings[{index}]"
+        if not isinstance(raw, dict):
+            raise SkillError(f"{context} must be an object")
+        _reject_unknown_fields(
+            raw,
+            {"binding_id", "path", "role", "media_type", "expected_sha256"},
+            context,
+        )
+        binding_id = _required_handoff_string(
+            raw.get("binding_id"), f"{context}.binding_id"
+        )
+        if len(binding_id) > 128 or not re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._-]*", binding_id
+        ):
+            raise SkillError(f"{context}.binding_id must be a portable identifier")
+        if binding_id in seen_ids:
+            raise SkillError(f"input_bindings contains duplicate binding_id '{binding_id}'")
+        seen_ids.add(binding_id)
+        normalized.append(
+            {
+                "binding_id": binding_id,
+                "path": _required_handoff_string(raw.get("path"), f"{context}.path"),
+                "role": _optional_handoff_string(raw.get("role"), f"{context}.role"),
+                "media_type": _optional_handoff_string(
+                    raw.get("media_type"), f"{context}.media_type"
+                ),
+                "expected_sha256": _normalise_expected_sha256(
+                    raw.get("expected_sha256"), f"{context}.expected_sha256"
+                ),
+            }
+        )
+    return normalized
 
 
 def _normalise_handoff_nonnegative_int(
@@ -1693,7 +1824,35 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         product_gel_ladders=payload.get("product_gel_ladders"),
         residue_start_1based=payload.get("residue_start_1based"),
         residue_end_1based=payload.get("residue_end_1based"),
+        claim_attribution_mode=payload.get("claim_attribution_mode"),
+        presentation_profile=payload.get("presentation_profile"),
+        input_claims=payload.get("input_claims"),
+        delegation=payload.get("delegation"),
+        input_bindings=payload.get("input_bindings"),
     )
+    request.delegation = _normalise_delegation(request.delegation)
+    request.input_bindings = _normalise_input_bindings(request.input_bindings)
+    if request.claim_attribution_mode is not None:
+        if request.claim_attribution_mode != STRICT_CLAIM_ATTRIBUTION_MODE:
+            raise SkillError("claim_attribution_mode must be 'strict' when present")
+    if request.presentation_profile is not None:
+        if (
+            not isinstance(request.presentation_profile, str)
+            or not request.presentation_profile.strip()
+        ):
+            raise SkillError(
+                "presentation_profile must be a non-empty string when present"
+            )
+        request.presentation_profile = request.presentation_profile.strip()
+    if request.input_claims is not None:
+        if not isinstance(request.input_claims, list):
+            raise SkillError("input_claims must be a string array when present")
+        if not all(
+            isinstance(value, str) and value.strip()
+            for value in request.input_claims
+        ):
+            raise SkillError("input_claims must contain non-empty strings")
+        request.input_claims = [value.strip() for value in request.input_claims]
     if request.expected_artifacts is not None:
         if not isinstance(request.expected_artifacts, list):
             raise SkillError("expected_artifacts must be a string array when present")
@@ -2791,6 +2950,7 @@ def _storyboard_frame_rects(
 def _write_storyboard_svg(
     title: str,
     subtitle: str,
+    footer: str,
     panels: list[dict[str, Any]],
     output_path: Path,
 ) -> None:
@@ -2820,7 +2980,7 @@ def _write_storyboard_svg(
         '  <text id="subtitle" x="64" y="114" font-family="Inter,Segoe UI,sans-serif" font-size="16" fill="#334155">'
         + html.escape(subtitle)
         + "</text>",
-        '  <text x="64" y="144" font-family="Inter,Segoe UI,sans-serif" font-size="13" fill="#475569">Deterministic GENtle figures bundled for a ClawBio/OpenClaw experimental follow-up reply.</text>',
+        '  <text x="64" y="144" font-family="Inter,Segoe UI,sans-serif" font-size="13" fill="#475569">[clawbio] Deterministic GENtle figures bundled for a ClawBio/OpenClaw experimental follow-up reply.</text>',
     ]
 
     for panel, (x, y, width, height) in zip(panels, frame_rects):
@@ -2851,7 +3011,9 @@ def _write_storyboard_svg(
 
     lines.extend(
         [
-            '  <text x="64" y="1070" font-family="Inter,Segoe UI,sans-serif" font-size="12" fill="#64748b">Typical answer shape: locus context, assayable promoter fragment logic, and engineered allele-specific reporter constructs for synthetic-biology follow-up.</text>',
+            '  <text x="64" y="1070" font-family="Inter,Segoe UI,sans-serif" font-size="12" fill="#64748b">'
+            + html.escape(footer)
+            + "</text>",
             "</svg>",
         ]
     )
@@ -2892,19 +3054,47 @@ def _augment_artifacts_with_storyboard(
         and any("reference" in panel["declared_path"].lower() for panel in panels)
         and any("alternate" in panel["declared_path"].lower() for panel in panels)
     ) or ("variant" in workflow_hint or "luciferase" in workflow_hint)
-    if variant_story:
+    if request.presentation_profile == PCR_PRIMER_PRESENTATION_PROFILE:
+        title = "[clawbio] PCR primer-design evidence report"
+        subtitle = (
+            "[clawbio] GENtle-generated assay figures arranged without "
+            "recomputing primer or product evidence."
+        )
+        footer = (
+            "[clawbio] Primer pairs use comparable lanes/columns and one shared gel model; "
+            "source-prefixed claims remain traceable in claim_ledger.json."
+        )
+        panels = [
+            {
+                **panel,
+                "caption": _prefix_claim_line(
+                    panel["caption"],
+                    "gentle_executable",
+                ),
+            }
+            for panel in panels
+        ]
+    elif variant_story:
         title = "Variant-to-Synthetic-Biology assay storyboard"
         subtitle = (
             "GENtle bridges genomic variant context to engineered allele-specific "
             "reporter constructs for reproducible functional follow-up."
         )
+        footer = (
+            "Typical answer shape: locus context, assayable promoter fragment logic, "
+            "and engineered allele-specific reporter constructs for synthetic-biology follow-up."
+        )
     else:
         title = "GENtle graphical storyboard"
         subtitle = "One shareable figure assembled from the deterministic graphics in this run."
+        footer = (
+            "The storyboard arranges existing GENtle artifacts; it does not "
+            "recalculate their scientific content."
+        )
 
     storyboard_path = output_dir / "generated" / "clawbio_storyboard.svg"
     storyboard_path.parent.mkdir(parents=True, exist_ok=True)
-    _write_storyboard_svg(title, subtitle, panels[:4], storyboard_path)
+    _write_storyboard_svg(title, subtitle, footer, panels[:4], storyboard_path)
 
     storyboard_artifact = _artifact_record(
         declared_path="generated/clawbio_storyboard.svg",
@@ -3447,6 +3637,578 @@ def _sha256_file(path: Path) -> str:
 
 def _sha256_file_prefixed(path: Path) -> str:
     return "sha256:" + _sha256_file(path)
+
+
+def _resolve_bound_input_path(
+    raw_path: str, execution_cwd: Path, script_path: Path
+) -> Path:
+    path = Path(raw_path).expanduser()
+    candidates = [path] if path.is_absolute() else [execution_cwd / path]
+    candidates.extend(_request_path_candidates(raw_path, script_path))
+    seen: set[Path] = set()
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if resolved.is_file():
+            return resolved
+    raise SkillError(f"content-bound input file '{raw_path}' does not exist")
+
+
+def _shell_input_paths(request: Request) -> list[str]:
+    tokens: list[str] = []
+    if request.shell_line:
+        try:
+            tokens.extend(shlex.split(request.shell_line))
+        except ValueError as e:
+            raise SkillError(f"shell_line cannot be tokenized for input binding: {e}") from e
+    if request.raw_args:
+        tokens.extend(request.raw_args)
+    return [token[1:] for token in tokens if token.startswith("@") and len(token) > 1]
+
+
+def _prepare_content_bound_inputs(
+    request: Request,
+    *,
+    request_source_path: Path | None,
+    execution_cwd: Path,
+    script_path: Path,
+) -> list[dict[str, Any]]:
+    specs: list[dict[str, Any]] = []
+    if request_source_path is not None:
+        specs.append(
+            {
+                "binding_id": "wrapper_request",
+                "path": str(request_source_path),
+                "role": "wrapper_request",
+                "media_type": "application/json",
+                "expected_sha256": None,
+            }
+        )
+    known_paths = (
+        ("workflow_path", request.workflow_path, "workflow_definition"),
+        ("plan_path", request.plan_path, "agent_plan"),
+        ("catalog_path", request.catalog_path, "catalog"),
+    )
+    for binding_id, raw_path, role in known_paths:
+        if raw_path:
+            specs.append(
+                {
+                    "binding_id": binding_id,
+                    "path": raw_path,
+                    "role": role,
+                    "media_type": None,
+                    "expected_sha256": None,
+                }
+            )
+    if request.primer3_executable and ("/" in request.primer3_executable or "\\" in request.primer3_executable):
+        specs.append(
+            {
+                "binding_id": "primer3_executable",
+                "path": request.primer3_executable,
+                "role": "external_executable",
+                "media_type": "application/octet-stream",
+                "expected_sha256": None,
+            }
+        )
+    if isinstance(request.ensure_reference_prepared, EnsureReferencePrepared):
+        if request.ensure_reference_prepared.catalog_path:
+            specs.append(
+                {
+                    "binding_id": "reference_catalog",
+                    "path": request.ensure_reference_prepared.catalog_path,
+                    "role": "reference_catalog",
+                    "media_type": "application/json",
+                    "expected_sha256": None,
+                }
+            )
+    for index, raw_path in enumerate(_shell_input_paths(request)):
+        specs.append(
+            {
+                "binding_id": f"shell_at_input_{index + 1}",
+                "path": raw_path,
+                "role": "shell_at_file",
+                "media_type": None,
+                "expected_sha256": None,
+            }
+        )
+    specs.extend(request.input_bindings or [])
+
+    by_path: dict[Path, dict[str, Any]] = {}
+    for spec in specs:
+        resolved = _resolve_bound_input_path(
+            str(spec["path"]), execution_cwd, script_path
+        )
+        digest = _sha256_file_prefixed(resolved)
+        expected = spec.get("expected_sha256")
+        if expected is not None and expected != digest:
+            raise SkillError(
+                f"content-bound input '{spec['binding_id']}' SHA-256 mismatch: "
+                f"expected {expected}, observed {digest}"
+            )
+        record = by_path.get(resolved)
+        if record is None:
+            record = {
+                "resolved_path": str(resolved),
+                "size_bytes": resolved.stat().st_size,
+                "sha256": digest,
+                "binding_ids": [],
+                "declared_paths": [],
+                "roles": [],
+                "media_types": [],
+                "expected_sha256_values": [],
+            }
+            by_path[resolved] = record
+        record["binding_ids"].append(str(spec["binding_id"]))
+        record["declared_paths"].append(str(spec["path"]))
+        if spec.get("role"):
+            record["roles"].append(str(spec["role"]))
+        if spec.get("media_type"):
+            record["media_types"].append(str(spec["media_type"]))
+        if expected:
+            record["expected_sha256_values"].append(expected)
+    records = []
+    for record in by_path.values():
+        for field in (
+            "binding_ids",
+            "declared_paths",
+            "roles",
+            "media_types",
+            "expected_sha256_values",
+        ):
+            record[field] = sorted(set(record[field]))
+        records.append(record)
+    records.sort(key=lambda row: (row["binding_ids"], row["resolved_path"]))
+    return records
+
+
+def _verify_content_bound_inputs_unchanged(
+    records: list[dict[str, Any]],
+) -> None:
+    changed: list[str] = []
+    for record in records:
+        path = Path(str(record["resolved_path"]))
+        post_execution: dict[str, Any] = {
+            "exists": path.is_file(),
+            "size_bytes": None,
+            "sha256": None,
+            "status": "missing",
+        }
+        if path.is_file():
+            post_execution["size_bytes"] = path.stat().st_size
+            post_execution["sha256"] = _sha256_file_prefixed(path)
+            post_execution["status"] = (
+                "unchanged"
+                if post_execution["size_bytes"] == record["size_bytes"]
+                and post_execution["sha256"] == record["sha256"]
+                else "changed"
+            )
+        record["post_execution_verification"] = post_execution
+        if post_execution["status"] != "unchanged":
+            changed.append(
+                f"{','.join(record['binding_ids'])} ({post_execution['status']})"
+            )
+    if changed:
+        raise SkillError(
+            "content-bound input changed during execution: " + "; ".join(changed)
+        )
+
+
+def _state_content_snapshot(request: Request | None, execution_cwd: Path) -> dict[str, Any]:
+    if request is None or not request.state_path:
+        return {"declared": False, "path": None, "exists": False, "sha256": None}
+    raw_path = Path(request.state_path).expanduser()
+    path = raw_path if raw_path.is_absolute() else execution_cwd / raw_path
+    resolved = path.resolve()
+    if not resolved.exists():
+        return {
+            "declared": True,
+            "path": str(resolved),
+            "exists": False,
+            "size_bytes": None,
+            "sha256": None,
+        }
+    if not resolved.is_file():
+        raise SkillError(f"state_path '{resolved}' is not a regular file")
+    return {
+        "declared": True,
+        "path": str(resolved),
+        "exists": True,
+        "size_bytes": resolved.stat().st_size,
+        "sha256": _sha256_file_prefixed(resolved),
+    }
+
+
+def _verified_delegation(
+    request: Request, script_path: Path
+) -> dict[str, Any] | None:
+    if request.delegation is None:
+        return None
+    delegation = request.delegation
+    skill_root = script_path.resolve().parent
+    skills_root = skill_root.parent
+    source_root = (skills_root / delegation["source_skill"]).resolve()
+    if source_root.parent != skills_root.resolve():
+        raise SkillError("delegation source skill escaped the co-shipped skills root")
+    descriptor_path = source_root / "INTENTS.json"
+    catalog_path = source_root / "catalog_entry.json"
+    if not descriptor_path.is_file() or not catalog_path.is_file():
+        raise SkillError(
+            "delegated skill metadata is not co-deployed with gentle-cloning: "
+            f"{delegation['source_skill']}"
+        )
+    descriptor = _read_json(descriptor_path)
+    catalog = _read_json(catalog_path)
+    if descriptor.get("schema") != "clawbio.skill_intents.v1":
+        raise SkillError("delegated skill returned an unsupported INTENTS schema")
+    if descriptor.get("skill") != delegation["source_skill"]:
+        raise SkillError("delegated skill INTENTS identity mismatch")
+    if catalog.get("name") != delegation["source_skill"]:
+        raise SkillError("delegated skill catalog identity mismatch")
+    if catalog.get("version") != delegation["source_skill_version"]:
+        raise SkillError("delegated skill catalog version mismatch")
+    descriptor_sha256 = _sha256_file_prefixed(descriptor_path)
+    catalog_sha256 = _sha256_file_prefixed(catalog_path)
+    if delegation.get("descriptor_sha256") not in (None, descriptor_sha256):
+        raise SkillError("delegated skill INTENTS SHA-256 mismatch")
+    if delegation.get("catalog_sha256") not in (None, catalog_sha256):
+        raise SkillError("delegated skill catalog SHA-256 mismatch")
+
+    own_catalog = _read_catalog_entry(script_path)
+    if own_catalog.get("name") != SKILL_NAME or own_catalog.get("version") != SKILL_CONTRACT_VERSION:
+        raise SkillError("gentle-cloning catalog identity/version disagrees with its runtime contract")
+    expected_contract = {
+        "skill": SKILL_NAME,
+        "skill_version": SKILL_CONTRACT_VERSION,
+        "request_schema": REQUEST_SCHEMA,
+        "result_schema": RESULT_SCHEMA,
+        "execution_manifest_schema": EXECUTION_MANIFEST_SCHEMA,
+    }
+    if catalog.get("delegate_contract") != expected_contract:
+        raise SkillError(
+            "delegated skill is incompatible with this gentle-cloning contract"
+        )
+    routes = descriptor.get("routes")
+    if not isinstance(routes, list):
+        raise SkillError("delegated skill INTENTS descriptor has no route array")
+    route = next(
+        (
+            candidate
+            for candidate in routes
+            if isinstance(candidate, dict)
+            and candidate.get("intent_id") == delegation["intent_id"]
+        ),
+        None,
+    )
+    if route is None:
+        raise SkillError("delegation intent_id is absent from the source descriptor")
+    plan = route.get("plan")
+    step_index = delegation["plan_step_index"]
+    if not isinstance(plan, list) or step_index >= len(plan):
+        raise SkillError("delegation plan_step_index is absent from the source intent")
+    step = plan[step_index]
+    if not isinstance(step, dict) or step.get("kind") != "skill_run" or step.get("skill") != SKILL_NAME:
+        raise SkillError("delegation plan step does not target gentle-cloning")
+    declared_request: Any = None
+    if isinstance(step.get("input_template"), dict):
+        declared_request = step["input_template"]
+    elif isinstance(step.get("input"), str):
+        declared_request_path = (source_root / step["input"]).resolve()
+        if not declared_request_path.is_relative_to(source_root) or not declared_request_path.is_file():
+            raise SkillError("delegation plan input is missing or escaped its skill root")
+        declared_request = _read_json(declared_request_path)
+    if not isinstance(declared_request, dict):
+        raise SkillError("delegation plan step has no structured gentle-cloning request")
+    declared_delegation = declared_request.get("delegation")
+    if not isinstance(declared_delegation, dict):
+        raise SkillError("delegation plan request lacks its static delegation identity")
+    for field in ("source_skill", "source_skill_version", "intent_id", "plan_step_index"):
+        if declared_delegation.get(field) != delegation.get(field):
+            raise SkillError(f"delegation plan request disagrees on {field}")
+    return {
+        "schema": DELEGATION_SCHEMA,
+        "source_skill": delegation["source_skill"],
+        "source_skill_version": delegation["source_skill_version"],
+        "intent_id": delegation["intent_id"],
+        "plan_step_index": step_index,
+        "resolved_slots": delegation.get("resolved_slots"),
+        "resolved_slots_sha256": (
+            _sha256_prefixed_json(delegation["resolved_slots"])
+            if delegation.get("resolved_slots") is not None
+            else None
+        ),
+        "descriptor_path": str(descriptor_path),
+        "descriptor_sha256": descriptor_sha256,
+        "catalog_path": str(catalog_path),
+        "catalog_sha256": catalog_sha256,
+        "route_sha256": _sha256_prefixed_json(route),
+        "plan_step_sha256": _sha256_prefixed_json(step),
+        "delegate_contract": expected_contract,
+        "routing_scope": "selected_route_record_only_not_natural_language_reproduction",
+        "compatibility_status": "verified",
+    }
+
+
+def _execution_step_manifest(step: dict[str, Any]) -> dict[str, Any]:
+    stdout = str(step.get("stdout") or "")
+    stderr = str(step.get("stderr") or "")
+    return {
+        "stage": step.get("manifest_stage"),
+        "command": list(step.get("command") or []),
+        "started_utc": step.get("started_utc"),
+        "ended_utc": step.get("ended_utc"),
+        "exit_code": step.get("exit_code"),
+        "status": step.get("status"),
+        "stdout_sha256": _sha256_prefixed_bytes(stdout.encode("utf-8")),
+        "stderr_sha256": _sha256_prefixed_bytes(stderr.encode("utf-8")),
+    }
+
+
+def _json_pointer_token(value: str) -> str:
+    return value.replace("~", "~0").replace("/", "~1")
+
+
+def _native_identifier_bindings(value: Any) -> list[dict[str, Any]]:
+    identifier_keys = {
+        "report_id",
+        "op_id",
+        "run_id",
+        "assay_test_id",
+        "panel_id",
+        "collection_id",
+    }
+    bindings: list[dict[str, Any]] = []
+
+    def visit(candidate: Any, pointer: str) -> None:
+        if isinstance(candidate, dict):
+            for key in sorted(candidate):
+                child_pointer = pointer + "/" + _json_pointer_token(str(key))
+                child = candidate[key]
+                if key in identifier_keys and isinstance(child, (str, int)):
+                    bindings.append(
+                        {"json_pointer": child_pointer, "field": key, "value": child}
+                    )
+                visit(child, child_pointer)
+        elif isinstance(candidate, list):
+            for index, child in enumerate(candidate):
+                visit(child, f"{pointer}/{index}")
+
+    visit(value, "/stdout_json")
+    return bindings
+
+
+def _native_status_bindings(value: Any) -> list[dict[str, Any]]:
+    status_keys = {
+        "status",
+        "overall_status",
+        "analysis_completeness",
+        "confirmation_status",
+    }
+    bindings: list[dict[str, Any]] = []
+
+    def visit(candidate: Any, pointer: str) -> None:
+        if isinstance(candidate, dict):
+            for key in sorted(candidate):
+                child_pointer = pointer + "/" + _json_pointer_token(str(key))
+                child = candidate[key]
+                if key in status_keys and isinstance(child, (str, bool, int, float)):
+                    bindings.append(
+                        {"json_pointer": child_pointer, "field": key, "value": child}
+                    )
+                visit(child, child_pointer)
+        elif isinstance(candidate, list):
+            for index, child in enumerate(candidate):
+                visit(child, f"{pointer}/{index}")
+
+    visit(value, "/stdout_json")
+    return bindings
+
+
+def _content_artifact_record(path: Path, role: str, output_dir: Path) -> dict[str, Any]:
+    resolved = path.resolve()
+    try:
+        bundle_path = resolved.relative_to(output_dir.resolve()).as_posix()
+    except ValueError:
+        bundle_path = None
+    return {
+        "role": role,
+        "path": str(resolved),
+        "bundle_path": bundle_path,
+        "size_bytes": resolved.stat().st_size,
+        "sha256": _sha256_file_prefixed(resolved),
+    }
+
+
+def _runtime_file_bindings(
+    resolution: CliResolution | None, execution_cwd: Path
+) -> list[dict[str, Any]]:
+    if resolution is None:
+        return []
+    candidates: list[tuple[str, Path]] = []
+    for index, token in enumerate(resolution.argv_prefix):
+        if token.startswith("-"):
+            continue
+        raw = Path(token).expanduser()
+        resolved: Path | None = None
+        if raw.is_absolute() or "/" in token or "\\" in token:
+            candidate = raw if raw.is_absolute() else execution_cwd / raw
+            if candidate.is_file():
+                resolved = candidate.resolve()
+        elif index == 0:
+            located = shutil.which(token)
+            if located:
+                resolved = Path(located).resolve()
+        if resolved is not None:
+            candidates.append((f"argv_prefix_{index}", resolved))
+    if resolution.argv_prefix[:2] == ["cargo", "run"]:
+        local_binary = execution_cwd / "target" / "debug" / "gentle_cli"
+        if local_binary.is_file():
+            candidates.append(("cargo_run_output", local_binary.resolve()))
+    records: list[dict[str, Any]] = []
+    seen: set[Path] = set()
+    for binding_id, path in candidates:
+        if path in seen:
+            continue
+        seen.add(path)
+        records.append(
+            {
+                "binding_id": binding_id,
+                "path": str(path),
+                "size_bytes": path.stat().st_size,
+                "sha256": _sha256_file_prefixed(path),
+            }
+        )
+    return records
+
+
+def _execution_outcome(status: str) -> str:
+    if status in {"ok", "degraded_demo"}:
+        return "completed"
+    if status == "incomplete":
+        return "incomplete"
+    return "failed"
+
+
+def _build_execution_manifest(
+    *,
+    request: Request | None,
+    request_source_path: Path | None,
+    content_bound_inputs: list[dict[str, Any]],
+    delegation: dict[str, Any] | None,
+    script_path: Path,
+    resolution: CliResolution | None,
+    gentle_version: str | None,
+    execution_cwd: Path,
+    started_utc: str,
+    ended_utc: str,
+    status: str,
+    error_message: str | None,
+    state_before: dict[str, Any],
+    state_after: dict[str, Any],
+    reference_preflight: dict[str, Any] | None,
+    execution_steps: list[dict[str, Any]],
+    stdout: str,
+    stderr: str,
+    stdout_json: Any,
+    artifacts: list[dict[str, Any]],
+    claim_ledger_path: Path | None,
+) -> dict[str, Any]:
+    request_payload = dataclasses.asdict(request) if request is not None else None
+    catalog_path = _catalog_entry_path(script_path)
+    intents_path = _intents_descriptor_path(script_path)
+    wrapper_file_candidates = [
+        (script_path.resolve(), "runner"),
+        (catalog_path.resolve(), "catalog_entry"),
+        (intents_path.resolve(), "intent_descriptor"),
+    ]
+    wrapper_files = [
+        _content_artifact_record(path, "wrapper_contract", script_path.parent)
+        | {"contract_part": contract_part}
+        for path, contract_part in wrapper_file_candidates
+        if path.is_file()
+    ]
+    missing_wrapper_files = [
+        {"contract_part": contract_part, "path": str(path)}
+        for path, contract_part in wrapper_file_candidates
+        if not path.is_file()
+    ]
+    wrapper_identity = {
+        "skill": SKILL_NAME,
+        "skill_version": SKILL_CONTRACT_VERSION,
+        "request_schema": REQUEST_SCHEMA,
+        "result_schema": RESULT_SCHEMA,
+        "contract_files_complete": not missing_wrapper_files,
+        "files": wrapper_files,
+        "missing_files": missing_wrapper_files,
+    }
+    output_artifacts = list(artifacts)
+    if claim_ledger_path is not None and claim_ledger_path.is_file():
+        output_artifacts.append(
+            _content_artifact_record(claim_ledger_path, "claim_ledger", claim_ledger_path.parent)
+        )
+    request_source_sha256 = next(
+        (
+            record["sha256"]
+            for record in content_bound_inputs
+            if "wrapper_request" in record.get("binding_ids", [])
+        ),
+        None,
+    )
+    native_schema = stdout_json.get("schema") if isinstance(stdout_json, dict) else None
+    return {
+        "schema": EXECUTION_MANIFEST_SCHEMA,
+        "provenance_scope": "topic-neutral provider execution receipt",
+        "started_utc": started_utc,
+        "ended_utc": ended_utc,
+        "execution_outcome": _execution_outcome(status),
+        "wrapper_status": status,
+        "error": error_message,
+        "request_binding": {
+            "normalized_request_sha256": _sha256_prefixed_json(request_payload),
+            "request_source_path": str(request_source_path) if request_source_path else None,
+            "request_source_sha256": request_source_sha256,
+            "content_bound_inputs": content_bound_inputs,
+        },
+        "delegation": delegation,
+        "wrapper": wrapper_identity,
+        "runtime": {
+            "gentle_version": gentle_version,
+            "resolver": dataclasses.asdict(resolution) if resolution else None,
+            "execution_cwd": str(execution_cwd),
+            "content_bound_runtime_files": _runtime_file_bindings(
+                resolution, execution_cwd
+            ),
+        },
+        "state_binding": {
+            "before": state_before,
+            "after": state_after,
+        },
+        "reference_preflight": {
+            "payload": reference_preflight,
+            "payload_sha256": (
+                _sha256_prefixed_json(reference_preflight)
+                if reference_preflight is not None
+                else None
+            ),
+        },
+        "execution_steps": [_execution_step_manifest(step) for step in execution_steps],
+        "native_result": {
+            "schema": native_schema,
+            "stdout_sha256": _sha256_prefixed_bytes(stdout.encode("utf-8")),
+            "stderr_sha256": _sha256_prefixed_bytes(stderr.encode("utf-8")),
+            "stdout_json_sha256": (
+                _sha256_prefixed_json(stdout_json) if stdout_json is not None else None
+            ),
+            "identifier_bindings": _native_identifier_bindings(stdout_json),
+            "reported_status_bindings": _native_status_bindings(stdout_json),
+            "status_interpretation": "native_fields_only_no_wrapper_scientific_reclassification",
+        },
+        "artifacts": sorted(
+            output_artifacts,
+            key=lambda artifact: (str(artifact.get("role")), str(artifact.get("path"))),
+        ),
+    }
 
 
 def _write_repro_environment(path: Path) -> None:
@@ -4323,29 +5085,92 @@ def _extract_preferred_artifacts(stdout_json: Any) -> list[dict[str, Any]] | Non
     return artifacts
 
 
-def _extract_chat_summary_lines(stdout_json: Any) -> list[str] | None:
+def _summary_projection(
+    lines: list[str],
+    *,
+    source_pointer: str,
+    source_payload: Any,
+    projection_id: str,
+    line_pointers: list[str] | None = None,
+) -> dict[str, Any]:
+    return {
+        "lines": lines,
+        "source_document": "result.json",
+        "source_pointer": source_pointer,
+        "source_payload_sha256": _sha256_prefixed_json(source_payload),
+        "projection_id": projection_id,
+        "line_pointers": line_pointers,
+    }
+
+
+def _extract_chat_summary_projection(stdout_json: Any) -> dict[str, Any] | None:
     if not isinstance(stdout_json, dict):
         return None
     bundle = _extract_sequence_context_bundle(stdout_json)
-    for candidate in (
-        stdout_json,
-        stdout_json.get("sequence_context_view"),
-        bundle,
-        bundle.get("sequence_context_view") if isinstance(bundle, dict) else None,
-    ):
+    bundle_pointer = (
+        "/stdout_json"
+        if bundle is stdout_json
+        else "/stdout_json/sequence_context_bundle"
+    )
+    candidates = [
+        (stdout_json, "/stdout_json"),
+        (stdout_json.get("sequence_context_view"), "/stdout_json/sequence_context_view"),
+        (bundle, bundle_pointer),
+        (
+            bundle.get("sequence_context_view") if isinstance(bundle, dict) else None,
+            bundle_pointer + "/sequence_context_view",
+        ),
+    ]
+    for candidate, pointer in candidates:
         lines = _summary_lines_from_sequence_context_view(candidate)
         if lines:
-            return lines
-    protein_residue_lines = _summary_lines_from_protein_residue_genomic_coordinates(stdout_json)
+            raw_lines = candidate.get("summary_lines") if isinstance(candidate, dict) else []
+            line_pointers = [
+                f"{pointer}/summary_lines/{index}"
+                for index, line in enumerate(raw_lines)
+                if isinstance(line, str) and line.strip()
+            ]
+            return _summary_projection(
+                lines,
+                source_pointer=pointer,
+                source_payload=candidate,
+                projection_id="gentle.clawbio.summary_lines.identity_trim.v1",
+                line_pointers=line_pointers,
+            )
+    protein_pointer = "/stdout_json"
+    protein_payload = stdout_json
+    if stdout_json.get("schema") != "gentle.protein_residue_genomic_coordinates.v1":
+        nested_protein = stdout_json.get("protein_residue_genomic_coordinates")
+        if isinstance(nested_protein, dict):
+            protein_pointer = "/stdout_json/protein_residue_genomic_coordinates"
+            protein_payload = nested_protein
+    protein_residue_lines = _summary_lines_from_protein_residue_genomic_coordinates(
+        stdout_json
+    )
     if protein_residue_lines:
-        return protein_residue_lines
+        return _summary_projection(
+            protein_residue_lines,
+            source_pointer=protein_pointer,
+            source_payload=protein_payload,
+            projection_id="gentle.clawbio.protein_residue_summary.v1",
+        )
     primer_lines = _summary_lines_from_primer_qpcr_payload(stdout_json)
     if primer_lines:
-        return primer_lines
+        return _summary_projection(
+            primer_lines,
+            source_pointer="/stdout_json",
+            source_payload=stdout_json,
+            projection_id="gentle.clawbio.primer_qpcr_summary.v1",
+        )
     if isinstance(stdout_json.get("output"), dict):
         primer_lines = _summary_lines_from_primer_qpcr_payload(stdout_json["output"])
         if primer_lines:
-            return primer_lines
+            return _summary_projection(
+                primer_lines,
+                source_pointer="/stdout_json/output",
+                source_payload=stdout_json["output"],
+                projection_id="gentle.clawbio.primer_qpcr_summary.v1",
+            )
     for key in (
         "primer_design_report",
         "qpcr_design_report",
@@ -4356,13 +5181,38 @@ def _extract_chat_summary_lines(stdout_json: Any) -> list[str] | None:
         nested = stdout_json.get(key)
         primer_lines = _summary_lines_from_primer_qpcr_payload(nested)
         if primer_lines:
-            return primer_lines
+            return _summary_projection(
+                primer_lines,
+                source_pointer=f"/stdout_json/{_json_pointer_token(key)}",
+                source_payload=nested,
+                projection_id="gentle.clawbio.primer_qpcr_summary.v1",
+            )
     raw_lines = stdout_json.get("summary_lines")
     if isinstance(raw_lines, list):
-        lines = [line.strip() for line in raw_lines if isinstance(line, str) and line.strip()]
+        lines = [
+            line.strip()
+            for line in raw_lines
+            if isinstance(line, str) and line.strip()
+        ]
         if lines:
-            return lines
+            line_pointers = [
+                f"/stdout_json/summary_lines/{index}"
+                for index, line in enumerate(raw_lines)
+                if isinstance(line, str) and line.strip()
+            ]
+            return _summary_projection(
+                lines,
+                source_pointer="/stdout_json/summary_lines",
+                source_payload=raw_lines,
+                projection_id="gentle.clawbio.summary_lines.identity_trim.v1",
+                line_pointers=line_pointers,
+            )
     return None
+
+
+def _extract_chat_summary_lines(stdout_json: Any) -> list[str] | None:
+    projection = _extract_chat_summary_projection(stdout_json)
+    return projection["lines"] if projection is not None else None
 
 
 def _runtime_version_chat_summary_lines(
@@ -4386,11 +5236,319 @@ def _append_continue_artifact_notice(
 ) -> list[str] | None:
     if not continue_actions:
         return lines
-    notice = 'More figures were generated; ask "Continue" or inspect report.md/result.json.'
     updated = list(lines or [])
-    if notice not in updated:
-        updated.append(notice)
+    if CONTINUE_ARTIFACT_NOTICE not in updated:
+        updated.append(CONTINUE_ARTIFACT_NOTICE)
     return updated
+
+
+def _strict_claim_attribution(
+    *,
+    request: Request | None,
+    lines: list[str] | None,
+    default_source_kind: str | None,
+    summary_projection: dict[str, Any] | None,
+    stdout_json: Any,
+    command: list[str] | None,
+    collected_artifacts: list[dict[str, Any]] | None = None,
+    warning_lines: list[str] | None = None,
+) -> tuple[list[str] | None, dict[str, Any] | None]:
+    if (
+        request is None
+        or request.claim_attribution_mode != STRICT_CLAIM_ATTRIBUTION_MODE
+    ):
+        return lines, None
+
+    prefixes = CLAIM_SOURCE_PREFIXES
+    attributed_lines: list[str] = []
+    claims: list[dict[str, Any]] = []
+    for ordinal, line in enumerate(lines or [], start=1):
+        source_kind = default_source_kind or "clawbio_presentation"
+        if line == CONTINUE_ARTIFACT_NOTICE:
+            source_kind = "clawbio_presentation"
+        if source_kind == "gentle_executable" and summary_projection is None:
+            source_kind = "unverified"
+        prefix = prefixes[source_kind]
+        attributed = _prefix_claim_line(line, source_kind)
+        attributed_lines.append(attributed)
+        evidence: dict[str, Any] | None = None
+        if source_kind == "gentle_executable" and summary_projection is not None:
+            line_pointers = summary_projection.get("line_pointers")
+            pointer = summary_projection["source_pointer"]
+            if isinstance(line_pointers, list) and ordinal <= len(line_pointers):
+                pointer = line_pointers[ordinal - 1]
+            pointed_value = _result_pointer_value(stdout_json, pointer)
+            evidence = {
+                "source_document": summary_projection["source_document"],
+                "json_pointer": pointer,
+                "source_value_sha256": _sha256_prefixed_json(pointed_value),
+                "source_scope_pointer": summary_projection["source_pointer"],
+                "source_scope_sha256": summary_projection[
+                    "source_payload_sha256"
+                ],
+                "projection_id": summary_projection["projection_id"],
+            }
+        elif summary_projection is not None and line != CONTINUE_ARTIFACT_NOTICE:
+            evidence = {
+                "source_document": summary_projection["source_document"],
+                "json_pointer": summary_projection["source_pointer"],
+                "source_value_sha256": summary_projection[
+                    "source_payload_sha256"
+                ],
+                "projection_id": summary_projection["projection_id"],
+            }
+        elif line == CONTINUE_ARTIFACT_NOTICE:
+            evidence = {
+                "source_document": "result.json",
+                "json_pointer": "/suggested_actions",
+                "source_value_sha256": None,
+                "projection_id": "gentle.clawbio.continuation_notice.v1",
+            }
+        claim_identity = _canonical_json_bytes(
+            {
+                "ordinal": ordinal,
+                "source_kind": source_kind,
+                "text": line,
+                "evidence": evidence,
+            }
+        )
+        claims.append(
+            {
+                "claim_id": "claim_sha256_"
+                + hashlib.sha256(claim_identity).hexdigest(),
+                "ordinal": ordinal,
+                "prefix": prefix,
+                "source_kind": source_kind,
+                "source_tool": (
+                    "gentle_cli"
+                    if source_kind == "gentle_executable"
+                    else "gentle-cloning"
+                ),
+                "text": line,
+                "display_text": attributed,
+                "evidence": evidence,
+            }
+        )
+
+    input_claims = []
+    for index, text in enumerate(request.input_claims or []):
+        evidence = {
+            "source_document": "result.json",
+            "json_pointer": f"/request/input_claims/{index}",
+            "source_value_sha256": _sha256_prefixed_json(text),
+            "projection_id": "gentle.clawbio.input_claim.identity.v1",
+        }
+        claim_identity = _canonical_json_bytes(
+            {
+                "index": index,
+                "source_kind": "caller_input",
+                "text": text,
+                "evidence": evidence,
+            },
+        )
+        input_claims.append(
+            {
+                "claim_id": "claim_sha256_"
+                + hashlib.sha256(claim_identity).hexdigest(),
+                "ordinal": index + 1,
+                "prefix": prefixes["caller_input"],
+                "source_kind": "caller_input",
+                "source_tool": "clawbio_request",
+                "text": text,
+                "display_text": _prefix_claim_line(text, "caller_input"),
+                "evidence": evidence,
+            }
+        )
+
+    request_payload = dataclasses.asdict(request)
+    request_sha256 = _sha256_prefixed_json(request_payload)
+    processing_steps = [
+        {
+            "prefix": prefixes["caller_input"],
+            "source_kind": "caller_input",
+            "tool": "clawbio_request",
+            "role": "Supplied assumptions and paths; not a GENtle finding.",
+            "payload_pointer": "/request",
+            "payload_sha256": request_sha256,
+        },
+        {
+            "prefix": prefixes["clawbio_presentation"],
+            "source_kind": "clawbio_presentation",
+            "tool": "gentle-cloning",
+            "role": "Validated delegation, artifact collection, source labeling, and graphical assembly only.",
+        },
+    ]
+    if command:
+        processing_steps.append(
+            {
+                "prefix": prefixes["gentle_executable"],
+                "source_kind": "gentle_executable",
+                "tool": "gentle_cli",
+                "role": "Authoritative scientific calculation and report generation.",
+                "command": list(command),
+                "output_pointer": "/stdout_json",
+                "output_sha256": (
+                    _sha256_prefixed_json(stdout_json)
+                    if stdout_json is not None
+                    else None
+                ),
+            }
+        )
+    artifact_attribution = []
+    for artifact in collected_artifacts or []:
+        declared_path = str(artifact.get("declared_path") or "").strip()
+        bundle_path = str(artifact.get("bundle_path") or "").strip()
+        copied_path = str(artifact.get("copied_path") or "").strip()
+        is_clawbio_storyboard = declared_path == "generated/clawbio_storyboard.svg"
+        source_kind = (
+            "clawbio_presentation"
+            if is_clawbio_storyboard
+            else "gentle_executable"
+        )
+        identity = json.dumps(
+            {
+                "declared_path": declared_path,
+                "bundle_path": bundle_path,
+                "source_kind": source_kind,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        artifact_attribution.append(
+            {
+                "artifact_id": "artifact_sha256_"
+                + hashlib.sha256(identity.encode("utf-8")).hexdigest(),
+                "prefix": prefixes[source_kind],
+                "source_kind": source_kind,
+                "source_tool": (
+                    "gentle-cloning"
+                    if is_clawbio_storyboard
+                    else "gentle_cli"
+                ),
+                "declared_path": declared_path,
+                "bundle_path": bundle_path,
+                "derived_from": artifact.get("derived_from"),
+                "content_sha256": (
+                    "sha256:" + _sha256_file(Path(copied_path))
+                    if copied_path and Path(copied_path).is_file()
+                    else None
+                ),
+                "scientific_content_authority": (
+                    "none_presentation_only"
+                    if is_clawbio_storyboard
+                    else "gentle_executable"
+                ),
+            }
+        )
+    warning_claims = []
+    for ordinal, warning in enumerate(warning_lines or [], start=1):
+        source_kind = "clawbio_presentation"
+        warning_claims.append(
+            {
+                "ordinal": ordinal,
+                "prefix": prefixes[source_kind],
+                "source_kind": source_kind,
+                "source_tool": "gentle-cloning",
+                "text": warning,
+                "display_text": _prefix_claim_line(warning, source_kind),
+                "evidence": {
+                    "source_document": "result.json",
+                    "json_pointer": f"/warnings/{ordinal - 1}",
+                    "source_value_sha256": _sha256_prefixed_json(warning),
+                    "projection_id": "gentle.clawbio.warning.identity.v1",
+                },
+            }
+        )
+    return (
+        attributed_lines or None,
+        {
+            "schema": CLAIM_LEDGER_SCHEMA,
+            "mode": STRICT_CLAIM_ATTRIBUTION_MODE,
+            "presentation_profile": request.presentation_profile,
+            "normalized_request_sha256": request_sha256,
+            "native_result_sha256": (
+                _sha256_prefixed_json(stdout_json) if stdout_json is not None else None
+            ),
+            "prefixes": prefixes,
+            "processing_steps": processing_steps,
+            "claims": claims,
+            "input_claims": input_claims,
+            "warning_claims": warning_claims,
+            "artifacts": artifact_attribution,
+            "rules": [
+                "Only [gentle] statements are copied from the GENtle executable result.",
+                "Every [gentle] statement requires a JSON pointer, source-value hash, source-scope hash, and named deterministic projection.",
+                "[clawbio] statements describe orchestration or presentation and must not introduce biological findings.",
+                "[input] values are caller-supplied assumptions, not validated findings.",
+                "Caller text that begins with a reserved source prefix is escaped before display and cannot self-assign authority.",
+                "Direct external-tool claims require [external:<tool>] plus tool/version/input/output provenance; this wrapper invokes GENtle rather than external scientific tools directly.",
+                "Unverified prose must use [unverified] and cannot satisfy readiness or specificity gates.",
+            ],
+        },
+    )
+
+
+def _result_pointer_value(stdout_json: Any, pointer: str) -> Any:
+    prefix = "/stdout_json"
+    if pointer == prefix:
+        return stdout_json
+    if not pointer.startswith(prefix + "/"):
+        raise SkillError(f"claim evidence pointer is outside stdout_json: {pointer}")
+    current = stdout_json
+    for raw_token in pointer[len(prefix) + 1 :].split("/"):
+        token = raw_token.replace("~1", "/").replace("~0", "~")
+        if isinstance(current, dict) and token in current:
+            current = current[token]
+        elif isinstance(current, list) and token.isdigit() and int(token) < len(current):
+            current = current[int(token)]
+        else:
+            raise SkillError(f"claim evidence pointer does not resolve: {pointer}")
+    return current
+
+
+def _claim_source_kind_from_prefix(line: str) -> str:
+    if line.startswith("[gentle]"):
+        return "gentle_executable"
+    if line.startswith("[input]"):
+        return "caller_input"
+    if line.startswith("[external:"):
+        return "external_tool"
+    if line.startswith("[unverified]"):
+        return "unverified"
+    return "clawbio_presentation"
+
+
+def _claim_prefix_from_line(line: str, source_kind: str) -> str:
+    if source_kind == "external_tool" and line.startswith("[external:"):
+        end = line.find("]")
+        if end > 0:
+            return line[: end + 1]
+    return CLAIM_SOURCE_PREFIXES[source_kind]
+
+
+def _claim_source_tool(line: str, source_kind: str) -> str:
+    if source_kind == "gentle_executable":
+        return "gentle_cli"
+    if source_kind == "caller_input":
+        return "clawbio_request"
+    if source_kind == "external_tool":
+        prefix = _claim_prefix_from_line(line, source_kind)
+        return prefix.removeprefix("[external:").removesuffix("]")
+    if source_kind == "unverified":
+        return "unverified"
+    return "gentle-cloning"
+
+
+def _prefix_claim_line(line: str, source_kind: str) -> str:
+    match = re.match(
+        r"^\[(?:gentle|clawbio|input|unverified|external:[^\]]+)\]\s*",
+        line,
+    )
+    safe_line = line
+    if match is not None:
+        literal_prefix = match.group(0).strip()
+        safe_line = f"(literal source prefix {literal_prefix}) {line[match.end():]}"
+    return f"{CLAIM_SOURCE_PREFIXES[source_kind]} {safe_line}"
 
 
 def _fallback_chat_summary_lines(
@@ -5513,6 +6671,7 @@ def _write_report(
     run_result: subprocess.CompletedProcess[str] | None,
     stdout_json: Any | None,
     chat_summary_lines: list[str] | None,
+    claim_ledger: dict[str, Any] | None,
     collected_artifacts: list[dict[str, Any]],
     reference_preflight: dict[str, Any] | None,
     started_utc: str,
@@ -5603,6 +6762,7 @@ def _write_report(
             "## Execution Summary",
             "",
             f"- Command: `{command_text}`",
+            "- Content-bound execution receipt: `reproducibility/execution_manifest.json`",
         ]
     )
     if exit_code is not None:
@@ -5645,6 +6805,26 @@ def _write_report(
             "- Scientific artifact hashes: "
             f"`{len(external_primer_handoff.get('scientific_artifacts', []))}`"
         )
+    if claim_ledger:
+        lines.extend(
+            [
+                "",
+                "## Claim Attribution",
+                "",
+                "- Strict source prefixes are active for this run.",
+                "- `[gentle]`: copied or deterministically projected from the GENtle executable JSON result.",
+                "- `[clawbio]`: orchestration or presentation only; not a biological finding.",
+                "- `[input]`: caller-supplied assumption or path; not a validated finding.",
+                "- Direct external-tool claims require `[external:<tool>]` and explicit tool/input/output provenance.",
+                "- Machine-readable ledger: `claim_ledger.json`.",
+            ]
+        )
+        if request is not None and request.input_claims:
+            lines.extend(["", "### Input Assumptions", ""])
+            lines.extend(
+                f"- {_prefix_claim_line(text, 'caller_input')}"
+                for text in request.input_claims
+            )
     if warnings:
         lines.extend(["", "## Warnings", ""])
         lines.extend(f"- {line}" for line in warnings)
@@ -5900,7 +7080,9 @@ def main() -> int:
 
     started = _now_utc_iso()
     request: Request | None = None
+    request_source_path: Path | None = None
     run_result: subprocess.CompletedProcess[str] | None = None
+    main_execution_step: dict[str, Any] | None = None
     command: list[str] | None = None
     resolution: CliResolution | None = None
     execution_cwd = Path.cwd()
@@ -5911,6 +7093,9 @@ def main() -> int:
     reference_preflight: dict[str, Any] | None = None
     stdout_json: Any | None = None
     chat_summary_lines: list[str] | None = None
+    chat_summary_source_kind: str | None = None
+    chat_summary_projection: dict[str, Any] | None = None
+    claim_ledger: dict[str, Any] | None = None
     preferred_artifacts: list[dict[str, Any]] | None = None
     suggested_actions: list[dict[str, Any]] | None = None
     preferred_demo_actions: list[dict[str, Any]] | None = None
@@ -5921,6 +7106,11 @@ def main() -> int:
     external_primer_handoff_context: dict[str, Any] | None = None
     external_primer_handoff_result: dict[str, Any] | None = None
     external_primer_handoff_gentle_version: str | None = None
+    gentle_runtime_version: str | None = None
+    verified_delegation: dict[str, Any] | None = None
+    content_bound_inputs: list[dict[str, Any]] = []
+    state_before = _state_content_snapshot(None, execution_cwd)
+    state_after = _state_content_snapshot(None, execution_cwd)
     pre_execution_steps: list[dict[str, Any]] = []
     auxiliary_steps: list[dict[str, Any]] = []
     warnings: list[str] = []
@@ -5933,17 +7123,59 @@ def main() -> int:
         else:
             if not args.input:
                 raise SkillError("--input is required unless --demo or --skill-info is used")
-            payload = _read_json(_resolve_existing_request_file(args.input, Path(__file__)))
+            request_source_path = _resolve_existing_request_file(
+                args.input, Path(__file__)
+            )
+            payload = _read_json(request_source_path)
             request = _coerce_request(payload)
         warnings.extend(_request_mode_warnings(request))
 
+        own_catalog = _read_catalog_entry(Path(__file__))
+        if own_catalog and (
+            own_catalog.get("name") != SKILL_NAME
+            or own_catalog.get("version") != SKILL_CONTRACT_VERSION
+        ):
+            raise SkillError(
+                "gentle-cloning catalog identity/version disagrees with its runtime contract"
+            )
+
+        verified_delegation = _verified_delegation(request, Path(__file__))
+
         if request.mode == "skill-info":
+            content_bound_inputs = _prepare_content_bound_inputs(
+                request,
+                request_source_path=request_source_path,
+                execution_cwd=execution_cwd,
+                script_path=Path(__file__),
+            )
+            state_before = _state_content_snapshot(request, execution_cwd)
             stdout_json = _skill_info_payload(Path(__file__))
             chat_summary_lines = _skill_info_chat_summary_lines(stdout_json)
+            chat_summary_source_kind = "clawbio_presentation"
+            chat_summary_projection = _summary_projection(
+                chat_summary_lines,
+                source_pointer="/stdout_json",
+                source_payload=stdout_json,
+                projection_id="gentle.clawbio.skill_info_summary.v1",
+            )
             status = "ok"
         elif request.mode == "intents":
+            content_bound_inputs = _prepare_content_bound_inputs(
+                request,
+                request_source_path=request_source_path,
+                execution_cwd=execution_cwd,
+                script_path=Path(__file__),
+            )
+            state_before = _state_content_snapshot(request, execution_cwd)
             stdout_json = _intents_runtime_payload(Path(__file__))
             chat_summary_lines = _intents_runtime_chat_summary_lines(stdout_json)
+            chat_summary_source_kind = "clawbio_presentation"
+            chat_summary_projection = _summary_projection(
+                chat_summary_lines,
+                source_pointer="/stdout_json",
+                source_payload=stdout_json,
+                projection_id="gentle.clawbio.intents_summary.v1",
+            )
             warnings.extend(_string_list(stdout_json.get("warnings")))
             status = "ok"
         else:
@@ -5958,6 +7190,13 @@ def main() -> int:
                 raise
 
             execution_cwd = _resolve_execution_cwd(request, resolution, Path(__file__))
+            content_bound_inputs = _prepare_content_bound_inputs(
+                request,
+                request_source_path=request_source_path,
+                execution_cwd=execution_cwd,
+                script_path=Path(__file__),
+            )
+            state_before = _state_content_snapshot(request, execution_cwd)
             if request.ensure_reference_prepared is not None:
                 reference_preflight = _reference_preflight_record(
                     request.ensure_reference_prepared
@@ -5968,6 +7207,37 @@ def main() -> int:
                     execution_cwd,
                     reference_preflight,
                 )
+
+            if verified_delegation is not None and request.mode != "external-primer-handoff":
+                version_result, version_step = _run_cli_command(
+                    resolution,
+                    ["--version"],
+                    execution_cwd,
+                    min(request.timeout_secs, 180),
+                )
+                pre_execution_steps.append(version_step)
+                if version_result.returncode != 0:
+                    failure_summary = _build_failure_summary(
+                        stage="delegated_runtime_version_preflight",
+                        step=version_step,
+                        execution_cwd=execution_cwd,
+                    )
+                    raise SkillError(
+                        _build_failure_message(
+                            headline=(
+                                "GENtle runtime version preflight failed for the "
+                                "delegated skill request."
+                            ),
+                            failure_summary=failure_summary,
+                        )
+                    )
+                gentle_runtime_version = (
+                    version_result.stdout.strip() or version_result.stderr.strip()
+                )
+                if not gentle_runtime_version:
+                    raise SkillError(
+                        "GENtle runtime version preflight returned no version text"
+                    )
 
             if request.mode == "external-primer-handoff":
                 external_primer_handoff_context = _prepare_external_primer_handoff(
@@ -6016,6 +7286,7 @@ def main() -> int:
                     raise SkillError(
                         "GENtle runtime version preflight returned no version text"
                     )
+                gentle_runtime_version = external_primer_handoff_gentle_version
 
             cli_args = _build_cli_args(request, Path(__file__))
             _prepare_expected_artifact_parent_dirs(request, execution_cwd)
@@ -6025,6 +7296,7 @@ def main() -> int:
                 execution_cwd,
                 request.timeout_secs,
             )
+            main_execution_step = main_step
             command = main_step["command"]
             status = "ok" if run_result.returncode == 0 else "command_failed"
             if run_result.returncode != 0:
@@ -6038,6 +7310,10 @@ def main() -> int:
                     failure_summary=failure_summary,
                 )
             stdout_json = _parse_stdout_json(run_result.stdout)
+            if request.mode == "version" and run_result.returncode == 0:
+                gentle_runtime_version = (
+                    run_result.stdout.strip() or run_result.stderr.strip() or None
+                )
             if (
                 request.mode == "external-primer-handoff"
                 and external_primer_handoff_context is not None
@@ -6081,6 +7357,13 @@ def main() -> int:
                     chat_summary_lines = _external_primer_handoff_chat_summary_lines(
                         external_primer_handoff_result
                     )
+                    chat_summary_source_kind = "clawbio_presentation"
+                    chat_summary_projection = _summary_projection(
+                        chat_summary_lines,
+                        source_pointer="/external_primer_handoff",
+                        source_payload=external_primer_handoff_result,
+                        projection_id="gentle.clawbio.external_primer_handoff_summary.v1",
+                    )
                 else:
                     external_primer_handoff_result = (
                         _external_primer_handoff_base_result(
@@ -6101,13 +7384,25 @@ def main() -> int:
                     chat_summary_lines = _external_primer_handoff_chat_summary_lines(
                         external_primer_handoff_result
                     )
+                    chat_summary_source_kind = "clawbio_presentation"
+                    chat_summary_projection = _summary_projection(
+                        chat_summary_lines,
+                        source_pointer="/external_primer_handoff",
+                        source_payload=external_primer_handoff_result,
+                        projection_id="gentle.clawbio.external_primer_handoff_summary.v1",
+                    )
             if request.mode != "external-primer-handoff":
-                chat_summary_lines = _extract_chat_summary_lines(stdout_json)
+                chat_summary_projection = _extract_chat_summary_projection(stdout_json)
+                if chat_summary_projection is not None:
+                    chat_summary_lines = chat_summary_projection["lines"]
+                    chat_summary_source_kind = "gentle_executable"
             if chat_summary_lines is None:
                 chat_summary_lines = _runtime_version_chat_summary_lines(
                     request,
                     run_result,
                 )
+                if chat_summary_lines is not None:
+                    chat_summary_source_kind = "clawbio_presentation"
             preferred_artifacts = _extract_preferred_artifacts(stdout_json)
             suggested_actions = _extract_suggested_actions(stdout_json, request)
             preferred_demo_actions = _extract_preferred_demo_actions(stdout_json)
@@ -6172,6 +7467,14 @@ def main() -> int:
                     request,
                     preferred_artifacts,
                 )
+                if chat_summary_lines is not None:
+                    chat_summary_source_kind = "clawbio_presentation"
+                    chat_summary_projection = _summary_projection(
+                        chat_summary_lines,
+                        source_pointer="/preferred_artifacts",
+                        source_payload=preferred_artifacts,
+                        projection_id="gentle.clawbio.artifact_summary.v1",
+                    )
             if chat_summary_lines is None:
                 chat_summary_lines = _fallback_chat_summary_lines(
                     request=request,
@@ -6180,6 +7483,22 @@ def main() -> int:
                     stdout_json=stdout_json,
                     status=status,
                 )
+                if chat_summary_lines is not None:
+                    chat_summary_source_kind = "clawbio_presentation"
+                    chat_summary_projection = _summary_projection(
+                        chat_summary_lines,
+                        source_pointer=(
+                            "/stdout_json"
+                            if stdout_json is not None
+                            else "/stdout"
+                        ),
+                        source_payload=(
+                            stdout_json
+                            if stdout_json is not None
+                            else (run_result.stdout if run_result else "")
+                        ),
+                        projection_id="gentle.clawbio.fallback_summary.v1",
+                    )
             chat_summary_lines = _append_continue_artifact_notice(
                 chat_summary_lines,
                 continue_artifact_actions,
@@ -6208,17 +7527,72 @@ def main() -> int:
         error_message = f"unexpected error: {type(e).__name__}: {e}"
         status = "failed"
 
+    try:
+        state_after = _state_content_snapshot(request, execution_cwd)
+    except SkillError as e:
+        state_after = {
+            "declared": bool(request and request.state_path),
+            "path": request.state_path if request else None,
+            "exists": None,
+            "sha256": None,
+            "error": str(e),
+        }
+        status = "failed"
+        error_message = str(e)
+
+    try:
+        _verify_content_bound_inputs_unchanged(content_bound_inputs)
+    except SkillError as e:
+        provenance_error = str(e)
+        error_message = (
+            f"{error_message}\nProvenance verification failed: {provenance_error}"
+            if error_message
+            else provenance_error
+        )
+        status = "verification_failed"
+        failure_summary = {
+            "stage": "content_binding_verification",
+            "note": provenance_error,
+            "command": command,
+            "command_text": _format_command_text(command),
+            "execution_cwd": str(execution_cwd),
+            "exit_code": run_result.returncode if run_result else None,
+            "stderr_preview": _one_line_preview(run_result.stderr) if run_result else "",
+            "stdout_preview": _one_line_preview(run_result.stdout) if run_result else "",
+        }
+
+    if claim_ledger is None:
+        chat_summary_lines, claim_ledger = _strict_claim_attribution(
+            request=request,
+            lines=chat_summary_lines,
+            default_source_kind=chat_summary_source_kind,
+            summary_projection=chat_summary_projection,
+            stdout_json=stdout_json,
+            command=command,
+            collected_artifacts=collected_artifacts,
+            warning_lines=warnings,
+        )
+
     ended = _now_utc_iso()
 
     report_path = output_dir / "report.md"
     result_path = output_dir / "result.json"
+    claim_ledger_path = output_dir / "claim_ledger.json"
     commands_path = repro_dir / "commands.sh"
     env_path = repro_dir / "environment.yml"
+    execution_manifest_path = repro_dir / "execution_manifest.json"
     checksums_path = repro_dir / "checksums.sha256"
 
     suggested_actions = _stamp_action_envelope(suggested_actions)
     preferred_demo_actions = _stamp_action_envelope(preferred_demo_actions)
     blocked_actions = _stamp_blocked_action_envelopes(blocked_actions)
+
+    if claim_ledger is not None:
+        claim_ledger["execution_manifest_schema"] = EXECUTION_MANIFEST_SCHEMA
+        claim_ledger_path.write_text(
+            json.dumps(claim_ledger, indent=2, ensure_ascii=True) + "\n",
+            encoding="utf-8",
+        )
 
     _write_report(
         path=report_path,
@@ -6229,6 +7603,7 @@ def main() -> int:
         run_result=run_result,
         stdout_json=stdout_json,
         chat_summary_lines=chat_summary_lines,
+        claim_ledger=claim_ledger,
         collected_artifacts=collected_artifacts,
         reference_preflight=reference_preflight,
         started_utc=started,
@@ -6281,6 +7656,72 @@ def main() -> int:
 
     _write_repro_environment(env_path)
 
+    manifest_steps: list[dict[str, Any]] = []
+    for step in (reference_preflight or {}).get("steps", []):
+        manifest_steps.append(dict(step, manifest_stage="reference_preflight"))
+    manifest_steps.extend(
+        dict(step, manifest_stage="runtime_preflight")
+        for step in pre_execution_steps
+    )
+    if main_execution_step is not None:
+        manifest_steps.append(dict(main_execution_step, manifest_stage="main_command"))
+    manifest_steps.extend(
+        dict(step, manifest_stage="auxiliary") for step in auxiliary_steps
+    )
+    manifest_artifacts = [
+        _content_artifact_record(report_path, "human_report", output_dir),
+        _content_artifact_record(commands_path, "replay_commands", output_dir),
+        _content_artifact_record(env_path, "runtime_environment", output_dir),
+    ]
+    manifest_artifacts.extend(
+        _content_artifact_record(
+            Path(artifact["copied_path"]), "collected_output", output_dir
+        )
+        for artifact in collected_artifacts
+        if isinstance(artifact, dict)
+        and artifact.get("copied_path")
+        and Path(artifact["copied_path"]).is_file()
+    )
+    if external_primer_handoff_result is not None:
+        manifest_artifacts.extend(
+            _content_artifact_record(
+                Path(artifact["path"]), "native_scientific_output", output_dir
+            )
+            for artifact in external_primer_handoff_result.get(
+                "scientific_artifacts", []
+            )
+            if isinstance(artifact, dict)
+            and artifact.get("path")
+            and Path(artifact["path"]).is_file()
+        )
+    execution_manifest = _build_execution_manifest(
+        request=request,
+        request_source_path=request_source_path,
+        content_bound_inputs=content_bound_inputs,
+        delegation=verified_delegation,
+        script_path=Path(__file__).resolve(),
+        resolution=resolution,
+        gentle_version=gentle_runtime_version,
+        execution_cwd=execution_cwd,
+        started_utc=started,
+        ended_utc=ended,
+        status=status,
+        error_message=error_message,
+        state_before=state_before,
+        state_after=state_after,
+        reference_preflight=reference_preflight,
+        execution_steps=manifest_steps,
+        stdout=(run_result.stdout if run_result else ""),
+        stderr=(run_result.stderr if run_result else ""),
+        stdout_json=stdout_json,
+        artifacts=manifest_artifacts,
+        claim_ledger_path=(claim_ledger_path if claim_ledger is not None else None),
+    )
+    execution_manifest_path.write_text(
+        json.dumps(execution_manifest, indent=2, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )
+
     result_payload = {
         "schema": RESULT_SCHEMA,
         "invocation_marker": INVOCATION_MARKER,
@@ -6295,6 +7736,8 @@ def main() -> int:
         "stdout_json": stdout_json,
         "stderr": (run_result.stderr if run_result else ""),
         "chat_summary_lines": chat_summary_lines,
+        "claim_ledger": claim_ledger,
+        "execution_manifest": execution_manifest,
         "artifact_summary": artifact_summary,
         "preferred_artifacts": preferred_artifacts,
         "suggested_actions": suggested_actions,
@@ -6312,6 +7755,10 @@ def main() -> int:
         "artifacts": {
             "report_md": str(report_path),
             "result_json": str(result_path),
+            "claim_ledger_json": (
+                str(claim_ledger_path) if claim_ledger is not None else None
+            ),
+            "execution_manifest_json": str(execution_manifest_path),
             "repro_commands": str(commands_path),
             "repro_environment": str(env_path),
             "repro_checksums": str(checksums_path),
@@ -6323,7 +7770,13 @@ def main() -> int:
         encoding="utf-8",
     )
 
-    checksum_paths = [report_path, result_path, commands_path, env_path]
+    checksum_paths = [
+        report_path,
+        result_path,
+        commands_path,
+        env_path,
+        execution_manifest_path,
+    ]
     checksum_paths.extend(
         Path(artifact["copied_path"])
         for artifact in collected_artifacts
@@ -6343,6 +7796,8 @@ def main() -> int:
             )
             if isinstance(artifact, dict) and artifact.get("path")
         )
+    if claim_ledger is not None:
+        checksum_paths.append(claim_ledger_path)
     checksums: list[tuple[str, str]] = []
     seen_checksum_paths: set[Path] = set()
     for artifact in checksum_paths:

@@ -10064,6 +10064,33 @@ pub struct ExperimentalAssayOrderReadinessRow {
     pub predicted_product_lengths_bp: Vec<usize>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Provenance-bound virtual-gel projection of one experimental assay handoff.
+///
+/// Every assay card is represented by one sample lane so primer-pair products
+/// remain comparable under one shared gel model. This projection is
+/// illustrative and does not replace the report's explicit gel-resolution
+/// gate.
+pub struct ExperimentalAssayVirtualGelReport {
+    pub schema: String,
+    pub source_package_id: String,
+    pub source_panel_report_id: String,
+    pub source_panel_sha256: String,
+    pub svg_path: String,
+    pub svg_sha256: String,
+    pub conditions: gentle_protocol::GelRunConditions,
+    pub conditions_source: String,
+    pub render_options: gentle_protocol::PoolGelRenderOptions,
+    #[serde(default)]
+    pub selected_ladders: Vec<String>,
+    pub sample_lane_count: usize,
+    pub rendered_product_count: usize,
+    #[serde(default)]
+    pub empty_lane_card_ids: Vec<String>,
+    pub interpretation: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 /// Deterministic, read-only per-panel experimental handoff package.
@@ -10092,6 +10119,8 @@ pub struct ExperimentalAssayHandoffReport {
     pub assay_tests: Vec<CdnaAssayTestReport>,
     #[serde(default)]
     pub variant_evidence: Vec<PrimerVariantEvidenceReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub virtual_gel: Option<ExperimentalAssayVirtualGelReport>,
     #[serde(default)]
     pub warnings: Vec<String>,
 }

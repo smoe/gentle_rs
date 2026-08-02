@@ -7236,7 +7236,7 @@ fn parse_primers_preflight_with_backend_overrides() {
 #[test]
 fn parse_primers_experimental_handoff_with_optional_evidence_and_exports() {
     let command = parse_shell_line(
-        "primers experimental-handoff panel_1 --policy @policy.json --variant-evidence variants_a.json --variant-evidence variants_b.json --order-form-id order_1 --path handoff.json --order-table handoff.tsv",
+        "primers experimental-handoff panel_1 --policy @policy.json --variant-evidence variants_a.json --variant-evidence variants_b.json --order-form-id order_1 --path handoff.json --order-table handoff.tsv --gel-svg handoff.gel.svg --gel-ladder \"NEB 100bp DNA Ladder\"",
     )
     .expect("parse experimental handoff command");
     assert!(matches!(
@@ -7248,6 +7248,8 @@ fn parse_primers_experimental_handoff_with_optional_evidence_and_exports() {
             order_form_id,
             path,
             order_table_path,
+            virtual_gel_svg_path,
+            virtual_gel_ladders,
         } if panel_report_id == "panel_1"
             && policy_json.as_deref() == Some("@policy.json")
             && variant_evidence_paths
@@ -7255,6 +7257,8 @@ fn parse_primers_experimental_handoff_with_optional_evidence_and_exports() {
             && order_form_id.as_deref() == Some("order_1")
             && path.as_deref() == Some("handoff.json")
             && order_table_path.as_deref() == Some("handoff.tsv")
+            && virtual_gel_svg_path.as_deref() == Some("handoff.gel.svg")
+            && virtual_gel_ladders == vec!["NEB 100bp DNA Ladder".to_string()]
     ));
 }
 

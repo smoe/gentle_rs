@@ -151,6 +151,13 @@ Local agent handoff:
   contract. This wrapper mode binds explicit source records to GENtle's native
   external-primer result by stable IDs and hashes; it neither discovers caller
   data nor performs permission, interpretation, or record-lifecycle work.
+- If that provider result must return to discussion-moderation, use the
+  post-run
+  [`discussion_moderation_handoff.py`](skills/gentle-cloning/discussion_moderation_handoff.py)
+  adapter and its
+  [handoff contract](skills/gentle-cloning/references/discussion_moderation_handoff.md).
+  It verifies explicit input/result hashes and emits an intake packet; the
+  ledger still owns permission checks, recording, replay, and freshness.
 
 Recognition smoke tests:
 
@@ -227,4 +234,11 @@ The wrapper emits the standard ClawBio-style bundle:
     replies
 - `reproducibility/commands.sh`
 - `reproducibility/environment.yml`
+- `reproducibility/execution_manifest.json`
 - `reproducibility/checksums.sha256`
+
+The execution manifest is a content-bound, topic-neutral provider receipt. For
+delegated skills it verifies the co-deployed source descriptor/catalog and
+records the selected intent and plan step; it does not claim to reproduce
+natural-language routing. Detailed contract:
+[`skills/gentle-cloning/references/execution_manifest.md`](skills/gentle-cloning/references/execution_manifest.md).
