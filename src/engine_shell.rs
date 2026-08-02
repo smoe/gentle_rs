@@ -56,7 +56,7 @@ use crate::{
         FeatureRecordDeleteRequest, FeatureRecordMergeRequest, FeatureRecordQualifier,
         FeatureRecordSplitRequest, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY,
         GeneIsoformEvidenceRequest, GeneLocusEvidenceDisplayRequest, GeneSetCohortRelationship,
-        GeneSetProducerFilter, GeneSetPromoterCohortReport, GeneSetRequest,
+        GeneSetPoolMemberBinding, GeneSetProducerFilter, GeneSetPromoterCohortReport, GeneSetRequest,
         GeneSetResolutionReport, GeneSetResolutionReviewStatus, GeneTranscriptAssayRoutineRequest,
         GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource,
         GenomeTrackSubscription, GentleEngine, GuideCandidate, GuideOligoExportFormat,
@@ -1179,6 +1179,15 @@ pub enum ShellCommand {
         allow_draft: bool,
         allow_deprecated: bool,
         output: Option<String>,
+    },
+    GeneSetsCreatePool {
+        resolution_id: String,
+        member_bindings: Vec<GeneSetPoolMemberBinding>,
+        output_prefix: Option<String>,
+        container_name: Option<String>,
+        dry_run: bool,
+        expected_plan_fingerprint_sha256: Option<String>,
+        path: Option<String>,
     },
     GeneSetsProduceDirectList {
         cache_path: String,
@@ -7891,6 +7900,23 @@ impl ShellCommand {
                 allow_draft,
                 allow_deprecated,
                 output.as_deref().unwrap_or("-"),
+            ),
+            Self::GeneSetsCreatePool {
+                resolution_id,
+                member_bindings,
+                output_prefix,
+                container_name,
+                dry_run,
+                path,
+                ..
+            } => format!(
+                "{} physical pool for gene-set resolution '{}' (source_containers={}, output_prefix='{}', container_name='{}', path='{}')",
+                if *dry_run { "preview" } else { "create" },
+                resolution_id,
+                member_bindings.len(),
+                output_prefix.as_deref().unwrap_or("gene_set_pool"),
+                container_name.as_deref().unwrap_or("generated"),
+                path.as_deref().unwrap_or("-"),
             ),
             Self::GeneSetsProduceDirectList {
                 cache_path,
@@ -26977,6 +27003,58 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             ],
         ),
         json!({
+            "id": "CreateGeneSetPool",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "COLLECTION_SUBJECT", "required": true, "subject_kind": "report", "detail": "persisted gene_set_resolution subject"},
+                {"name": "MEMBER_BINDINGS", "required": true, "subject_kind": "container", "detail": "one resolved-member id to exclusive singleton-container binding per member"},
+                {"name": "OUTPUT_PREFIX", "required": false, "subject_kind": "other", "detail": "derived aliquot sequence-id prefix"},
+                {"name": "CONTAINER_NAME", "required": false, "subject_kind": "other", "detail": "display name for the new physical pool"},
+                {"name": "DRY_RUN", "required": false, "subject_kind": "other", "detail": "preview without project-state mutation"},
+                {"name": "EXPECTED_PLAN_FINGERPRINT_SHA256", "required": false, "subject_kind": "other", "detail": "preview fingerprint required when applying"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external report JSON path"}
+            ],
+            "reads": [],
+            "effects": [{
+                "fact": "report.exists",
+                "report_kind": "gene_set_pool_creation",
+                "equals": "gene_set_pool_creation",
+                "effect_kind": "must_on_success"
+            }],
+            "precondition_expr": {"all": []},
+            "description": "Preview or apply explicit physical pooling of a complete resolved gene set from exclusive singleton source containers.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("CreateGeneSetPool")
+        }),
+        json!({
+            "id": "gene-sets create-pool",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "RESOLUTION_ID", "required": true, "subject_kind": "report", "detail": "persisted complete gene-set resolution id"},
+                {"name": "--member-container", "required": true, "subject_kind": "container", "detail": "repeatable MEMBER_ID=CONTAINER_ID binding to an exclusive singleton source"},
+                {"name": "--output-prefix", "required": false, "subject_kind": "other", "detail": "derived aliquot sequence-id prefix"},
+                {"name": "--container-name", "required": false, "subject_kind": "other", "detail": "display name for the new physical pool"},
+                {"name": "--apply", "required": false, "subject_kind": "other", "detail": "materialize a previously previewed plan"},
+                {"name": "--expected-plan-fingerprint-sha256", "required": false, "subject_kind": "other", "detail": "required with --apply"},
+                {"name": "--path", "required": false, "subject_kind": "other", "detail": "optional external report JSON path"}
+            ],
+            "reads": [],
+            "effects": [{
+                "fact": "report.exists",
+                "report_kind": "gene_set_pool_creation",
+                "equals": "gene_set_pool_creation",
+                "effect_kind": "must_on_success"
+            }],
+            "precondition_expr": {"all": []},
+            "description": "Preview by default or explicitly create a fingerprint-locked physical pool from a complete resolved gene set.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("gene-sets create-pool")
+        }),
+        json!({
             "id": "BuildGeneSetPromoterCohort",
             "kind": "operation",
             "mutating": "true",
@@ -27740,7 +27818,9 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "ScanTfbsHitsCollection"
         | "collections run tfbs-scan"
         | "DigestCollection"
-        | "collections run digest" => Some(vec![]),
+        | "collections run digest"
+        | "CreateGeneSetPool"
+        | "gene-sets create-pool" => Some(vec![]),
         "ExportPoolCollection" | "collections run export-pool" => Some(vec![
             json!({"fact": "container.exists", "subject": {"arg": "CONTAINER_ID"}}),
         ]),
@@ -37009,7 +37089,8 @@ fn parse_display_command(tokens: &[String]) -> Result<ShellCommand, String> {
 fn parse_gene_sets_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "gene-sets requires a subcommand: resolve, produce, or promoter-cohort".to_string(),
+            "gene-sets requires a subcommand: resolve, produce, create-pool, or promoter-cohort"
+                .to_string(),
         );
     }
     match tokens[1].as_str() {
@@ -37617,6 +37698,114 @@ fn parse_gene_sets_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 )),
             }
         }
+        "create-pool" | "create_pool" => {
+            let context = "gene-sets create-pool";
+            let mut resolution_id: Option<String> = None;
+            let mut member_bindings = Vec::new();
+            let mut output_prefix = None;
+            let mut container_name = None;
+            let mut dry_run = true;
+            let mut expected_plan_fingerprint_sha256 = None;
+            let mut path = None;
+            let mut idx = 2usize;
+            if let Some(value) = tokens.get(idx)
+                && !value.starts_with("--")
+            {
+                resolution_id = Some(value.trim().to_string());
+                idx += 1;
+            }
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--member-container" | "--member-binding" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        let (member_id, container_id) = raw
+                            .split_once('=')
+                            .ok_or_else(|| format!("{flag} requires MEMBER_ID=CONTAINER_ID"))?;
+                        let member_id = member_id.trim();
+                        let container_id = container_id.trim();
+                        if member_id.is_empty() || container_id.is_empty() {
+                            return Err(format!(
+                                "{flag} requires non-empty MEMBER_ID=CONTAINER_ID"
+                            ));
+                        }
+                        member_bindings.push(GeneSetPoolMemberBinding {
+                            stable_member_id: member_id.to_string(),
+                            source_container_id: container_id.to_string(),
+                        });
+                    }
+                    "--output-prefix" => {
+                        output_prefix = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output-prefix",
+                            context,
+                        )?);
+                    }
+                    "--container-name" => {
+                        container_name = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--container-name",
+                            context,
+                        )?);
+                    }
+                    "--preview" | "--dry-run" => {
+                        dry_run = true;
+                        idx += 1;
+                    }
+                    "--apply" => {
+                        dry_run = false;
+                        idx += 1;
+                    }
+                    "--expected-plan-fingerprint-sha256" => {
+                        expected_plan_fingerprint_sha256 = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--expected-plan-fingerprint-sha256",
+                            context,
+                        )?);
+                    }
+                    "--path" | "--output" => {
+                        let flag = tokens[idx].clone();
+                        path = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    other => return Err(format!("Unknown option '{other}' for {context}")),
+                }
+            }
+            let resolution_id = resolution_id
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| format!("{context} requires RESOLUTION_ID"))?;
+            if member_bindings.is_empty() {
+                return Err(format!(
+                    "{context} requires at least one --member-container MEMBER_ID=CONTAINER_ID"
+                ));
+            }
+            if !dry_run
+                && expected_plan_fingerprint_sha256
+                    .as_deref()
+                    .map(str::trim)
+                    .is_none_or(str::is_empty)
+            {
+                return Err(format!(
+                    "{context} --apply requires --expected-plan-fingerprint-sha256 SHA256"
+                ));
+            }
+            if dry_run && expected_plan_fingerprint_sha256.is_some() {
+                return Err(format!(
+                    "{context} accepts --expected-plan-fingerprint-sha256 only with --apply"
+                ));
+            }
+            Ok(ShellCommand::GeneSetsCreatePool {
+                resolution_id,
+                member_bindings,
+                output_prefix,
+                container_name,
+                dry_run,
+                expected_plan_fingerprint_sha256,
+                path,
+            })
+        }
         "promoter-cohort" | "promoter_cohort" => {
             let context = "gene-sets promoter-cohort";
             let mut source_args = GeneSetSourceArgs::default();
@@ -37724,7 +37913,7 @@ fn parse_gene_sets_command(tokens: &[String]) -> Result<ShellCommand, String> {
             })
         }
         other => Err(format!(
-            "Unknown gene-sets subcommand '{other}' (expected resolve, produce, or promoter-cohort)"
+            "Unknown gene-sets subcommand '{other}' (expected resolve, produce, create-pool, or promoter-cohort)"
         )),
     }
 }
@@ -48167,6 +48356,40 @@ fn execute_export_import_and_resource_command(
                 state_changed: false,
                 output: serde_json::to_value(&report)
                     .map_err(|e| format!("Could not serialize gene-set resolution: {e}"))?,
+            })
+        }
+        ShellCommand::GeneSetsCreatePool {
+            resolution_id,
+            member_bindings,
+            output_prefix,
+            container_name,
+            dry_run,
+            expected_plan_fingerprint_sha256,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::CreateGeneSetPool {
+                    collection_subject: CollectionSubjectRef::GeneSetResolution {
+                        report_id: resolution_id.clone(),
+                    },
+                    member_bindings: member_bindings.clone(),
+                    output_prefix: output_prefix.clone(),
+                    container_name: container_name.clone(),
+                    dry_run: *dry_run,
+                    expected_plan_fingerprint_sha256: expected_plan_fingerprint_sha256.clone(),
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result.gene_set_pool_creation.clone().ok_or_else(|| {
+                "CreateGeneSetPool did not return a gene-set pool creation report".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: !dry_run && report.created_container_id.is_some(),
+                output: json!({
+                    "schema": "gentle.gene_set_pool_creation_command.v1",
+                    "report": report,
+                    "result": op_result,
+                }),
             })
         }
         ShellCommand::GeneSetsProduceDirectList {
@@ -59499,6 +59722,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::GeneGroupsDoctor { .. }
             | ShellCommand::GeneGroupsDraft { .. }
             | ShellCommand::GeneSetsResolve { .. }
+            | ShellCommand::GeneSetsCreatePool { .. }
             | ShellCommand::GeneSetsProduceDirectList { .. }
             | ShellCommand::GeneSetsProduceOntologyAssignment { .. }
             | ShellCommand::GeneSetsProduceCoRegulatedCohort { .. }
@@ -60270,6 +60494,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::GeneGroupsDoctor { .. }
         | ShellCommand::GeneGroupsDraft { .. }
         | ShellCommand::GeneSetsResolve { .. }
+        | ShellCommand::GeneSetsCreatePool { .. }
         | ShellCommand::GeneSetsProduceDirectList { .. }
         | ShellCommand::GeneSetsProduceOntologyAssignment { .. }
         | ShellCommand::GeneSetsProduceCoRegulatedCohort { .. }

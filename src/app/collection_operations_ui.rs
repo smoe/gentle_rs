@@ -18,6 +18,7 @@ pub(super) enum CollectionLauncherAdapter {
     RestrictionScan,
     TfbsScan,
     Digest,
+    CreatePool,
     PromoterCohort,
 }
 
@@ -28,6 +29,7 @@ impl CollectionLauncherAdapter {
             Self::RestrictionScan => "FindRestrictionSites",
             Self::TfbsScan => "ScanTfbsHits",
             Self::Digest => "Digest",
+            Self::CreatePool => "CreateGeneSetPool",
             Self::PromoterCohort => "BuildGeneSetPromoterCohort",
         }
     }
@@ -38,6 +40,7 @@ impl CollectionLauncherAdapter {
             Self::RestrictionScan => "Restriction scan",
             Self::TfbsScan => "TFBS hit scan",
             Self::Digest => "Restriction digest",
+            Self::CreatePool => "Create physical pool",
             Self::PromoterCohort => "Promoter cohort",
         }
     }
@@ -48,6 +51,7 @@ impl CollectionLauncherAdapter {
             "FindRestrictionSites" => Some(Self::RestrictionScan),
             "ScanTfbsHits" => Some(Self::TfbsScan),
             "Digest" => Some(Self::Digest),
+            "CreateGeneSetPool" => Some(Self::CreatePool),
             "BuildGeneSetPromoterCohort" => Some(Self::PromoterCohort),
             _ => None,
         }
@@ -363,6 +367,26 @@ mod tests {
                 .baseline_readiness()
                 .detail()
                 .is_some_and(|detail| detail.contains("DigestContainer"))
+        );
+    }
+
+    #[test]
+    fn gene_set_pool_adapter_projects_one_context_agnostic_combine() {
+        let row = collection_launcher_rows(CollectionSubjectKind::GeneSetResolution)
+            .into_iter()
+            .find(|row| row.adapter == Some(CollectionLauncherAdapter::CreatePool))
+            .expect("gene-set pool launcher row");
+        assert!(row.baseline_readiness().is_ready());
+        assert!(matches!(
+            row.policy.support,
+            CollectionLiftSupport::Supported {
+                mode: CollectionLiftingMode::Combine,
+                ref result_payload_kind,
+            } if result_payload_kind == "gentle.gene_set_pool_creation.v1"
+        ));
+        assert_eq!(
+            row.policy.context_requirement,
+            gentle_protocol::CollectionContextRequirement::ContextAgnostic
         );
     }
 

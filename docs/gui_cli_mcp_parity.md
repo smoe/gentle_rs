@@ -17,11 +17,11 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 34 | 627 | 0 |
-| gentle_cli | 398 | 287 | 0 |
-| MCP | 88 | 448 | 52 |
-| JS | 78 | 444 | 55 |
-| Lua | 77 | 445 | 55 |
+| GUI | 35 | 628 | 0 |
+| gentle_cli | 399 | 288 | 0 |
+| MCP | 88 | 450 | 52 |
+| JS | 78 | 446 | 55 |
+| Lua | 77 | 447 | 55 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -182,6 +182,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | gene-groups draft | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added.<br>JS: Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added.<br>Lua: Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | gene-sets resolve | glossary-command | prominent | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | gene-sets promoter-cohort | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| gene-sets create-pool | glossary-command | prominent | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | gene-sets produce direct-list | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | gene-sets produce ontology-assignment | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | gene-sets produce co-regulated | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -603,6 +604,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | ExportCutRunReadCoverage | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | InspectCutRunRegulatorySupport | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | BuildGeneSetPromoterCohort | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| CreateGeneSetPool | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ImportIsoformPanel | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ImportUniprotSwissProt | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | FetchUniprotSwissProt | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |

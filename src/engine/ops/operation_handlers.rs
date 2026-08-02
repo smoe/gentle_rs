@@ -11447,6 +11447,41 @@ impl GentleEngine {
         Ok(by_member)
     }
 
+    fn gene_set_pool_binding_map(
+        bindings: Vec<GeneSetPoolMemberBinding>,
+    ) -> Result<BTreeMap<String, String>, EngineError> {
+        let mut by_member = BTreeMap::new();
+        let mut bound_containers = BTreeMap::<String, String>::new();
+        for binding in bindings {
+            let stable_member_id = binding.stable_member_id.trim().to_string();
+            let source_container_id = binding.source_container_id.trim().to_string();
+            if stable_member_id.is_empty() || source_container_id.is_empty() {
+                return Err(EngineError::invalid_input(
+                    "Gene-set pool bindings require non-empty stable_member_id and source_container_id",
+                ));
+            }
+            if by_member
+                .insert(stable_member_id.clone(), source_container_id.clone())
+                .is_some()
+            {
+                return Err(EngineError::invalid_input(format!(
+                    "Gene-set member '{}' has more than one source-container binding",
+                    stable_member_id
+                )));
+            }
+            if let Some(previous_member) =
+                bound_containers.insert(source_container_id.clone(), stable_member_id.clone())
+                && previous_member != stable_member_id
+            {
+                return Err(EngineError::invalid_input(format!(
+                    "Source container '{}' is bound to both '{}' and '{}'; one physical tube cannot supply two pool members in the same plan",
+                    source_container_id, previous_member, stable_member_id
+                )));
+            }
+        }
+        Ok(by_member)
+    }
+
     fn reserve_collection_digest_seq_id(reserved: &mut BTreeSet<String>, base: &str) -> String {
         if reserved.insert(base.to_string()) {
             return base.to_string();
@@ -11461,13 +11496,13 @@ impl GentleEngine {
         }
     }
 
-    fn digest_sequence_snapshot_sha256(
+    fn collection_sequence_snapshot_sha256(
         dna: &DNAsequence,
         context: &str,
     ) -> Result<String, EngineError> {
         let canonical = serde_json::to_string(dna).map_err(|error| {
             EngineError::internal(format!(
-                "Could not serialize {context} for collection digest planning: {error}"
+                "Could not serialize {context} for collection operation planning: {error}"
             ))
         })?;
         Ok(sha256_prefixed_str(&canonical))
@@ -12370,7 +12405,7 @@ impl GentleEngine {
                 })?
                 .clone();
             let source_sequence_snapshot_sha256 =
-                Self::digest_sequence_snapshot_sha256(&dna, "source sequence")?;
+                Self::collection_sequence_snapshot_sha256(&dna, "source sequence")?;
             let mut fragments = match Self::digest_with_guard(
                 &dna,
                 resolved_enzymes.clone(),
@@ -12418,7 +12453,7 @@ impl GentleEngine {
                 let seq_id =
                     Self::reserve_collection_digest_seq_id(&mut reserved_seq_ids, &candidate);
                 let sequence_snapshot_sha256 =
-                    Self::digest_sequence_snapshot_sha256(&fragment, "planned fragment")?;
+                    Self::collection_sequence_snapshot_sha256(&fragment, "planned fragment")?;
                 fragment_rows.push(CollectionDigestFragmentRow {
                     seq_id: seq_id.clone(),
                     length_bp: fragment.len(),
@@ -12572,6 +12607,410 @@ impl GentleEngine {
             },
             created_seq_ids,
         ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn create_gene_set_pool(
+        &mut self,
+        collection_subject: CollectionSubjectRef,
+        member_bindings: Vec<GeneSetPoolMemberBinding>,
+        output_prefix: Option<String>,
+        container_name: Option<String>,
+        dry_run: bool,
+        expected_plan_fingerprint_sha256: Option<&str>,
+        path: Option<&str>,
+        op_id: &str,
+        run_id: &str,
+    ) -> Result<(GeneSetPoolCreationReport, Vec<String>), EngineError> {
+        struct PlannedMember {
+            source_seq_id: String,
+            output_seq_id: String,
+            dna: DNAsequence,
+        }
+
+        let subject_kind = collection_subject.kind();
+        let lift_policy = collection_lift_policy(
+            CapabilitySource::EngineOperation,
+            "CreateGeneSetPool",
+            subject_kind,
+        )
+        .cloned()
+        .ok_or_else(|| EngineError {
+            code: ErrorCode::Unsupported,
+            message: format!(
+                "CreateGeneSetPool has no collection lift policy for {:?}",
+                subject_kind
+            ),
+            cause_chain: vec![],
+        })?;
+        match &lift_policy.support {
+            CollectionLiftSupport::Supported {
+                mode: CollectionLiftingMode::Combine,
+                ..
+            } => {}
+            CollectionLiftSupport::Supported { mode, .. } => {
+                return Err(EngineError::internal(format!(
+                    "CreateGeneSetPool collection lift policy for {:?} declares {:?}, expected combine",
+                    subject_kind, mode
+                )));
+            }
+            CollectionLiftSupport::Rejected { reason, detail } => {
+                return Err(EngineError::invalid_input(format!(
+                    "CreateGeneSetPool cannot consume {:?}: {}",
+                    subject_kind, detail
+                ))
+                .with_cause(format!(
+                    "collection_lift_rejection_reason={}",
+                    reason.as_str()
+                )));
+            }
+        }
+        if lift_policy.context_requirement != CollectionContextRequirement::ContextAgnostic {
+            return Err(EngineError::internal(format!(
+                "CreateGeneSetPool requires context_agnostic policy, found {:?}",
+                lift_policy.context_requirement
+            )));
+        }
+
+        let requested_resolution_id = match &collection_subject {
+            CollectionSubjectRef::GeneSetResolution { report_id } => report_id.trim(),
+            _ => {
+                return Err(EngineError::internal(
+                    "Supported CreateGeneSetPool policy did not receive a gene-set resolution",
+                ));
+            }
+        };
+        let resolution = self.get_gene_set_resolution_artifact(requested_resolution_id)?;
+        let unresolved_count = resolution
+            .unresolved_member_count
+            .max(resolution.unresolved_members.len());
+        if unresolved_count > 0 {
+            return Err(EngineError::invalid_input(format!(
+                "Gene-set resolution '{}' has {} unresolved member(s); creating a physical pool requires a complete resolution",
+                requested_resolution_id, unresolved_count
+            ))
+            .with_cause(format!("unresolved_gene_set_members={unresolved_count}")));
+        }
+
+        let (collection_subject, members, provenance, biological_contexts) = self
+            .collection_subject_members_for_project_sequences_or_gene_set(
+                &collection_subject,
+                "pool creation",
+            )?;
+        let source_gene_set_resolution_id = match &collection_subject {
+            CollectionSubjectRef::GeneSetResolution { report_id } => report_id.clone(),
+            _ => unreachable!("gene-set pool subject was validated above"),
+        };
+        let bindings = Self::gene_set_pool_binding_map(member_bindings)?;
+        let member_ids = members
+            .iter()
+            .map(|member| member.stable_member_id.as_str())
+            .collect::<BTreeSet<_>>();
+        let unknown_bindings = bindings
+            .keys()
+            .filter(|member_id| !member_ids.contains(member_id.as_str()))
+            .cloned()
+            .collect::<Vec<_>>();
+        if !unknown_bindings.is_empty() {
+            return Err(EngineError::invalid_input(format!(
+                "Source-container bindings reference member ids that are not in the gene set: {}",
+                unknown_bindings.join(", ")
+            )));
+        }
+        let missing_bindings = members
+            .iter()
+            .filter(|member| !bindings.contains_key(&member.stable_member_id))
+            .map(|member| member.stable_member_id.clone())
+            .collect::<Vec<_>>();
+        if !missing_bindings.is_empty() {
+            return Err(EngineError::invalid_input(format!(
+                "Creating a physical gene-set pool requires one source singleton-container binding for every member; missing: {}",
+                missing_bindings.join(", ")
+            )));
+        }
+
+        let canonical_membership = canonical_collection_membership_json(subject_kind, &members);
+        let membership_fingerprint = sha256_prefixed_str(&canonical_membership);
+        let effective_output_prefix = output_prefix
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| "gene_set_pool".to_string());
+        let container_name = container_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("Gene-set pool {source_gene_set_resolution_id}"));
+
+        let mut planned_container_counter = self.state.container_state.next_container_counter;
+        let planned_container_id = loop {
+            planned_container_counter =
+                planned_container_counter.checked_add(1).ok_or_else(|| {
+                    EngineError::internal(
+                        "Container id counter overflow while planning gene-set pool",
+                    )
+                })?;
+            let candidate = format!("container-{planned_container_counter}");
+            if !self
+                .state
+                .container_state
+                .containers
+                .contains_key(&candidate)
+            {
+                break candidate;
+            }
+        };
+
+        let mut reserved_seq_ids = self
+            .state
+            .sequences
+            .keys()
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        let mut planned_members = Vec::with_capacity(members.len());
+        let mut member_reports = Vec::with_capacity(members.len());
+        let mut per_member_status = Vec::with_capacity(members.len());
+        for mut member in members {
+            let source_container_id = bindings
+                .get(&member.stable_member_id)
+                .expect("complete bindings checked above")
+                .clone();
+            let source_container = self
+                .state
+                .container_state
+                .containers
+                .get(&source_container_id)
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!("Source container '{}' not found", source_container_id),
+                    cause_chain: vec![],
+                })?;
+            if !matches!(&source_container.kind, ContainerKind::Singleton) {
+                return Err(EngineError::invalid_input(format!(
+                    "Source container '{}' for member '{}' is {:?}; gene-set pool creation requires one exclusive singleton container per member",
+                    source_container_id, member.stable_member_id, source_container.kind
+                ))
+                .with_cause(format!("source_container_id={source_container_id}")));
+            }
+            if !source_container.declared_contents_exclusive {
+                return Err(EngineError::invalid_input(format!(
+                    "Source container '{}' for member '{}' does not declare complete exclusive contents",
+                    source_container_id, member.stable_member_id
+                ))
+                .with_cause(format!("source_container_id={source_container_id}")));
+            }
+            if source_container.members.len() != 1 {
+                return Err(EngineError::invalid_input(format!(
+                    "Source singleton container '{}' for member '{}' contains {} sequence records, expected exactly one",
+                    source_container_id,
+                    member.stable_member_id,
+                    source_container.members.len()
+                ))
+                .with_cause(format!("source_container_id={source_container_id}")));
+            }
+            let source_seq_id = source_container.members[0].clone();
+            let dna = self
+                .state
+                .sequences
+                .get(&source_seq_id)
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!(
+                        "Source container '{}' references missing sequence '{}'",
+                        source_container_id, source_seq_id
+                    ),
+                    cause_chain: vec![],
+                })?
+                .clone();
+            let source_sequence_snapshot_sha256 =
+                Self::collection_sequence_snapshot_sha256(&dna, "gene-set pool source sequence")?;
+            let output_candidate = format!(
+                "{}__{}",
+                effective_output_prefix,
+                Self::normalize_id_token(&member.stable_member_id)
+            );
+            let output_seq_id =
+                Self::reserve_collection_digest_seq_id(&mut reserved_seq_ids, &output_candidate);
+            member.source_provenance.push(GeneSetProvenanceRow {
+                source_kind: "physical_source_container".to_string(),
+                source_id: source_container_id.clone(),
+                source_label: source_container.name.clone(),
+                source_path: None,
+                note: Some(format!(
+                    "Exclusive singleton source sequence '{source_seq_id}'"
+                )),
+            });
+            member_reports.push(GeneSetPoolMemberReport {
+                stable_member_id: member.stable_member_id.clone(),
+                source_container_id: source_container_id.clone(),
+                source_seq_id: source_seq_id.clone(),
+                source_sequence_snapshot_sha256,
+                output_seq_id: output_seq_id.clone(),
+                materialized: false,
+            });
+            planned_members.push(PlannedMember {
+                source_seq_id,
+                output_seq_id,
+                dna,
+            });
+            per_member_status.push(CollectionMemberStatusRow {
+                member,
+                outcome: CollectionMemberOutcome::Succeeded,
+                error: None,
+                produced_report_ids: vec![],
+            });
+        }
+
+        let plan_identity = serde_json::to_string(&json!({
+            "collection_subject": &collection_subject,
+            "source_gene_set_resolution_id": &source_gene_set_resolution_id,
+            "collection_membership_fingerprint_sha256": &membership_fingerprint,
+            "member_bindings": &bindings,
+            "effective_output_prefix": &effective_output_prefix,
+            "container_name": &container_name,
+            "planned_container_id": &planned_container_id,
+            "planned_container_counter": planned_container_counter,
+            "member_reports": member_reports.iter().map(|report| json!({
+                "stable_member_id": report.stable_member_id,
+                "source_container_id": report.source_container_id,
+                "source_seq_id": report.source_seq_id,
+                "source_sequence_snapshot_sha256": report.source_sequence_snapshot_sha256,
+                "output_seq_id": report.output_seq_id,
+            })).collect::<Vec<_>>(),
+        }))
+        .map_err(|error| {
+            EngineError::internal(format!("Could not identify gene-set pool plan: {error}"))
+        })?;
+        let plan_fingerprint_sha256 = sha256_prefixed_str(&plan_identity);
+        if !dry_run {
+            let expected = expected_plan_fingerprint_sha256
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    EngineError::invalid_input(
+                        "Applying gene-set pool creation requires the plan fingerprint returned by preview",
+                    )
+                })?;
+            if expected != plan_fingerprint_sha256 {
+                return Err(EngineError::invalid_input(format!(
+                    "Gene-set pool plan changed after preview: expected {}, found {}",
+                    expected, plan_fingerprint_sha256
+                )));
+            }
+            if self
+                .state
+                .container_state
+                .containers
+                .contains_key(&planned_container_id)
+            {
+                return Err(EngineError::invalid_input(format!(
+                    "Gene-set pool container '{}' appeared after preview",
+                    planned_container_id
+                )));
+            }
+            if let Some(seq_id) = planned_members
+                .iter()
+                .map(|member| &member.output_seq_id)
+                .find(|seq_id| self.state.sequences.contains_key(*seq_id))
+            {
+                return Err(EngineError::invalid_input(format!(
+                    "Gene-set pool output sequence '{}' appeared after preview",
+                    seq_id
+                )));
+            }
+            for member in &mut member_reports {
+                member.materialized = true;
+            }
+        }
+
+        let report_id = short_sha256_id("gene_set_pool", &plan_identity);
+        let normalized_path = path
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let mut report = GeneSetPoolCreationReport {
+            schema: GENE_SET_POOL_CREATION_REPORT_SCHEMA.to_string(),
+            collection_operation: CollectionOperationReport {
+                schema: COLLECTION_OPERATION_REPORT_SCHEMA.to_string(),
+                report_id,
+                op_id: Some(op_id.to_string()),
+                run_id: Some(run_id.to_string()),
+                generated_at_unix_ms: Self::now_unix_ms(),
+                capability_source: CapabilitySource::EngineOperation,
+                capability_name: "CreateGeneSetPool".to_string(),
+                collection_subject,
+                lifting_mode: CollectionLiftingMode::Combine,
+                lift_policy,
+                fingerprint_algorithm: COLLECTION_MEMBERSHIP_FINGERPRINT_ALGORITHM.to_string(),
+                collection_membership_fingerprint_sha256: membership_fingerprint,
+                biological_contexts,
+                dry_run,
+                applied: !dry_run,
+                per_member_status,
+                aggregate_warnings: vec![],
+                provenance,
+            },
+            source_gene_set_resolution_id,
+            effective_output_prefix,
+            container_name: container_name.clone(),
+            plan_fingerprint_algorithm: GENE_SET_POOL_PLAN_FINGERPRINT_ALGORITHM.to_string(),
+            plan_fingerprint_sha256,
+            planned_container_id: planned_container_id.clone(),
+            created_container_id: (!dry_run).then_some(planned_container_id.clone()),
+            source_containers_retained: true,
+            planned_member_count: member_reports.len(),
+            materialized_member_count: if dry_run { 0 } else { member_reports.len() },
+            member_reports,
+            path: normalized_path.clone(),
+        };
+
+        // Write the final report before the first in-memory mutation. Once this
+        // succeeds, the remaining inserts are prevalidated and infallible.
+        if let Some(path) = normalized_path.as_deref() {
+            self.write_pretty_json_file(&report, path, "gene-set pool creation report")?;
+        }
+
+        let mut created_seq_ids = Vec::new();
+        if !dry_run {
+            for planned in planned_members {
+                self.state
+                    .sequences
+                    .insert(planned.output_seq_id.clone(), planned.dna);
+                self.add_lineage_node(&planned.output_seq_id, SequenceOrigin::Derived, Some(op_id));
+                self.add_lineage_edges(
+                    std::slice::from_ref(&planned.source_seq_id),
+                    std::slice::from_ref(&planned.output_seq_id),
+                    op_id,
+                    run_id,
+                );
+                created_seq_ids.push(planned.output_seq_id);
+            }
+            let container = Container {
+                container_id: planned_container_id.clone(),
+                kind: ContainerKind::Pool,
+                name: Some(container_name),
+                members: created_seq_ids.clone(),
+                declared_contents_exclusive: true,
+                created_by_op: Some(op_id.to_string()),
+                created_at_unix_ms: Self::now_unix_ms(),
+            };
+            self.state
+                .container_state
+                .containers
+                .insert(planned_container_id.clone(), container);
+            self.state.container_state.next_container_counter = planned_container_counter;
+            for seq_id in &created_seq_ids {
+                self.state
+                    .container_state
+                    .seq_to_latest_container
+                    .insert(seq_id.clone(), planned_container_id.clone());
+            }
+        }
+
+        report.materialized_member_count = created_seq_ids.len();
+        Ok((report, created_seq_ids))
     }
 
     fn primer_specificity_collection_binding_map(
@@ -28180,6 +28619,7 @@ impl GentleEngine {
             collection_tfbs_hit_scan: None,
             collection_digest: None,
             collection_pool_export: None,
+            gene_set_pool_creation: None,
             gene_set_cutrun_regulatory_support: None,
             ortholog_promoter_cohort: None,
             ortholog_promoter_comparison: None,
@@ -29491,6 +29931,41 @@ impl GentleEngine {
                     ));
                     result.collection_operation = Some(report.collection_operation.clone());
                     result.collection_pool_export = Some(report);
+                }
+                Operation::CreateGeneSetPool {
+                    collection_subject,
+                    member_bindings,
+                    output_prefix,
+                    container_name,
+                    dry_run,
+                    expected_plan_fingerprint_sha256,
+                    path,
+                } => {
+                    let (report, created_seq_ids) = self.create_gene_set_pool(
+                        collection_subject,
+                        member_bindings,
+                        output_prefix,
+                        container_name,
+                        dry_run,
+                        expected_plan_fingerprint_sha256.as_deref(),
+                        path.as_deref(),
+                        &result.op_id,
+                        run_id,
+                    )?;
+                    result.messages.push(format!(
+                        "{} physical pool '{}' for {} complete gene-set member(s); source containers retained",
+                        if dry_run { "Previewed" } else { "Created" },
+                        report.planned_container_id,
+                        report.planned_member_count
+                    ));
+                    if let Some(path) = report.path.as_deref() {
+                        result
+                            .messages
+                            .push(format!("Wrote gene-set pool creation report to '{path}'"));
+                    }
+                    result.created_seq_ids.extend(created_seq_ids);
+                    result.collection_operation = Some(report.collection_operation.clone());
+                    result.gene_set_pool_creation = Some(report);
                 }
                 Operation::ExportProcessRunBundle { path, run_id } => {
                     let bundle = self.export_process_run_bundle_file(&path, run_id.as_deref())?;

@@ -5267,6 +5267,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "ExportCutRunReadCoverage",
     "InspectCutRunRegulatorySupport",
     "BuildGeneSetPromoterCohort",
+    "CreateGeneSetPool",
     "ImportIsoformPanel",
     "ImportUniprotSwissProt",
     "FetchUniprotSwissProt",

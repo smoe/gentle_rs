@@ -3,6 +3,84 @@
   "policies": [
     {
       "source": "engine_operation",
+      "name": "CreateGeneSetPool",
+      "subjects": [
+        {
+          "subject_kind": "project_sequences",
+          "support": {
+            "status": "rejected",
+            "reason": "unsupported_subject_kind",
+            "detail": "CreateGeneSetPool preserves resolved gene-set member provenance; project sequences can be combined through explicit container operations instead."
+          }
+        },
+        {
+          "subject_kind": "gene_set_resolution",
+          "context_requirement": "context_agnostic",
+          "support": {
+            "status": "supported",
+            "mode": "combine",
+            "result_payload_kind": "gentle.gene_set_pool_creation.v1"
+          }
+        },
+        {
+          "subject_kind": "container",
+          "support": {
+            "status": "rejected",
+            "reason": "unsupported_subject_kind",
+            "detail": "CreateGeneSetPool consumes a logical gene-set resolution plus explicit singleton-container bindings, not an existing physical container."
+          }
+        },
+        {
+          "subject_kind": "arrangement",
+          "support": {
+            "status": "rejected",
+            "reason": "unsupported_subject_kind",
+            "detail": "CreateGeneSetPool creates one unordered physical pool and does not consume ordered arrangement placement."
+          }
+        }
+      ]
+    },
+    {
+      "source": "glossary_command",
+      "name": "gene-sets create-pool",
+      "subjects": [
+        {
+          "subject_kind": "project_sequences",
+          "support": {
+            "status": "rejected",
+            "reason": "unsupported_subject_kind",
+            "detail": "gene-sets create-pool requires a persisted gene-set resolution."
+          }
+        },
+        {
+          "subject_kind": "gene_set_resolution",
+          "context_requirement": "context_agnostic",
+          "support": {
+            "status": "supported",
+            "mode": "combine",
+            "result_payload_kind": "gentle.gene_set_pool_creation.v1"
+          }
+        },
+        {
+          "subject_kind": "container",
+          "support": {
+            "status": "rejected",
+            "reason": "unsupported_subject_kind",
+            "detail": "gene-sets create-pool binds source containers to a logical gene set; it does not consume a container subject."
+          }
+        },
+        {
+          "subject_kind": "arrangement",
+          "support": {
+            "status": "rejected",
+            "reason": "unsupported_subject_kind",
+            "detail": "gene-sets create-pool does not consume ordered arrangements."
+          }
+        }
+      ]
+    },
+    {
+      "source": "engine_operation",
       "name": "BuildGeneSetPromoterCohort",
       "subjects": [
         {

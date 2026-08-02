@@ -826,12 +826,14 @@ Implemented baseline:
   - `gentle.gene_set_resolution.v1`
   - `gentle.gene_set_promoter_cohort.v1`
   - `gentle.gene_set_cutrun_regulatory_support.v1`
+  - `gentle.gene_set_pool_creation.v1`
 - engine operations:
   - `ResolveGeneSet`
   - `ProduceGeneSetDirectList`
   - `ProduceGeneSetOntologyAssignment`
   - `ProduceGeneSetCoRegulatedCohort`
   - `BuildGeneSetPromoterCohort`
+  - `CreateGeneSetPool`
   - `InspectCutRunGeneSetRegulatorySupport`
 - `gene-groups resolve` answers "which catalog entry matches this token";
   `gene-sets resolve` answers "which genes are in this analysis operand after
@@ -856,6 +858,7 @@ gentle_cli shell 'gene-sets resolve [GROUP_ID|--group GROUP_ID|--members A,B|--g
 gentle_cli shell 'gene-sets produce direct-list --cache CACHE.json_or_tsv [--query LIST_ID] [--genome GENOME_ID] [--provider-id ID] [--provider-version VERSION] [--cache-version VERSION] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--filter FIELD=VALUE] [--output OUTPUT.json]'
 gentle_cli shell 'gene-sets produce ontology-assignment --cache CACHE.json_or_tsv --term GO:NNNNNNN [--ontology-namespace GO] [--evidence-code CODE] [--genome GENOME_ID] [--provider-id ID] [--provider-version VERSION] [--cache-version VERSION] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--filter FIELD=VALUE] [--output OUTPUT.json]'
 gentle_cli shell 'gene-sets produce co-regulated --cache CACHE.json_or_tsv --dataset DATASET_ID --contrast LABEL --score METHOD --threshold RULE --direction both|positive|negative [--relationship co-regulated|anti-co-regulated|manual] [--genome GENOME_ID] [--provider-id ID] [--provider-version VERSION] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--filter FIELD=VALUE] [--output OUTPUT.json]'
+gentle_cli shell 'gene-sets create-pool RESOLUTION_ID --member-container MEMBER_ID=CONTAINER_ID [--member-container MEMBER_ID=CONTAINER_ID ...] [--output-prefix PREFIX] [--container-name NAME] [--preview | --apply --expected-plan-fingerprint-sha256 SHA256] [--path REPORT.json]'
 gentle_cli shell 'gene-sets promoter-cohort GENOME_ID [--resolution RESOLUTION.json|--group GROUP_ID|--members A,B|--go GO:NNNNNNN|--neighbors GENE --flank-genes N|--random-size N --seed N] [--relationship manual|co-regulated|anti-co-regulated] [--upstream-bp N] [--downstream-bp N] [--catalog PATH] [--genome-catalog PATH] [--output OUTPUT.json]'
 ```
 
@@ -1149,6 +1152,21 @@ Implemented collection-lifting baseline:
   and links every successful member to the same wrapper report id. It does not
   mutate project state. Non-exclusive containers fail before writing because
   the current pool artifact has no field for incomplete physical membership.
+- `CreateGeneSetPool` is the explicit logical-to-physical `combine`. It accepts
+  only a complete `GeneSetResolution` and strict
+  `GeneSetPoolMemberBinding` rows from every stable member id to one distinct,
+  exclusive singleton source container. The context requirement is
+  `context_agnostic`; the physical bindings, rather than gene labels, identify
+  the material being pooled.
+- Preview returns additive `gentle.gene_set_pool_creation.v1` with the generic
+  collection report, source-resolution id, per-member source container and
+  source sequence, source snapshot hash, reserved aliquot sequence id,
+  reserved pool-container id, and `sha256_gene_set_pool_plan_v1` lock. Apply
+  requires that exact lock, rejects all drift before mutation, derives one
+  lineage-linked aliquot per source, and places only those aliquots in one new
+  exclusive `ContainerKind::Pool`. Source containers and their latest mappings
+  are retained. The report/journal owns gene-set provenance; the base
+  `Container` wire shape is unchanged.
 
 Collection membership fingerprints use
 `sha256_canonical_collection_members_v1`. GENtle hashes the UTF-8 canonical

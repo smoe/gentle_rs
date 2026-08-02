@@ -24,6 +24,12 @@ understand what changed.
 
 ## 2026-08-02
 
+- Added explicit physical pooling for complete resolved gene sets.
+  `CreateGeneSetPool` and `gene-sets create-pool` preview a deterministic,
+  fingerprint-locked plan from one exclusive singleton source container per
+  member; apply derives lineage-linked aliquot sequences into one physical
+  pool while retaining every source tube. The Gene Set Inspector uses the same
+  typed command and exposes per-member source/output provenance.
 - Hardened physical-container pool export in the Lineage GUI: export work now
   runs in a detached engine snapshot rather than serializing sequence JSON
   under the egui-thread write lock, and completion requires a typed,

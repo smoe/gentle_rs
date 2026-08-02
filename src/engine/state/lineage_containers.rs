@@ -3843,6 +3843,7 @@ impl GentleEngine {
                 | Operation::TestCdnaPcr { .. }
                 | Operation::TestCdnaQpcr { .. }
                 | Operation::DigestCollection { .. }
+                | Operation::CreateGeneSetPool { .. }
         ) {
             return;
         }

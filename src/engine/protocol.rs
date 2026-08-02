@@ -1839,6 +1839,56 @@ pub const COLLECTION_DIGEST_PLAN_FINGERPRINT_ALGORITHM: &str = "sha256_collectio
 
 pub const COLLECTION_POOL_EXPORT_REPORT_SCHEMA: &str = "gentle.collection_pool_export.v1";
 
+pub const GENE_SET_POOL_CREATION_REPORT_SCHEMA: &str = "gentle.gene_set_pool_creation.v1";
+pub const GENE_SET_POOL_PLAN_FINGERPRINT_ALGORITHM: &str = "sha256_gene_set_pool_plan_v1";
+
+/// Explicitly binds one resolved gene-set member to one physical source tube.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct GeneSetPoolMemberBinding {
+    pub stable_member_id: String,
+    pub source_container_id: String,
+}
+
+/// Provenance and reserved output for one member of a gene-set pool plan.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneSetPoolMemberReport {
+    pub stable_member_id: String,
+    pub source_container_id: String,
+    pub source_seq_id: String,
+    pub source_sequence_snapshot_sha256: String,
+    pub output_seq_id: String,
+    pub materialized: bool,
+}
+
+/// Preview or applied result for explicitly combining a resolved gene set into a pool.
+///
+/// Source singleton containers are retained. Apply clones each bound source
+/// sequence into a derived sequence id and places only those derived aliquots
+/// in the new physical pool container.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GeneSetPoolCreationReport {
+    pub schema: String,
+    pub collection_operation: CollectionOperationReport,
+    pub source_gene_set_resolution_id: String,
+    pub effective_output_prefix: String,
+    pub container_name: String,
+    pub plan_fingerprint_algorithm: String,
+    pub plan_fingerprint_sha256: String,
+    pub planned_container_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_container_id: Option<String>,
+    pub source_containers_retained: bool,
+    #[serde(default)]
+    pub member_reports: Vec<GeneSetPoolMemberReport>,
+    pub planned_member_count: usize,
+    pub materialized_member_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+}
+
 /// Atomic export of one exclusive physical container to a pool artifact.
 ///
 /// The exported `gentle.pool.v1` file is the single combined artifact. The
@@ -4719,6 +4769,8 @@ pub struct OpResult {
     pub collection_digest: Option<CollectionDigestReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub collection_pool_export: Option<CollectionPoolExportReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_set_pool_creation: Option<GeneSetPoolCreationReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gene_set_cutrun_regulatory_support: Option<GeneSetCutRunRegulatorySupportReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

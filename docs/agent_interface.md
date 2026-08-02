@@ -370,6 +370,7 @@ an agent has selected a deterministic operation.
 - `gene-sets produce co-regulated`
 - `gene-sets produce direct-list`
 - `gene-sets produce ontology-assignment`
+- `gene-sets create-pool`
 - `gene-sets promoter-cohort`
 - `gene-sets resolve`
 - `genomes blast`

@@ -2853,6 +2853,7 @@ Shared shell command:
     - `gene-sets produce direct-list --cache CACHE.json_or_tsv [--query LIST_ID] [--genome GENOME_ID] [--provider-id ID] [--provider-version VERSION] [--cache-version VERSION] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--output OUTPUT.json]`
     - `gene-sets produce ontology-assignment --cache CACHE.json_or_tsv --term GO:NNNNNNN [--ontology-namespace GO] [--evidence-code CODE] [--genome GENOME_ID] [--provider-id ID] [--provider-version VERSION] [--cache-version VERSION] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--output OUTPUT.json]`
     - `gene-sets produce co-regulated --cache CACHE.json_or_tsv --dataset DATASET_ID --contrast LABEL --score METHOD --threshold RULE --direction both|positive|negative [--relationship co-regulated|anti-co-regulated|manual] [--genome GENOME_ID] [--output OUTPUT.json]`
+    - `gene-sets create-pool RESOLUTION_ID --member-container MEMBER_ID=CONTAINER_ID [--member-container MEMBER_ID=CONTAINER_ID ...] [--output-prefix PREFIX] [--container-name NAME] [--preview | --apply --expected-plan-fingerprint-sha256 SHA256] [--path REPORT.json]`
     - `gene-sets promoter-cohort GENOME_ID [--resolution RESOLUTION.json|--group GROUP_ID|--members A,B|--go GO:NNNNNNN] [--relationship manual|co-regulated|anti-co-regulated] [--output OUTPUT.json]`
     - `resources benchmark-jaspar [--random-length N] [--seed N] [--output OUTPUT.json]`
     - `resources list-jaspar [--filter TOKEN] [--limit N] [--fetch-remote] [--output OUTPUT.json]`
@@ -5382,6 +5383,23 @@ Tutorial companion:
   - `gene-groups resolve` identifies a catalog entry; `gene-sets resolve`
     expands genes, applies curation/member gating, deduplicates resolved
     identities, and records provenance/warnings.
+- `gene-sets create-pool RESOLUTION_ID --member-container MEMBER_ID=CONTAINER_ID [--member-container MEMBER_ID=CONTAINER_ID ...] [--output-prefix PREFIX] [--container-name NAME] [--preview | --apply --expected-plan-fingerprint-sha256 SHA256] [--path REPORT.json]`
+  - Converts explicit user intent, not logical membership alone, into one
+    physical `Pool` container. The resolution must be complete and every member
+    must bind to a distinct, exclusive singleton source container containing
+    exactly one loaded sequence.
+  - Preview is the default and does not mutate the project. It returns a
+    `gentle.gene_set_pool_creation.v1` report with the membership lock, exact
+    source snapshot hashes, planned derived aliquot ids, reserved container id,
+    and `sha256_gene_set_pool_plan_v1` fingerprint.
+  - Apply requires the exact preview fingerprint. It derives one lineage-linked
+    aliquot sequence from each source, places the aliquots in the new physical
+    pool, and retains the source containers and their latest mappings. Any
+    unresolved member, missing/duplicate binding, stale source snapshot, or
+    namespace drift rejects before mutation.
+  - `--path` optionally writes the portable report JSON; it does not export a
+    `gentle.pool.v1` artifact. Use `collections run export-pool` on the created
+    container for that later handoff.
 - `gene-sets produce direct-list --cache CACHE.json_or_tsv [--query LIST_ID] [--genome GENOME_ID] [--provider-id ID] [--provider-version VERSION] [--cache-version VERSION] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--filter FIELD=VALUE] [--output OUTPUT.json]`
   - Reads a local direct gene-list cache and emits a
     `gentle.gene_set_resolution.v1` report with

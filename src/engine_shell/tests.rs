@@ -16,6 +16,7 @@ use crate::allele_hash_screen::{
 };
 use crate::dna_sequence::DNAsequence;
 use crate::engine::FEATURE_LOCATION_EDIT_SCHEMA_V2;
+use crate::engine::GENE_SET_RESOLUTION_SCHEMA;
 use crate::engine::{
     AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan, Arrangement,
     ArrangementMode, AttractPwmMappingPolicy, AttractSplicingEvidenceSettings,
@@ -472,6 +473,9 @@ fn smoke_command_override(path: &str) -> Option<&'static str> {
         "gene-sets promoter-cohort" => {
             Some("gene-sets promoter-cohort ToyGenome --group yamanaka_factors")
         }
+        "gene-sets create-pool" => Some(
+            "gene-sets create-pool resolution:demo --member-container GENE1=container-1",
+        ),
         "collections run primer-specificity" => Some(
             "collections run primer-specificity --seq-ids demo --pair-rank 1 --target-genome demo",
         ),
@@ -548,6 +552,10 @@ fn skip_glossary_flag_parse(path: &str, flag: &str) -> bool {
                 | ("collections run primer-specificity", "--pair-index")
                 | (
                     "collections run digest",
+                    "--apply" | "--expected-plan-fingerprint-sha256"
+                )
+                | (
+                    "gene-sets create-pool",
                     "--apply" | "--expected-plan-fingerprint-sha256"
                 )
                 | (
@@ -6903,6 +6911,66 @@ fn parse_digest_and_collection_digest_preserve_shared_parameters_and_apply_guard
              --expected-plan-fingerprint-sha256 sha256:abc"
         )
         .expect_err("preview rejects an apply fingerprint")
+        .contains("only with --apply")
+    );
+}
+
+#[test]
+fn parse_gene_set_create_pool_preserves_bindings_and_apply_guard() {
+    let preview = parse_shell_line(
+        "gene-sets create-pool resolution:cohort \
+         --member-container GENE1=container-1 --member-container GENE2=container-2 \
+         --output-prefix cohort --container-name 'Cohort stock' --path pool-plan.json",
+    )
+    .expect("parse gene-set pool preview");
+    match preview {
+        ShellCommand::GeneSetsCreatePool {
+            resolution_id,
+            member_bindings,
+            output_prefix,
+            container_name,
+            dry_run,
+            expected_plan_fingerprint_sha256,
+            path,
+        } => {
+            assert_eq!(resolution_id, "resolution:cohort");
+            assert_eq!(member_bindings.len(), 2);
+            assert_eq!(member_bindings[0].stable_member_id, "GENE1");
+            assert_eq!(member_bindings[0].source_container_id, "container-1");
+            assert_eq!(output_prefix.as_deref(), Some("cohort"));
+            assert_eq!(container_name.as_deref(), Some("Cohort stock"));
+            assert!(dry_run);
+            assert!(expected_plan_fingerprint_sha256.is_none());
+            assert_eq!(path.as_deref(), Some("pool-plan.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    assert!(matches!(
+        parse_shell_line(
+            "gene-sets create-pool resolution:cohort --member-container GENE1=container-1 \
+             --apply --expected-plan-fingerprint-sha256 sha256:abc"
+        )
+        .expect("parse gene-set pool apply"),
+        ShellCommand::GeneSetsCreatePool {
+            dry_run: false,
+            expected_plan_fingerprint_sha256: Some(fingerprint),
+            ..
+        } if fingerprint == "sha256:abc"
+    ));
+    assert!(
+        parse_shell_line(
+            "gene-sets create-pool resolution:cohort --member-container GENE1=container-1 --apply"
+        )
+        .expect_err("apply requires preview fingerprint")
+        .contains("--apply requires --expected-plan-fingerprint-sha256")
+    );
+    assert!(
+        parse_shell_line(
+            "gene-sets create-pool resolution:cohort --member-container GENE1=container-1 \
+             --expected-plan-fingerprint-sha256 sha256:abc"
+        )
+        .expect_err("preview rejects apply fingerprint")
         .contains("only with --apply")
     );
 }
@@ -17602,6 +17670,116 @@ fn execute_collection_digest_previews_then_applies_the_same_plan() {
             .as_str()
             .is_some_and(|seq_id| engine.state().sequences.contains_key(seq_id))
     }));
+}
+
+#[test]
+fn execute_gene_set_create_pool_previews_then_materializes_one_physical_pool() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "seq_a".to_string(),
+        DNAsequence::from_sequence("ACGTACGT").expect("sequence a"),
+    );
+    state.sequences.insert(
+        "seq_b".to_string(),
+        DNAsequence::from_sequence("TTGGAACC").expect("sequence b"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let container_a = engine.state().container_state.seq_to_latest_container["seq_a"].clone();
+    let container_b = engine.state().container_state.seq_to_latest_container["seq_b"].clone();
+    let resolution = GeneSetResolutionReport {
+        schema: GENE_SET_RESOLUTION_SCHEMA.to_string(),
+        generated_at_unix_ms: 1,
+        op_id: Some("shell_pool_fixture".to_string()),
+        resolved_member_count: 2,
+        resolved_members: vec![
+            crate::engine::GeneSetResolvedMember {
+                dedup_key: "GENE_A".to_string(),
+                symbol: "GENE_A".to_string(),
+                ..crate::engine::GeneSetResolvedMember::default()
+            },
+            crate::engine::GeneSetResolvedMember {
+                dedup_key: "GENE_B".to_string(),
+                symbol: "GENE_B".to_string(),
+                ..crate::engine::GeneSetResolvedMember::default()
+            },
+        ],
+        ..GeneSetResolutionReport::default()
+    };
+    let resolution_id = GentleEngine::gene_set_resolution_artifact_id(&resolution);
+    engine
+        .upsert_gene_set_resolution_artifact(resolution)
+        .expect("persist resolution");
+
+    let preview_command = parse_shell_line(&format!(
+        "gene-sets create-pool {resolution_id} --member-container GENE_A={container_a} \
+         --member-container GENE_B={container_b} --output-prefix shell_pool"
+    ))
+    .expect("parse gene-set pool preview");
+    let preview = execute_shell_command(&mut engine, &preview_command)
+        .expect("execute gene-set pool preview");
+    assert!(!preview.state_changed);
+    assert_eq!(
+        preview.output["schema"].as_str(),
+        Some("gentle.gene_set_pool_creation_command.v1")
+    );
+    assert_eq!(
+        preview.output["report"]["schema"].as_str(),
+        Some("gentle.gene_set_pool_creation.v1")
+    );
+    assert_eq!(
+        preview.output["report"]["materialized_member_count"].as_u64(),
+        Some(0)
+    );
+    let fingerprint = preview.output["report"]["plan_fingerprint_sha256"]
+        .as_str()
+        .expect("preview fingerprint");
+    let apply_command = parse_shell_line(&format!(
+        "gene-sets create-pool {resolution_id} --member-container GENE_A={container_a} \
+         --member-container GENE_B={container_b} --output-prefix shell_pool --apply \
+         --expected-plan-fingerprint-sha256 {fingerprint}"
+    ))
+    .expect("parse gene-set pool apply");
+    let applied = execute_shell_command(&mut engine, &apply_command).expect("apply gene-set pool");
+    assert!(applied.state_changed);
+    assert_eq!(
+        applied.output["report"]["plan_fingerprint_sha256"].as_str(),
+        Some(fingerprint)
+    );
+    assert_eq!(
+        applied.output["report"]["materialized_member_count"].as_u64(),
+        Some(2)
+    );
+    let container_id = applied.output["report"]["created_container_id"]
+        .as_str()
+        .expect("created pool id");
+    let container = &engine.state().container_state.containers[container_id];
+    assert!(matches!(&container.kind, ContainerKind::Pool));
+    assert_eq!(container.members.len(), 2);
+    assert!(
+        engine
+            .state()
+            .container_state
+            .containers
+            .contains_key(&container_a)
+    );
+    assert!(
+        engine
+            .state()
+            .container_state
+            .containers
+            .contains_key(&container_b)
+    );
+
+    let unknown_container = parse_shell_line(&format!(
+        "gene-sets create-pool {resolution_id} --member-container GENE_A=missing \
+         --member-container GENE_B={container_b}"
+    ))
+    .expect("parse missing-container preview");
+    assert!(
+        execute_shell_command(&mut engine, &unknown_container)
+            .expect_err("missing source container is explicit")
+            .contains("Source container 'missing' not found")
+    );
 }
 
 #[test]

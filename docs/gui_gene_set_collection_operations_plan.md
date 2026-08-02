@@ -256,7 +256,7 @@ Tests:
 - GUI helper test that promoter derivation uses `BuildGeneSetPromoterCohort`
 - parity test for `gene-sets promoter-cohort` GUI affordance
 
-### Phase 5: collection operation launcher (gene-set A4a/A5/A6/A7 and container A8 landed)
+### Phase 5: collection operation launcher (gene-set A4a/A5/A6/A7/A9 and container A8 landed)
 
 - Landed A4a: the Gene Set Inspector projects every canonical gene-set
   engine-operation policy and displays its lifting mode, payload kind, and
@@ -284,12 +284,16 @@ Tests:
   exposes the supported container policy and preserves the gene-set
   `requires_physical_pool` rejection. The same policy pass declares the
   existing container pooled-gel action.
+- A9 adds explicit logical-to-physical pooling through `CreateGeneSetPool` and
+  `gene-sets create-pool`. A complete resolution binds every member to one
+  distinct exclusive singleton source container. Preview locks exact source
+  snapshots, derived aliquot ids, and the reserved pool id; apply retains the
+  source tubes and creates lineage-linked aliquots in one new physical pool.
 - Remaining Phase 5 work is to add shared engine policies/routes and typed GUI
-  adapters for export, BLAST, non-gene subjects, and explicit
-  materialization when those contracts are ready.
-- A9 must declare the `RenderPoolGelSvg` policy for arrangement subjects before
-  extending the arrangement launcher; the shipped arrangement gel action must
-  not remain an implicit exception to the collection policy registry.
+  adapters for BLAST and non-gene subjects when those contracts are ready.
+- Before extending the arrangement launcher, declare the `RenderPoolGelSvg`
+  policy for arrangement subjects; the shipped arrangement gel action must not
+  remain an implicit exception to the collection policy registry.
 
 File targets:
 
@@ -308,7 +312,8 @@ Tests:
 ### Phase 6: containers, arrangements, and storage projections
 
 - Allow explicit conversion of logical collections into:
-  - a physical pool/container
+  - a physical pool/container (landed for complete gene-set resolutions via
+    explicit singleton source bindings and derived aliquots)
   - a serial arrangement
   - a rack/storage projection
 - Preserve original logical set identity and provenance.

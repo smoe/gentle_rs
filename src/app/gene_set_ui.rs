@@ -15,12 +15,13 @@ use crate::{
         CollectionContextRequirement, CollectionDigestReport, CollectionLiftRejectionReason,
         CollectionMemberOutcome, CollectionMemberRef, CollectionOperationReport,
         CollectionRestrictionSiteScanReport, CollectionSubjectKind, CollectionSubjectRef,
-        CollectionTfbsHitScanReport, DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
+        CollectionTfbsHitScanReport, ContainerKind, DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
         DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP, DigestCollectionMemberBinding,
-        GeneSetCohortRelationship, GeneSetPromoterCohortReport, GeneSetProvenanceRow,
-        GeneSetRequest, GeneSetResolutionReport, GeneSetResolutionReviewStatus,
-        PrimerDesignReportSummary, PrimerSpecificityCollectionMemberBinding,
-        PrimerSpecificityPolicy, RestrictionSiteScanCollectionMemberBinding, TfThresholdOverride,
+        GeneSetCohortRelationship, GeneSetPoolCreationReport, GeneSetPoolMemberBinding,
+        GeneSetPromoterCohortReport, GeneSetProvenanceRow, GeneSetRequest, GeneSetResolutionReport,
+        GeneSetResolutionReviewStatus, PrimerDesignReportSummary,
+        PrimerSpecificityCollectionMemberBinding, PrimerSpecificityPolicy,
+        RestrictionSiteScanCollectionMemberBinding, TfThresholdOverride,
         TfbsHitScanCollectionMemberBinding, homogeneous_collection_biological_context,
         validate_collection_context_target_genome,
     },
@@ -386,6 +387,15 @@ struct GeneSetDigestFormState {
     expected_plan_fingerprint_sha256: String,
 }
 
+#[derive(Clone, Debug, Default)]
+struct GeneSetPoolFormState {
+    member_bindings: BTreeMap<String, String>,
+    output_prefix: String,
+    container_name: String,
+    apply_change: bool,
+    expected_plan_fingerprint_sha256: String,
+}
+
 impl Default for GeneSetRestrictionScanFormState {
     fn default() -> Self {
         Self {
@@ -431,6 +441,7 @@ enum CollectionOperationPayload {
     RestrictionScan(Box<CollectionRestrictionSiteScanReport>),
     TfbsScan(Box<CollectionTfbsHitScanReport>),
     Digest(Box<CollectionDigestReport>),
+    CreatePool(Box<GeneSetPoolCreationReport>),
     PromoterCohort(Box<GeneSetPromoterCohortReport>),
 }
 
@@ -470,6 +481,7 @@ pub(super) struct GeneSetInspectorUiState {
     restriction_scan_form: GeneSetRestrictionScanFormState,
     tfbs_scan_form: GeneSetTfbsScanFormState,
     digest_form: GeneSetDigestFormState,
+    pool_form: GeneSetPoolFormState,
     promoter_form: GeneSetPromoterFormState,
     status: String,
     resolve_form: GeneSetResolveFormState,
@@ -494,6 +506,7 @@ impl Default for GeneSetInspectorUiState {
             restriction_scan_form: GeneSetRestrictionScanFormState::default(),
             tfbs_scan_form: GeneSetTfbsScanFormState::default(),
             digest_form: GeneSetDigestFormState::default(),
+            pool_form: GeneSetPoolFormState::default(),
             promoter_form: GeneSetPromoterFormState::default(),
             status: String::new(),
             resolve_form: GeneSetResolveFormState::default(),
@@ -711,6 +724,44 @@ impl GENtleApp {
         self.gene_set_inspector.resolve_task.is_some()
     }
 
+    fn gene_set_pool_source_container_choices(&self) -> Vec<(String, String)> {
+        let mut choices = self
+            .engine
+            .read()
+            .ok()
+            .map(|engine| {
+                engine
+                    .state()
+                    .container_state
+                    .containers
+                    .values()
+                    .filter(|container| {
+                        matches!(&container.kind, ContainerKind::Singleton)
+                            && container.declared_contents_exclusive
+                            && container.members.len() == 1
+                            && engine.state().sequences.contains_key(&container.members[0])
+                    })
+                    .map(|container| {
+                        let label = format!(
+                            "{} | {}{}",
+                            container.container_id,
+                            container.members[0],
+                            container
+                                .name
+                                .as_deref()
+                                .filter(|name| !name.trim().is_empty())
+                                .map(|name| format!(" | {name}"))
+                                .unwrap_or_default()
+                        );
+                        (container.container_id.clone(), label)
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        choices.sort_by(|left, right| left.0.cmp(&right.0));
+        choices
+    }
+
     fn reconcile_gene_set_inspector_bindings(&mut self) {
         let member_ids = self
             .selected_gene_set_resolution()
@@ -777,6 +828,25 @@ impl GENtleApp {
         for member_id in &selected_member_ids {
             self.gene_set_inspector
                 .restriction_scan_form
+                .member_bindings
+                .entry(member_id.clone())
+                .or_default();
+        }
+        let pool_source_container_ids = self
+            .gene_set_pool_source_container_choices()
+            .into_iter()
+            .map(|(container_id, _)| container_id)
+            .collect::<BTreeSet<_>>();
+        self.gene_set_inspector
+            .pool_form
+            .member_bindings
+            .retain(|member_id, container_id| {
+                selected_member_ids.contains(member_id)
+                    && (container_id.is_empty() || pool_source_container_ids.contains(container_id))
+            });
+        for member_id in &selected_member_ids {
+            self.gene_set_inspector
+                .pool_form
                 .member_bindings
                 .entry(member_id.clone())
                 .or_default();
@@ -1103,6 +1173,71 @@ impl GENtleApp {
         })
     }
 
+    fn gene_set_create_pool_shell_command(&self) -> Result<ShellCommand, String> {
+        let choice = self
+            .selected_gene_set_resolution()
+            .ok_or_else(|| "Select a persisted gene-set resolution first".to_string())?;
+        if choice.report.resolved_members.is_empty() {
+            return Err("The selected gene set has no resolved members".to_string());
+        }
+        let unresolved_count = choice
+            .report
+            .unresolved_member_count
+            .max(choice.report.unresolved_members.len());
+        if unresolved_count > 0 {
+            return Err(format!(
+                "Resolve all members before creating a physical pool; {unresolved_count} remain unresolved"
+            ));
+        }
+        let form = &self.gene_set_inspector.pool_form;
+        let mut member_bindings = Vec::with_capacity(choice.report.resolved_members.len());
+        let mut missing_members = Vec::new();
+        let mut bound_source_containers = BTreeSet::new();
+        for member in &choice.report.resolved_members {
+            let source_container_id = form
+                .member_bindings
+                .get(&member.dedup_key)
+                .map(String::as_str)
+                .unwrap_or_default()
+                .trim();
+            if source_container_id.is_empty() {
+                missing_members.push(member.symbol.clone());
+            } else if !bound_source_containers.insert(source_container_id.to_string()) {
+                return Err(format!(
+                    "Source container '{source_container_id}' is selected more than once; bind one distinct physical tube per member"
+                ));
+            } else {
+                member_bindings.push(GeneSetPoolMemberBinding {
+                    stable_member_id: member.dedup_key.clone(),
+                    source_container_id: source_container_id.to_string(),
+                });
+            }
+        }
+        if !missing_members.is_empty() {
+            return Err(format!(
+                "Bind one exclusive singleton source container for every member; missing: {}",
+                missing_members.join(", ")
+            ));
+        }
+        let expected_plan_fingerprint_sha256 = if form.apply_change {
+            Some(
+                optional_trimmed(&form.expected_plan_fingerprint_sha256)
+                    .ok_or_else(|| "Preview this physical pool before creating it".to_string())?,
+            )
+        } else {
+            None
+        };
+        Ok(ShellCommand::GeneSetsCreatePool {
+            resolution_id: choice.report_id.clone(),
+            member_bindings,
+            output_prefix: optional_trimmed(&form.output_prefix),
+            container_name: optional_trimmed(&form.container_name),
+            dry_run: !form.apply_change,
+            expected_plan_fingerprint_sha256,
+            path: None,
+        })
+    }
+
     fn seed_gene_set_promoter_form_from_selection(&mut self) {
         let selected_genome_id = self
             .selected_gene_set_resolution()
@@ -1203,12 +1338,25 @@ impl GENtleApp {
         let Some(adapter) = row.adapter else {
             return baseline;
         };
+        if adapter == CollectionLauncherAdapter::CreatePool {
+            let unresolved_count = report
+                .unresolved_member_count
+                .max(report.unresolved_members.len());
+            if unresolved_count > 0 {
+                return CollectionLauncherReadiness::NeedsInput {
+                    detail: format!(
+                        "Resolve all gene-set members before creating a physical pool; {unresolved_count} remain unresolved"
+                    ),
+                };
+            }
+        }
         if matches!(
             adapter,
             CollectionLauncherAdapter::PrimerSpecificity
                 | CollectionLauncherAdapter::RestrictionScan
                 | CollectionLauncherAdapter::TfbsScan
                 | CollectionLauncherAdapter::Digest
+                | CollectionLauncherAdapter::CreatePool
         ) {
             let bindings = match adapter {
                 CollectionLauncherAdapter::PrimerSpecificity => {
@@ -1225,6 +1373,9 @@ impl GENtleApp {
                 }
                 CollectionLauncherAdapter::Digest => {
                     &self.gene_set_inspector.digest_form.member_bindings
+                }
+                CollectionLauncherAdapter::CreatePool => {
+                    &self.gene_set_inspector.pool_form.member_bindings
                 }
                 CollectionLauncherAdapter::PromoterCohort => unreachable!(),
             };
@@ -1247,6 +1398,9 @@ impl GENtleApp {
                             CollectionLauncherAdapter::RestrictionScan => "loaded DNA sequence",
                             CollectionLauncherAdapter::TfbsScan => "loaded DNA sequence",
                             CollectionLauncherAdapter::Digest => "loaded DNA sequence",
+                            CollectionLauncherAdapter::CreatePool => {
+                                "exclusive singleton source container"
+                            }
                             CollectionLauncherAdapter::PromoterCohort => unreachable!(),
                         },
                         missing.join(", ")
@@ -1263,6 +1417,7 @@ impl GENtleApp {
             }
             CollectionLauncherAdapter::TfbsScan => self.gene_set_tfbs_scan_shell_command(),
             CollectionLauncherAdapter::Digest => self.gene_set_digest_shell_command(),
+            CollectionLauncherAdapter::CreatePool => self.gene_set_create_pool_shell_command(),
             CollectionLauncherAdapter::PromoterCohort => self.gene_set_promoter_shell_command(),
         };
         let command = match command {
@@ -1279,7 +1434,8 @@ impl GENtleApp {
             } => target_genome_id,
             ShellCommand::CollectionsRunRestrictionScan { .. }
             | ShellCommand::CollectionsRunTfbsScan { .. }
-            | ShellCommand::CollectionsRunDigest { .. } => "",
+            | ShellCommand::CollectionsRunDigest { .. }
+            | ShellCommand::GeneSetsCreatePool { .. } => "",
             _ => unreachable!("collection launcher adapters construct known shell commands"),
         };
         let normalized_report = if adapter == CollectionLauncherAdapter::PromoterCohort {
@@ -1329,6 +1485,7 @@ impl GENtleApp {
             }
             CollectionLauncherAdapter::TfbsScan => self.gene_set_tfbs_scan_shell_command(),
             CollectionLauncherAdapter::Digest => self.gene_set_digest_shell_command(),
+            CollectionLauncherAdapter::CreatePool => self.gene_set_create_pool_shell_command(),
             CollectionLauncherAdapter::PromoterCohort => self.gene_set_promoter_shell_command(),
         }
     }
@@ -1462,6 +1619,30 @@ impl GENtleApp {
                     adapter,
                     report: digest.collection_operation.clone(),
                     payload: CollectionOperationPayload::Digest(Box::new(digest)),
+                })
+            }
+            CollectionLauncherAdapter::CreatePool => {
+                let pool = serde_json::from_value::<GeneSetPoolCreationReport>(
+                    output
+                        .get("report")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null),
+                )
+                .map_err(|error| {
+                    invalid_output(format!(
+                        "Gene-set pool command returned an invalid report: {error}"
+                    ))
+                })?;
+                if &pool.collection_operation.collection_subject != expected_subject {
+                    return Err(invalid_output(format!(
+                        "Gene-set pool returned subject {:?}, expected {:?}",
+                        pool.collection_operation.collection_subject, expected_subject
+                    )));
+                }
+                Ok(CollectionOperationTaskResult {
+                    adapter,
+                    report: pool.collection_operation.clone(),
+                    payload: CollectionOperationPayload::CreatePool(Box::new(pool)),
                 })
             }
             CollectionLauncherAdapter::PromoterCohort => {
@@ -1695,6 +1876,20 @@ impl GENtleApp {
                             "planned"
                         }
                     ),
+                    CollectionOperationPayload::CreatePool(report) => format!(
+                        "Physical gene-set pool {} in {elapsed:.1}s: {} member aliquot(s) {}, source containers retained.",
+                        if report.collection_operation.applied {
+                            "created"
+                        } else {
+                            "previewed"
+                        },
+                        report.planned_member_count,
+                        if report.collection_operation.applied {
+                            "materialized"
+                        } else {
+                            "planned"
+                        }
+                    ),
                     CollectionOperationPayload::PromoterCohort(report) => format!(
                         "Promoter cohort completed in {elapsed:.1}s: {} window(s), {} unresolved. Derivation stores the cohort and may normalize missing source-context metadata.",
                         report.returned_window_count,
@@ -1706,6 +1901,12 @@ impl GENtleApp {
                         .digest_form
                         .expected_plan_fingerprint_sha256 = report.plan_fingerprint_sha256.clone();
                     self.gene_set_inspector.digest_form.apply_change = false;
+                }
+                if let CollectionOperationPayload::CreatePool(report) = &result.payload {
+                    self.gene_set_inspector
+                        .pool_form
+                        .expected_plan_fingerprint_sha256 = report.plan_fingerprint_sha256.clone();
+                    self.gene_set_inspector.pool_form.apply_change = false;
                 }
                 self.refresh_gene_set_inspector_catalog(true);
                 self.gene_set_inspector.selected_resolution_id = task.resolution_id.clone();
@@ -2554,6 +2755,129 @@ impl GENtleApp {
         });
     }
 
+    fn render_gene_set_create_pool_form(&mut self, ui: &mut Ui, choice: &GeneSetResolutionChoice) {
+        let container_choices = self.gene_set_pool_source_container_choices();
+        let mut plan_inputs_changed = false;
+        ui.strong("Physical source tubes");
+        ui.small(
+            "Bind each resolved member to one exclusive singleton container. Pooling creates derived aliquots and retains every source container.",
+        );
+        ui.horizontal_wrapped(|ui| {
+            ui.label(format!(
+                "Eligible singleton containers: {}",
+                container_choices.len()
+            ));
+            if ui
+                .button("Clear bindings")
+                .on_hover_text("Clear every member-to-source-container selection")
+                .clicked()
+            {
+                for container_id in self
+                    .gene_set_inspector
+                    .pool_form
+                    .member_bindings
+                    .values_mut()
+                {
+                    container_id.clear();
+                }
+                plan_inputs_changed = true;
+            }
+        });
+        egui::ScrollArea::vertical()
+            .id_salt("gene_set_pool_bindings")
+            .max_height(300.0)
+            .show_rows(
+                ui,
+                34.0,
+                choice.report.resolved_members.len(),
+                |ui, row_range| {
+                    for row_index in row_range {
+                        let member = &choice.report.resolved_members[row_index];
+                        ui.horizontal(|ui| {
+                            ui.vertical(|ui| {
+                                ui.label(&member.symbol);
+                                ui.small(
+                                    member
+                                        .gene_id
+                                        .as_deref()
+                                        .unwrap_or(member.dedup_key.as_str()),
+                                );
+                            });
+                            ui.add_space(12.0);
+                            let binding = self
+                                .gene_set_inspector
+                                .pool_form
+                                .member_bindings
+                                .entry(member.dedup_key.clone())
+                                .or_default();
+                            let selected_label = container_choices
+                                .iter()
+                                .find(|(container_id, _)| container_id == binding)
+                                .map(|(_, label)| label.as_str())
+                                .unwrap_or("Select source tube...");
+                            egui::ComboBox::from_id_salt((
+                                "gene_set_member_pool_container",
+                                &member.dedup_key,
+                            ))
+                            .selected_text(selected_label)
+                            .width(460.0)
+                            .show_ui(ui, |ui| {
+                                plan_inputs_changed |= ui
+                                    .selectable_value(binding, String::new(), "Not selected")
+                                    .changed();
+                                for (container_id, label) in &container_choices {
+                                    plan_inputs_changed |= ui
+                                        .selectable_value(binding, container_id.clone(), label)
+                                        .changed();
+                                }
+                            });
+                        });
+                    }
+                },
+            );
+
+        ui.separator();
+        ui.strong("Pool output");
+        let form = &mut self.gene_set_inspector.pool_form;
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Aliquot ID prefix");
+            plan_inputs_changed |= ui
+                .add(
+                    egui::TextEdit::singleline(&mut form.output_prefix)
+                        .desired_width(220.0)
+                        .hint_text("gene_set_pool"),
+                )
+                .changed();
+            ui.label("Container name");
+            plan_inputs_changed |= ui
+                .add(
+                    egui::TextEdit::singleline(&mut form.container_name)
+                        .desired_width(260.0)
+                        .hint_text("Generated from resolution ID"),
+                )
+                .changed();
+        });
+        if plan_inputs_changed {
+            form.expected_plan_fingerprint_sha256.clear();
+            form.apply_change = false;
+        }
+        ui.horizontal_wrapped(|ui| {
+            let has_preview = !form.expected_plan_fingerprint_sha256.trim().is_empty();
+            ui.add_enabled_ui(has_preview, |ui| {
+                ui.checkbox(&mut form.apply_change, "Create previewed physical pool")
+                    .on_hover_text("Apply the exact fingerprint-locked aliquot and container plan");
+            });
+            if has_preview {
+                let fingerprint = form.expected_plan_fingerprint_sha256.as_str();
+                let compact = fingerprint.chars().take(24).collect::<String>();
+                ui.monospace(format!("plan {compact}..."))
+                    .on_hover_text(fingerprint);
+            } else {
+                ui.small("No locked preview");
+            }
+        });
+    }
+
     fn render_gene_set_promoter_form(&mut self, ui: &mut Ui) {
         ui.strong("Promoter-cohort parameters");
         ui.small(
@@ -2667,6 +2991,7 @@ impl GENtleApp {
             CollectionOperationPayload::RestrictionScan(_) => None,
             CollectionOperationPayload::TfbsScan(_) => None,
             CollectionOperationPayload::Digest(_) => None,
+            CollectionOperationPayload::CreatePool(_) => None,
             CollectionOperationPayload::PromoterCohort(_) => None,
         };
         let mut open_child: Option<(String, String)> = None;
@@ -2963,6 +3288,68 @@ impl GENtleApp {
                 });
         }
 
+        if let CollectionOperationPayload::CreatePool(pool) = &result.payload {
+            ui.separator();
+            ui.strong(format!(
+                "Physical pool: {} member aliquot(s) {}",
+                pool.planned_member_count,
+                if pool.collection_operation.applied {
+                    "materialized"
+                } else {
+                    "planned"
+                }
+            ));
+            ui.small(format!(
+                "container={} | name={} | source containers retained={}",
+                pool.created_container_id
+                    .as_deref()
+                    .unwrap_or(pool.planned_container_id.as_str()),
+                pool.container_name,
+                pool.source_containers_retained
+            ));
+            ui.monospace(format!("plan={}", pool.plan_fingerprint_sha256));
+            if ui
+                .button("Copy pool creation JSON")
+                .on_hover_text("Copy the complete portable gene-set pool creation report")
+                .clicked()
+                && let Ok(json) = serde_json::to_string_pretty(pool.as_ref())
+            {
+                ui.ctx().copy_text(json);
+            }
+            egui::ScrollArea::vertical()
+                .id_salt("gene_set_pool_member_results")
+                .max_height(240.0)
+                .show(ui, |ui| {
+                    egui::Grid::new("gene_set_pool_member_result_grid")
+                        .striped(true)
+                        .spacing([12.0, 5.0])
+                        .show(ui, |ui| {
+                            ui.strong("Member");
+                            ui.strong("Source tube");
+                            ui.strong("Source sequence");
+                            ui.strong("Pool aliquot");
+                            ui.strong("Open");
+                            ui.end_row();
+                            for member in pool.member_reports.iter().take(100) {
+                                ui.label(&member.stable_member_id);
+                                ui.monospace(&member.source_container_id);
+                                ui.monospace(&member.source_seq_id);
+                                ui.monospace(&member.output_seq_id);
+                                if ui
+                                    .add_enabled(member.materialized, egui::Button::new("Open"))
+                                    .on_disabled_hover_text(
+                                        "Previewed aliquots are not project sequences until apply",
+                                    )
+                                    .clicked()
+                                {
+                                    open_digest_sequence = Some(member.output_seq_id.clone());
+                                }
+                                ui.end_row();
+                            }
+                        });
+                });
+        }
+
         if let CollectionOperationPayload::PromoterCohort(promoter) = &result.payload {
             ui.separator();
             ui.strong(format!(
@@ -3149,6 +3536,9 @@ impl GENtleApp {
             }
             CollectionLauncherAdapter::TfbsScan => self.render_gene_set_tfbs_scan_form(ui, choice),
             CollectionLauncherAdapter::Digest => self.render_gene_set_digest_form(ui, choice),
+            CollectionLauncherAdapter::CreatePool => {
+                self.render_gene_set_create_pool_form(ui, choice)
+            }
             CollectionLauncherAdapter::PromoterCohort => self.render_gene_set_promoter_form(ui),
         }
         let readiness = presented
@@ -3311,6 +3701,11 @@ impl GENtleApp {
                 .expected_plan_fingerprint_sha256
                 .clear();
             self.gene_set_inspector.digest_form.apply_change = false;
+            self.gene_set_inspector
+                .pool_form
+                .expected_plan_fingerprint_sha256
+                .clear();
+            self.gene_set_inspector.pool_form.apply_change = false;
             self.reconcile_gene_set_inspector_bindings();
             self.seed_gene_set_promoter_form_from_selection();
         }
@@ -3985,6 +4380,29 @@ mod tests {
         }
     }
 
+    fn pool_command_projection(command: &ShellCommand) -> serde_json::Value {
+        match command {
+            ShellCommand::GeneSetsCreatePool {
+                resolution_id,
+                member_bindings,
+                output_prefix,
+                container_name,
+                dry_run,
+                expected_plan_fingerprint_sha256,
+                path,
+            } => serde_json::json!({
+                "resolution_id": resolution_id,
+                "member_bindings": member_bindings,
+                "output_prefix": output_prefix,
+                "container_name": container_name,
+                "dry_run": dry_run,
+                "expected_plan_fingerprint_sha256": expected_plan_fingerprint_sha256,
+                "path": path,
+            }),
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
     #[test]
     fn collection_operation_launcher_specificity_command_matches_shared_shell_parser_once() {
         let app = seeded_app();
@@ -4189,6 +4607,114 @@ mod tests {
                 .expect_err("missing binding")
                 .contains("missing: GENE2")
         );
+    }
+
+    #[test]
+    fn collection_operation_launcher_create_pool_matches_shell_and_requires_complete_bindings() {
+        let mut app = seeded_app();
+        let (container_1, container_2) = {
+            let mut engine = app.engine.write().expect("engine");
+            engine
+                .apply(Operation::CreateSequenceFromText {
+                    sequence_text: "ACGTACGT".to_string(),
+                    output_id: Some("pool_source_1".to_string()),
+                    name: Some("Source 1".to_string()),
+                    circular: false,
+                })
+                .expect("create source 1");
+            engine
+                .apply(Operation::CreateSequenceFromText {
+                    sequence_text: "TTGGAACC".to_string(),
+                    output_id: Some("pool_source_2".to_string()),
+                    name: Some("Source 2".to_string()),
+                    circular: false,
+                })
+                .expect("create source 2");
+            (
+                engine.state().container_state.seq_to_latest_container["pool_source_1"].clone(),
+                engine.state().container_state.seq_to_latest_container["pool_source_2"].clone(),
+            )
+        };
+        app.reconcile_gene_set_inspector_bindings();
+        app.gene_set_inspector
+            .pool_form
+            .member_bindings
+            .insert("GENE1".to_string(), container_1.clone());
+        app.gene_set_inspector
+            .pool_form
+            .member_bindings
+            .insert("GENE2".to_string(), container_2.clone());
+        app.gene_set_inspector.pool_form.output_prefix = "cohort".to_string();
+        app.gene_set_inspector.pool_form.container_name = "Cohort stock".to_string();
+
+        let gui_preview = app
+            .gene_set_create_pool_shell_command()
+            .expect("GUI pool preview command");
+        let parsed_preview = parse_shell_line(&format!(
+            "gene-sets create-pool resolution:genes --member-container GENE1={container_1} \
+             --member-container GENE2={container_2} --output-prefix cohort \
+             --container-name 'Cohort stock'"
+        ))
+        .expect("shared shell pool preview command");
+        assert_eq!(
+            pool_command_projection(&gui_preview),
+            pool_command_projection(&parsed_preview)
+        );
+
+        let row = collection_launcher_rows(CollectionSubjectKind::GeneSetResolution)
+            .into_iter()
+            .find(|row| row.adapter == Some(CollectionLauncherAdapter::CreatePool))
+            .expect("CreateGeneSetPool launcher row");
+        let report = app
+            .selected_gene_set_resolution()
+            .expect("selected resolution")
+            .report
+            .clone();
+        assert!(matches!(
+            app.gene_set_collection_operation_readiness(&row, &report),
+            CollectionLauncherReadiness::Ready
+        ));
+
+        app.gene_set_inspector.pool_form.apply_change = true;
+        assert!(
+            app.gene_set_create_pool_shell_command()
+                .expect_err("apply requires preview fingerprint")
+                .contains("Preview this physical pool")
+        );
+        app.gene_set_inspector
+            .pool_form
+            .expected_plan_fingerprint_sha256 = "sha256:locked".to_string();
+        let gui_apply = app
+            .gene_set_create_pool_shell_command()
+            .expect("GUI pool apply command");
+        let parsed_apply = parse_shell_line(&format!(
+            "gene-sets create-pool resolution:genes --member-container GENE1={container_1} \
+             --member-container GENE2={container_2} --output-prefix cohort \
+             --container-name 'Cohort stock' --apply \
+             --expected-plan-fingerprint-sha256 sha256:locked"
+        ))
+        .expect("shared shell pool apply command");
+        assert_eq!(
+            pool_command_projection(&gui_apply),
+            pool_command_projection(&parsed_apply)
+        );
+
+        app.gene_set_inspector
+            .pool_form
+            .member_bindings
+            .remove("GENE2");
+        assert!(
+            app.gene_set_create_pool_shell_command()
+                .expect_err("missing pool binding")
+                .contains("missing: GENE2")
+        );
+
+        let mut incomplete = report;
+        incomplete.unresolved_member_count = 1;
+        assert!(matches!(
+            app.gene_set_collection_operation_readiness(&row, &incomplete),
+            CollectionLauncherReadiness::NeedsInput { .. }
+        ));
     }
 
     #[test]

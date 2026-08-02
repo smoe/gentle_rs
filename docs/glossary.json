@@ -2053,6 +2053,25 @@
       },
       {
          "aliases": [
+            "gene_sets create-pool",
+            "genesets create-pool",
+            "gene-sets create_pool"
+         ],
+         "engine_operations": [
+            "CreateGeneSetPool"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "gui-menu"
+         ],
+         "path": "gene-sets create-pool",
+         "summary": "Preview or apply explicit physical pooling of a complete resolved gene set from one exclusive singleton source container per member.",
+         "usage": "gene-sets create-pool RESOLUTION_ID --member-container MEMBER_ID=CONTAINER_ID [--member-container MEMBER_ID=CONTAINER_ID ...] [--output-prefix PREFIX] [--container-name NAME] [--preview | --apply --expected-plan-fingerprint-sha256 SHA256] [--path REPORT.json]"
+      },
+      {
+         "aliases": [
             "gene_sets produce direct-list",
             "genesets produce direct-list",
             "gene-sets produce direct_list"

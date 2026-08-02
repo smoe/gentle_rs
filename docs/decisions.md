@@ -383,6 +383,15 @@ before export; physical `singleton` and `pool` containers remain eligible.
 non-exclusive known subset is rejected before writing rather than silently
 losing that meaning at the artifact boundary.
 
+Explicit gene-set pooling is a physical aliquoting operation, not an inference
+from logical membership. Every resolved member must bind to a distinct,
+exclusive singleton source container, and incomplete resolutions reject the
+whole plan. Apply creates one lineage-linked derived aliquot sequence per
+source, places only those aliquots in one new exclusive `pool` container, and
+retains the source containers and their latest-membership mappings. The plan
+lock covers the resolution membership, source-container bindings, exact source
+sequence snapshots, output ids, and reserved pool-container id.
+
 Collection members bind biological interpretation through a report-owned
 context registry. Context-sensitive policies are fail-closed: an undeclared
 policy is `not_reviewed`, while reviewed consumers may require one homogeneous

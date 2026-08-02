@@ -3392,6 +3392,21 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         human_id: Option<String>,
     },
+    CreateGeneSetPool {
+        collection_subject: CollectionSubjectRef,
+        #[serde(default)]
+        member_bindings: Vec<GeneSetPoolMemberBinding>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        output_prefix: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        container_name: Option<String>,
+        #[serde(default)]
+        dry_run: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        expected_plan_fingerprint_sha256: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     ExportProcessRunBundle {
         path: String,
         #[serde(default)]
@@ -9404,6 +9419,7 @@ impl GentleEngine {
                 | Operation::FindRestrictionSitesCollection { .. }
                 | Operation::ScanTfbsHitsCollection { .. }
                 | Operation::DigestCollection { dry_run: true, .. }
+                | Operation::CreateGeneSetPool { dry_run: true, .. }
                 | Operation::QueryRepeatAnnotations { .. }
                 | Operation::QueryRepeatOverlaps { .. }
                 | Operation::BuildRepeatEnvironmentCohort { .. }

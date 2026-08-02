@@ -335,6 +335,25 @@ fn collection_lift_policies_attach_only_to_existing_capabilities() {
             CollectionContextRequirement::Homogeneous
         );
     }
+
+    for (source, name) in [
+        (CapabilitySource::EngineOperation, "CreateGeneSetPool"),
+        (CapabilitySource::GlossaryCommand, "gene-sets create-pool"),
+    ] {
+        let policy = collection_lift_policy(source, name, CollectionSubjectKind::GeneSetResolution)
+            .unwrap_or_else(|| panic!("missing gene-set pool policy for {source:?} `{name}`"));
+        assert!(matches!(
+            policy.support,
+            CollectionLiftSupport::Supported {
+                mode: CollectionLiftingMode::Combine,
+                ref result_payload_kind,
+            } if result_payload_kind == "gentle.gene_set_pool_creation.v1"
+        ));
+        assert_eq!(
+            policy.context_requirement,
+            CollectionContextRequirement::ContextAgnostic
+        );
+    }
 }
 
 #[test]
@@ -478,7 +497,10 @@ fn registry_surfacing_covers_all_parity_adapters() {
 
     for (source, name) in [
         (CapabilitySource::EngineOperation, "FindRestrictionSites"),
-        (CapabilitySource::GlossaryCommand, "features restriction-scan"),
+        (
+            CapabilitySource::GlossaryCommand,
+            "features restriction-scan",
+        ),
         (
             CapabilitySource::GlossaryCommand,
             "collections run restriction-scan",
