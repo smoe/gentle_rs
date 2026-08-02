@@ -28251,6 +28251,46 @@ fn collection_pool_export_rejects_nonexclusive_or_nonphysical_subjects_before_wr
 }
 
 #[test]
+fn collection_pool_export_rejects_missing_container_member_before_writing() {
+    let mut state = ProjectState::default();
+    state.sequences.insert("present".to_string(), seq("ATGC"));
+    state.container_state.containers.insert(
+        "incomplete-container".to_string(),
+        Container {
+            container_id: "incomplete-container".to_string(),
+            kind: ContainerKind::Pool,
+            name: None,
+            members: vec!["present".to_string(), "missing".to_string()],
+            declared_contents_exclusive: true,
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let temp = tempdir().expect("tempdir");
+    let output_path = temp.path().join("must-not-exist.pool.gentle.json");
+    let mut engine = GentleEngine::from_state(state);
+
+    let error = engine
+        .apply(Operation::ExportPoolCollection {
+            collection_subject: CollectionSubjectRef::Container {
+                container_id: "incomplete-container".to_string(),
+            },
+            path: output_path.display().to_string(),
+            pool_id: None,
+            human_id: None,
+        })
+        .expect_err("missing container member must reject the atomic export");
+
+    assert_eq!(error.code, ErrorCode::NotFound);
+    assert!(
+        error
+            .message
+            .contains("references unknown sequence 'missing'")
+    );
+    assert!(!output_path.exists());
+}
+
+#[test]
 fn test_export_pool_operation_preserves_supercoiled_topology_hint() {
     let mut state = ProjectState::default();
     let mut plasmid = seq(&"ATGC".repeat(10));

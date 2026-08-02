@@ -22,6 +22,15 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
 understand what changed.
 
+## 2026-08-02
+
+- Hardened physical-container pool export in the Lineage GUI: export work now
+  runs in a detached engine snapshot rather than serializing sequence JSON
+  under the egui-thread write lock, and completion requires a typed,
+  schema-checked `gentle.collection_pool_export.v1` report whose container and
+  artifact path match the request. Missing container members are also covered
+  by an atomic no-output regression test.
+
 ## 2026-08-01
 
 - Added restriction digestion as the first mutating collection `map`

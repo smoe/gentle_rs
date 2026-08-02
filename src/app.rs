@@ -987,6 +987,7 @@ pub struct GENtleApp {
     gibson_status: String,
     gibson_preview_output: Option<GibsonAssemblyPreview>,
     gibson_preview_svg_uri: String,
+    container_pool_export_task: Option<ContainerPoolExportTask>,
     arrangement_gel_preview: ArrangementGelPreviewState,
     rack_labels_preview: RackLabelsPreviewState,
     rack_view_rack_id: String,
@@ -2820,6 +2821,7 @@ impl Default for GENtleApp {
             gibson_status: String::new(),
             gibson_preview_output: None,
             gibson_preview_svg_uri: String::new(),
+            container_pool_export_task: None,
             arrangement_gel_preview: ArrangementGelPreviewState::default(),
             rack_labels_preview: RackLabelsPreviewState::default(),
             rack_view_rack_id: String::new(),
@@ -5221,6 +5223,7 @@ Error: `{err}`"
             || self.jaspar_background_task.is_some()
             || self.tutorial_project_task.is_some()
             || self.agent_task.is_some()
+            || self.container_pool_export_task.is_some()
             || self.has_active_gene_set_resolution_task()
             || self.has_active_gene_set_collection_operation_task()
     }
@@ -24826,6 +24829,7 @@ impl GENtleApp {
             self.poll_agent_assistant_task(ctx);
             self.poll_agent_model_discovery_task(ctx);
             self.poll_clawbio_task(ctx);
+            self.poll_container_pool_export_task(ctx);
             self.poll_gene_set_resolution_task(ctx);
             self.poll_gene_set_collection_operation_task(ctx);
             self.sync_tracked_bed_tracks_for_new_anchors();

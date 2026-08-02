@@ -3716,7 +3716,11 @@ Serial gel export is available in two places:
   - `Containers` table: `Gel SVG` exports one lane for that container;
     `Export Pool` calls `collections run export-pool` and writes one
     `gentle.pool.v1` artifact. The action is disabled for empty or
-    non-exclusive containers, matching the shared engine preflight.
+    non-exclusive containers, matching the shared engine preflight. After the
+    native save dialog closes, validation, serialization, and writing run in a
+    detached engine snapshot; the GUI reports success only after decoding and
+    validating the typed export report against the requested container and
+    destination path.
   - `Arrangements` table: `Export Gel` exports all lanes defined in that
     arrangement, using the arrangement's saved ladder pair when present or auto
     ladder selection otherwise.

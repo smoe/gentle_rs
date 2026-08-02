@@ -20,6 +20,121 @@ pub(super) fn container_pool_export_shell_command(
     }
 }
 
+fn collection_pool_export_report_from_shell_output(
+    output: &serde_json::Value,
+    expected_container_id: &str,
+    expected_path: &str,
+) -> Result<crate::engine::CollectionPoolExportReport, EngineError> {
+    const COMMAND_SCHEMA: &str = "gentle.collection_pool_export_command.v1";
+    let command_schema = output
+        .get("schema")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    if command_schema != COMMAND_SCHEMA {
+        return Err(EngineError::new(
+            ErrorCode::Internal,
+            format!(
+                "Collection pool export returned command schema '{command_schema}', expected '{COMMAND_SCHEMA}'"
+            ),
+        ));
+    }
+    let report_value = output.get("report").cloned().ok_or_else(|| {
+        EngineError::new(
+            ErrorCode::Internal,
+            "Collection pool export returned no typed report",
+        )
+    })?;
+    let report: crate::engine::CollectionPoolExportReport = serde_json::from_value(report_value)
+        .map_err(|error| {
+            EngineError::new(
+                ErrorCode::Internal,
+                format!("Could not decode collection pool export report: {error}"),
+            )
+        })?;
+    if report.schema != crate::engine::COLLECTION_POOL_EXPORT_REPORT_SCHEMA {
+        return Err(EngineError::new(
+            ErrorCode::Internal,
+            format!(
+                "Collection pool export returned report schema '{}', expected '{}'",
+                report.schema,
+                crate::engine::COLLECTION_POOL_EXPORT_REPORT_SCHEMA
+            ),
+        ));
+    }
+    if report.artifact_schema != "gentle.pool.v1" {
+        return Err(EngineError::new(
+            ErrorCode::Internal,
+            format!(
+                "Collection pool export returned artifact schema '{}', expected 'gentle.pool.v1'",
+                report.artifact_schema
+            ),
+        ));
+    }
+    if report.source_container_id != expected_container_id {
+        return Err(EngineError::new(
+            ErrorCode::Internal,
+            format!(
+                "Collection pool export returned container '{}', expected '{expected_container_id}'",
+                report.source_container_id
+            ),
+        ));
+    }
+    if report.artifact_path != expected_path {
+        return Err(EngineError::new(
+            ErrorCode::Internal,
+            format!(
+                "Collection pool export returned artifact path '{}', expected '{expected_path}'",
+                report.artifact_path
+            ),
+        ));
+    }
+    if !report.source_container_declared_contents_exclusive {
+        return Err(EngineError::new(
+            ErrorCode::Internal,
+            "Collection pool export report did not confirm exclusive container contents",
+        ));
+    }
+    if report.member_count == 0
+        || report.member_count != report.collection_operation.per_member_status.len()
+    {
+        return Err(EngineError::new(
+            ErrorCode::Internal,
+            format!(
+                "Collection pool export reported {} member(s) but {} per-member status row(s)",
+                report.member_count,
+                report.collection_operation.per_member_status.len()
+            ),
+        ));
+    }
+    if report.collection_operation.capability_name != "ExportPoolCollection"
+        || report.collection_operation.lifting_mode != crate::engine::CollectionLiftingMode::Combine
+        || !report.collection_operation.applied
+    {
+        return Err(EngineError::new(
+            ErrorCode::Internal,
+            "Collection pool export report did not describe an applied ExportPoolCollection combine",
+        ));
+    }
+    Ok(report)
+}
+
+fn execute_container_pool_export_task(
+    engine: &Arc<RwLock<GentleEngine>>,
+    command: ShellCommand,
+    expected_container_id: String,
+    expected_path: String,
+) -> Result<crate::engine::CollectionPoolExportReport, EngineError> {
+    crate::background_engine::execute_on_engine_snapshot(engine, move |snapshot| {
+        let run = crate::engine_shell::execute_shell_command(snapshot, &command)
+            .map_err(|message| EngineError::new(ErrorCode::InvalidInput, message))?;
+        collection_pool_export_report_from_shell_output(
+            &run.output,
+            &expected_container_id,
+            &expected_path,
+        )
+    })
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum RackDragState {
     Sample {
@@ -95,6 +210,14 @@ pub(super) struct RackLabelsPreviewState {
     pub(super) status: String,
 }
 
+pub(super) struct ContainerPoolExportTask {
+    started: Instant,
+    runtime_frame: RuntimeStatusGuard,
+    container_id: String,
+    path: String,
+    receiver: mpsc::Receiver<Result<crate::engine::CollectionPoolExportReport, EngineError>>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub(super) struct PersistedRackWorkspace {
@@ -106,6 +229,10 @@ pub(super) struct PersistedRackWorkspace {
 
 impl GENtleApp {
     pub(super) fn prompt_export_container_pool(&mut self, container_id: &str) {
+        if self.container_pool_export_task.is_some() {
+            self.app_status = "A container pool export is already running".to_string();
+            return;
+        }
         let stem = Self::sanitize_file_stem(container_id, "pool");
         let default_file_name = format!("{stem}.pool.gentle.json");
         let path = rfd::FileDialog::new()
@@ -117,22 +244,84 @@ impl GENtleApp {
             return;
         };
         let path_text = path.display().to_string();
+        self.start_container_pool_export_task(container_id, path_text);
+    }
+
+    fn start_container_pool_export_task(&mut self, container_id: &str, path_text: String) {
+        if self.container_pool_export_task.is_some() {
+            self.app_status = "A container pool export is already running".to_string();
+            return;
+        }
         let command = container_pool_export_shell_command(container_id, &path_text);
-        let result =
-            crate::engine_shell::execute_shell_command(&mut self.engine.write().unwrap(), &command);
-        match result {
-            Ok(run) => {
-                let member_count = run
-                    .output
-                    .pointer("/report/member_count")
-                    .and_then(serde_json::Value::as_u64)
-                    .unwrap_or_default();
+        let engine = self.engine.clone();
+        let expected_container_id = container_id.to_string();
+        let expected_path = path_text.clone();
+        let (tx, receiver) = mpsc::channel();
+        let runtime_frame = runtime_status_registry().push_with_detail(
+            RuntimeStatusFrameKind::BackgroundJob,
+            "Export container pool",
+            Some(format!("container={container_id}, path={path_text}")),
+        );
+        runtime_frame.update_phase("running");
+        std::thread::spawn(move || {
+            let result = execute_container_pool_export_task(
+                &engine,
+                command,
+                expected_container_id,
+                expected_path,
+            );
+            let _ = tx.send(result);
+        });
+        self.app_status = format!(
+            "Exporting container '{container_id}' to '{path_text}' in a detached project snapshot..."
+        );
+        self.container_pool_export_task = Some(ContainerPoolExportTask {
+            started: Instant::now(),
+            runtime_frame,
+            container_id: container_id.to_string(),
+            path: path_text,
+            receiver,
+        });
+    }
+
+    pub(super) fn poll_container_pool_export_task(&mut self, ctx: &egui::Context) {
+        let Some(task) = self.container_pool_export_task.as_ref() else {
+            return;
+        };
+        ctx.request_repaint_after(Duration::from_millis(100));
+        let outcome = match task.receiver.try_recv() {
+            Ok(result) => Some(result),
+            Err(mpsc::TryRecvError::Empty) => None,
+            Err(mpsc::TryRecvError::Disconnected) => Some(Err(EngineError::new(
+                ErrorCode::Io,
+                "Container pool export background worker disconnected",
+            ))),
+        };
+        let Some(outcome) = outcome else {
+            return;
+        };
+        let Some(task) = self.container_pool_export_task.take() else {
+            return;
+        };
+        let elapsed = task.started.elapsed().as_secs_f64();
+        match outcome {
+            Ok(report) => {
+                task.runtime_frame.update_phase("completed");
                 self.app_status = format!(
-                    "Exported container '{container_id}' with {member_count} member(s) to '{path_text}'"
+                    "Exported container '{}' as pool '{}' with {} member(s) to '{}' in {:.1}s",
+                    report.source_container_id,
+                    report.pool_id,
+                    report.member_count,
+                    report.artifact_path,
+                    elapsed
                 );
             }
             Err(error) => {
-                self.app_status = format!("Could not export container pool: {error}");
+                task.runtime_frame.update_phase("failed");
+                self.app_status = format!(
+                    "Could not export container '{}' to '{}' after {:.1}s: {}",
+                    task.container_id, task.path, elapsed, error
+                );
             }
         }
     }
@@ -3313,5 +3502,77 @@ mod tests {
                 other => panic!("unexpected pool export command: {other:?}"),
             }
         }
+    }
+
+    #[test]
+    fn container_pool_export_gui_uses_detached_typed_report() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "member-a".to_string(),
+            DNAsequence::from_sequence("ATGC").expect("member sequence"),
+        );
+        state.container_state.containers.insert(
+            "pool-a".to_string(),
+            crate::engine::Container {
+                container_id: "pool-a".to_string(),
+                kind: crate::engine::ContainerKind::Pool,
+                name: Some("Pool A".to_string()),
+                members: vec!["member-a".to_string()],
+                declared_contents_exclusive: true,
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("pool-a.gentle.json");
+        let path_text = path.display().to_string();
+
+        let report = execute_container_pool_export_task(
+            &engine,
+            container_pool_export_shell_command("pool-a", &path_text),
+            "pool-a".to_string(),
+            path_text.clone(),
+        )
+        .expect("detached typed pool export");
+
+        assert_eq!(
+            report.schema,
+            crate::engine::COLLECTION_POOL_EXPORT_REPORT_SCHEMA
+        );
+        assert_eq!(report.source_container_id, "pool-a");
+        assert_eq!(report.artifact_path, path_text);
+        assert_eq!(report.member_count, 1);
+        assert!(path.is_file());
+
+        let mut malformed = serde_json::json!({
+            "schema": "gentle.collection_pool_export_command.v1",
+            "report": report,
+        });
+        malformed["report"]["schema"] =
+            serde_json::Value::String("gentle.collection_pool_export.v999".to_string());
+        let error = collection_pool_export_report_from_shell_output(
+            &malformed,
+            "pool-a",
+            &path.display().to_string(),
+        )
+        .expect_err("unknown typed report schema must not become GUI success");
+        assert!(
+            error
+                .message
+                .contains("expected 'gentle.collection_pool_export.v1'")
+        );
+    }
+
+    #[test]
+    fn container_pool_export_gui_has_no_inline_engine_write_execution() {
+        let source = include_str!("rack_workspace_ui.rs");
+        let forbidden_inline_call = [
+            "execute_shell_command(&mut self.engine",
+            ".write().unwrap()",
+        ]
+        .concat();
+        assert!(source.contains("execute_on_engine_snapshot"));
+        assert!(!source.contains(&forbidden_inline_call));
     }
 }

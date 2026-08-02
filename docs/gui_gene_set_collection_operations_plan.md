@@ -287,6 +287,9 @@ Tests:
 - Remaining Phase 5 work is to add shared engine policies/routes and typed GUI
   adapters for export, BLAST, non-gene subjects, and explicit
   materialization when those contracts are ready.
+- A9 must declare the `RenderPoolGelSvg` policy for arrangement subjects before
+  extending the arrangement launcher; the shipped arrangement gel action must
+  not remain an implicit exception to the collection policy registry.
 
 File targets:
 
