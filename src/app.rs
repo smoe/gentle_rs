@@ -2431,6 +2431,7 @@ enum CommandPaletteAction {
     OpenEvidencePreparation,
     OpenPlanning,
     OpenRoutineAssistant,
+    FocusProjectOverview(ProjectOverviewTarget),
     UiIntent(UiIntentTarget),
     OpenGuiManual,
     OpenCliManual,
@@ -5353,6 +5354,17 @@ Error: `{err}`"
                 action: CommandPaletteAction::SaveProject,
             },
             CommandPaletteEntry {
+                title: "Project Overview".to_string(),
+                detail: "Focus physical containers and collection actions in the project overview"
+                    .to_string(),
+                keywords:
+                    "project overview lineage containers arrangements pools collection export pool"
+                        .to_string(),
+                action: CommandPaletteAction::FocusProjectOverview(
+                    ProjectOverviewTarget::Containers,
+                ),
+            },
+            CommandPaletteEntry {
                 title: "New Sequence".to_string(),
                 detail: "Type or paste IUPAC DNA into a new project sequence".to_string(),
                 keywords: "sequence new paste clipboard type create".to_string(),
@@ -5554,6 +5566,16 @@ Error: `{err}`"
             }
             CommandPaletteAction::OpenPlanning => self.open_planning_dialog(),
             CommandPaletteAction::OpenRoutineAssistant => self.open_routine_assistant_dialog(),
+            CommandPaletteAction::FocusProjectOverview(target) => {
+                self.focus_project_overview_target(target);
+                self.persist_lineage_graph_workspace_to_state();
+                let target_label = match target {
+                    ProjectOverviewTarget::Lineage => "lineage",
+                    ProjectOverviewTarget::Containers => "containers",
+                    ProjectOverviewTarget::Arrangements => "arrangements",
+                };
+                self.app_status = format!("Focused project overview: {target_label}");
+            }
             CommandPaletteAction::UiIntent(target) => {
                 let command = ShellCommand::UiIntent {
                     action: UiIntentAction::Open,

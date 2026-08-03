@@ -6233,6 +6233,27 @@ fn command_palette_includes_gui_prominent_glossary_entries() {
     }
 }
 
+#[test]
+fn command_palette_project_overview_focuses_container_actions() {
+    let mut app = GENtleApp::default();
+    let action = app
+        .collect_command_palette_entries()
+        .iter()
+        .find(|entry| entry.title == "Project Overview")
+        .map(|entry| entry.action)
+        .expect("Project Overview command palette entry");
+    assert!(matches!(
+        action,
+        CommandPaletteAction::FocusProjectOverview(ProjectOverviewTarget::Containers)
+    ));
+
+    app.execute_command_palette_action(&egui::Context::default(), action);
+
+    assert!(app.lineage_main_split_fraction < DEFAULT_LINEAGE_MAIN_SPLIT_FRACTION);
+    assert!(app.lineage_container_arrangement_split_fraction > 0.5);
+    assert_eq!(app.app_status, "Focused project overview: containers");
+}
+
 fn command_palette_test_app_with_sequence() -> GENtleApp {
     let mut state = ProjectState::default();
     state.sequences.insert(
