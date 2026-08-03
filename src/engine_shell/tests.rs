@@ -7528,6 +7528,73 @@ fn parse_primers_seed_from_feature_and_splicing() {
             && backend == Some(PrimerDesignBackend::Internal)
             && primer3_executable.as_deref() == Some("primer3_core")
     ));
+    let study_plan = parse_shell_line(
+        r#"primers plan-gene-isoform-study @study.json --normalized-request normalized.json --path plan.json --workflow operations.workflow.json"#,
+    )
+    .expect("parse gene isoform assay study plan");
+    assert!(matches!(
+        study_plan,
+        ShellCommand::PrimersPlanGeneIsoformAssayStudy {
+            request_json,
+            normalize_only: false,
+            normalized_request_path,
+            path,
+            workflow_path,
+        } if request_json == "@study.json"
+            && normalized_request_path.as_deref() == Some("normalized.json")
+            && path.as_deref() == Some("plan.json")
+            && workflow_path.as_deref() == Some("operations.workflow.json")
+    ));
+    let normalize_only = parse_shell_line(
+        "primers plan-gene-isoform-study @study.json --normalize-only --normalized-request normalized.json",
+    )
+    .expect("parse normalization-only study request");
+    assert!(matches!(
+        normalize_only,
+        ShellCommand::PrimersPlanGeneIsoformAssayStudy {
+            normalize_only: true,
+            path: None,
+            workflow_path: None,
+            ..
+        }
+    ));
+    let publication = parse_shell_line(
+        "primers publish-gene-isoform-study dossier.json out --profile review --blocks run.parameters,gene.patz1.overview --pdf",
+    )
+    .expect("parse gene isoform assay publication");
+    assert!(matches!(
+        publication,
+        ShellCommand::PrimersPublishGeneIsoformAssayStudy {
+            request_path,
+            output_directory,
+            profile,
+            block_ids,
+            generate_pdf: true,
+        } if request_path == "dossier.json"
+            && output_directory == "out"
+            && profile.as_deref() == Some("review")
+            && block_ids == ["run.parameters", "gene.patz1.overview"]
+    ));
+    let handoff_order = parse_shell_line(
+        "primers oligo-order from-experimental-handoff handoff.json --expected-sha256 sha256:abc --form-id approved_order",
+    )
+    .expect("parse handoff-bound oligo order form");
+    assert!(matches!(
+        handoff_order,
+        ShellCommand::PrimersOligoOrderFromExperimentalHandoff {
+            handoff_path,
+            expected_sha256,
+            form_id,
+            ..
+        } if handoff_path == "handoff.json"
+            && expected_sha256.as_deref() == Some("sha256:abc")
+            && form_id.as_deref() == Some("approved_order")
+    ));
+    assert!(
+        parse_shell_line("primers oligo-order from-experimental-handoff handoff.json")
+            .expect_err("handoff order requires approved digest")
+            .contains("--expected-sha256")
+    );
     let missing_specificity_target = parse_shell_line(
         "primers design-transcript-assay-panel seq_a 17 --specificity-check require-pass",
     )

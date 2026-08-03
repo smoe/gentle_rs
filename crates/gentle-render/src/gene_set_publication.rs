@@ -5,8 +5,11 @@
 //! contradictory analysis summaries.
 
 use gentle_protocol::{
-    GeneSetPublicationGene, GeneSetPublicationPrimerRow, GeneSetPublicationReport,
+    GeneIsoformAssayPublicationBlock, GeneIsoformAssayPublicationGene,
+    GeneIsoformAssayPublicationReport, GeneSetPublicationGene, GeneSetPublicationPrimerRow,
+    GeneSetPublicationReport,
 };
+use std::collections::{BTreeMap, BTreeSet};
 
 fn html_escape(value: &str) -> String {
     value
@@ -397,6 +400,464 @@ pub fn render_gene_set_publication_markdown(report: &GeneSetPublicationReport) -
         "# Figure appendix\n\nThe following pages contain the complete figures in the same gene and figure order used by the HTML report. Vector source files remain linked from the web version.\n",
     );
     markdown
+}
+
+fn json_scalar(value: Option<&serde_json::Value>) -> String {
+    match value {
+        Some(serde_json::Value::String(value)) => value.clone(),
+        Some(serde_json::Value::Number(value)) => value.to_string(),
+        Some(serde_json::Value::Bool(value)) => value.to_string(),
+        Some(serde_json::Value::Null) | None => "unknown".to_string(),
+        Some(value) => serde_json::to_string(value).unwrap_or_else(|_| "unavailable".to_string()),
+    }
+}
+
+fn publication_blocks<'a>(
+    report: &'a GeneIsoformAssayPublicationReport,
+    profile_id: &str,
+    requested_block_ids: &[String],
+) -> Result<Vec<&'a GeneIsoformAssayPublicationBlock>, String> {
+    let mut by_id = BTreeMap::new();
+    for block in &report.content_blocks {
+        if by_id.insert(block.block_id.as_str(), block).is_some() {
+            return Err(format!(
+                "Canonical publication contains duplicate block id '{}'",
+                block.block_id
+            ));
+        }
+    }
+    let selected_ids = if requested_block_ids.is_empty() {
+        let profile = report
+            .profiles
+            .iter()
+            .find(|profile| profile.profile_id == profile_id)
+            .ok_or_else(|| format!("Unknown publication profile '{profile_id}'"))?;
+        profile.block_ids.clone()
+    } else {
+        requested_block_ids.to_vec()
+    };
+    let mut seen = BTreeSet::new();
+    selected_ids
+        .iter()
+        .map(|block_id| {
+            if !seen.insert(block_id.as_str()) {
+                return Err(format!("Publication block '{block_id}' was selected twice"));
+            }
+            by_id
+                .get(block_id.as_str())
+                .copied()
+                .ok_or_else(|| format!("Unknown publication block '{block_id}'"))
+        })
+        .collect()
+}
+
+fn publication_shell(
+    report: &GeneIsoformAssayPublicationReport,
+    page_title: &str,
+    navigation: &str,
+    content: &str,
+    print_mode: bool,
+) -> String {
+    let favicon = report
+        .favicon_path
+        .as_ref()
+        .map(|path| format!("<link rel=\"icon\" href=\"{}\">", html_escape(path)))
+        .unwrap_or_default();
+    format!(
+        r##"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{page_title}</title>{favicon}<style>
+:root{{--ink:#18212b;--muted:#637080;--line:#d8dee6;--paper:#fff;--wash:#f5f7f9;--blue:#2463a8;--green:#13795b;--amber:#a96500;--red:#b42318}}
+*{{box-sizing:border-box}}body{{margin:0;background:#eef2f5;color:var(--ink);font:15px/1.48 system-ui,-apple-system,Segoe UI,sans-serif;letter-spacing:0}}main{{max-width:1180px;margin:24px auto;background:var(--paper);padding:28px 34px 44px;border:1px solid var(--line);border-radius:8px}}nav{{display:flex;gap:12px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:13px;margin-bottom:22px}}nav a{{color:var(--blue);text-decoration:none;font-weight:650}}h1{{font-size:30px;margin:0}}h2{{font-size:21px;margin:30px 0 10px;border-bottom:1px solid var(--line);padding-bottom:6px}}h3{{font-size:16px;margin:18px 0 7px}}.subtitle,.muted{{color:var(--muted)}}.notice{{border-left:4px solid var(--amber);background:#fff8e8;padding:10px 13px}}.status{{font-weight:700}}.ready{{color:var(--green)}}.warning{{color:var(--amber)}}.danger{{color:var(--red)}}.table-scroll{{overflow:auto}}table{{width:100%;border-collapse:collapse;font-size:13px}}th,td{{text-align:left;vertical-align:top;border-bottom:1px solid var(--line);padding:7px 8px}}th{{background:var(--wash)}}code,pre{{font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace}}code{{overflow-wrap:anywhere}}pre{{white-space:pre-wrap;background:var(--wash);border:1px solid var(--line);padding:11px;max-height:420px;overflow:auto}}.figure-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}}figure{{margin:0;border:1px solid var(--line)}}figure img{{display:block;width:100%;max-height:620px;object-fit:contain}}figcaption{{padding:9px;color:var(--muted)}}footer{{margin-top:34px;border-top:1px solid var(--line);padding-top:12px;color:var(--muted)}}
+@media(max-width:720px){{main{{margin:0;padding:20px;border:0;border-radius:0}}}}@media print{{body{{background:white;font-size:10pt}}main{{max-width:none;margin:0;padding:0;border:0}}nav{{display:none}}section{{break-inside:avoid}}.page-break{{break-before:page}}}}
+</style></head><body data-gentle-print="{print_mode}"><main data-gentle-schema="{schema}">{navigation}<header><h1>{title}</h1><p class="subtitle">{subtitle}</p></header>{content}<footer>{footer}</footer></main></body></html>"##,
+        page_title = html_escape(page_title),
+        favicon = favicon,
+        print_mode = print_mode,
+        schema = html_escape(&report.schema),
+        navigation = navigation,
+        title = html_escape(&report.title),
+        subtitle = html_escape(&report.subtitle),
+        content = content,
+        footer = html_escape(&report.footer),
+    )
+}
+
+fn render_parameter_table(report: &GeneIsoformAssayPublicationReport) -> String {
+    let mut html = String::from(
+        "<section><h2>Run parameters</h2><div class=\"table-scroll\"><table><thead><tr><th>Parameter</th><th>Common value</th><th>Source</th></tr></thead><tbody>",
+    );
+    for parameter in &report.common_parameters {
+        html.push_str(&format!(
+            "<tr><td><code>{}</code></td><td>{}</td><td><code>{}</code></td></tr>",
+            html_escape(&parameter.name),
+            html_escape(&json_scalar(Some(&parameter.value))),
+            html_escape(&parameter.source_pointers.join(", "))
+        ));
+    }
+    html.push_str("</tbody></table></div>");
+    if !report.parameter_overrides.is_empty() {
+        html.push_str("<h3>Gene-specific adjustments</h3><div class=\"table-scroll\"><table><thead><tr><th>Gene</th><th>Parameter</th><th>Effective value</th><th>Reason</th></tr></thead><tbody>");
+        for row in &report.parameter_overrides {
+            html.push_str(&format!(
+                "<tr><td>{}</td><td><code>{}</code></td><td>{}</td><td>{}</td></tr>",
+                html_escape(&row.gene_symbol),
+                html_escape(&row.name),
+                html_escape(&json_scalar(Some(&row.effective_value))),
+                html_escape(&row.reason),
+            ));
+        }
+        html.push_str("</tbody></table></div>");
+    }
+    html.push_str("</section>");
+    html
+}
+
+fn render_study_overview(value: &serde_json::Value) -> String {
+    let selected = json_scalar(value.pointer("/selected_profile"));
+    let recommended = json_scalar(value.pointer("/recommended_profile"));
+    let iteration = json_scalar(value.pointer("/iteration"));
+    let override_note = value
+        .pointer("/profile_override/reason")
+        .and_then(serde_json::Value::as_str)
+        .map(|reason| {
+            format!(
+                "<p class=\"notice\"><b>Explicit adjustment:</b> {}</p>",
+                html_escape(reason)
+            )
+        })
+        .unwrap_or_default();
+    format!(
+        "<section><h2>Study decision</h2><p><b>Selected profile:</b> <code>{selected}</code> · <b>GENtle recommendation:</b> <code>{recommended}</code> · <b>iteration:</b> {iteration}</p>{override_note}<p class=\"muted\">This is a deterministic planning recommendation. Approval authorizes execution of its bound payload; it does not validate the biological hypothesis.</p></section>",
+        selected = html_escape(&selected),
+        recommended = html_escape(&recommended),
+        iteration = html_escape(&iteration),
+        override_note = override_note,
+    )
+}
+
+fn render_evidence_summary(value: &serde_json::Value) -> String {
+    let fields = [
+        ("Transcript models", "transcript_count"),
+        (
+            "Exact mature-cDNA classes",
+            "exact_cdna_equivalence_group_count",
+        ),
+        ("Informative regions", "informative_region_count"),
+        ("Array-supported regions", "array_supported_region_count"),
+        ("Assayable regions", "assayable_region_count"),
+        ("Responsive regions", "responsive_region_count"),
+    ];
+    let rows = fields
+        .iter()
+        .map(|(label, key)| {
+            format!(
+                "<tr><td>{}</td><td>{}</td></tr>",
+                label,
+                html_escape(&json_scalar(value.get(*key)))
+            )
+        })
+        .collect::<String>();
+    let missing = value
+        .get("missing_evidence")
+        .and_then(serde_json::Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .map(|item| format!("<li>{}</li>", html_escape(&json_scalar(Some(item)))))
+                .collect::<String>()
+        })
+        .unwrap_or_default();
+    format!(
+        "<section><h2>Evidence summary</h2><div class=\"table-scroll\"><table><tbody>{rows}</tbody></table></div>{}</section>",
+        if missing.is_empty() {
+            String::new()
+        } else {
+            format!("<h3>Unknown or missing evidence</h3><ul>{missing}</ul>")
+        }
+    )
+}
+
+fn render_decision_factors(value: &serde_json::Value) -> String {
+    let rows = value
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|row| {
+            let triggered = row
+                .get("triggered")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
+            format!(
+                "<tr><td><code>{}</code></td><td class=\"status {}\">{}</td><td>{}</td></tr>",
+                html_escape(&json_scalar(row.get("rule_id"))),
+                if triggered { "ready" } else { "muted" },
+                if triggered {
+                    "triggered"
+                } else {
+                    "not triggered"
+                },
+                html_escape(&json_scalar(row.get("summary"))),
+            )
+        })
+        .collect::<String>();
+    format!(
+        "<section><h2>Decision factors</h2><div class=\"table-scroll\"><table><thead><tr><th>Rule</th><th>State</th><th>Explanation</th></tr></thead><tbody>{rows}</tbody></table></div></section>"
+    )
+}
+
+fn render_operations(value: &serde_json::Value) -> String {
+    let rows = value
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|row| {
+            format!(
+                "<tr><td>{}</td><td><code>{}</code></td><td>{}</td><td><code>{}</code></td></tr>",
+                html_escape(&json_scalar(row.get("step_index"))),
+                html_escape(&json_scalar(row.get("step_id"))),
+                html_escape(&json_scalar(row.get("purpose"))),
+                html_escape(&json_scalar(row.get("operation_sha256"))),
+            )
+        })
+        .collect::<String>();
+    format!(
+        "<section><h2>Approved operation candidates</h2><div class=\"table-scroll\"><table><thead><tr><th>#</th><th>Step</th><th>Purpose</th><th>Payload digest</th></tr></thead><tbody>{rows}</tbody></table></div><p class=\"muted\">Execution must use these exact ordered operation payloads. They are not regenerated after approval.</p></section>"
+    )
+}
+
+fn render_handoffs(value: &serde_json::Value) -> String {
+    let mut rows = String::new();
+    for bound in value.as_array().into_iter().flatten() {
+        let report = bound.get("value").unwrap_or(&serde_json::Value::Null);
+        let policy = json_scalar(report.get("policy_id"));
+        for row in report
+            .get("order_readiness_table")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            let state = json_scalar(row.get("readiness_state"));
+            let class = if state == "order_ready" {
+                "ready"
+            } else {
+                "warning"
+            };
+            rows.push_str(&format!(
+                "<tr><td><code>{}</code></td><td><code>{}</code></td><td class=\"status {}\">{}</td><td>{}</td><td><code>{}</code></td></tr>",
+                html_escape(&json_scalar(row.get("assay_id"))),
+                html_escape(&json_scalar(row.get("pair_id"))),
+                class,
+                html_escape(&state),
+                html_escape(&json_scalar(row.get("predicted_product_lengths_bp"))),
+                html_escape(&policy),
+            ));
+        }
+    }
+    if rows.is_empty() {
+        return "<section><h2>Assay readiness</h2><p class=\"muted\">No experimental-assay handoff was supplied.</p></section>".to_string();
+    }
+    format!(
+        "<section><h2>Assay readiness</h2><div class=\"table-scroll\"><table><thead><tr><th>Assay</th><th>Pair</th><th>Readiness</th><th>Predicted products, bp</th><th>Policy</th></tr></thead><tbody>{rows}</tbody></table></div></section>"
+    )
+}
+
+fn render_order_forms(value: &serde_json::Value, order_sheet_path: Option<&str>) -> String {
+    let mut rows = String::new();
+    for bound in value.as_array().into_iter().flatten() {
+        for row in bound
+            .pointer("/value/line_items")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            rows.push_str(&format!(
+                "<tr><td>{}</td><td>{}</td><td><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td></tr>",
+                html_escape(&json_scalar(row.get("line_no"))),
+                html_escape(&json_scalar(row.get("name"))),
+                html_escape(&json_scalar(row.get("sequence_5_to_3"))),
+                html_escape(&json_scalar(row.get("modifications"))),
+                html_escape(&json_scalar(row.get("scale"))),
+                html_escape(&json_scalar(row.get("purification"))),
+            ));
+        }
+    }
+    let download = order_sheet_path
+        .map(|path| {
+            format!(
+                "<p><a href=\"{}\">Download order sheet TSV</a></p>",
+                html_escape(path)
+            )
+        })
+        .unwrap_or_default();
+    if rows.is_empty() {
+        return "<section><h2>Oligo order sheet</h2><p class=\"muted\">No readiness-bound order form was supplied.</p></section>".to_string();
+    }
+    format!(
+        "<section><h2>Oligo order sheet</h2>{download}<div class=\"table-scroll\"><table><thead><tr><th>#</th><th>Name</th><th>Sequence 5′→3′</th><th>Modifications</th><th>Scale</th><th>Purification</th></tr></thead><tbody>{rows}</tbody></table></div></section>"
+    )
+}
+
+fn render_figures(gene: &GeneIsoformAssayPublicationGene) -> String {
+    if gene.figures.is_empty() {
+        return "<section><h2>Figures</h2><p class=\"muted\">No figure artifacts were supplied.</p></section>".to_string();
+    }
+    let figures = gene
+        .figures
+        .iter()
+        .map(|figure| format!("<figure><a href=\"{}\"><img src=\"{}\" alt=\"{}\"></a><figcaption><b>{}</b><br>{}</figcaption></figure>", html_escape(&figure.web_path), html_escape(&figure.web_path), html_escape(&figure.alt_text), html_escape(&figure.label), html_escape(&figure.caption)))
+        .collect::<String>();
+    format!("<section><h2>Figures</h2><div class=\"figure-grid\">{figures}</div></section>")
+}
+
+fn render_provenance(gene: &GeneIsoformAssayPublicationGene) -> String {
+    let mut rows = vec![format!(
+        "<li>Study plan: <code>{}</code> · <code>{}</code></li>",
+        html_escape(&gene.study_plan.source_path),
+        html_escape(&gene.study_plan.sha256)
+    )];
+    rows.extend(gene.handoffs.iter().map(|report| {
+        format!(
+            "<li>Experimental handoff: <code>{}</code> · <code>{}</code></li>",
+            html_escape(&report.source_path),
+            html_escape(&report.sha256)
+        )
+    }));
+    rows.extend(gene.order_forms.iter().map(|report| {
+        format!(
+            "<li>Oligo order form: <code>{}</code> · <code>{}</code></li>",
+            html_escape(&report.source_path),
+            html_escape(&report.sha256)
+        )
+    }));
+    format!(
+        "<section><h2>Provenance</h2><ul>{}</ul></section>",
+        rows.join("")
+    )
+}
+
+fn render_gene_blocks(
+    report: &GeneIsoformAssayPublicationReport,
+    gene_index: usize,
+    blocks: &[&GeneIsoformAssayPublicationBlock],
+) -> Result<String, String> {
+    let gene = report
+        .genes
+        .get(gene_index)
+        .ok_or_else(|| format!("Gene index {gene_index} is outside the canonical report"))?;
+    let report_value = serde_json::to_value(report).map_err(|error| error.to_string())?;
+    let mut html = format!(
+        "<section><h2>{}</h2><p><b>Plan:</b> <code>{}</code> · <b>operation batch:</b> <code>{}</code></p></section>",
+        html_escape(&gene.gene_symbol),
+        html_escape(&json_scalar(gene.study_plan.value.get("plan_id"))),
+        html_escape(&json_scalar(
+            gene.study_plan.value.get("operation_batch_sha256")
+        ))
+    );
+    for block in blocks {
+        if block
+            .gene_symbol
+            .as_deref()
+            .is_some_and(|symbol| symbol != gene.gene_symbol)
+        {
+            continue;
+        }
+        let value = report_value.pointer(&block.source_pointer).ok_or_else(|| {
+            format!(
+                "Publication block '{}' points to missing value '{}'",
+                block.block_id, block.source_pointer
+            )
+        })?;
+        html.push_str(&match block.projection.as_str() {
+            "run_parameters" => render_parameter_table(report),
+            "study_overview" => render_study_overview(value),
+            "evidence_summary" => render_evidence_summary(value),
+            "decision_factors" => render_decision_factors(value),
+            "planned_operations" => render_operations(value),
+            "assay_handoffs" => render_handoffs(value),
+            "order_sheet" => render_order_forms(value, gene.order_sheet_path.as_deref()),
+            "figures" => render_figures(gene),
+            "provenance" => render_provenance(gene),
+            other => return Err(format!("Unsupported publication projection '{other}'")),
+        });
+    }
+    Ok(html)
+}
+
+/// Render the dossier meta-page. It lists genes, immutable run parameters,
+/// and the block/profile vocabulary available to presentation clients.
+pub fn render_gene_isoform_assay_publication_index(
+    report: &GeneIsoformAssayPublicationReport,
+) -> String {
+    let genes = report
+        .genes
+        .iter()
+        .map(|gene| format!("<tr><td><a href=\"{}\">{}</a></td><td><code>{}</code></td><td><code>{}</code></td></tr>", html_escape(&gene.page_path), html_escape(&gene.gene_symbol), html_escape(&json_scalar(gene.study_plan.value.get("selected_profile"))), html_escape(&json_scalar(gene.study_plan.value.get("operation_batch_sha256")))))
+        .collect::<String>();
+    let profiles = report
+        .profiles
+        .iter()
+        .map(|profile| {
+            format!(
+                "<li><code>{}</code> — {} ({} blocks)</li>",
+                html_escape(&profile.profile_id),
+                html_escape(&profile.label),
+                profile.block_ids.len()
+            )
+        })
+        .collect::<String>();
+    let content = format!(
+        "{}<section><h2>Genes</h2><div class=\"table-scroll\"><table><thead><tr><th>Gene report</th><th>Selected study profile</th><th>Operation batch</th></tr></thead><tbody>{genes}</tbody></table></div></section><section><h2>Presentation profiles</h2><ul>{profiles}</ul><p class=\"muted\">Presentation clients may select only these declared blocks. Selection changes layout and scope, not scientific content.</p></section>",
+        render_parameter_table(report)
+    );
+    publication_shell(report, &report.title, "", &content, false)
+}
+
+/// Render one gene page from declared blocks in their canonical order.
+pub fn render_gene_isoform_assay_publication_gene(
+    report: &GeneIsoformAssayPublicationReport,
+    gene_index: usize,
+    profile_id: &str,
+    requested_block_ids: &[String],
+) -> Result<String, String> {
+    let blocks = publication_blocks(report, profile_id, requested_block_ids)?;
+    let gene = report
+        .genes
+        .get(gene_index)
+        .ok_or_else(|| format!("Gene index {gene_index} is outside the canonical report"))?;
+    let navigation = format!(
+        "<nav><a href=\"{}\">All genes</a><span>{}</span></nav>",
+        html_escape(&report.index_path),
+        html_escape(&gene.gene_symbol)
+    );
+    let content = render_gene_blocks(report, gene_index, &blocks)?;
+    Ok(publication_shell(
+        report,
+        &format!("{} · {}", gene.gene_symbol, report.title),
+        &navigation,
+        &content,
+        false,
+    ))
+}
+
+/// Render one print-aware HTML document from the same canonical report and
+/// selected block projection used by the web pages.
+pub fn render_gene_isoform_assay_publication_print(
+    report: &GeneIsoformAssayPublicationReport,
+    profile_id: &str,
+    requested_block_ids: &[String],
+) -> Result<String, String> {
+    let blocks = publication_blocks(report, profile_id, requested_block_ids)?;
+    let mut content = render_parameter_table(report);
+    for gene_index in 0..report.genes.len() {
+        content.push_str("<div class=\"page-break\"></div>");
+        content.push_str(&render_gene_blocks(report, gene_index, &blocks)?);
+    }
+    Ok(publication_shell(
+        report,
+        &format!("{} · printable", report.title),
+        "",
+        &content,
+        true,
+    ))
 }
 
 #[cfg(test)]

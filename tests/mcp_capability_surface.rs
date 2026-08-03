@@ -204,6 +204,15 @@ fn mcp_tool_errors_return_typed_engine_error_payloads() {
             "restriction_site_detail",
             serde_json::json!({}),
         ),
+        gentle::mcp_server::mcp_tool_call_for_capability_surface_tests(
+            gentle::mcp_server::DEFAULT_MCP_STATE_PATH,
+            "gene_isoform_assay_publication",
+            serde_json::json!({
+                "confirm": false,
+                "request_path": "request.json",
+                "output_directory": "out"
+            }),
+        ),
     ];
 
     for result in cases {

@@ -54,9 +54,10 @@ use crate::{
         FeatureExpertTarget, FeatureExpertView, FeatureLocationEditRequest,
         FeatureLocationEditStrand, FeatureRecordCreateRequest, FeatureRecordCurationRequest,
         FeatureRecordDeleteRequest, FeatureRecordMergeRequest, FeatureRecordQualifier,
-        FeatureRecordSplitRequest, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY,
-        GeneIsoformEvidenceRequest, GeneLocusEvidenceDisplayRequest, GeneSetCohortRelationship,
-        GeneSetPoolMemberBinding, GeneSetProducerFilter, GeneSetPromoterCohortReport, GeneSetRequest,
+        FeatureRecordSplitRequest, FlexibilityModel, GENE_ISOFORM_ASSAY_STUDY_PLAN_REQUEST_SCHEMA,
+        GUIDE_DESIGN_METADATA_KEY, GeneIsoformAssayStudyPlanRequest, GeneIsoformEvidenceRequest,
+        GeneLocusEvidenceDisplayRequest, GeneSetCohortRelationship, GeneSetPoolMemberBinding,
+        GeneSetProducerFilter, GeneSetPromoterCohortReport, GeneSetRequest,
         GeneSetResolutionReport, GeneSetResolutionReviewStatus, GeneTranscriptAssayRoutineRequest,
         GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource,
         GenomeTrackSubscription, GentleEngine, GuideCandidate, GuideOligoExportFormat,
@@ -124,6 +125,7 @@ use crate::{
     enzymes::is_type_iis_capable_enzyme_name,
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
     gene_groups,
+    gene_set_publication::generate_gene_isoform_assay_publication,
     genomes::{
         GenomeBlastReport, GenomeCatalog, GenomeCatalogListEntry, GenomeGeneRecord,
         PrepareGenomeActivityStatus, PreparedCacheCleanupMode, PreparedCacheCleanupRequest,
@@ -2652,6 +2654,20 @@ pub enum ShellCommand {
         backend: Option<PrimerDesignBackend>,
         primer3_executable: Option<String>,
     },
+    PrimersPlanGeneIsoformAssayStudy {
+        request_json: String,
+        normalize_only: bool,
+        normalized_request_path: Option<String>,
+        path: Option<String>,
+        workflow_path: Option<String>,
+    },
+    PrimersPublishGeneIsoformAssayStudy {
+        request_path: String,
+        output_directory: String,
+        profile: Option<String>,
+        block_ids: Vec<String>,
+        generate_pdf: bool,
+    },
     PrimersComposeGeneTranscriptAssayRoutine {
         request_json: String,
         path: Option<String>,
@@ -2746,6 +2762,14 @@ pub enum ShellCommand {
         report_id: String,
         assay_ranks: Vec<usize>,
         include_probe: bool,
+        form_id: Option<String>,
+        scale: Option<String>,
+        purification: Option<String>,
+        modifications: Vec<String>,
+    },
+    PrimersOligoOrderFromExperimentalHandoff {
+        handoff_path: String,
+        expected_sha256: Option<String>,
         form_id: Option<String>,
         scale: Option<String>,
         purification: Option<String>,
@@ -11646,6 +11670,33 @@ impl ShellCommand {
                     .filter(|value| !value.is_empty())
                     .unwrap_or("default"),
             ),
+            Self::PrimersPlanGeneIsoformAssayStudy {
+                request_json,
+                normalize_only,
+                path,
+                workflow_path,
+                ..
+            } => format!(
+                "plan gene isoform assay study from JSON request (len={}, normalize_only={}, path={}, workflow={})",
+                request_json.len(),
+                normalize_only,
+                path.as_deref().unwrap_or("none"),
+                workflow_path.as_deref().unwrap_or("none"),
+            ),
+            Self::PrimersPublishGeneIsoformAssayStudy {
+                request_path,
+                output_directory,
+                profile,
+                block_ids,
+                generate_pdf,
+            } => format!(
+                "publish gene isoform assay dossier from '{}' into '{}' (profile={}, blocks={}, pdf={})",
+                request_path,
+                output_directory,
+                profile.as_deref().unwrap_or("request_default"),
+                block_ids.len(),
+                generate_pdf,
+            ),
             Self::PrimersComposeGeneTranscriptAssayRoutine { request_json, path } => format!(
                 "compose gene transcript-assay routine from JSON request (len={}, path={})",
                 request_json.len(),
@@ -11797,6 +11848,15 @@ impl ShellCommand {
             } => format!(
                 "create oligo order form from qPCR report '{}' assay rank(s) {:?} (include_probe={})",
                 report_id, assay_ranks, include_probe
+            ),
+            Self::PrimersOligoOrderFromExperimentalHandoff {
+                handoff_path,
+                expected_sha256,
+                ..
+            } => format!(
+                "create oligo order form from policy-gated experimental handoff '{}' (expected_sha256={})",
+                handoff_path,
+                expected_sha256.as_deref().unwrap_or("not_supplied")
             ),
             Self::PrimersOligoOrderList => "list stored oligo order forms".to_string(),
             Self::PrimersOligoOrderShow { form_id } => {
@@ -19411,6 +19471,30 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("state_summary")
         }),
+        json!({
+            "id": "gene_isoform_assay_publication",
+            "kind": "operation",
+            "mutating": "external",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "REQUEST_PATH", "required": true, "subject_kind": "other", "detail": "gentle.gene_isoform_assay_publication_request.v1 JSON path"},
+                {"name": "OUTPUT_DIRECTORY", "required": true, "subject_kind": "other", "detail": "output directory for the canonical report and its declared projections"},
+                {"name": "PROFILE", "required": false, "subject_kind": "other", "detail": "optional GENtle-declared profile id"},
+                {"name": "BLOCKS", "required": false, "subject_kind": "other", "detail": "optional ordered subset of GENtle-declared block ids"}
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_DIRECTORY"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Project an immutable canonical assay dossier through the MCP adapter; confirmation authorizes file writes, not a new scientific decision.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("gene_isoform_assay_publication")
+        }),
         container_update_descriptor(
             "containers set-exclusive",
             "Update the declared exclusive/non-exclusive contents mode for one persisted container.",
@@ -23085,6 +23169,24 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "registry": registry_metadata_for_introspection("DesignTranscriptAssayPanel")
         }),
         json!({
+            "id": "PlanGeneIsoformAssayStudy",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "content-bound gentle.gene_isoform_assay_study_plan_request.v1 payload"},
+                {"name": "ISOFORM_EVIDENCE_PATH", "required": true, "subject_kind": "other", "detail": "exported gene isoform-evidence report named by the request"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional study-plan JSON path"},
+                {"name": "WORKFLOW_PATH", "required": false, "subject_kind": "other", "detail": "optional exact ordered operation workflow for separate approval"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Recommend a deterministic gene isoform-assay study profile and emit exact ordered DesignTranscriptAssayPanel payloads without executing them.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("PlanGeneIsoformAssayStudy")
+        }),
+        json!({
             "id": "ComposeGeneTranscriptAssayRoutine",
             "kind": "operation",
             "mutating": "false",
@@ -23327,6 +23429,48 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "description": "Generate and persist an exact-cDNA-equivalence-aware transcript assay panel; require_all is the default coverage policy.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("primers design-transcript-assay-panel")
+        }),
+        json!({
+            "id": "primers plan-gene-isoform-study",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "REQUEST_JSON", "required": true, "subject_kind": "other", "detail": "gentle.gene_isoform_assay_study_plan_request.v1 JSON or @file"},
+                {"name": "NORMALIZED_REQUEST_PATH", "required": false, "subject_kind": "other", "detail": "optional content-bound normalized request output path"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional study-plan JSON output path"},
+                {"name": "WORKFLOW_PATH", "required": false, "subject_kind": "other", "detail": "optional exact ordered operation workflow output path"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Normalize and content-bind a gene isoform-assay request, recommend a study profile, and emit exact ordered assay operations without executing them.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers plan-gene-isoform-study")
+        }),
+        json!({
+            "id": "primers publish-gene-isoform-study",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "REQUEST_PATH", "required": true, "subject_kind": "other", "detail": "gentle.gene_isoform_assay_publication_request.v1 JSON path"},
+                {"name": "OUTPUT_DIRECTORY", "required": true, "subject_kind": "other", "detail": "output directory for the canonical report and declared projections"},
+                {"name": "PROFILE", "required": false, "subject_kind": "other", "detail": "optional GENtle-declared presentation profile id"},
+                {"name": "BLOCKS", "required": false, "subject_kind": "other", "detail": "optional ordered subset of GENtle-declared presentation block ids"}
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_DIRECTORY"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Project immutable, content-addressed assay reports into GENtle-declared HTML, print/PDF, and order-sheet artifacts without changing scientific content.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers publish-gene-isoform-study")
         }),
         json!({
             "id": "primers compose-gene-assay-routine",
@@ -27997,6 +28141,8 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "primers design-transcript-assay-panel" | "DesignTranscriptAssayPanel" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
+        "primers plan-gene-isoform-study" | "PlanGeneIsoformAssayStudy" => Some(vec![]),
+        "primers publish-gene-isoform-study" => Some(vec![]),
         "primers compose-gene-assay-routine" | "ComposeGeneTranscriptAssayRoutine" => Some(vec![]),
         "primers experimental-handoff" | "BuildExperimentalAssayHandoff" => Some(vec![
             json!({"fact": "report.exists", "subject": {"arg": "PANEL_REPORT_ID"}, "equals": "transcript_assay_panel"}),
@@ -53900,6 +54046,89 @@ fn execute_primers_command(
                 options,
             )
         }
+        ShellCommand::PrimersPlanGeneIsoformAssayStudy {
+            request_json,
+            normalize_only,
+            normalized_request_path,
+            path,
+            workflow_path,
+        } => {
+            let payload = parse_json_payload(request_json)?;
+            let request: GeneIsoformAssayStudyPlanRequest = serde_json::from_str(&payload)
+                .map_err(|error| {
+                    format!(
+                        "Could not parse gene isoform assay study request from '{}': {error}",
+                        request_json
+                    )
+                })?;
+            let normalized = engine
+                .normalize_gene_isoform_assay_study_request(request)
+                .map_err(|error| error.to_string())?;
+            if let Some(output_path) = normalized_request_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                let file = std::fs::File::create(output_path).map_err(|error| {
+                    format!("Could not create normalized study request '{output_path}': {error}")
+                })?;
+                serde_json::to_writer_pretty(std::io::BufWriter::new(file), &normalized).map_err(
+                    |error| {
+                        format!(
+                            "Could not serialize normalized study request '{output_path}': {error}"
+                        )
+                    },
+                )?;
+            }
+            if *normalize_only {
+                return Ok(ShellRunResult {
+                    state_changed: false,
+                    output: json!({
+                        "schema": GENE_ISOFORM_ASSAY_STUDY_PLAN_REQUEST_SCHEMA,
+                        "normalized_request": normalized,
+                        "normalized_request_path": normalized_request_path,
+                        "planning_executed": false,
+                    }),
+                });
+            }
+            let result = engine
+                .apply(Operation::PlanGeneIsoformAssayStudy {
+                    request: normalized,
+                    path: path.clone(),
+                    workflow_path: workflow_path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "report": result.gene_isoform_assay_study_plan,
+                    "path": path,
+                    "workflow_path": workflow_path,
+                    "normalized_request_path": normalized_request_path,
+                    "warnings": result.warnings,
+                    "messages": result.messages,
+                }),
+            })
+        }
+        ShellCommand::PrimersPublishGeneIsoformAssayStudy {
+            request_path,
+            output_directory,
+            profile,
+            block_ids,
+            generate_pdf,
+        } => {
+            let receipt = generate_gene_isoform_assay_publication(
+                std::path::Path::new(request_path),
+                std::path::Path::new(output_directory),
+                profile.as_deref(),
+                block_ids,
+                *generate_pdf,
+            )?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(receipt).map_err(|error| error.to_string())?,
+            })
+        }
         ShellCommand::PrimersComposeGeneTranscriptAssayRoutine { request_json, path } => {
             let payload = parse_json_payload(request_json)?;
             let request: GeneTranscriptAssayRoutineRequest = serde_json::from_str(&payload)
@@ -54489,6 +54718,49 @@ fn execute_primers_command(
                     "source_kind": "qpcr_report",
                     "report_id": report_id,
                     "include_probe": include_probe,
+                    "form_id": form.form_id,
+                    "line_count": form.line_items.len(),
+                    "duplicate_group_count": form.duplicate_groups.len(),
+                    "sequence_reuse_group_count": form.sequence_reuse_groups.len(),
+                    "form": form,
+                }),
+            })
+        }
+        ShellCommand::PrimersOligoOrderFromExperimentalHandoff {
+            handoff_path,
+            expected_sha256,
+            form_id,
+            scale,
+            purification,
+            modifications,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            let form = engine
+                .create_oligo_order_form_from_experimental_handoff(
+                    handoff_path,
+                    expected_sha256.as_deref(),
+                    form_id.as_deref(),
+                    scale.as_deref(),
+                    purification.as_deref(),
+                    modifications,
+                )
+                .map_err(|error| error.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "schema": "gentle.oligo_order_form_create_result.v1",
+                    "source_kind": "experimental_assay_handoff",
+                    "handoff_path": handoff_path,
+                    "expected_sha256": expected_sha256,
                     "form_id": form.form_id,
                     "line_count": form.line_items.len(),
                     "duplicate_group_count": form.duplicate_groups.len(),
@@ -59882,6 +60154,8 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::PrimersTranscriptQpcrPanel { .. }
             | ShellCommand::PrimersDesignTranscriptAssayPanel { .. }
             | ShellCommand::PrimersDesignTranscriptAssayPanelRequest { .. }
+            | ShellCommand::PrimersPlanGeneIsoformAssayStudy { .. }
+            | ShellCommand::PrimersPublishGeneIsoformAssayStudy { .. }
             | ShellCommand::PrimersComposeGeneTranscriptAssayRoutine { .. }
             | ShellCommand::PrimersTestCdnaQpcrFasta { .. }
             | ShellCommand::PrimersPrepareRestrictionCloning { .. }
@@ -59904,6 +60178,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::PrimersOligoOrderCreate { .. }
             | ShellCommand::PrimersOligoOrderFromPrimerReport { .. }
             | ShellCommand::PrimersOligoOrderFromQpcrReport { .. }
+            | ShellCommand::PrimersOligoOrderFromExperimentalHandoff { .. }
             | ShellCommand::PrimersOligoOrderList
             | ShellCommand::PrimersOligoOrderShow { .. }
             | ShellCommand::PrimersOligoOrderExport { .. }
@@ -61646,6 +61921,8 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersTranscriptQpcrPanel { .. }
         | ShellCommand::PrimersDesignTranscriptAssayPanel { .. }
         | ShellCommand::PrimersDesignTranscriptAssayPanelRequest { .. }
+        | ShellCommand::PrimersPlanGeneIsoformAssayStudy { .. }
+        | ShellCommand::PrimersPublishGeneIsoformAssayStudy { .. }
         | ShellCommand::PrimersComposeGeneTranscriptAssayRoutine { .. }
         | ShellCommand::PrimersTestCdnaQpcrFasta { .. }
         | ShellCommand::PrimersPrepareRestrictionCloning { .. }
@@ -61668,6 +61945,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersOligoOrderCreate { .. }
         | ShellCommand::PrimersOligoOrderFromPrimerReport { .. }
         | ShellCommand::PrimersOligoOrderFromQpcrReport { .. }
+        | ShellCommand::PrimersOligoOrderFromExperimentalHandoff { .. }
         | ShellCommand::PrimersOligoOrderList
         | ShellCommand::PrimersOligoOrderShow { .. }
         | ShellCommand::PrimersOligoOrderExport { .. }

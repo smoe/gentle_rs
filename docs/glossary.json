@@ -3529,6 +3529,34 @@
       {
          "aliases": [],
          "engine_operations": [
+            "PlanGeneIsoformAssayStudy"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "mcp",
+            "cli-direct"
+         ],
+         "path": "primers plan-gene-isoform-study",
+         "summary": "Normalize and content-bind a gene isoform-assay study request, then recommend a transparent study profile and emit exact ordered transcript-assay operation payloads without executing them.",
+         "usage": "primers plan-gene-isoform-study REQUEST_JSON_OR_@FILE [--normalize-only] [--normalized-request OUTPUT.json] [--path PLAN.json] [--workflow WORKFLOW.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "mcp",
+            "cli-direct"
+         ],
+         "path": "primers publish-gene-isoform-study",
+         "summary": "Render content-addressed approved study plans, experimental handoffs, and readiness-bound order forms into one meta-page, one HTML page per gene, print HTML, optional browser PDF, and a projection receipt.",
+         "usage": "primers publish-gene-isoform-study REQUEST.json OUTPUT_DIR [--profile ID] [--blocks ID,ID] [--pdf]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "ComposeGeneTranscriptAssayRoutine"
          ],
          "interfaces": [

@@ -15,5 +15,7 @@ pub use feature_expert::{
     compute_supported_splicing_exon_transitions, render_feature_expert_svg,
 };
 pub use gene_set_publication::{
-    render_gene_set_publication_html, render_gene_set_publication_markdown,
+    render_gene_isoform_assay_publication_gene, render_gene_isoform_assay_publication_index,
+    render_gene_isoform_assay_publication_print, render_gene_set_publication_html,
+    render_gene_set_publication_markdown,
 };

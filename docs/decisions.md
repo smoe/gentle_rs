@@ -502,3 +502,27 @@ and preflight routes may remain automatic. Direct structured GENtle and
 `gentle_cli` use remains independent of this conversational delegation gate.
 Material cache/tool environment overrides are part of the approved context;
 GENtle does not claim to bind arbitrary unlisted operating-system state.
+
+## DEC-033: Isoform-Assay Planning Has Two Scientific Approval Digests
+
+Status: active
+
+Conversational gene isoform-assay planning separates recommendation from
+execution. The first approval binds the complete normalized planner request,
+including policy schema/version/hash, evidence report ids and hashes, prior
+plan, observations, override, and every effective default. It authorizes
+planning from that exact basis; it does not validate the biology. The second
+approval binds the exact ordered `DesignTranscriptAssayPanel` payloads emitted
+by the approved plan. Those payloads are not regenerated or altered after
+approval, and one batch approval is valid only because its digest covers the
+complete ordered set.
+
+An oligo order form may be projected from this work only through a specific
+`gentle.experimental_assay_handoff.v1` whose bytes and named readiness policy
+are retained. Every order line keeps the handoff hash, readiness-policy id and
+hash, readiness row/card, and assay/pair/oligo identities. Presentation
+profiles and content-block selection may project an already immutable
+canonical report without another scientific approval; they still produce an
+execution receipt and remain subject to ordinary file-overwrite safety. An
+outer agent may host or shorten those declared projections, but cannot author
+new scientific blocks.

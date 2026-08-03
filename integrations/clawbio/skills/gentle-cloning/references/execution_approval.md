@@ -88,3 +88,18 @@ state, or writes/replaces an artifact must use this proposal contract.
 Direct structured use of `gentle-cloning` without delegated-skill metadata is
 unchanged. This gate controls conversational delegation; it does not add a
 second scientific implementation or restrict ordinary `gentle_cli` use.
+
+## Multi-Stage Scientific Planning
+
+A deterministic planner and the operations it recommends are two approval
+subjects. For gene isoform-assay studies, the first proposal must bind the
+complete normalized planner request, including effective defaults, policy and
+evidence hashes, prior-plan reference, observations, and override. Planning
+then emits exact ordered operation payloads and one batch digest. A second
+proposal binds and executes those stored payloads without regeneration. Either
+approval authorizes only its exact computation; neither validates biology.
+
+Selecting declared presentation blocks or a named profile from an immutable
+canonical GENtle report is not another scientific decision. It may run without
+a new scientific approval, while ordinary file-write/overwrite safety and a
+content-bound execution receipt remain required.

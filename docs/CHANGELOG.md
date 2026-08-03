@@ -24,6 +24,13 @@ understand what changed.
 
 ## 2026-08-03
 
+- Added deterministic gene isoform-assay study planning, two digest-bound
+  approval subjects (normalized evidence/policy inputs and exact ordered design
+  operations), readiness-bound oligo-order creation, and canonical multi-gene
+  dossier publication. GENtle now owns the meta-page, one HTML page per gene,
+  declared presentation blocks/profiles, print HTML/PDF projection, and
+  provenance-rich order sheets; OpenClaw may select and host those projections
+  but cannot rewrite their scientific content.
 - Added a fail-closed two-phase approval contract for confirmation-gated
   ClawBio delegation. Scientific PCR routes now emit a content-addressed
   `gentle.clawbio_execution_proposal.v1`, execute only an exact caller-approved

@@ -80,6 +80,35 @@ must remain separately labelled. Abundance near a primer region supports
 assay-region prioritisation but does not prove primer binding. Differential
 activity is not formal significance, and neither lane alone proves an isoform.
 
+## Isoform-assay dossier
+
+The additive `gentle.gene_isoform_assay_publication_request.v1` contract is for
+reviewed gene-centred PCR work. Each gene supplies a content-addressed
+`gentle.gene_isoform_assay_study_plan.v1`, zero or more
+`gentle.experimental_assay_handoff.v1` reports, and zero or more
+`gentle.oligo_order_form.v1` records. Order forms are accepted only when every
+line retains a matching included handoff digest, readiness-policy id and
+digest, assay/pair/oligo identities, and the complete `order_ready` row. The
+row must also match the included handoff. This is stricter than copying a broad
+`order_ready` label; the same bindings are preserved in each order-sheet TSV.
+Each included handoff must in turn name a panel report id, source sequence, and
+source feature from one exact `DesignTranscriptAssayPanel` payload in the
+approved study plan.
+
+GENtle writes `canonical-report.json`, `index.html`, one `gene-SYMBOL.html`
+page per gene, `print.html`, per-gene order-sheet TSVs, and
+`projection-report.json`. `--pdf` asks a Chromium-compatible browser to print
+that exact `print.html`; it does not maintain a second PDF narrative. The
+canonical report declares `content_blocks[]` and named `profiles[]` (`full`,
+`review`, and `ordering`). An outer OpenClaw/ClawBio presentation may select
+those ids or host the generated files, but cannot add a block, rewrite a GENtle
+value, or treat layout text as scientific evidence.
+
+Planner policy values shared by every gene appear once in the meta-page.
+Gene-specific effective values are listed with a source JSON pointer and a
+reason. The automatic recommendation and any explicit profile override remain
+separate, so an override never erases the recommendation it replaced.
+
 ## Adapting another gene set
 
 Change the manifest's gene records, primer table, figure inventory, conditions,

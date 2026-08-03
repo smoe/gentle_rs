@@ -10,6 +10,11 @@ pub const GENE_SET_PUBLICATION_REQUEST_SCHEMA: &str = "gentle.gene_set_publicati
 pub const GENE_SET_PUBLICATION_REPORT_SCHEMA: &str = "gentle.gene_set_publication_report.v1";
 pub const GENE_SET_PUBLICATION_GENERATION_SCHEMA: &str =
     "gentle.gene_set_publication_generation.v1";
+pub const GENE_ISOFORM_ASSAY_PUBLICATION_REQUEST_SCHEMA: &str =
+    "gentle.gene_isoform_assay_publication_request.v1";
+pub const GENE_ISOFORM_ASSAY_PUBLICATION_SCHEMA: &str = "gentle.gene_isoform_assay_publication.v1";
+pub const GENE_ISOFORM_ASSAY_PUBLICATION_PROJECTION_SCHEMA: &str =
+    "gentle.gene_isoform_assay_publication_projection.v1";
 
 /// One explicit dashboard value shown near the report title or one gene.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -255,6 +260,198 @@ pub struct GeneSetPublicationGenerationReport {
     pub resolved_report_path: String,
     pub pdf_path: Option<String>,
     pub copied_files: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+/// One content-addressed GENtle report consumed by an isoform-assay dossier.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct GeneIsoformAssayPublicationReportRef {
+    pub path: String,
+    pub expected_sha256: String,
+}
+
+/// One gene and its immutable GENtle planning, handoff, and procurement inputs.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct GeneIsoformAssayPublicationGeneRequest {
+    pub gene_symbol: String,
+    pub study_plan: GeneIsoformAssayPublicationReportRef,
+    #[serde(default)]
+    pub handoffs: Vec<GeneIsoformAssayPublicationReportRef>,
+    #[serde(default)]
+    pub order_forms: Vec<GeneIsoformAssayPublicationReportRef>,
+    #[serde(default)]
+    pub figures: Vec<GeneSetPublicationFigureRequest>,
+}
+
+/// Request for a multi-page, content-addressed gene isoform-assay dossier.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct GeneIsoformAssayPublicationRequest {
+    pub schema: String,
+    pub report_id: String,
+    pub title: String,
+    pub subtitle: String,
+    pub generated_date: String,
+    #[serde(default)]
+    pub genes: Vec<GeneIsoformAssayPublicationGeneRequest>,
+    pub default_profile: String,
+    pub footer: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub favicon_source_path: Option<String>,
+    pub index_filename: String,
+    pub print_filename: String,
+    pub pdf_filename: String,
+}
+
+impl Default for GeneIsoformAssayPublicationRequest {
+    fn default() -> Self {
+        Self {
+            schema: GENE_ISOFORM_ASSAY_PUBLICATION_REQUEST_SCHEMA.to_string(),
+            report_id: String::new(),
+            title: String::new(),
+            subtitle: String::new(),
+            generated_date: String::new(),
+            genes: vec![],
+            default_profile: "full".to_string(),
+            footer: String::new(),
+            favicon_source_path: None,
+            index_filename: "index.html".to_string(),
+            print_filename: "print.html".to_string(),
+            pdf_filename: "report.pdf".to_string(),
+        }
+    }
+}
+
+/// One embedded source report. Its JSON value is authoritative; content blocks
+/// point into it rather than copying scientific statements.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneIsoformAssayPublicationBoundReport {
+    pub source_path: String,
+    pub sha256: String,
+    pub schema: String,
+    pub report_id: String,
+    pub value: serde_json::Value,
+}
+
+/// One effective planner parameter and all exact source pointers that agree.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct GeneIsoformAssayPublicationParameter {
+    pub name: String,
+    pub value: serde_json::Value,
+    #[serde(default)]
+    pub source_pointers: Vec<String>,
+}
+
+/// One gene-specific departure from the common planner parameters.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct GeneIsoformAssayPublicationParameterOverride {
+    pub gene_symbol: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub common_value: Option<serde_json::Value>,
+    pub effective_value: serde_json::Value,
+    pub reason: String,
+    pub source_pointer: String,
+}
+
+/// One gene page in the canonical dossier data tree.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct GeneIsoformAssayPublicationGene {
+    pub gene_symbol: String,
+    pub page_path: String,
+    pub study_plan: GeneIsoformAssayPublicationBoundReport,
+    #[serde(default)]
+    pub handoffs: Vec<GeneIsoformAssayPublicationBoundReport>,
+    #[serde(default)]
+    pub order_forms: Vec<GeneIsoformAssayPublicationBoundReport>,
+    #[serde(default)]
+    pub figures: Vec<GeneSetPublicationFigure>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub order_sheet_path: Option<String>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+/// Pointer-only description of one renderable dossier section.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneIsoformAssayPublicationBlock {
+    pub block_id: String,
+    pub label: String,
+    pub projection: String,
+    pub source_pointer: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_symbol: Option<String>,
+}
+
+/// Named, ordered set of blocks that a presentation client may request.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneIsoformAssayPublicationProfile {
+    pub profile_id: String,
+    pub label: String,
+    #[serde(default)]
+    pub block_ids: Vec<String>,
+}
+
+/// Canonical dossier record. Renderers may select declared blocks but may not
+/// introduce or rewrite scientific content.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct GeneIsoformAssayPublicationReport {
+    pub schema: String,
+    pub report_id: String,
+    pub title: String,
+    pub subtitle: String,
+    pub generated_date: String,
+    pub default_profile: String,
+    pub index_path: String,
+    pub print_path: String,
+    #[serde(default)]
+    pub common_parameters: Vec<GeneIsoformAssayPublicationParameter>,
+    #[serde(default)]
+    pub parameter_overrides: Vec<GeneIsoformAssayPublicationParameterOverride>,
+    #[serde(default)]
+    pub genes: Vec<GeneIsoformAssayPublicationGene>,
+    #[serde(default)]
+    pub content_blocks: Vec<GeneIsoformAssayPublicationBlock>,
+    #[serde(default)]
+    pub profiles: Vec<GeneIsoformAssayPublicationProfile>,
+    pub footer: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub favicon_path: Option<String>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+/// One generated file bound to its exact bytes.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneIsoformAssayPublicationArtifact {
+    pub path: String,
+    pub sha256: String,
+    pub media_type: String,
+}
+
+/// Receipt for one deterministic presentation projection of a canonical report.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneIsoformAssayPublicationProjectionReport {
+    pub schema: String,
+    pub canonical_report_path: String,
+    pub canonical_report_sha256: String,
+    pub selected_profile: String,
+    #[serde(default)]
+    pub selected_block_ids: Vec<String>,
+    #[serde(default)]
+    pub artifacts: Vec<GeneIsoformAssayPublicationArtifact>,
+    #[serde(default)]
     pub warnings: Vec<String>,
 }
 

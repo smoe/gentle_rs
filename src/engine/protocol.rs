@@ -4722,6 +4722,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_assay_panel: Option<Box<TranscriptAssayPanelReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_isoform_assay_study_plan: Option<Box<GeneIsoformAssayStudyPlanReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gene_transcript_assay_routine: Option<Box<GeneTranscriptAssayRoutineReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub experimental_assay_handoff: Option<Box<ExperimentalAssayHandoffReport>>,
@@ -7717,6 +7719,8 @@ pub struct OligoOrderLineProvenance {
     pub source_kind: String,
     pub report_id: String,
     pub report_schema: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_sha256: Option<String>,
     pub template: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub op_id: Option<String>,
@@ -7727,6 +7731,22 @@ pub struct OligoOrderLineProvenance {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assay_rank: Option<usize>,
     pub role: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assay_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pair_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oligo_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub readiness_policy_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub readiness_policy_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub readiness_card_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub readiness_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub readiness_row: Option<ExperimentalAssayOrderReadinessRow>,
     #[serde(default)]
     pub source_coordinates_0based: Vec<SequenceRange0Based>,
 }
@@ -9391,6 +9411,305 @@ pub struct GeneTranscriptAssayRoutineReport {
     pub order_ready_primers: Vec<GeneTranscriptAssayRoutineOrderPrimer>,
     pub uncovered_transcript_class_ids: Vec<String>,
     pub recommended_experimental_sequence: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+/// Engine-selected depth of one gene-centred isoform-assay study.
+pub enum GeneIsoformAssayStudyProfile {
+    #[default]
+    RoutineCommonRegionScreen,
+    TargetedJunctionValidation,
+    IsoformDiscrimination,
+    ComprehensiveIsoformDossier,
+    LongRangeStructureDiscovery,
+}
+
+impl GeneIsoformAssayStudyProfile {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::RoutineCommonRegionScreen => "routine_common_region_screen",
+            Self::TargetedJunctionValidation => "targeted_junction_validation",
+            Self::IsoformDiscrimination => "isoform_discrimination",
+            Self::ComprehensiveIsoformDossier => "comprehensive_isoform_dossier",
+            Self::LongRangeStructureDiscovery => "long_range_structure_discovery",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Explicit scientific priority supplied independently from the gene symbol.
+pub enum GeneIsoformAssayPriorPriority {
+    #[default]
+    Routine,
+    Elevated,
+    High,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+/// Versioned, non-weighted decision policy for gene isoform assay planning.
+pub struct GeneIsoformAssayStudyPolicy {
+    pub schema: String,
+    pub policy_version: String,
+    pub min_equivalence_groups_for_discrimination: usize,
+    pub min_equivalence_groups_for_comprehensive: usize,
+    pub min_responsive_regions_for_targeted: usize,
+    pub min_responsive_regions_for_comprehensive: usize,
+    pub min_abs_regional_effect: f64,
+    pub poor_probe_coverage_fraction: f64,
+    pub include_common_control: bool,
+    pub include_endpoint_for_comprehensive: bool,
+    pub short_min_amplicon_bp: usize,
+    pub short_max_amplicon_bp: usize,
+    pub endpoint_min_amplicon_bp: usize,
+    pub endpoint_preferred_max_amplicon_bp: usize,
+    pub endpoint_max_amplicon_bp: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oligo_dt_5prime_risk_threshold_bp: Option<usize>,
+}
+
+impl Default for GeneIsoformAssayStudyPolicy {
+    fn default() -> Self {
+        Self {
+            schema: "gentle.gene_isoform_assay_study_policy.v1".to_string(),
+            policy_version: "1".to_string(),
+            min_equivalence_groups_for_discrimination: 3,
+            min_equivalence_groups_for_comprehensive: 5,
+            min_responsive_regions_for_targeted: 1,
+            min_responsive_regions_for_comprehensive: 3,
+            min_abs_regional_effect: 0.5,
+            poor_probe_coverage_fraction: 0.5,
+            include_common_control: true,
+            include_endpoint_for_comprehensive: true,
+            short_min_amplicon_bp: 70,
+            short_max_amplicon_bp: 250,
+            endpoint_min_amplicon_bp: 200,
+            endpoint_preferred_max_amplicon_bp: 2_000,
+            endpoint_max_amplicon_bp: 10_000,
+            oligo_dt_5prime_risk_threshold_bp: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One caller-declared array contrast whose condition labels are matched exactly.
+pub struct GeneIsoformAssayStudyContrast {
+    pub contrast_id: String,
+    #[serde(default)]
+    pub condition_labels: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One content-bound evidence input retained beside the study decision.
+pub struct GeneIsoformAssayStudyInputRef {
+    pub input_kind: String,
+    pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_schema: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Explicit user selection that never erases GENtle's automatic recommendation.
+pub struct GeneIsoformAssayStudyOverride {
+    pub selected_profile: GeneIsoformAssayStudyProfile,
+    pub reason: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Human-authored observation retained as unvalidated input to a later iteration.
+pub struct GeneIsoformAssayStudyObservation {
+    pub observation_id: String,
+    pub statement: String,
+    pub source: String,
+    pub validation_status: String,
+    #[serde(default)]
+    pub related_assay_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Optional content-bound parent plan for iterative assay refinement.
+pub struct GeneIsoformAssayPriorPlanRef {
+    pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+/// Fully explicit request for a pure gene isoform-assay planning operation.
+pub struct GeneIsoformAssayStudyPlanRequest {
+    pub schema: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_id: Option<String>,
+    pub label: String,
+    pub isoform_evidence_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_isoform_evidence_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub isoform_evidence_report_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub isoform_evidence_schema: Option<String>,
+    #[serde(default)]
+    pub junction_evidence: Vec<GeneIsoformAssayStudyInputRef>,
+    #[serde(default)]
+    pub contrasts: Vec<GeneIsoformAssayStudyContrast>,
+    #[serde(default)]
+    pub prior_priority: GeneIsoformAssayPriorPriority,
+    #[serde(default)]
+    pub policy: GeneIsoformAssayStudyPolicy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile_override: Option<GeneIsoformAssayStudyOverride>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prior_plan: Option<GeneIsoformAssayPriorPlanRef>,
+    #[serde(default)]
+    pub observations: Vec<GeneIsoformAssayStudyObservation>,
+    #[serde(default)]
+    pub retained_assay_ids: Vec<String>,
+}
+
+impl Default for GeneIsoformAssayStudyPlanRequest {
+    fn default() -> Self {
+        Self {
+            schema: "gentle.gene_isoform_assay_study_plan_request.v1".to_string(),
+            plan_id: None,
+            label: String::new(),
+            isoform_evidence_path: String::new(),
+            expected_isoform_evidence_sha256: None,
+            isoform_evidence_report_id: None,
+            isoform_evidence_schema: None,
+            junction_evidence: vec![],
+            contrasts: vec![],
+            prior_priority: GeneIsoformAssayPriorPriority::Routine,
+            policy: GeneIsoformAssayStudyPolicy::default(),
+            policy_sha256: None,
+            profile_override: None,
+            prior_plan: None,
+            observations: vec![],
+            retained_assay_ids: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct GeneIsoformAssayStudyContrastSummary {
+    pub contrast_id: String,
+    pub matched_measurement_count: usize,
+    pub responsive_region_count: usize,
+    #[serde(default)]
+    pub responsive_region_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maximum_abs_effect: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Separate evidence dimensions used by the transparent study policy.
+pub struct GeneIsoformAssayStudyEvidenceSummary {
+    pub transcript_count: usize,
+    pub exact_cdna_equivalence_group_count: usize,
+    pub informative_region_count: usize,
+    pub array_supported_region_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub probe_coverage_fraction: Option<f64>,
+    pub assayable_region_count: usize,
+    pub abundance_supported_region_count: usize,
+    pub responsive_region_count: usize,
+    #[serde(default)]
+    pub responsive_region_ids: Vec<String>,
+    #[serde(default)]
+    pub contrast_summaries: Vec<GeneIsoformAssayStudyContrastSummary>,
+    pub formal_statistics_available: bool,
+    #[serde(default)]
+    pub missing_evidence: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One explainable, non-weighted branch in the study policy.
+pub struct GeneIsoformAssayStudyDecisionFactor {
+    pub rule_id: String,
+    pub triggered: bool,
+    pub summary: String,
+    #[serde(default)]
+    pub evidence_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Exact operation payload emitted by the planner for later separate approval.
+pub struct GeneIsoformAssayStudyPlannedOperation {
+    pub step_index: usize,
+    pub step_id: String,
+    pub purpose: String,
+    pub operation: serde_json::Value,
+    pub operation_sha256: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Pure, policy-versioned recommendation record. It does not execute design.
+pub struct GeneIsoformAssayStudyPlanReport {
+    pub schema: String,
+    pub plan_id: String,
+    pub label: String,
+    pub iteration: usize,
+    /// Fully normalized request. This is the approval basis for planning and
+    /// contains every effective default used by the engine.
+    pub normalized_request: GeneIsoformAssayStudyPlanRequest,
+    pub request_sha256: String,
+    pub policy_sha256: String,
+    pub isoform_evidence_schema: String,
+    pub isoform_evidence_path: String,
+    pub isoform_evidence_sha256: String,
+    pub seq_id: String,
+    pub source_feature_id: usize,
+    pub gene_symbol: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotation_release: Option<String>,
+    pub recommended_profile: GeneIsoformAssayStudyProfile,
+    pub selected_profile: GeneIsoformAssayStudyProfile,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile_override: Option<GeneIsoformAssayStudyOverride>,
+    pub evidence_summary: GeneIsoformAssayStudyEvidenceSummary,
+    #[serde(default)]
+    pub decision_factors: Vec<GeneIsoformAssayStudyDecisionFactor>,
+    #[serde(default)]
+    pub planned_operations: Vec<GeneIsoformAssayStudyPlannedOperation>,
+    /// Digest over the exact ordered operation payloads. Execution approval
+    /// binds this batch; callers must not regenerate it after approval.
+    pub operation_batch_sha256: String,
+    #[serde(default)]
+    pub resolved_evidence_inputs: Vec<GeneIsoformAssayStudyInputRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prior_plan_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prior_plan_sha256: Option<String>,
+    #[serde(default)]
+    pub observations: Vec<GeneIsoformAssayStudyObservation>,
+    #[serde(default)]
+    pub retained_assay_ids: Vec<String>,
+    #[serde(default)]
+    pub uncovered_questions: Vec<String>,
+    #[serde(default)]
     pub warnings: Vec<String>,
 }
 

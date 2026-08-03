@@ -113,6 +113,13 @@ This skill owns:
      transcript-aware SYBR/TaqMan panels;
    - `primers import-external-pairs` for supplied primers;
    - `primers compose-gene-assay-routine` for evidence-backed composition.
+   For a gene-level isoform study, first run
+   `primers plan-gene-isoform-study ... --normalize-only` to materialize the
+   fully defaulted, content-bound request. Obtain approval for the proposal
+   that consumes those exact normalized bytes. The resulting plan may emit an
+   ordered workflow; obtain a second approval whose proposal binds that exact
+   workflow and its operation-batch digest. Never regenerate assay operations
+   after the second approval.
 7. Inspect the persisted GENtle report. Preserve all warnings, uncovered
    transcript classes, unresolved junctions, cDNA-reach cautions, and review
    states.
@@ -123,13 +130,27 @@ This skill owns:
 9. For multiple genes or sequences, use GENtle's collection specificity
    operation rather than looping through ad hoc shell commands.
 10. Present order preparation only after the required GENtle review and
-   specificity gates are complete. Never place an order.
+    specificity gates are complete. Never place an order.
+    `primers oligo-order from-experimental-handoff` additionally requires the
+    approved handoff SHA-256 and accepts only order-ready rows under the
+    handoff's embedded named policy. Preserve the handoff/policy/readiness-row
+    provenance rather than copying an `order_ready` label.
 11. For a reviewed transcript panel, use `primers experimental-handoff` with
    JSON, order-table, and virtual-gel outputs. The default skill route requests
    one comparable gel lane per primer pair under one shared GENtle gel model.
 12. Preserve the route's `gentle.clawbio_skill_delegation.v1` object. The
     generic runtime must verify this skill's co-deployed descriptor, catalog,
     version, intent, plan step, and delegate contract before GENtle runs.
+
+For final presentation, ask GENtle to run
+`primers publish-gene-isoform-study`, or call the equivalent MCP tool
+`gene_isoform_assay_publication`. The MCP `confirm=true` is only the ordinary
+file-write confirmation. The canonical report declares the only selectable
+`content_blocks[]` and named `profiles[]`; ClawBio may choose those ids, host
+the generated pages, or invoke the PDF projection, but it must not rewrite
+scientific text or add a block. Profile/block selection is a presentation
+projection of an immutable report and needs no additional scientific approval.
+The projection receipt binds every emitted file.
 
 Every run writes `gentle.clawbio_execution_manifest.v1` to
 `reproducibility/execution_manifest.json`. It content-binds the resolved

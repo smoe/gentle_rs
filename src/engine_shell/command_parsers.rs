@@ -4897,7 +4897,7 @@ fn parse_oligo_order_rank_csv(raw: &str, flag: &str) -> Result<Vec<usize>, Strin
 fn parse_primers_oligo_order_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 3 {
         return Err(
-            "primers oligo-order requires create|from-primer-report|from-qpcr-report|list|show|export|route|quote|review-dedup"
+            "primers oligo-order requires create|from-primer-report|from-qpcr-report|from-experimental-handoff|list|show|export|route|quote|review-dedup"
                 .to_string(),
         );
     }
@@ -5077,6 +5077,70 @@ fn parse_primers_oligo_order_command(tokens: &[String]) -> Result<ShellCommand, 
                 modifications,
             })
         }
+        "from-experimental-handoff" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "primers oligo-order from-experimental-handoff HANDOFF.json --expected-sha256 SHA256 [--form-id ID] [--scale TEXT] [--purification TEXT] [--modification TEXT ...]"
+                        .to_string(),
+                );
+            }
+            let handoff_path = tokens[3].clone();
+            let mut expected_sha256 = None;
+            let mut form_id = None;
+            let mut scale = None;
+            let mut purification = None;
+            let mut modifications = vec![];
+            let context = "primers oligo-order from-experimental-handoff";
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--expected-sha256" => {
+                        expected_sha256 = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--expected-sha256",
+                            context,
+                        )?);
+                    }
+                    "--form-id" => {
+                        form_id = Some(parse_option_path(tokens, &mut idx, "--form-id", context)?);
+                    }
+                    "--scale" => {
+                        scale = Some(parse_option_path(tokens, &mut idx, "--scale", context)?);
+                    }
+                    "--purification" => {
+                        purification = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--purification",
+                            context,
+                        )?);
+                    }
+                    "--modification" => {
+                        modifications.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--modification",
+                            context,
+                        )?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for {context}"));
+                    }
+                }
+            }
+            Ok(ShellCommand::PrimersOligoOrderFromExperimentalHandoff {
+                handoff_path,
+                expected_sha256: Some(expected_sha256.ok_or_else(|| {
+                    "primers oligo-order from-experimental-handoff requires --expected-sha256 SHA256 from the approved handoff"
+                        .to_string()
+                })?),
+                form_id,
+                scale,
+                purification,
+                modifications,
+            })
+        }
         "list" => {
             if tokens.len() != 3 {
                 return Err("primers oligo-order list takes no extra arguments".to_string());
@@ -5213,7 +5277,7 @@ fn parse_primers_oligo_order_command(tokens: &[String]) -> Result<ShellCommand, 
             })
         }
         other => Err(format!(
-            "Unknown primers oligo-order subcommand '{other}' (expected create|from-primer-report|from-qpcr-report|list|show|export|route|quote|review-dedup)"
+            "Unknown primers oligo-order subcommand '{other}' (expected create|from-primer-report|from-qpcr-report|from-experimental-handoff|list|show|export|route|quote|review-dedup)"
         )),
     }
 }
@@ -5480,7 +5544,7 @@ fn parse_primers_primerbank_command(tokens: &[String]) -> Result<ShellCommand, S
 pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "primers requires a subcommand: primerbank, design, design-qpcr, design-transcript-assay-panel, compose-gene-assay-routine, experimental-handoff, import-external-pairs, screen-variants, specificity, specificity-plan, specificity-import, transcript-assay-specificity-plan, transcript-assay-specificity-finalize, test-cdna-pcr, test-cdna-qpcr, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, oligo-order"
+            "primers requires a subcommand: primerbank, design, design-qpcr, design-transcript-assay-panel, plan-gene-isoform-study, publish-gene-isoform-study, compose-gene-assay-routine, experimental-handoff, import-external-pairs, screen-variants, specificity, specificity-plan, specificity-import, transcript-assay-specificity-plan, transcript-assay-specificity-finalize, test-cdna-pcr, test-cdna-qpcr, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, oligo-order"
                 .to_string(),
         );
     }
@@ -7216,6 +7280,113 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 path: tokens[3].clone(),
             })
         }
+        "plan-gene-isoform-study" => {
+            const USAGE: &str = "primers plan-gene-isoform-study REQUEST_JSON_OR_@FILE [--normalize-only] [--normalized-request OUTPUT.json] [--path PLAN.json] [--workflow WORKFLOW.json]";
+            if tokens.len() < 3 {
+                return Err(format!(
+                    "primers plan-gene-isoform-study requires:\n       {USAGE}"
+                ));
+            }
+            let request_json = tokens[2].clone();
+            let mut normalize_only = false;
+            let mut normalized_request_path = None;
+            let mut path = None;
+            let mut workflow_path = None;
+            let context = "primers plan-gene-isoform-study";
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--normalize-only" => {
+                        normalize_only = true;
+                        idx += 1;
+                    }
+                    "--normalized-request" => {
+                        normalized_request_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--normalized-request",
+                            context,
+                        )?);
+                    }
+                    "--path" | "--output" => {
+                        let flag = tokens[idx].clone();
+                        path = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--workflow" => {
+                        workflow_path =
+                            Some(parse_option_path(tokens, &mut idx, "--workflow", context)?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {context}\n       {USAGE}"
+                        ));
+                    }
+                }
+            }
+            if normalize_only && (path.is_some() || workflow_path.is_some()) {
+                return Err(
+                    "--normalize-only cannot be combined with --path or --workflow; use --normalized-request to save the approval input"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::PrimersPlanGeneIsoformAssayStudy {
+                request_json,
+                normalize_only,
+                normalized_request_path,
+                path,
+                workflow_path,
+            })
+        }
+        "publish-gene-isoform-study" => {
+            const USAGE: &str = "primers publish-gene-isoform-study REQUEST.json OUTPUT_DIR [--profile ID] [--blocks ID,ID] [--pdf]";
+            if tokens.len() < 4 {
+                return Err(format!(
+                    "primers publish-gene-isoform-study requires:\n       {USAGE}"
+                ));
+            }
+            let request_path = tokens[2].clone();
+            let output_directory = tokens[3].clone();
+            let mut profile = None;
+            let mut block_ids = vec![];
+            let mut generate_pdf = false;
+            let context = "primers publish-gene-isoform-study";
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--profile" => {
+                        profile = Some(parse_option_path(tokens, &mut idx, "--profile", context)?);
+                    }
+                    "--blocks" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--blocks", context)?;
+                        block_ids = raw
+                            .split(',')
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                            .map(ToString::to_string)
+                            .collect();
+                        if block_ids.is_empty() {
+                            return Err(format!("--blocks for {context} cannot be empty"));
+                        }
+                    }
+                    "--pdf" => {
+                        generate_pdf = true;
+                        idx += 1;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {context}\n       {USAGE}"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PrimersPublishGeneIsoformAssayStudy {
+                request_path,
+                output_directory,
+                profile,
+                block_ids,
+                generate_pdf,
+            })
+        }
         "compose-gene-assay-routine" => {
             const USAGE: &str =
                 "primers compose-gene-assay-routine REQUEST_JSON_OR_@FILE [--path OUTPUT.json]";
@@ -7322,7 +7493,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             })
         }
         other => Err(format!(
-            "Unknown primers subcommand '{other}' (expected design, design-qpcr, design-transcript-assay-panel, compose-gene-assay-routine, experimental-handoff, import-external-pairs, screen-variants, specificity, specificity-plan, specificity-import, transcript-assay-specificity-plan, transcript-assay-specificity-finalize, test-cdna-pcr, test-cdna-qpcr, transcript-qpcr-panel, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, oligo-order)"
+            "Unknown primers subcommand '{other}' (expected design, design-qpcr, design-transcript-assay-panel, plan-gene-isoform-study, publish-gene-isoform-study, compose-gene-assay-routine, experimental-handoff, import-external-pairs, screen-variants, specificity, specificity-plan, specificity-import, transcript-assay-specificity-plan, transcript-assay-specificity-finalize, test-cdna-pcr, test-cdna-qpcr, transcript-qpcr-panel, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, oligo-order)"
         )),
     }
 }

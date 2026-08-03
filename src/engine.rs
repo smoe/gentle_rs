@@ -823,6 +823,12 @@ const EXPERIMENTAL_ASSAY_CARD_SCHEMA: &str = "gentle.experimental_assay_card.v1"
 const EXPERIMENTAL_ASSAY_VIRTUAL_GEL_SCHEMA: &str = "gentle.experimental_assay_virtual_gel.v1";
 const EXPERIMENTAL_ASSAY_READINESS_POLICY_SCHEMA: &str =
     "gentle.experimental_assay_readiness_policy.v1";
+pub const GENE_ISOFORM_ASSAY_STUDY_PLAN_REQUEST_SCHEMA: &str =
+    "gentle.gene_isoform_assay_study_plan_request.v1";
+pub const GENE_ISOFORM_ASSAY_STUDY_POLICY_SCHEMA: &str =
+    "gentle.gene_isoform_assay_study_policy.v1";
+pub const GENE_ISOFORM_ASSAY_STUDY_PLAN_SCHEMA: &str =
+    "gentle.gene_isoform_assay_study_plan.v1";
 pub const PRIMER_VARIANT_EVIDENCE_SCHEMA: &str = "gentle.primer_variant_evidence.v1";
 const CDNA_ASSAY_TRANSCRIPT_MAP_SCHEMA: &str = "gentle.cdna_assay_transcript_map.v1";
 const CDNA_ASSAY_PRODUCT_MATERIALIZATION_SCHEMA: &str =
@@ -4537,6 +4543,17 @@ pub enum Operation {
         report_id: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
+    },
+    /// Recommend an explicit, policy-versioned set of transcript-assay design
+    /// operations without executing any of them.
+    PlanGeneIsoformAssayStudy {
+        request: GeneIsoformAssayStudyPlanRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+        /// Optional workflow artifact containing the exact ordered operations
+        /// for a separate approval and execution step.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        workflow_path: Option<String>,
     },
     /// Compose existing isoform evidence and transcript-assay reports without
     /// rerunning design, specificity, or external analysis.
@@ -13262,6 +13279,252 @@ impl GentleEngine {
                 default_action: "keep_separate".to_string(),
                 ..OligoOrderDuplicateReview::default()
             },
+            ..OligoOrderForm::default()
+        })?;
+        let mut store = self.read_primer_design_store();
+        store
+            .oligo_order_forms
+            .insert(form.form_id.clone(), form.clone());
+        self.write_primer_design_store(store)?;
+        Ok(form)
+    }
+
+    /// Create a procurement form only from rows that passed one explicit,
+    /// content-bound experimental-assay readiness policy.
+    pub fn create_oligo_order_form_from_experimental_handoff(
+        &mut self,
+        handoff_path: &str,
+        expected_handoff_sha256: Option<&str>,
+        form_id: Option<&str>,
+        scale: Option<&str>,
+        purification: Option<&str>,
+        modifications: &[String],
+    ) -> Result<OligoOrderForm, EngineError> {
+        let handoff_path = handoff_path.trim();
+        if handoff_path.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Experimental-assay handoff path cannot be empty".to_string(),
+                cause_chain: vec![],
+            });
+        }
+        let handoff_bytes = std::fs::read(handoff_path).map_err(|error| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not read experimental-assay handoff '{handoff_path}': {error}"
+            ),
+            cause_chain: vec![],
+        })?;
+        let handoff_sha256 = sha256_prefixed_bytes(&handoff_bytes);
+        let expected = expected_handoff_sha256
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Creating an order form from an experimental-assay handoff requires its approved --expected-sha256 digest"
+                    .to_string(),
+                cause_chain: vec![],
+            })?;
+        if expected != handoff_sha256 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Experimental-assay handoff '{handoff_path}' has digest '{handoff_sha256}' but '{expected}' was required"
+                ),
+                cause_chain: vec![],
+            });
+        }
+        let handoff: ExperimentalAssayHandoffReport = serde_json::from_slice(&handoff_bytes)
+            .map_err(|error| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not parse experimental-assay handoff '{handoff_path}': {error}"
+                ),
+                cause_chain: vec![],
+            })?;
+        if handoff.schema != EXPERIMENTAL_ASSAY_HANDOFF_SCHEMA {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Unsupported experimental-assay handoff schema '{}'; expected '{}'",
+                    handoff.schema, EXPERIMENTAL_ASSAY_HANDOFF_SCHEMA
+                ),
+                cause_chain: vec![],
+            });
+        }
+        let policy_text = serde_json::to_string(&handoff.policy).map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not identify readiness policy: {error}"),
+            cause_chain: vec![],
+        })?;
+        let expected_policy_id = format!(
+            "readiness_policy_sha256_{}",
+            sha256_hex_str(&policy_text)
+        );
+        if handoff.policy_id != expected_policy_id {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Experimental-assay handoff policy_id '{}' does not match its embedded policy ('{}')",
+                    handoff.policy_id, expected_policy_id
+                ),
+                cause_chain: vec![],
+            });
+        }
+        let readiness_policy_sha256 = sha256_prefixed_bytes(policy_text.as_bytes());
+        let form_id = form_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+            .unwrap_or_else(|| format!("{}_oligo_order", handoff.package_id));
+        let form_id = Self::normalize_oligo_order_form_id(&form_id)?;
+        let fallback_scale = Self::default_oligo_scale(scale);
+        let fallback_purification = Self::default_oligo_purification(purification);
+        let fallback_modifications = Self::normalize_oligo_modifications(modifications);
+        let mut line_items = vec![];
+        let mut ready_row_count = 0usize;
+        for readiness_row in &handoff.order_readiness_table {
+            if !readiness_row.order_ready
+                || readiness_row.readiness_state != ExperimentalAssayReadinessState::OrderReady
+            {
+                continue;
+            }
+            ready_row_count = ready_row_count.saturating_add(1);
+            let card = handoff
+                .cards
+                .iter()
+                .find(|card| card.card_id == readiness_row.card_id)
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Order-ready row '{}' has no matching assay card",
+                        readiness_row.card_id
+                    ),
+                    cause_chain: vec![],
+                })?;
+            if card.policy_id != handoff.policy_id
+                || card.readiness_state != ExperimentalAssayReadinessState::OrderReady
+                || card.assay_id != readiness_row.assay_id
+                || card.pair_id != readiness_row.pair_id
+                || !card.blockers.is_empty()
+                || card.gate_outcomes.iter().any(|gate| {
+                    gate.required
+                        && !matches!(
+                            gate.status,
+                            ExperimentalAssayGateStatus::Pass
+                                | ExperimentalAssayGateStatus::WaivedByPolicy
+                                | ExperimentalAssayGateStatus::NotApplicable
+                        )
+                })
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Order-ready row '{}' does not match its card identity, readiness state, or policy",
+                        readiness_row.card_id
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            for oligo in &card.oligos {
+                if !readiness_row.oligo_ids.contains(&oligo.oligo_id)
+                    || !readiness_row.sequences_5_to_3.contains(&oligo.sequence_5_to_3)
+                {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Order-ready row '{}' does not retain oligo '{}' and its sequence",
+                            readiness_row.card_id, oligo.oligo_id
+                        ),
+                        cause_chain: vec![],
+                    });
+                }
+                let formulations = if oligo.formulations.is_empty() {
+                    vec![ExperimentalAssayOligoFormulation {
+                        modifications: fallback_modifications.clone(),
+                        scale: fallback_scale.clone(),
+                        purification: fallback_purification.clone(),
+                        ..ExperimentalAssayOligoFormulation::default()
+                    }]
+                } else {
+                    oligo.formulations.clone()
+                };
+                for formulation in formulations {
+                    line_items.push(OligoOrderLineItem {
+                        line_id: String::new(),
+                        line_no: 0,
+                        name: format!(
+                            "{}_{}_{}",
+                            card.display_label, card.pair_rank, oligo.role
+                        ),
+                        role: oligo.role.clone(),
+                        sequence_5_to_3: oligo.sequence_5_to_3.clone(),
+                        length_nt: oligo.length_nt,
+                        modifications: formulation.modifications,
+                        scale: if formulation.scale.trim().is_empty() {
+                            fallback_scale.clone()
+                        } else {
+                            formulation.scale
+                        },
+                        purification: if formulation.purification.trim().is_empty() {
+                            fallback_purification.clone()
+                        } else {
+                            formulation.purification
+                        },
+                        notes: Some(format!(
+                            "Order-ready under readiness card '{}' from handoff '{}'.",
+                            card.card_id, handoff.package_id
+                        )),
+                        provenance: OligoOrderLineProvenance {
+                            source_kind: "experimental_assay_handoff".to_string(),
+                            report_id: handoff.package_id.clone(),
+                            report_schema: handoff.schema.clone(),
+                            report_sha256: Some(handoff_sha256.clone()),
+                            template: handoff.source_seq_id.clone(),
+                            assay_rank: Some(card.pair_rank),
+                            role: oligo.role.clone(),
+                            assay_id: Some(card.assay_id.clone()),
+                            pair_id: Some(card.pair_id.clone()),
+                            oligo_id: Some(oligo.oligo_id.clone()),
+                            readiness_policy_id: Some(handoff.policy_id.clone()),
+                            readiness_policy_sha256: Some(readiness_policy_sha256.clone()),
+                            readiness_card_id: Some(card.card_id.clone()),
+                            readiness_state: Some(card.readiness_state.as_str().to_string()),
+                            readiness_row: Some(readiness_row.clone()),
+                            ..OligoOrderLineProvenance::default()
+                        },
+                    });
+                }
+            }
+        }
+        if ready_row_count == 0 || line_items.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Experimental-assay handoff '{}' has no rows that passed policy '{}' as order_ready",
+                    handoff.package_id, handoff.policy_id
+                ),
+                cause_chain: vec![],
+            });
+        }
+        let mut warnings = handoff.warnings.clone();
+        warnings.push(format!(
+            "Order lines are bound to handoff digest '{}' and readiness policy '{}' ({}).",
+            handoff_sha256, handoff.policy_id, readiness_policy_sha256
+        ));
+        let form = self.finalize_oligo_order_form(OligoOrderForm {
+            form_id,
+            target_label: handoff.source_seq_id.clone(),
+            source_note: Some(format!(
+                "Created from experimental-assay handoff '{}' at '{}' after policy '{}'.",
+                handoff.package_id, handoff_path, handoff.policy_id
+            )),
+            line_items,
+            duplicate_review: OligoOrderDuplicateReview {
+                default_action: "keep_separate".to_string(),
+                ..OligoOrderDuplicateReview::default()
+            },
+            warnings,
             ..OligoOrderForm::default()
         })?;
         let mut store = self.read_primer_design_store();

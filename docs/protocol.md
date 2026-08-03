@@ -8,6 +8,22 @@ the complete primer table and copied asset paths. The generation receipt is
 `gentle.gene_set_publication_generation.v1`. HTML and printable output are
 projections of this record, not independent sources.
 
+Gene-centred isoform-assay dossiers use
+`gentle.gene_isoform_assay_publication_request.v1`. Every study plan,
+experimental handoff, and oligo order form is supplied with an exact SHA-256;
+GENtle embeds each source JSON once in
+`gentle.gene_isoform_assay_publication.v1`. Its `content_blocks[]` contain only
+JSON pointers and named deterministic projections, while `profiles[]` contain
+ordered block ids. The renderer emits one meta-page, one page per gene, one
+print HTML document, optional browser-derived PDF, order-sheet TSVs, and a
+`gentle.gene_isoform_assay_publication_projection.v1` receipt. Selecting a
+profile or explicit declared blocks changes presentation scope only. MCP
+clients invoke the same generator through `gene_isoform_assay_publication`;
+its required `confirm=true` authorizes artifact writes, not another scientific
+decision. Experimental handoffs are admitted only when their panel report id,
+sequence id, and source feature match an exact operation payload in the bound
+study plan.
+
 This document defines the draft machine-facing protocol for operating GENtle
 through a shared core engine.
 
@@ -9194,6 +9210,45 @@ Primer-design shell command family (implemented):
     project metadata store without changing that store schema. The individual
     report carries the v2 schema above and is available through list/show/export
     shell routes.
+- Gene isoform-assay study planning:
+  - `primers plan-gene-isoform-study REQUEST_JSON_OR_@FILE` consumes
+    `gentle.gene_isoform_assay_study_plan_request.v1` and returns
+    `gentle.gene_isoform_assay_study_plan.v1` without running primer design
+  - `--normalize-only --normalized-request OUTPUT.json` resolves every policy
+    default, sorts declared inputs, hashes the isoform-evidence report, hashes
+    each optional JUC/PSR input and prior plan, and preserves observations as
+    `user_supplied_unvalidated`; it also records the evidence report id/schema,
+    policy digest, optional evidence report ids/schemas, and prior plan id.
+    This complete normalized record is the first approval basis
+  - the plan reports transcript count, byte-identical mature-cDNA classes,
+    annotation-backed informative regions, separately labelled array support,
+    abundance, exact-label responsiveness in annotation-informative regions,
+    assayability, missing
+    evidence, transparent decision factors, the automatic recommendation, and
+    any explicit override plus reason. Raw Clariom activity is descriptive and
+    is not promoted to formal differential expression
+  - selected profiles are `routine_common_region_screen`,
+    `targeted_junction_validation`, `isoform_discrimination`,
+    `comprehensive_isoform_dossier`, and `long_range_structure_discovery`.
+    Missing evidence remains unknown and cannot by itself reduce study depth
+  - `planned_operations[]` stores each complete
+    `DesignTranscriptAssayPanel` payload and digest. `operation_batch_sha256`
+    binds their exact order; `--workflow OUTPUT.json` writes that same ordered
+    batch for a separate second approval and execution step
+  - prior plans and unvalidated observations support an explicit next
+    iteration. Retained assay ids are recorded but do not silently alter the
+    automatic evidence recommendation
+- Readiness-bound order bridge:
+  - `primers oligo-order from-experimental-handoff HANDOFF.json
+    --expected-sha256 SHA256` accepts only
+    `gentle.experimental_assay_handoff.v1` rows whose matching card is
+    `order_ready`, blocker-free, and bound to the embedded named readiness
+    policy
+  - every generated order line retains the handoff digest, readiness-policy id
+    and digest, complete readiness row, card id, and assay/pair/oligo ids. It
+    does not accept an unbound broad readiness label and never submits an order.
+    Publication and order-sheet export recheck those identities and hashes
+    against the included handoff instead of trusting copied status text
 - Gene transcript-assay routine composition:
   - `primers compose-gene-assay-routine REQUEST_JSON_OR_@FILE [--path OUTPUT.json]`
     produces `gentle.gene_transcript_assay_routine.v1`

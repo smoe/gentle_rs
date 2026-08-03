@@ -92,8 +92,16 @@ pub use gene_groups::{
     GeneGroupMember, GeneGroupRecord, GeneGroupResolveReport, GeneGroupShowReport,
 };
 pub use gene_set_publication::{
+    GENE_ISOFORM_ASSAY_PUBLICATION_PROJECTION_SCHEMA,
+    GENE_ISOFORM_ASSAY_PUBLICATION_REQUEST_SCHEMA, GENE_ISOFORM_ASSAY_PUBLICATION_SCHEMA,
     GENE_SET_PUBLICATION_GENERATION_SCHEMA, GENE_SET_PUBLICATION_REPORT_SCHEMA,
-    GENE_SET_PUBLICATION_REQUEST_SCHEMA, GeneSetPublicationDownload,
+    GENE_SET_PUBLICATION_REQUEST_SCHEMA, GeneIsoformAssayPublicationArtifact,
+    GeneIsoformAssayPublicationBlock, GeneIsoformAssayPublicationBoundReport,
+    GeneIsoformAssayPublicationGene, GeneIsoformAssayPublicationGeneRequest,
+    GeneIsoformAssayPublicationParameter, GeneIsoformAssayPublicationParameterOverride,
+    GeneIsoformAssayPublicationProfile, GeneIsoformAssayPublicationProjectionReport,
+    GeneIsoformAssayPublicationReport, GeneIsoformAssayPublicationReportRef,
+    GeneIsoformAssayPublicationRequest, GeneSetPublicationDownload,
     GeneSetPublicationDownloadRequest, GeneSetPublicationFigure, GeneSetPublicationFigureRequest,
     GeneSetPublicationGene, GeneSetPublicationGeneRequest, GeneSetPublicationGenerationReport,
     GeneSetPublicationMetric, GeneSetPublicationNarrativeSection,
@@ -5318,6 +5326,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "PcrOverlapExtensionMutagenesis",
     "DesignQpcrAssays",
     "DesignTranscriptAssayPanel",
+    "PlanGeneIsoformAssayStudy",
     "ComposeGeneTranscriptAssayRoutine",
     "BuildExperimentalAssayHandoff",
     "SearchPrimerBank",
@@ -5513,6 +5522,12 @@ const MCP_TOOL_NAMES: &[(&str, &str, &str, CapabilityMutation)] = &[
         "Apply Workflow",
         "Apply a workflow via shared engine contract and persist state (requires confirm=true).",
         CapabilityMutation::Mutating,
+    ),
+    (
+        "gene_isoform_assay_publication",
+        "Gene Isoform Assay Publication",
+        "Project immutable, content-addressed assay reports into GENtle-declared HTML, print/PDF, and order-sheet artifacts.",
+        CapabilityMutation::External,
     ),
     (
         "help",

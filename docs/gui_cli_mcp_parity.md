@@ -17,11 +17,11 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 35 | 628 | 0 |
-| gentle_cli | 399 | 288 | 0 |
-| MCP | 88 | 450 | 52 |
-| JS | 78 | 446 | 55 |
-| Lua | 77 | 447 | 55 |
+| GUI | 35 | 631 | 0 |
+| gentle_cli | 401 | 289 | 0 |
+| MCP | 91 | 451 | 52 |
+| JS | 78 | 448 | 56 |
+| Lua | 77 | 449 | 56 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -292,6 +292,8 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | primers design | glossary-command | prominent | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers design-qpcr | glossary-command | prominent | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers design-transcript-assay-panel | glossary-command | prominent | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| primers plan-gene-isoform-study | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| primers publish-gene-isoform-study | glossary-command | shell-only | prominent | prominent | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers compose-gene-assay-routine | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | features restriction-scan | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | features tfbs-scan | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -655,6 +657,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | PcrOverlapExtensionMutagenesis | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | DesignQpcrAssays | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | DesignTranscriptAssayPanel | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| PlanGeneIsoformAssayStudy | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ComposeGeneTranscriptAssayRoutine | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | BuildExperimentalAssayHandoff | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | SearchPrimerBank | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
@@ -788,6 +791,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | agent_execute_plan | mcp-tool | n/a | n/a | prominent | n/a | n/a | n/a | GUI: MCP tools/list descriptors are transport-specific metadata, not GUI actions.<br>gentle_cli: MCP tools/list descriptors are transport-specific metadata, not CLI subcommands.<br>JS: MCP tools/list descriptors are transport-specific metadata, not JavaScript wrapper functions.<br>Lua: MCP tools/list descriptors are transport-specific metadata, not Lua wrapper functions.<br>ClawBio: ClawBio consumes its skill intent descriptor rather than MCP tools/list metadata. |
 | op | mcp-tool | n/a | n/a | prominent | n/a | n/a | n/a | GUI: MCP tools/list descriptors are transport-specific metadata, not GUI actions.<br>gentle_cli: MCP tools/list descriptors are transport-specific metadata, not CLI subcommands.<br>JS: MCP tools/list descriptors are transport-specific metadata, not JavaScript wrapper functions.<br>Lua: MCP tools/list descriptors are transport-specific metadata, not Lua wrapper functions.<br>ClawBio: ClawBio consumes its skill intent descriptor rather than MCP tools/list metadata. |
 | workflow | mcp-tool | n/a | n/a | prominent | n/a | n/a | n/a | GUI: MCP tools/list descriptors are transport-specific metadata, not GUI actions.<br>gentle_cli: MCP tools/list descriptors are transport-specific metadata, not CLI subcommands.<br>JS: MCP tools/list descriptors are transport-specific metadata, not JavaScript wrapper functions.<br>Lua: MCP tools/list descriptors are transport-specific metadata, not Lua wrapper functions.<br>ClawBio: ClawBio consumes its skill intent descriptor rather than MCP tools/list metadata. |
+| gene_isoform_assay_publication | mcp-tool | n/a | n/a | prominent | n/a | n/a | n/a | GUI: MCP tools/list descriptors are transport-specific metadata, not GUI actions.<br>gentle_cli: MCP tools/list descriptors are transport-specific metadata, not CLI subcommands.<br>JS: MCP tools/list descriptors are transport-specific metadata, not JavaScript wrapper functions.<br>Lua: MCP tools/list descriptors are transport-specific metadata, not Lua wrapper functions.<br>ClawBio: ClawBio consumes its skill intent descriptor rather than MCP tools/list metadata. |
 | help | mcp-tool | n/a | n/a | prominent | n/a | n/a | n/a | GUI: MCP tools/list descriptors are transport-specific metadata, not GUI actions.<br>gentle_cli: MCP tools/list descriptors are transport-specific metadata, not CLI subcommands.<br>JS: MCP tools/list descriptors are transport-specific metadata, not JavaScript wrapper functions.<br>Lua: MCP tools/list descriptors are transport-specific metadata, not Lua wrapper functions.<br>ClawBio: ClawBio consumes its skill intent descriptor rather than MCP tools/list metadata. |
 | reference_catalog_entries | mcp-tool | n/a | n/a | prominent | n/a | n/a | n/a | GUI: MCP tools/list descriptors are transport-specific metadata, not GUI actions.<br>gentle_cli: MCP tools/list descriptors are transport-specific metadata, not CLI subcommands.<br>JS: MCP tools/list descriptors are transport-specific metadata, not JavaScript wrapper functions.<br>Lua: MCP tools/list descriptors are transport-specific metadata, not Lua wrapper functions.<br>ClawBio: ClawBio consumes its skill intent descriptor rather than MCP tools/list metadata. |
 | helper_catalog_entries | mcp-tool | n/a | n/a | prominent | n/a | n/a | n/a | GUI: MCP tools/list descriptors are transport-specific metadata, not GUI actions.<br>gentle_cli: MCP tools/list descriptors are transport-specific metadata, not CLI subcommands.<br>JS: MCP tools/list descriptors are transport-specific metadata, not JavaScript wrapper functions.<br>Lua: MCP tools/list descriptors are transport-specific metadata, not Lua wrapper functions.<br>ClawBio: ClawBio consumes its skill intent descriptor rather than MCP tools/list metadata. |
@@ -850,6 +854,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | JS | primers list-reports | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | primers list-transcript-assay-panels | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | primers preflight | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| JS | primers publish-gene-isoform-study | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | primers restriction-cloning-vector-suggestions | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | primers show-qpcr-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | primers show-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
@@ -905,6 +910,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | Lua | primers list-reports | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | primers list-transcript-assay-panels | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | primers preflight | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| Lua | primers publish-gene-isoform-study | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | primers restriction-cloning-vector-suggestions | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | primers show-qpcr-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | primers show-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |

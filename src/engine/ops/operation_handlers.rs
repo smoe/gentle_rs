@@ -14305,6 +14305,915 @@ impl GentleEngine {
         }
     }
 
+    fn parse_gene_isoform_evidence_report(
+        path: &str,
+        bytes: &[u8],
+    ) -> Result<GeneIsoformEvidenceReport, EngineError> {
+        match serde_json::from_slice::<FeatureExpertView>(bytes) {
+            Ok(FeatureExpertView::IsoformEvidence(report)) => Ok(report),
+            Ok(_) => Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Feature-expert output '{path}' is not an isoform-evidence view"
+                ),
+                cause_chain: vec![],
+            }),
+            Err(view_error) => serde_json::from_slice(bytes).map_err(|report_error| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not parse gene isoform evidence report '{path}' as a feature-expert view ({view_error}) or bare report ({report_error})"
+                ),
+                cause_chain: vec![],
+            }),
+        }
+    }
+
+    fn content_bound_input_ref(
+        mut input: GeneIsoformAssayStudyInputRef,
+    ) -> Result<GeneIsoformAssayStudyInputRef, EngineError> {
+        let path = input.path.trim();
+        if input.input_kind.trim().is_empty() || path.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Gene isoform assay study evidence inputs require input_kind and path"
+                    .to_string(),
+                cause_chain: vec![],
+            });
+        }
+        let bytes = fs::read(path).map_err(|error| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not read study evidence input '{path}': {error}"),
+            cause_chain: vec![],
+        })?;
+        let observed = sha256_prefixed_bytes(&bytes);
+        if let Some(expected) = input
+            .expected_sha256
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            && expected != observed
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Study evidence input '{path}' has digest '{observed}' but '{expected}' was required"
+                ),
+                cause_chain: vec![],
+            });
+        }
+        input.input_kind = input.input_kind.trim().to_string();
+        input.path = path.to_string();
+        let value = serde_json::from_slice::<serde_json::Value>(&bytes).ok();
+        input.report_schema = value
+            .as_ref()
+            .and_then(|value| value.get("schema"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string)
+            .or_else(|| Some("untyped_file".to_string()));
+        input.report_id = value
+            .as_ref()
+            .and_then(|value| {
+                ["report_id", "panel_id", "evidence_id", "package_id", "form_id"]
+                    .iter()
+                    .find_map(|field| value.get(*field).and_then(serde_json::Value::as_str))
+            })
+            .map(str::to_string)
+            .or_else(|| Some(format!("content_{}", observed.trim_start_matches("sha256:").get(..16).unwrap_or_default())));
+        input.expected_sha256 = Some(observed);
+        Ok(input)
+    }
+
+    /// Resolve all defaults and bind every file input before a planning
+    /// request is submitted for approval or execution.
+    pub(crate) fn normalize_gene_isoform_assay_study_request(
+        &self,
+        mut request: GeneIsoformAssayStudyPlanRequest,
+    ) -> Result<GeneIsoformAssayStudyPlanRequest, EngineError> {
+        if request.schema.trim().is_empty() {
+            request.schema = GENE_ISOFORM_ASSAY_STUDY_PLAN_REQUEST_SCHEMA.to_string();
+        }
+        if request.schema != GENE_ISOFORM_ASSAY_STUDY_PLAN_REQUEST_SCHEMA {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Unsupported gene isoform assay study request schema '{}'",
+                    request.schema
+                ),
+                cause_chain: vec![],
+            });
+        }
+        request.label = request.label.trim().to_string();
+        if request.label.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Gene isoform assay study request requires a non-empty label".to_string(),
+                cause_chain: vec![],
+            });
+        }
+        let isoform_path = request.isoform_evidence_path.trim().to_string();
+        if isoform_path.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Gene isoform assay study request requires isoform_evidence_path"
+                    .to_string(),
+                cause_chain: vec![],
+            });
+        }
+        let isoform_bytes = fs::read(&isoform_path).map_err(|error| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not read gene isoform evidence report '{isoform_path}': {error}"
+            ),
+            cause_chain: vec![],
+        })?;
+        let isoform_sha256 = sha256_prefixed_bytes(&isoform_bytes);
+        if let Some(expected) = request
+            .expected_isoform_evidence_sha256
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            && expected != isoform_sha256
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Gene isoform evidence report '{isoform_path}' has digest '{isoform_sha256}' but '{expected}' was required"
+                ),
+                cause_chain: vec![],
+            });
+        }
+        request.isoform_evidence_path = isoform_path;
+        request.expected_isoform_evidence_sha256 = Some(isoform_sha256);
+        let isoform_report = Self::parse_gene_isoform_evidence_report(
+            &request.isoform_evidence_path,
+            &isoform_bytes,
+        )?;
+        request.isoform_evidence_report_id = Some(isoform_report.panel_id);
+        request.isoform_evidence_schema = Some(isoform_report.schema);
+
+        if request.policy.schema.trim().is_empty() {
+            request.policy.schema = GENE_ISOFORM_ASSAY_STUDY_POLICY_SCHEMA.to_string();
+        }
+        if request.policy.schema != GENE_ISOFORM_ASSAY_STUDY_POLICY_SCHEMA
+            || request.policy.policy_version.trim().is_empty()
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Gene isoform assay study policy must use schema '{}' and a non-empty policy_version",
+                    GENE_ISOFORM_ASSAY_STUDY_POLICY_SCHEMA
+                ),
+                cause_chain: vec![],
+            });
+        }
+        request.policy_sha256 = Some(sha256_prefixed_bytes(
+            &serde_json::to_vec(&request.policy).map_err(|error| EngineError {
+                code: ErrorCode::Internal,
+                message: format!("Could not serialize study policy: {error}"),
+                cause_chain: vec![],
+            })?,
+        ));
+        if request.policy.short_min_amplicon_bp == 0
+            || request.policy.short_min_amplicon_bp > request.policy.short_max_amplicon_bp
+            || request.policy.endpoint_min_amplicon_bp == 0
+            || request.policy.endpoint_min_amplicon_bp
+                > request.policy.endpoint_preferred_max_amplicon_bp
+            || request.policy.endpoint_preferred_max_amplicon_bp
+                > request.policy.endpoint_max_amplicon_bp
+            || !request.policy.min_abs_regional_effect.is_finite()
+            || request.policy.min_abs_regional_effect < 0.0
+            || !request.policy.poor_probe_coverage_fraction.is_finite()
+            || !(0.0..=1.0).contains(&request.policy.poor_probe_coverage_fraction)
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Gene isoform assay study policy contains an invalid amplicon, effect, or coverage threshold"
+                    .to_string(),
+                cause_chain: vec![],
+            });
+        }
+
+        let mut contrast_ids = BTreeSet::new();
+        for contrast in &mut request.contrasts {
+            contrast.contrast_id = contrast.contrast_id.trim().to_string();
+            if contrast.contrast_id.is_empty() || !contrast_ids.insert(contrast.contrast_id.clone())
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: "Study contrasts require unique non-empty contrast_id values"
+                        .to_string(),
+                    cause_chain: vec![],
+                });
+            }
+            contrast.condition_labels = contrast
+                .condition_labels
+                .iter()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .collect();
+            if contrast.condition_labels.is_empty() {
+                contrast
+                    .condition_labels
+                    .push(contrast.contrast_id.clone());
+            }
+            contrast.condition_labels.sort();
+            contrast.condition_labels.dedup();
+        }
+        request
+            .contrasts
+            .sort_by(|left, right| left.contrast_id.cmp(&right.contrast_id));
+
+        request.junction_evidence = request
+            .junction_evidence
+            .into_iter()
+            .map(Self::content_bound_input_ref)
+            .collect::<Result<Vec<_>, _>>()?;
+        request.junction_evidence.sort_by(|left, right| {
+            left.input_kind
+                .cmp(&right.input_kind)
+                .then(left.path.cmp(&right.path))
+        });
+        request.junction_evidence.dedup_by(|left, right| {
+            left.input_kind == right.input_kind && left.path == right.path
+        });
+
+        if let Some(override_request) = &mut request.profile_override {
+            override_request.reason = override_request.reason.trim().to_string();
+            if override_request.reason.is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: "A study profile override requires a non-empty reason".to_string(),
+                    cause_chain: vec![],
+                });
+            }
+            override_request.requested_by = override_request
+                .requested_by
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string);
+        }
+        for observation in &mut request.observations {
+            observation.observation_id = observation.observation_id.trim().to_string();
+            observation.statement = observation.statement.trim().to_string();
+            observation.source = observation.source.trim().to_string();
+            if observation.observation_id.is_empty()
+                || observation.statement.is_empty()
+                || observation.source.is_empty()
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: "Study observations require observation_id, statement, and source"
+                        .to_string(),
+                    cause_chain: vec![],
+                });
+            }
+            observation.validation_status = "user_supplied_unvalidated".to_string();
+            observation.related_assay_ids.sort();
+            observation.related_assay_ids.dedup();
+        }
+        request
+            .observations
+            .sort_by(|left, right| left.observation_id.cmp(&right.observation_id));
+        request.retained_assay_ids.sort();
+        request.retained_assay_ids.dedup();
+
+        if let Some(prior) = &mut request.prior_plan {
+            prior.path = prior.path.trim().to_string();
+            if prior.path.is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: "prior_plan requires a non-empty path".to_string(),
+                    cause_chain: vec![],
+                });
+            }
+            let bytes = fs::read(&prior.path).map_err(|error| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not read prior study plan '{}': {error}", prior.path),
+                cause_chain: vec![],
+            })?;
+            let observed = sha256_prefixed_bytes(&bytes);
+            if let Some(expected) = prior
+                .expected_sha256
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                && expected != observed
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Prior study plan '{}' has digest '{}' but '{}' was required",
+                        prior.path, observed, expected
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            let prior_report: GeneIsoformAssayStudyPlanReport =
+                serde_json::from_slice(&bytes).map_err(|error| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Could not parse prior study plan '{}': {error}",
+                        prior.path
+                    ),
+                    cause_chain: vec![],
+                })?;
+            if prior_report.schema != GENE_ISOFORM_ASSAY_STUDY_PLAN_SCHEMA {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Prior study plan '{}' uses unsupported schema '{}'",
+                        prior.path, prior_report.schema
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            prior.expected_sha256 = Some(observed);
+            prior.plan_id = Some(prior_report.plan_id);
+        }
+        request.plan_id = request
+            .plan_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        Ok(request)
+    }
+
+    fn gene_isoform_assay_design_operation(
+        report_id: String,
+        seq_id: &str,
+        source_feature_id: usize,
+        annotation_release: Option<String>,
+        assay_kind: TranscriptAssayKind,
+        objective: TranscriptAssayPanelObjective,
+        assay_tier: TranscriptAssayUseTier,
+        min_amplicon_bp: usize,
+        preferred_max_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        oligo_dt_5prime_risk_threshold_bp: Option<usize>,
+        junction_evidence_paths: Vec<String>,
+    ) -> Operation {
+        Operation::DesignTranscriptAssayPanel {
+            seq_id: seq_id.to_string(),
+            source_feature_id,
+            assay_kind,
+            cdna_synthesis: TranscriptAssayCdnaSynthesis::OligoDt,
+            objective,
+            coverage_policy: TranscriptAssayCoveragePolicy::RequireAll,
+            assay_tier,
+            practicality: Some(TranscriptAssayPracticalityPolicy {
+                preferred_amplicon_bp: Some(TranscriptAssayAmpliconRange {
+                    min_bp: min_amplicon_bp,
+                    max_bp: preferred_max_amplicon_bp,
+                }),
+                allowed_amplicon_bp: Some(TranscriptAssayAmpliconRange {
+                    min_bp: min_amplicon_bp,
+                    max_bp: max_amplicon_bp,
+                }),
+            }),
+            forward: PrimerDesignSideConstraint::default(),
+            reverse: PrimerDesignSideConstraint::default(),
+            probe: PrimerDesignSideConstraint::default(),
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: Some(min_amplicon_bp),
+            max_amplicon_bp: Some(max_amplicon_bp),
+            max_tm_delta_c: Some(2.0),
+            max_probe_tm_delta_c: Some(10.0),
+            max_assays_per_class: Some(12),
+            max_mismatches: Some(0),
+            require_3prime_exact_bases: Some(8),
+            oligo_dt_5prime_risk_threshold_bp,
+            junctions: vec![],
+            junction_evidence_paths,
+            junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
+            min_3prime_junction_overlap_bp: Some(4),
+            min_5prime_junction_overlap_bp: Some(7),
+            annotation_release,
+            specificity: None,
+            report_id: Some(report_id),
+            path: None,
+        }
+    }
+
+    fn plan_gene_isoform_assay_study(
+        &self,
+        request: GeneIsoformAssayStudyPlanRequest,
+    ) -> Result<(GeneIsoformAssayStudyPlanReport, Workflow), EngineError> {
+        let request = self.normalize_gene_isoform_assay_study_request(request)?;
+        let isoform_path = request.isoform_evidence_path.as_str();
+        let isoform_bytes = fs::read(isoform_path).map_err(|error| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not read gene isoform evidence report '{isoform_path}': {error}"
+            ),
+            cause_chain: vec![],
+        })?;
+        let isoform_report = Self::parse_gene_isoform_evidence_report(
+            isoform_path,
+            &isoform_bytes,
+        )?;
+        let splicing = isoform_report.splicing.as_ref().ok_or_else(|| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!(
+                "Gene isoform evidence report '{isoform_path}' lacks transcript splicing geometry"
+            ),
+            cause_chain: vec![],
+        })?;
+        let source_dna = self
+            .state
+            .sequences
+            .get(&isoform_report.seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Isoform evidence source sequence '{}' is not loaded",
+                    isoform_report.seq_id
+                ),
+                cause_chain: vec![],
+            })?;
+        let templates = Self::build_qpcr_transcript_design_templates(source_dna, splicing)?;
+        if templates.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: "Gene isoform assay planning found no mature-cDNA transcript templates"
+                    .to_string(),
+                cause_chain: vec![],
+            });
+        }
+        let equivalence_groups = Self::transcript_assay_exact_equivalence_groups(&templates);
+        let transcript_count = templates.len();
+        let mut informative_regions = BTreeSet::new();
+        for exon in &isoform_report.exon_families {
+            if exon.annotation_model_count > 0 && exon.annotation_model_count < transcript_count {
+                informative_regions.insert(exon.exon_family_id.clone());
+            }
+        }
+        for junction in &isoform_report.junctions {
+            if junction.annotation_model_count > 0
+                && junction.annotation_model_count < transcript_count
+            {
+                informative_regions.insert(junction.junction_id.clone());
+            }
+        }
+
+        let has_array_evidence = isoform_report
+            .evidence_items
+            .iter()
+            .any(|item| item.source_kind == IsoformEvidenceSourceKind::ArrayProbe);
+        let mut array_supported_regions = BTreeSet::new();
+        for item in isoform_report
+            .evidence_items
+            .iter()
+            .filter(|item| item.source_kind == IsoformEvidenceSourceKind::ArrayProbe)
+        {
+            for id in item.target_ids.iter().chain(item.family_ids.iter()) {
+                if informative_regions.contains(id) {
+                    array_supported_regions.insert(id.clone());
+                }
+            }
+        }
+
+        let mut assayable_regions = BTreeSet::new();
+        let mut abundance_regions = BTreeSet::new();
+        let mut responsive_regions = BTreeSet::new();
+        let mut contrast_summaries = request
+            .contrasts
+            .iter()
+            .map(|contrast| GeneIsoformAssayStudyContrastSummary {
+                contrast_id: contrast.contrast_id.clone(),
+                ..GeneIsoformAssayStudyContrastSummary::default()
+            })
+            .collect::<Vec<_>>();
+        let mut has_responsiveness_measurement = false;
+        let mut inspect_components = |region_id: &str, components: &GeneIsoformEvidenceComponents| {
+            if !matches!(
+                components.assayability.status,
+                IsoformEvidenceAssessmentStatus::NotEvaluated
+                    | IsoformEvidenceAssessmentStatus::Unknown
+            ) {
+                assayable_regions.insert(region_id.to_string());
+            }
+            if !matches!(
+                components.abundance.status,
+                IsoformEvidenceAssessmentStatus::NotEvaluated
+                    | IsoformEvidenceAssessmentStatus::Unknown
+            ) && (components.abundance.value.is_some()
+                || !components.abundance.measurements.is_empty())
+            {
+                abundance_regions.insert(region_id.to_string());
+            }
+            for measurement in &components.responsiveness.measurements {
+                has_responsiveness_measurement = true;
+                let Some(condition) = measurement.condition.as_deref() else {
+                    continue;
+                };
+                let Some(value) = measurement.value.filter(|value| value.is_finite()) else {
+                    continue;
+                };
+                for (index, contrast) in request.contrasts.iter().enumerate() {
+                    if contrast.condition_labels.iter().any(|label| label == condition) {
+                        contrast_summaries[index].matched_measurement_count = contrast_summaries
+                            [index]
+                            .matched_measurement_count
+                            .saturating_add(1);
+                        let abs_value = value.abs();
+                        contrast_summaries[index].maximum_abs_effect = Some(
+                            contrast_summaries[index]
+                                .maximum_abs_effect
+                                .unwrap_or(0.0)
+                                .max(abs_value),
+                        );
+                        if abs_value >= request.policy.min_abs_regional_effect
+                            && informative_regions.contains(region_id)
+                        {
+                            responsive_regions.insert(region_id.to_string());
+                            contrast_summaries[index]
+                                .responsive_region_ids
+                                .push(region_id.to_string());
+                        }
+                    }
+                }
+            }
+        };
+        for exon in &isoform_report.exon_families {
+            inspect_components(&exon.exon_family_id, &exon.components);
+        }
+        for junction in &isoform_report.junctions {
+            inspect_components(&junction.junction_id, &junction.components);
+        }
+        for summary in &mut contrast_summaries {
+            summary.responsive_region_ids.sort();
+            summary.responsive_region_ids.dedup();
+            summary.responsive_region_count = summary.responsive_region_ids.len();
+        }
+
+        let probe_coverage_fraction = has_array_evidence.then(|| {
+            if informative_regions.is_empty() {
+                1.0
+            } else {
+                array_supported_regions.len() as f64 / informative_regions.len() as f64
+            }
+        });
+        let mut missing_evidence = vec![];
+        if !has_array_evidence {
+            missing_evidence.push("clariom_or_other_array_region_evidence".to_string());
+        }
+        if request.contrasts.is_empty() {
+            missing_evidence.push("declared_expression_contrasts".to_string());
+        } else if !has_responsiveness_measurement {
+            missing_evidence.push("per_region_responsiveness_measurements".to_string());
+        }
+        if assayable_regions.is_empty() {
+            missing_evidence.push("region_assayability_evidence".to_string());
+        }
+        missing_evidence.sort();
+        missing_evidence.dedup();
+
+        let evidence_summary = GeneIsoformAssayStudyEvidenceSummary {
+            transcript_count,
+            exact_cdna_equivalence_group_count: equivalence_groups.len(),
+            informative_region_count: informative_regions.len(),
+            array_supported_region_count: array_supported_regions.len(),
+            probe_coverage_fraction,
+            assayable_region_count: assayable_regions.len(),
+            abundance_supported_region_count: abundance_regions.len(),
+            responsive_region_count: responsive_regions.len(),
+            responsive_region_ids: responsive_regions.iter().cloned().collect(),
+            contrast_summaries,
+            formal_statistics_available: false,
+            missing_evidence: missing_evidence.clone(),
+        };
+
+        let high_priority = request.prior_priority == GeneIsoformAssayPriorPriority::High;
+        let elevated_priority = request.prior_priority == GeneIsoformAssayPriorPriority::Elevated;
+        let comprehensive_complexity = equivalence_groups.len()
+            >= request.policy.min_equivalence_groups_for_comprehensive;
+        let comprehensive_response = responsive_regions.len()
+            >= request.policy.min_responsive_regions_for_comprehensive;
+        let discrimination_complexity = equivalence_groups.len()
+            >= request.policy.min_equivalence_groups_for_discrimination;
+        let targeted_response = responsive_regions.len()
+            >= request.policy.min_responsive_regions_for_targeted;
+        let poor_probe_coverage = probe_coverage_fraction
+            .is_some_and(|fraction| fraction < request.policy.poor_probe_coverage_fraction);
+        let missing_array_requires_inspection = !has_array_evidence && equivalence_groups.len() > 1;
+        let recommended_profile = if high_priority
+            || comprehensive_complexity
+            || comprehensive_response
+        {
+            GeneIsoformAssayStudyProfile::ComprehensiveIsoformDossier
+        } else if elevated_priority
+            || discrimination_complexity
+            || poor_probe_coverage
+            || missing_array_requires_inspection
+        {
+            GeneIsoformAssayStudyProfile::IsoformDiscrimination
+        } else if targeted_response {
+            GeneIsoformAssayStudyProfile::TargetedJunctionValidation
+        } else {
+            GeneIsoformAssayStudyProfile::RoutineCommonRegionScreen
+        };
+        let selected_profile = request
+            .profile_override
+            .as_ref()
+            .map(|value| value.selected_profile)
+            .unwrap_or(recommended_profile);
+        let decision_factors = vec![
+            GeneIsoformAssayStudyDecisionFactor {
+                rule_id: "explicit_high_priority".to_string(),
+                triggered: high_priority,
+                summary: format!("prior_priority={:?}", request.prior_priority),
+                evidence_ids: vec![],
+            },
+            GeneIsoformAssayStudyDecisionFactor {
+                rule_id: "many_exact_cdna_classes".to_string(),
+                triggered: comprehensive_complexity || discrimination_complexity,
+                summary: format!(
+                    "{} exact mature-cDNA equivalence class(es); discrimination threshold={}, comprehensive threshold={}",
+                    equivalence_groups.len(),
+                    request.policy.min_equivalence_groups_for_discrimination,
+                    request.policy.min_equivalence_groups_for_comprehensive
+                ),
+                evidence_ids: equivalence_groups
+                    .iter()
+                    .map(|group| group.report.equivalence_group_id.clone())
+                    .collect(),
+            },
+            GeneIsoformAssayStudyDecisionFactor {
+                rule_id: "regional_responsiveness".to_string(),
+                triggered: targeted_response,
+                summary: format!(
+                    "{} annotation-informative region(s) reached the declared absolute-effect threshold {} across exact condition labels",
+                    responsive_regions.len(), request.policy.min_abs_regional_effect
+                ),
+                evidence_ids: responsive_regions.iter().cloned().collect(),
+            },
+            GeneIsoformAssayStudyDecisionFactor {
+                rule_id: "poor_array_coverage".to_string(),
+                triggered: poor_probe_coverage,
+                summary: match probe_coverage_fraction {
+                    Some(value) => format!(
+                        "array evidence covers {:.3} of informative regions; policy threshold={:.3}",
+                        value, request.policy.poor_probe_coverage_fraction
+                    ),
+                    None => "array coverage is unknown and was not treated as low coverage"
+                        .to_string(),
+                },
+                evidence_ids: array_supported_regions.iter().cloned().collect(),
+            },
+            GeneIsoformAssayStudyDecisionFactor {
+                rule_id: "missing_array_evidence".to_string(),
+                triggered: !has_array_evidence,
+                summary: "Missing array evidence remains unknown; it never silently lowers study depth."
+                    .to_string(),
+                evidence_ids: vec![],
+            },
+        ];
+
+        let normalized_request_bytes = serde_json::to_vec(&request).map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize normalized study request: {error}"),
+            cause_chain: vec![],
+        })?;
+        let request_sha256 = sha256_prefixed_bytes(&normalized_request_bytes);
+        let policy_sha256 = sha256_prefixed_bytes(
+            &serde_json::to_vec(&request.policy).map_err(|error| EngineError {
+                code: ErrorCode::Internal,
+                message: format!("Could not serialize study policy: {error}"),
+                cause_chain: vec![],
+            })?,
+        );
+        let plan_id = request.plan_id.clone().unwrap_or_else(|| {
+            short_sha256_id(
+                "isoform_assay_plan",
+                &format!(
+                    "{}|{}|{}",
+                    request_sha256,
+                    request.expected_isoform_evidence_sha256.as_deref().unwrap_or_default(),
+                    selected_profile.as_str()
+                ),
+            )
+        });
+        let junction_paths = request
+            .junction_evidence
+            .iter()
+            .map(|input| input.path.clone())
+            .collect::<Vec<_>>();
+        let policy = &request.policy;
+        let mut operations = vec![];
+        let common_operation = || {
+            Self::gene_isoform_assay_design_operation(
+                format!("{plan_id}_common"),
+                &isoform_report.seq_id,
+                splicing.target_feature_id,
+                isoform_report.annotation_release.clone(),
+                TranscriptAssayKind::SybrQpcr,
+                TranscriptAssayPanelObjective::PanTranscript,
+                TranscriptAssayUseTier::RoutineCommonRegionScreen,
+                policy.short_min_amplicon_bp,
+                policy.short_max_amplicon_bp,
+                policy.short_max_amplicon_bp,
+                policy.oligo_dt_5prime_risk_threshold_bp,
+                vec![],
+            )
+        };
+        let discrimination_operation = |objective| {
+            Self::gene_isoform_assay_design_operation(
+                format!("{plan_id}_junctions"),
+                &isoform_report.seq_id,
+                splicing.target_feature_id,
+                isoform_report.annotation_release.clone(),
+                TranscriptAssayKind::SybrQpcr,
+                objective,
+                TranscriptAssayUseTier::IsoformDiscrimination,
+                policy.short_min_amplicon_bp,
+                policy.short_max_amplicon_bp,
+                policy.short_max_amplicon_bp,
+                policy.oligo_dt_5prime_risk_threshold_bp,
+                junction_paths.clone(),
+            )
+        };
+        let endpoint_operation = || {
+            Self::gene_isoform_assay_design_operation(
+                format!("{plan_id}_endpoint"),
+                &isoform_report.seq_id,
+                splicing.target_feature_id,
+                isoform_report.annotation_release.clone(),
+                TranscriptAssayKind::EndpointRtPcr,
+                TranscriptAssayPanelObjective::IsoformEndMatrix,
+                TranscriptAssayUseTier::LongRangeStructureDiscovery,
+                policy.endpoint_min_amplicon_bp,
+                policy.endpoint_preferred_max_amplicon_bp,
+                policy.endpoint_max_amplicon_bp,
+                policy.oligo_dt_5prime_risk_threshold_bp,
+                vec![],
+            )
+        };
+        if policy.include_common_control
+            || selected_profile == GeneIsoformAssayStudyProfile::RoutineCommonRegionScreen
+        {
+            operations.push(common_operation());
+        }
+        match selected_profile {
+            GeneIsoformAssayStudyProfile::RoutineCommonRegionScreen => {}
+            GeneIsoformAssayStudyProfile::TargetedJunctionValidation
+            | GeneIsoformAssayStudyProfile::IsoformDiscrimination => operations.push(
+                discrimination_operation(TranscriptAssayPanelObjective::MinimalDiscriminationPanel),
+            ),
+            GeneIsoformAssayStudyProfile::ComprehensiveIsoformDossier => {
+                operations.push(discrimination_operation(
+                    TranscriptAssayPanelObjective::OnePerClass,
+                ));
+                if policy.include_endpoint_for_comprehensive {
+                    operations.push(endpoint_operation());
+                }
+            }
+            GeneIsoformAssayStudyProfile::LongRangeStructureDiscovery => {
+                operations.push(endpoint_operation());
+            }
+        }
+        let operation_batch_sha256 = sha256_prefixed_bytes(
+            &serde_json::to_vec(&operations).map_err(|error| EngineError {
+                code: ErrorCode::Internal,
+                message: format!("Could not serialize planned operation batch: {error}"),
+                cause_chain: vec![],
+            })?,
+        );
+        let planned_operations = operations
+            .iter()
+            .enumerate()
+            .map(|(index, operation)| {
+                let operation_value = serde_json::to_value(operation).map_err(|error| {
+                    EngineError {
+                        code: ErrorCode::Internal,
+                        message: format!("Could not serialize planned operation: {error}"),
+                        cause_chain: vec![],
+                    }
+                })?;
+                let operation_sha256 = sha256_prefixed_bytes(
+                    &serde_json::to_vec(&operation_value).map_err(|error| EngineError {
+                        code: ErrorCode::Internal,
+                        message: format!("Could not hash planned operation: {error}"),
+                        cause_chain: vec![],
+                    })?,
+                );
+                Ok(GeneIsoformAssayStudyPlannedOperation {
+                    step_index: index.saturating_add(1),
+                    step_id: format!("design_{:02}", index.saturating_add(1)),
+                    purpose: match operation {
+                        Operation::DesignTranscriptAssayPanel { assay_tier, .. } => {
+                            assay_tier.as_str().to_string()
+                        }
+                        _ => "assay_design".to_string(),
+                    },
+                    operation: operation_value,
+                    operation_sha256,
+                })
+            })
+            .collect::<Result<Vec<_>, EngineError>>()?;
+
+        let (iteration, prior_plan_id, prior_plan_sha256) = if let Some(prior) = &request.prior_plan
+        {
+            let bytes = fs::read(&prior.path).map_err(|error| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not read prior study plan '{}': {error}", prior.path),
+                cause_chain: vec![],
+            })?;
+            let prior_report: GeneIsoformAssayStudyPlanReport =
+                serde_json::from_slice(&bytes).map_err(|error| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("Could not parse prior study plan '{}': {error}", prior.path),
+                    cause_chain: vec![],
+                })?;
+            if prior_report.schema != GENE_ISOFORM_ASSAY_STUDY_PLAN_SCHEMA {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Prior study plan '{}' uses unsupported schema '{}'",
+                        prior.path, prior_report.schema
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            (
+                prior_report.iteration.saturating_add(1),
+                Some(prior_report.plan_id),
+                prior.expected_sha256.clone(),
+            )
+        } else {
+            (1, None, None)
+        };
+        let mut resolved_evidence_inputs = request.junction_evidence.clone();
+        resolved_evidence_inputs.insert(
+            0,
+            GeneIsoformAssayStudyInputRef {
+                input_kind: "gene_isoform_evidence".to_string(),
+                path: request.isoform_evidence_path.clone(),
+                expected_sha256: request.expected_isoform_evidence_sha256.clone(),
+                report_id: request.isoform_evidence_report_id.clone(),
+                report_schema: request.isoform_evidence_schema.clone(),
+            },
+        );
+        let mut warnings = isoform_report.warnings.clone();
+        warnings.push(
+            "Regional Clariom or expression effects are hypothesis-generating evidence, not formal differential-expression or isoform-validation claims."
+                .to_string(),
+        );
+        if !request.observations.is_empty() {
+            warnings.push(
+                "User observations are retained as user_supplied_unvalidated and do not change the automatic recommendation."
+                    .to_string(),
+            );
+        }
+        if !request.retained_assay_ids.is_empty() {
+            warnings.push(
+                "Retained assay identifiers require renewed readiness and specificity checks in this iteration."
+                    .to_string(),
+            );
+        }
+        warnings.sort();
+        warnings.dedup();
+        let report = GeneIsoformAssayStudyPlanReport {
+            schema: GENE_ISOFORM_ASSAY_STUDY_PLAN_SCHEMA.to_string(),
+            plan_id: plan_id.clone(),
+            label: request.label.clone(),
+            iteration,
+            normalized_request: request.clone(),
+            request_sha256,
+            policy_sha256,
+            isoform_evidence_schema: isoform_report.schema.clone(),
+            isoform_evidence_path: request.isoform_evidence_path.clone(),
+            isoform_evidence_sha256: request
+                .expected_isoform_evidence_sha256
+                .clone()
+                .unwrap_or_default(),
+            seq_id: isoform_report.seq_id.clone(),
+            source_feature_id: splicing.target_feature_id,
+            gene_symbol: isoform_report.gene_symbol.clone(),
+            annotation_release: isoform_report.annotation_release.clone(),
+            recommended_profile,
+            selected_profile,
+            profile_override: request.profile_override.clone(),
+            evidence_summary,
+            decision_factors,
+            planned_operations,
+            operation_batch_sha256,
+            resolved_evidence_inputs,
+            prior_plan_id,
+            prior_plan_sha256,
+            observations: request.observations.clone(),
+            retained_assay_ids: request.retained_assay_ids.clone(),
+            uncovered_questions: missing_evidence,
+            warnings,
+        };
+        let workflow = Workflow {
+            run_id: format!("{}_approved_design", plan_id),
+            ops: operations,
+        };
+        Ok((report, workflow))
+    }
+
     fn compose_gene_transcript_assay_routine(
         &self,
         request: &GeneTranscriptAssayRoutineRequest,
@@ -28759,6 +29668,7 @@ impl GentleEngine {
             primer_variant_screen: None,
             transcript_qpcr_panel: None,
             transcript_assay_panel: None,
+            gene_isoform_assay_study_plan: None,
             gene_transcript_assay_routine: None,
             experimental_assay_handoff: None,
             primer_specificity_handoff: None,
@@ -35383,6 +36293,72 @@ impl GentleEngine {
                         report_id,
                         path,
                     )?;
+                }
+                Operation::PlanGeneIsoformAssayStudy {
+                    request,
+                    path,
+                    workflow_path,
+                } => {
+                    let (report, workflow) = self.plan_gene_isoform_assay_study(request)?;
+                    parent_seq_ids.push(report.seq_id.clone());
+                    if let Some(path) = path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        let file = File::create(path).map_err(|error| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not create gene isoform assay study plan '{path}': {error}"
+                            ),
+                            cause_chain: vec![],
+                        })?;
+                        serde_json::to_writer_pretty(BufWriter::new(file), &report).map_err(
+                            |error| EngineError {
+                                code: ErrorCode::Io,
+                                message: format!(
+                                    "Could not serialize gene isoform assay study plan '{path}': {error}"
+                                ),
+                                cause_chain: vec![],
+                            },
+                        )?;
+                        result.messages.push(format!(
+                            "Wrote gene isoform assay study plan to '{path}'"
+                        ));
+                    }
+                    if let Some(path) = workflow_path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        let file = File::create(path).map_err(|error| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not create approved-operation workflow '{path}': {error}"
+                            ),
+                            cause_chain: vec![],
+                        })?;
+                        serde_json::to_writer_pretty(BufWriter::new(file), &workflow).map_err(
+                            |error| EngineError {
+                                code: ErrorCode::Io,
+                                message: format!(
+                                    "Could not serialize approved-operation workflow '{path}': {error}"
+                                ),
+                                cause_chain: vec![],
+                            },
+                        )?;
+                        result.messages.push(format!(
+                            "Wrote exact ordered assay-design workflow to '{path}'"
+                        ));
+                    }
+                    result.messages.push(format!(
+                        "Planned gene isoform assay study '{}' as '{}' with {} exact operation(s); no assay design was executed.",
+                        report.plan_id,
+                        report.selected_profile.as_str(),
+                        report.planned_operations.len()
+                    ));
+                    result.warnings.extend(report.warnings.clone());
+                    result.gene_isoform_assay_study_plan = Some(Box::new(report));
                 }
                 Operation::ComposeGeneTranscriptAssayRoutine { request, path } => {
                     let report = self.compose_gene_transcript_assay_routine(&request)?;

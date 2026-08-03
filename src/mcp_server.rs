@@ -15,6 +15,7 @@ use crate::{
         ShellExecutionOptions, UiIntentAction, UiIntentTarget, execute_shell_command_with_options,
         parse_shell_tokens, runtime_status_payload_with_observed_activities,
     },
+    gene_set_publication::generate_gene_isoform_assay_publication,
     genomes::{
         default_catalog_discovery_label, default_catalog_discovery_token,
         default_helper_semantics_vocabulary_discovery_label,
@@ -28,7 +29,10 @@ use crate::{
 use gentle_protocol::{CapabilitySource, EngineError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
-use std::io::{self, BufRead, BufReader, BufWriter, Write};
+use std::{
+    io::{self, BufRead, BufReader, BufWriter, Write},
+    path::Path,
+};
 
 const MCP_PROTOCOL_VERSION: &str = "2025-06-18";
 const SERVER_NAME: &str = "gentle_mcp";
@@ -1090,6 +1094,33 @@ fn tool_list() -> Value {
             }),
         );
     }
+    if let Some(items) = tools.as_array_mut() {
+        items.push(json!({
+            "name": "gene_isoform_assay_publication",
+            "title": "Gene Isoform Assay Publication",
+            "description": "Project immutable assay reports into GENtle-declared publication artifacts.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "confirm": {
+                        "type": "boolean",
+                        "description": "Must be true because the projection writes external artifacts. This is a file-write confirmation, not a scientific approval."
+                    },
+                    "request_path": { "type": "string" },
+                    "output_directory": { "type": "string" },
+                    "profile": { "type": "string" },
+                    "blocks": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Optional ordered subset of GENtle-declared content block ids."
+                    },
+                    "pdf": { "type": "boolean" }
+                },
+                "required": ["confirm", "request_path", "output_directory"],
+                "additionalProperties": false
+            }
+        }));
+    }
     project_mcp_tools_from_registry(&mut tools);
     if let Some(items) = tools.as_array_mut() {
         annotate_tool_descriptors(items);
@@ -1206,6 +1237,7 @@ fn tool_mutating_descriptor(name: &str) -> Value {
         | "construct_reasoning_run_inspection_action"
         | "construct_reasoning_set_annotation_status"
         | "construct_reasoning_write_annotation" => Value::Bool(true),
+        "gene_isoform_assay_publication" => Value::String("external".to_string()),
         _ => Value::Bool(false),
     }
 }
@@ -1235,8 +1267,10 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
             "primers specificity-plan",
             "primers specificity-import",
             "primers compose-gene-assay-routine",
+            "primers plan-gene-isoform-study",
         ],
         "workflow" => &["workflow"],
+        "gene_isoform_assay_publication" => &["primers publish-gene-isoform-study"],
         "help" => &["help"],
         "reference_catalog_entries" => &["genomes list"],
         "helper_catalog_entries" => &["helpers list"],
@@ -3024,6 +3058,59 @@ fn ui_intent_tool_result(default_state_path: &str, arguments: &Value) -> Value {
     }
 }
 
+fn gene_isoform_assay_publication_tool_result(arguments: &Value) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let confirm = match optional_bool_arg(&args, "confirm") {
+        Ok(value) => value.unwrap_or(false),
+        Err(error) => return tool_result_text(error, "text", true),
+    };
+    if !confirm {
+        return tool_result_text(
+            "gene_isoform_assay_publication requires confirm=true before writing publication artifacts"
+                .to_string(),
+            "text",
+            true,
+        );
+    }
+    let request_path = match required_string_arg(&args, "request_path") {
+        Ok(value) => value,
+        Err(error) => return tool_result_text(error, "text", true),
+    };
+    let output_directory = match required_string_arg(&args, "output_directory") {
+        Ok(value) => value,
+        Err(error) => return tool_result_text(error, "text", true),
+    };
+    let profile = match optional_string_arg(&args, "profile") {
+        Ok(value) => value,
+        Err(error) => return tool_result_text(error, "text", true),
+    };
+    let block_ids = match optional_string_array_arg(&args, "blocks") {
+        Ok(value) => value,
+        Err(error) => return tool_result_text(error, "text", true),
+    };
+    let generate_pdf = match optional_bool_arg(&args, "pdf") {
+        Ok(value) => value.unwrap_or(false),
+        Err(error) => return tool_result_text(error, "text", true),
+    };
+    match generate_gene_isoform_assay_publication(
+        Path::new(&request_path),
+        Path::new(&output_directory),
+        profile.as_deref(),
+        &block_ids,
+        generate_pdf,
+    ) {
+        Ok(report) => match serde_json::to_value(report) {
+            Ok(value) => tool_result_json(value, false),
+            Err(error) => tool_result_text(
+                format!("Could not serialize publication projection receipt: {error}"),
+                "text",
+                true,
+            ),
+        },
+        Err(error) => tool_result_text(error, "text", true),
+    }
+}
+
 fn op_tool_result(default_state_path: &str, arguments: &Value) -> Value {
     let args = arguments.as_object().cloned().unwrap_or_default();
     if let Err(err) = require_confirm_true(&args, "op") {
@@ -3241,6 +3328,9 @@ fn tool_call_result(default_state_path: &str, params: ToolCallParams) -> Value {
             construct_reasoning_write_annotation_tool_result(default_state_path, &params.arguments)
         }
         "helper_interpretation" => helper_interpretation_tool_result(&params.arguments),
+        "gene_isoform_assay_publication" => {
+            gene_isoform_assay_publication_tool_result(&params.arguments)
+        }
         "op" => op_tool_result(default_state_path, &params.arguments),
         "workflow" => workflow_tool_result(default_state_path, &params.arguments),
         "help" => help_tool_result(&params.arguments),

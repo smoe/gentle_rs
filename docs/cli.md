@@ -8,6 +8,18 @@ tables, copied assets, and an optional printable companion. HTML and print
 derive from the same `resolved-report.json`; see
 [`gene_set_publication_reports.md`](gene_set_publication_reports.md).
 
+For content-bound isoform-assay dossiers, the same binary accepts
+`gentle.gene_isoform_assay_publication_request.v1` plus optional
+`--profile ID`, `--blocks ID,ID`, and `--pdf`. The shared-shell equivalent is:
+
+```text
+primers publish-gene-isoform-study REQUEST.json OUTPUT_DIR [--profile ID] [--blocks ID,ID] [--pdf]
+```
+
+This form writes one HTML page per gene and uses `print.html` as the sole PDF
+source. Set `GENTLE_BROWSER_BIN` to a Chromium-compatible executable when
+requesting PDF output.
+
 This page documents command-line entry points for GENtle.
 
 ## Overview
@@ -4031,6 +4043,21 @@ Shared shell command:
       - deterministic worked example:
         `docs/examples/workflows/patz1_endpoint_sybr_transcript_assay_panel_offline.json`
         (synthetic sequence; not orderable human PATZ1 primers)
+    - Gene isoform-assay study planner:
+      - `primers plan-gene-isoform-study REQUEST_JSON_OR_@FILE [--normalize-only] [--normalized-request OUTPUT.json] [--path PLAN.json] [--workflow WORKFLOW.json]`
+      - normalization content-binds the complete request and all effective
+        defaults before the first approval; planning emits a transparent
+        recommendation plus exact ordered assay operations for a separate
+        batch approval, but does not execute design
+      - policy decisions keep exact-cDNA complexity, annotation coverage,
+        Clariom support/abundance/contrast responsiveness, assayability, prior
+        priority, missing evidence, and explicit overrides as separate fields
+      - `primers publish-gene-isoform-study REQUEST.json OUTPUT_DIR [--profile ID] [--blocks ID,ID] [--pdf]` renders only declared blocks from
+        content-addressed plan/handoff/order reports. It emits a meta-page, one
+        HTML page per gene, `print.html`, order TSVs, and a projection receipt
+      - `primers oligo-order from-experimental-handoff HANDOFF.json --expected-sha256 SHA256 [...]` creates a form only from rows that passed the
+        handoff's exact readiness policy and retains the handoff/policy/card/
+        assay/pair/oligo provenance on every line
     - Experimental handoff notes (`primers experimental-handoff`):
       - consumes one persisted transcript-panel report and emits one
         deterministic card per selected primer pair; it automatically runs the

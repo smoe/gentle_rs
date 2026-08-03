@@ -56956,3 +56956,306 @@ fn feature_location_edit_rejects_invalid_and_out_of_bounds_ranges() {
         );
     }
 }
+
+#[test]
+fn gene_isoform_assay_study_planner_normalizes_inputs_and_emits_exact_operation_batch() {
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let view = engine
+        .inspect_feature_expert(
+            "panel_src",
+            &FeatureExpertTarget::SplicingFeature {
+                feature_id: 0,
+                scope: SplicingScopePreset::TargetGroupTargetStrand,
+            },
+        )
+        .expect("synthetic splicing view");
+    let FeatureExpertView::Splicing(splicing) = view else {
+        panic!("expected splicing view")
+    };
+    let all_transcript_count = splicing.transcript_count;
+    let responsive = GeneIsoformEvidenceComponent {
+        status: IsoformEvidenceAssessmentStatus::Observed,
+        measurements: vec![GeneIsoformEvidenceMeasurement {
+            evidence_id: "array_psr_1_ta".to_string(),
+            status: IsoformEvidenceAssessmentStatus::Observed,
+            classification: "regional_probe_activity".to_string(),
+            condition: Some("TAp73alpha-GFP".to_string()),
+            value: Some(-0.8),
+            unit: Some("raw_probe_set_effect".to_string()),
+            explanation: "Synthetic raw regional effect; not formal differential expression."
+                .to_string(),
+        }],
+        ..GeneIsoformEvidenceComponent::default()
+    };
+    let report = GeneIsoformEvidenceReport {
+        schema: GENE_ISOFORM_EVIDENCE_SCHEMA.to_string(),
+        seq_id: "panel_src".to_string(),
+        gene_symbol: "PANEL1".to_string(),
+        panel_id: "panel1_isoforms".to_string(),
+        annotation_release: Some("synthetic-1".to_string()),
+        splicing: Some(splicing),
+        exon_families: vec![
+            GeneIsoformExonFamilyRow {
+                exon_family_id: "EXF:synthetic:1".to_string(),
+                annotation_model_count: 1,
+                transcript_ids: vec!["TX1".to_string()],
+                components: GeneIsoformEvidenceComponents {
+                    abundance: GeneIsoformEvidenceComponent {
+                        status: IsoformEvidenceAssessmentStatus::Observed,
+                        value: Some(10.0),
+                        unit: Some("raw_intensity".to_string()),
+                        ..GeneIsoformEvidenceComponent::default()
+                    },
+                    responsiveness: responsive.clone(),
+                    assayability: GeneIsoformEvidenceComponent {
+                        status: IsoformEvidenceAssessmentStatus::ConstraintOnly,
+                        classification: "candidate_region".to_string(),
+                        ..GeneIsoformEvidenceComponent::default()
+                    },
+                    ..GeneIsoformEvidenceComponents::default()
+                },
+                ..GeneIsoformExonFamilyRow::default()
+            },
+            GeneIsoformExonFamilyRow {
+                exon_family_id: "EXF:synthetic:common".to_string(),
+                annotation_model_count: all_transcript_count,
+                components: GeneIsoformEvidenceComponents {
+                    responsiveness: responsive,
+                    ..GeneIsoformEvidenceComponents::default()
+                },
+                ..GeneIsoformExonFamilyRow::default()
+            },
+        ],
+        evidence_items: vec![GeneIsoformEvidenceItem {
+            evidence_id: "array_psr_1".to_string(),
+            source_kind: IsoformEvidenceSourceKind::ArrayProbe,
+            source_id: "PSR_SYNTHETIC_1".to_string(),
+            status: IsoformEvidenceAssessmentStatus::Observed,
+            target_ids: vec!["EXF:synthetic:1".to_string()],
+            method: "synthetic fixture".to_string(),
+            ..GeneIsoformEvidenceItem::default()
+        }],
+        ..GeneIsoformEvidenceReport::default()
+    };
+    let temp = tempdir().expect("temp dir");
+    let evidence_path = temp.path().join("isoform_evidence.json");
+    fs::write(
+        &evidence_path,
+        serde_json::to_vec_pretty(&report).expect("serialize evidence"),
+    )
+    .expect("write evidence");
+    let plan_path = temp.path().join("plan.json");
+    let workflow_path = temp.path().join("approved_operations.workflow.json");
+    let request = GeneIsoformAssayStudyPlanRequest {
+        label: "Synthetic PANEL1 study".to_string(),
+        isoform_evidence_path: evidence_path.to_string_lossy().to_string(),
+        contrasts: vec![GeneIsoformAssayStudyContrast {
+            contrast_id: "TA".to_string(),
+            condition_labels: vec!["TAp73alpha-GFP".to_string()],
+        }],
+        policy: GeneIsoformAssayStudyPolicy {
+            min_equivalence_groups_for_comprehensive: 2,
+            min_responsive_regions_for_comprehensive: 1,
+            ..GeneIsoformAssayStudyPolicy::default()
+        },
+        observations: vec![GeneIsoformAssayStudyObservation {
+            observation_id: "wetlab_1".to_string(),
+            statement: "A preliminary band was seen.".to_string(),
+            source: "user notebook".to_string(),
+            validation_status: "confirmed".to_string(),
+            ..GeneIsoformAssayStudyObservation::default()
+        }],
+        ..GeneIsoformAssayStudyPlanRequest::default()
+    };
+    let normalized = engine
+        .normalize_gene_isoform_assay_study_request(request.clone())
+        .expect("normalize study request");
+    assert!(
+        normalized
+            .expected_isoform_evidence_sha256
+            .as_deref()
+            .is_some_and(|value| value.starts_with("sha256:"))
+    );
+    assert_eq!(
+        normalized.isoform_evidence_report_id.as_deref(),
+        Some("panel1_isoforms")
+    );
+    assert_eq!(
+        normalized.isoform_evidence_schema.as_deref(),
+        Some(GENE_ISOFORM_EVIDENCE_SCHEMA)
+    );
+    assert!(
+        normalized
+            .policy_sha256
+            .as_deref()
+            .is_some_and(|value| value.starts_with("sha256:"))
+    );
+    assert_eq!(
+        normalized.observations[0].validation_status,
+        "user_supplied_unvalidated"
+    );
+    let result = engine
+        .apply(Operation::PlanGeneIsoformAssayStudy {
+            request,
+            path: Some(plan_path.to_string_lossy().to_string()),
+            workflow_path: Some(workflow_path.to_string_lossy().to_string()),
+        })
+        .expect("plan synthetic gene study");
+    let plan = result
+        .gene_isoform_assay_study_plan
+        .expect("study plan report");
+    assert_eq!(
+        plan.recommended_profile,
+        GeneIsoformAssayStudyProfile::ComprehensiveIsoformDossier
+    );
+    assert_eq!(plan.selected_profile, plan.recommended_profile);
+    assert_eq!(
+        plan.evidence_summary.responsive_region_ids,
+        vec!["EXF:synthetic:1".to_string()]
+    );
+    assert_eq!(
+        plan.policy_sha256,
+        plan.normalized_request
+            .policy_sha256
+            .clone()
+            .expect("normalized policy digest")
+    );
+    assert_eq!(
+        plan.normalized_request.isoform_evidence_report_id.as_deref(),
+        Some("panel1_isoforms")
+    );
+    assert_eq!(plan.planned_operations.len(), 3);
+    assert!(plan.operation_batch_sha256.starts_with("sha256:"));
+    assert_eq!(
+        plan.normalized_request.observations[0].validation_status,
+        "user_supplied_unvalidated"
+    );
+    assert!(plan
+        .planned_operations
+        .iter()
+        .all(|step| step.operation_sha256.starts_with("sha256:")
+            && step.operation.get("DesignTranscriptAssayPanel").is_some()));
+    let workflow: Workflow = serde_json::from_slice(
+        &fs::read(&workflow_path).expect("read emitted workflow"),
+    )
+    .expect("parse emitted workflow");
+    assert_eq!(workflow.ops.len(), plan.planned_operations.len());
+    assert_eq!(
+        sha256_prefixed_bytes(&serde_json::to_vec(&workflow.ops).expect("serialize ops")),
+        plan.operation_batch_sha256
+    );
+    assert!(engine.list_transcript_assay_panel_reports().is_empty());
+}
+
+#[test]
+fn experimental_handoff_order_form_requires_approved_digest_and_order_ready_rows() {
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let panel = engine
+        .apply(transcript_assay_panel_operation(
+            TranscriptAssayCoveragePolicy::BestEffort,
+            transcript_assay_panel_relaxed_side(),
+            1,
+            "handoff_order_bridge_panel",
+        ))
+        .expect("design source panel")
+        .transcript_assay_panel
+        .expect("source panel");
+    assert!(!panel.selected_assays.is_empty());
+    let policy = ExperimentalAssayReadinessPolicy {
+        require_critical_qc_pass: false,
+        require_specificity_pass: false,
+        require_genomic_carryover_pass: false,
+        require_transcriptome_specificity_pass: false,
+        require_annotation_provenance: false,
+        require_assay_test: false,
+        require_variant_evaluation: false,
+        require_duplicate_review: false,
+        require_resolved_gel_bands: false,
+        ..ExperimentalAssayReadinessPolicy::default()
+    };
+    let temp = tempdir().expect("temp dir");
+    let handoff_path = temp.path().join("handoff.json");
+    let handoff = engine
+        .apply(Operation::BuildExperimentalAssayHandoff {
+            panel_report_id: panel.report_id.clone(),
+            policy,
+            variant_evidence_paths: vec![],
+            order_form_id: None,
+            path: Some(handoff_path.to_string_lossy().to_string()),
+            order_table_path: None,
+            virtual_gel_svg_path: None,
+            virtual_gel_ladders: vec![],
+            virtual_gel_render_options: Default::default(),
+        })
+        .expect("build order-ready handoff")
+        .experimental_assay_handoff
+        .expect("handoff report");
+    assert!(handoff.order_readiness_table.iter().all(|row| row.order_ready));
+    let bytes = fs::read(&handoff_path).expect("read handoff");
+    let digest = sha256_prefixed_bytes(&bytes);
+    let missing_digest = engine
+        .create_oligo_order_form_from_experimental_handoff(
+            handoff_path.to_str().expect("handoff path"),
+            None,
+            Some("must_fail"),
+            None,
+            None,
+            &[],
+        )
+        .expect_err("approved digest is mandatory");
+    assert!(missing_digest.message.contains("--expected-sha256"));
+    let form = engine
+        .create_oligo_order_form_from_experimental_handoff(
+            handoff_path.to_str().expect("handoff path"),
+            Some(&digest),
+            Some("approved_handoff_order"),
+            None,
+            None,
+            &[],
+        )
+        .expect("create handoff-bound order form");
+    assert!(!form.line_items.is_empty());
+    assert!(form.line_items.iter().all(|line| {
+        line.provenance.source_kind == "experimental_assay_handoff"
+            && line.provenance.report_sha256.as_deref() == Some(digest.as_str())
+            && line.provenance.readiness_policy_id.as_deref() == Some(handoff.policy_id.as_str())
+            && line.provenance.readiness_policy_sha256.is_some()
+            && line.provenance.assay_id.is_some()
+            && line.provenance.pair_id.is_some()
+            && line.provenance.oligo_id.is_some()
+            && line
+                .provenance
+                .readiness_row
+                .as_ref()
+                .is_some_and(|row| row.order_ready)
+    }));
+
+    let mut candidate_handoff = handoff;
+    for row in &mut candidate_handoff.order_readiness_table {
+        row.order_ready = false;
+        row.readiness_state = ExperimentalAssayReadinessState::Candidate;
+    }
+    for card in &mut candidate_handoff.cards {
+        card.readiness_state = ExperimentalAssayReadinessState::Candidate;
+    }
+    let candidate_path = temp.path().join("candidate_handoff.json");
+    fs::write(
+        &candidate_path,
+        serde_json::to_vec_pretty(&candidate_handoff).expect("serialize candidate handoff"),
+    )
+    .expect("write candidate handoff");
+    let candidate_digest = sha256_prefixed_bytes(
+        &fs::read(&candidate_path).expect("read candidate handoff"),
+    );
+    let error = engine
+        .create_oligo_order_form_from_experimental_handoff(
+            candidate_path.to_str().expect("candidate path"),
+            Some(&candidate_digest),
+            Some("candidate_must_not_order"),
+            None,
+            None,
+            &[],
+        )
+        .expect_err("candidate handoff must not create order lines");
+    assert!(error.message.contains("no rows"));
+}

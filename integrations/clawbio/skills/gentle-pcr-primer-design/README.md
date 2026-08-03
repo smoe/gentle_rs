@@ -37,6 +37,13 @@ without rerouting. Only list/show/preflight diagnostics remain automatic. See
 the generic runner's
 [execution-approval contract](../gentle-cloning/references/execution_approval.md).
 
+Gene isoform-assay studies deliberately use two such approvals. The first
+binds the normalized planner request, policy/version, evidence hashes, prior
+plan, observations, override, and resolved defaults. The second binds the
+exact ordered `DesignTranscriptAssayPanel` operation set emitted by that plan.
+Approval authorizes execution of those bytes; it is not a declaration that the
+biological premise is correct.
+
 Primer backends and pair ranks have no conversational default. An explicitly
 requested `auto` backend is resolved to a path/version-pinned Primer3 or the
 internal backend before approval. An unknown 5-prime capture method is
@@ -94,6 +101,15 @@ one GENtle handoff JSON, an order/readiness TSV, and a virtual-gel SVG. The gel
 uses one lane per primer pair under shared conditions so pair columns are
 directly comparable. Predicted-empty lanes are retained, and the figure is not
 presented as wet-lab evidence.
+
+The downstream isoform-assay publication is still GENtle-owned. Its canonical
+JSON embeds each content-bound plan, handoff, and order form once and declares
+pointer-only presentation blocks. OpenClaw may request a declared `full`,
+`review`, or `ordering` profile (or an explicit subset of declared block ids),
+then host the per-gene HTML pages or browser-rendered PDF. It may not create a
+new scientific block. Order sheets are accepted only from a specific handoff
+digest and its named readiness policy, with card/assay/pair/oligo provenance
+retained per line.
 
 ## Running The Delegated Examples
 

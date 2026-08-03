@@ -1,12 +1,24 @@
 //! Resolve one portable gene-set manifest into mutually consistent web and print artifacts.
 
 use gentle_protocol::{
+    GENE_ISOFORM_ASSAY_PUBLICATION_PROJECTION_SCHEMA,
+    GENE_ISOFORM_ASSAY_PUBLICATION_REQUEST_SCHEMA, GENE_ISOFORM_ASSAY_PUBLICATION_SCHEMA,
     GENE_SET_PUBLICATION_GENERATION_SCHEMA, GENE_SET_PUBLICATION_REPORT_SCHEMA,
-    GENE_SET_PUBLICATION_REQUEST_SCHEMA, GeneSetPublicationDownload, GeneSetPublicationFigure,
-    GeneSetPublicationGene, GeneSetPublicationGenerationReport, GeneSetPublicationPrimerColumnMap,
+    GENE_SET_PUBLICATION_REQUEST_SCHEMA, GeneIsoformAssayPublicationArtifact,
+    GeneIsoformAssayPublicationBlock, GeneIsoformAssayPublicationBoundReport,
+    GeneIsoformAssayPublicationGene, GeneIsoformAssayPublicationParameter,
+    GeneIsoformAssayPublicationParameterOverride, GeneIsoformAssayPublicationProfile,
+    GeneIsoformAssayPublicationProjectionReport, GeneIsoformAssayPublicationReport,
+    GeneIsoformAssayPublicationReportRef, GeneIsoformAssayPublicationRequest,
+    GeneSetPublicationDownload, GeneSetPublicationFigure, GeneSetPublicationGene,
+    GeneSetPublicationGenerationReport, GeneSetPublicationPrimerColumnMap,
     GeneSetPublicationPrimerRow, GeneSetPublicationReport, GeneSetPublicationRequest,
 };
-use gentle_render::{render_gene_set_publication_html, render_gene_set_publication_markdown};
+use gentle_render::{
+    render_gene_isoform_assay_publication_gene, render_gene_isoform_assay_publication_index,
+    render_gene_isoform_assay_publication_print, render_gene_set_publication_html,
+    render_gene_set_publication_markdown,
+};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
@@ -16,9 +28,17 @@ use std::{
 };
 
 use crate::{
-    svg_pdf::render_svg_file_to_pdf, svg_png::SvgPngRenderOptions,
+    digest_utils::sha256_prefixed_bytes,
+    engine::protocol::{
+        ExperimentalAssayHandoffReport, ExperimentalAssayReadinessState, OligoOrderLineProvenance,
+    },
+    svg_pdf::render_svg_file_to_pdf,
+    svg_png::SvgPngRenderOptions,
     tool_overrides::resolve_tool_executable,
 };
+
+#[cfg(test)]
+use crate::engine::protocol::ExperimentalAssayReadinessPolicy;
 
 fn source_path(base: &Path, raw: &str) -> PathBuf {
     let path = Path::new(raw);
@@ -569,6 +589,887 @@ pub fn generate_gene_set_publication(
     Ok(generation)
 }
 
+fn load_publication_bound_report(
+    base: &Path,
+    reference: &GeneIsoformAssayPublicationReportRef,
+    expected_schema: &str,
+    id_fields: &[&str],
+) -> Result<GeneIsoformAssayPublicationBoundReport, String> {
+    if reference.path.trim().is_empty() || reference.expected_sha256.trim().is_empty() {
+        return Err("Publication report references require path and expected_sha256".to_string());
+    }
+    let path = source_path(base, &reference.path);
+    let bytes = fs::read(&path)
+        .map_err(|error| format!("Could not read report '{}': {error}", path.display()))?;
+    let sha256 = sha256_prefixed_bytes(&bytes);
+    if sha256 != reference.expected_sha256 {
+        return Err(format!(
+            "Report '{}' has digest '{}' but '{}' was required",
+            path.display(),
+            sha256,
+            reference.expected_sha256
+        ));
+    }
+    let value: serde_json::Value = serde_json::from_slice(&bytes)
+        .map_err(|error| format!("Could not parse report '{}': {error}", path.display()))?;
+    let schema = value
+        .get("schema")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    if schema != expected_schema {
+        return Err(format!(
+            "Report '{}' uses schema '{}'; expected '{}'",
+            path.display(),
+            schema,
+            expected_schema
+        ));
+    }
+    let report_id = id_fields
+        .iter()
+        .find_map(|field| value.get(*field).and_then(serde_json::Value::as_str))
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| {
+            format!(
+                "Report '{}' has none of the required identity fields {:?}",
+                path.display(),
+                id_fields
+            )
+        })?;
+    Ok(GeneIsoformAssayPublicationBoundReport {
+        source_path: reference.path.clone(),
+        sha256,
+        schema: schema.to_string(),
+        report_id: report_id.to_string(),
+        value,
+    })
+}
+
+fn publication_gene_slug(symbol: &str) -> Result<String, String> {
+    let slug = symbol
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                ch
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>();
+    if slug.is_empty() || slug == "." || slug == ".." {
+        return Err(format!(
+            "Gene symbol '{symbol}' cannot form a safe page name"
+        ));
+    }
+    Ok(slug)
+}
+
+fn publication_parameter_entries(
+    genes: &[GeneIsoformAssayPublicationGene],
+) -> (
+    Vec<GeneIsoformAssayPublicationParameter>,
+    Vec<GeneIsoformAssayPublicationParameterOverride>,
+) {
+    let mut by_name: BTreeMap<String, Vec<(usize, serde_json::Value)>> = BTreeMap::new();
+    for (gene_index, gene) in genes.iter().enumerate() {
+        if let Some(policy) = gene
+            .study_plan
+            .value
+            .pointer("/normalized_request/policy")
+            .and_then(serde_json::Value::as_object)
+        {
+            for (name, value) in policy {
+                by_name
+                    .entry(name.clone())
+                    .or_default()
+                    .push((gene_index, value.clone()));
+            }
+        }
+    }
+    let mut common = vec![];
+    let mut overrides = vec![];
+    for (name, values) in by_name {
+        let all_genes_present = values.len() == genes.len();
+        let first = values.first().map(|(_, value)| value);
+        let all_equal = first.is_some_and(|first| values.iter().all(|(_, value)| value == first));
+        if all_genes_present && all_equal {
+            common.push(GeneIsoformAssayPublicationParameter {
+                name: name.clone(),
+                value: first.cloned().unwrap_or(serde_json::Value::Null),
+                source_pointers: values
+                    .iter()
+                    .map(|(gene_index, _)| {
+                        format!(
+                            "/genes/{gene_index}/study_plan/value/normalized_request/policy/{name}"
+                        )
+                    })
+                    .collect(),
+            });
+        } else {
+            for (gene_index, value) in values {
+                let gene = &genes[gene_index];
+                let reason = gene
+                    .study_plan
+                    .value
+                    .pointer("/profile_override/reason")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or(
+                        "GENtle retained this gene-specific effective policy value from the approved normalized request.",
+                    )
+                    .to_string();
+                overrides.push(GeneIsoformAssayPublicationParameterOverride {
+                    gene_symbol: gene.gene_symbol.clone(),
+                    name: name.clone(),
+                    common_value: None,
+                    effective_value: value,
+                    reason,
+                    source_pointer: format!(
+                        "/genes/{gene_index}/study_plan/value/normalized_request/policy/{name}"
+                    ),
+                });
+            }
+        }
+    }
+    (common, overrides)
+}
+
+fn validate_order_form_handoff_binding(
+    gene: &GeneIsoformAssayPublicationGene,
+) -> Result<(), String> {
+    let handoffs = gene
+        .handoffs
+        .iter()
+        .map(|handoff| {
+            let report: ExperimentalAssayHandoffReport =
+                serde_json::from_value(handoff.value.clone()).map_err(|error| {
+                    format!(
+                        "Could not validate experimental handoff '{}': {error}",
+                        handoff.report_id
+                    )
+                })?;
+            let policy_text = serde_json::to_string(&report.policy).map_err(|error| {
+                format!(
+                    "Could not serialize readiness policy for handoff '{}': {error}",
+                    handoff.report_id
+                )
+            })?;
+            let policy_sha256 = sha256_prefixed_bytes(policy_text.as_bytes());
+            let expected_policy_id = format!(
+                "readiness_policy_sha256_{}",
+                policy_sha256.trim_start_matches("sha256:")
+            );
+            if report.policy_id != expected_policy_id {
+                return Err(format!(
+                    "Experimental handoff '{}' policy_id '{}' does not match embedded policy '{}'",
+                    handoff.report_id, report.policy_id, expected_policy_id
+                ));
+            }
+            Ok((handoff, report, policy_sha256))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    for order_form in &gene.order_forms {
+        let lines = order_form
+            .value
+            .get("line_items")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| {
+                format!(
+                    "Order form '{}' has no line_items array",
+                    order_form.report_id
+                )
+            })?;
+        for line in lines {
+            let provenance_value = line.get("provenance").ok_or_else(|| {
+                format!(
+                    "Order form '{}' line lacks readiness-bound provenance",
+                    order_form.report_id
+                )
+            })?;
+            let provenance: OligoOrderLineProvenance =
+                serde_json::from_value(provenance_value.clone()).map_err(|error| {
+                    format!(
+                        "Order form '{}' line has invalid readiness provenance: {error}",
+                        order_form.report_id
+                    )
+                })?;
+            let report_sha256 = provenance.report_sha256.as_deref().unwrap_or_default();
+            let policy_id = provenance
+                .readiness_policy_id
+                .as_deref()
+                .unwrap_or_default();
+            let policy_sha256 = provenance
+                .readiness_policy_sha256
+                .as_deref()
+                .unwrap_or_default();
+            let matching_handoff = handoffs.iter().find(|(bound, report, digest)| {
+                bound.report_id == provenance.report_id
+                    && bound.sha256 == report_sha256
+                    && report.policy_id == policy_id
+                    && digest == policy_sha256
+            });
+            let Some((_, handoff, _)) = matching_handoff else {
+                return Err(format!(
+                    "Order form '{}' line '{}' is not bound to an included order-ready experimental handoff and policy",
+                    order_form.report_id,
+                    line.get("line_id")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or("unknown")
+                ));
+            };
+            if provenance.source_kind != "experimental_assay_handoff"
+                || provenance.report_schema != "gentle.experimental_assay_handoff.v1"
+                || provenance.readiness_state.as_deref() != Some("order_ready")
+            {
+                return Err(format!(
+                    "Order form '{}' line '{}' does not identify an order-ready experimental-assay handoff source",
+                    order_form.report_id,
+                    line.get("line_id")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or("unknown")
+                ));
+            }
+            let readiness_row = provenance.readiness_row.as_ref().ok_or_else(|| {
+                format!(
+                    "Order form '{}' line '{}' does not retain its readiness row",
+                    order_form.report_id,
+                    line.get("line_id")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or("unknown")
+                )
+            })?;
+            let card_id = provenance.readiness_card_id.as_deref().unwrap_or_default();
+            let assay_id = provenance.assay_id.as_deref().unwrap_or_default();
+            let pair_id = provenance.pair_id.as_deref().unwrap_or_default();
+            let oligo_id = provenance.oligo_id.as_deref().unwrap_or_default();
+            let sequence = line
+                .get("sequence_5_to_3")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default();
+            let row_matches_provenance = readiness_row.order_ready
+                && readiness_row.readiness_state == ExperimentalAssayReadinessState::OrderReady
+                && readiness_row.card_id == card_id
+                && readiness_row.assay_id == assay_id
+                && readiness_row.pair_id == pair_id
+                && readiness_row
+                    .oligo_ids
+                    .iter()
+                    .any(|value| value == oligo_id)
+                && readiness_row
+                    .sequences_5_to_3
+                    .iter()
+                    .any(|value| value == sequence);
+            let row_matches_handoff = handoff.order_readiness_table.iter().any(|row| {
+                row.order_ready
+                    && row.readiness_state == ExperimentalAssayReadinessState::OrderReady
+                    && row.card_id == readiness_row.card_id
+                    && row.assay_id == readiness_row.assay_id
+                    && row.pair_id == readiness_row.pair_id
+                    && row.oligo_ids == readiness_row.oligo_ids
+                    && row.sequences_5_to_3 == readiness_row.sequences_5_to_3
+            });
+            if !row_matches_provenance || !row_matches_handoff {
+                return Err(format!(
+                    "Order form '{}' line '{}' readiness row does not match its provenance or approved handoff",
+                    order_form.report_id,
+                    line.get("line_id")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or("unknown")
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_handoff_plan_binding(gene: &GeneIsoformAssayPublicationGene) -> Result<(), String> {
+    let mut planned_panels = BTreeMap::new();
+    for step in gene
+        .study_plan
+        .value
+        .get("planned_operations")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let Some(payload) = step
+            .get("operation")
+            .and_then(|operation| operation.get("DesignTranscriptAssayPanel"))
+        else {
+            continue;
+        };
+        let report_id = payload
+            .get("report_id")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
+        let seq_id = payload
+            .get("seq_id")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
+        let source_feature_id = payload
+            .get("source_feature_id")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok());
+        if report_id.is_empty() || seq_id.is_empty() || source_feature_id.is_none() {
+            return Err(format!(
+                "Study plan '{}' has an incomplete DesignTranscriptAssayPanel payload",
+                gene.study_plan.report_id
+            ));
+        }
+        if planned_panels
+            .insert(
+                report_id.to_string(),
+                (seq_id.to_string(), source_feature_id.unwrap_or_default()),
+            )
+            .is_some()
+        {
+            return Err(format!(
+                "Study plan '{}' repeats panel report id '{}'",
+                gene.study_plan.report_id, report_id
+            ));
+        }
+    }
+    for bound in &gene.handoffs {
+        let handoff: ExperimentalAssayHandoffReport = serde_json::from_value(bound.value.clone())
+            .map_err(|error| {
+            format!(
+                "Could not validate experimental handoff '{}': {error}",
+                bound.report_id
+            )
+        })?;
+        let Some((seq_id, source_feature_id)) = planned_panels.get(&handoff.source_panel_report_id)
+        else {
+            return Err(format!(
+                "Experimental handoff '{}' source panel '{}' is absent from approved study plan '{}'",
+                bound.report_id, handoff.source_panel_report_id, gene.study_plan.report_id
+            ));
+        };
+        if handoff.source_seq_id != *seq_id || handoff.source_feature_id != *source_feature_id {
+            return Err(format!(
+                "Experimental handoff '{}' source sequence/feature does not match approved panel '{}'",
+                bound.report_id, handoff.source_panel_report_id
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn write_publication_order_sheet(
+    path: &Path,
+    gene: &GeneIsoformAssayPublicationGene,
+) -> Result<bool, String> {
+    if gene.order_forms.is_empty() {
+        return Ok(false);
+    }
+    let mut writer = csv::WriterBuilder::new()
+        .delimiter(b'\t')
+        .from_path(path)
+        .map_err(|error| format!("Could not create order sheet '{}': {error}", path.display()))?;
+    writer
+        .write_record([
+            "form_id",
+            "line_id",
+            "line_no",
+            "name",
+            "role",
+            "sequence_5_to_3",
+            "length_nt",
+            "modifications",
+            "scale",
+            "purification",
+            "handoff_sha256",
+            "readiness_policy_id",
+            "readiness_policy_sha256",
+            "readiness_card_id",
+            "assay_id",
+            "pair_id",
+            "oligo_id",
+        ])
+        .map_err(|error| error.to_string())?;
+    for form in &gene.order_forms {
+        for line in form
+            .value
+            .get("line_items")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            let provenance = line.get("provenance").unwrap_or(&serde_json::Value::Null);
+            writer
+                .write_record([
+                    form.report_id.clone(),
+                    json_string(line.get("line_id")),
+                    json_string(line.get("line_no")),
+                    json_string(line.get("name")),
+                    json_string(line.get("role")),
+                    json_string(line.get("sequence_5_to_3")),
+                    json_string(line.get("length_nt")),
+                    json_string(line.get("modifications")),
+                    json_string(line.get("scale")),
+                    json_string(line.get("purification")),
+                    json_string(provenance.get("report_sha256")),
+                    json_string(provenance.get("readiness_policy_id")),
+                    json_string(provenance.get("readiness_policy_sha256")),
+                    json_string(provenance.get("readiness_card_id")),
+                    json_string(provenance.get("assay_id")),
+                    json_string(provenance.get("pair_id")),
+                    json_string(provenance.get("oligo_id")),
+                ])
+                .map_err(|error| error.to_string())?;
+        }
+    }
+    writer.flush().map_err(|error| error.to_string())?;
+    Ok(true)
+}
+
+fn json_string(value: Option<&serde_json::Value>) -> String {
+    match value {
+        Some(serde_json::Value::String(value)) => value.clone(),
+        Some(serde_json::Value::Null) | None => String::new(),
+        Some(value) => serde_json::to_string(value).unwrap_or_default(),
+    }
+}
+
+fn publication_artifact(
+    path: &Path,
+    media_type: &str,
+) -> Result<GeneIsoformAssayPublicationArtifact, String> {
+    let bytes = fs::read(path).map_err(|error| {
+        format!(
+            "Could not hash publication artifact '{}': {error}",
+            path.display()
+        )
+    })?;
+    Ok(GeneIsoformAssayPublicationArtifact {
+        path: path.to_string_lossy().into_owned(),
+        sha256: sha256_prefixed_bytes(&bytes),
+        media_type: media_type.to_string(),
+    })
+}
+
+fn publication_media_type(path: &Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "svg" => "image/svg+xml",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "pdf" => "application/pdf",
+        _ => "application/octet-stream",
+    }
+}
+
+fn print_html_to_pdf(html_path: &Path, pdf_path: &Path) -> Result<(), String> {
+    let browser = resolve_tool_executable("GENTLE_BROWSER_BIN", "chromium");
+    let canonical_html = fs::canonicalize(html_path).map_err(|error| {
+        format!(
+            "Could not resolve printable HTML '{}': {error}",
+            html_path.display()
+        )
+    })?;
+    let file_url = format!("file://{}", canonical_html.to_string_lossy());
+    run(
+        Command::new(browser)
+            .arg("--headless")
+            .arg("--disable-gpu")
+            .arg("--no-pdf-header-footer")
+            .arg(format!("--print-to-pdf={}", pdf_path.display()))
+            .arg(file_url),
+        "browser HTML-to-PDF rendering",
+        "GENTLE_BROWSER_BIN",
+    )?;
+    require_generated_file(pdf_path, "browser HTML-to-PDF rendering")
+}
+
+/// Generate a canonical multi-gene assay dossier, one HTML page per gene, an
+/// index/meta page, a print HTML projection, and an optional browser-rendered
+/// PDF. Explicit block selection is presentation-only and cannot add content.
+pub fn generate_gene_isoform_assay_publication(
+    request_path: &Path,
+    output_directory: &Path,
+    selected_profile: Option<&str>,
+    selected_block_ids: &[String],
+    generate_pdf: bool,
+) -> Result<GeneIsoformAssayPublicationProjectionReport, String> {
+    let request_bytes = fs::read(request_path).map_err(|error| {
+        format!(
+            "Could not read isoform-assay publication request '{}': {error}",
+            request_path.display()
+        )
+    })?;
+    let request: GeneIsoformAssayPublicationRequest = serde_json::from_slice(&request_bytes)
+        .map_err(|error| {
+            format!(
+                "Could not parse isoform-assay publication request '{}': {error}",
+                request_path.display()
+            )
+        })?;
+    if request.schema != GENE_ISOFORM_ASSAY_PUBLICATION_REQUEST_SCHEMA {
+        return Err(format!("Unsupported schema '{}'", request.schema));
+    }
+    if request.report_id.trim().is_empty()
+        || request.title.trim().is_empty()
+        || request.genes.is_empty()
+    {
+        return Err("report_id, title, and at least one gene are required".to_string());
+    }
+    for (label, filename) in [
+        ("index_filename", request.index_filename.as_str()),
+        ("print_filename", request.print_filename.as_str()),
+        ("pdf_filename", request.pdf_filename.as_str()),
+    ] {
+        validate_leaf_filename(filename, label)?;
+    }
+    if request
+        .index_filename
+        .eq_ignore_ascii_case(&request.print_filename)
+        || request
+            .index_filename
+            .eq_ignore_ascii_case(&request.pdf_filename)
+        || request
+            .print_filename
+            .eq_ignore_ascii_case(&request.pdf_filename)
+    {
+        return Err("index, print HTML, and PDF filenames must be distinct".to_string());
+    }
+
+    let base = request_path.parent().unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(output_directory)
+        .map_err(|error| format!("Could not create '{}': {error}", output_directory.display()))?;
+    let figures_dir = output_directory.join("figures");
+    let data_dir = output_directory.join("data");
+    fs::create_dir_all(&figures_dir).map_err(|error| error.to_string())?;
+    fs::create_dir_all(&data_dir).map_err(|error| error.to_string())?;
+    let mut targets = BTreeMap::new();
+    let mut symbols = BTreeSet::new();
+    let mut genes = vec![];
+    let mut artifacts = vec![];
+    for gene_request in &request.genes {
+        let symbol = gene_request.gene_symbol.trim();
+        if symbol.is_empty() || !symbols.insert(symbol.to_ascii_uppercase()) {
+            return Err(format!(
+                "Gene symbols must be non-empty and unique: '{}'",
+                gene_request.gene_symbol
+            ));
+        }
+        let study_plan = load_publication_bound_report(
+            base,
+            &gene_request.study_plan,
+            "gentle.gene_isoform_assay_study_plan.v1",
+            &["plan_id"],
+        )?;
+        let plan_gene = study_plan
+            .value
+            .get("gene_symbol")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
+        if !plan_gene.eq_ignore_ascii_case(symbol) {
+            return Err(format!(
+                "Study plan '{}' belongs to gene '{}' rather than '{}'",
+                study_plan.report_id, plan_gene, symbol
+            ));
+        }
+        let handoffs = gene_request
+            .handoffs
+            .iter()
+            .map(|reference| {
+                load_publication_bound_report(
+                    base,
+                    reference,
+                    "gentle.experimental_assay_handoff.v1",
+                    &["package_id"],
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let order_forms = gene_request
+            .order_forms
+            .iter()
+            .map(|reference| {
+                load_publication_bound_report(
+                    base,
+                    reference,
+                    "gentle.oligo_order_form.v1",
+                    &["form_id"],
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut figures = vec![];
+        for figure in &gene_request.figures {
+            validate_leaf_filename(&figure.figure_id, "figure_id")?;
+            let source = source_path(base, &figure.source_path);
+            let (target, name, copied) = copy_asset(&source, &figures_dir, "figure", &mut targets)?;
+            if copied {
+                artifacts.push(publication_artifact(
+                    &target,
+                    publication_media_type(&target),
+                )?);
+            }
+            figures.push(GeneSetPublicationFigure {
+                figure_id: figure.figure_id.clone(),
+                kind: figure.kind.clone(),
+                label: figure.label.clone(),
+                web_path: format!("figures/{name}"),
+                pdf_path: None,
+                caption: figure.caption.clone(),
+                alt_text: figure.alt_text.clone(),
+                include_in_pdf: figure.include_in_pdf,
+            });
+        }
+        let slug = publication_gene_slug(symbol)?;
+        let order_sheet_name = format!("{slug}-oligo-order.tsv");
+        let order_sheet_path =
+            (!order_forms.is_empty()).then(|| format!("data/{order_sheet_name}"));
+        let gene = GeneIsoformAssayPublicationGene {
+            gene_symbol: symbol.to_string(),
+            page_path: format!("gene-{slug}.html"),
+            study_plan,
+            handoffs,
+            order_forms,
+            figures,
+            order_sheet_path,
+            warnings: vec![],
+        };
+        validate_handoff_plan_binding(&gene)?;
+        validate_order_form_handoff_binding(&gene)?;
+        if let Some(relative) = &gene.order_sheet_path {
+            let path = output_directory.join(relative);
+            if write_publication_order_sheet(&path, &gene)? {
+                artifacts.push(publication_artifact(&path, "text/tab-separated-values")?);
+            }
+        }
+        genes.push(gene);
+    }
+    let favicon_path = if let Some(raw) = &request.favicon_source_path {
+        let source = source_path(base, raw);
+        let target = output_directory.join("favicon.ico");
+        fs::copy(&source, &target)
+            .map_err(|error| format!("Could not copy favicon '{}': {error}", source.display()))?;
+        artifacts.push(publication_artifact(&target, "image/x-icon")?);
+        Some("favicon.ico".to_string())
+    } else {
+        None
+    };
+    let (common_parameters, parameter_overrides) = publication_parameter_entries(&genes);
+    let mut content_blocks = vec![GeneIsoformAssayPublicationBlock {
+        block_id: "run.parameters".to_string(),
+        label: "Run parameters".to_string(),
+        projection: "run_parameters".to_string(),
+        source_pointer: "/common_parameters".to_string(),
+        gene_symbol: None,
+    }];
+    let mut full = vec!["run.parameters".to_string()];
+    let mut summary = vec!["run.parameters".to_string()];
+    let mut ordering = vec!["run.parameters".to_string()];
+    for (gene_index, gene) in genes.iter().enumerate() {
+        let prefix = gene.gene_symbol.to_ascii_lowercase();
+        let definitions = [
+            (
+                "overview",
+                "Study decision",
+                "study_overview",
+                "study_plan/value",
+                true,
+                true,
+                false,
+            ),
+            (
+                "evidence",
+                "Evidence summary",
+                "evidence_summary",
+                "study_plan/value/evidence_summary",
+                true,
+                true,
+                false,
+            ),
+            (
+                "decision",
+                "Decision factors",
+                "decision_factors",
+                "study_plan/value/decision_factors",
+                true,
+                false,
+                false,
+            ),
+            (
+                "operations",
+                "Planned operations",
+                "planned_operations",
+                "study_plan/value/planned_operations",
+                true,
+                false,
+                false,
+            ),
+            (
+                "assays",
+                "Assay readiness",
+                "assay_handoffs",
+                "handoffs",
+                true,
+                true,
+                true,
+            ),
+            (
+                "order",
+                "Oligo order sheet",
+                "order_sheet",
+                "order_forms",
+                true,
+                false,
+                true,
+            ),
+            (
+                "figures", "Figures", "figures", "figures", true, true, false,
+            ),
+            (
+                "provenance",
+                "Provenance",
+                "provenance",
+                "study_plan",
+                true,
+                false,
+                true,
+            ),
+        ];
+        for (suffix, label, projection, pointer, in_full, in_summary, in_ordering) in definitions {
+            let block_id = format!("gene.{prefix}.{suffix}");
+            content_blocks.push(GeneIsoformAssayPublicationBlock {
+                block_id: block_id.clone(),
+                label: label.to_string(),
+                projection: projection.to_string(),
+                source_pointer: format!("/genes/{gene_index}/{pointer}"),
+                gene_symbol: Some(gene.gene_symbol.clone()),
+            });
+            if in_full {
+                full.push(block_id.clone());
+            }
+            if in_summary {
+                summary.push(block_id.clone());
+            }
+            if in_ordering {
+                ordering.push(block_id);
+            }
+        }
+    }
+    let profiles = vec![
+        GeneIsoformAssayPublicationProfile {
+            profile_id: "full".to_string(),
+            label: "Complete scientific and procurement dossier".to_string(),
+            block_ids: full,
+        },
+        GeneIsoformAssayPublicationProfile {
+            profile_id: "review".to_string(),
+            label: "Compact biological and assay review".to_string(),
+            block_ids: summary,
+        },
+        GeneIsoformAssayPublicationProfile {
+            profile_id: "ordering".to_string(),
+            label: "Readiness and procurement review".to_string(),
+            block_ids: ordering,
+        },
+    ];
+    let report = GeneIsoformAssayPublicationReport {
+        schema: GENE_ISOFORM_ASSAY_PUBLICATION_SCHEMA.to_string(),
+        report_id: request.report_id.clone(),
+        title: request.title.clone(),
+        subtitle: request.subtitle.clone(),
+        generated_date: request.generated_date.clone(),
+        default_profile: request.default_profile.clone(),
+        index_path: request.index_filename.clone(),
+        print_path: request.print_filename.clone(),
+        common_parameters,
+        parameter_overrides,
+        genes,
+        content_blocks,
+        profiles,
+        footer: request.footer.clone(),
+        favicon_path,
+        warnings: vec![
+            "GENtle report values remain sequence/evidence/design records; approval authorizes an exact operation payload but does not validate its biological interpretation."
+                .to_string(),
+        ],
+    };
+    let selected_profile = selected_profile
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(&report.default_profile)
+        .to_string();
+    let canonical_path = output_directory.join("canonical-report.json");
+    let canonical_bytes = serde_json::to_vec_pretty(&report).map_err(|error| error.to_string())?;
+    fs::write(&canonical_path, &canonical_bytes).map_err(|error| error.to_string())?;
+    let canonical_report_sha256 = sha256_prefixed_bytes(&canonical_bytes);
+    artifacts.push(publication_artifact(&canonical_path, "application/json")?);
+
+    let index_path = output_directory.join(&request.index_filename);
+    fs::write(
+        &index_path,
+        render_gene_isoform_assay_publication_index(&report),
+    )
+    .map_err(|error| error.to_string())?;
+    artifacts.push(publication_artifact(&index_path, "text/html")?);
+    for (gene_index, gene) in report.genes.iter().enumerate() {
+        let path = output_directory.join(&gene.page_path);
+        fs::write(
+            &path,
+            render_gene_isoform_assay_publication_gene(
+                &report,
+                gene_index,
+                &selected_profile,
+                selected_block_ids,
+            )?,
+        )
+        .map_err(|error| error.to_string())?;
+        artifacts.push(publication_artifact(&path, "text/html")?);
+    }
+    let print_path = output_directory.join(&request.print_filename);
+    fs::write(
+        &print_path,
+        render_gene_isoform_assay_publication_print(
+            &report,
+            &selected_profile,
+            selected_block_ids,
+        )?,
+    )
+    .map_err(|error| error.to_string())?;
+    artifacts.push(publication_artifact(&print_path, "text/html")?);
+    if generate_pdf {
+        let pdf_path = output_directory.join(&request.pdf_filename);
+        remove_generated_file_if_present(&pdf_path)?;
+        print_html_to_pdf(&print_path, &pdf_path)?;
+        artifacts.push(publication_artifact(&pdf_path, "application/pdf")?);
+    }
+    artifacts.sort_by(|left, right| left.path.cmp(&right.path));
+    let selected_profile_block_ids = report
+        .profiles
+        .iter()
+        .find(|profile| profile.profile_id == selected_profile)
+        .map(|profile| profile.block_ids.clone())
+        .ok_or_else(|| format!("Unknown publication profile '{selected_profile}'"))?;
+    let receipt = GeneIsoformAssayPublicationProjectionReport {
+        schema: GENE_ISOFORM_ASSAY_PUBLICATION_PROJECTION_SCHEMA.to_string(),
+        canonical_report_path: canonical_path.to_string_lossy().into_owned(),
+        canonical_report_sha256,
+        selected_profile,
+        selected_block_ids: if selected_block_ids.is_empty() {
+            selected_profile_block_ids
+        } else {
+            selected_block_ids.to_vec()
+        },
+        artifacts,
+        warnings: vec![
+            "Block/profile selection is a presentation projection of the immutable canonical report and does not alter scientific content."
+                .to_string(),
+        ],
+    };
+    fs::write(
+        output_directory.join("projection-report.json"),
+        serde_json::to_vec_pretty(&receipt).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(receipt)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -713,5 +1614,238 @@ mod tests {
         )
         .expect("parse resolved report");
         assert_eq!(resolved.pdf_path, None);
+    }
+
+    #[test]
+    fn isoform_assay_publication_uses_bound_reports_and_declared_blocks() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let plan = serde_json::json!({
+            "schema": "gentle.gene_isoform_assay_study_plan.v1",
+            "plan_id": "plan_gene1",
+            "gene_symbol": "GENE1",
+            "recommended_profile": "isoform_discrimination",
+            "selected_profile": "isoform_discrimination",
+            "iteration": 1,
+            "operation_batch_sha256": "sha256:operations",
+            "normalized_request": {
+                "policy": {
+                    "schema": "gentle.gene_isoform_assay_study_policy.v1",
+                    "policy_version": "1",
+                    "short_min_amplicon_bp": 70,
+                    "short_max_amplicon_bp": 250
+                }
+            },
+            "evidence_summary": {
+                "transcript_count": 3,
+                "exact_cdna_equivalence_group_count": 2,
+                "responsive_region_count": 1
+            },
+            "decision_factors": [{
+                "rule_id": "multiple_cdna_classes",
+                "triggered": true,
+                "summary": "Two exact mature-cDNA classes require discrimination."
+            }],
+            "planned_operations": [{
+                "step_index": 0,
+                "step_id": "short_discrimination",
+                "purpose": "Distinguish exact mature-cDNA classes",
+                "operation_sha256": "sha256:operation",
+                "operation": {
+                    "DesignTranscriptAssayPanel": {
+                        "seq_id": "gene1_seq",
+                        "source_feature_id": 0,
+                        "report_id": "panel_gene1"
+                    }
+                }
+            }]
+        });
+        let plan_bytes = serde_json::to_vec_pretty(&plan).unwrap();
+        fs::write(temp.path().join("plan.json"), &plan_bytes).unwrap();
+        let readiness_policy = ExperimentalAssayReadinessPolicy::default();
+        let readiness_policy_text = serde_json::to_string(&readiness_policy).unwrap();
+        let readiness_policy_sha256 = sha256_prefixed_bytes(readiness_policy_text.as_bytes());
+        let readiness_policy_id = format!(
+            "readiness_policy_sha256_{}",
+            readiness_policy_sha256.trim_start_matches("sha256:")
+        );
+        let readiness_row = serde_json::json!({
+            "card_id": "card_1",
+            "assay_id": "assay_1",
+            "pair_id": "pair_1",
+            "pair_rank": 1,
+            "display_label": "GENE1 pair 1",
+            "readiness_state": "order_ready",
+            "order_ready": true,
+            "oligo_ids": ["oligo_1"],
+            "sequences_5_to_3": ["ACGTACGT"]
+        });
+        let handoff = serde_json::json!({
+            "schema": "gentle.experimental_assay_handoff.v1",
+            "package_id": "handoff_gene1",
+            "source_panel_report_id": "panel_gene1",
+            "source_seq_id": "gene1_seq",
+            "source_feature_id": 0,
+            "policy": readiness_policy,
+            "policy_id": readiness_policy_id,
+            "order_readiness_table": [readiness_row.clone()]
+        });
+        let handoff_bytes = serde_json::to_vec_pretty(&handoff).unwrap();
+        let handoff_sha256 = sha256_prefixed_bytes(&handoff_bytes);
+        fs::write(temp.path().join("handoff.json"), &handoff_bytes).unwrap();
+        let order = serde_json::json!({
+            "schema": "gentle.oligo_order_form.v1",
+            "form_id": "order_gene1",
+            "line_items": [{
+                "line_id": "line_1",
+                "line_no": 1,
+                "name": "GENE1_F",
+                "role": "forward",
+                "sequence_5_to_3": "ACGTACGT",
+                "length_nt": 8,
+                "modifications": [],
+                "scale": "25 nmol",
+                "purification": "desalt",
+                "provenance": {
+                    "source_kind": "experimental_assay_handoff",
+                    "report_id": "handoff_gene1",
+                    "report_schema": "gentle.experimental_assay_handoff.v1",
+                    "report_sha256": handoff_sha256,
+                    "readiness_policy_id": readiness_policy_id,
+                    "readiness_policy_sha256": readiness_policy_sha256,
+                    "readiness_card_id": "card_1",
+                    "readiness_state": "order_ready",
+                    "assay_id": "assay_1",
+                    "pair_id": "pair_1",
+                    "oligo_id": "oligo_1",
+                    "readiness_row": readiness_row
+                }
+            }]
+        });
+        let order_bytes = serde_json::to_vec_pretty(&order).unwrap();
+        fs::write(temp.path().join("order.json"), &order_bytes).unwrap();
+        let request = serde_json::json!({
+            "schema": GENE_ISOFORM_ASSAY_PUBLICATION_REQUEST_SCHEMA,
+            "report_id": "dossier_1",
+            "title": "Synthetic isoform assay dossier",
+            "genes": [{
+                "gene_symbol": "GENE1",
+                "study_plan": {
+                    "path": "plan.json",
+                    "expected_sha256": sha256_prefixed_bytes(&plan_bytes)
+                },
+                "handoffs": [{
+                    "path": "handoff.json",
+                    "expected_sha256": sha256_prefixed_bytes(&handoff_bytes)
+                }],
+                "order_forms": [{
+                    "path": "order.json",
+                    "expected_sha256": sha256_prefixed_bytes(&order_bytes)
+                }]
+            }]
+        });
+        let request_path = temp.path().join("request.json");
+        fs::write(&request_path, serde_json::to_vec_pretty(&request).unwrap()).unwrap();
+        let output = temp.path().join("out");
+        let receipt = generate_gene_isoform_assay_publication(
+            &request_path,
+            &output,
+            Some("review"),
+            &[],
+            false,
+        )
+        .expect("generate canonical dossier");
+        assert_eq!(
+            receipt.schema,
+            GENE_ISOFORM_ASSAY_PUBLICATION_PROJECTION_SCHEMA
+        );
+        assert!(output.join("index.html").is_file());
+        assert!(output.join("gene-GENE1.html").is_file());
+        assert!(output.join("print.html").is_file());
+        assert!(output.join("data/GENE1-oligo-order.tsv").is_file());
+        let canonical: GeneIsoformAssayPublicationReport =
+            serde_json::from_slice(&fs::read(output.join("canonical-report.json")).unwrap())
+                .unwrap();
+        assert_eq!(
+            canonical.genes[0].study_plan.sha256,
+            sha256_prefixed_bytes(&plan_bytes)
+        );
+        assert!(
+            canonical
+                .content_blocks
+                .iter()
+                .any(|block| block.block_id == "gene.gene1.order")
+        );
+        let gene_html = fs::read_to_string(output.join("gene-GENE1.html")).unwrap();
+        assert!(gene_html.contains("isoform_discrimination"));
+        assert!(gene_html.contains("assay_1"));
+        assert!(!gene_html.contains("Sequence 5′→3′"));
+        let unknown = render_gene_isoform_assay_publication_gene(
+            &canonical,
+            0,
+            "review",
+            &["gene.gene1.fabricated".to_string()],
+        )
+        .expect_err("undeclared presentation block must fail");
+        assert!(unknown.contains("Unknown publication block"), "{unknown}");
+
+        let mut tampered_order = order.clone();
+        tampered_order["line_items"][0]["provenance"]["readiness_row"]["order_ready"] =
+            serde_json::Value::Bool(false);
+        let tampered_order_bytes = serde_json::to_vec_pretty(&tampered_order).unwrap();
+        fs::write(
+            temp.path().join("order-tampered.json"),
+            &tampered_order_bytes,
+        )
+        .unwrap();
+        let mut tampered_request = request.clone();
+        tampered_request["genes"][0]["order_forms"][0]["path"] =
+            serde_json::Value::String("order-tampered.json".to_string());
+        tampered_request["genes"][0]["order_forms"][0]["expected_sha256"] =
+            serde_json::Value::String(sha256_prefixed_bytes(&tampered_order_bytes));
+        let tampered_request_path = temp.path().join("request-tampered.json");
+        fs::write(
+            &tampered_request_path,
+            serde_json::to_vec_pretty(&tampered_request).unwrap(),
+        )
+        .unwrap();
+        let error = generate_gene_isoform_assay_publication(
+            &tampered_request_path,
+            &temp.path().join("out-tampered"),
+            None,
+            &[],
+            false,
+        )
+        .expect_err("tampered readiness row must fail");
+        assert!(error.contains("readiness row does not match"), "{error}");
+
+        let mut unrelated_handoff = handoff;
+        unrelated_handoff["source_panel_report_id"] =
+            serde_json::Value::String("unapproved_panel".to_string());
+        let unrelated_handoff_bytes = serde_json::to_vec_pretty(&unrelated_handoff).unwrap();
+        fs::write(
+            temp.path().join("handoff-unapproved.json"),
+            &unrelated_handoff_bytes,
+        )
+        .unwrap();
+        let mut unrelated_request = request;
+        unrelated_request["genes"][0]["handoffs"][0]["path"] =
+            serde_json::Value::String("handoff-unapproved.json".to_string());
+        unrelated_request["genes"][0]["handoffs"][0]["expected_sha256"] =
+            serde_json::Value::String(sha256_prefixed_bytes(&unrelated_handoff_bytes));
+        let unrelated_request_path = temp.path().join("request-unapproved.json");
+        fs::write(
+            &unrelated_request_path,
+            serde_json::to_vec_pretty(&unrelated_request).unwrap(),
+        )
+        .unwrap();
+        let error = generate_gene_isoform_assay_publication(
+            &unrelated_request_path,
+            &temp.path().join("out-unapproved"),
+            None,
+            &[],
+            false,
+        )
+        .expect_err("handoff outside approved operation batch must fail");
+        assert!(error.contains("absent from approved study plan"), "{error}");
     }
 }
