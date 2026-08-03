@@ -59,7 +59,7 @@
             "schema": "gentle.clawbio_skill_request.v1",
             "claim_attribution_mode": "strict",
             "presentation_profile": "pcr_primer_design",
-            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.5.0", "intent_id": "conventional_pcr_design", "plan_step_index": 0},
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.6.0", "intent_id": "conventional_pcr_design", "plan_step_index": 0},
             "mode": "shell",
             "state_path": ".gentle_state.json",
             "shell_line": "primers design @{request_path} --backend {backend}",
@@ -112,7 +112,7 @@
             "schema": "gentle.clawbio_skill_request.v1",
             "claim_attribution_mode": "strict",
             "presentation_profile": "pcr_primer_design",
-            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.5.0", "intent_id": "qpcr_taqman_design", "plan_step_index": 0},
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.6.0", "intent_id": "qpcr_taqman_design", "plan_step_index": 0},
             "mode": "shell",
             "state_path": ".gentle_state.json",
             "shell_line": "primers design-qpcr @{request_path} --backend {backend}",
@@ -182,7 +182,7 @@
             "schema": "gentle.clawbio_skill_request.v1",
             "claim_attribution_mode": "strict",
             "presentation_profile": "pcr_primer_design",
-            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.5.0", "intent_id": "transcript_assay_panel_design", "plan_step_index": 0},
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.6.0", "intent_id": "transcript_assay_panel_design", "plan_step_index": 0},
             "input_claims": [
               "RT priming chemistry: {cdna_priming_strategy}.",
               "5-prime capture method: {five_prime_capture_method}.",
@@ -191,7 +191,7 @@
             "mode": "shell",
             "state_path": ".gentle_state.json",
             "shell_line": "primers design-transcript-assay-panel @{operation_path} --backend {backend}",
-            "timeout_secs": 600
+            "timeout_secs": "{execution_timeout_secs}"
           },
           "slots": {
             "operation_path": {
@@ -208,6 +208,13 @@
                 "internal",
                 "primer3"
               ]
+            },
+            "execution_timeout_secs": {
+              "required": false,
+              "description": "Approval-bound wrapper ceiling in seconds for the complete GENtle command. This is not an expected Primer3 runtime; choose it from the reviewed transcript count, target spans, requested junctions, assay mode, and operation count.",
+              "pattern": "(?:execution[_ -]?timeout|timeout)(?:[_ -]?secs?|[_ -]?seconds?)?[=: ]+(\\d+)",
+              "ignore_case": true,
+              "default": "7200"
             },
             "cdna_priming_strategy": {
               "required": false,
@@ -253,7 +260,7 @@
     },
     {
       "intent_id": "normalize_isoform_study_request",
-      "description": "Ask GENtle to resolve every effective study-planning default and evidence digest without writing files or executing assay design.",
+      "description": "Ask GENtle to resolve every effective study-planning default and evidence digest without writing files or executing assay design; persist stdout verbatim as the normalized request.",
       "trigger_terms": [
         "normalize isoform study request",
         "prepare isoform study approval basis",
@@ -269,7 +276,7 @@
             "schema": "gentle.clawbio_skill_request.v1",
             "claim_attribution_mode": "strict",
             "presentation_profile": "pcr_primer_design",
-            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.5.0", "intent_id": "normalize_isoform_study_request", "plan_step_index": 0},
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.6.0", "intent_id": "normalize_isoform_study_request", "plan_step_index": 0},
             "mode": "shell",
             "state_path": ".gentle_state.json",
             "shell_line": "primers plan-gene-isoform-study @{request_path} --normalize-only",
@@ -305,7 +312,7 @@
             "schema": "gentle.clawbio_skill_request.v1",
             "claim_attribution_mode": "strict",
             "presentation_profile": "pcr_primer_design",
-            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.5.0", "intent_id": "approved_isoform_study_plan", "plan_step_index": 0},
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.6.0", "intent_id": "approved_isoform_study_plan", "plan_step_index": 0},
             "mode": "shell",
             "state_path": ".gentle_state.json",
             "shell_line": "primers plan-gene-isoform-study @{normalized_request_path} --path {plan_path} --workflow {workflow_path}",
@@ -356,11 +363,11 @@
             "schema": "gentle.clawbio_skill_request.v1",
             "claim_attribution_mode": "strict",
             "presentation_profile": "pcr_primer_design",
-            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.5.0", "intent_id": "approved_isoform_operation_batch", "plan_step_index": 0},
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.6.0", "intent_id": "approved_isoform_operation_batch", "plan_step_index": 0},
             "mode": "shell",
             "state_path": ".gentle_state.json",
             "shell_line": "primers execute-gene-isoform-study-workflow @{plan_path} @{workflow_path}",
-            "timeout_secs": 1800
+            "timeout_secs": "{execution_timeout_secs}"
           },
           "slots": {
             "plan_path": {
@@ -374,11 +381,100 @@
               "description": "Path to the exact workflow emitted alongside the approved plan",
               "pattern": "(?:workflow(?:[_ -]?path)?)[=: ]+([A-Za-z0-9_./-]+\\.json)",
               "ignore_case": true
+            },
+            "execution_timeout_secs": {
+              "required": false,
+              "description": "Approval-bound wrapper ceiling in seconds for this exact single-gene workflow. The 7200-second default is a safety allowance, not a runtime prediction; increase or reduce it during proposal review without changing the approved scientific workflow bytes.",
+              "pattern": "(?:execution[_ -]?timeout|timeout)(?:[_ -]?secs?|[_ -]?seconds?)?[=: ]+(\\d+)",
+              "ignore_case": true,
+              "default": "7200"
             }
           },
           "confirmation": {
             "required": true,
             "reason": "The complete ordered operation set is independently approval-bound and must match the approved plan byte-for-byte before any assay operation executes."
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "compose_isoform_study_workflow_batch",
+      "description": "Ask GENtle to prevalidate an ordered set of approved study plans and workflows and emit one content-bound multi-study second-stage approval basis without executing assay operations.",
+      "trigger_terms": [
+        "compose isoform study workflow batch",
+        "prepare multi-gene isoform batch approval",
+        "combine approved isoform workflows",
+        "prepare one second-stage isoform approval"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "claim_attribution_mode": "strict",
+            "presentation_profile": "pcr_primer_design",
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.6.0", "intent_id": "compose_isoform_study_workflow_batch", "plan_step_index": 0},
+            "mode": "shell",
+            "state_path": ".gentle_state.json",
+            "shell_line": "primers compose-gene-isoform-study-workflow-batch @{batch_request_path}",
+            "timeout_secs": 300
+          },
+          "slots": {
+            "batch_request_path": {
+              "required": true,
+              "description": "Path to a gentle.gene_isoform_assay_study_workflow_batch_request.v1 listing the approved plan/workflow pairs in execution order",
+              "pattern": "(?:batch(?:[_ -]?request)?(?:[_ -]?path)?)[=: ]+([A-Za-z0-9_./-]+\\.json)",
+              "ignore_case": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "approved_isoform_study_workflow_batch",
+      "description": "After one explicit second-stage approval, verify every plan/workflow file and the complete ordered batch digest before executing the unchanged multi-study batch in one state-bound GENtle command.",
+      "trigger_terms": [
+        "approve multi-gene isoform workflow batch",
+        "execute approved isoform study workflow batch",
+        "run approved multi-study assay operations",
+        "one second-stage isoform batch approval"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "requires_confirmation": true,
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "claim_attribution_mode": "strict",
+            "presentation_profile": "pcr_primer_design",
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.6.0", "intent_id": "approved_isoform_study_workflow_batch", "plan_step_index": 0},
+            "mode": "shell",
+            "state_path": ".gentle_state.json",
+            "shell_line": "primers execute-gene-isoform-study-workflow-batch @{batch_path}",
+            "timeout_secs": "{execution_timeout_secs}"
+          },
+          "slots": {
+            "batch_path": {
+              "required": true,
+              "description": "Path to the exact gentle.gene_isoform_assay_study_workflow_batch.v1 emitted by GENtle's compose route",
+              "pattern": "(?:approved(?:[_ -]?)batch|batch)(?:[_ -]?path)?[=: ]+([A-Za-z0-9_./-]+\\.json)",
+              "ignore_case": true
+            },
+            "execution_timeout_secs": {
+              "required": false,
+              "description": "Approval-bound wrapper ceiling in seconds for the complete ordered multi-study batch. The 28800-second default allows long multi-gene Primer3 runs; review and override it from the combined plans rather than multiplying a hidden per-gene constant.",
+              "pattern": "(?:execution[_ -]?timeout|timeout)(?:[_ -]?secs?|[_ -]?seconds?)?[=: ]+(\\d+)",
+              "ignore_case": true,
+              "default": "28800"
+            }
+          },
+          "confirmation": {
+            "required": true,
+            "reason": "The approval binds every ordered plan/workflow file hash and operation digest; GENtle prevalidates the complete set before the first operation and executes it through one state-bound command."
           }
         }
       ]
@@ -427,7 +523,7 @@
             "schema": "gentle.clawbio_skill_request.v1",
             "claim_attribution_mode": "strict",
             "presentation_profile": "pcr_primer_design",
-            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.5.0", "intent_id": "imported_primer_review", "plan_step_index": 0},
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.6.0", "intent_id": "imported_primer_review", "plan_step_index": 0},
             "mode": "shell",
             "state_path": ".gentle_state.json",
             "shell_line": "primers import-external-pairs {input_path} {seq_id} {feature_id} --format auto --path {output_path}",
@@ -487,7 +583,7 @@
             "schema": "gentle.clawbio_skill_request.v1",
             "claim_attribution_mode": "strict",
             "presentation_profile": "pcr_primer_design",
-            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.5.0", "intent_id": "genomic_specificity_plan", "plan_step_index": 0},
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.6.0", "intent_id": "genomic_specificity_plan", "plan_step_index": 0},
             "mode": "shell",
             "state_path": ".gentle_state.json",
             "shell_line": "primers specificity-plan {report_id} --pair-rank {pair_rank} --target-genome {genomic_reference_id} --output-dir {genomic_output_dir}",
@@ -546,7 +642,7 @@
             "schema": "gentle.clawbio_skill_request.v1",
             "claim_attribution_mode": "strict",
             "presentation_profile": "pcr_primer_design",
-            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.5.0", "intent_id": "transcriptome_specificity_plan", "plan_step_index": 0},
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.6.0", "intent_id": "transcriptome_specificity_plan", "plan_step_index": 0},
             "mode": "shell",
             "state_path": ".gentle_state.json",
             "shell_line": "primers specificity-plan {report_id} --pair-rank {pair_rank} --target-genome {transcriptome_reference_id} --output-dir {transcriptome_output_dir}",
@@ -609,7 +705,7 @@
             "schema": "gentle.clawbio_skill_request.v1",
             "claim_attribution_mode": "strict",
             "presentation_profile": "pcr_primer_design",
-            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.5.0", "intent_id": "dual_space_specificity_plan", "plan_step_index": 0},
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.6.0", "intent_id": "dual_space_specificity_plan", "plan_step_index": 0},
             "mode": "shell",
             "state_path": ".gentle_state.json",
             "shell_line": "primers specificity-plan {report_id} --pair-rank {pair_rank} --target-genome {genomic_reference_id} --output-dir {genomic_output_dir}",
@@ -655,7 +751,7 @@
             "schema": "gentle.clawbio_skill_request.v1",
             "claim_attribution_mode": "strict",
             "presentation_profile": "pcr_primer_design",
-            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.5.0", "intent_id": "dual_space_specificity_plan", "plan_step_index": 1},
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.6.0", "intent_id": "dual_space_specificity_plan", "plan_step_index": 1},
             "mode": "shell",
             "state_path": ".gentle_state.json",
             "shell_line": "primers specificity-plan {report_id} --pair-rank {pair_rank} --target-genome {transcriptome_reference_id} --output-dir {transcriptome_output_dir}",
@@ -715,7 +811,7 @@
             "schema": "gentle.clawbio_skill_request.v1",
             "claim_attribution_mode": "strict",
             "presentation_profile": "pcr_primer_design",
-            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.5.0", "intent_id": "collection_primer_specificity", "plan_step_index": 0},
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.6.0", "intent_id": "collection_primer_specificity", "plan_step_index": 0},
             "mode": "shell",
             "state_path": ".gentle_state.json",
             "shell_line": "collections run primer-specificity --seq-ids {seq_ids} --pair-rank {pair_rank} --target-genome {target_reference_id} --path {output_path}",
@@ -775,7 +871,7 @@
             "schema": "gentle.clawbio_skill_request.v1",
             "claim_attribution_mode": "strict",
             "presentation_profile": "pcr_primer_design",
-            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.5.0", "intent_id": "compose_assay_routine", "plan_step_index": 0},
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.6.0", "intent_id": "compose_assay_routine", "plan_step_index": 0},
             "mode": "shell",
             "state_path": ".gentle_state.json",
             "shell_line": "primers compose-gene-assay-routine @{request_path} --path {output_path}",
@@ -825,7 +921,7 @@
             "schema": "gentle.clawbio_skill_request.v1",
             "claim_attribution_mode": "strict",
             "presentation_profile": "pcr_primer_design",
-            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.5.0", "intent_id": "experimental_assay_report", "plan_step_index": 0},
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.6.0", "intent_id": "experimental_assay_report", "plan_step_index": 0},
             "mode": "shell",
             "state_path": ".gentle_state.json",
             "shell_line": "primers experimental-handoff {panel_report_id} --path {output_prefix}.json --order-table {output_prefix}.order.tsv --gel-svg {output_prefix}.gel.svg",
@@ -877,7 +973,7 @@
             "schema": "gentle.clawbio_skill_request.v1",
             "claim_attribution_mode": "strict",
             "presentation_profile": "pcr_primer_design",
-            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.5.0", "intent_id": "primer_report_list", "plan_step_index": 0},
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.6.0", "intent_id": "primer_report_list", "plan_step_index": 0},
             "mode": "shell",
             "state_path": ".gentle_state.json",
             "shell_line": "primers list-reports",
@@ -904,7 +1000,7 @@
             "schema": "gentle.clawbio_skill_request.v1",
             "claim_attribution_mode": "strict",
             "presentation_profile": "pcr_primer_design",
-            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.5.0", "intent_id": "primer_report_show", "plan_step_index": 0},
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.6.0", "intent_id": "primer_report_show", "plan_step_index": 0},
             "mode": "shell",
             "state_path": ".gentle_state.json",
             "shell_line": "primers show-report {report_id}",
@@ -940,7 +1036,7 @@
             "schema": "gentle.clawbio_skill_request.v1",
             "claim_attribution_mode": "strict",
             "presentation_profile": "pcr_primer_design",
-            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.5.0", "intent_id": "primer_report_export", "plan_step_index": 0},
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.6.0", "intent_id": "primer_report_export", "plan_step_index": 0},
             "mode": "shell",
             "state_path": ".gentle_state.json",
             "shell_line": "primers export-report {report_id} {output_path}",
@@ -988,7 +1084,7 @@
             "schema": "gentle.clawbio_skill_request.v1",
             "claim_attribution_mode": "strict",
             "presentation_profile": "pcr_primer_design",
-            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.5.0", "intent_id": "qpcr_report_list", "plan_step_index": 0},
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.6.0", "intent_id": "qpcr_report_list", "plan_step_index": 0},
             "mode": "shell",
             "state_path": ".gentle_state.json",
             "shell_line": "primers list-qpcr-reports",
@@ -1015,7 +1111,7 @@
             "schema": "gentle.clawbio_skill_request.v1",
             "claim_attribution_mode": "strict",
             "presentation_profile": "pcr_primer_design",
-            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.5.0", "intent_id": "qpcr_report_show", "plan_step_index": 0},
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.6.0", "intent_id": "qpcr_report_show", "plan_step_index": 0},
             "mode": "shell",
             "state_path": ".gentle_state.json",
             "shell_line": "primers show-qpcr-report {report_id}",
@@ -1051,7 +1147,7 @@
             "schema": "gentle.clawbio_skill_request.v1",
             "claim_attribution_mode": "strict",
             "presentation_profile": "pcr_primer_design",
-            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.5.0", "intent_id": "qpcr_report_export", "plan_step_index": 0},
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.6.0", "intent_id": "qpcr_report_export", "plan_step_index": 0},
             "mode": "shell",
             "state_path": ".gentle_state.json",
             "shell_line": "primers export-qpcr-report {report_id} {output_path}",
@@ -1100,7 +1196,7 @@
             "schema": "gentle.clawbio_skill_request.v1",
             "claim_attribution_mode": "strict",
             "presentation_profile": "pcr_primer_design",
-            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.5.0", "intent_id": "pcr_protocol_cartoon", "plan_step_index": 0},
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.6.0", "intent_id": "pcr_protocol_cartoon", "plan_step_index": 0},
             "mode": "shell",
             "shell_line": "protocol-cartoon render-svg {protocol_id} {output_path}",
             "timeout_secs": 300
@@ -1155,7 +1251,7 @@
             "schema": "gentle.clawbio_skill_request.v1",
             "claim_attribution_mode": "strict",
             "presentation_profile": "pcr_primer_design",
-            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.5.0", "intent_id": "cdna_product_gel_workflow", "plan_step_index": 0},
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.6.0", "intent_id": "cdna_product_gel_workflow", "plan_step_index": 0},
             "mode": "workflow",
             "state_path": ".gentle_state.json",
             "workflow_path": "{workflow_path}",

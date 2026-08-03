@@ -3571,6 +3571,30 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers compose-gene-isoform-study-workflow-batch",
+         "summary": "Prevalidate an ordered set of approved gene isoform-assay plans and workflows and emit one content-bound multi-study second-stage approval basis without executing operations.",
+         "usage": "primers compose-gene-isoform-study-workflow-batch REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers execute-gene-isoform-study-workflow-batch",
+         "summary": "Revalidate every file and digest in an approved multi-study workflow batch, then execute the complete ordered set through one state-bound command.",
+         "usage": "primers execute-gene-isoform-study-workflow-batch BATCH_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
             "mcp",
             "cli-direct"
          ],

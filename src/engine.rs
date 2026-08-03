@@ -829,6 +829,12 @@ pub const GENE_ISOFORM_ASSAY_STUDY_POLICY_SCHEMA: &str =
     "gentle.gene_isoform_assay_study_policy.v1";
 pub const GENE_ISOFORM_ASSAY_STUDY_PLAN_SCHEMA: &str =
     "gentle.gene_isoform_assay_study_plan.v1";
+pub const GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_REQUEST_SCHEMA: &str =
+    "gentle.gene_isoform_assay_study_workflow_batch_request.v1";
+pub const GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_SCHEMA: &str =
+    "gentle.gene_isoform_assay_study_workflow_batch.v1";
+pub const GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_EXECUTION_SCHEMA: &str =
+    "gentle.gene_isoform_assay_study_workflow_batch_execution.v1";
 pub const PRIMER_VARIANT_EVIDENCE_SCHEMA: &str = "gentle.primer_variant_evidence.v1";
 const CDNA_ASSAY_TRANSCRIPT_MAP_SCHEMA: &str = "gentle.cdna_assay_transcript_map.v1";
 const CDNA_ASSAY_PRODUCT_MATERIALIZATION_SCHEMA: &str =

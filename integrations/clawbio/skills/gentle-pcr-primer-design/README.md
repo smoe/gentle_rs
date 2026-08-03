@@ -49,6 +49,29 @@ the exact workflow-byte digest and ordered-operation digest before execution.
 Approval authorizes execution of those bytes; it is not a declaration that the
 biological premise is correct.
 
+The normalization route returns the normalized request object itself; persist
+its stdout verbatim rather than looking for a nested `normalized_request`.
+For a multi-gene study, keep the first approval and planning result per gene,
+then use `compose_isoform_study_workflow_batch` to prevalidate the ordered
+plan/workflow pairs and emit one second-stage approval basis. After approval,
+`approved_isoform_study_workflow_batch` executes that exact batch through one
+state-bound GENtle command. GENtle verifies every referenced file and digest
+before applying the first operation, so independently approved workflows do
+not become stale merely because an earlier workflow changed the shared state.
+The original single-gene execution route remains available.
+
+Long transcript-panel execution uses an explicit `execution_timeout_secs`
+slot. It is an approval-bound wrapper ceiling, not a Primer3 setting or a
+runtime prediction. The single-operation and single-study routes default to
+7200 seconds; the ordered multi-study batch defaults to 28800 seconds. Review
+and override that ceiling before approval when the transcript count, mature
+cDNA spans, requested junctions, assay mode, or number of planned operations
+make the default unsuitable. Changing it after proposal approval requires a
+new proposal because the wrapper timeout is part of the approved request.
+Locus length alone is not a reliable runtime predictor: GENtle may invoke
+Primer3 separately for multiple transcript-equivalence classes, automatic
+ROIs, explicit junctions, and endpoint reactions.
+
 Primer backends and pair ranks have no conversational default. An explicitly
 requested `auto` backend is resolved to a path/version-pinned Primer3 or the
 internal backend before approval. An unknown 5-prime capture method is
