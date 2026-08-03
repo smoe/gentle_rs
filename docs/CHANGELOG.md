@@ -1,5 +1,12 @@
 # GENtle Changelog
 
+- Replaced the PCR skill's hidden 30-minute isoform-workflow ceiling with an
+  approval-bound `execution_timeout_secs` slot. Single-study design defaults to
+  a two-hour allowance and ordered multi-study execution to eight hours, while
+  callers may review and override either ceiling before approval; documentation
+  now distinguishes this wrapper policy from Primer3 runtime and records the
+  workload dimensions that affect transcript-panel cost.
+
 - Added manifest-driven multi-gene publication bundles. A shared resolved
   report now drives a responsive PARK7-style HTML overview and a printable
   companion containing the complete primer-pair list and all selected locus,
@@ -24,6 +31,11 @@ understand what changed.
 
 ## 2026-08-03
 
+- Made isoform-study normalization directly reusable by emitting the normalized
+  request as stdout, and added content-bound multi-study workflow composition
+  and execution. The `gentle-pcr-primer-design` 0.6.0 descriptor now offers one
+  second-stage approval that prevalidates the complete ordered set before any
+  shared project state is changed.
 - Closed the two-stage isoform-study approval chain: plans now bind the exact
   emitted workflow bytes, `primers execute-gene-isoform-study-workflow`
   verifies both workflow and ordered-operation digests before execution, and

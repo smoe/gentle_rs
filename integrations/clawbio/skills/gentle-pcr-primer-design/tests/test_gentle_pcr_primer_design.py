@@ -89,7 +89,7 @@ def test_every_execution_delegates_to_registered_generic_runtime() -> None:
             assert template["delegation"] == {
                 "schema": "gentle.clawbio_skill_delegation.v1",
                 "source_skill": "gentle-pcr-primer-design",
-                "source_skill_version": "0.5.0",
+                "source_skill_version": "0.6.0",
                 "intent_id": route["intent_id"],
                 "plan_step_index": step_index,
             }
@@ -101,6 +101,12 @@ def test_every_execution_delegates_to_registered_generic_runtime() -> None:
             template = step.get("input_template")
             if template is None:
                 template = _json(SKILL_ROOT / step["input"])
+            else:
+                template = json.loads(json.dumps(template))
+                if template.get("timeout_secs") == "{execution_timeout_secs}":
+                    template["timeout_secs"] = step["slots"][
+                        "execution_timeout_secs"
+                    ]["default"]
             parsed = wrapper._coerce_request(template)
             assert parsed.delegation["intent_id"] == route["intent_id"]
 
@@ -115,6 +121,7 @@ def test_only_read_only_or_diagnostic_routes_execute_without_approval() -> None:
 
     assert automatic_routes == {
         "primer_design_preflight",
+        "compose_isoform_study_workflow_batch",
         "normalize_isoform_study_request",
         "primer_report_list",
         "primer_report_show",
@@ -216,6 +223,8 @@ def test_isoform_study_routes_preserve_two_stage_approval_and_exact_batch_bindin
     normalize = routes["normalize_isoform_study_request"]
     planning = routes["approved_isoform_study_plan"]
     execution = routes["approved_isoform_operation_batch"]
+    compose_batch = routes["compose_isoform_study_workflow_batch"]
+    execute_batch = routes["approved_isoform_study_workflow_batch"]
 
     assert normalize.get("requires_confirmation", False) is False
     assert normalize["plan"][0]["input_template"]["shell_line"].endswith(
@@ -224,6 +233,7 @@ def test_isoform_study_routes_preserve_two_stage_approval_and_exact_batch_bindin
     assert "--normalized-request" not in normalize["plan"][0]["input_template"][
         "shell_line"
     ]
+    assert "persist stdout verbatim" in normalize["description"].lower()
 
     assert planning["requires_confirmation"] is True
     assert planning["plan"][0]["input_template"]["shell_line"] == (
@@ -241,6 +251,38 @@ def test_isoform_study_routes_preserve_two_stage_approval_and_exact_batch_bindin
         "primers execute-gene-isoform-study-workflow "
         "@{plan_path} @{workflow_path}"
     )
+    assert execution["plan"][0]["input_template"]["timeout_secs"] == (
+        "{execution_timeout_secs}"
+    )
+    assert execution["plan"][0]["slots"]["execution_timeout_secs"]["default"] == (
+        "7200"
+    )
+
+    assert compose_batch.get("requires_confirmation", False) is False
+    assert compose_batch["plan"][0]["input_template"]["shell_line"] == (
+        "primers compose-gene-isoform-study-workflow-batch @{batch_request_path}"
+    )
+    assert execute_batch["requires_confirmation"] is True
+    assert execute_batch["plan"][0]["input_template"]["shell_line"] == (
+        "primers execute-gene-isoform-study-workflow-batch @{batch_path}"
+    )
+    assert execute_batch["plan"][0]["input_template"]["timeout_secs"] == (
+        "{execution_timeout_secs}"
+    )
+    assert execute_batch["plan"][0]["slots"]["execution_timeout_secs"]["default"] == (
+        "28800"
+    )
+
+
+def test_transcript_assay_design_timeout_is_explicit_and_approval_bound() -> None:
+    route = _routes()["transcript_assay_panel_design"]
+    step = route["plan"][0]
+
+    assert step["input_template"]["timeout_secs"] == "{execution_timeout_secs}"
+    timeout_slot = step["slots"]["execution_timeout_secs"]
+    assert timeout_slot["required"] is False
+    assert timeout_slot["default"] == "7200"
+    assert "not an expected primer3 runtime" in timeout_slot["description"].lower()
 
 
 def test_patz1_example_marks_oligo_dt_and_missing_cap_evidence_as_input() -> None:

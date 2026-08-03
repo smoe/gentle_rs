@@ -9243,14 +9243,17 @@ Primer-design shell command family (implemented):
     shell routes.
 - Gene isoform-assay study planning:
   - `primers plan-gene-isoform-study REQUEST_JSON_OR_@FILE` consumes
-    `gentle.gene_isoform_assay_study_plan_request.v1` and returns
-    `gentle.gene_isoform_assay_study_plan.v1` without running primer design
+    `gentle.gene_isoform_assay_study_plan_request.v1` and, during planning,
+    returns `gentle.gene_isoform_assay_study_plan.v1` without running primer
+    design
   - `--normalize-only --normalized-request OUTPUT.json` resolves every policy
     default, sorts declared inputs, hashes the isoform-evidence report, hashes
     each optional JUC/PSR input and prior plan, and preserves observations as
     `user_supplied_unvalidated`; it also records the evidence report id/schema,
     policy digest, optional evidence report ids/schemas, and prior plan id.
-    This complete normalized record is the first approval basis
+    In normalize-only mode stdout is this normalized request object itself,
+    not an envelope; callers may persist it verbatim. This complete normalized
+    record is the first approval basis
   - the plan reports transcript count, byte-identical mature-cDNA classes,
     annotation-backed informative regions, separately labelled array support,
     abundance, exact-label responsiveness in annotation-informative regions,
@@ -9272,6 +9275,25 @@ Primer-design shell command family (implemented):
     mismatch fails before the first operation runs. Success returns
     `gentle.gene_isoform_assay_study_workflow_execution.v1` with both verified
     digests and the ordinary workflow results
+  - multi-study second-stage approval is additive to that single-study route:
+    `primers compose-gene-isoform-study-workflow-batch REQUEST_JSON_OR_@FILE`
+    consumes `gentle.gene_isoform_assay_study_workflow_batch_request.v1`, whose
+    ordered `entries[]` name one plan path and workflow path each. It verifies
+    every existing plan/workflow binding and returns
+    `gentle.gene_isoform_assay_study_workflow_batch.v1` with canonical paths,
+    exact file hashes, workflow run ids, per-workflow operation hashes/counts,
+    one combined ordered-operation hash, and a self-binding batch-basis hash.
+    It is a pure read and executes no assay operation. The combined digest
+    hashes the compact JSON serialization of all workflow `ops` concatenated in entry order; the
+    batch-basis digest hashes compact JSON of the complete batch with
+    `batch_basis_sha256` cleared
+  - `primers execute-gene-isoform-study-workflow-batch BATCH_JSON_OR_@FILE`
+    rechecks the batch-basis hash and every referenced file, plan identity,
+    workflow-byte hash, operation hash/count, and combined ordered digest
+    before executing the first workflow. Success returns
+    `gentle.gene_isoform_assay_study_workflow_batch_execution.v1`. This keeps a
+    multi-gene second stage inside one state-bound command instead of approving
+    several commands against a shared state that the first command then changes
   - prior plans and unvalidated observations support an explicit next
     iteration. Retained assay ids are recorded but do not silently alter the
     automatic evidence recommendation

@@ -6,7 +6,7 @@ description: >-
   scientific operation to GENtle through the registered gentle-cloning skill,
   preserving GENtle's typed reports, evidence states, provenance, and review
   gates.
-version: 0.5.0
+version: 0.6.0
 author: GENtle project
 license: MIT
 tags: [primer-design, pcr, rt-pcr, sybr, qpcr, taqman, isoforms, specificity, provenance]
@@ -32,6 +32,8 @@ metadata:
       - endpoint rt-pcr panel
       - isoform pcr panel
       - transcript assay panel
+      - multi-gene isoform batch approval
+      - approved isoform workflow batch
       - oligo-dt cdna primer design
       - cap-dependent 5-prime race
       - rlm-race primer design
@@ -115,7 +117,8 @@ This skill owns:
    - `primers compose-gene-assay-routine` for evidence-backed composition.
    For a gene-level isoform study, first run
    `primers plan-gene-isoform-study ... --normalize-only` to materialize the
-   fully defaulted, content-bound request. Obtain approval for the proposal
+   fully defaulted, content-bound request. The command returns that request
+   directly; persist stdout verbatim. Obtain approval for the proposal
    that consumes those exact normalized bytes. The resulting plan may emit an
    ordered workflow; obtain a second approval whose proposal binds that exact
    workflow, its `approved_workflow_sha256`, and its operation-batch digest.
@@ -123,6 +126,21 @@ This skill owns:
    `primers execute-gene-isoform-study-workflow PLAN.json WORKFLOW.json`, which
    fails closed before execution on any mismatch. Never regenerate assay
    operations after the second approval.
+   For multiple studies, retain each separately approved plan/workflow pair,
+   compose them with
+   `primers compose-gene-isoform-study-workflow-batch REQUEST.json`, and obtain
+   one second-stage approval for the emitted batch. Execute only that batch via
+   `primers execute-gene-isoform-study-workflow-batch BATCH.json`. GENtle
+   prevalidates every referenced plan/workflow and the combined ordered digest
+   before the first operation and keeps the execution inside one state-bound
+   command. Do not loop over independently state-bound execution proposals.
+   Set the delegated `execution_timeout_secs` before approval. Treat it as an
+   operational wrapper ceiling, not a Primer3 parameter or a predicted wall
+   time. Review transcript count, mature-cDNA spans, automatic and requested
+   target regions, assay mode, and operation count; sequence length alone does
+   not determine the number or difficulty of Primer3 calls. Single-study
+   execution defaults to 7200 seconds and a multi-study execution batch to
+   28800 seconds, both explicitly overridable in the proposal.
 7. Inspect the persisted GENtle report. Preserve all warnings, uncovered
    transcript classes, unresolved junctions, cDNA-reach cautions, and review
    states.

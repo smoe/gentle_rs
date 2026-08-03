@@ -9718,6 +9718,55 @@ pub struct GeneIsoformAssayStudyPlanReport {
     pub warnings: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One plan/workflow pair supplied when composing an approval-bound batch.
+pub struct GeneIsoformAssayStudyWorkflowBatchRequestEntry {
+    pub plan_path: String,
+    pub workflow_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Read-only request for composing several approved study workflows into one
+/// exact, ordered second-stage approval basis.
+pub struct GeneIsoformAssayStudyWorkflowBatchRequest {
+    pub schema: String,
+    pub batch_id: String,
+    pub entries: Vec<GeneIsoformAssayStudyWorkflowBatchRequestEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One content-bound plan/workflow pair in a multi-study execution batch.
+pub struct GeneIsoformAssayStudyWorkflowBatchEntry {
+    pub ordinal: usize,
+    pub plan_id: String,
+    pub plan_path: String,
+    pub plan_sha256: String,
+    pub workflow_path: String,
+    pub workflow_sha256: String,
+    pub workflow_run_id: String,
+    pub operation_batch_sha256: String,
+    pub operation_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Deterministic second-stage approval basis for multiple independently
+/// planned gene studies. The executor validates every entry before applying
+/// the first workflow.
+pub struct GeneIsoformAssayStudyWorkflowBatch {
+    pub schema: String,
+    pub batch_id: String,
+    pub entries: Vec<GeneIsoformAssayStudyWorkflowBatchEntry>,
+    pub total_operation_count: usize,
+    pub combined_operation_batch_sha256: String,
+    /// Digest over this record with this field cleared. It makes accidental
+    /// materialization or ordering changes detectable before approval.
+    pub batch_basis_sha256: String,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 /// Derived lifecycle state of one assay handoff card.

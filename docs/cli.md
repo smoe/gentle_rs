@@ -4052,7 +4052,8 @@ Shared shell command:
     - Gene isoform-assay study planner:
       - `primers plan-gene-isoform-study REQUEST_JSON_OR_@FILE [--normalize-only] [--normalized-request OUTPUT.json] [--path PLAN.json] [--workflow WORKFLOW.json]`
       - normalization content-binds the complete request and all effective
-        defaults before the first approval; planning emits a transparent
+        defaults before the first approval. With `--normalize-only`, stdout is
+        the normalized request itself and can be persisted verbatim; planning emits a transparent
         recommendation plus exact ordered assay operations for a separate
         batch approval, but does not execute design
       - the plan's `approved_workflow_sha256` binds the exact emitted workflow
@@ -4061,6 +4062,26 @@ Shared shell command:
         OPERATIONS.workflow.json`; GENtle also rechecks
         `operation_batch_sha256` before executing any operation and returns
         `gentle.gene_isoform_assay_study_workflow_execution.v1`
+      - for one second-stage approval across multiple studies, create a request
+        with ordered `{plan_path, workflow_path}` entries and run
+        `primers compose-gene-isoform-study-workflow-batch REQUEST_JSON_OR_@FILE`.
+        Review and approve the emitted
+        `gentle.gene_isoform_assay_study_workflow_batch.v1`, then run
+        `primers execute-gene-isoform-study-workflow-batch BATCH_JSON_OR_@FILE`.
+        GENtle validates the complete ordered set before the first operation
+        and executes it through one state-bound command; the single-study route
+        remains available
+
+        ```json
+        {
+          "schema": "gentle.gene_isoform_assay_study_workflow_batch_request.v1",
+          "batch_id": "tp73_association_second_stage",
+          "entries": [
+            {"plan_path": "analysis/PATZ1.plan.json", "workflow_path": "analysis/PATZ1.workflow.json"},
+            {"plan_path": "analysis/TFAP2C.plan.json", "workflow_path": "analysis/TFAP2C.workflow.json"}
+          ]
+        }
+        ```
       - policy decisions keep exact-cDNA complexity, annotation coverage,
         Clariom support/abundance/contrast responsiveness, assayability, prior
         priority, missing evidence, and explicit overrides as separate fields

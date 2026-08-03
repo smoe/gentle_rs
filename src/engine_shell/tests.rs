@@ -24,7 +24,8 @@ use crate::engine::{
     ConstructCandidate, ConstructObjective, ConstructReasoningGraph, ConstructRole, Container,
     ContainerKind, CutRunAlignConfig, CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout,
     CutRunSeedFilterConfig, DesignDecisionNode, DesignEvidence, DesignFact, DisplayTarget,
-    EditableStatus, ExonSkipReturnKind, GeneSetCohortRelationship, GeneSetResolutionReviewStatus,
+    EditableStatus, ExonSkipReturnKind, GeneIsoformAssayStudyWorkflowBatchRequestEntry,
+    GeneSetCohortRelationship, GeneSetResolutionReviewStatus,
     InlineSequenceTopology, OrthologAmbiguityPolicy, PrimerDesignProgress,
     PrimerSpecificityAmpliconCeilingSource, PrimerSpecificityReportDetailMode, PromoterCohortKind,
     PromoterTfbsGeneQuery, ProteinExternalOpinionSource, ProteinFeatureFilter,
@@ -61,7 +62,7 @@ use std::env;
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::thread;
@@ -7569,6 +7570,24 @@ fn parse_primers_seed_from_feature_and_splicing() {
             workflow_json,
         } if plan_json == "@plan.json" && workflow_json == "@operations.workflow.json"
     ));
+    let compose_batch = parse_shell_line(
+        "primers compose-gene-isoform-study-workflow-batch @batch-request.json",
+    )
+    .expect("parse multi-study workflow batch composition");
+    assert!(matches!(
+        compose_batch,
+        ShellCommand::PrimersComposeGeneIsoformAssayStudyWorkflowBatch { request_json }
+            if request_json == "@batch-request.json"
+    ));
+    let execute_batch = parse_shell_line(
+        "primers execute-gene-isoform-study-workflow-batch @approved-batch.json",
+    )
+    .expect("parse approved multi-study workflow batch execution");
+    assert!(matches!(
+        execute_batch,
+        ShellCommand::PrimersExecuteGeneIsoformAssayStudyWorkflowBatch { batch_json }
+            if batch_json == "@approved-batch.json"
+    ));
     let publication = parse_shell_line(
         "primers publish-gene-isoform-study dossier.json out --profile review --blocks run.parameters,gene.patz1.overview --pdf",
     )
@@ -7739,6 +7758,164 @@ fn approved_gene_isoform_study_workflow_requires_exact_emitted_bytes() {
         error.contains("predates exact workflow-byte binding"),
         "{error}"
     );
+}
+
+#[test]
+fn gene_isoform_study_normalize_only_returns_request_without_envelope() {
+    let temp = tempdir().expect("tempdir");
+    let evidence_path = temp.path().join("isoform-evidence.json");
+    let evidence = crate::engine::GeneIsoformEvidenceReport {
+        schema: crate::engine::GENE_ISOFORM_EVIDENCE_SCHEMA.to_string(),
+        panel_id: "normalization_fixture".to_string(),
+        ..crate::engine::GeneIsoformEvidenceReport::default()
+    };
+    fs::write(
+        &evidence_path,
+        serde_json::to_vec_pretty(&evidence).expect("serialize evidence"),
+    )
+    .expect("write evidence");
+    let request = GeneIsoformAssayStudyPlanRequest {
+        label: "Persist stdout verbatim".to_string(),
+        isoform_evidence_path: evidence_path.to_string_lossy().to_string(),
+        ..GeneIsoformAssayStudyPlanRequest::default()
+    };
+    let request_path = temp.path().join("request.json");
+    fs::write(
+        &request_path,
+        serde_json::to_vec_pretty(&request).expect("serialize request"),
+    )
+    .expect("write request");
+
+    let command = parse_shell_line(&format!(
+        "primers plan-gene-isoform-study @{} --normalize-only",
+        request_path.display()
+    ))
+    .expect("parse normalization command");
+    let mut engine = GentleEngine::new();
+    let result = execute_shell_command(&mut engine, &command).expect("normalize request");
+
+    assert!(!result.state_changed);
+    assert_eq!(
+        result.output["schema"],
+        crate::engine::GENE_ISOFORM_ASSAY_STUDY_PLAN_REQUEST_SCHEMA
+    );
+    assert_eq!(result.output["label"], "Persist stdout verbatim");
+    assert_eq!(
+        result.output["isoform_evidence_report_id"],
+        "normalization_fixture"
+    );
+    assert!(result.output.get("normalized_request").is_none());
+}
+
+#[test]
+fn approved_gene_isoform_study_workflow_batch_prevalidates_all_entries() {
+    fn write_plan_workflow_pair(
+        directory: &Path,
+        plan_id: &str,
+        output_id: &str,
+    ) -> (PathBuf, PathBuf, Vec<u8>) {
+        let workflow = Workflow {
+            run_id: format!("{plan_id}_approved_design"),
+            ops: vec![Operation::CreateSequenceFromText {
+                sequence_text: "ACGTACGT".to_string(),
+                output_id: Some(output_id.to_string()),
+                name: Some(format!("Synthetic {plan_id}")),
+                circular: false,
+            }],
+        };
+        let workflow_bytes = serde_json::to_vec_pretty(&workflow).expect("serialize workflow");
+        let plan = GeneIsoformAssayStudyPlanReport {
+            schema: GENE_ISOFORM_ASSAY_STUDY_PLAN_SCHEMA.to_string(),
+            plan_id: plan_id.to_string(),
+            operation_batch_sha256: crate::digest_utils::sha256_prefixed_bytes(
+                &serde_json::to_vec(&workflow.ops).expect("serialize operation batch"),
+            ),
+            approved_workflow_sha256: crate::digest_utils::sha256_prefixed_bytes(
+                &workflow_bytes,
+            ),
+            ..GeneIsoformAssayStudyPlanReport::default()
+        };
+        let plan_path = directory.join(format!("{plan_id}.plan.json"));
+        let workflow_path = directory.join(format!("{plan_id}.workflow.json"));
+        fs::write(
+            &plan_path,
+            serde_json::to_vec_pretty(&plan).expect("serialize plan"),
+        )
+        .expect("write plan");
+        fs::write(&workflow_path, &workflow_bytes).expect("write workflow");
+        (plan_path, workflow_path, workflow_bytes)
+    }
+
+    let temp = tempdir().expect("tempdir");
+    let (plan_a, workflow_a, _) =
+        write_plan_workflow_pair(temp.path(), "plan_a", "batch_seq_a");
+    let (plan_b, workflow_b, workflow_b_bytes) =
+        write_plan_workflow_pair(temp.path(), "plan_b", "batch_seq_b");
+    let request = GeneIsoformAssayStudyWorkflowBatchRequest {
+        schema: GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_REQUEST_SCHEMA.to_string(),
+        batch_id: "eleven_gene_second_stage".to_string(),
+        entries: vec![
+            GeneIsoformAssayStudyWorkflowBatchRequestEntry {
+                plan_path: plan_a.to_string_lossy().to_string(),
+                workflow_path: workflow_a.to_string_lossy().to_string(),
+            },
+            GeneIsoformAssayStudyWorkflowBatchRequestEntry {
+                plan_path: plan_b.to_string_lossy().to_string(),
+                workflow_path: workflow_b.to_string_lossy().to_string(),
+            },
+        ],
+    };
+    let request_path = temp.path().join("batch-request.json");
+    fs::write(
+        &request_path,
+        serde_json::to_vec_pretty(&request).expect("serialize batch request"),
+    )
+    .expect("write batch request");
+    let compose = parse_shell_line(&format!(
+        "primers compose-gene-isoform-study-workflow-batch @{}",
+        request_path.display()
+    ))
+    .expect("parse batch composition");
+    let mut engine = GentleEngine::new();
+    let composed = execute_shell_command(&mut engine, &compose).expect("compose batch");
+    assert!(!composed.state_changed);
+    let batch: GeneIsoformAssayStudyWorkflowBatch =
+        serde_json::from_value(composed.output).expect("parse composed batch");
+    assert_eq!(batch.entries.len(), 2);
+    assert_eq!(batch.total_operation_count, 2);
+    assert!(batch.batch_basis_sha256.starts_with("sha256:"));
+    let batch_path = temp.path().join("approved-batch.json");
+    fs::write(
+        &batch_path,
+        serde_json::to_vec_pretty(&batch).expect("serialize approved batch"),
+    )
+    .expect("write approved batch");
+    let execute = parse_shell_line(&format!(
+        "primers execute-gene-isoform-study-workflow-batch @{}",
+        batch_path.display()
+    ))
+    .expect("parse batch execution");
+
+    fs::write(&workflow_b, b"{\"run_id\":\"tampered\",\"ops\":[]}")
+        .expect("tamper second workflow");
+    let error = execute_shell_command(&mut engine, &execute)
+        .expect_err("all entries must be verified before the first executes");
+    assert!(error.contains("file digest mismatch"), "{error}");
+    assert!(!engine.state().sequences.contains_key("batch_seq_a"));
+    assert!(!engine.state().sequences.contains_key("batch_seq_b"));
+
+    fs::write(&workflow_b, workflow_b_bytes).expect("restore second workflow");
+    let executed = execute_shell_command(&mut engine, &execute).expect("execute exact batch");
+    assert!(executed.state_changed);
+    assert_eq!(
+        executed.output["schema"],
+        GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_EXECUTION_SCHEMA
+    );
+    assert_eq!(executed.output["workflow_count"], 2);
+    assert_eq!(executed.output["total_operation_count"], 2);
+    assert_eq!(executed.output["batch_verified_before_execution"], true);
+    assert!(engine.state().sequences.contains_key("batch_seq_a"));
+    assert!(engine.state().sequences.contains_key("batch_seq_b"));
 }
 
 #[test]

@@ -3796,6 +3796,48 @@
       "reason": "Exact plan/workflow byte verification is a file-bound approval route; generic operation or workflow adapters would bypass that binding, so only the reviewed CLI/GUI shell path is exposed."
     },
     {
+      "source": "glossary_command",
+      "name": "primers compose-gene-isoform-study-workflow-batch",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Multi-study approval composition reads and binds an ordered set of host-local plan/workflow files; it remains on the reviewed CLI/GUI shell and ClawBio descriptor path rather than a generic typed adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "primers compose-gene-isoform-study-workflow-batch",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Multi-study approval composition reads and binds an ordered set of host-local plan/workflow files; it remains on the reviewed CLI/GUI shell and ClawBio descriptor path rather than a generic typed adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "primers compose-gene-isoform-study-workflow-batch",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Multi-study approval composition reads and binds an ordered set of host-local plan/workflow files; it remains on the reviewed CLI/GUI shell and ClawBio descriptor path rather than a generic typed adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "primers execute-gene-isoform-study-workflow-batch",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Exact multi-study file and digest verification is a state-bound approval route; generic operation or workflow adapters would bypass that binding, so only the reviewed CLI/GUI shell and ClawBio descriptor path is exposed."
+    },
+    {
+      "source": "glossary_command",
+      "name": "primers execute-gene-isoform-study-workflow-batch",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Exact multi-study file and digest verification is a state-bound approval route; generic operation or workflow adapters would bypass that binding, so only the reviewed CLI/GUI shell and ClawBio descriptor path is exposed."
+    },
+    {
+      "source": "glossary_command",
+      "name": "primers execute-gene-isoform-study-workflow-batch",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Exact multi-study file and digest verification is a state-bound approval route; generic operation or workflow adapters would bypass that binding, so only the reviewed CLI/GUI shell and ClawBio descriptor path is exposed."
+    },
+    {
       "source": "mcp_tool",
       "name": "*",
       "adapter": "clawbio",

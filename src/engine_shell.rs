@@ -54,10 +54,13 @@ use crate::{
         FeatureExpertTarget, FeatureExpertView, FeatureLocationEditRequest,
         FeatureLocationEditStrand, FeatureRecordCreateRequest, FeatureRecordCurationRequest,
         FeatureRecordDeleteRequest, FeatureRecordMergeRequest, FeatureRecordQualifier,
-        FeatureRecordSplitRequest, FlexibilityModel, GENE_ISOFORM_ASSAY_STUDY_PLAN_REQUEST_SCHEMA,
-        GENE_ISOFORM_ASSAY_STUDY_PLAN_SCHEMA, GUIDE_DESIGN_METADATA_KEY,
+        FeatureRecordSplitRequest, FlexibilityModel, GENE_ISOFORM_ASSAY_STUDY_PLAN_SCHEMA,
+        GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_EXECUTION_SCHEMA,
+        GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_REQUEST_SCHEMA,
+        GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_SCHEMA, GUIDE_DESIGN_METADATA_KEY,
         GeneIsoformAssayStudyPlanReport, GeneIsoformAssayStudyPlanRequest,
-        GeneIsoformEvidenceRequest,
+        GeneIsoformAssayStudyWorkflowBatch, GeneIsoformAssayStudyWorkflowBatchEntry,
+        GeneIsoformAssayStudyWorkflowBatchRequest, GeneIsoformEvidenceRequest,
         GeneLocusEvidenceDisplayRequest, GeneSetCohortRelationship, GeneSetPoolMemberBinding,
         GeneSetProducerFilter, GeneSetPromoterCohortReport, GeneSetRequest,
         GeneSetResolutionReport, GeneSetResolutionReviewStatus, GeneTranscriptAssayRoutineRequest,
@@ -2678,6 +2681,12 @@ pub enum ShellCommand {
     PrimersExecuteGeneIsoformAssayStudyWorkflow {
         plan_json: String,
         workflow_json: String,
+    },
+    PrimersComposeGeneIsoformAssayStudyWorkflowBatch {
+        request_json: String,
+    },
+    PrimersExecuteGeneIsoformAssayStudyWorkflowBatch {
+        batch_json: String,
     },
     PrimersPublishGeneIsoformAssayStudy {
         request_path: String,
@@ -11722,6 +11731,14 @@ impl ShellCommand {
                 "execute approved gene isoform assay workflow (plan={}, workflow={})",
                 plan_json, workflow_json
             ),
+            Self::PrimersComposeGeneIsoformAssayStudyWorkflowBatch { request_json } => format!(
+                "compose exact multi-study gene isoform assay workflow batch from JSON request (len={})",
+                request_json.len()
+            ),
+            Self::PrimersExecuteGeneIsoformAssayStudyWorkflowBatch { batch_json } => format!(
+                "execute approved multi-study gene isoform assay workflow batch (len={})",
+                batch_json.len()
+            ),
             Self::PrimersPublishGeneIsoformAssayStudy {
                 request_path,
                 output_directory,
@@ -13221,6 +13238,7 @@ impl ShellCommand {
                 | Self::PrimersTranscriptAssaySpecificityPlan { .. }
                 | Self::PrimersTranscriptAssaySpecificityFinalize { .. }
                 | Self::PrimersExecuteGeneIsoformAssayStudyWorkflow { .. }
+                | Self::PrimersExecuteGeneIsoformAssayStudyWorkflowBatch { .. }
                 | Self::PrimersPrepareRestrictionCloning { .. }
                 | Self::PrimersSeedRestrictionCloningHandoff { .. }
                 | Self::PrimersListRestrictionCloningHandoffs
@@ -23485,7 +23503,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "reads": [],
             "effects": [],
             "precondition_expr": {"all": []},
-            "description": "Normalize and content-bind a gene isoform-assay request, recommend a study profile, and emit exact ordered assay operations without executing them.",
+            "description": "Normalize and content-bind a gene isoform-assay request, returning the normalized request itself for --normalize-only, or recommend a study profile and emit exact ordered assay operations without executing them.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("primers plan-gene-isoform-study")
         }),
@@ -23504,6 +23522,36 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "description": "Verify an emitted gene isoform-assay workflow against its approved plan byte digest and ordered-operation digest, then execute that exact batch.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("primers execute-gene-isoform-study-workflow")
+        }),
+        json!({
+            "id": "primers compose-gene-isoform-study-workflow-batch",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST_JSON", "required": true, "subject_kind": "other", "detail": "gentle.gene_isoform_assay_study_workflow_batch_request.v1 JSON or @file listing ordered plan/workflow path pairs"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Validate all approved plan/workflow pairs and return one deterministic, content-bound multi-study second-stage approval basis without executing operations.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers compose-gene-isoform-study-workflow-batch")
+        }),
+        json!({
+            "id": "primers execute-gene-isoform-study-workflow-batch",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "BATCH_JSON", "required": true, "subject_kind": "other", "detail": "gentle.gene_isoform_assay_study_workflow_batch.v1 JSON or @file emitted by the compose route"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Prevalidate every content-bound plan/workflow pair, then execute the exact workflows in approved order inside one state-bound command.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers execute-gene-isoform-study-workflow-batch")
         }),
         json!({
             "id": "primers publish-gene-isoform-study",
@@ -28216,6 +28264,8 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         ]),
         "primers plan-gene-isoform-study" | "PlanGeneIsoformAssayStudy" => Some(vec![]),
         "primers execute-gene-isoform-study-workflow" => Some(vec![]),
+        "primers compose-gene-isoform-study-workflow-batch" => Some(vec![]),
+        "primers execute-gene-isoform-study-workflow-batch" => Some(vec![]),
         "primers publish-gene-isoform-study" => Some(vec![]),
         "primers compose-gene-assay-routine" | "ComposeGeneTranscriptAssayRoutine" => Some(vec![]),
         "primers experimental-handoff" | "BuildExperimentalAssayHandoff" => Some(vec![
@@ -54287,12 +54337,10 @@ fn execute_primers_command(
             if *normalize_only {
                 return Ok(ShellRunResult {
                     state_changed: false,
-                    output: json!({
-                        "schema": GENE_ISOFORM_ASSAY_STUDY_PLAN_REQUEST_SCHEMA,
-                        "normalized_request": normalized,
-                        "normalized_request_path": normalized_request_path,
-                        "planning_executed": false,
-                    }),
+                    // The normalization route deliberately returns the request
+                    // itself. Callers may persist stdout verbatim as the first
+                    // approval basis without unwrapping an adapter envelope.
+                    output: json!(normalized),
                 });
             }
             let result = engine
@@ -54318,6 +54366,12 @@ fn execute_primers_command(
             plan_json,
             workflow_json,
         } => execute_approved_gene_isoform_assay_study_workflow(engine, plan_json, workflow_json),
+        ShellCommand::PrimersComposeGeneIsoformAssayStudyWorkflowBatch { request_json } => {
+            compose_gene_isoform_assay_study_workflow_batch(request_json)
+        }
+        ShellCommand::PrimersExecuteGeneIsoformAssayStudyWorkflowBatch { batch_json } => {
+            execute_approved_gene_isoform_assay_study_workflow_batch(engine, batch_json)
+        }
         ShellCommand::PrimersPublishGeneIsoformAssayStudy {
             request_path,
             output_directory,
@@ -59501,16 +59555,21 @@ fn execute_parsed_workflow_command(
     })
 }
 
-fn execute_approved_gene_isoform_assay_study_workflow(
-    engine: &mut GentleEngine,
-    plan_json: &str,
-    workflow_json: &str,
-) -> Result<ShellRunResult, String> {
-    let plan_text = parse_json_payload(plan_json)?;
-    let plan: GeneIsoformAssayStudyPlanReport =
-        serde_json::from_str(&plan_text).map_err(|error| {
-            format!("Could not parse gene isoform assay study plan from '{plan_json}': {error}")
-        })?;
+struct VerifiedGeneIsoformAssayStudyWorkflow {
+    plan: GeneIsoformAssayStudyPlanReport,
+    workflow: Workflow,
+    workflow_sha256: String,
+    operation_batch_sha256: String,
+}
+
+fn verify_approved_gene_isoform_assay_study_workflow(
+    plan_text: &str,
+    workflow_text: &str,
+    source_label: &str,
+) -> Result<VerifiedGeneIsoformAssayStudyWorkflow, String> {
+    let plan: GeneIsoformAssayStudyPlanReport = serde_json::from_str(plan_text).map_err(|error| {
+        format!("Could not parse gene isoform assay study plan from '{source_label}': {error}")
+    })?;
     if plan.schema != GENE_ISOFORM_ASSAY_STUDY_PLAN_SCHEMA {
         return Err(format!(
             "Gene isoform assay study plan '{}' uses unsupported schema '{}'; expected '{}'",
@@ -59523,8 +59582,6 @@ fn execute_approved_gene_isoform_assay_study_workflow(
             plan.plan_id
         ));
     }
-
-    let workflow_text = parse_json_payload(workflow_json)?;
     let observed_workflow_sha256 =
         crate::digest_utils::sha256_prefixed_bytes(workflow_text.as_bytes());
     if observed_workflow_sha256 != plan.approved_workflow_sha256 {
@@ -59545,16 +59602,293 @@ fn execute_approved_gene_isoform_assay_study_workflow(
         ));
     }
 
-    let execution = execute_parsed_workflow_command(engine, workflow)?;
+    Ok(VerifiedGeneIsoformAssayStudyWorkflow {
+        plan,
+        workflow,
+        workflow_sha256: observed_workflow_sha256,
+        operation_batch_sha256: observed_operation_batch_sha256,
+    })
+}
+
+fn execute_approved_gene_isoform_assay_study_workflow(
+    engine: &mut GentleEngine,
+    plan_json: &str,
+    workflow_json: &str,
+) -> Result<ShellRunResult, String> {
+    let plan_text = parse_json_payload(plan_json)?;
+    let workflow_text = parse_json_payload(workflow_json)?;
+    let verified = verify_approved_gene_isoform_assay_study_workflow(
+        &plan_text,
+        &workflow_text,
+        plan_json,
+    )?;
+
+    let execution = execute_parsed_workflow_command(engine, verified.workflow)?;
     Ok(ShellRunResult {
         state_changed: execution.state_changed,
         output: json!({
             "schema": "gentle.gene_isoform_assay_study_workflow_execution.v1",
-            "plan_id": plan.plan_id,
-            "approved_workflow_sha256": plan.approved_workflow_sha256,
-            "operation_batch_sha256": plan.operation_batch_sha256,
+            "plan_id": verified.plan.plan_id,
+            "approved_workflow_sha256": verified.workflow_sha256,
+            "operation_batch_sha256": verified.operation_batch_sha256,
             "workflow_verified": true,
             "execution": execution.output,
+        }),
+    })
+}
+
+fn read_exact_json_file(path: &str, label: &str) -> Result<(String, String, String), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err(format!("{label} path must not be empty"));
+    }
+    let resolved = fs::canonicalize(trimmed)
+        .map_err(|error| format!("Could not resolve {label} '{trimmed}': {error}"))?;
+    if !resolved.is_file() {
+        return Err(format!(
+            "Resolved {label} '{}' is not a regular file",
+            resolved.display()
+        ));
+    }
+    let bytes = fs::read(&resolved)
+        .map_err(|error| format!("Could not read {label} '{}': {error}", resolved.display()))?;
+    let text = String::from_utf8(bytes).map_err(|error| {
+        format!(
+            "{label} '{}' is not valid UTF-8 JSON: {error}",
+            resolved.display()
+        )
+    })?;
+    let sha256 = crate::digest_utils::sha256_prefixed_bytes(text.as_bytes());
+    Ok((resolved.to_string_lossy().to_string(), text, sha256))
+}
+
+fn gene_isoform_assay_study_workflow_batch_basis_sha256(
+    batch: &GeneIsoformAssayStudyWorkflowBatch,
+) -> Result<String, String> {
+    let mut basis = batch.clone();
+    basis.batch_basis_sha256.clear();
+    let bytes = serde_json::to_vec(&basis)
+        .map_err(|error| format!("Could not hash gene isoform study workflow batch: {error}"))?;
+    Ok(crate::digest_utils::sha256_prefixed_bytes(&bytes))
+}
+
+fn compose_gene_isoform_assay_study_workflow_batch(
+    request_json: &str,
+) -> Result<ShellRunResult, String> {
+    let request_text = parse_json_payload(request_json)?;
+    let request: GeneIsoformAssayStudyWorkflowBatchRequest =
+        serde_json::from_str(&request_text).map_err(|error| {
+            format!(
+                "Could not parse gene isoform assay workflow batch request from '{request_json}': {error}"
+            )
+        })?;
+    if request.schema != GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_REQUEST_SCHEMA {
+        return Err(format!(
+            "Gene isoform assay workflow batch request uses unsupported schema '{}'; expected '{}'",
+            request.schema, GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_REQUEST_SCHEMA
+        ));
+    }
+    let batch_id = request.batch_id.trim();
+    if batch_id.is_empty() {
+        return Err("Gene isoform assay workflow batch request requires batch_id".to_string());
+    }
+    if request.entries.is_empty() {
+        return Err(
+            "Gene isoform assay workflow batch request requires at least one plan/workflow entry"
+                .to_string(),
+        );
+    }
+
+    let mut entries = Vec::with_capacity(request.entries.len());
+    let mut combined_operations = vec![];
+    let mut seen_plan_ids = HashSet::new();
+    for (index, source) in request.entries.iter().enumerate() {
+        let (plan_path, plan_text, plan_sha256) =
+            read_exact_json_file(&source.plan_path, "study plan")?;
+        let (workflow_path, workflow_text, workflow_sha256) =
+            read_exact_json_file(&source.workflow_path, "study workflow")?;
+        let verified = verify_approved_gene_isoform_assay_study_workflow(
+            &plan_text,
+            &workflow_text,
+            &plan_path,
+        )?;
+        if !seen_plan_ids.insert(verified.plan.plan_id.clone()) {
+            return Err(format!(
+                "Gene isoform assay workflow batch contains duplicate plan_id '{}'",
+                verified.plan.plan_id
+            ));
+        }
+        combined_operations.extend(verified.workflow.ops.iter().cloned());
+        entries.push(GeneIsoformAssayStudyWorkflowBatchEntry {
+            ordinal: index.saturating_add(1),
+            plan_id: verified.plan.plan_id,
+            plan_path,
+            plan_sha256,
+            workflow_path,
+            workflow_sha256,
+            workflow_run_id: verified.workflow.run_id.clone(),
+            operation_batch_sha256: verified.operation_batch_sha256,
+            operation_count: verified.workflow.ops.len(),
+        });
+    }
+    let combined_operation_batch_sha256 = crate::digest_utils::sha256_prefixed_bytes(
+        &serde_json::to_vec(&combined_operations)
+            .map_err(|error| format!("Could not hash combined operation batch: {error}"))?,
+    );
+    let mut batch = GeneIsoformAssayStudyWorkflowBatch {
+        schema: GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_SCHEMA.to_string(),
+        batch_id: batch_id.to_string(),
+        total_operation_count: combined_operations.len(),
+        combined_operation_batch_sha256,
+        entries,
+        batch_basis_sha256: String::new(),
+    };
+    batch.batch_basis_sha256 = gene_isoform_assay_study_workflow_batch_basis_sha256(&batch)?;
+    Ok(ShellRunResult {
+        state_changed: false,
+        output: json!(batch),
+    })
+}
+
+fn execute_approved_gene_isoform_assay_study_workflow_batch(
+    engine: &mut GentleEngine,
+    batch_json: &str,
+) -> Result<ShellRunResult, String> {
+    let batch_text = parse_json_payload(batch_json)?;
+    let batch: GeneIsoformAssayStudyWorkflowBatch = serde_json::from_str(&batch_text)
+        .map_err(|error| {
+            format!(
+                "Could not parse gene isoform assay workflow batch from '{batch_json}': {error}"
+            )
+        })?;
+    if batch.schema != GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_SCHEMA {
+        return Err(format!(
+            "Gene isoform assay workflow batch '{}' uses unsupported schema '{}'; expected '{}'",
+            batch.batch_id, batch.schema, GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_SCHEMA
+        ));
+    }
+    if batch.entries.is_empty() {
+        return Err(format!(
+            "Gene isoform assay workflow batch '{}' contains no entries",
+            batch.batch_id
+        ));
+    }
+    let observed_batch_basis_sha256 =
+        gene_isoform_assay_study_workflow_batch_basis_sha256(&batch)?;
+    if observed_batch_basis_sha256 != batch.batch_basis_sha256 {
+        return Err(format!(
+            "Gene isoform assay workflow batch '{}' basis digest mismatch: expected '{}', observed '{}'; no operations were executed",
+            batch.batch_id, batch.batch_basis_sha256, observed_batch_basis_sha256
+        ));
+    }
+
+    let mut verified_entries = Vec::with_capacity(batch.entries.len());
+    let mut combined_operations = vec![];
+    let mut seen_plan_ids = HashSet::new();
+    for (index, entry) in batch.entries.iter().enumerate() {
+        let expected_ordinal = index.saturating_add(1);
+        if entry.ordinal != expected_ordinal {
+            return Err(format!(
+                "Gene isoform assay workflow batch '{}' entry {} records ordinal {}; no operations were executed",
+                batch.batch_id, expected_ordinal, entry.ordinal
+            ));
+        }
+        let (_, plan_text, observed_plan_sha256) =
+            read_exact_json_file(&entry.plan_path, "study plan")?;
+        if observed_plan_sha256 != entry.plan_sha256 {
+            return Err(format!(
+                "Study plan file digest mismatch for batch '{}' entry {}: expected '{}', observed '{}'; no operations were executed",
+                batch.batch_id, entry.ordinal, entry.plan_sha256, observed_plan_sha256
+            ));
+        }
+        let (_, workflow_text, observed_workflow_file_sha256) =
+            read_exact_json_file(&entry.workflow_path, "study workflow")?;
+        if observed_workflow_file_sha256 != entry.workflow_sha256 {
+            return Err(format!(
+                "Study workflow file digest mismatch for batch '{}' entry {}: expected '{}', observed '{}'; no operations were executed",
+                batch.batch_id,
+                entry.ordinal,
+                entry.workflow_sha256,
+                observed_workflow_file_sha256
+            ));
+        }
+        let verified = verify_approved_gene_isoform_assay_study_workflow(
+            &plan_text,
+            &workflow_text,
+            &entry.plan_path,
+        )?;
+        if verified.plan.plan_id != entry.plan_id {
+            return Err(format!(
+                "Study plan identity mismatch for batch '{}' entry {}: expected '{}', observed '{}'; no operations were executed",
+                batch.batch_id, entry.ordinal, entry.plan_id, verified.plan.plan_id
+            ));
+        }
+        if !seen_plan_ids.insert(entry.plan_id.clone()) {
+            return Err(format!(
+                "Gene isoform assay workflow batch '{}' repeats plan_id '{}'; no operations were executed",
+                batch.batch_id, entry.plan_id
+            ));
+        }
+        if verified.workflow_sha256 != entry.workflow_sha256
+            || verified.workflow.run_id != entry.workflow_run_id
+            || verified.operation_batch_sha256 != entry.operation_batch_sha256
+            || verified.workflow.ops.len() != entry.operation_count
+        {
+            return Err(format!(
+                "Study workflow metadata mismatch for batch '{}' entry {}; no operations were executed",
+                batch.batch_id, entry.ordinal
+            ));
+        }
+        combined_operations.extend(verified.workflow.ops.iter().cloned());
+        verified_entries.push(verified);
+    }
+    if combined_operations.len() != batch.total_operation_count {
+        return Err(format!(
+            "Gene isoform assay workflow batch '{}' operation count mismatch: expected {}, observed {}; no operations were executed",
+            batch.batch_id,
+            batch.total_operation_count,
+            combined_operations.len()
+        ));
+    }
+    let observed_combined_operation_batch_sha256 = crate::digest_utils::sha256_prefixed_bytes(
+        &serde_json::to_vec(&combined_operations)
+            .map_err(|error| format!("Could not hash combined operation batch: {error}"))?,
+    );
+    if observed_combined_operation_batch_sha256 != batch.combined_operation_batch_sha256 {
+        return Err(format!(
+            "Gene isoform assay workflow batch '{}' combined operation digest mismatch: expected '{}', observed '{}'; no operations were executed",
+            batch.batch_id,
+            batch.combined_operation_batch_sha256,
+            observed_combined_operation_batch_sha256
+        ));
+    }
+
+    let mut state_changed = false;
+    let mut executions = vec![];
+    for verified in verified_entries {
+        let plan_id = verified.plan.plan_id.clone();
+        let workflow_sha256 = verified.workflow_sha256.clone();
+        let operation_batch_sha256 = verified.operation_batch_sha256.clone();
+        let execution = execute_parsed_workflow_command(engine, verified.workflow)?;
+        state_changed |= execution.state_changed;
+        executions.push(json!({
+            "plan_id": plan_id,
+            "approved_workflow_sha256": workflow_sha256,
+            "operation_batch_sha256": operation_batch_sha256,
+            "execution": execution.output,
+        }));
+    }
+    Ok(ShellRunResult {
+        state_changed,
+        output: json!({
+            "schema": GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_EXECUTION_SCHEMA,
+            "batch_id": batch.batch_id,
+            "batch_basis_sha256": batch.batch_basis_sha256,
+            "combined_operation_batch_sha256": batch.combined_operation_batch_sha256,
+            "total_operation_count": batch.total_operation_count,
+            "workflow_count": batch.entries.len(),
+            "batch_verified_before_execution": true,
+            "executions": executions,
         }),
     })
 }
@@ -60436,6 +60770,8 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::PrimersDesignTranscriptAssayPanelRequest { .. }
             | ShellCommand::PrimersPlanGeneIsoformAssayStudy { .. }
             | ShellCommand::PrimersExecuteGeneIsoformAssayStudyWorkflow { .. }
+            | ShellCommand::PrimersComposeGeneIsoformAssayStudyWorkflowBatch { .. }
+            | ShellCommand::PrimersExecuteGeneIsoformAssayStudyWorkflowBatch { .. }
             | ShellCommand::PrimersPublishGeneIsoformAssayStudy { .. }
             | ShellCommand::PrimersComposeGeneTranscriptAssayRoutine { .. }
             | ShellCommand::PrimersTestCdnaQpcrFasta { .. }
@@ -62205,6 +62541,8 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersDesignTranscriptAssayPanelRequest { .. }
         | ShellCommand::PrimersPlanGeneIsoformAssayStudy { .. }
         | ShellCommand::PrimersExecuteGeneIsoformAssayStudyWorkflow { .. }
+        | ShellCommand::PrimersComposeGeneIsoformAssayStudyWorkflowBatch { .. }
+        | ShellCommand::PrimersExecuteGeneIsoformAssayStudyWorkflowBatch { .. }
         | ShellCommand::PrimersPublishGeneIsoformAssayStudy { .. }
         | ShellCommand::PrimersComposeGeneTranscriptAssayRoutine { .. }
         | ShellCommand::PrimersTestCdnaQpcrFasta { .. }

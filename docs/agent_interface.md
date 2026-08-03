@@ -470,7 +470,9 @@ an agent has selected a deterministic operation.
 - `planning sync status`
 - `primers design`
 - `primers design-transcript-assay-panel`
+- `primers compose-gene-isoform-study-workflow-batch`
 - `primers execute-gene-isoform-study-workflow`
+- `primers execute-gene-isoform-study-workflow-batch`
 - `primers design-qpcr`
 - `primers experimental-handoff` (the typed `BuildExperimentalAssayHandoff` operation remains available through the generic MCP `op` tool)
 - `primers export-qpcr-report`

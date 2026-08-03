@@ -178,6 +178,13 @@ named deterministic projection in a machine-readable claim/artifact ledger.
 Wrapper-authored graphics may arrange GENtle artifacts but must not recalculate
 or upgrade their scientific content.
 
+Adapter execution timeouts are approval-bound operational ceilings, not
+scientific parameters or expected runtimes. Long primer-design routes must
+allow the ceiling to be reviewed explicitly; adapters must not present a fixed
+wrapper timeout as a Primer3 limitation. Runtime expectations should consider
+transcript-equivalence classes, target ROIs, requested junctions, assay mode,
+and operation count in addition to sequence span.
+
 ## DEC-016: External AI/Automation Deployment
 
 Status: active
@@ -516,6 +523,15 @@ approval binds the exact ordered `DesignTranscriptAssayPanel` payloads emitted
 by the approved plan. Those payloads are not regenerated or altered after
 approval, and one batch approval is valid only because its digest covers the
 complete ordered set.
+
+For a multi-study second stage, independently approved plan/workflow pairs are
+first composed into one engine-owned batch record. That record binds each
+plan/workflow file, their existing workflow and operation digests, their order,
+and the combined ordered operation set. Execution revalidates the complete
+batch before applying its first operation and runs it through one state-bound
+command. An adapter must not create several execution proposals against one
+pre-mutation project state and then run them serially; the first mutation would
+make the remaining approvals stale.
 
 An oligo order form may be projected from this work only through a specific
 `gentle.experimental_assay_handoff.v1` whose bytes and named readiness policy
