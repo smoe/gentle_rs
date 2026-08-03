@@ -870,6 +870,9 @@ Implemented baseline:
 - `gene-groups resolve` answers "which catalog entry matches this token";
   `gene-sets resolve` answers "which genes are in this analysis operand after
   expansion, gating, deduplication, and provenance recording".
+- Choose `ExternalMapping` (including `--go`) for reviewed local catalog
+  groups that cite a term; choose the ontology-assignment producer for genes
+  assigned to that term by a specified offline provider/cache.
 - V1 is offline-first: GO/external mappings resolve only from local
   `external_mappings`; no live GO download or Ensembl ortholog/paralog API call
   is made.

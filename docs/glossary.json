@@ -2103,7 +2103,7 @@
             "cli-direct"
          ],
          "path": "gene-sets produce ontology-assignment",
-         "summary": "Produce a gene-set resolution report from a local ontology assignment JSON/TSV cache, selecting members by term and evidence/filter metadata before resolving them through the existing explicit-member resolver.",
+         "summary": "Produce a gene-set resolution report from a local ontology assignment JSON/TSV cache, selecting genes assigned to a term by that provider/cache; unlike ExternalMapping, this does not select reviewed local catalog groups that cite the term.",
          "usage": "gene-sets produce ontology-assignment --cache CACHE.json_or_tsv --term GO:NNNNNNN [--ontology-namespace GO] [--evidence-code CODE] [--genome GENOME_ID] [--provider-id ID] [--provider-version VERSION] [--cache-version VERSION] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--filter FIELD=VALUE] [--output OUTPUT.json]"
       },
       {
