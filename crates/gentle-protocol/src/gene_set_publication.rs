@@ -10,6 +10,8 @@ pub const GENE_SET_PUBLICATION_REQUEST_SCHEMA: &str = "gentle.gene_set_publicati
 pub const GENE_SET_PUBLICATION_REPORT_SCHEMA: &str = "gentle.gene_set_publication_report.v1";
 pub const GENE_SET_PUBLICATION_GENERATION_SCHEMA: &str =
     "gentle.gene_set_publication_generation.v1";
+pub const GENE_SET_PUBLICATION_BUNDLE_MANIFEST_SCHEMA: &str =
+    "gentle.gene_set_publication_bundle_manifest.v1";
 pub const GENE_ISOFORM_ASSAY_PUBLICATION_REQUEST_SCHEMA: &str =
     "gentle.gene_isoform_assay_publication_request.v1";
 pub const GENE_ISOFORM_ASSAY_PUBLICATION_SCHEMA: &str = "gentle.gene_isoform_assay_publication.v1";
@@ -260,7 +262,35 @@ pub struct GeneSetPublicationGenerationReport {
     pub resolved_report_path: String,
     pub pdf_path: Option<String>,
     pub copied_files: Vec<String>,
+    pub bundle_manifest_path: String,
+    pub bundle_manifest_sha256: String,
+    #[serde(default)]
+    pub artifacts: Vec<GeneSetPublicationBundleArtifact>,
     pub warnings: Vec<String>,
+}
+
+/// One finalized legacy publication-bundle file bound to its exact bytes.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneSetPublicationBundleArtifact {
+    pub path: String,
+    pub sha256: String,
+    pub media_type: String,
+}
+
+/// Portable content inventory for one generated legacy publication bundle.
+///
+/// The manifest binds the input request and every user-facing artifact. It
+/// intentionally excludes itself and `generation-report.json` to avoid a
+/// recursive digest contract; the generation report records the manifest hash.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneSetPublicationBundleManifest {
+    pub schema: String,
+    pub report_id: String,
+    pub request_sha256: String,
+    #[serde(default)]
+    pub artifacts: Vec<GeneSetPublicationBundleArtifact>,
 }
 
 /// One content-addressed GENtle report consumed by an isoform-assay dossier.
@@ -471,5 +501,19 @@ mod tests {
         assert_eq!(request.pdf_filename, "report.pdf");
         assert_eq!(request.primer_table.columns.pair_id, "pair_alias");
         assert_eq!(request.genes[0].gene_symbol, "GENE1");
+    }
+
+    #[test]
+    fn legacy_generation_receipt_without_bundle_manifest_fields_still_deserializes() {
+        let report: GeneSetPublicationGenerationReport =
+            serde_json::from_value(serde_json::json!({
+                "schema": GENE_SET_PUBLICATION_GENERATION_SCHEMA,
+                "html_path": "index.html",
+                "copied_files": ["data/primers.tsv"]
+            }))
+            .expect("deserialize pre-manifest generation receipt");
+        assert!(report.bundle_manifest_path.is_empty());
+        assert!(report.bundle_manifest_sha256.is_empty());
+        assert!(report.artifacts.is_empty());
     }
 }

@@ -7,6 +7,9 @@ portable gene-set manifest into a responsive HTML report, complete primer
 tables, copied assets, and an optional printable companion. HTML and print
 derive from the same `resolved-report.json`; see
 [`gene_set_publication_reports.md`](gene_set_publication_reports.md).
+`bundle-manifest.json` records the request digest and the digest/media type of
+every finalized bundle artifact. `generation-report.json` records that
+manifest's digest while retaining the legacy `copied_files[]` field.
 
 For content-bound isoform-assay dossiers, the same binary accepts
 `gentle.gene_isoform_assay_publication_request.v1` plus optional

@@ -24,6 +24,11 @@ understand what changed.
 
 ## 2026-08-03
 
+- Content-bound legacy gene-set publication bundles with a deterministic
+  `bundle-manifest.json`, while preserving the v1 generation schema and
+  `copied_files[]`. Added regression coverage for browser-PDF failure,
+  presentation profile/block filtering, iterative study overrides, and v1
+  projection-option rejection.
 - Added deterministic gene isoform-assay study planning, two digest-bound
   approval subjects (normalized evidence/policy inputs and exact ordered design
   operations), readiness-bound oligo-order creation, and canonical multi-gene

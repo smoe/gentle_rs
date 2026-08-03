@@ -17,6 +17,14 @@ record. The complete primer list, gene order, captions, and figure inventory
 therefore cannot drift between HTML and print. `resolved-report.json` remains
 in the output bundle for audit and reuse.
 
+Each bundle also contains `bundle-manifest.json` using
+`gentle.gene_set_publication_bundle_manifest.v1`. It binds the exact request
+bytes and every finalized HTML, Markdown, resolved-report, data, figure, and
+optional PDF artifact by SHA-256 and media type. The manifest deliberately
+does not list itself or `generation-report.json`; the generation receipt binds
+the manifest path and digest and keeps `copied_files[]` for compatibility with
+older consumers.
+
 The HTML is the primary interactive presentation. It provides a responsive
 overview with metric cards, methods/rationale, a complete primer table, and
 per-gene figure galleries. The PDF is a printable companion with the same
@@ -49,6 +57,9 @@ non-empty expected output. Errors identify the executable and corresponding
 override variable. The HTML, Markdown, and resolved record are still written
 without a PDF link when PDF generation cannot complete, so a failed optional
 print step cannot masquerade as a complete PDF bundle.
+The pre-PDF web manifest remains valid when an optional PDF tool fails; after
+a successful PDF build GENtle rewrites the manifest to bind the final PDF and
+the updated HTML/resolved report containing its link.
 
 Minimal shape (real reports normally add metrics, narrative, downloads, and
 three figures per gene):

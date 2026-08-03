@@ -6,7 +6,11 @@
 input. It resolves to `gentle.gene_set_publication_report.v1`, which normalises
 the complete primer table and copied asset paths. The generation receipt is
 `gentle.gene_set_publication_generation.v1`. HTML and printable output are
-projections of this record, not independent sources.
+projections of this record, not independent sources. Every generated legacy
+bundle also carries `gentle.gene_set_publication_bundle_manifest.v1`, which
+binds the exact request SHA-256 and every finalized user-facing artifact. The
+manifest excludes itself and `generation-report.json` to avoid recursive
+hashes; the generation receipt records the manifest path and SHA-256.
 
 Gene-centred isoform-assay dossiers use
 `gentle.gene_isoform_assay_publication_request.v1`. Every study plan,

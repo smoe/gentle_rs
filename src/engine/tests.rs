@@ -57067,6 +57067,7 @@ fn gene_isoform_assay_study_planner_normalizes_inputs_and_emits_exact_operation_
         }],
         ..GeneIsoformAssayStudyPlanRequest::default()
     };
+    let initial_request = request.clone();
     let normalized = engine
         .normalize_gene_isoform_assay_study_request(request.clone())
         .expect("normalize study request");
@@ -57145,6 +57146,77 @@ fn gene_isoform_assay_study_planner_normalizes_inputs_and_emits_exact_operation_
         plan.operation_batch_sha256
     );
     assert!(engine.list_transcript_assay_panel_reports().is_empty());
+
+    let first_plan_bytes = fs::read(&plan_path).expect("read first plan");
+    let first_plan_sha256 = sha256_prefixed_bytes(&first_plan_bytes);
+    let first_plan_id = plan.plan_id.clone();
+    let first_request_sha256 = plan.request_sha256.clone();
+    let mut next_request = initial_request;
+    next_request.plan_id = Some("panel1_iteration_2".to_string());
+    next_request.prior_plan = Some(GeneIsoformAssayPriorPlanRef {
+        path: plan_path.to_string_lossy().to_string(),
+        expected_sha256: Some(first_plan_sha256.clone()),
+        plan_id: None,
+    });
+    next_request.profile_override = Some(GeneIsoformAssayStudyOverride {
+        selected_profile: GeneIsoformAssayStudyProfile::RoutineCommonRegionScreen,
+        reason: "Retain a compact control-only follow-up after the first experiment.".to_string(),
+        requested_by: Some("synthetic reviewer".to_string()),
+    });
+    next_request
+        .observations
+        .push(GeneIsoformAssayStudyObservation {
+            observation_id: "wetlab_2".to_string(),
+            statement: "The first synthetic assay was technically clean.".to_string(),
+            source: "user notebook follow-up".to_string(),
+            validation_status: "confirmed".to_string(),
+            related_assay_ids: vec!["assay_1".to_string()],
+        });
+    next_request.retained_assay_ids = vec!["assay_1".to_string()];
+    let next_plan_path = temp.path().join("plan-iteration-2.json");
+    let next = engine
+        .apply(Operation::PlanGeneIsoformAssayStudy {
+            request: next_request,
+            path: Some(next_plan_path.to_string_lossy().to_string()),
+            workflow_path: None,
+        })
+        .expect("plan second study iteration")
+        .gene_isoform_assay_study_plan
+        .expect("second study plan report");
+    assert_eq!(next.iteration, 2);
+    assert_eq!(next.prior_plan_id.as_deref(), Some(first_plan_id.as_str()));
+    assert_eq!(
+        next.prior_plan_sha256.as_deref(),
+        Some(first_plan_sha256.as_str())
+    );
+    assert_eq!(
+        next.recommended_profile,
+        GeneIsoformAssayStudyProfile::ComprehensiveIsoformDossier
+    );
+    assert_eq!(
+        next.selected_profile,
+        GeneIsoformAssayStudyProfile::RoutineCommonRegionScreen
+    );
+    assert_eq!(
+        next.profile_override
+            .as_ref()
+            .map(|value| value.reason.as_str()),
+        Some("Retain a compact control-only follow-up after the first experiment.")
+    );
+    assert_eq!(next.observations.len(), 2);
+    assert!(
+        next.observations
+            .iter()
+            .all(|observation| observation.validation_status == "user_supplied_unvalidated")
+    );
+    assert_eq!(next.retained_assay_ids, vec!["assay_1".to_string()]);
+    assert_ne!(next.request_sha256, first_request_sha256);
+    assert_eq!(next.planned_operations.len(), 1);
+    assert!(
+        next.warnings
+            .iter()
+            .any(|warning| warning.contains("do not change the automatic recommendation"))
+    );
 }
 
 #[test]

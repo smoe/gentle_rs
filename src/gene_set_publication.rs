@@ -3,15 +3,16 @@
 use gentle_protocol::{
     GENE_ISOFORM_ASSAY_PUBLICATION_PROJECTION_SCHEMA,
     GENE_ISOFORM_ASSAY_PUBLICATION_REQUEST_SCHEMA, GENE_ISOFORM_ASSAY_PUBLICATION_SCHEMA,
-    GENE_SET_PUBLICATION_GENERATION_SCHEMA, GENE_SET_PUBLICATION_REPORT_SCHEMA,
-    GENE_SET_PUBLICATION_REQUEST_SCHEMA, GeneIsoformAssayPublicationArtifact,
-    GeneIsoformAssayPublicationBlock, GeneIsoformAssayPublicationBoundReport,
-    GeneIsoformAssayPublicationGene, GeneIsoformAssayPublicationParameter,
-    GeneIsoformAssayPublicationParameterOverride, GeneIsoformAssayPublicationProfile,
-    GeneIsoformAssayPublicationProjectionReport, GeneIsoformAssayPublicationReport,
-    GeneIsoformAssayPublicationReportRef, GeneIsoformAssayPublicationRequest,
-    GeneSetPublicationDownload, GeneSetPublicationFigure, GeneSetPublicationGene,
-    GeneSetPublicationGenerationReport, GeneSetPublicationPrimerColumnMap,
+    GENE_SET_PUBLICATION_BUNDLE_MANIFEST_SCHEMA, GENE_SET_PUBLICATION_GENERATION_SCHEMA,
+    GENE_SET_PUBLICATION_REPORT_SCHEMA, GENE_SET_PUBLICATION_REQUEST_SCHEMA,
+    GeneIsoformAssayPublicationArtifact, GeneIsoformAssayPublicationBlock,
+    GeneIsoformAssayPublicationBoundReport, GeneIsoformAssayPublicationGene,
+    GeneIsoformAssayPublicationParameter, GeneIsoformAssayPublicationParameterOverride,
+    GeneIsoformAssayPublicationProfile, GeneIsoformAssayPublicationProjectionReport,
+    GeneIsoformAssayPublicationReport, GeneIsoformAssayPublicationReportRef,
+    GeneIsoformAssayPublicationRequest, GeneSetPublicationBundleArtifact,
+    GeneSetPublicationBundleManifest, GeneSetPublicationDownload, GeneSetPublicationFigure,
+    GeneSetPublicationGene, GeneSetPublicationGenerationReport, GeneSetPublicationPrimerColumnMap,
     GeneSetPublicationPrimerRow, GeneSetPublicationReport, GeneSetPublicationRequest,
 };
 use gentle_render::{
@@ -263,6 +264,7 @@ fn validate_leaf_filename(value: &str, label: &str) -> Result<(), String> {
 fn validate_output_filenames(request: &GeneSetPublicationRequest) -> Result<(), String> {
     const RESERVED: &[&str] = &[
         "assembled-uncompressed.pdf",
+        "bundle-manifest.json",
         "data",
         "favicon.ico",
         "figures",
@@ -342,6 +344,7 @@ pub fn generate_gene_set_publication(
             request_path.display()
         )
     })?;
+    let request_sha256 = sha256_prefixed_bytes(request_text.as_bytes());
     let request: GeneSetPublicationRequest =
         serde_json::from_str(&request_text).map_err(|error| {
             format!(
@@ -494,6 +497,16 @@ pub fn generate_gene_set_publication(
         serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?,
     )
     .map_err(|error| error.to_string())?;
+    let (mut bundle_manifest_path, mut bundle_manifest_sha256, mut artifacts) =
+        write_gene_set_bundle_manifest(
+            output_directory,
+            &request.report_id,
+            &request_sha256,
+            &copied_files,
+            &request.html_filename,
+            &request.markdown_filename,
+            None,
+        )?;
     let mut warnings = Vec::new();
     let pdf_path = if generate_pdf {
         let narrative = output_directory.join("narrative.pdf");
@@ -562,6 +575,18 @@ pub fn generate_gene_set_publication(
             serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?,
         )
         .map_err(|error| error.to_string())?;
+        let refreshed_manifest = write_gene_set_bundle_manifest(
+            output_directory,
+            &request.report_id,
+            &request_sha256,
+            &copied_files,
+            &request.html_filename,
+            &request.markdown_filename,
+            report.pdf_path.as_deref(),
+        )?;
+        bundle_manifest_path = refreshed_manifest.0;
+        bundle_manifest_sha256 = refreshed_manifest.1;
+        artifacts = refreshed_manifest.2;
         cleanup_generated_file(&narrative, &mut warnings);
         cleanup_generated_file(&assembled_pdf, &mut warnings);
         cleanup_generated_file(&optimized_pdf, &mut warnings);
@@ -579,6 +604,9 @@ pub fn generate_gene_set_publication(
         resolved_report_path: resolved_path.to_string_lossy().into_owned(),
         pdf_path,
         copied_files,
+        bundle_manifest_path: bundle_manifest_path.to_string_lossy().into_owned(),
+        bundle_manifest_sha256,
+        artifacts,
         warnings,
     };
     fs::write(
@@ -1028,6 +1056,61 @@ fn json_string(value: Option<&serde_json::Value>) -> String {
     }
 }
 
+fn gene_set_bundle_artifact(
+    output_directory: &Path,
+    relative_path: &str,
+) -> Result<GeneSetPublicationBundleArtifact, String> {
+    let path = output_directory.join(relative_path);
+    let bytes = fs::read(&path).map_err(|error| {
+        format!(
+            "Could not hash gene-set publication artifact '{}': {error}",
+            path.display()
+        )
+    })?;
+    Ok(GeneSetPublicationBundleArtifact {
+        path: relative_path.replace('\\', "/"),
+        sha256: sha256_prefixed_bytes(&bytes),
+        media_type: publication_media_type(&path).to_string(),
+    })
+}
+
+fn write_gene_set_bundle_manifest(
+    output_directory: &Path,
+    report_id: &str,
+    request_sha256: &str,
+    copied_files: &[String],
+    html_filename: &str,
+    markdown_filename: &str,
+    pdf_filename: Option<&str>,
+) -> Result<(PathBuf, String, Vec<GeneSetPublicationBundleArtifact>), String> {
+    let mut paths = copied_files.iter().cloned().collect::<BTreeSet<_>>();
+    paths.insert(html_filename.to_string());
+    paths.insert(markdown_filename.to_string());
+    paths.insert("resolved-report.json".to_string());
+    if let Some(pdf_filename) = pdf_filename {
+        paths.insert(pdf_filename.to_string());
+    }
+    let artifacts = paths
+        .iter()
+        .map(|path| gene_set_bundle_artifact(output_directory, path))
+        .collect::<Result<Vec<_>, _>>()?;
+    let manifest = GeneSetPublicationBundleManifest {
+        schema: GENE_SET_PUBLICATION_BUNDLE_MANIFEST_SCHEMA.to_string(),
+        report_id: report_id.to_string(),
+        request_sha256: request_sha256.to_string(),
+        artifacts: artifacts.clone(),
+    };
+    let bytes = serde_json::to_vec_pretty(&manifest).map_err(|error| error.to_string())?;
+    let path = output_directory.join("bundle-manifest.json");
+    fs::write(&path, &bytes).map_err(|error| {
+        format!(
+            "Could not write gene-set publication bundle manifest '{}': {error}",
+            path.display()
+        )
+    })?;
+    Ok((path, sha256_prefixed_bytes(&bytes), artifacts))
+}
+
 fn publication_artifact(
     path: &Path,
     media_type: &str,
@@ -1057,6 +1140,12 @@ fn publication_media_type(path: &Path) -> &'static str {
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",
         "pdf" => "application/pdf",
+        "html" | "htm" => "text/html",
+        "md" | "markdown" => "text/markdown",
+        "json" => "application/json",
+        "tsv" => "text/tab-separated-values",
+        "csv" => "text/csv",
+        "ico" => "image/x-icon",
         _ => "application/octet-stream",
     }
 }
@@ -1482,6 +1571,77 @@ mod tests {
         .expect("primer table");
     }
 
+    fn write_minimal_isoform_publication_request(directory: &Path) -> PathBuf {
+        let plan = serde_json::json!({
+            "schema": "gentle.gene_isoform_assay_study_plan.v1",
+            "plan_id": "plan_gene1",
+            "gene_symbol": "GENE1",
+            "recommended_profile": "comprehensive_isoform_dossier",
+            "selected_profile": "isoform_discrimination",
+            "profile_override": {
+                "selected_profile": "isoform_discrimination",
+                "reason": "Review the compact synthetic panel first."
+            },
+            "iteration": 2,
+            "prior_plan_id": "plan_gene1_initial",
+            "observations": [{
+                "observation_id": "observation_1",
+                "statement": "One synthetic band was observed.",
+                "source": "synthetic test notebook",
+                "validation_status": "user_supplied_unvalidated"
+            }],
+            "operation_batch_sha256": "sha256:operations",
+            "normalized_request": {
+                "policy": {
+                    "schema": "gentle.gene_isoform_assay_study_policy.v1",
+                    "policy_version": "1",
+                    "short_min_amplicon_bp": 70,
+                    "short_max_amplicon_bp": 250
+                }
+            },
+            "evidence_summary": {
+                "transcript_count": 3,
+                "exact_cdna_equivalence_group_count": 2,
+                "responsive_region_count": 1
+            },
+            "decision_factors": [{
+                "rule_id": "multiple_cdna_classes",
+                "triggered": true,
+                "summary": "Two exact mature-cDNA classes require discrimination."
+            }],
+            "planned_operations": [{
+                "step_index": 0,
+                "step_id": "short_discrimination",
+                "purpose": "Distinguish exact mature-cDNA classes",
+                "operation_sha256": "sha256:operation",
+                "operation": {
+                    "DesignTranscriptAssayPanel": {
+                        "seq_id": "gene1_seq",
+                        "source_feature_id": 0,
+                        "report_id": "panel_gene1"
+                    }
+                }
+            }]
+        });
+        let plan_bytes = serde_json::to_vec_pretty(&plan).unwrap();
+        fs::write(directory.join("plan-minimal.json"), &plan_bytes).unwrap();
+        let request = serde_json::json!({
+            "schema": GENE_ISOFORM_ASSAY_PUBLICATION_REQUEST_SCHEMA,
+            "report_id": "dossier_minimal",
+            "title": "Synthetic isoform assay dossier",
+            "genes": [{
+                "gene_symbol": "GENE1",
+                "study_plan": {
+                    "path": "plan-minimal.json",
+                    "expected_sha256": sha256_prefixed_bytes(&plan_bytes)
+                }
+            }]
+        });
+        let request_path = directory.join("request-minimal.json");
+        fs::write(&request_path, serde_json::to_vec_pretty(&request).unwrap()).unwrap();
+        request_path
+    }
+
     #[test]
     fn one_manifest_drives_html_and_markdown() {
         let temp = tempfile::tempdir().expect("tempdir");
@@ -1495,19 +1655,54 @@ mod tests {
             "schema": GENE_SET_PUBLICATION_REQUEST_SCHEMA, "report_id": "synthetic", "title": "Synthetic", "primer_table": {"path": "primers.tsv"},
             "genes": [{"gene_symbol": "GENE1", "figures": [{"figure_id": "gene1-map", "source_path": "figure.svg", "label": "Map"}]}]
         });
-        fs::write(
-            temp.path().join("request.json"),
-            serde_json::to_vec_pretty(&request).unwrap(),
-        )
-        .expect("request");
+        let request_bytes = serde_json::to_vec_pretty(&request).unwrap();
+        fs::write(temp.path().join("request.json"), &request_bytes).expect("request");
         let output = temp.path().join("out");
-        generate_gene_set_publication(&temp.path().join("request.json"), &output, false)
-            .expect("generate");
+        let generation =
+            generate_gene_set_publication(&temp.path().join("request.json"), &output, false)
+                .expect("generate");
         let html = fs::read_to_string(output.join("index.html")).unwrap();
         let markdown = fs::read_to_string(output.join("report.md")).unwrap();
         assert!(html.contains("G1_P1") && markdown.contains("G1_P1"));
         assert!(html.contains("figures/figure.svg") && markdown.contains("figures/figure.svg"));
         assert!(html.contains("1 primary pairs"));
+        let manifest_bytes = fs::read(output.join("bundle-manifest.json")).unwrap();
+        let manifest: GeneSetPublicationBundleManifest =
+            serde_json::from_slice(&manifest_bytes).unwrap();
+        assert_eq!(manifest.schema, GENE_SET_PUBLICATION_BUNDLE_MANIFEST_SCHEMA);
+        assert_eq!(
+            manifest.request_sha256,
+            sha256_prefixed_bytes(&request_bytes)
+        );
+        assert_eq!(
+            generation.bundle_manifest_sha256,
+            sha256_prefixed_bytes(&manifest_bytes)
+        );
+        assert_eq!(generation.artifacts, manifest.artifacts);
+        for expected in [
+            "data/primers.tsv",
+            "figures/figure.svg",
+            "index.html",
+            "report.md",
+            "resolved-report.json",
+        ] {
+            let artifact = manifest
+                .artifacts
+                .iter()
+                .find(|artifact| artifact.path == expected)
+                .unwrap_or_else(|| panic!("missing content-bound artifact {expected}"));
+            assert_eq!(
+                artifact.sha256,
+                sha256_prefixed_bytes(&fs::read(output.join(expected)).unwrap())
+            );
+        }
+        assert!(
+            !manifest
+                .artifacts
+                .iter()
+                .any(|artifact| artifact.path == "bundle-manifest.json"
+                    || artifact.path == "generation-report.json")
+        );
     }
 
     #[test]
@@ -1614,6 +1809,112 @@ mod tests {
         )
         .expect("parse resolved report");
         assert_eq!(resolved.pdf_path, None);
+        let manifest: GeneSetPublicationBundleManifest = serde_json::from_slice(
+            &fs::read(output.join("bundle-manifest.json")).expect("web bundle manifest"),
+        )
+        .expect("parse web bundle manifest");
+        assert!(
+            manifest
+                .artifacts
+                .iter()
+                .any(|artifact| artifact.path == "index.html")
+        );
+        assert!(
+            !manifest
+                .artifacts
+                .iter()
+                .any(|artifact| artifact.path.ends_with(".pdf"))
+        );
+    }
+
+    #[test]
+    fn isoform_assay_missing_browser_fails_closed_after_writing_html() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let request_path = write_minimal_isoform_publication_request(temp.path());
+        let output = temp.path().join("out");
+        let missing_browser = temp.path().join("missing-browser");
+        let _override = crate::tool_overrides::ScopedToolOverrideGuard::set(
+            "GENTLE_BROWSER_BIN",
+            &missing_browser.to_string_lossy(),
+        );
+
+        let error = generate_gene_isoform_assay_publication(
+            &request_path,
+            &output,
+            Some("full"),
+            &[],
+            true,
+        )
+        .expect_err("missing browser must fail clearly");
+        assert!(error.contains("browser HTML-to-PDF rendering"), "{error}");
+        assert!(error.contains("GENTLE_BROWSER_BIN"), "{error}");
+        assert!(
+            error.contains(&missing_browser.to_string_lossy().to_string()),
+            "{error}"
+        );
+        for expected in [
+            "canonical-report.json",
+            "index.html",
+            "gene-GENE1.html",
+            "print.html",
+        ] {
+            assert!(output.join(expected).is_file(), "missing {expected}");
+        }
+        assert!(!output.join("report.pdf").exists());
+        assert!(!output.join("projection-report.json").exists());
+    }
+
+    #[test]
+    fn isoform_assay_profiles_and_explicit_blocks_filter_only_presentation() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let request_path = write_minimal_isoform_publication_request(temp.path());
+        let review_output = temp.path().join("review");
+        let review = generate_gene_isoform_assay_publication(
+            &request_path,
+            &review_output,
+            Some("review"),
+            &[],
+            false,
+        )
+        .expect("render review profile");
+        let review_html =
+            fs::read_to_string(review_output.join("gene-GENE1.html")).expect("review page");
+        assert!(review_html.contains("Study decision"));
+        assert!(review_html.contains("Evidence summary"));
+        assert!(!review_html.contains("Approved operation candidates"));
+        assert!(!review_html.contains("Provenance"));
+        assert!(
+            review
+                .selected_block_ids
+                .contains(&"gene.gene1.overview".to_string())
+        );
+        assert!(
+            !review
+                .selected_block_ids
+                .contains(&"gene.gene1.operations".to_string())
+        );
+
+        let operations_output = temp.path().join("operations-only");
+        let requested_blocks = vec!["gene.gene1.operations".to_string()];
+        let operations = generate_gene_isoform_assay_publication(
+            &request_path,
+            &operations_output,
+            Some("full"),
+            &requested_blocks,
+            false,
+        )
+        .expect("render declared operation block");
+        let operations_html =
+            fs::read_to_string(operations_output.join("gene-GENE1.html")).expect("operations page");
+        assert!(operations_html.contains("Approved operation candidates"));
+        assert!(operations_html.contains("Distinguish exact mature-cDNA classes"));
+        assert!(!operations_html.contains("Study decision"));
+        assert!(!operations_html.contains("Evidence summary"));
+        assert_eq!(operations.selected_block_ids, requested_blocks);
+        assert_eq!(
+            operations.canonical_report_sha256, review.canonical_report_sha256,
+            "presentation selection must not change canonical scientific content"
+        );
     }
 
     #[test]
