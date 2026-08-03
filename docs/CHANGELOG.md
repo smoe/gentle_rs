@@ -24,6 +24,9 @@ understand what changed.
 
 ## 2026-08-03
 
+- Dossier PDF rendering now discovers Chromium, Google Chrome, and Microsoft
+  Edge through `PATH` and conventional Linux, macOS, and Windows locations,
+  while preserving `GENTLE_BROWSER_BIN` as the authoritative override.
 - Content-bound legacy gene-set publication bundles with a deterministic
   `bundle-manifest.json`, while preserving the v1 generation schema and
   `copied_files[]`. Added regression coverage for browser-PDF failure,

@@ -35,7 +35,7 @@ use crate::{
     },
     svg_pdf::render_svg_file_to_pdf,
     svg_png::SvgPngRenderOptions,
-    tool_overrides::resolve_tool_executable,
+    tool_overrides::{configured_or_env, resolve_tool_executable},
 };
 
 #[cfg(test)]
@@ -1150,8 +1150,82 @@ fn publication_media_type(path: &Path) -> &'static str {
     }
 }
 
+fn choose_publication_browser(
+    configured: Option<&str>,
+    installed_candidates: &[PathBuf],
+    default_bin: &str,
+) -> String {
+    if let Some(configured) = configured.map(str::trim).filter(|value| !value.is_empty()) {
+        return configured.to_string();
+    }
+    installed_candidates
+        .iter()
+        .find(|path| path.is_file())
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_else(|| default_bin.to_string())
+}
+
+fn publication_browser_candidates() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    #[cfg(target_os = "macos")]
+    candidates.extend([
+        PathBuf::from("/Applications/Chromium.app/Contents/MacOS/Chromium"),
+        PathBuf::from("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+        PathBuf::from("/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"),
+    ]);
+    #[cfg(target_os = "linux")]
+    candidates.extend([
+        PathBuf::from("/usr/bin/chromium"),
+        PathBuf::from("/usr/bin/chromium-browser"),
+        PathBuf::from("/usr/bin/google-chrome"),
+        PathBuf::from("/usr/bin/google-chrome-stable"),
+        PathBuf::from("/usr/bin/microsoft-edge"),
+        PathBuf::from("/usr/bin/microsoft-edge-stable"),
+        PathBuf::from("/snap/bin/chromium"),
+    ]);
+    #[cfg(target_os = "windows")]
+    for root in ["PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA"] {
+        if let Some(root) = std::env::var_os(root) {
+            let root = PathBuf::from(root);
+            candidates.extend([
+                root.join("Google/Chrome/Application/chrome.exe"),
+                root.join("Chromium/Application/chrome.exe"),
+                root.join("Microsoft/Edge/Application/msedge.exe"),
+            ]);
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    const PATH_NAMES: &[&str] = &["chrome.exe", "chromium.exe", "msedge.exe"];
+    #[cfg(not(target_os = "windows"))]
+    const PATH_NAMES: &[&str] = &[
+        "chromium",
+        "chromium-browser",
+        "google-chrome",
+        "google-chrome-stable",
+        "microsoft-edge",
+        "microsoft-edge-stable",
+    ];
+    if let Some(path) = std::env::var_os("PATH") {
+        for directory in std::env::split_paths(&path) {
+            candidates.extend(PATH_NAMES.iter().map(|name| directory.join(name)));
+        }
+    }
+    candidates
+}
+
+fn resolve_publication_browser_executable() -> String {
+    let configured = configured_or_env("GENTLE_BROWSER_BIN");
+    let installed_candidates = publication_browser_candidates();
+    choose_publication_browser(
+        (!configured.is_empty()).then_some(configured.as_str()),
+        &installed_candidates,
+        "chromium",
+    )
+}
+
 fn print_html_to_pdf(html_path: &Path, pdf_path: &Path) -> Result<(), String> {
-    let browser = resolve_tool_executable("GENTLE_BROWSER_BIN", "chromium");
+    let browser = resolve_publication_browser_executable();
     let canonical_html = fs::canonicalize(html_path).map_err(|error| {
         format!(
             "Could not resolve printable HTML '{}': {error}",
@@ -1640,6 +1714,27 @@ mod tests {
         let request_path = directory.join("request-minimal.json");
         fs::write(&request_path, serde_json::to_vec_pretty(&request).unwrap()).unwrap();
         request_path
+    }
+
+    #[test]
+    fn publication_browser_resolution_prefers_override_then_installed_candidate() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let installed = temp.path().join("Chromium");
+        fs::write(&installed, b"synthetic browser marker").expect("browser marker");
+        let candidates = vec![temp.path().join("missing"), installed.clone()];
+
+        assert_eq!(
+            choose_publication_browser(Some("/configured/browser"), &candidates, "chromium"),
+            "/configured/browser"
+        );
+        assert_eq!(
+            choose_publication_browser(None, &candidates, "chromium"),
+            installed.to_string_lossy()
+        );
+        assert_eq!(
+            choose_publication_browser(None, &[temp.path().join("missing")], "chromium"),
+            "chromium"
+        );
     }
 
     #[test]
