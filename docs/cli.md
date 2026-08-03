@@ -20,8 +20,10 @@ primers publish-gene-isoform-study REQUEST.json OUTPUT_DIR [--profile ID] [--blo
 ```
 
 This form writes one HTML page per gene and uses `print.html` as the sole PDF
-source. Set `GENTLE_BROWSER_BIN` to a Chromium-compatible executable when
-requesting PDF output.
+source. GENtle searches `PATH` and conventional platform locations for
+Chromium, Google Chrome, or Microsoft Edge on Linux, macOS, and Windows before
+falling back to a `chromium` command. Set `GENTLE_BROWSER_BIN` to select another
+Chromium-compatible executable; an explicit override always takes precedence.
 
 This page documents command-line entry points for GENtle.
 

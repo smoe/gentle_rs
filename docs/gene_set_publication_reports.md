@@ -109,7 +109,10 @@ approved study plan.
 GENtle writes `canonical-report.json`, `index.html`, one `gene-SYMBOL.html`
 page per gene, `print.html`, per-gene order-sheet TSVs, and
 `projection-report.json`. `--pdf` asks a Chromium-compatible browser to print
-that exact `print.html`; it does not maintain a second PDF narrative. The
+that exact `print.html`; it does not maintain a second PDF narrative. GENtle
+searches `PATH` and conventional Linux, macOS, and Windows locations for
+Chromium, Google Chrome, and Microsoft Edge, while `GENTLE_BROWSER_BIN` remains
+the authoritative override. The
 canonical report declares `content_blocks[]` and named `profiles[]` (`full`,
 `review`, and `ordering`). An outer OpenClaw/ClawBio presentation may select
 those ids or host the generated files, but cannot add a block, rewrite a GENtle
