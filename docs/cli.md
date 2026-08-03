@@ -4060,6 +4060,18 @@ Shared shell command:
       - `primers publish-gene-isoform-study REQUEST.json OUTPUT_DIR [--profile ID] [--blocks ID,ID] [--pdf]` renders only declared blocks from
         content-addressed plan/handoff/order reports. It emits a meta-page, one
         HTML page per gene, `print.html`, order TSVs, and a projection receipt
+      - all standard profiles include a detailed quality-assurance block with
+        the exact handoff policy and panel hash, every per-assay gate and
+        required flag, GENtle's recorded status/summary, evidence-report ids,
+        blockers, and warnings. Annotated-transcript product testing and
+        whole-transcriptome/cDNA specificity are separate gates; missing,
+        incomplete, and `not_evaluated` evidence is not presented as a pass
+      - all standard profiles also include an explanatory provenance table for
+        the bound study plan, experimental handoff, and oligo order form. It
+        reports each source's role, schema/report id, path, SHA-256, and the
+        relevant operation-batch, panel, policy, handoff, and duplicate-review
+        bindings. Provenance describes processing and identity; it does not
+        turn user-supplied/external evidence into a GENtle result
       - `primers oligo-order from-experimental-handoff HANDOFF.json --expected-sha256 SHA256 [...]` creates a form only from rows that passed the
         handoff's exact readiness policy and retains the handoff/policy/card/
         assay/pair/oligo provenance on every line

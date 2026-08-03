@@ -26,7 +26,19 @@ clients invoke the same generator through `gene_isoform_assay_publication`;
 its required `confirm=true` authorizes artifact writes, not another scientific
 decision. Experimental handoffs are admitted only when their panel report id,
 sequence id, and source feature match an exact operation payload in the bound
-study plan.
+study plan. Every standard profile includes a `quality_assurance` projection
+that exposes each handoff's named readiness policy, source-panel hash,
+per-assay required/optional gates, recorded status and GENtle summary,
+evidence-report ids, blockers, and warnings. Annotated-transcript product
+testing and whole-transcriptome/cDNA specificity remain separate gates; an
+absent, incomplete, or `not_evaluated` gate is never rendered as a pass.
+Every standard profile also includes an explanatory `provenance` projection.
+It identifies the role, schema, report id, path, and SHA-256 of the study plan,
+experimental handoff, and readiness-bound order form, plus their bound panel,
+policy, operation-batch, and handoff identities where present. These rows
+describe what GENtle processed and content-bind the exact source bytes; they do
+not promote user-supplied/external claims into GENtle results or make approval
+a biological validation.
 
 This document defines the draft machine-facing protocol for operating GENtle
 through a shared core engine.

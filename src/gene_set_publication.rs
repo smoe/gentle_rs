@@ -1474,6 +1474,15 @@ pub fn generate_gene_isoform_assay_publication(
                 true,
             ),
             (
+                "quality",
+                "Quality assurance",
+                "quality_assurance",
+                "handoffs",
+                true,
+                true,
+                true,
+            ),
+            (
                 "order",
                 "Oligo order sheet",
                 "order_sheet",
@@ -1491,7 +1500,7 @@ pub fn generate_gene_isoform_assay_publication(
                 "provenance",
                 "study_plan",
                 true,
-                false,
+                true,
                 true,
             ),
         ];
@@ -1977,7 +1986,8 @@ mod tests {
         assert!(review_html.contains("Study decision"));
         assert!(review_html.contains("Evidence summary"));
         assert!(!review_html.contains("Approved operation candidates"));
-        assert!(!review_html.contains("Provenance"));
+        assert!(review_html.contains("Provenance"));
+        assert!(review_html.contains("GENtle study plan"));
         assert!(
             review
                 .selected_block_ids
@@ -1987,6 +1997,11 @@ mod tests {
             !review
                 .selected_block_ids
                 .contains(&"gene.gene1.operations".to_string())
+        );
+        assert!(
+            review
+                .selected_block_ids
+                .contains(&"gene.gene1.provenance".to_string())
         );
 
         let operations_output = temp.path().join("operations-only");
@@ -2079,11 +2094,59 @@ mod tests {
             "schema": "gentle.experimental_assay_handoff.v1",
             "package_id": "handoff_gene1",
             "source_panel_report_id": "panel_gene1",
+            "source_panel_schema": "gentle.transcript_assay_panel.v2",
+            "source_panel_sha256": "sha256:panel_gene1",
             "source_seq_id": "gene1_seq",
             "source_feature_id": 0,
             "policy": readiness_policy,
             "policy_id": readiness_policy_id,
-            "order_readiness_table": [readiness_row.clone()]
+            "order_readiness_table": [readiness_row.clone()],
+            "cards": [{
+                "schema": "gentle.experimental_assay_card.v1",
+                "card_id": "card_1",
+                "panel_report_id": "panel_gene1",
+                "assay_id": "assay_1",
+                "pair_id": "pair_1",
+                "pair_rank": 1,
+                "display_label": "GENE1 pair 1",
+                "readiness_state": "order_ready",
+                "policy_schema": "gentle.experimental_assay_readiness_policy.v1",
+                "policy_version": "1",
+                "policy_id": readiness_policy_id,
+                "gate_outcomes": [
+                    {
+                        "gate": "critical_oligo_qc",
+                        "required": true,
+                        "status": "pass",
+                        "summary": "GENtle critical oligo QC passed.",
+                        "evidence_ids": ["panel_gene1"]
+                    },
+                    {
+                        "gate": "genomic_carryover",
+                        "required": true,
+                        "status": "pass",
+                        "summary": "The prepared genomic-DNA search passed.",
+                        "evidence_ids": ["primer_specificity_genomic_1"]
+                    },
+                    {
+                        "gate": "transcriptome_specificity",
+                        "required": true,
+                        "status": "pass",
+                        "summary": "The prepared whole-transcriptome cDNA search passed.",
+                        "evidence_ids": ["primer_specificity_cdna_1"]
+                    },
+                    {
+                        "gate": "variant_evidence",
+                        "required": false,
+                        "status": "not_evaluated",
+                        "summary": "No provenance-bound variant evidence was supplied.",
+                        "evidence_ids": []
+                    }
+                ],
+                "blockers": [],
+                "variant_evidence_status": "not_evaluated",
+                "warnings": ["Synthetic QA fixture warning."]
+            }]
         });
         let handoff_bytes = serde_json::to_vec_pretty(&handoff).unwrap();
         let handoff_sha256 = sha256_prefixed_bytes(&handoff_bytes);
@@ -2171,9 +2234,36 @@ mod tests {
                 .iter()
                 .any(|block| block.block_id == "gene.gene1.order")
         );
+        assert!(
+            canonical
+                .content_blocks
+                .iter()
+                .any(|block| block.block_id == "gene.gene1.quality"
+                    && block.projection == "quality_assurance")
+        );
+        assert!(canonical.profiles.iter().all(|profile| {
+            profile
+                .block_ids
+                .contains(&"gene.gene1.quality".to_string())
+                && profile
+                    .block_ids
+                    .contains(&"gene.gene1.provenance".to_string())
+        }));
         let gene_html = fs::read_to_string(output.join("gene-GENE1.html")).unwrap();
         assert!(gene_html.contains("isoform_discrimination"));
         assert!(gene_html.contains("assay_1"));
+        assert!(gene_html.contains("Quality assurance"));
+        assert!(gene_html.contains("data-gentle-qa-gate=\"transcriptome_specificity\""));
+        assert!(gene_html.contains("primer_specificity_cdna_1"));
+        assert!(gene_html.contains("not-evaluated gate is not a pass"));
+        assert!(gene_html.contains("data-gentle-provenance-kind=\"study_plan\""));
+        assert!(gene_html.contains("data-gentle-provenance-kind=\"experimental_handoff\""));
+        assert!(gene_html.contains("data-gentle-provenance-kind=\"oligo_order_form\""));
+        assert!(gene_html.contains("Selects study depth from declared evidence"));
+        assert!(gene_html.contains("Evaluates the selected assay panel"));
+        assert!(gene_html.contains("Projects readiness-qualified assay oligos"));
+        assert!(gene_html.contains(&handoff_sha256));
+        assert!(gene_html.contains(&readiness_policy_sha256));
         assert!(!gene_html.contains("Sequence 5′→3′"));
         let unknown = render_gene_isoform_assay_publication_gene(
             &canonical,

@@ -24,6 +24,11 @@ understand what changed.
 
 ## 2026-08-03
 
+- Expanded gene isoform-assay dossier publication with GENtle-owned quality-
+  assurance and provenance projections in every standard profile. Gene pages
+  now expose exact readiness gates, evidence ids, blockers/warnings, and a
+  role-described plan-to-handoff-to-order chain with schema/report identities,
+  policy/panel bindings, source paths, and SHA-256 digests.
 - Dossier PDF rendering now discovers Chromium, Google Chrome, and Microsoft
   Edge through `PATH` and conventional Linux, macOS, and Windows locations,
   while preserving `GENTLE_BROWSER_BIN` as the authoritative override.

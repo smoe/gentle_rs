@@ -660,6 +660,151 @@ fn render_handoffs(value: &serde_json::Value) -> String {
     )
 }
 
+fn quality_gate_status_class(status: &str) -> &'static str {
+    match status {
+        "pass" => "ready",
+        "fail" => "danger",
+        "incomplete" | "not_evaluated" => "warning",
+        _ => "muted",
+    }
+}
+
+fn render_quality_assurance(value: &serde_json::Value) -> String {
+    let mut handoffs = String::new();
+    for bound in value.as_array().into_iter().flatten() {
+        let report = bound.get("value").unwrap_or(&serde_json::Value::Null);
+        let package_id = json_scalar(report.get("package_id"));
+        let source_panel_report_id = json_scalar(report.get("source_panel_report_id"));
+        let source_panel_sha256 = json_scalar(report.get("source_panel_sha256"));
+        let policy_id = json_scalar(report.get("policy_id"));
+        let policy_schema = json_scalar(report.pointer("/policy/schema"));
+        let policy_version = json_scalar(report.pointer("/policy/policy_version"));
+        let mut cards = String::new();
+        for card in report
+            .get("cards")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            let assay_id = json_scalar(card.get("assay_id"));
+            let pair_id = json_scalar(card.get("pair_id"));
+            let readiness = json_scalar(card.get("readiness_state"));
+            let display_label = json_scalar(card.get("display_label"));
+            let mut gates = String::new();
+            for gate in card
+                .get("gate_outcomes")
+                .and_then(serde_json::Value::as_array)
+                .into_iter()
+                .flatten()
+            {
+                let status = json_scalar(gate.get("status"));
+                let evidence_ids = gate
+                    .get("evidence_ids")
+                    .and_then(serde_json::Value::as_array)
+                    .map(|rows| {
+                        rows.iter()
+                            .map(|row| {
+                                format!("<code>{}</code>", html_escape(&json_scalar(Some(row))))
+                            })
+                            .collect::<Vec<_>>()
+                            .join("<br>")
+                    })
+                    .filter(|rendered| !rendered.is_empty())
+                    .unwrap_or_else(|| "none recorded".to_string());
+                gates.push_str(&format!(
+                    "<tr data-gentle-qa-gate=\"{}\"><td><code>{}</code></td><td>{}</td><td class=\"status {}\">{}</td><td>{}</td><td>{}</td></tr>",
+                    html_escape(&json_scalar(gate.get("gate"))),
+                    html_escape(&json_scalar(gate.get("gate"))),
+                    if gate.get("required").and_then(serde_json::Value::as_bool).unwrap_or(false) { "yes" } else { "no" },
+                    quality_gate_status_class(&status),
+                    html_escape(&status),
+                    html_escape(&json_scalar(gate.get("summary"))),
+                    evidence_ids,
+                ));
+            }
+            if gates.is_empty() {
+                gates.push_str("<tr><td colspan=\"5\" class=\"muted\">No per-assay gate outcomes were recorded in this handoff.</td></tr>");
+            }
+            let blockers = card
+                .get("blockers")
+                .and_then(serde_json::Value::as_array)
+                .map(|rows| {
+                    rows.iter()
+                        .map(|row| json_scalar(Some(row)))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let warnings = card
+                .get("warnings")
+                .and_then(serde_json::Value::as_array)
+                .map(|rows| {
+                    rows.iter()
+                        .map(|row| json_scalar(Some(row)))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let notices = if blockers.is_empty() && warnings.is_empty() {
+                String::new()
+            } else {
+                let mut rows = blockers
+                    .iter()
+                    .map(|row| format!("<li><b>Blocker:</b> {}</li>", html_escape(row)))
+                    .collect::<Vec<_>>();
+                rows.extend(
+                    warnings
+                        .iter()
+                        .map(|row| format!("<li><b>Warning:</b> {}</li>", html_escape(row))),
+                );
+                format!("<ul>{}</ul>", rows.join(""))
+            };
+            cards.push_str(&format!(
+                "<article data-gentle-qa-card=\"{}\"><h3>{}</h3><p><b>Assay:</b> <code>{}</code> · <b>Pair:</b> <code>{}</code> · <b>Readiness:</b> <span class=\"status {}\">{}</span> · <b>Variant evidence:</b> <code>{}</code></p><div class=\"table-scroll\"><table><thead><tr><th>QA gate</th><th>Required</th><th>Status</th><th>GENtle summary</th><th>Evidence report ids</th></tr></thead><tbody>{}</tbody></table></div>{}</article>",
+                html_escape(&assay_id),
+                html_escape(&display_label),
+                html_escape(&assay_id),
+                html_escape(&pair_id),
+                if readiness == "order_ready" { "ready" } else { "warning" },
+                html_escape(&readiness),
+                html_escape(&json_scalar(card.get("variant_evidence_status"))),
+                gates,
+                notices,
+            ));
+        }
+        if cards.is_empty() {
+            cards.push_str("<p class=\"muted\">This handoff contains no per-assay cards, so detailed QA gate outcomes are unavailable.</p>");
+        }
+        let report_warnings = report
+            .get("warnings")
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| {
+                rows.iter()
+                    .map(|row| format!("<li>{}</li>", html_escape(&json_scalar(Some(row)))))
+                    .collect::<String>()
+            })
+            .filter(|rows| !rows.is_empty())
+            .map(|rows| format!("<h3>Handoff warnings</h3><ul>{rows}</ul>"))
+            .unwrap_or_default();
+        handoffs.push_str(&format!(
+            "<section data-gentle-qa-handoff=\"{}\"><h3>Handoff <code>{}</code></h3><p><b>Source panel:</b> <code>{}</code> · <b>panel SHA-256:</b> <code>{}</code><br><b>Readiness policy:</b> <code>{}</code> · schema <code>{}</code> · version <code>{}</code></p>{}{}</section>",
+            html_escape(&package_id),
+            html_escape(&package_id),
+            html_escape(&source_panel_report_id),
+            html_escape(&source_panel_sha256),
+            html_escape(&policy_id),
+            html_escape(&policy_schema),
+            html_escape(&policy_version),
+            cards,
+            report_warnings,
+        ));
+    }
+    if handoffs.is_empty() {
+        return "<section><h2>Quality assurance</h2><p class=\"muted\">No experimental-assay handoff was supplied, so GENtle cannot describe performed QA.</p></section>".to_string();
+    }
+    format!(
+        "<section><h2>Quality assurance</h2><p class=\"notice\">These rows are deterministic projections of GENtle's recorded gate outcomes. The annotated-transcript product matrix and whole-transcriptome/cDNA specificity are separate checks. A missing, incomplete, or not-evaluated gate is not a pass.</p>{handoffs}</section>"
+    )
+}
+
 fn render_order_forms(value: &serde_json::Value, order_sheet_path: Option<&str>) -> String {
     let mut rows = String::new();
     for bound in value.as_array().into_iter().flatten() {
@@ -709,27 +854,96 @@ fn render_figures(gene: &GeneIsoformAssayPublicationGene) -> String {
 }
 
 fn render_provenance(gene: &GeneIsoformAssayPublicationGene) -> String {
+    let plan = &gene.study_plan;
+    let plan_bindings = format!(
+        "Planner request <code>{}</code>; policy <code>{}</code>; ordered operation batch <code>{}</code>",
+        html_escape(&json_scalar(plan.value.get("request_sha256"))),
+        html_escape(&json_scalar(plan.value.get("policy_sha256"))),
+        html_escape(&json_scalar(plan.value.get("operation_batch_sha256"))),
+    );
     let mut rows = vec![format!(
-        "<li>Study plan: <code>{}</code> · <code>{}</code></li>",
-        html_escape(&gene.study_plan.source_path),
-        html_escape(&gene.study_plan.sha256)
+        "<tr data-gentle-provenance-kind=\"study_plan\" data-gentle-provenance-report-id=\"{}\"><td><b>GENtle study plan</b></td><td>Selects study depth from declared evidence and binds the exact ordered design-operation payloads. Approval authorizes that content; it is not biological validation.<br><small>{}</small></td><td><code>{}</code><br><code>{}</code></td><td><code>{}</code></td><td><code>{}</code></td></tr>",
+        html_escape(&plan.report_id),
+        plan_bindings,
+        html_escape(&plan.schema),
+        html_escape(&plan.report_id),
+        html_escape(&plan.source_path),
+        html_escape(&plan.sha256),
     )];
     rows.extend(gene.handoffs.iter().map(|report| {
+        let bindings = format!(
+            "Panel <code>{}</code> (<code>{}</code>, SHA-256 <code>{}</code>); readiness policy <code>{}</code> version <code>{}</code>",
+            html_escape(&json_scalar(report.value.get("source_panel_report_id"))),
+            html_escape(&json_scalar(report.value.get("source_panel_schema"))),
+            html_escape(&json_scalar(report.value.get("source_panel_sha256"))),
+            html_escape(&json_scalar(report.value.get("policy_id"))),
+            html_escape(&json_scalar(report.value.pointer("/policy/policy_version"))),
+        );
         format!(
-            "<li>Experimental handoff: <code>{}</code> · <code>{}</code></li>",
+            "<tr data-gentle-provenance-kind=\"experimental_handoff\" data-gentle-provenance-report-id=\"{}\"><td><b>GENtle experimental handoff</b></td><td>Evaluates the selected assay panel under a named readiness policy and carries the per-assay QA gates, evidence links, blockers, and warnings.<br><small>{}</small></td><td><code>{}</code><br><code>{}</code></td><td><code>{}</code></td><td><code>{}</code></td></tr>",
+            html_escape(&report.report_id),
+            bindings,
+            html_escape(&report.schema),
+            html_escape(&report.report_id),
             html_escape(&report.source_path),
-            html_escape(&report.sha256)
+            html_escape(&report.sha256),
         )
     }));
     rows.extend(gene.order_forms.iter().map(|report| {
+        let line_count = report
+            .value
+            .get("line_items")
+            .and_then(serde_json::Value::as_array)
+            .map_or(0, Vec::len);
+        let duplicate_status = json_scalar(report.value.pointer("/duplicate_review/status"));
+        let mut handoff_ids = BTreeSet::new();
+        let mut handoff_hashes = BTreeSet::new();
+        let mut policy_ids = BTreeSet::new();
+        let mut policy_hashes = BTreeSet::new();
+        for line in report
+            .value
+            .get("line_items")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            let provenance = line.get("provenance").unwrap_or(&serde_json::Value::Null);
+            for (field, target) in [
+                ("report_id", &mut handoff_ids),
+                ("report_sha256", &mut handoff_hashes),
+                ("readiness_policy_id", &mut policy_ids),
+                ("readiness_policy_sha256", &mut policy_hashes),
+            ] {
+                if let Some(value) = provenance
+                    .get(field)
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|value| !value.trim().is_empty())
+                {
+                    target.insert(value.to_string());
+                }
+            }
+        }
+        let bindings = format!(
+            "{} line(s); duplicate review <code>{}</code>; source handoff(s) <code>{}</code> / <code>{}</code>; readiness policy <code>{}</code> / <code>{}</code>",
+            line_count,
+            html_escape(&duplicate_status),
+            html_escape(&handoff_ids.into_iter().collect::<Vec<_>>().join(", ")),
+            html_escape(&handoff_hashes.into_iter().collect::<Vec<_>>().join(", ")),
+            html_escape(&policy_ids.into_iter().collect::<Vec<_>>().join(", ")),
+            html_escape(&policy_hashes.into_iter().collect::<Vec<_>>().join(", ")),
+        );
         format!(
-            "<li>Oligo order form: <code>{}</code> · <code>{}</code></li>",
+            "<tr data-gentle-provenance-kind=\"oligo_order_form\" data-gentle-provenance-report-id=\"{}\"><td><b>GENtle oligo order form</b></td><td>Projects readiness-qualified assay oligos into reviewable procurement lines. It neither submits an order nor stores purchasing credentials.<br><small>{}</small></td><td><code>{}</code><br><code>{}</code></td><td><code>{}</code></td><td><code>{}</code></td></tr>",
+            html_escape(&report.report_id),
+            bindings,
+            html_escape(&report.schema),
+            html_escape(&report.report_id),
             html_escape(&report.source_path),
-            html_escape(&report.sha256)
+            html_escape(&report.sha256),
         )
     }));
     format!(
-        "<section><h2>Provenance</h2><ul>{}</ul></section>",
+        "<section><h2>Provenance</h2><p class=\"notice\">Each row is a GENtle-owned, content-bound source embedded in the canonical dossier. SHA-256 binds the exact source bytes. Provenance records processing and identity; it does not upgrade user-supplied or external evidence into a GENtle result, and approval does not validate the biological conclusion.</p><div class=\"table-scroll\"><table><thead><tr><th>Source</th><th>Role and bound inputs</th><th>Schema / report id</th><th>Bound path</th><th>SHA-256</th></tr></thead><tbody>{}</tbody></table></div></section>",
         rows.join("")
     )
 }
@@ -773,6 +987,7 @@ fn render_gene_blocks(
             "decision_factors" => render_decision_factors(value),
             "planned_operations" => render_operations(value),
             "assay_handoffs" => render_handoffs(value),
+            "quality_assurance" => render_quality_assurance(value),
             "order_sheet" => render_order_forms(value, gene.order_sheet_path.as_deref()),
             "figures" => render_figures(gene),
             "provenance" => render_provenance(gene),
@@ -920,5 +1135,45 @@ mod tests {
         assert!(html.contains("aria-label=\"Analysis overview\""));
         assert!(html.contains("1 primary pairs"));
         assert!(markdown.contains("Complete primer-pair list"));
+    }
+
+    #[test]
+    fn quality_assurance_projection_keeps_gate_status_and_evidence_visible() {
+        let html = render_quality_assurance(&serde_json::json!([{
+            "value": {
+                "package_id": "handoff_1",
+                "source_panel_report_id": "panel_1",
+                "source_panel_sha256": "sha256:panel",
+                "policy_id": "policy_1",
+                "policy": {
+                    "schema": "gentle.experimental_assay_readiness_policy.v1",
+                    "policy_version": "1"
+                },
+                "cards": [{
+                    "assay_id": "assay_1",
+                    "pair_id": "pair_1",
+                    "display_label": "Pair 1",
+                    "readiness_state": "candidate",
+                    "variant_evidence_status": "not_evaluated",
+                    "gate_outcomes": [{
+                        "gate": "transcriptome_specificity",
+                        "required": true,
+                        "status": "incomplete",
+                        "summary": "The cDNA search did not complete.",
+                        "evidence_ids": ["specificity_1"]
+                    }],
+                    "blockers": ["transcriptome_specificity"],
+                    "warnings": ["Retain the incomplete state."]
+                }]
+            }
+        }]));
+        assert!(html.contains("Quality assurance"));
+        assert!(html.contains("data-gentle-qa-handoff=\"handoff_1\""));
+        assert!(html.contains("data-gentle-qa-card=\"assay_1\""));
+        assert!(html.contains("data-gentle-qa-gate=\"transcriptome_specificity\""));
+        assert!(html.contains("class=\"status warning\">incomplete"));
+        assert!(html.contains("specificity_1"));
+        assert!(html.contains("Blocker:"));
+        assert!(html.contains("Warning:"));
     }
 }
