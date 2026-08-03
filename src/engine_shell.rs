@@ -59685,10 +59685,17 @@ fn execute_shell_command_with_options_on_expanded_stack(
     let engine_ptr = engine as *mut GentleEngine as usize;
     let command = command.clone();
     let options = options.clone();
+    #[cfg(test)]
+    let scoped_tool_overrides = crate::tool_overrides::scoped_tool_overrides_snapshot();
     let worker = thread::Builder::new()
         .name("gentle-shell-command".to_string())
         .stack_size(SHELL_EXPANDED_STACK_SIZE)
         .spawn(move || {
+            #[cfg(test)]
+            let _scoped_tool_overrides =
+                crate::tool_overrides::ScopedToolOverridesSnapshotGuard::install(
+                    scoped_tool_overrides,
+                );
             SHELL_EXPANDED_STACK_ACTIVE.with(|active| {
                 let was_active = active.replace(true);
                 // SAFETY: the caller synchronously joins this worker before

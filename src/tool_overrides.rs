@@ -56,6 +56,40 @@ impl Drop for ScopedToolOverrideGuard {
     }
 }
 
+#[cfg(test)]
+pub(crate) fn scoped_tool_overrides_snapshot() -> HashMap<String, String> {
+    SCOPED_TOOL_OVERRIDES.with(|overrides| overrides.borrow().clone())
+}
+
+#[cfg(test)]
+pub(crate) struct ScopedToolOverridesSnapshotGuard {
+    previous: Option<HashMap<String, String>>,
+    _not_send: PhantomData<Rc<()>>,
+}
+
+#[cfg(test)]
+impl ScopedToolOverridesSnapshotGuard {
+    pub(crate) fn install(snapshot: HashMap<String, String>) -> Self {
+        let previous = SCOPED_TOOL_OVERRIDES
+            .with(|overrides| std::mem::replace(&mut *overrides.borrow_mut(), snapshot));
+        Self {
+            previous: Some(previous),
+            _not_send: PhantomData,
+        }
+    }
+}
+
+#[cfg(test)]
+impl Drop for ScopedToolOverridesSnapshotGuard {
+    fn drop(&mut self) {
+        if let Some(previous) = self.previous.take() {
+            SCOPED_TOOL_OVERRIDES.with(|overrides| {
+                *overrides.borrow_mut() = previous;
+            });
+        }
+    }
+}
+
 fn normalized_non_empty(value: &str) -> Option<String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -137,5 +171,23 @@ mod tests {
 
         assert_eq!(get_tool_override(ENV_VAR).as_deref(), Some("global-tool"));
         set_tool_override(ENV_VAR, "");
+    }
+
+    #[test]
+    fn scoped_test_override_snapshot_can_be_installed_in_worker_thread() {
+        const ENV_VAR: &str = "GENTLE_SCOPED_TOOL_OVERRIDE_WORKER_TEST";
+        let _scoped = ScopedToolOverrideGuard::set(ENV_VAR, "worker-tool");
+        let snapshot = scoped_tool_overrides_snapshot();
+
+        let observed = std::thread::spawn(move || {
+            assert_eq!(get_tool_override(ENV_VAR), None);
+            let _installed = ScopedToolOverridesSnapshotGuard::install(snapshot);
+            get_tool_override(ENV_VAR)
+        })
+        .join()
+        .expect("join scoped tool-override worker");
+
+        assert_eq!(observed.as_deref(), Some("worker-tool"));
+        assert_eq!(get_tool_override(ENV_VAR).as_deref(), Some("worker-tool"));
     }
 }
