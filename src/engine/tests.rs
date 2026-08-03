@@ -57136,11 +57136,14 @@ fn gene_isoform_assay_study_planner_normalizes_inputs_and_emits_exact_operation_
         .iter()
         .all(|step| step.operation_sha256.starts_with("sha256:")
             && step.operation.get("DesignTranscriptAssayPanel").is_some()));
-    let workflow: Workflow = serde_json::from_slice(
-        &fs::read(&workflow_path).expect("read emitted workflow"),
-    )
-    .expect("parse emitted workflow");
+    let workflow_bytes = fs::read(&workflow_path).expect("read emitted workflow");
+    let workflow: Workflow =
+        serde_json::from_slice(&workflow_bytes).expect("parse emitted workflow");
     assert_eq!(workflow.ops.len(), plan.planned_operations.len());
+    assert_eq!(
+        sha256_prefixed_bytes(&workflow_bytes),
+        plan.approved_workflow_sha256
+    );
     assert_eq!(
         sha256_prefixed_bytes(&serde_json::to_vec(&workflow.ops).expect("serialize ops")),
         plan.operation_batch_sha256

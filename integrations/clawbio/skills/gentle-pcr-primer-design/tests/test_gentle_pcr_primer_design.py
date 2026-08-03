@@ -89,7 +89,7 @@ def test_every_execution_delegates_to_registered_generic_runtime() -> None:
             assert template["delegation"] == {
                 "schema": "gentle.clawbio_skill_delegation.v1",
                 "source_skill": "gentle-pcr-primer-design",
-                "source_skill_version": "0.4.0",
+                "source_skill_version": "0.5.0",
                 "intent_id": route["intent_id"],
                 "plan_step_index": step_index,
             }
@@ -115,6 +115,7 @@ def test_only_read_only_or_diagnostic_routes_execute_without_approval() -> None:
 
     assert automatic_routes == {
         "primer_design_preflight",
+        "normalize_isoform_study_request",
         "primer_report_list",
         "primer_report_show",
         "qpcr_report_list",
@@ -208,6 +209,38 @@ def test_transcript_panel_separates_rt_priming_from_5prime_capture_claims() -> N
     assert slots["five_prime_capture_evidence"]["default"] == "not supplied"
     assert "five_prime_capture_method" not in request["shell_line"]
     assert "five_prime_capture_evidence" not in request["shell_line"]
+
+
+def test_isoform_study_routes_preserve_two_stage_approval_and_exact_batch_binding() -> None:
+    routes = _routes()
+    normalize = routes["normalize_isoform_study_request"]
+    planning = routes["approved_isoform_study_plan"]
+    execution = routes["approved_isoform_operation_batch"]
+
+    assert normalize.get("requires_confirmation", False) is False
+    assert normalize["plan"][0]["input_template"]["shell_line"].endswith(
+        "--normalize-only"
+    )
+    assert "--normalized-request" not in normalize["plan"][0]["input_template"][
+        "shell_line"
+    ]
+
+    assert planning["requires_confirmation"] is True
+    assert planning["plan"][0]["input_template"]["shell_line"] == (
+        "primers plan-gene-isoform-study @{normalized_request_path} "
+        "--path {plan_path} --workflow {workflow_path}"
+    )
+    assert planning["plan"][0]["input_template"]["expected_artifacts"] == [
+        "{plan_path}",
+        "{workflow_path}",
+    ]
+
+    assert execution["requires_confirmation"] is True
+    assert execution["plan"][0]["input_template"]["mode"] == "shell"
+    assert execution["plan"][0]["input_template"]["shell_line"] == (
+        "primers execute-gene-isoform-study-workflow "
+        "@{plan_path} @{workflow_path}"
+    )
 
 
 def test_patz1_example_marks_oligo_dt_and_missing_cap_evidence_as_input() -> None:

@@ -41,6 +41,11 @@ Gene isoform-assay studies deliberately use two such approvals. The first
 binds the normalized planner request, policy/version, evidence hashes, prior
 plan, observations, override, and resolved defaults. The second binds the
 exact ordered `DesignTranscriptAssayPanel` operation set emitted by that plan.
+Use `normalize_isoform_study_request` for the read-only normalization,
+`approved_isoform_study_plan` for the first gated planner run, and
+`approved_isoform_operation_batch` for the second gated execution. The last
+route calls GENtle's `execute-gene-isoform-study-workflow`, which verifies both
+the exact workflow-byte digest and ordered-operation digest before execution.
 Approval authorizes execution of those bytes; it is not a declaration that the
 biological premise is correct.
 

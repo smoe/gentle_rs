@@ -55,7 +55,9 @@ use crate::{
         FeatureLocationEditStrand, FeatureRecordCreateRequest, FeatureRecordCurationRequest,
         FeatureRecordDeleteRequest, FeatureRecordMergeRequest, FeatureRecordQualifier,
         FeatureRecordSplitRequest, FlexibilityModel, GENE_ISOFORM_ASSAY_STUDY_PLAN_REQUEST_SCHEMA,
-        GUIDE_DESIGN_METADATA_KEY, GeneIsoformAssayStudyPlanRequest, GeneIsoformEvidenceRequest,
+        GENE_ISOFORM_ASSAY_STUDY_PLAN_SCHEMA, GUIDE_DESIGN_METADATA_KEY,
+        GeneIsoformAssayStudyPlanReport, GeneIsoformAssayStudyPlanRequest,
+        GeneIsoformEvidenceRequest,
         GeneLocusEvidenceDisplayRequest, GeneSetCohortRelationship, GeneSetPoolMemberBinding,
         GeneSetProducerFilter, GeneSetPromoterCohortReport, GeneSetRequest,
         GeneSetResolutionReport, GeneSetResolutionReviewStatus, GeneTranscriptAssayRoutineRequest,
@@ -1600,6 +1602,18 @@ pub enum ShellCommand {
         resource_id: String,
         catalog_path: Option<String>,
         cache_dir: Option<String>,
+        force_rebuild: bool,
+    },
+    ReferenceAdoptBlastResource {
+        helper_mode: bool,
+        resource_id: String,
+        sequence_path: String,
+        blast_db_prefix: String,
+        expected_content_fingerprint: String,
+        expected_sequence_sha1: Option<String>,
+        verify_source_identities: bool,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
     },
     ReferenceInspectBlastResource {
         helper_mode: bool,
@@ -2660,6 +2674,10 @@ pub enum ShellCommand {
         normalized_request_path: Option<String>,
         path: Option<String>,
         workflow_path: Option<String>,
+    },
+    PrimersExecuteGeneIsoformAssayStudyWorkflow {
+        plan_json: String,
+        workflow_json: String,
     },
     PrimersPublishGeneIsoformAssayStudy {
         request_path: String,
@@ -8978,6 +8996,7 @@ impl ShellCommand {
                 resource_id,
                 catalog_path,
                 cache_dir,
+                force_rebuild,
             } => {
                 let label = if *helper_mode { "helper" } else { "reference" };
                 let catalog = catalog_path
@@ -8985,7 +9004,20 @@ impl ShellCommand {
                     .unwrap_or_else(|| default_catalog_display_label(*helper_mode).to_string());
                 let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
                 format!(
-                    "prepare {label} BLAST sequence resource '{resource_id}' (catalog='{catalog}', cache='{cache}')"
+                    "prepare {label} BLAST sequence resource '{resource_id}' (catalog='{catalog}', cache='{cache}', force_rebuild={force_rebuild})"
+                )
+            }
+            Self::ReferenceAdoptBlastResource {
+                helper_mode,
+                resource_id,
+                sequence_path,
+                blast_db_prefix,
+                verify_source_identities,
+                ..
+            } => {
+                let label = if *helper_mode { "helper" } else { "reference" };
+                format!(
+                    "adopt existing {label} BLAST sequence resource '{resource_id}' (sequence='{sequence_path}', prefix='{blast_db_prefix}', verify_source_identities={verify_source_identities})"
                 )
             }
             Self::ReferenceInspectBlastResource {
@@ -11683,6 +11715,13 @@ impl ShellCommand {
                 path.as_deref().unwrap_or("none"),
                 workflow_path.as_deref().unwrap_or("none"),
             ),
+            Self::PrimersExecuteGeneIsoformAssayStudyWorkflow {
+                plan_json,
+                workflow_json,
+            } => format!(
+                "execute approved gene isoform assay workflow (plan={}, workflow={})",
+                plan_json, workflow_json
+            ),
             Self::PrimersPublishGeneIsoformAssayStudy {
                 request_path,
                 output_directory,
@@ -13116,6 +13155,7 @@ impl ShellCommand {
                 | Self::ReferenceInstallEnsembl { .. }
                 | Self::ReferencePrepare { .. }
                 | Self::ReferencePrepareBlastResource { .. }
+                | Self::ReferenceAdoptBlastResource { .. }
                 | Self::ReferenceExtractRegion { .. }
                 | Self::ReferenceExtractGene { .. }
                 | Self::ReferenceExtractPromoter { .. }
@@ -13180,6 +13220,7 @@ impl ShellCommand {
                 | Self::PrimersSpecificityImport { .. }
                 | Self::PrimersTranscriptAssaySpecificityPlan { .. }
                 | Self::PrimersTranscriptAssaySpecificityFinalize { .. }
+                | Self::PrimersExecuteGeneIsoformAssayStudyWorkflow { .. }
                 | Self::PrimersPrepareRestrictionCloning { .. }
                 | Self::PrimersSeedRestrictionCloningHandoff { .. }
                 | Self::PrimersListRestrictionCloningHandoffs
@@ -23449,6 +23490,22 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "registry": registry_metadata_for_introspection("primers plan-gene-isoform-study")
         }),
         json!({
+            "id": "primers execute-gene-isoform-study-workflow",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "PLAN_JSON", "required": true, "subject_kind": "other", "detail": "gentle.gene_isoform_assay_study_plan.v1 JSON or @file carrying approved_workflow_sha256"},
+                {"name": "WORKFLOW_JSON", "required": true, "subject_kind": "other", "detail": "exact emitted workflow JSON or @file whose bytes and operation batch must match the plan"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Verify an emitted gene isoform-assay workflow against its approved plan byte digest and ordered-operation digest, then execute that exact batch.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers execute-gene-isoform-study-workflow")
+        }),
+        json!({
             "id": "primers publish-gene-isoform-study",
             "kind": "operation",
             "mutating": "false",
@@ -26878,6 +26935,22 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "RESOURCE_ID", "required": true, "subject_kind": "other", "detail": "catalog id declaring blast_index_kind=transcriptome_cdna"}),
                 json!({"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional genome catalog path"}),
                 json!({"name": "CACHE_DIR", "required": false, "subject_kind": "other", "detail": "optional prepared-resource cache directory"}),
+                json!({"name": "FORCE_REBUILD", "required": false, "subject_kind": "other", "detail": "explicitly permit replacement of an existing content-bound index when the declared source changed"}),
+            ],
+        ),
+        local_state_may_change_descriptor(
+            "genomes adopt-blast-resource",
+            "Validate and register an already-built transcriptome-cDNA BLAST database against corrected catalog metadata without rebuilding or deleting index files.",
+            "external",
+            vec![
+                json!({"name": "RESOURCE_ID", "required": true, "subject_kind": "other", "detail": "catalog id declaring transcriptome cDNA kind, reference name/release, masking, and corrected sequence source"}),
+                json!({"name": "SEQUENCE_PATH", "required": true, "subject_kind": "other", "detail": "existing prepared FASTA used for sequence identity and subject annotations"}),
+                json!({"name": "BLAST_DB_PREFIX", "required": true, "subject_kind": "other", "detail": "existing BLAST database prefix; index files are read only"}),
+                json!({"name": "EXPECTED_CONTENT_FINGERPRINT", "required": true, "subject_kind": "other", "detail": "previously reviewed database fingerprint"}),
+                json!({"name": "EXPECTED_SEQUENCE_SHA1", "required": false, "subject_kind": "other", "detail": "optional reviewed prepared-FASTA SHA-1"}),
+                json!({"name": "VERIFY_SOURCE_IDENTITIES", "required": false, "subject_kind": "other", "detail": "compare every FASTA accession/length with blastdbcmd output before marking the source link verified"}),
+                json!({"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional genome catalog path"}),
+                json!({"name": "CACHE_DIR", "required": false, "subject_kind": "other", "detail": "optional manifest/subject-sidecar cache directory"}),
             ],
         ),
         no_project_inspection_operation_descriptor(
@@ -28142,6 +28215,7 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
         "primers plan-gene-isoform-study" | "PlanGeneIsoformAssayStudy" => Some(vec![]),
+        "primers execute-gene-isoform-study-workflow" => Some(vec![]),
         "primers publish-gene-isoform-study" => Some(vec![]),
         "primers compose-gene-assay-routine" | "ComposeGeneTranscriptAssayRoutine" => Some(vec![]),
         "primers experimental-handoff" | "BuildExperimentalAssayHandoff" => Some(vec![
@@ -32973,13 +33047,14 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
         "prepare-blast-resource" | "import-blast-resource" => {
             if tokens.len() < 3 {
                 return Err(format!(
-                    "{label} {} requires RESOURCE_ID [--catalog PATH] [--cache-dir PATH]",
+                    "{label} {} requires RESOURCE_ID [--catalog PATH] [--cache-dir PATH] [--force-rebuild]",
                     tokens[1]
                 ));
             }
             let resource_id = tokens[2].clone();
             let mut catalog_path: Option<String> = None;
             let mut cache_dir: Option<String> = None;
+            let mut force_rebuild = false;
             let mut idx = 3usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -32989,6 +33064,10 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                     }
                     "--cache-dir" => {
                         cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?)
+                    }
+                    "--force-rebuild" => {
+                        force_rebuild = true;
+                        idx += 1;
                     }
                     other => {
                         return Err(format!(
@@ -33001,6 +33080,92 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
             Ok(ShellCommand::ReferencePrepareBlastResource {
                 helper_mode,
                 resource_id,
+                catalog_path,
+                cache_dir,
+                force_rebuild,
+            })
+        }
+        "adopt-blast-resource" => {
+            const USAGE: &str = "adopt-blast-resource RESOURCE_ID --sequence-path PREPARED.fa --blast-db-prefix PREFIX --expected-content-fingerprint sha256:... [--expected-sequence-sha1 SHA1] [--verify-source-identities] [--catalog PATH] [--cache-dir PATH]";
+            if tokens.len() < 3 {
+                return Err(format!("{label} {USAGE}"));
+            }
+            let resource_id = tokens[2].clone();
+            let mut sequence_path = None;
+            let mut blast_db_prefix = None;
+            let mut expected_content_fingerprint = None;
+            let mut expected_sequence_sha1 = None;
+            let mut verify_source_identities = false;
+            let mut catalog_path = None;
+            let mut cache_dir = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--sequence-path" => {
+                        sequence_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--sequence-path",
+                            label,
+                        )?);
+                    }
+                    "--blast-db-prefix" => {
+                        blast_db_prefix = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--blast-db-prefix",
+                            label,
+                        )?);
+                    }
+                    "--expected-content-fingerprint" => {
+                        expected_content_fingerprint = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--expected-content-fingerprint",
+                            label,
+                        )?);
+                    }
+                    "--expected-sequence-sha1" => {
+                        expected_sequence_sha1 = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--expected-sequence-sha1",
+                            label,
+                        )?);
+                    }
+                    "--verify-source-identities" => {
+                        verify_source_identities = true;
+                        idx += 1;
+                    }
+                    "--catalog" => {
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, "--catalog", label)?);
+                    }
+                    "--cache-dir" => {
+                        cache_dir =
+                            Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {label} adopt-blast-resource\n       {label} {USAGE}"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::ReferenceAdoptBlastResource {
+                helper_mode,
+                resource_id,
+                sequence_path: sequence_path.ok_or_else(|| {
+                    format!("{label} adopt-blast-resource requires --sequence-path")
+                })?,
+                blast_db_prefix: blast_db_prefix.ok_or_else(|| {
+                    format!("{label} adopt-blast-resource requires --blast-db-prefix")
+                })?,
+                expected_content_fingerprint: expected_content_fingerprint.ok_or_else(|| {
+                    format!("{label} adopt-blast-resource requires --expected-content-fingerprint")
+                })?,
+                expected_sequence_sha1,
+                verify_source_identities,
                 catalog_path,
                 cache_dir,
             })
@@ -45037,6 +45202,7 @@ fn is_reference_or_track_command(command: &ShellCommand) -> bool {
             | ShellCommand::ReferenceGenes { .. }
             | ShellCommand::ReferencePrepare { .. }
             | ShellCommand::ReferencePrepareBlastResource { .. }
+            | ShellCommand::ReferenceAdoptBlastResource { .. }
             | ShellCommand::ReferenceInspectBlastResource { .. }
             | ShellCommand::ReferenceRemovePrepared { .. }
             | ShellCommand::ReferenceRemoveCatalogEntry { .. }
@@ -45084,6 +45250,7 @@ fn execute_stack_safe_reference_command(
         command,
         ShellCommand::ReferencePrepare { .. }
             | ShellCommand::ReferencePrepareBlastResource { .. }
+            | ShellCommand::ReferenceAdoptBlastResource { .. }
             | ShellCommand::ReferenceExtractRegion { .. }
             | ShellCommand::ReferenceExtendAnchor { .. }
     ) {
@@ -50247,10 +50414,47 @@ fn execute_reference_and_track_command(
             resource_id,
             catalog_path,
             cache_dir,
+            force_rebuild,
         } => {
             let catalog = load_shell_genome_catalog(catalog_path, *helper_mode)?;
             let report = catalog
-                .prepare_blast_sequence_resource(resource_id, cache_dir.as_deref())
+                .prepare_blast_sequence_resource_with_options(
+                    resource_id,
+                    cache_dir.as_deref(),
+                    *force_rebuild,
+                )
+                .map_err(|error| error.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "catalog_path": effective_catalog_path(catalog_path, *helper_mode),
+                    "cache_dir": cache_dir,
+                    "result": report,
+                }),
+            })
+        }
+        ShellCommand::ReferenceAdoptBlastResource {
+            helper_mode,
+            resource_id,
+            sequence_path,
+            blast_db_prefix,
+            expected_content_fingerprint,
+            expected_sequence_sha1,
+            verify_source_identities,
+            catalog_path,
+            cache_dir,
+        } => {
+            let catalog = load_shell_genome_catalog(catalog_path, *helper_mode)?;
+            let report = catalog
+                .adopt_blast_sequence_resource(
+                    resource_id,
+                    sequence_path,
+                    blast_db_prefix,
+                    expected_content_fingerprint,
+                    expected_sequence_sha1.as_deref(),
+                    *verify_source_identities,
+                    cache_dir.as_deref(),
+                )
                 .map_err(|error| error.to_string())?;
             Ok(ShellRunResult {
                 state_changed: false,
@@ -54110,6 +54314,10 @@ fn execute_primers_command(
                 }),
             })
         }
+        ShellCommand::PrimersExecuteGeneIsoformAssayStudyWorkflow {
+            plan_json,
+            workflow_json,
+        } => execute_approved_gene_isoform_assay_study_workflow(engine, plan_json, workflow_json),
         ShellCommand::PrimersPublishGeneIsoformAssayStudy {
             request_path,
             output_directory,
@@ -59265,6 +59473,13 @@ fn execute_workflow_command(
 ) -> Result<ShellRunResult, String> {
     let json_text = parse_json_payload(payload)?;
     let workflow = parse_workflow_json_payload(&json_text)?;
+    execute_parsed_workflow_command(engine, workflow)
+}
+
+fn execute_parsed_workflow_command(
+    engine: &mut GentleEngine,
+    workflow: Workflow,
+) -> Result<ShellRunResult, String> {
     let before_state = serde_json::to_value(engine.snapshot()).ok();
     let results = engine.apply_workflow(workflow).map_err(|e| e.to_string())?;
     let state_changed = if let Some(before) = before_state {
@@ -59283,6 +59498,64 @@ fn execute_workflow_command(
     Ok(ShellRunResult {
         state_changed,
         output: json!({ "results": results }),
+    })
+}
+
+fn execute_approved_gene_isoform_assay_study_workflow(
+    engine: &mut GentleEngine,
+    plan_json: &str,
+    workflow_json: &str,
+) -> Result<ShellRunResult, String> {
+    let plan_text = parse_json_payload(plan_json)?;
+    let plan: GeneIsoformAssayStudyPlanReport =
+        serde_json::from_str(&plan_text).map_err(|error| {
+            format!("Could not parse gene isoform assay study plan from '{plan_json}': {error}")
+        })?;
+    if plan.schema != GENE_ISOFORM_ASSAY_STUDY_PLAN_SCHEMA {
+        return Err(format!(
+            "Gene isoform assay study plan '{}' uses unsupported schema '{}'; expected '{}'",
+            plan.plan_id, plan.schema, GENE_ISOFORM_ASSAY_STUDY_PLAN_SCHEMA
+        ));
+    }
+    if plan.approved_workflow_sha256.trim().is_empty() {
+        return Err(format!(
+            "Gene isoform assay study plan '{}' predates exact workflow-byte binding; re-run primers plan-gene-isoform-study before execution",
+            plan.plan_id
+        ));
+    }
+
+    let workflow_text = parse_json_payload(workflow_json)?;
+    let observed_workflow_sha256 =
+        crate::digest_utils::sha256_prefixed_bytes(workflow_text.as_bytes());
+    if observed_workflow_sha256 != plan.approved_workflow_sha256 {
+        return Err(format!(
+            "Approved workflow digest mismatch for plan '{}': expected '{}', observed '{}'; no operations were executed",
+            plan.plan_id, plan.approved_workflow_sha256, observed_workflow_sha256
+        ));
+    }
+    let workflow = parse_workflow_json_payload(&workflow_text)?;
+    let observed_operation_batch_sha256 = crate::digest_utils::sha256_prefixed_bytes(
+        &serde_json::to_vec(&workflow.ops)
+            .map_err(|error| format!("Could not hash approved workflow operations: {error}"))?,
+    );
+    if observed_operation_batch_sha256 != plan.operation_batch_sha256 {
+        return Err(format!(
+            "Approved workflow operation batch mismatch for plan '{}': expected '{}', observed '{}'; no operations were executed",
+            plan.plan_id, plan.operation_batch_sha256, observed_operation_batch_sha256
+        ));
+    }
+
+    let execution = execute_parsed_workflow_command(engine, workflow)?;
+    Ok(ShellRunResult {
+        state_changed: execution.state_changed,
+        output: json!({
+            "schema": "gentle.gene_isoform_assay_study_workflow_execution.v1",
+            "plan_id": plan.plan_id,
+            "approved_workflow_sha256": plan.approved_workflow_sha256,
+            "operation_batch_sha256": plan.operation_batch_sha256,
+            "workflow_verified": true,
+            "execution": execution.output,
+        }),
     })
 }
 
@@ -60162,6 +60435,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::PrimersDesignTranscriptAssayPanel { .. }
             | ShellCommand::PrimersDesignTranscriptAssayPanelRequest { .. }
             | ShellCommand::PrimersPlanGeneIsoformAssayStudy { .. }
+            | ShellCommand::PrimersExecuteGeneIsoformAssayStudyWorkflow { .. }
             | ShellCommand::PrimersPublishGeneIsoformAssayStudy { .. }
             | ShellCommand::PrimersComposeGeneTranscriptAssayRoutine { .. }
             | ShellCommand::PrimersTestCdnaQpcrFasta { .. }
@@ -61058,6 +61332,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ReferenceGenes { .. }
         | ShellCommand::ReferencePrepare { .. }
         | ShellCommand::ReferencePrepareBlastResource { .. }
+        | ShellCommand::ReferenceAdoptBlastResource { .. }
         | ShellCommand::ReferenceInspectBlastResource { .. }
         | ShellCommand::ReferenceRemovePrepared { .. }
         | ShellCommand::ReferenceRemoveCatalogEntry { .. }
@@ -61929,6 +62204,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersDesignTranscriptAssayPanel { .. }
         | ShellCommand::PrimersDesignTranscriptAssayPanelRequest { .. }
         | ShellCommand::PrimersPlanGeneIsoformAssayStudy { .. }
+        | ShellCommand::PrimersExecuteGeneIsoformAssayStudyWorkflow { .. }
         | ShellCommand::PrimersPublishGeneIsoformAssayStudy { .. }
         | ShellCommand::PrimersComposeGeneTranscriptAssayRoutine { .. }
         | ShellCommand::PrimersTestCdnaQpcrFasta { .. }

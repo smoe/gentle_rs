@@ -24,6 +24,17 @@ understand what changed.
 
 ## 2026-08-03
 
+- Closed the two-stage isoform-study approval chain: plans now bind the exact
+  emitted workflow bytes, `primers execute-gene-isoform-study-workflow`
+  verifies both workflow and ordered-operation digests before execution, and
+  the PCR ClawBio descriptor exposes distinct read-only normalization, first
+  approval, and second approval routes.
+- Added non-destructive `genomes adopt-blast-resource` metadata repair for an
+  existing transcriptome-cDNA BLAST database. Adoption validates the expected
+  index fingerprint, records or verifies the prepared FASTA identity, can
+  compare all accession/length rows, regenerates only subject annotations,
+  preserves legacy manifests, and never invokes `makeblastdb`; ordinary
+  preparation now protects content-bound indices from implicit replacement.
 - Expanded gene isoform-assay dossier publication with GENtle-owned quality-
   assurance and provenance projections in every standard profile. Gene pages
   now expose exact readiness gates, evidence ids, blockers/warnings, and a

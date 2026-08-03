@@ -7558,6 +7558,17 @@ fn parse_primers_seed_from_feature_and_splicing() {
             ..
         }
     ));
+    let execute_approved = parse_shell_line(
+        "primers execute-gene-isoform-study-workflow @plan.json @operations.workflow.json",
+    )
+    .expect("parse approved study workflow execution");
+    assert!(matches!(
+        execute_approved,
+        ShellCommand::PrimersExecuteGeneIsoformAssayStudyWorkflow {
+            plan_json,
+            workflow_json,
+        } if plan_json == "@plan.json" && workflow_json == "@operations.workflow.json"
+    ));
     let publication = parse_shell_line(
         "primers publish-gene-isoform-study dossier.json out --profile review --blocks run.parameters,gene.patz1.overview --pdf",
     )
@@ -7663,6 +7674,71 @@ fn parse_primers_seed_from_feature_and_splicing() {
     )
     .expect_err("reject transcript order for cDNA FASTA screens");
     assert!(fasta_order_err.contains("only supported for transcript-derived"));
+}
+
+#[test]
+fn approved_gene_isoform_study_workflow_requires_exact_emitted_bytes() {
+    let temp = tempdir().expect("tempdir");
+    let plan_path = temp.path().join("plan.json");
+    let workflow_path = temp.path().join("operations.workflow.json");
+    let workflow = Workflow {
+        run_id: "approved_empty_batch".to_string(),
+        ops: vec![],
+    };
+    let workflow_bytes = serde_json::to_vec_pretty(&workflow).expect("serialize workflow");
+    let mut plan = GeneIsoformAssayStudyPlanReport {
+        schema: GENE_ISOFORM_ASSAY_STUDY_PLAN_SCHEMA.to_string(),
+        plan_id: "approved_plan".to_string(),
+        operation_batch_sha256: crate::digest_utils::sha256_prefixed_bytes(
+            &serde_json::to_vec(&workflow.ops).expect("serialize operation batch"),
+        ),
+        approved_workflow_sha256: crate::digest_utils::sha256_prefixed_bytes(&workflow_bytes),
+        ..GeneIsoformAssayStudyPlanReport::default()
+    };
+    fs::write(
+        &plan_path,
+        serde_json::to_vec_pretty(&plan).expect("serialize plan"),
+    )
+    .expect("write plan");
+    fs::write(&workflow_path, &workflow_bytes).expect("write workflow");
+
+    let command = parse_shell_line(&format!(
+        "primers execute-gene-isoform-study-workflow @{} @{}",
+        plan_path.display(),
+        workflow_path.display()
+    ))
+    .expect("parse approved workflow execution");
+    let mut engine = GentleEngine::new();
+    let executed = execute_shell_command(&mut engine, &command).expect("execute approved batch");
+    assert!(!executed.state_changed);
+    assert_eq!(executed.output["workflow_verified"], true);
+    assert_eq!(executed.output["plan_id"], "approved_plan");
+
+    let tampered = Workflow {
+        run_id: "tampered_batch".to_string(),
+        ops: vec![],
+    };
+    fs::write(
+        &workflow_path,
+        serde_json::to_vec_pretty(&tampered).expect("serialize tampered workflow"),
+    )
+    .expect("write tampered workflow");
+    let error = execute_shell_command(&mut engine, &command)
+        .expect_err("tampered workflow must fail before execution");
+    assert!(error.contains("digest mismatch"), "{error}");
+
+    plan.approved_workflow_sha256.clear();
+    fs::write(
+        &plan_path,
+        serde_json::to_vec_pretty(&plan).expect("serialize legacy plan"),
+    )
+    .expect("write legacy plan");
+    let error = execute_shell_command(&mut engine, &command)
+        .expect_err("legacy plan without workflow digest must fail");
+    assert!(
+        error.contains("predates exact workflow-byte binding"),
+        "{error}"
+    );
 }
 
 #[test]
@@ -33159,9 +33235,18 @@ fn parse_genomes_prepare_and_inspect_blast_resource() {
             resource_id,
             catalog_path: Some(catalog_path),
             cache_dir: Some(cache_dir),
+            force_rebuild: false,
         } if resource_id == "human_cdna"
             && catalog_path == "c.json"
             && cache_dir == "cache"
+    ));
+    assert!(matches!(
+        parse_shell_line("genomes prepare-blast-resource human_cdna --force-rebuild")
+            .expect("parse forced BLAST resource rebuild"),
+        ShellCommand::ReferencePrepareBlastResource {
+            force_rebuild: true,
+            ..
+        }
     ));
 
     let import = parse_shell_line("genomes import-blast-resource human_cdna")
@@ -33172,6 +33257,31 @@ fn parse_genomes_prepare_and_inspect_blast_resource() {
             resource_id,
             ..
         } if resource_id == "human_cdna"
+    ));
+
+    let adopt = parse_shell_line(
+        "genomes adopt-blast-resource human_cdna --sequence-path cdna.fa --blast-db-prefix db/cdna --expected-content-fingerprint sha256:abc --expected-sequence-sha1 sha1:def --verify-source-identities --catalog c.json --cache-dir cache",
+    )
+    .expect("parse adopt-blast-resource");
+    assert!(matches!(
+        adopt,
+        ShellCommand::ReferenceAdoptBlastResource {
+            helper_mode: false,
+            resource_id,
+            sequence_path,
+            blast_db_prefix,
+            expected_content_fingerprint,
+            expected_sequence_sha1: Some(expected_sequence_sha1),
+            verify_source_identities: true,
+            catalog_path: Some(catalog_path),
+            cache_dir: Some(cache_dir),
+        } if resource_id == "human_cdna"
+            && sequence_path == "cdna.fa"
+            && blast_db_prefix == "db/cdna"
+            && expected_content_fingerprint == "sha256:abc"
+            && expected_sequence_sha1 == "sha1:def"
+            && catalog_path == "c.json"
+            && cache_dir == "cache"
     ));
 
     let inspect = parse_shell_line(

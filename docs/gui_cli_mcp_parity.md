@@ -17,8 +17,8 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 35 | 631 | 0 |
-| gentle_cli | 401 | 289 | 0 |
+| GUI | 35 | 633 | 0 |
+| gentle_cli | 403 | 289 | 0 |
 | MCP | 91 | 451 | 52 |
 | JS | 78 | 448 | 56 |
 | Lua | 77 | 449 | 56 |
@@ -211,6 +211,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | genomes genes | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation.<br>JS: Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation.<br>Lua: Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | genomes prepare | glossary-command | prominent | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | genomes prepare-blast-resource | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| genomes adopt-blast-resource | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: BLAST resource adoption validates and writes host-local catalog artifacts; it remains a reviewed CLI/GUI shell workflow until a dedicated typed resource tool exists.<br>JS: BLAST resource adoption validates and writes host-local catalog artifacts; it remains a reviewed CLI/GUI shell workflow until a dedicated typed resource tool exists.<br>Lua: BLAST resource adoption validates and writes host-local catalog artifacts; it remains a reviewed CLI/GUI shell workflow until a dedicated typed resource tool exists.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | genomes inspect-blast-resource | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | genomes remove-prepared | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation.<br>JS: Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation.<br>Lua: Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | genomes remove-catalog-entry | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added.<br>JS: Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added.<br>Lua: Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -293,6 +294,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | primers design-qpcr | glossary-command | prominent | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers design-transcript-assay-panel | glossary-command | prominent | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers plan-gene-isoform-study | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| primers execute-gene-isoform-study-workflow | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Exact plan/workflow byte verification is a file-bound approval route; generic operation or workflow adapters would bypass that binding, so only the reviewed CLI/GUI shell path is exposed.<br>JS: Exact plan/workflow byte verification is a file-bound approval route; generic operation or workflow adapters would bypass that binding, so only the reviewed CLI/GUI shell path is exposed.<br>Lua: Exact plan/workflow byte verification is a file-bound approval route; generic operation or workflow adapters would bypass that binding, so only the reviewed CLI/GUI shell path is exposed.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers publish-gene-isoform-study | glossary-command | shell-only | prominent | prominent | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers compose-gene-assay-routine | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | features restriction-scan | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |

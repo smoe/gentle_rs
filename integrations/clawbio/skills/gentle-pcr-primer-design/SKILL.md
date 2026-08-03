@@ -6,7 +6,7 @@ description: >-
   scientific operation to GENtle through the registered gentle-cloning skill,
   preserving GENtle's typed reports, evidence states, provenance, and review
   gates.
-version: 0.4.0
+version: 0.5.0
 author: GENtle project
 license: MIT
 tags: [primer-design, pcr, rt-pcr, sybr, qpcr, taqman, isoforms, specificity, provenance]
@@ -118,8 +118,11 @@ This skill owns:
    fully defaulted, content-bound request. Obtain approval for the proposal
    that consumes those exact normalized bytes. The resulting plan may emit an
    ordered workflow; obtain a second approval whose proposal binds that exact
-   workflow and its operation-batch digest. Never regenerate assay operations
-   after the second approval.
+   workflow, its `approved_workflow_sha256`, and its operation-batch digest.
+   Execute it only through
+   `primers execute-gene-isoform-study-workflow PLAN.json WORKFLOW.json`, which
+   fails closed before execution on any mismatch. Never regenerate assay
+   operations after the second approval.
 7. Inspect the persisted GENtle report. Preserve all warnings, uncovered
    transcript classes, unresolved junctions, cDNA-reach cautions, and review
    states.

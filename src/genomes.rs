@@ -52,7 +52,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tempfile::NamedTempFile;
 
 pub const DEFAULT_GENOME_CATALOG_PATH: &str = "assets/genomes.json";
@@ -78,6 +78,7 @@ pub const BLASTDBCMD_ENV_BIN: &str = "GENTLE_BLASTDBCMD_BIN";
 pub const BLAST_DATABASE_INSPECTION_SCHEMA: &str = "gentle.blast_database_inspection.v1";
 pub const PREPARE_BLAST_SEQUENCE_RESOURCE_SCHEMA: &str =
     "gentle.prepare_blast_sequence_resource.v1";
+pub const BLAST_RESOURCE_ADOPTION_SCHEMA: &str = "gentle.blast_resource_adoption.v1";
 pub const PREPARE_GENOME_TIMEOUT_SECS_ENV: &str = "GENTLE_PREPARE_GENOME_TIMEOUT_SECS";
 const DEFAULT_NCBI_EFETCH_ENDPOINT: &str =
     "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi";
@@ -2210,6 +2211,10 @@ struct BlastSequenceResourceManifest {
     blast_index_executable: Option<String>,
     #[serde(default)]
     blast_indexed_at_unix_ms: Option<u128>,
+    #[serde(default)]
+    blast_content_fingerprint: Option<String>,
+    #[serde(default)]
+    blast_fingerprint_algorithm: Option<String>,
     index_kind: BlastDatabaseIndexKind,
     masking: String,
     #[serde(default)]
@@ -2247,6 +2252,44 @@ pub struct PrepareBlastSequenceResourceReport {
     pub subject_annotation_index_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subject_annotation_index_sha1: Option<String>,
+    pub inspection: BlastDatabaseInspectionReport,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+/// Checks binding an already-built BLAST database to corrected resource
+/// metadata without claiming more than the selected verification can prove.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlastResourceAdoptionVerification {
+    pub database_content_verified: bool,
+    pub database_content_fingerprint: String,
+    pub database_fingerprint_algorithm: String,
+    pub prepared_sequence_verified: bool,
+    pub prepared_sequence_sha1: String,
+    /// `attested` unless the optional accession/length comparison was run and
+    /// matched every prepared FASTA record to the BLAST database.
+    pub source_to_database_link_status: String,
+    pub source_to_database_link_method: String,
+}
+
+/// Result of non-destructively adopting one existing sequence-only BLAST DB.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlastResourceAdoptionReport {
+    pub schema: String,
+    pub resource_id: String,
+    pub sequence_source: String,
+    pub sequence_source_type: String,
+    pub sequence_path: String,
+    pub blast_db_prefix: String,
+    pub index_kind: BlastDatabaseIndexKind,
+    pub masking: String,
+    pub reference_name: String,
+    pub reference_release: String,
+    pub manifest_path: String,
+    pub legacy_manifest_preserved: bool,
+    pub subject_annotation_index_path: String,
+    pub subject_annotation_index_sha1: String,
+    pub verification: BlastResourceAdoptionVerification,
     pub inspection: BlastDatabaseInspectionReport,
     #[serde(default)]
     pub warnings: Vec<String>,
@@ -4669,6 +4712,17 @@ impl GenomeCatalog {
         resource_id: &str,
         cache_dir_override: Option<&str>,
     ) -> Result<PrepareBlastSequenceResourceReport, String> {
+        self.prepare_blast_sequence_resource_with_options(resource_id, cache_dir_override, false)
+    }
+
+    /// Prepare a sequence-only BLAST resource, optionally allowing replacement
+    /// of an existing content-bound database after explicit caller review.
+    pub fn prepare_blast_sequence_resource_with_options(
+        &self,
+        resource_id: &str,
+        cache_dir_override: Option<&str>,
+        force_rebuild: bool,
+    ) -> Result<PrepareBlastSequenceResourceReport, String> {
         let resolved_resource_id = self.resolve_entry_key(resource_id)?;
         let entry = self.entry(&resolved_resource_id)?;
         let index_kind = entry.blast_index_kind.ok_or_else(|| {
@@ -4729,12 +4783,51 @@ impl GenomeCatalog {
             .unwrap_or_else(|| install_dir.join(BLAST_SUBJECT_ANNOTATION_INDEX_FILE));
         let reuse_sequence = source_matches && non_empty_regular_file_exists(&sequence_path);
 
+        if !force_rebuild && let Some(manifest) = existing_manifest.as_ref() {
+            let protected_index_files =
+                collect_blast_index_files(Path::new(&manifest.blast_db_prefix));
+            if is_blast_index_ready(&protected_index_files) {
+                if let Some(expected_fingerprint) = manifest.blast_content_fingerprint.as_deref() {
+                    let observed_fingerprint =
+                        blast_index_content_fingerprint(&protected_index_files)?;
+                    if observed_fingerprint != expected_fingerprint {
+                        return Err(format!(
+                            "Prepared BLAST resource '{}' changed at its content-bound database prefix (expected '{}', observed '{}'); refusing to accept or rebuild it implicitly. Use genomes adopt-blast-resource only after independently reviewing the replacement identity, or --force-rebuild when GENtle should replace it",
+                            resolved_resource_id, expected_fingerprint, observed_fingerprint
+                        ));
+                    }
+                    if manifest
+                        .blast_fingerprint_algorithm
+                        .as_deref()
+                        .is_some_and(|algorithm| algorithm != BLAST_FINGERPRINT_ALGORITHM)
+                    {
+                        return Err(format!(
+                            "Prepared BLAST resource '{}' records unsupported fingerprint algorithm '{}'; refusing to rebind the database implicitly",
+                            resolved_resource_id,
+                            manifest
+                                .blast_fingerprint_algorithm
+                                .as_deref()
+                                .unwrap_or("missing")
+                        ));
+                    }
+                }
+                if !reuse_sequence {
+                    return Err(format!(
+                        "Prepared BLAST resource '{}' has an existing ready database whose declared sequence source or prepared FASTA changed; refusing to delete or rebuild it. Use genomes adopt-blast-resource to repair metadata for the existing database, or repeat prepare-blast-resource with --force-rebuild only when replacement is intentional",
+                        resolved_resource_id
+                    ));
+                }
+            }
+        }
+
         if !reuse_sequence {
             materialize_source_with_progress(
                 &sequence_resolution.source,
                 &sequence_path,
                 |_done, _total| true,
             )?;
+        }
+        if !reuse_sequence || force_rebuild {
             for index_path in collect_blast_index_files(&blast_prefix_path) {
                 remove_optional_file(&index_path, "stale BLAST resource index")?;
             }
@@ -4759,7 +4852,7 @@ impl GenomeCatalog {
             .blast_masking
             .clone()
             .unwrap_or_else(|| "source_fasta_as_prepared".to_string());
-        let manifest = BlastSequenceResourceManifest {
+        let mut manifest = BlastSequenceResourceManifest {
             schema: BLAST_SEQUENCE_RESOURCE_MANIFEST_SCHEMA.to_string(),
             resource_id: resolved_resource_id.clone(),
             sequence_source: sequence_resolution.source.clone(),
@@ -4771,6 +4864,8 @@ impl GenomeCatalog {
             blast_db_prefix: canonical_or_display(&blast_prefix_path),
             blast_index_executable: blast_outcome.executable.clone(),
             blast_indexed_at_unix_ms: blast_outcome.ready.then_some(now_unix_ms()),
+            blast_content_fingerprint: None,
+            blast_fingerprint_algorithm: None,
             index_kind,
             masking: masking.clone(),
             reference_name: entry.reference_name.clone(),
@@ -4781,18 +4876,25 @@ impl GenomeCatalog {
             subject_annotation_index_sha1: Some(subject_annotation_index_sha1.clone()),
             installed_at_unix_ms: now_unix_ms(),
         };
-        Self::write_blast_sequence_resource_manifest(&manifest_path, &manifest)?;
         let inspection = inspect_blast_database_resource_prefix(
             &resolved_resource_id,
             entry,
             &manifest,
             &blast_prefix_path,
         );
+        manifest.blast_content_fingerprint = inspection.content_fingerprint.clone();
+        manifest.blast_fingerprint_algorithm =
+            (!inspection.fingerprint_algorithm.trim().is_empty())
+                .then(|| inspection.fingerprint_algorithm.clone());
+        Self::write_blast_sequence_resource_manifest(&manifest_path, &manifest)?;
 
         Ok(PrepareBlastSequenceResourceReport {
             schema: PREPARE_BLAST_SEQUENCE_RESOURCE_SCHEMA.to_string(),
             resource_id: resolved_resource_id,
-            reused_existing: reuse_sequence && !converted_from_genbank && blast_outcome.ready,
+            reused_existing: reuse_sequence
+                && !force_rebuild
+                && !converted_from_genbank
+                && blast_outcome.ready,
             sequence_source: sequence_resolution.source,
             sequence_source_type: source_type_label(sequence_resolution.source_type).to_string(),
             sequence_path: canonical_or_display(&sequence_path),
@@ -4816,6 +4918,260 @@ impl GenomeCatalog {
                 }
                 warnings
             },
+        })
+    }
+
+    /// Bind corrected catalog metadata to an existing BLAST database without
+    /// rebuilding, deleting, or otherwise modifying its index files.
+    #[allow(clippy::too_many_arguments)]
+    pub fn adopt_blast_sequence_resource(
+        &self,
+        resource_id: &str,
+        sequence_path: &str,
+        blast_db_prefix: &str,
+        expected_content_fingerprint: &str,
+        expected_sequence_sha1: Option<&str>,
+        verify_source_identities: bool,
+        cache_dir_override: Option<&str>,
+    ) -> Result<BlastResourceAdoptionReport, String> {
+        let resolved_resource_id = self.resolve_entry_key(resource_id)?;
+        let entry = self.entry(&resolved_resource_id)?;
+        let index_kind = entry.blast_index_kind.ok_or_else(|| {
+            format!(
+                "Catalog entry '{}' does not declare blast_index_kind='transcriptome_cdna'",
+                resolved_resource_id
+            )
+        })?;
+        if index_kind != BlastDatabaseIndexKind::TranscriptomeCdna {
+            return Err(format!(
+                "Catalog entry '{}' declares blast_index_kind='{}'; adopt-blast-resource currently accepts transcriptome_cdna resources",
+                resolved_resource_id,
+                index_kind.as_str()
+            ));
+        }
+        let reference_name = entry
+            .reference_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                format!(
+                    "Catalog entry '{}' must declare reference_name before adoption",
+                    resolved_resource_id
+                )
+            })?
+            .to_string();
+        let reference_release = entry
+            .reference_release
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                format!(
+                    "Catalog entry '{}' must declare reference_release before adoption",
+                    resolved_resource_id
+                )
+            })?
+            .to_string();
+        let masking = entry
+            .blast_masking
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                format!(
+                    "Catalog entry '{}' must declare blast_masking before adoption",
+                    resolved_resource_id
+                )
+            })?
+            .to_string();
+        let sequence_resolution = self.resolve_source_with_type(
+            &resolved_resource_id,
+            "sequence",
+            entry.sequence_local.as_ref(),
+            entry.sequence_remote.as_ref(),
+            entry,
+        )?;
+
+        let sequence_path = PathBuf::from(sequence_path.trim());
+        if !non_empty_regular_file_exists(&sequence_path) {
+            return Err(format!(
+                "Prepared sequence '{}' is missing, empty, or not a regular file",
+                sequence_path.display()
+            ));
+        }
+        let blast_prefix_path = PathBuf::from(blast_db_prefix.trim());
+        let expected_content_fingerprint = expected_content_fingerprint.trim();
+        if expected_content_fingerprint.is_empty() {
+            return Err(
+                "adopt-blast-resource requires a non-empty expected content fingerprint"
+                    .to_string(),
+            );
+        }
+
+        let initial_inspection = inspect_blast_database_prefix_with_metadata(
+            &resolved_resource_id,
+            entry,
+            index_kind,
+            Some(&masking),
+            Some(&reference_name),
+            Some(&reference_release),
+            &blast_prefix_path,
+        );
+        if initial_inspection.validation_status != "valid" {
+            return Err(format!(
+                "BLAST database '{}' is not valid (status='{}'); adoption wrote no manifest",
+                blast_prefix_path.display(),
+                initial_inspection.validation_status
+            ));
+        }
+        let observed_content_fingerprint = initial_inspection
+            .content_fingerprint
+            .as_deref()
+            .ok_or_else(|| {
+                format!(
+                    "BLAST database '{}' has no observable content fingerprint",
+                    blast_prefix_path.display()
+                )
+            })?;
+        if observed_content_fingerprint != expected_content_fingerprint {
+            return Err(format!(
+                "BLAST database fingerprint mismatch for '{}': expected '{}', observed '{}'; adoption wrote no manifest",
+                resolved_resource_id, expected_content_fingerprint, observed_content_fingerprint
+            ));
+        }
+
+        let sequence_sha1 = compute_file_sha1(&sequence_path)?.ok_or_else(|| {
+            format!(
+                "Could not fingerprint prepared sequence '{}'",
+                sequence_path.display()
+            )
+        })?;
+        let expected_sequence_sha1 = expected_sequence_sha1
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        if let Some(expected) = expected_sequence_sha1 {
+            let expected = expected.strip_prefix("sha1:").unwrap_or(expected);
+            if sequence_sha1 != expected {
+                return Err(format!(
+                    "Prepared sequence SHA-1 mismatch for '{}': expected '{}', observed '{}'; adoption wrote no manifest",
+                    resolved_resource_id, expected, sequence_sha1
+                ));
+            }
+        }
+
+        let (source_to_database_link_status, source_to_database_link_method) =
+            if verify_source_identities {
+                verify_blast_resource_accession_lengths(&sequence_path, &blast_prefix_path)?;
+                ("verified".to_string(), "accession_length_set".to_string())
+            } else {
+                (
+                    "attested".to_string(),
+                    "operator_adoption_attestation".to_string(),
+                )
+            };
+
+        let install_dir = self.install_dir(&resolved_resource_id, entry, cache_dir_override);
+        fs::create_dir_all(&install_dir).map_err(|error| {
+            format!(
+                "Could not create BLAST resource cache dir '{}': {error}",
+                install_dir.display()
+            )
+        })?;
+        let manifest_path = install_dir.join(BLAST_SEQUENCE_RESOURCE_MANIFEST_FILE);
+        let legacy_manifest_preserved = install_dir.join("manifest.json").exists();
+        let subject_annotation_index_path = install_dir.join(BLAST_SUBJECT_ANNOTATION_INDEX_FILE);
+        let subject_annotation_index_sha1 = write_blast_subject_annotation_index_from_fasta(
+            &resolved_resource_id,
+            &sequence_path,
+            &sequence_sha1,
+            &subject_annotation_index_path,
+        )?;
+
+        let manifest = BlastSequenceResourceManifest {
+            schema: BLAST_SEQUENCE_RESOURCE_MANIFEST_SCHEMA.to_string(),
+            resource_id: resolved_resource_id.clone(),
+            sequence_source: sequence_resolution.source.clone(),
+            sequence_source_type: Some(
+                source_type_label(sequence_resolution.source_type).to_string(),
+            ),
+            sequence_sha1: Some(sequence_sha1.clone()),
+            sequence_path: canonical_or_display(&sequence_path),
+            blast_db_prefix: canonical_or_display(&blast_prefix_path),
+            // Adoption observes an existing database; it does not know which
+            // makeblastdb executable originally created it.
+            blast_index_executable: None,
+            blast_indexed_at_unix_ms: None,
+            blast_content_fingerprint: Some(observed_content_fingerprint.to_string()),
+            blast_fingerprint_algorithm: Some(initial_inspection.fingerprint_algorithm.clone()),
+            index_kind,
+            masking: masking.clone(),
+            reference_name: Some(reference_name.clone()),
+            reference_release: Some(reference_release.clone()),
+            subject_annotation_index_path: Some(canonical_or_display(
+                &subject_annotation_index_path,
+            )),
+            subject_annotation_index_sha1: Some(subject_annotation_index_sha1.clone()),
+            installed_at_unix_ms: now_unix_ms(),
+        };
+        let inspection = inspect_blast_database_resource_prefix(
+            &resolved_resource_id,
+            entry,
+            &manifest,
+            &blast_prefix_path,
+        );
+        if inspection.validation_status != "valid"
+            || inspection.content_fingerprint.as_deref() != Some(expected_content_fingerprint)
+            || inspection.subject_annotation_status != "ready"
+        {
+            return Err(format!(
+                "Adopted BLAST resource '{}' failed final validation (database='{}', annotations='{}'); manifest was not written",
+                resolved_resource_id,
+                inspection.validation_status,
+                inspection.subject_annotation_status
+            ));
+        }
+        Self::write_blast_sequence_resource_manifest(&manifest_path, &manifest)?;
+
+        let mut warnings = vec![];
+        if source_to_database_link_status == "attested" {
+            warnings.push(
+                "The catalog source-to-database link is operator-attested; accession/length identity comparison was not requested. The database fingerprint was matched and the prepared FASTA SHA-1 was recorded separately."
+                    .to_string(),
+            );
+        }
+        if expected_sequence_sha1.is_none() {
+            warnings.push(
+                "The prepared FASTA SHA-1 was recorded but no expected SHA-1 was supplied; prepared_sequence_verified is false."
+                    .to_string(),
+            );
+        }
+        Ok(BlastResourceAdoptionReport {
+            schema: BLAST_RESOURCE_ADOPTION_SCHEMA.to_string(),
+            resource_id: resolved_resource_id,
+            sequence_source: sequence_resolution.source,
+            sequence_source_type: source_type_label(sequence_resolution.source_type).to_string(),
+            sequence_path: manifest.sequence_path,
+            blast_db_prefix: manifest.blast_db_prefix,
+            index_kind,
+            masking,
+            reference_name,
+            reference_release,
+            manifest_path: canonical_or_display(&manifest_path),
+            legacy_manifest_preserved,
+            subject_annotation_index_path: canonical_or_display(&subject_annotation_index_path),
+            subject_annotation_index_sha1,
+            verification: BlastResourceAdoptionVerification {
+                database_content_verified: true,
+                database_content_fingerprint: expected_content_fingerprint.to_string(),
+                database_fingerprint_algorithm: initial_inspection.fingerprint_algorithm,
+                prepared_sequence_verified: expected_sequence_sha1.is_some(),
+                prepared_sequence_sha1: sequence_sha1,
+                source_to_database_link_status,
+                source_to_database_link_method,
+            },
+            inspection,
+            warnings,
         })
     }
 
@@ -4866,7 +5222,7 @@ impl GenomeCatalog {
         let index = load_blast_subject_annotation_index(index_path)?;
         if Some(index.sequence_sha1.as_str()) != manifest.sequence_sha1.as_deref() {
             return Err(format!(
-                "BLAST subject annotation index '{}' is stale for resource '{}'; re-run genomes prepare-blast-resource",
+                "BLAST subject annotation index '{}' is stale for resource '{}'; use genomes adopt-blast-resource to regenerate metadata for an existing content-bound database, or prepare-blast-resource only when rebuilding is intended",
                 index_path.display(),
                 resolved_resource_id
             ));
@@ -10898,7 +11254,7 @@ fn inspect_blast_database_resource_prefix(
     manifest: &BlastSequenceResourceManifest,
     prefix: &Path,
 ) -> BlastDatabaseInspectionReport {
-    inspect_blast_database_prefix_with_metadata(
+    let mut report = inspect_blast_database_prefix_with_metadata(
         resource_id,
         entry,
         manifest.index_kind,
@@ -10907,7 +11263,27 @@ fn inspect_blast_database_resource_prefix(
         manifest.reference_release.as_deref(),
         prefix,
     )
-    .with_subject_annotations(manifest)
+    .with_subject_annotations(manifest);
+    if let Some(expected) = manifest.blast_content_fingerprint.as_deref()
+        && report.content_fingerprint.as_deref() != Some(expected)
+    {
+        report.validation_status = "invalid".to_string();
+        report.warnings.push(format!(
+            "BLAST database content fingerprint does not match the resource manifest (expected '{}', observed '{}')",
+            expected,
+            report.content_fingerprint.as_deref().unwrap_or("missing")
+        ));
+    }
+    if let Some(expected_algorithm) = manifest.blast_fingerprint_algorithm.as_deref()
+        && expected_algorithm != report.fingerprint_algorithm
+    {
+        report.validation_status = "invalid".to_string();
+        report.warnings.push(format!(
+            "BLAST database fingerprint algorithm does not match the resource manifest (expected '{}', observed '{}')",
+            expected_algorithm, report.fingerprint_algorithm
+        ));
+    }
+    report
 }
 
 impl BlastDatabaseInspectionReport {
@@ -11460,6 +11836,251 @@ fn write_blast_subject_annotation_index(
             path.display()
         )
     })
+}
+
+fn write_blast_subject_annotation_index_from_fasta(
+    resource_id: &str,
+    sequence_path: &Path,
+    sequence_sha1: &str,
+    index_path: &Path,
+) -> Result<String, String> {
+    let mut records = parse_fasta_subject_annotations(sequence_path)?;
+    records.sort_by(|left, right| left.record_id.cmp(&right.record_id));
+    records.dedup_by(|left, right| left.record_id == right.record_id);
+    let index = BlastSubjectAnnotationIndex {
+        schema: BLAST_SUBJECT_ANNOTATION_INDEX_SCHEMA.to_string(),
+        resource_id: resource_id.to_string(),
+        sequence_sha1: sequence_sha1.to_string(),
+        records,
+    };
+    write_blast_subject_annotation_index(index_path, &index)?;
+    compute_file_sha1(index_path)?.ok_or_else(|| {
+        format!(
+            "Could not fingerprint BLAST subject annotation index '{}'",
+            index_path.display()
+        )
+    })
+}
+
+fn fasta_accession_lengths(path: &Path) -> Result<BTreeMap<String, u64>, String> {
+    let file = File::open(path)
+        .map_err(|error| format!("Could not open FASTA '{}': {error}", path.display()))?;
+    let mut rows = BTreeMap::new();
+    let mut current_id: Option<String> = None;
+    let mut current_length = 0u64;
+    let finish_record = |rows: &mut BTreeMap<String, u64>,
+                         record_id: Option<String>,
+                         length: u64|
+     -> Result<(), String> {
+        let Some(record_id) = record_id else {
+            return Ok(());
+        };
+        if rows.insert(record_id.clone(), length).is_some() {
+            return Err(format!(
+                "Prepared FASTA '{}' contains duplicate record id '{}'",
+                path.display(),
+                record_id
+            ));
+        }
+        Ok(())
+    };
+    for line in BufReader::new(file).lines() {
+        let line =
+            line.map_err(|error| format!("Could not read FASTA '{}': {error}", path.display()))?;
+        if let Some(header) = line.strip_prefix('>') {
+            finish_record(&mut rows, current_id.take(), current_length)?;
+            let record_id = header
+                .split_whitespace()
+                .next()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    format!("Prepared FASTA '{}' has an empty header", path.display())
+                })?;
+            current_id = Some(record_id.to_string());
+            current_length = 0;
+        } else {
+            if current_id.is_none() && !line.trim().is_empty() {
+                return Err(format!(
+                    "Prepared sequence '{}' is not FASTA; adoption never converts source files",
+                    path.display()
+                ));
+            }
+            current_length = current_length.saturating_add(
+                line.as_bytes()
+                    .iter()
+                    .filter(|byte| !byte.is_ascii_whitespace())
+                    .count() as u64,
+            );
+        }
+    }
+    finish_record(&mut rows, current_id, current_length)?;
+    if rows.is_empty() {
+        return Err(format!(
+            "Prepared FASTA '{}' contains no sequence records",
+            path.display()
+        ));
+    }
+    Ok(rows)
+}
+
+fn bounded_command_output(
+    command: &mut Command,
+    label: &str,
+    timeout: Duration,
+) -> Result<Output, String> {
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = command
+        .spawn()
+        .map_err(|error| format!("Could not start {label}: {error}"))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| format!("Could not capture {label} stdout"))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| format!("Could not capture {label} stderr"))?;
+    let stdout_reader = thread::spawn(move || {
+        let mut bytes = vec![];
+        let _ = BufReader::new(stdout).read_to_end(&mut bytes);
+        bytes
+    });
+    let stderr_reader = thread::spawn(move || {
+        let mut bytes = vec![];
+        let _ = BufReader::new(stderr).read_to_end(&mut bytes);
+        bytes
+    });
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                return Ok(Output {
+                    status,
+                    stdout: stdout_reader.join().unwrap_or_default(),
+                    stderr: stderr_reader.join().unwrap_or_default(),
+                });
+            }
+            Ok(None) if started.elapsed() < timeout => {
+                thread::sleep(Duration::from_millis(50));
+            }
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = stdout_reader.join();
+                let _ = stderr_reader.join();
+                return Err(format!(
+                    "{label} exceeded the {} second timeout",
+                    timeout.as_secs()
+                ));
+            }
+            Err(error) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = stdout_reader.join();
+                let _ = stderr_reader.join();
+                return Err(format!("Could not poll {label}: {error}"));
+            }
+        }
+    }
+}
+
+fn blastdbcmd_accession_lengths(prefix: &Path) -> Result<BTreeMap<String, u64>, String> {
+    let executable = resolve_tool_executable(BLASTDBCMD_ENV_BIN, DEFAULT_BLASTDBCMD_BIN);
+    let mut command = Command::new(&executable);
+    command.args([
+        "-db",
+        &canonical_or_display(prefix),
+        "-entry",
+        "all",
+        "-outfmt",
+        "%a %l",
+    ]);
+    let output = bounded_command_output(
+        &mut command,
+        "blastdbcmd accession/length verification",
+        Duration::from_secs(300),
+    )?;
+    if !output.status.success() {
+        return Err(format!(
+            "blastdbcmd accession/length verification failed with status {:?}: {}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    let stdout = String::from_utf8(output.stdout)
+        .map_err(|error| format!("blastdbcmd accession/length output is not UTF-8: {error}"))?;
+    let mut rows = BTreeMap::new();
+    for (line_idx, line) in stdout.lines().enumerate() {
+        let mut fields = line.split_whitespace();
+        let record_id = fields.next().unwrap_or_default();
+        let length = fields
+            .next()
+            .ok_or_else(|| {
+                format!(
+                    "blastdbcmd accession/length output line {} lacks a length",
+                    line_idx.saturating_add(1)
+                )
+            })?
+            .parse::<u64>()
+            .map_err(|error| {
+                format!(
+                    "blastdbcmd accession/length output line {} has an invalid length: {error}",
+                    line_idx.saturating_add(1)
+                )
+            })?;
+        if record_id.is_empty() || fields.next().is_some() {
+            return Err(format!(
+                "blastdbcmd accession/length output line {} is malformed",
+                line_idx.saturating_add(1)
+            ));
+        }
+        if rows.insert(record_id.to_string(), length).is_some() {
+            return Err(format!(
+                "blastdbcmd returned duplicate accession '{}'",
+                record_id
+            ));
+        }
+    }
+    if rows.is_empty() {
+        return Err("blastdbcmd accession/length verification returned no records".to_string());
+    }
+    Ok(rows)
+}
+
+fn verify_blast_resource_accession_lengths(
+    sequence_path: &Path,
+    blast_db_prefix: &Path,
+) -> Result<(), String> {
+    let fasta_rows = fasta_accession_lengths(sequence_path)?;
+    let database_rows = blastdbcmd_accession_lengths(blast_db_prefix)?;
+    if fasta_rows == database_rows {
+        return Ok(());
+    }
+    let fasta_only = fasta_rows
+        .keys()
+        .find(|record_id| !database_rows.contains_key(*record_id));
+    let database_only = database_rows
+        .keys()
+        .find(|record_id| !fasta_rows.contains_key(*record_id));
+    let length_mismatch = fasta_rows.iter().find_map(|(record_id, length)| {
+        database_rows
+            .get(record_id)
+            .filter(|database_length| *database_length != length)
+            .map(|database_length| (record_id, length, database_length))
+    });
+    Err(format!(
+        "Prepared FASTA and BLAST database accession/length sets differ (fasta_records={}, database_records={}, fasta_only={}, database_only={}, length_mismatch={})",
+        fasta_rows.len(),
+        database_rows.len(),
+        fasta_only.map(String::as_str).unwrap_or("none"),
+        database_only.map(String::as_str).unwrap_or("none"),
+        length_mismatch
+            .map(|(record_id, fasta_length, database_length)| {
+                format!("{record_id}:{fasta_length}!={database_length}")
+            })
+            .unwrap_or_else(|| "none".to_string())
+    ))
 }
 
 fn ensure_blast_subject_annotation_index(
@@ -13683,6 +14304,257 @@ mod tests {
             .unwrap()
             .expect("inspect stale cDNA annotations");
         assert_eq!(stale.subject_annotation_status, "stale");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn transcriptome_cdna_resource_adoption_is_non_destructive_and_guards_prepare() {
+        let _lock = genbank_env_lock()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let td = tempdir().expect("tempdir");
+        let source_fasta = td.path().join("corrected.cdna.fa");
+        fs::write(
+            &source_fasta,
+            ">ENST00000465287.1 cdna gene:ENSG00000100105.18 gene_symbol:PATZ1\nACGTACGTACGTACGTACGT\n>ENST00000266269.10 cdna gene:ENSG00000100320.23 gene_symbol:RBFOX2\nTTTTCCCCAAAAGGGG\n",
+        )
+        .expect("write corrected cDNA FASTA");
+        let cache_dir = td.path().join("cache");
+        let catalog_path = td.path().join("catalog.json");
+        fs::write(
+            &catalog_path,
+            format!(
+                r#"{{
+  "Human GRCh38 Ensembl 116 cDNA": {{
+    "description": "synthetic adoption fixture",
+    "sequence_local": "{}",
+    "cache_dir": "{}",
+    "blast_index_kind": "transcriptome_cdna",
+    "reference_name": "Homo_sapiens.GRCh38.cdna.all",
+    "reference_release": "Ensembl 116",
+    "blast_masking": "unmasked"
+  }}
+}}"#,
+                source_fasta.display(),
+                cache_dir.display()
+            ),
+        )
+        .expect("write catalog");
+        let blast_prefix = td.path().join("existing_db/cdna");
+        fs::create_dir_all(blast_prefix.parent().expect("db parent")).expect("create db dir");
+        fs::write(blast_prefix.with_extension("nhr"), b"existing-nhr").expect("write nhr");
+        fs::write(blast_prefix.with_extension("nin"), b"existing-nin").expect("write nin");
+        fs::write(blast_prefix.with_extension("nsq"), b"existing-nsq").expect("write nsq");
+        let index_fingerprint =
+            blast_index_content_fingerprint(&collect_blast_index_files(&blast_prefix))
+                .expect("fingerprint existing DB");
+        let sequence_sha1 = compute_file_sha1(&source_fasta)
+            .expect("fingerprint FASTA")
+            .expect("FASTA sha1");
+
+        let blastdbcmd = td.path().join("blastdbcmd.sh");
+        write_executable_script(
+            &blastdbcmd,
+            "#!/bin/sh\nif [ \"$1\" = '-version' ]; then echo 'blastdbcmd: fake 1.0'; exit 0; fi\nif [ \"$1\" = '-db' ] && [ \"$3\" = '-info' ]; then printf 'Database: adopted cDNA\\nBLASTDB Version: 5\\n\\t2 sequences; 36 total letters\\n'; exit 0; fi\nif [ \"$1\" = '-db' ] && [ \"$3\" = '-entry' ]; then printf 'ENST00000465287.1 20\\nENST00000266269.10 16\\n'; exit 0; fi\nexit 2\n",
+        );
+        let makeblastdb = td.path().join("makeblastdb-must-not-run.sh");
+        let makeblastdb_sentinel = td.path().join("makeblastdb-was-run");
+        write_executable_script(
+            &makeblastdb,
+            &format!(
+                "#!/bin/sh\nprintf called > '{}'\nexit 99\n",
+                makeblastdb_sentinel.display()
+            ),
+        );
+        let _blastdbcmd = crate::tool_overrides::ScopedToolOverrideGuard::set(
+            BLASTDBCMD_ENV_BIN,
+            blastdbcmd.to_string_lossy().as_ref(),
+        );
+        let _makeblastdb = crate::tool_overrides::ScopedToolOverrideGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            makeblastdb.to_string_lossy().as_ref(),
+        );
+
+        let catalog =
+            GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref()).unwrap();
+        let install_dir = cache_dir.join("human_grch38_ensembl_116_cdna");
+        fs::create_dir_all(&install_dir).expect("create existing install dir");
+        let legacy_manifest_path = install_dir.join("manifest.json");
+        fs::write(&legacy_manifest_path, b"legacy manifest must survive")
+            .expect("write legacy manifest");
+        let manifest_path = install_dir.join(BLAST_SEQUENCE_RESOURCE_MANIFEST_FILE);
+
+        let mismatch = catalog
+            .adopt_blast_sequence_resource(
+                "Human GRCh38 Ensembl 116 cDNA",
+                source_fasta.to_string_lossy().as_ref(),
+                blast_prefix.to_string_lossy().as_ref(),
+                "sha256:not-the-database",
+                Some(&sequence_sha1),
+                true,
+                None,
+            )
+            .expect_err("mismatched fingerprint must fail before writes");
+        assert!(mismatch.contains("fingerprint mismatch"), "{mismatch}");
+        assert!(!manifest_path.exists());
+
+        let attested = catalog
+            .adopt_blast_sequence_resource(
+                "Human GRCh38 Ensembl 116 cDNA",
+                source_fasta.to_string_lossy().as_ref(),
+                blast_prefix.to_string_lossy().as_ref(),
+                &index_fingerprint,
+                None,
+                false,
+                None,
+            )
+            .expect("adopt existing cDNA database by operator attestation");
+        assert!(!attested.verification.prepared_sequence_verified);
+        assert_eq!(
+            attested.verification.source_to_database_link_status,
+            "attested"
+        );
+        assert!(
+            attested
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("no expected SHA-1 was supplied"))
+        );
+
+        let adopted = catalog
+            .adopt_blast_sequence_resource(
+                "Human GRCh38 Ensembl 116 cDNA",
+                source_fasta.to_string_lossy().as_ref(),
+                blast_prefix.to_string_lossy().as_ref(),
+                &index_fingerprint,
+                Some(&sequence_sha1),
+                true,
+                None,
+            )
+            .expect("adopt existing cDNA database");
+        assert_eq!(adopted.schema, BLAST_RESOURCE_ADOPTION_SCHEMA);
+        assert!(adopted.legacy_manifest_preserved);
+        assert!(adopted.verification.database_content_verified);
+        assert!(adopted.verification.prepared_sequence_verified);
+        assert_eq!(
+            adopted.verification.source_to_database_link_status,
+            "verified"
+        );
+        assert_eq!(
+            adopted.verification.source_to_database_link_method,
+            "accession_length_set"
+        );
+        assert_eq!(adopted.inspection.subject_annotation_status, "ready");
+        assert_eq!(
+            fs::read(&legacy_manifest_path).expect("read preserved legacy manifest"),
+            b"legacy manifest must survive"
+        );
+        assert_eq!(
+            blast_index_content_fingerprint(&collect_blast_index_files(&blast_prefix))
+                .expect("fingerprint unchanged DB"),
+            index_fingerprint
+        );
+        assert!(!makeblastdb_sentinel.exists());
+
+        fs::write(
+            blast_prefix.with_extension("nsq"),
+            b"replacement-at-same-prefix",
+        )
+        .expect("replace one index component");
+        let replacement_blocked = catalog
+            .prepare_blast_sequence_resource("Human GRCh38 Ensembl 116 cDNA", None)
+            .expect_err("same-prefix replacement must not be accepted implicitly");
+        assert!(
+            replacement_blocked.contains("changed at its content-bound database prefix"),
+            "{replacement_blocked}"
+        );
+        assert!(!makeblastdb_sentinel.exists());
+        let replaced = catalog
+            .inspect_blast_sequence_resource("Human GRCh38 Ensembl 116 cDNA", None)
+            .expect("inspect replaced DB")
+            .expect("adopted resource remains registered");
+        assert_eq!(replaced.validation_status, "invalid");
+        assert!(
+            replaced
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("content fingerprint does not match"))
+        );
+        fs::write(blast_prefix.with_extension("nsq"), b"existing-nsq")
+            .expect("restore index component");
+        assert_eq!(
+            catalog
+                .inspect_blast_sequence_resource("Human GRCh38 Ensembl 116 cDNA", None)
+                .expect("inspect restored DB")
+                .expect("restored resource remains registered")
+                .validation_status,
+            "valid"
+        );
+
+        let mut legacy_resource_manifest: serde_json::Value = serde_json::from_slice(
+            &fs::read(&manifest_path).expect("read adopted resource manifest"),
+        )
+        .expect("parse adopted resource manifest");
+        legacy_resource_manifest
+            .as_object_mut()
+            .expect("resource manifest object")
+            .remove("blast_content_fingerprint");
+        legacy_resource_manifest
+            .as_object_mut()
+            .expect("resource manifest object")
+            .remove("blast_fingerprint_algorithm");
+        fs::write(
+            &manifest_path,
+            serde_json::to_vec_pretty(&legacy_resource_manifest)
+                .expect("serialize legacy resource manifest"),
+        )
+        .expect("write legacy resource manifest");
+
+        let replacement_fasta = td.path().join("replacement.cdna.fa");
+        fs::write(&replacement_fasta, ">replacement\nAAAA\n").expect("write replacement FASTA");
+        fs::write(
+            &catalog_path,
+            format!(
+                r#"{{
+  "Human GRCh38 Ensembl 116 cDNA": {{
+    "sequence_local": "{}",
+    "cache_dir": "{}",
+    "blast_index_kind": "transcriptome_cdna",
+    "reference_name": "Homo_sapiens.GRCh38.cdna.all",
+    "reference_release": "Ensembl 116",
+    "blast_masking": "unmasked"
+  }}
+}}"#,
+                replacement_fasta.display(),
+                cache_dir.display()
+            ),
+        )
+        .expect("write changed-source catalog");
+        let changed_catalog =
+            GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref()).unwrap();
+        let blocked = changed_catalog
+            .prepare_blast_sequence_resource("Human GRCh38 Ensembl 116 cDNA", None)
+            .expect_err("content-bound database replacement must require force");
+        assert!(
+            blocked.contains("refusing to delete or rebuild"),
+            "{blocked}"
+        );
+        assert_eq!(
+            blast_index_content_fingerprint(&collect_blast_index_files(&blast_prefix))
+                .expect("fingerprint protected DB"),
+            index_fingerprint
+        );
+        assert!(!makeblastdb_sentinel.exists());
+
+        let forced = changed_catalog
+            .prepare_blast_sequence_resource_with_options(
+                "Human GRCh38 Ensembl 116 cDNA",
+                None,
+                true,
+            )
+            .expect("explicit force rebuild returns its failed-tool inspection report");
+        assert!(!forced.blast_index_ready);
+        assert!(makeblastdb_sentinel.exists());
     }
 
     #[test]

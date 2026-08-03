@@ -15174,6 +15174,18 @@ impl GentleEngine {
         }
         warnings.sort();
         warnings.dedup();
+        let workflow = Workflow {
+            run_id: format!("{}_approved_design", plan_id),
+            ops: operations,
+        };
+        let approved_workflow_sha256 =
+            sha256_prefixed_bytes(&serde_json::to_vec_pretty(&workflow).map_err(|error| {
+                EngineError {
+                    code: ErrorCode::Internal,
+                    message: format!("Could not serialize approved-operation workflow: {error}"),
+                    cause_chain: vec![],
+                }
+            })?);
         let report = GeneIsoformAssayStudyPlanReport {
             schema: GENE_ISOFORM_ASSAY_STUDY_PLAN_SCHEMA.to_string(),
             plan_id: plan_id.clone(),
@@ -15199,6 +15211,7 @@ impl GentleEngine {
             decision_factors,
             planned_operations,
             operation_batch_sha256,
+            approved_workflow_sha256,
             resolved_evidence_inputs,
             prior_plan_id,
             prior_plan_sha256,
@@ -15206,10 +15219,6 @@ impl GentleEngine {
             retained_assay_ids: request.retained_assay_ids.clone(),
             uncovered_questions: missing_evidence,
             warnings,
-        };
-        let workflow = Workflow {
-            run_id: format!("{}_approved_design", plan_id),
-            ops: operations,
         };
         Ok((report, workflow))
     }
@@ -36331,22 +36340,33 @@ impl GentleEngine {
                         .map(str::trim)
                         .filter(|value| !value.is_empty())
                     {
-                        let file = File::create(path).map_err(|error| EngineError {
-                            code: ErrorCode::Io,
-                            message: format!(
-                                "Could not create approved-operation workflow '{path}': {error}"
-                            ),
-                            cause_chain: vec![],
-                        })?;
-                        serde_json::to_writer_pretty(BufWriter::new(file), &workflow).map_err(
+                        let workflow_bytes = serde_json::to_vec_pretty(&workflow).map_err(
                             |error| EngineError {
-                                code: ErrorCode::Io,
+                                code: ErrorCode::Internal,
                                 message: format!(
                                     "Could not serialize approved-operation workflow '{path}': {error}"
                                 ),
                                 cause_chain: vec![],
                             },
                         )?;
+                        let observed_sha256 = sha256_prefixed_bytes(&workflow_bytes);
+                        if observed_sha256 != report.approved_workflow_sha256 {
+                            return Err(EngineError {
+                                code: ErrorCode::Internal,
+                                message: format!(
+                                    "Approved-operation workflow digest drifted before writing: expected '{}', observed '{}'",
+                                    report.approved_workflow_sha256, observed_sha256
+                                ),
+                                cause_chain: vec![],
+                            });
+                        }
+                        fs::write(path, workflow_bytes).map_err(|error| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not create approved-operation workflow '{path}': {error}"
+                            ),
+                            cause_chain: vec![],
+                        })?;
                         result.messages.push(format!(
                             "Wrote exact ordered assay-design workflow to '{path}'"
                         ));

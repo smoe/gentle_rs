@@ -2894,8 +2894,9 @@ Shared shell command:
     - `genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]`
     - `genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
     - `genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]`
-    - `genomes prepare-blast-resource RESOURCE_ID [--catalog PATH] [--cache-dir PATH]`
+    - `genomes prepare-blast-resource RESOURCE_ID [--catalog PATH] [--cache-dir PATH] [--force-rebuild]`
     - `genomes import-blast-resource RESOURCE_ID [--catalog PATH] [--cache-dir PATH]` (alias)
+    - `genomes adopt-blast-resource RESOURCE_ID --sequence-path PREPARED.fa --blast-db-prefix PREFIX --expected-content-fingerprint sha256:... [--expected-sequence-sha1 SHA1] [--verify-source-identities] [--catalog PATH] [--cache-dir PATH]`
     - `genomes inspect-blast-resource RESOURCE_ID [--catalog PATH] [--cache-dir PATH]`
     - `genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]`
     - `genomes blast-start GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]`
@@ -4054,6 +4055,12 @@ Shared shell command:
         defaults before the first approval; planning emits a transparent
         recommendation plus exact ordered assay operations for a separate
         batch approval, but does not execute design
+      - the plan's `approved_workflow_sha256` binds the exact emitted workflow
+        bytes. After the second approval, run
+        `primers execute-gene-isoform-study-workflow PLAN.json
+        OPERATIONS.workflow.json`; GENtle also rechecks
+        `operation_batch_sha256` before executing any operation and returns
+        `gentle.gene_isoform_assay_study_workflow_execution.v1`
       - policy decisions keep exact-cDNA complexity, annotation coverage,
         Clariom support/abundance/contrast responsiveness, assayability, prior
         priority, missing evidence, and explicit overrides as separate fields
@@ -5855,7 +5862,7 @@ Genome convenience commands:
     `--cache-dir` argument. This matters for relative cache directories because
     they resolve relative to the catalog file or fragment that supplied the
     entry.
-- `genomes prepare-blast-resource RESOURCE_ID [--catalog PATH] [--cache-dir PATH]`
+- `genomes prepare-blast-resource RESOURCE_ID [--catalog PATH] [--cache-dir PATH] [--force-rebuild]`
   - Prepares a catalog-declared, sequence-only nucleotide BLAST resource.
     `genomes import-blast-resource` is an exact alias for local collections.
   - The initial supported `blast_index_kind` is `transcriptome_cdna`. The route
@@ -5886,6 +5893,24 @@ Genome convenience commands:
     Use `sequence_remote` instead of `sequence_local` for a catalogued remote
     FASTA. GENtle records the actual source and digest; users do not hand-write
     a prepared-resource manifest.
+  - An existing content-bound database is protected when the catalog source or
+    index content at the same prefix changes. Ordinary preparation refuses to
+    accept or delete it; use adoption for independently reviewed replacement
+    content, or `--force-rebuild` when GENtle should deliberately replace it.
+- `genomes adopt-blast-resource RESOURCE_ID --sequence-path PREPARED.fa --blast-db-prefix PREFIX --expected-content-fingerprint sha256:... [--expected-sequence-sha1 SHA1] [--verify-source-identities] [--catalog PATH] [--cache-dir PATH]`
+  - Registers corrected catalog metadata for an already-valid sequence-only
+    database without invoking `makeblastdb` or altering index files.
+  - The expected database fingerprint is mandatory. The report preserves the
+    fingerprint algorithm (`sha256:index-file-full-or-edge-sampled-v1`) rather
+    than presenting an edge-sampled large-file identity as a full content hash.
+  - The prepared FASTA SHA-1 is always recorded; `prepared_sequence_verified`
+    is true only when `--expected-sequence-sha1` was supplied and matched. Its
+    relationship to the database is `attested` unless
+    `--verify-source-identities` compares the complete accession/length set and
+    succeeds; this check does not claim a residue-by-residue comparison.
+  - Adoption regenerates the descriptive subject-annotation sidecar, writes a
+    dedicated `blast-resource-manifest.json`, and leaves any legacy
+    `manifest.json` untouched.
 - `genomes inspect-blast-resource RESOURCE_ID [--catalog PATH] [--cache-dir PATH]`
   - Returns whether the resource is prepared plus
     `gentle.blast_database_inspection.v1`: reference name/release, index kind,

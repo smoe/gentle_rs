@@ -2445,7 +2445,19 @@
          ],
          "path": "genomes prepare-blast-resource",
          "summary": "Prepare or import a catalog-declared sequence-only transcriptome-cDNA BLAST resource without inventing genome annotation artifacts.",
-         "usage": "genomes prepare-blast-resource RESOURCE_ID [--catalog PATH] [--cache-dir PATH]"
+         "usage": "genomes prepare-blast-resource RESOURCE_ID [--catalog PATH] [--cache-dir PATH] [--force-rebuild]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes adopt-blast-resource",
+         "summary": "Validate and register an existing transcriptome-cDNA BLAST database against corrected catalog metadata without rebuilding or deleting index files.",
+         "usage": "genomes adopt-blast-resource RESOURCE_ID --sequence-path PREPARED.fa --blast-db-prefix PREFIX --expected-content-fingerprint sha256:... [--expected-sequence-sha1 SHA1] [--verify-source-identities] [--catalog PATH] [--cache-dir PATH]"
       },
       {
          "aliases": [],
@@ -3540,6 +3552,18 @@
          "path": "primers plan-gene-isoform-study",
          "summary": "Normalize and content-bind a gene isoform-assay study request, then recommend a transparent study profile and emit exact ordered transcript-assay operation payloads without executing them.",
          "usage": "primers plan-gene-isoform-study REQUEST_JSON_OR_@FILE [--normalize-only] [--normalized-request OUTPUT.json] [--path PLAN.json] [--workflow WORKFLOW.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers execute-gene-isoform-study-workflow",
+         "summary": "Verify exact workflow bytes and the ordered operation digest against an approved gene isoform-assay study plan, then execute that unchanged batch.",
+         "usage": "primers execute-gene-isoform-study-workflow PLAN_JSON_OR_@FILE WORKFLOW_JSON_OR_@FILE"
       },
       {
          "aliases": [],

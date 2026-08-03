@@ -2,7 +2,7 @@
   "schema": "gentle.clawbio_skill_request.v1",
   "claim_attribution_mode": "strict",
   "presentation_profile": "pcr_primer_design",
-  "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.4.0", "intent_id": "offline_patz1_transcript_panel_demo", "plan_step_index": 0},
+  "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.5.0", "intent_id": "offline_patz1_transcript_panel_demo", "plan_step_index": 0},
   "input_claims": [
     "RT priming chemistry: oligo-dT, as declared by the synthetic workflow.",
     "5-prime capture method: unspecified.",

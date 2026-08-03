@@ -9697,6 +9697,11 @@ pub struct GeneIsoformAssayStudyPlanReport {
     /// Digest over the exact ordered operation payloads. Execution approval
     /// binds this batch; callers must not regenerate it after approval.
     pub operation_batch_sha256: String,
+    /// Digest over the exact canonical workflow bytes emitted for the second
+    /// approval. Older plans omit this field and must be replanned before
+    /// approved workflow execution.
+    #[serde(default)]
+    pub approved_workflow_sha256: String,
     #[serde(default)]
     pub resolved_evidence_inputs: Vec<GeneIsoformAssayStudyInputRef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

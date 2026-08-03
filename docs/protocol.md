@@ -2837,7 +2837,9 @@ Current draft operations:
     specificity interpretation cannot be conflated with genomic carryover
 - Sequence-only BLAST resources use the shared-shell routes
   `genomes prepare-blast-resource` (alias `import-blast-resource`) and
-  `genomes inspect-blast-resource` rather than `PrepareGenome`:
+  `genomes inspect-blast-resource` rather than `PrepareGenome`; an existing
+  valid database whose catalog metadata needs correction uses the separate,
+  non-destructive `genomes adopt-blast-resource` route:
   - the catalog entry declares `blast_index_kind = transcriptome_cdna`,
     `sequence_local` or `sequence_remote`, and optional `reference_name`,
     `reference_release`, and `blast_masking`
@@ -2845,8 +2847,21 @@ Current draft operations:
     an engine-owned `gentle.blast_sequence_resource_manifest.v1`; callers do
     not author the prepared manifest
   - the manifest binds the source/digest, materialized FASTA, BLAST prefix and
-    executable, index kind, masking, reference identity/release, and install
+    executable, index-content fingerprint plus its full-or-edge-sampled
+    algorithm, index kind, masking, reference identity/release, and install
     time. It deliberately has no genome gene/transcript indexes
+  - adoption requires an expected database fingerprint, validates the existing
+    index with `blastdbcmd`, records the prepared FASTA checksum (and marks it
+    verified only when an optional expected SHA-1 was supplied and matched),
+    regenerates only its subject-annotation sidecar, writes
+    `gentle.blast_resource_adoption.v1`, and never invokes `makeblastdb` or
+    deletes index files. By default the catalog-source link is explicitly
+    `attested`; `--verify-source-identities` upgrades it to `verified` only
+    after every FASTA accession/length matches `blastdbcmd -entry all`
+  - once a manifest records a database fingerprint, neither a changed sequence
+    source nor changed index content at the same prefix can be accepted through
+    ordinary preparation. Reviewed external replacement uses adoption;
+    GENtle-driven replacement requires the explicit `--force-rebuild` flag
   - preparation also writes
     `gentle.blast_subject_annotation_index.v1`, a compact sidecar keyed by
     subject/transcript id. Ensembl FASTA deflines are parsed once for optional
@@ -9249,8 +9264,14 @@ Primer-design shell command family (implemented):
     Missing evidence remains unknown and cannot by itself reduce study depth
   - `planned_operations[]` stores each complete
     `DesignTranscriptAssayPanel` payload and digest. `operation_batch_sha256`
-    binds their exact order; `--workflow OUTPUT.json` writes that same ordered
-    batch for a separate second approval and execution step
+    binds their exact order; `approved_workflow_sha256` binds the exact
+    canonical workflow bytes written by `--workflow OUTPUT.json`
+  - `primers execute-gene-isoform-study-workflow PLAN_JSON_OR_@FILE
+    WORKFLOW_JSON_OR_@FILE` verifies both digests before executing the already
+    parsed workflow. A missing legacy workflow digest or any byte/operation
+    mismatch fails before the first operation runs. Success returns
+    `gentle.gene_isoform_assay_study_workflow_execution.v1` with both verified
+    digests and the ordinary workflow results
   - prior plans and unvalidated observations support an explicit next
     iteration. Retained assay ids are recorded but do not silently alter the
     automatic evidence recommendation
