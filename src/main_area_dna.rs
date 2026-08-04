@@ -20206,6 +20206,32 @@ impl MainAreaDna {
             format!("{backend} ")
         };
         match (progress.design_kind.as_str(), progress.stage.as_str()) {
+            (_, "primer3_search") => progress
+                .primer3_progress
+                .as_ref()
+                .map(|work| {
+                    let percent = work
+                        .fraction()
+                        .map(|fraction| format!(" ({:.1}%)", fraction * 100.0))
+                        .unwrap_or_default();
+                    format!(
+                        "{}{}: Primer3 record {} bounded work {}/{}{}",
+                        backend_prefix,
+                        progress.design_kind.replace('_', "-"),
+                        work.record,
+                        work.completed,
+                        work.bound,
+                        percent
+                    )
+                })
+                .unwrap_or_else(|| {
+                    format!(
+                        "{}{}: {}",
+                        backend_prefix,
+                        progress.design_kind.replace('_', "-"),
+                        progress.detail
+                    )
+                }),
             ("primer_pairs", "forward_candidates") => format!(
                 "{}pair-PCR: enumerated {} forward primer candidates",
                 backend_prefix,

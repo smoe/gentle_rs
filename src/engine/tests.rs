@@ -3752,6 +3752,10 @@ fn install_fake_bigwig_to_bedgraph(path: &Path, bedgraph_source: &Path) -> Strin
 fn install_fake_primer3(path: &Path) -> String {
     let script_path = path.join("fake_primer3.sh");
     let script = r#"#!/bin/sh
+if [ "$1" = "--help" ]; then
+  echo "USAGE: primer3_core [--progress] [input_file]"
+  exit 0
+fi
 if [ "$1" = "--version" ]; then
   echo "primer3_core synthetic-fixture 2.6.1"
   exit 0
@@ -3822,6 +3826,15 @@ fn install_fake_primer3_zero_pairs(path: &Path) -> (String, String) {
     let request_capture_path = path.join("fake_primer3_request_capture.txt");
     let script = format!(
         r#"#!/bin/sh
+progress=0
+if [ "$1" = "--help" ]; then
+  echo "USAGE: primer3_core [--progress] [input_file]"
+  exit 0
+fi
+if [ "$1" = "--progress" ]; then
+  progress=1
+  shift
+fi
 if [ "$1" = "--about" ]; then
   echo "unknown option: --about" >&2
   exit 2
@@ -3830,12 +3843,14 @@ if [ "$1" = "--version" ]; then
   echo "primer3_core synthetic-fixture 2.6.1"
   exit 0
 fi
+[ "$progress" -eq 1 ] && echo "PRIMER3_PROGRESS=record=1 4<16" >&2
 cat > "{}"
 echo "PRIMER_PAIR_NUM_RETURNED=0"
 echo "PRIMER_LEFT_NUM_RETURNED=0"
 echo "PRIMER_RIGHT_NUM_RETURNED=0"
 echo "PRIMER_PAIR_EXPLAIN=considered 16, no acceptable primer pairs"
 echo "="
+[ "$progress" -eq 1 ] && echo "PRIMER3_PROGRESS=record=1 16<16" >&2
 "#,
         request_capture_path.display()
     );
@@ -3849,6 +3864,133 @@ echo "="
         script_path.display().to_string(),
         request_capture_path.display().to_string(),
     )
+}
+
+#[cfg(unix)]
+fn install_fake_legacy_primer3_zero_pairs(path: &Path) -> (String, String, String) {
+    let script_path = path.join("fake_legacy_primer3_zero_pairs.sh");
+    let request_capture_path = path.join("fake_legacy_primer3_request_capture.txt");
+    let invocation_capture_path = path.join("fake_legacy_primer3_invocations.txt");
+    let script = format!(
+        r#"#!/bin/sh
+echo "$@" >> "{}"
+if [ "$1" = "--help" ]; then
+  echo "USAGE: primer3_core [--format_output] [input_file]"
+  exit 0
+fi
+if [ "$1" = "--progress" ]; then
+  echo "USAGE: primer3_core [--format_output] [input_file]" >&2
+  exit 255
+fi
+if [ "$1" = "--about" ]; then
+  echo "unknown option: --about" >&2
+  exit 2
+fi
+if [ "$1" = "--version" ]; then
+  echo "primer3_core synthetic-legacy-fixture 2.6.1"
+  exit 0
+fi
+cat > "{}"
+echo "PRIMER_PAIR_NUM_RETURNED=0"
+echo "PRIMER_LEFT_NUM_RETURNED=0"
+echo "PRIMER_RIGHT_NUM_RETURNED=0"
+echo "PRIMER_PAIR_EXPLAIN=considered 16, no acceptable primer pairs"
+echo "="
+"#,
+        invocation_capture_path.display(),
+        request_capture_path.display()
+    );
+    std::fs::write(&script_path, script).expect("write legacy fake primer3");
+    let mut perms = std::fs::metadata(&script_path)
+        .expect("metadata legacy fake primer3")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script_path, perms).expect("chmod legacy fake primer3");
+    (
+        script_path.display().to_string(),
+        request_capture_path.display().to_string(),
+        invocation_capture_path.display().to_string(),
+    )
+}
+
+#[cfg(unix)]
+fn install_fake_inconsistent_primer3_zero_pairs(path: &Path) -> (String, String) {
+    let script_path = path.join("fake_inconsistent_primer3_zero_pairs.sh");
+    let request_capture_path = path.join("fake_inconsistent_primer3_request_capture.txt");
+    let script = format!(
+        r#"#!/bin/sh
+if [ "$1" = "--help" ]; then
+  echo "USAGE: primer3_core [--progress] [input_file]"
+  exit 0
+fi
+if [ "$1" = "--progress" ]; then
+  echo "unknown option: --progress" >&2
+  exit 255
+fi
+if [ "$1" = "--about" ]; then
+  echo "unknown option: --about" >&2
+  exit 2
+fi
+if [ "$1" = "--version" ]; then
+  echo "primer3_core synthetic-inconsistent-fixture 2.6.1"
+  exit 0
+fi
+cat > "{}"
+echo "PRIMER_PAIR_NUM_RETURNED=0"
+echo "PRIMER_LEFT_NUM_RETURNED=0"
+echo "PRIMER_RIGHT_NUM_RETURNED=0"
+echo "PRIMER_PAIR_EXPLAIN=considered 16, no acceptable primer pairs"
+echo "="
+"#,
+        request_capture_path.display()
+    );
+    std::fs::write(&script_path, script).expect("write inconsistent fake primer3");
+    let mut perms = std::fs::metadata(&script_path)
+        .expect("metadata inconsistent fake primer3")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script_path, perms).expect("chmod inconsistent fake primer3");
+    (
+        script_path.display().to_string(),
+        request_capture_path.display().to_string(),
+    )
+}
+
+#[cfg(unix)]
+fn install_fake_signal_driven_primer3(path: &Path) -> String {
+    let script_path = path.join("fake_signal_driven_primer3.sh");
+    let script = r#"#!/bin/sh
+if [ "$1" = "--help" ]; then
+  echo "USAGE: primer3_core [--progress] [input_file]"
+  exit 0
+fi
+if [ "$1" != "--progress" ]; then
+  exit 2
+fi
+cat >/dev/null
+trap '
+  echo "PRIMER3_PROGRESS=record=1 10<10" >&2
+  echo "PRIMER_PAIR_NUM_RETURNED=0"
+  echo "PRIMER_LEFT_NUM_RETURNED=0"
+  echo "PRIMER_RIGHT_NUM_RETURNED=0"
+  echo "="
+  exit 0
+' USR1
+echo "PRIMER3_PROGRESS=record=1 1<10" >&2
+i=0
+while [ "$i" -lt 100 ]; do
+  sleep 0.02
+  i=$((i + 1))
+done
+exit 9
+"#;
+    std::fs::write(&script_path, script).expect("write signal-driven fake primer3");
+    let mut perms = std::fs::metadata(&script_path)
+        .expect("metadata signal-driven fake primer3")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script_path, perms).expect("chmod signal-driven fake primer3");
+    script_path.display().to_string()
 }
 
 fn file_url(path: &Path) -> String {
@@ -15869,6 +16011,20 @@ fn test_design_qpcr_assays_internal_emits_progress_events() {
     assert!(final_progress.done);
 }
 
+#[test]
+fn test_parse_primer3_progress_line_accepts_bounded_counter_contract() {
+    let progress = GentleEngine::parse_primer3_progress_line("PRIMER3_PROGRESS=record=3 125<400")
+        .expect("valid Primer3 progress line");
+    assert_eq!(progress.record, 3);
+    assert_eq!(progress.completed, 125);
+    assert_eq!(progress.bound, 400);
+    assert_eq!(progress.fraction(), Some(0.3125));
+
+    assert!(GentleEngine::parse_primer3_progress_line("ordinary stderr").is_none());
+    assert!(GentleEngine::parse_primer3_progress_line("PRIMER3_PROGRESS=record=1 11<10").is_none());
+    assert!(GentleEngine::parse_primer3_progress_line("PRIMER3_PROGRESS=record=x 1<10").is_none());
+}
+
 #[cfg(unix)]
 #[test]
 fn test_design_primer_pairs_primer3_zero_pairs_persists_request_and_explain() {
@@ -15883,8 +16039,10 @@ fn test_design_primer_pairs_primer3_zero_pairs_persists_request_and_explain() {
     let (fake_primer3, request_capture) = install_fake_primer3_zero_pairs(tmp.path());
     engine.state_mut().parameters.primer3_executable = fake_primer3.clone();
 
+    let mut progress_events = Vec::new();
     engine
-        .apply(Operation::DesignPrimerPairs {
+        .apply_with_progress(
+            Operation::DesignPrimerPairs {
             template: "tpl".to_string(),
             roi_start_0based: 10,
             roi_end_0based: 30,
@@ -15896,8 +16054,28 @@ fn test_design_primer_pairs_primer3_zero_pairs_persists_request_and_explain() {
             max_tm_delta_c: Some(10.0),
             max_pairs: Some(10),
             report_id: Some("tp73_roi_primer3_zero".to_string()),
-        })
+            },
+            |progress| {
+                if let OperationProgress::PrimerDesign(progress) = progress {
+                    progress_events.push(progress);
+                }
+                true
+            },
+        )
         .expect("fake primer3 zero-pair design should complete");
+
+    let bounded = progress_events
+        .iter()
+        .filter_map(|progress| progress.primer3_progress.as_ref())
+        .collect::<Vec<_>>();
+    assert_eq!(bounded.len(), 2);
+    assert_eq!((bounded[0].completed, bounded[0].bound), (4, 16));
+    assert_eq!((bounded[1].completed, bounded[1].bound), (16, 16));
+    assert!(
+        progress_events
+            .iter()
+            .any(|progress| progress.stage == "primer3_search")
+    );
 
     let report = engine
         .get_primer_design_report("tp73_roi_primer3_zero")
@@ -15938,6 +16116,183 @@ fn test_design_primer_pairs_primer3_zero_pairs_persists_request_and_explain() {
 
 #[cfg(unix)]
 #[test]
+fn test_design_primer_pairs_primer3_runs_legacy_binary_without_progress_flag() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "tpl".to_string(),
+        seq("ATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCGATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCG"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
+    let tmp = tempdir().expect("tempdir");
+    let (fake_primer3, request_capture, invocation_capture) =
+        install_fake_legacy_primer3_zero_pairs(tmp.path());
+    engine.state_mut().parameters.primer3_executable = fake_primer3;
+
+    engine
+        .apply(Operation::DesignPrimerPairs {
+            template: "tpl".to_string(),
+            roi_start_0based: 10,
+            roi_end_0based: 30,
+            forward: PrimerDesignSideConstraint::default(),
+            reverse: PrimerDesignSideConstraint::default(),
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: 20,
+            max_amplicon_bp: 80,
+            max_tm_delta_c: Some(10.0),
+            max_pairs: Some(10),
+            report_id: Some("legacy_primer3".to_string()),
+        })
+        .expect("legacy Primer3 should be retried without --progress");
+
+    let captured = std::fs::read_to_string(request_capture).expect("legacy captured request");
+    assert!(captured.contains("SEQUENCE_TEMPLATE="));
+    let invocations = std::fs::read_to_string(invocation_capture).expect("legacy invocations");
+    assert_eq!(
+        invocations.lines().filter(|line| *line == "--help").count(),
+        1,
+        "progress capability should be cached for one executable identity"
+    );
+    assert!(!invocations.lines().any(|line| line == "--progress"));
+    assert!(engine.get_primer_design_report("legacy_primer3").is_ok());
+}
+
+#[cfg(unix)]
+#[test]
+fn test_design_primer_pairs_primer3_retries_when_help_and_runtime_disagree() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "tpl".to_string(),
+        seq("ATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCGATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCG"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
+    let tmp = tempdir().expect("tempdir");
+    let (fake_primer3, request_capture) =
+        install_fake_inconsistent_primer3_zero_pairs(tmp.path());
+    engine.state_mut().parameters.primer3_executable = fake_primer3;
+
+    engine
+        .apply(Operation::DesignPrimerPairs {
+            template: "tpl".to_string(),
+            roi_start_0based: 10,
+            roi_end_0based: 30,
+            forward: PrimerDesignSideConstraint::default(),
+            reverse: PrimerDesignSideConstraint::default(),
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: 20,
+            max_amplicon_bp: 80,
+            max_tm_delta_c: Some(10.0),
+            max_pairs: Some(10),
+            report_id: Some("inconsistent_primer3".to_string()),
+        })
+        .expect("Primer3 should retry without --progress after a runtime rejection");
+
+    let captured = std::fs::read_to_string(request_capture).expect("fallback captured request");
+    assert!(captured.contains("SEQUENCE_TEMPLATE="));
+    assert!(engine.get_primer_design_report("inconsistent_primer3").is_ok());
+}
+
+#[cfg(unix)]
+#[test]
+fn test_design_primer_pairs_requests_sigusr1_when_primer3_progress_stalls() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "tpl".to_string(),
+        seq("ATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCGATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCG"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
+    let tmp = tempdir().expect("tempdir");
+    engine.state_mut().parameters.primer3_executable =
+        install_fake_signal_driven_primer3(tmp.path());
+    let mut bounded = Vec::new();
+
+    engine
+        .apply_with_progress(
+            Operation::DesignPrimerPairs {
+                template: "tpl".to_string(),
+                roi_start_0based: 10,
+                roi_end_0based: 30,
+                forward: PrimerDesignSideConstraint::default(),
+                reverse: PrimerDesignSideConstraint::default(),
+                pair_constraints: PrimerDesignPairConstraint::default(),
+                min_amplicon_bp: 20,
+                max_amplicon_bp: 80,
+                max_tm_delta_c: Some(10.0),
+                max_pairs: Some(10),
+                report_id: Some("signal_primer3".to_string()),
+            },
+            |progress| {
+                if let OperationProgress::PrimerDesign(progress) = progress
+                    && let Some(progress) = progress.primer3_progress
+                {
+                    bounded.push((progress.completed, progress.bound));
+                }
+                true
+            },
+        )
+        .expect("SIGUSR1 should request a terminal Primer3 progress report");
+
+    assert_eq!(bounded.first().copied(), Some((1, 10)));
+    assert_eq!(bounded.last().copied(), Some((10, 10)));
+}
+
+#[cfg(unix)]
+#[test]
+fn test_auto_primer3_progress_cancellation_does_not_fall_back_or_commit() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "tpl".to_string(),
+        seq("ATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCGATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCG"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Auto;
+    let tmp = tempdir().expect("tempdir");
+    let (fake_primer3, _) = install_fake_primer3_zero_pairs(tmp.path());
+    engine.state_mut().parameters.primer3_executable = fake_primer3;
+
+    let error = engine
+        .apply_with_progress(
+            Operation::DesignPrimerPairs {
+                template: "tpl".to_string(),
+                roi_start_0based: 10,
+                roi_end_0based: 30,
+                forward: PrimerDesignSideConstraint::default(),
+                reverse: PrimerDesignSideConstraint::default(),
+                pair_constraints: PrimerDesignPairConstraint::default(),
+                min_amplicon_bp: 20,
+                max_amplicon_bp: 80,
+                max_tm_delta_c: Some(10.0),
+                max_pairs: Some(10),
+                report_id: Some("cancelled_primer3".to_string()),
+            },
+            |progress| {
+                !matches!(
+                    progress,
+                    OperationProgress::PrimerDesign(PrimerDesignProgress {
+                        primer3_progress: Some(_),
+                        ..
+                    })
+                )
+            },
+        )
+        .expect_err("Primer3 progress callback should cancel the operation");
+
+    assert!(
+        error
+            .message
+            .contains("cancelled during progress reporting")
+    );
+    assert!(
+        engine
+            .get_primer_design_report("cancelled_primer3")
+            .is_err()
+    );
+}
+
+#[cfg(unix)]
+#[test]
 fn test_primer3_preflight_report_success() {
     let mut engine = GentleEngine::new();
     engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
@@ -15966,6 +16321,7 @@ fn test_primer3_preflight_report_success() {
     );
     assert!(report.reachable);
     assert!(report.version_probe_ok);
+    assert_eq!(report.progress_supported, Some(true));
     assert_eq!(report.status_code, Some(0));
     assert_eq!(
         report.version.as_deref(),
@@ -15985,6 +16341,7 @@ fn test_primer3_preflight_prefers_native_about_probe() {
     let report = engine.primer3_preflight_report(None, Some(fake_primer3.as_str()));
     assert!(report.reachable);
     assert!(report.version_probe_ok);
+    assert_eq!(report.progress_supported, Some(false));
     assert_eq!(report.status_code, Some(0));
     assert_eq!(report.version.as_deref(), Some("libprimer3 release 2.6.1"));
     assert!(report.detail.is_none());
@@ -16001,6 +16358,7 @@ fn test_primer3_preflight_preserves_diagnostics_when_both_probes_fail() {
     let report = engine.primer3_preflight_report(None, Some(fake_primer3.as_str()));
     assert!(report.reachable);
     assert!(!report.version_probe_ok);
+    assert_eq!(report.progress_supported, Some(false));
     assert_eq!(report.status_code, Some(255));
     assert!(report.version.is_none());
     let detail = report.detail.as_deref().expect("failed-probe diagnostics");
@@ -16031,6 +16389,7 @@ fn test_primer3_preflight_report_missing_executable() {
     );
     assert!(!report.reachable);
     assert!(!report.version_probe_ok);
+    assert_eq!(report.progress_supported, None);
     assert!(report.error.is_some());
 }
 

@@ -18548,6 +18548,10 @@ fn execute_primers_preflight_reports_reachable_primer3() {
         out.output["preflight"]["version_probe_ok"].as_bool(),
         Some(true)
     );
+    assert_eq!(
+        out.output["preflight"]["progress_supported"].as_bool(),
+        Some(false)
+    );
     assert_eq!(out.output["preflight"]["status_code"].as_i64(), Some(0));
     assert_eq!(
         out.output["preflight"]["version"].as_str(),

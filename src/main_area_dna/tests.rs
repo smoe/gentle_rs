@@ -21,7 +21,8 @@ use crate::{
         EngineError, ErrorCode, EvidenceClass, FeatureLocationEditStrand,
         FeatureRecordCurationOutcome, FlexibilityModel, FlexibilityTrack,
         GeneIsoformEvidenceReport, GentleEngine, LinearSequenceLetterLayoutMode, OpResult,
-        Operation, PairwiseAlignmentMode, PrimerDesignBackend, PrimerDesignPairConstraint,
+        Operation, PairwiseAlignmentMode, Primer3Progress, PrimerDesignBackend,
+        PrimerDesignPairConstraint,
         PrimerDesignProgress, PrimerDesignSideConstraint, ProbeRegionEvidenceInterpretationReport,
         ProbeRegionEvidenceMappingRow, ProjectState, PromoterExpressionEvidenceInput,
         PromoterReporterCandidateSet, ProtocolCartoonPreviewTelemetry,
@@ -13185,6 +13186,7 @@ fn primer_design_progress_summary_mentions_pair_evaluation_counts() {
         assay_candidate_combinations: None,
         assays_evaluated: None,
         accepted_assay_count: None,
+        primer3_progress: None,
         max_output: 10,
         done: false,
     });
@@ -13215,12 +13217,47 @@ fn primer_design_progress_summary_mentions_qpcr_probe_evaluation_counts() {
         assay_candidate_combinations: Some(24),
         assays_evaluated: Some(12),
         accepted_assay_count: Some(2),
+        primer3_progress: None,
         max_output: 5,
         done: false,
     });
 
     assert!(summary.contains("screened 12/24 probe placements"));
     assert!(summary.contains("accepted 2 assays"));
+}
+
+#[test]
+fn primer_design_progress_summary_reports_primer3_bounded_work() {
+    let summary = MainAreaDna::primer_design_progress_summary(&PrimerDesignProgress {
+        seq_id: "tpl".to_string(),
+        design_kind: "primer_pairs".to_string(),
+        backend_requested: "primer3".to_string(),
+        backend_used: "primer3".to_string(),
+        stage: "primer3_search".to_string(),
+        detail: "Primer3 bounded search".to_string(),
+        roi_start_0based: 40,
+        roi_end_0based_exclusive: 80,
+        forward_candidate_count: None,
+        reverse_candidate_count: None,
+        probe_candidate_count: None,
+        pair_candidate_combinations: None,
+        pair_evaluated: None,
+        pair_evaluation_limit: None,
+        pair_evaluation_limited: None,
+        accepted_pair_count: None,
+        assay_candidate_combinations: None,
+        assays_evaluated: None,
+        accepted_assay_count: None,
+        primer3_progress: Some(Primer3Progress {
+            record: 1,
+            completed: 25,
+            bound: 100,
+        }),
+        max_output: 10,
+        done: false,
+    });
+
+    assert!(summary.contains("Primer3 record 1 bounded work 25/100 (25.0%)"));
 }
 
 #[test]

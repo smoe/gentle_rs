@@ -11,6 +11,24 @@
 
 use super::*;
 
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
+
+const PRIMER3_PROGRESS_PREFIX: &str = "PRIMER3_PROGRESS=";
+#[cfg(not(test))]
+const PRIMER3_PROGRESS_SIGNAL_AFTER: Duration = Duration::from_secs(2);
+#[cfg(test)]
+const PRIMER3_PROGRESS_SIGNAL_AFTER: Duration = Duration::from_millis(100);
+const PRIMER3_PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(100);
+const PRIMER_DESIGN_CANCELLED_MESSAGE: &str = "Primer design cancelled during progress reporting";
+
+struct Primer3ProcessOutput {
+    status: std::process::ExitStatus,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+    stdin_error: Option<String>,
+}
+
 pub(crate) struct PrimerDesignProgressContext<'a> {
     pub(crate) seq_id: &'a str,
     pub(crate) design_kind: &'static str,
@@ -6611,6 +6629,7 @@ impl GentleEngine {
             assay_candidate_combinations,
             assays_evaluated,
             accepted_assay_count,
+            primer3_progress: None,
             max_output: progress_context.max_output,
             done,
         };
@@ -7856,6 +7875,61 @@ impl GentleEngine {
         None
     }
 
+    fn primer3_progress_cache_key(executable: &str) -> String {
+        let resolved = Self::primer3_preflight_resolved_path(executable)
+            .unwrap_or_else(|| executable.trim().to_string());
+        let metadata = std::fs::metadata(&resolved).ok();
+        let length = metadata.as_ref().map(std::fs::Metadata::len);
+        let modified_ns = metadata
+            .and_then(|metadata| metadata.modified().ok())
+            .and_then(|modified| {
+                modified
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .ok()
+                    .map(|duration| duration.as_nanos())
+            });
+        format!("{resolved}|len={length:?}|mtime_ns={modified_ns:?}")
+    }
+
+    fn primer3_help_advertises_progress(stdout: &[u8], stderr: &[u8]) -> bool {
+        [stdout, stderr].into_iter().any(|bytes| {
+            String::from_utf8_lossy(bytes)
+                .split_ascii_whitespace()
+                .map(|token| {
+                    token.trim_matches(|ch: char| {
+                        !ch.is_ascii_alphanumeric() && !matches!(ch, '-' | '_')
+                    })
+                })
+                .any(|token| token == "--progress")
+        })
+    }
+
+    fn probe_primer3_progress_support(executable: &str) -> Option<bool> {
+        static CACHE: std::sync::OnceLock<
+            std::sync::Mutex<std::collections::HashMap<String, Option<bool>>>,
+        > = std::sync::OnceLock::new();
+
+        let key = Self::primer3_progress_cache_key(executable);
+        let cache = CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+        if let Ok(cache) = cache.lock()
+            && let Some(supported) = cache.get(&key)
+        {
+            return *supported;
+        }
+
+        let supported = Command::new(executable)
+            .arg("--help")
+            .output()
+            .ok()
+            .map(|output| {
+                Self::primer3_help_advertises_progress(&output.stdout, &output.stderr)
+            });
+        if let Ok(mut cache) = cache.lock() {
+            cache.insert(key, supported);
+        }
+        supported
+    }
+
     pub(super) fn probe_primer3_executable_status(executable: &str) -> Primer3PreflightReport {
         let mut report = Primer3PreflightReport {
             executable: executable.to_string(),
@@ -7863,6 +7937,7 @@ impl GentleEngine {
             ..Primer3PreflightReport::default()
         };
         let started = Instant::now();
+        report.progress_supported = Self::probe_primer3_progress_support(executable);
         let mut failure_details = Vec::new();
         let mut spawn_errors = Vec::new();
         for argument in ["--about", "--version"] {
@@ -7924,6 +7999,340 @@ impl GentleEngine {
         Self::probe_primer3_executable_status(executable).version
     }
 
+    pub(super) fn parse_primer3_progress_line(line: &str) -> Option<Primer3Progress> {
+        let payload = line.trim().strip_prefix(PRIMER3_PROGRESS_PREFIX)?;
+        let mut fields = payload.split_whitespace();
+        let record = fields.next()?.strip_prefix("record=")?.parse().ok()?;
+        let work = fields.next()?;
+        if fields.next().is_some() {
+            return None;
+        }
+        let (completed, bound) = work.split_once('<')?;
+        let completed = completed.parse().ok()?;
+        let bound = bound.parse().ok()?;
+        (completed <= bound).then_some(Primer3Progress {
+            record,
+            completed,
+            bound,
+        })
+    }
+
+    fn primer3_progress_flag_unsupported(output: &Primer3ProcessOutput) -> bool {
+        if output.status.success() {
+            return false;
+        }
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let lower = stderr.to_ascii_lowercase();
+        let explicitly_rejected = lower.contains("progress")
+            && [
+                "unknown option",
+                "unrecognized option",
+                "invalid option",
+                "illegal option",
+            ]
+            .iter()
+            .any(|marker| lower.contains(marker));
+        let legacy_usage = stderr.lines().any(|line| {
+            line.to_ascii_lowercase().contains("usage:") && !line.contains("--progress")
+        });
+        explicitly_rejected || legacy_usage
+    }
+
+    fn primer3_non_progress_stderr_detail(stderr: &[u8]) -> Option<String> {
+        String::from_utf8_lossy(stderr)
+            .lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty() && Self::parse_primer3_progress_line(line).is_none())
+            .map(ToOwned::to_owned)
+    }
+
+    #[cfg(unix)]
+    fn configure_primer3_progress_signal(command: &mut Command) {
+        // GENtle blocks SIGUSR1 for its sigwait diagnostics. Child processes
+        // inherit that mask across exec, so explicitly unblock it before
+        // Primer3 installs its --progress handler.
+        unsafe {
+            command.pre_exec(|| {
+                let mut set = std::mem::zeroed::<libc::sigset_t>();
+                if libc::sigemptyset(&mut set) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                if libc::sigaddset(&mut set, libc::SIGUSR1) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                if libc::sigprocmask(libc::SIG_UNBLOCK, &set, std::ptr::null_mut()) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+    }
+
+    #[cfg(not(unix))]
+    fn configure_primer3_progress_signal(_command: &mut Command) {}
+
+    #[cfg(unix)]
+    fn request_primer3_progress(child_id: u32) {
+        let _ = unsafe { libc::kill(child_id as libc::pid_t, libc::SIGUSR1) };
+    }
+
+    #[cfg(not(unix))]
+    fn request_primer3_progress(_child_id: u32) {}
+
+    fn stop_primer3_process(child: &mut std::process::Child) {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+
+    fn dispatch_primer3_progress_line(
+        line: &str,
+        on_progress: &mut Option<&mut dyn FnMut(Primer3Progress) -> bool>,
+    ) -> Option<bool> {
+        let progress = Self::parse_primer3_progress_line(line)?;
+        Some(match on_progress.as_deref_mut() {
+            Some(callback) => callback(progress),
+            None => true,
+        })
+    }
+
+    fn run_primer3_process_attempt(
+        primer3_executable: &str,
+        input: &str,
+        progress_enabled: bool,
+        mut on_progress: Option<&mut dyn FnMut(Primer3Progress) -> bool>,
+    ) -> Result<Primer3ProcessOutput, EngineError> {
+        let mut command = Command::new(primer3_executable);
+        if progress_enabled {
+            command.arg("--progress");
+            Self::configure_primer3_progress_signal(&mut command);
+        }
+        let mut child = command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| EngineError {
+                code: if error.kind() == std::io::ErrorKind::NotFound {
+                    ErrorCode::Unsupported
+                } else {
+                    ErrorCode::Io
+                },
+                message: format!(
+                    "Primer3 backend executable '{}' is not available: {error}",
+                    primer3_executable
+                ),
+                cause_chain: vec![],
+            })?;
+
+        let Some(stdout) = child.stdout.take() else {
+            Self::stop_primer3_process(&mut child);
+            return Err(EngineError {
+                code: ErrorCode::Internal,
+                message: "Primer3 stdout pipe was unavailable".to_string(),
+                cause_chain: vec![],
+            });
+        };
+        let Some(stderr) = child.stderr.take() else {
+            Self::stop_primer3_process(&mut child);
+            return Err(EngineError {
+                code: ErrorCode::Internal,
+                message: "Primer3 stderr pipe was unavailable".to_string(),
+                cause_chain: vec![],
+            });
+        };
+
+        let stdout_reader = match std::thread::Builder::new()
+            .name("gentle-primer3-stdout".to_string())
+            .spawn(move || {
+                let mut reader = BufReader::new(stdout);
+                let mut bytes = Vec::new();
+                reader.read_to_end(&mut bytes).map(|_| bytes)
+            })
+        {
+            Ok(reader) => reader,
+            Err(error) => {
+                Self::stop_primer3_process(&mut child);
+                return Err(EngineError {
+                    code: ErrorCode::Io,
+                    message: format!("Could not start Primer3 stdout reader: {error}"),
+                    cause_chain: vec![],
+                });
+            }
+        };
+
+        let (stderr_tx, stderr_rx) = std::sync::mpsc::channel::<String>();
+        let stderr_reader = match std::thread::Builder::new()
+            .name("gentle-primer3-stderr".to_string())
+            .spawn(move || {
+                let mut reader = BufReader::new(stderr);
+                let mut bytes = Vec::new();
+                loop {
+                    let mut line = Vec::new();
+                    let read = reader.read_until(b'\n', &mut line)?;
+                    if read == 0 {
+                        break;
+                    }
+                    bytes.extend_from_slice(&line);
+                    let _ = stderr_tx.send(String::from_utf8_lossy(&line).trim().to_string());
+                }
+                Ok::<Vec<u8>, std::io::Error>(bytes)
+            })
+        {
+            Ok(reader) => reader,
+            Err(error) => {
+                Self::stop_primer3_process(&mut child);
+                let _ = stdout_reader.join();
+                return Err(EngineError {
+                    code: ErrorCode::Io,
+                    message: format!("Could not start Primer3 stderr reader: {error}"),
+                    cause_chain: vec![],
+                });
+            }
+        };
+
+        let stdin_error = child.stdin.take().and_then(|mut stdin| {
+            stdin
+                .write_all(input.as_bytes())
+                .err()
+                .map(|error| error.to_string())
+        });
+
+        let mut progress_observed = false;
+        let mut last_progress_at = Instant::now();
+        let mut last_signal_at = Instant::now();
+        let mut stderr_open = true;
+        let mut cancelled = false;
+        let status = loop {
+            if stderr_open {
+                match stderr_rx.recv_timeout(PRIMER3_PROCESS_POLL_INTERVAL) {
+                    Ok(line) => {
+                        if let Some(keep_running) =
+                            Self::dispatch_primer3_progress_line(&line, &mut on_progress)
+                        {
+                            progress_observed = true;
+                            last_progress_at = Instant::now();
+                            if !keep_running {
+                                cancelled = true;
+                            }
+                        }
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                        stderr_open = false;
+                    }
+                }
+            } else {
+                std::thread::sleep(PRIMER3_PROCESS_POLL_INTERVAL);
+            }
+
+            if cancelled {
+                let _ = child.kill();
+                break child.wait().map_err(|error| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!("Could not stop cancelled Primer3 process: {error}"),
+                    cause_chain: vec![],
+                });
+            }
+            match child.try_wait() {
+                Ok(Some(status)) => break Ok(status),
+                Ok(None) => {}
+                Err(error) => {
+                    Self::stop_primer3_process(&mut child);
+                    break Err(EngineError {
+                        code: ErrorCode::Io,
+                        message: format!("Could not inspect Primer3 process status: {error}"),
+                        cause_chain: vec![],
+                    });
+                }
+            }
+            if progress_enabled
+                && progress_observed
+                && last_progress_at.elapsed() >= PRIMER3_PROGRESS_SIGNAL_AFTER
+                && last_signal_at.elapsed() >= PRIMER3_PROGRESS_SIGNAL_AFTER
+            {
+                Self::request_primer3_progress(child.id());
+                last_signal_at = Instant::now();
+            }
+        };
+
+        let stdout = stdout_reader
+            .join()
+            .map_err(|_| EngineError {
+                code: ErrorCode::Internal,
+                message: "Primer3 stdout reader panicked".to_string(),
+                cause_chain: vec![],
+            })?
+            .map_err(|error| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not read Primer3 stdout: {error}"),
+                cause_chain: vec![],
+            })?;
+        let stderr = stderr_reader
+            .join()
+            .map_err(|_| EngineError {
+                code: ErrorCode::Internal,
+                message: "Primer3 stderr reader panicked".to_string(),
+                cause_chain: vec![],
+            })?
+            .map_err(|error| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not read Primer3 stderr: {error}"),
+                cause_chain: vec![],
+            })?;
+
+        while let Ok(line) = stderr_rx.try_recv() {
+            if let Some(keep_running) =
+                Self::dispatch_primer3_progress_line(&line, &mut on_progress)
+                && !keep_running
+            {
+                cancelled = true;
+            }
+        }
+        let status = status?;
+        if cancelled {
+            return Err(EngineError {
+                code: ErrorCode::Internal,
+                message: PRIMER_DESIGN_CANCELLED_MESSAGE.to_string(),
+                cause_chain: vec![],
+            });
+        }
+
+        Ok(Primer3ProcessOutput {
+            status,
+            stdout,
+            stderr,
+            stdin_error,
+        })
+    }
+
+    fn run_primer3_process(
+        primer3_executable: &str,
+        input: &str,
+        on_progress: Option<&mut dyn FnMut(Primer3Progress) -> bool>,
+    ) -> Result<Primer3ProcessOutput, EngineError> {
+        let progress_supported =
+            Self::probe_primer3_progress_support(primer3_executable).unwrap_or(false);
+        let output = Self::run_primer3_process_attempt(
+            primer3_executable,
+            input,
+            progress_supported,
+            on_progress,
+        )?;
+        let output = if progress_supported && Self::primer3_progress_flag_unsupported(&output) {
+            Self::run_primer3_process_attempt(primer3_executable, input, false, None)?
+        } else {
+            output
+        };
+        if let Some(error) = output.stdin_error.as_deref() {
+            return Err(EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not write Primer3 request to stdin: {error}"),
+                cause_chain: vec![],
+            });
+        }
+        Ok(output)
+    }
+
     pub(super) fn design_primer_pairs_primer3(
         template_seq: &str,
         roi_start_0based: usize,
@@ -7938,6 +8347,7 @@ impl GentleEngine {
         max_tm_delta_c: f64,
         max_pairs: usize,
         primer3_executable: &str,
+        on_progress: Option<&mut dyn FnMut(Primer3Progress) -> bool>,
     ) -> Result<
         (
             Vec<PrimerDesignPairRecord>,
@@ -7963,6 +8373,7 @@ impl GentleEngine {
             max_pairs,
             primer3_executable,
             &Primer3PairDesignOptions::default(),
+            on_progress,
         )
     }
 
@@ -7982,6 +8393,7 @@ impl GentleEngine {
         max_pairs: usize,
         primer3_executable: &str,
         options: &Primer3PairDesignOptions,
+        on_progress: Option<&mut dyn FnMut(Primer3Progress) -> bool>,
     ) -> Result<
         (
             Vec<PrimerDesignPairRecord>,
@@ -8009,6 +8421,7 @@ impl GentleEngine {
                 primer3_executable,
                 options,
                 0,
+                on_progress,
             )?;
         Ok((
             outcome.pairs,
@@ -8035,6 +8448,7 @@ impl GentleEngine {
         max_pairs: usize,
         primer3_executable: &str,
         near_miss_limit: usize,
+        on_progress: Option<&mut dyn FnMut(Primer3Progress) -> bool>,
     ) -> Result<
         (
             PrimerDesignPairSearchOutcome,
@@ -8060,6 +8474,7 @@ impl GentleEngine {
             primer3_executable,
             &Primer3PairDesignOptions::default(),
             near_miss_limit,
+            on_progress,
         )
     }
 
@@ -8080,6 +8495,7 @@ impl GentleEngine {
         primer3_executable: &str,
         options: &Primer3PairDesignOptions,
         near_miss_limit: usize,
+        on_progress: Option<&mut dyn FnMut(Primer3Progress) -> bool>,
     ) -> Result<
         (
             PrimerDesignPairSearchOutcome,
@@ -8134,43 +8550,8 @@ impl GentleEngine {
         let input = format!(
             "SEQUENCE_ID=gentle_primer_design\nSEQUENCE_TEMPLATE={template_seq}\n{target_tag}{sequence_tags}PRIMER_TASK=generic\nPRIMER_PICK_LEFT_PRIMER=1\nPRIMER_PICK_RIGHT_PRIMER=1\nPRIMER_PICK_INTERNAL_OLIGO=0\nPRIMER_MIN_SIZE={min_size}\nPRIMER_MAX_SIZE={max_size}\nPRIMER_MIN_TM={min_tm:.3}\nPRIMER_MAX_TM={max_tm:.3}\nPRIMER_MIN_GC={min_gc_percent:.3}\nPRIMER_MAX_GC={max_gc_percent:.3}\nPRIMER_PRODUCT_SIZE_RANGE={min_amplicon_bp}-{max_amplicon_bp}\nPRIMER_NUM_RETURN={num_return}\nPRIMER_EXPLAIN_FLAG=1\n=\n"
         );
-        let mut child = Command::new(primer3_executable)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| EngineError {
-                code: if e.kind() == std::io::ErrorKind::NotFound {
-                    ErrorCode::Unsupported
-                } else {
-                    ErrorCode::Io
-                },
-                message: format!(
-                    "Primer3 backend executable '{}' is not available: {e}",
-                    primer3_executable
-                ),
-
-                cause_chain: vec![],
-            })?;
-        if let Some(stdin) = child.stdin.as_mut() {
-            stdin.write_all(input.as_bytes()).map_err(|e| EngineError {
-                code: ErrorCode::Io,
-                message: format!("Could not write Primer3 request to stdin: {e}"),
-
-                cause_chain: vec![],
-            })?;
-        }
-        let output = child.wait_with_output().map_err(|e| EngineError {
-            code: ErrorCode::Io,
-            message: format!(
-                "Could not read Primer3 response from '{}': {e}",
-                primer3_executable
-            ),
-
-            cause_chain: vec![],
-        })?;
+        let output = Self::run_primer3_process(primer3_executable, &input, on_progress)?;
         let stdout_text = String::from_utf8_lossy(&output.stdout).to_string();
-        let stderr_text = String::from_utf8_lossy(&output.stderr).to_string();
         let map = Self::parse_primer3_kv_output(&stdout_text);
         let primer3_explain = Self::primer3_explain_summary(&map);
 
@@ -8183,11 +8564,8 @@ impl GentleEngine {
             });
         }
         if !output.status.success() {
-            let detail = stderr_text
-                .lines()
-                .map(str::trim)
-                .find(|line| !line.is_empty())
-                .unwrap_or("no stderr detail");
+            let detail = Self::primer3_non_progress_stderr_detail(&output.stderr)
+                .unwrap_or_else(|| "no stderr detail".to_string());
             return Err(EngineError {
                 code: ErrorCode::Io,
                 message: format!(

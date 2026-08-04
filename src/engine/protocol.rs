@@ -5595,6 +5595,35 @@ pub struct DbSnpFetchProgress {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+/// Primer3's bounded, per-input-record search-work counters.
+///
+/// `completed` never decreases and `bound` never increases within one record.
+/// The counters measure instrumented candidate evaluations, not elapsed time,
+/// and therefore must not be presented as an ETA.
+pub struct Primer3Progress {
+    pub record: u64,
+    pub completed: u64,
+    pub bound: u64,
+}
+
+impl Default for Primer3Progress {
+    fn default() -> Self {
+        Self {
+            record: 0,
+            completed: 0,
+            bound: 0,
+        }
+    }
+}
+
+impl Primer3Progress {
+    pub fn fraction(&self) -> Option<f64> {
+        (self.bound > 0).then(|| (self.completed as f64 / self.bound as f64).clamp(0.0, 1.0))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 /// Progress snapshot for shared primer-pair / qPCR design operations.
 pub struct PrimerDesignProgress {
     pub seq_id: String,
@@ -5616,6 +5645,10 @@ pub struct PrimerDesignProgress {
     pub assay_candidate_combinations: Option<usize>,
     pub assays_evaluated: Option<usize>,
     pub accepted_assay_count: Option<usize>,
+    /// Bounded candidate-work counters when the selected Primer3 advertises
+    /// and emits its progress extension.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primer3_progress: Option<Primer3Progress>,
     pub max_output: usize,
     pub done: bool,
 }
@@ -7688,6 +7721,9 @@ pub struct Primer3PreflightReport {
     pub working_directory: Option<String>,
     pub reachable: bool,
     pub version_probe_ok: bool,
+    /// `Some(true)` when `--help` advertises `--progress`, `Some(false)` when
+    /// help is readable but omits it, and `None` when probing was unavailable.
+    pub progress_supported: Option<bool>,
     pub status_code: Option<i32>,
     pub version: Option<String>,
     pub detail: Option<String>,

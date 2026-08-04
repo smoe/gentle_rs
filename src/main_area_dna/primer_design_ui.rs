@@ -1429,10 +1429,16 @@ impl MainAreaDna {
         let resolved_display = report.resolved_path.as_deref().unwrap_or("-");
         let working_directory_display = report.working_directory.as_deref().unwrap_or("-");
         let target_display = report.resolved_path.as_deref().unwrap_or(effective_display);
+        let progress_display = match report.progress_supported {
+            Some(true) => "supported",
+            Some(false) => "legacy/no",
+            None => "unknown",
+        };
         self.primer3_preflight_status = format!(
-            "Primer3 preflight: reachable={} version_probe_ok={} backend={} configured='{}' effective='{}' resolved='{}' cwd='{}' status={} version='{}' detail='{}' probe={} ms",
+            "Primer3 preflight: reachable={} version_probe_ok={} progress={} backend={} configured='{}' effective='{}' resolved='{}' cwd='{}' status={} version='{}' detail='{}' probe={} ms",
             report.reachable,
             report.version_probe_ok,
+            progress_display,
             report.backend,
             configured_display,
             effective_display,
@@ -1448,8 +1454,8 @@ impl MainAreaDna {
         );
         if report.reachable && report.version_probe_ok {
             self.op_status = format!(
-                "Primer3 preflight OK (backend={}, executable='{}')",
-                report.backend, target_display
+                "Primer3 preflight OK (backend={}, executable='{}', progress={})",
+                report.backend, target_display, progress_display
             );
             self.op_error_popup = None;
         } else if report.reachable {

@@ -3998,7 +3998,8 @@ Primer backend/preflight controls:
   - `Probe Primer3` (runs availability/version probe and reports status)
   - `Reload from Engine` (refreshes controls from current engine parameters)
 - preflight status line reports configured/effective executable,
-  resolved path, working directory, backend, reachability, and probe timing.
+  resolved path, working directory, backend, reachability, bounded-progress
+  support (`supported`, `legacy/no`, or `unknown`), and probe timing.
 
 Primer pairs form:
 
@@ -4220,6 +4221,14 @@ Buttons:
   - pair-combination evaluation
   - qPCR probe-placement screening
   - completion counts
+- while a progress-capable Primer3 backend is running, the same area shows the
+  current input-record number and bounded candidate work as
+  `completed/bound` plus a percentage. This percentage reflects instrumented
+  search work, not elapsed time or an ETA.
+- GENtle detects `--progress` through Primer3's help output and can request a
+  refreshed status after a confirmed progress stream becomes quiet. Older
+  Primer3 installations run directly in legacy mode, but they cannot provide
+  the bounded-work display.
 
 Beginner tutorial:
 

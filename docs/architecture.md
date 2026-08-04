@@ -1835,6 +1835,21 @@ Primer3 wrapper integration status (baseline implemented):
   - `primer3_executable` (default `primer3_core`)
 - `auto` mode attempts Primer3 and deterministically falls back to the internal
   backend with explicit warning text when Primer3 is unavailable.
+- GENtle probes `primer3_core --help` once per resolved executable identity and
+  enables `--progress` only when that option is advertised. Its bounded
+  per-record work counters are parsed from stderr without mixing status lines
+  into Boulder output or backend error text. These counters describe candidate
+  evaluations, not elapsed time or an ETA.
+- On Unix, GENtle explicitly unblocks `SIGUSR1` in the child before `exec` so
+  Primer3's progress handler remains usable even though GENtle reserves that
+  signal for its own diagnostics. Once a valid progress row has established
+  support, a stalled status stream is prompted with `SIGUSR1`; GENtle does not
+  signal a binary before support has been observed.
+- A legacy Primer3 binary whose help omits `--progress` is launched directly
+  without the flag. If a binary advertises the option but rejects it at run
+  time, GENtle retries once without the flag. Cancellation of a progress-
+  capable run terminates and reaps the child and is never reinterpreted by
+  `auto` mode as permission to fall back to the internal backend.
 - Primer3 outputs are normalized into the existing
   `gentle.primer_design_report.v1` pair schema with shared deterministic
   ranking/tie-break behavior.

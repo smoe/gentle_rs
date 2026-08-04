@@ -7771,12 +7771,28 @@ Operation progress/cancellation semantics:
     - `pair_search_complete`
     - qPCR-only: `probe_candidates`, `assay_search`,
       `assay_search_complete`
-    - Primer3-backed routes emit coarse backend stages:
-      `primer3_run` and optional `fallback_to_internal`
+    - Primer3-backed routes emit `primer3_run`, zero or more live
+      `primer3_search` rows, and optional `fallback_to_internal`
     Each `PrimerDesignProgress` row carries backend request/use,
     ROI bounds, candidate counts, pair-evaluation limits, accepted
     pair/assay counts, and a `done` flag so agent/CLI consumers can detect
     stalled or overly broad searches without parsing GUI state.
+    - a `primer3_search` row additionally carries optional
+      `primer3_progress = {record, completed, bound}`. Within one input record,
+      `completed` is nondecreasing and `bound` is nonincreasing according to
+      Primer3's bounded-progress contract. `completed / bound` is suitable for
+      a progress indicator, but the counters measure candidate evaluations and
+      must not be described as elapsed time or an ETA.
+    - GENtle detects support through `primer3_core --help` and requests this
+      stream only when `--progress` is advertised. On Unix it may send
+      `SIGUSR1` after an already-confirmed progress stream becomes quiet,
+      prompting another bounded status row. Help-probed legacy binaries run
+      directly without the flag; if advertised support is rejected at runtime,
+      GENtle retries once in legacy mode. Legacy runs retain coarse stages but
+      cannot supply `primer3_progress` counters.
+    - returning `false` from the operation progress callback cancels a live
+      Primer3 child. In `auto` mode, cancellation is terminal and does not
+      trigger an internal-backend fallback.
   - RNA-read interpretation uses cooperative callback checks while emitting
     periodic progress snapshots (including seed-confirmation histogram bins).
 
@@ -9382,7 +9398,9 @@ Primer-design shell command family (implemented):
 - `primers preflight` returns `gentle.primer3_preflight.v1` with the requested
   backend plus configured-executable token, default-fallback marker, effective
   executable, resolved path, working directory, and reachability/version/error
-  diagnostics.
+  diagnostics. Its additive `progress_supported` field is `true` when
+  `--help` advertises `--progress`, `false` when readable help omits it, and
+  `null` when the capability could not be determined.
 - `primers prepare-restriction-cloning` expects an operation payload whose root
   variant is `{"PrepareRestrictionCloningPcrHandoff": {...}}`.
 - `primers seed-restriction-cloning-handoff` is non-mutating and returns a

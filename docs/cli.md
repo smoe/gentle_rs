@@ -2240,6 +2240,12 @@ interpretation/alignment updates, and primer/qPCR design updates.
 Primer/qPCR progress lines expose backend choice/fallback plus candidate and
 search counts, for example `progress primers ... stage=pair_search ...` and
 `progress primers ... stage=assay_search_complete ...`.
+Progress-capable Primer3 builds additionally emit
+`stage=primer3_search primer3_record=N primer3_work=COMPLETED/BOUND
+primer3_percent=P`. The work values count bounded candidate evaluations; they
+are not seconds and do not predict a completion time. GENtle runs older
+Primer3 binaries in legacy mode when `--help` omits `--progress`, so those
+installations continue to work but expose only the coarse Primer3 stages.
 When `--progress-stdout` is used, progress lines are emitted before the final JSON output.
 
 `state-summary` output includes:
@@ -3200,7 +3206,8 @@ Shared shell command:
     - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
       - returns `gentle.primer3_preflight.v1` with configured/effective
         executable, resolved path, working directory, and
-        reachability/version diagnostics
+        reachability/version diagnostics plus tri-state `progress_supported`
+        capability detection from `--help`
     - `primers seed-from-feature SEQ_ID FEATURE_ID`
     - `primers seed-from-splicing SEQ_ID FEATURE_ID`
     - `primers seed-qpcr-from-feature SEQ_ID FEATURE_ID`

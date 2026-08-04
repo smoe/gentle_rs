@@ -914,6 +914,16 @@ impl ProgressPrinter {
         if let Some(count) = p.accepted_assay_count {
             parts.push(format!("accepted_assays={count}"));
         }
+        if let Some(progress) = p.primer3_progress.as_ref() {
+            parts.push(format!("primer3_record={}", progress.record));
+            parts.push(format!(
+                "primer3_work={}/{}",
+                progress.completed, progress.bound
+            ));
+            if let Some(fraction) = progress.fraction() {
+                parts.push(format!("primer3_percent={:.1}", fraction * 100.0));
+            }
+        }
         parts.push(format!("max_output={}", p.max_output));
         parts.push(format!("done={}", p.done));
         parts.push(format!("detail={}", p.detail));

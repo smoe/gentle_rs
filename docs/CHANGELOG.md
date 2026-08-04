@@ -29,6 +29,14 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
 understand what changed.
 
+## 2026-08-04
+
+- Integrated Primer3 bounded-progress reporting across engine, GUI, and CLI.
+  GENtle now detects the `--progress` capability from cached help probes,
+  streams candidate-work counters when available, safely requests refreshed
+  Unix status with `SIGUSR1`, preserves cancellation without an accidental
+  `auto` fallback, and runs older Primer3 binaries directly in legacy mode.
+
 ## 2026-08-03
 
 - Made isoform-study normalization directly reusable by emitting the normalized

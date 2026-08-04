@@ -7368,11 +7368,18 @@ Error: `{err}`"
     ) -> TutorialProjectTaskProgress {
         let mut message = match progress {
             OperationProgress::PrimerDesign(p) => {
-                let percent = match (p.pair_evaluated, p.pair_evaluation_limit) {
-                    (Some(done), Some(total)) if total > 0 => Some(done as f32 / total as f32),
-                    _ if p.done => Some(1.0),
-                    _ => None,
-                };
+                let percent = p
+                    .primer3_progress
+                    .as_ref()
+                    .and_then(|progress| progress.fraction())
+                    .map(|fraction| fraction as f32)
+                    .or_else(|| match (p.pair_evaluated, p.pair_evaluation_limit) {
+                        (Some(done), Some(total)) if total > 0 => {
+                            Some(done as f32 / total as f32)
+                        }
+                        _ if p.done => Some(1.0),
+                        _ => None,
+                    });
                 Self::tutorial_project_progress_message(
                     chapter_id,
                     chapter_title,

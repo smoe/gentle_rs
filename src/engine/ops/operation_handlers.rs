@@ -7695,6 +7695,47 @@ impl GentleEngine {
         }
     }
 
+    fn primer3_operation_progress(
+        context: &PrimerDesignProgressContext<'_>,
+        progress: Primer3Progress,
+    ) -> PrimerDesignProgress {
+        let percent = progress
+            .fraction()
+            .map(|fraction| format!(" ({:.1}%)", fraction * 100.0))
+            .unwrap_or_default();
+        PrimerDesignProgress {
+            seq_id: context.seq_id.to_string(),
+            design_kind: context.design_kind.to_string(),
+            backend_requested: context.backend_requested.to_string(),
+            backend_used: context.backend_used.to_string(),
+            stage: "primer3_search".to_string(),
+            detail: format!(
+                "Primer3 record {} bounded work {}/{}{}",
+                progress.record, progress.completed, progress.bound, percent
+            ),
+            roi_start_0based: context.roi_start_0based,
+            roi_end_0based_exclusive: context.roi_end_0based_exclusive,
+            forward_candidate_count: None,
+            reverse_candidate_count: None,
+            probe_candidate_count: None,
+            pair_candidate_combinations: None,
+            pair_evaluated: None,
+            pair_evaluation_limit: None,
+            pair_evaluation_limited: None,
+            accepted_pair_count: None,
+            assay_candidate_combinations: None,
+            assays_evaluated: None,
+            accepted_assay_count: None,
+            primer3_progress: Some(progress),
+            max_output: context.max_output,
+            done: false,
+        }
+    }
+
+    fn is_primer_design_cancelled_error(error: &EngineError) -> bool {
+        error.message.starts_with("Primer design cancelled during")
+    }
+
     fn build_qpcr_transcript_design_templates(
         dna: &DNAsequence,
         splicing: &SplicingExpertView,
@@ -8307,6 +8348,38 @@ impl GentleEngine {
             requested: requested_backend.as_str().to_string(),
             ..PrimerDesignBackendInfo::default()
         };
+        let run_primer3 = |on_progress: &mut dyn FnMut(OperationProgress) -> bool| {
+            let progress_context = PrimerDesignProgressContext {
+                seq_id: progress_seq_id,
+                design_kind: "qpcr_assays",
+                backend_requested: requested_backend.as_str(),
+                backend_used: PrimerDesignBackend::Primer3.as_str(),
+                roi_start_0based,
+                roi_end_0based_exclusive: roi_end_0based,
+                max_output: max_assays,
+            };
+            let mut emit = |progress: Primer3Progress| {
+                on_progress(OperationProgress::PrimerDesign(
+                    Self::primer3_operation_progress(&progress_context, progress),
+                ))
+            };
+            Self::design_primer_pairs_primer3(
+                template_seq,
+                roi_start_0based,
+                roi_end_0based,
+                forward,
+                forward_sequence_constraints,
+                reverse,
+                reverse_sequence_constraints,
+                pair_constraints_normalized,
+                min_amplicon_bp,
+                max_amplicon_bp,
+                max_tm_delta_c,
+                pair_generation_limit,
+                primer3_executable,
+                Some(&mut emit),
+            )
+        };
         let (pair_candidates, pair_rejections) = match requested_backend {
             PrimerDesignBackend::Internal => {
                 backend.used = PrimerDesignBackend::Internal.as_str().to_string();
@@ -8365,26 +8438,13 @@ impl GentleEngine {
                         assay_candidate_combinations: None,
                         assays_evaluated: None,
                         accepted_assay_count: None,
+                        primer3_progress: None,
                         max_output: max_assays,
                         done: false,
                     },
                 )?;
                 let (pairs, rejection_summary, version, explain, request_boulder_io) =
-                    Self::design_primer_pairs_primer3(
-                        template_seq,
-                        roi_start_0based,
-                        roi_end_0based,
-                        forward,
-                        forward_sequence_constraints,
-                        reverse,
-                        reverse_sequence_constraints,
-                        pair_constraints_normalized,
-                        min_amplicon_bp,
-                        max_amplicon_bp,
-                        max_tm_delta_c,
-                        pair_generation_limit,
-                        primer3_executable,
-                    )?;
+                    run_primer3(on_progress)?;
                 backend.used = PrimerDesignBackend::Primer3.as_str().to_string();
                 backend.primer3_executable = Some(primer3_executable.to_string());
                 backend.primer3_version = version;
@@ -8418,25 +8478,12 @@ impl GentleEngine {
                         assay_candidate_combinations: None,
                         assays_evaluated: None,
                         accepted_assay_count: None,
+                        primer3_progress: None,
                         max_output: max_assays,
                         done: false,
                     },
                 )?;
-                match Self::design_primer_pairs_primer3(
-                    template_seq,
-                    roi_start_0based,
-                    roi_end_0based,
-                    forward,
-                    forward_sequence_constraints,
-                    reverse,
-                    reverse_sequence_constraints,
-                    pair_constraints_normalized,
-                    min_amplicon_bp,
-                    max_amplicon_bp,
-                    max_tm_delta_c,
-                    pair_generation_limit,
-                    primer3_executable,
-                ) {
+                match run_primer3(on_progress) {
                     Ok((pairs, rejection_summary, version, explain, request_boulder_io)) => {
                         backend.used = PrimerDesignBackend::Primer3.as_str().to_string();
                         backend.primer3_executable = Some(primer3_executable.to_string());
@@ -8446,6 +8493,9 @@ impl GentleEngine {
                         (pairs, rejection_summary)
                     }
                     Err(err) => {
+                        if Self::is_primer_design_cancelled_error(&err) {
+                            return Err(err);
+                        }
                         backend.used = PrimerDesignBackend::Internal.as_str().to_string();
                         backend.primer3_executable = Some(primer3_executable.to_string());
                         backend.fallback_reason = Some(err.message.clone());
@@ -8475,6 +8525,7 @@ impl GentleEngine {
                                 assay_candidate_combinations: None,
                                 assays_evaluated: None,
                                 accepted_assay_count: None,
+                                primer3_progress: None,
                                 max_output: max_assays,
                                 done: false,
                             },
@@ -20600,7 +20651,21 @@ impl GentleEngine {
                 )
             }
         };
-        let run_primer3 = || {
+        let run_primer3 = |on_progress: &mut dyn FnMut(OperationProgress) -> bool| {
+            let progress_context = PrimerDesignProgressContext {
+                seq_id: progress_seq_id,
+                design_kind,
+                backend_requested: requested_backend.as_str(),
+                backend_used: PrimerDesignBackend::Primer3.as_str(),
+                roi_start_0based,
+                roi_end_0based_exclusive: roi_end_0based,
+                max_output: max_pairs,
+            };
+            let mut emit = |progress: Primer3Progress| {
+                on_progress(OperationProgress::PrimerDesign(
+                    Self::primer3_operation_progress(&progress_context, progress),
+                ))
+            };
             Self::design_primer_pairs_primer3_with_options(
                 &template.sequence,
                 roi_start_0based,
@@ -20616,6 +20681,7 @@ impl GentleEngine {
                 max_pairs,
                 primer3_executable,
                 primer3_options,
+                Some(&mut emit),
             )
         };
         let mut warnings = vec![];
@@ -20629,7 +20695,7 @@ impl GentleEngine {
                 run_internal(on_progress)?
             }
             PrimerDesignBackend::Primer3 => {
-                let (pairs, rejections, version, explain, request) = run_primer3()?;
+                let (pairs, rejections, version, explain, request) = run_primer3(on_progress)?;
                 backend.used = PrimerDesignBackend::Primer3.as_str().to_string();
                 backend.primer3_executable = Some(primer3_executable.to_string());
                 backend.primer3_version = version;
@@ -20637,7 +20703,7 @@ impl GentleEngine {
                 backend.primer3_request_boulder_io = Some(request);
                 (pairs, rejections)
             }
-            PrimerDesignBackend::Auto => match run_primer3() {
+            PrimerDesignBackend::Auto => match run_primer3(on_progress) {
                 Ok((pairs, rejections, version, explain, request)) => {
                     backend.used = PrimerDesignBackend::Primer3.as_str().to_string();
                     backend.primer3_executable = Some(primer3_executable.to_string());
@@ -20647,6 +20713,9 @@ impl GentleEngine {
                     (pairs, rejections)
                 }
                 Err(error) => {
+                    if Self::is_primer_design_cancelled_error(&error) {
+                        return Err(error);
+                    }
                     backend.used = PrimerDesignBackend::Internal.as_str().to_string();
                     backend.primer3_executable = Some(primer3_executable.to_string());
                     backend.fallback_reason = Some(error.message.clone());
@@ -25791,6 +25860,39 @@ impl GentleEngine {
             requested: requested_backend.as_str().to_string(),
             ..PrimerDesignBackendInfo::default()
         };
+        let run_primer3 = |on_progress: &mut dyn FnMut(OperationProgress) -> bool| {
+            let progress_context = PrimerDesignProgressContext {
+                seq_id: &template,
+                design_kind: "primer_pairs",
+                backend_requested: requested_backend.as_str(),
+                backend_used: PrimerDesignBackend::Primer3.as_str(),
+                roi_start_0based,
+                roi_end_0based_exclusive: roi_end_0based,
+                max_output: max_pairs,
+            };
+            let mut emit = |progress: Primer3Progress| {
+                on_progress(OperationProgress::PrimerDesign(
+                    Self::primer3_operation_progress(&progress_context, progress),
+                ))
+            };
+            Self::design_primer_pairs_primer3_with_capture(
+                &template_seq,
+                roi_start_0based,
+                roi_end_0based,
+                &forward,
+                &forward_sequence_constraints,
+                &reverse,
+                &reverse_sequence_constraints,
+                &pair_constraints_normalized,
+                min_amplicon_bp,
+                max_amplicon_bp,
+                max_tm_delta_c,
+                max_pairs,
+                primer3_executable,
+                near_miss_limit,
+                Some(&mut emit),
+            )
+        };
         let search_outcome = match requested_backend {
             PrimerDesignBackend::Internal => {
                 backend.used = PrimerDesignBackend::Internal.as_str().to_string();
@@ -25850,27 +25952,12 @@ impl GentleEngine {
                         assay_candidate_combinations: None,
                         assays_evaluated: None,
                         accepted_assay_count: None,
+                        primer3_progress: None,
                         max_output: max_pairs,
                         done: false,
                     },
                 )?;
-                let (outcome, version, explain, request_boulder_io) =
-                    Self::design_primer_pairs_primer3_with_capture(
-                        &template_seq,
-                        roi_start_0based,
-                        roi_end_0based,
-                        &forward,
-                        &forward_sequence_constraints,
-                        &reverse,
-                        &reverse_sequence_constraints,
-                        &pair_constraints_normalized,
-                        min_amplicon_bp,
-                        max_amplicon_bp,
-                        max_tm_delta_c,
-                        max_pairs,
-                        primer3_executable,
-                        near_miss_limit,
-                    )?;
+                let (outcome, version, explain, request_boulder_io) = run_primer3(on_progress)?;
                 backend.used = PrimerDesignBackend::Primer3.as_str().to_string();
                 backend.primer3_executable = Some(primer3_executable.to_string());
                 backend.primer3_version = version;
@@ -25898,6 +25985,7 @@ impl GentleEngine {
                         assay_candidate_combinations: None,
                         assays_evaluated: None,
                         accepted_assay_count: None,
+                        primer3_progress: None,
                         max_output: max_pairs,
                         done: true,
                     },
@@ -25930,26 +26018,12 @@ impl GentleEngine {
                         assay_candidate_combinations: None,
                         assays_evaluated: None,
                         accepted_assay_count: None,
+                        primer3_progress: None,
                         max_output: max_pairs,
                         done: false,
                     },
                 )?;
-                match Self::design_primer_pairs_primer3_with_capture(
-                    &template_seq,
-                    roi_start_0based,
-                    roi_end_0based,
-                    &forward,
-                    &forward_sequence_constraints,
-                    &reverse,
-                    &reverse_sequence_constraints,
-                    &pair_constraints_normalized,
-                    min_amplicon_bp,
-                    max_amplicon_bp,
-                    max_tm_delta_c,
-                    max_pairs,
-                    primer3_executable,
-                    near_miss_limit,
-                ) {
+                match run_primer3(on_progress) {
                     Ok((outcome, version, explain, request_boulder_io)) => {
                         backend.used = PrimerDesignBackend::Primer3.as_str().to_string();
                         backend.primer3_executable = Some(primer3_executable.to_string());
@@ -25981,6 +26055,7 @@ impl GentleEngine {
                                 assay_candidate_combinations: None,
                                 assays_evaluated: None,
                                 accepted_assay_count: None,
+                                primer3_progress: None,
                                 max_output: max_pairs,
                                 done: true,
                             },
@@ -25988,6 +26063,9 @@ impl GentleEngine {
                         outcome
                     }
                     Err(err) => {
+                        if Self::is_primer_design_cancelled_error(&err) {
+                            return Err(err);
+                        }
                         backend.used = PrimerDesignBackend::Internal.as_str().to_string();
                         backend.primer3_executable = Some(primer3_executable.to_string());
                         backend.fallback_reason = Some(err.message.clone());
@@ -26017,6 +26095,7 @@ impl GentleEngine {
                                 assay_candidate_combinations: None,
                                 assays_evaluated: None,
                                 accepted_assay_count: None,
+                                primer3_progress: None,
                                 max_output: max_pairs,
                                 done: false,
                             },
