@@ -3835,6 +3835,9 @@ if [ "$1" = "--progress" ]; then
   progress=1
   shift
 fi
+if [ "$progress" -eq 1 ]; then
+  trap 'echo "PRIMER3_PROGRESS=record=1 8<16" >&2' USR1
+fi
 if [ "$1" = "--about" ]; then
   echo "unknown option: --about" >&2
   exit 2

@@ -279,32 +279,32 @@
         },
         "considered_alternatives": [
           {
-            "assay_id": "transcript_assay_f953276e3abb2850",
+            "assay_id": "transcript_assay_3e4c67551569075a",
             "design_transcript_id": "PATZ1-203",
-            "design_amplicon_length_bp": 76,
+            "design_amplicon_length_bp": 77,
             "practicality_classification": "routine",
             "common_region_status": "not_common",
-            "existing_candidate_score": 520.0999999999999,
+            "existing_candidate_score": 516.9601895927703,
             "disposition": "not_selected",
             "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
           },
           {
-            "assay_id": "transcript_assay_12231e23e1f4df50",
+            "assay_id": "transcript_assay_512f673826186d27",
             "design_transcript_id": "PATZ1-203",
-            "design_amplicon_length_bp": 76,
+            "design_amplicon_length_bp": 85,
             "practicality_classification": "routine",
             "common_region_status": "not_common",
-            "existing_candidate_score": 519.8606730090091,
+            "existing_candidate_score": 515.7304106244142,
             "disposition": "not_selected",
             "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
           },
           {
-            "assay_id": "transcript_assay_f5d293e7f729ae61",
+            "assay_id": "transcript_assay_044bfc6750113170",
             "design_transcript_id": "PATZ1-203",
-            "design_amplicon_length_bp": 75,
+            "design_amplicon_length_bp": 86,
             "practicality_classification": "routine",
             "common_region_status": "not_common",
-            "existing_candidate_score": 519.347622947235,
+            "existing_candidate_score": 512.873241330826,
             "disposition": "not_selected",
             "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
           }
@@ -1080,6 +1080,185 @@
       "generated_candidate_count": 4
     }
   ],
+  "feasibility": {
+    "schema": "gentle.transcript_assay_panel_feasibility.v1",
+    "operation_sha256": "sha256:b03174a875d131d66aefb77a40e5d3627f1fa8c9d92def04eebdc4095e5ce3b4",
+    "source_seq_id": "patz1_transcript_assay_demo",
+    "source_feature_id": 1,
+    "group_label": "PATZ1",
+    "strand": "-",
+    "assay_kind": "endpoint_rt_pcr",
+    "objective": "isoform_end_matrix",
+    "coverage_policy": "require_all",
+    "transcript_count": 3,
+    "equivalence_group_count": 3,
+    "first_end_class_count": 3,
+    "terminal_end_class_count": 3,
+    "reaction_count": 3,
+    "minimum_forward_primer_bp": 18,
+    "minimum_reverse_primer_bp": 18,
+    "requested_min_amplicon_bp": 70,
+    "requested_max_amplicon_bp": 10000,
+    "primer3_candidate_pair_limit_per_reaction": 4,
+    "end_classes": [
+      {
+        "end_class_id": "transcript_first_end_014d9baa04012942",
+        "kind": "first",
+        "exon_source_start_0based": 180,
+        "exon_source_end_0based_exclusive": 220,
+        "adjacent_exon_source_start_0based": 100,
+        "adjacent_exon_source_end_0based_exclusive": 140,
+        "junction_local_position_0based": 40,
+        "transcript_ids": [
+          "PATZ1-201"
+        ]
+      },
+      {
+        "end_class_id": "transcript_first_end_0dd8f7224167bfc7",
+        "kind": "first",
+        "exon_source_start_0based": 180,
+        "exon_source_end_0based_exclusive": 220,
+        "adjacent_exon_source_start_0based": 20,
+        "adjacent_exon_source_end_0based_exclusive": 60,
+        "junction_local_position_0based": 40,
+        "transcript_ids": [
+          "PATZ1-202"
+        ]
+      },
+      {
+        "end_class_id": "transcript_first_end_7954110483075819",
+        "kind": "first",
+        "exon_source_start_0based": 180,
+        "exon_source_end_0based_exclusive": 220,
+        "adjacent_exon_source_start_0based": 120,
+        "adjacent_exon_source_end_0based_exclusive": 140,
+        "junction_local_position_0based": 40,
+        "transcript_ids": [
+          "PATZ1-203"
+        ]
+      },
+      {
+        "end_class_id": "transcript_terminal_end_17e2eac3abcda939",
+        "kind": "terminal",
+        "exon_source_start_0based": 20,
+        "exon_source_end_0based_exclusive": 60,
+        "adjacent_exon_source_start_0based": 120,
+        "adjacent_exon_source_end_0based_exclusive": 140,
+        "junction_local_position_0based": 60,
+        "transcript_ids": [
+          "PATZ1-203"
+        ]
+      },
+      {
+        "end_class_id": "transcript_terminal_end_4ce59d05fe69a8a2",
+        "kind": "terminal",
+        "exon_source_start_0based": 20,
+        "exon_source_end_0based_exclusive": 60,
+        "adjacent_exon_source_start_0based": 100,
+        "adjacent_exon_source_end_0based_exclusive": 140,
+        "junction_local_position_0based": 80,
+        "transcript_ids": [
+          "PATZ1-201"
+        ]
+      },
+      {
+        "end_class_id": "transcript_terminal_end_cdd60d42a9e9a959",
+        "kind": "terminal",
+        "exon_source_start_0based": 20,
+        "exon_source_end_0based_exclusive": 60,
+        "adjacent_exon_source_start_0based": 180,
+        "adjacent_exon_source_end_0based_exclusive": 220,
+        "junction_local_position_0based": 40,
+        "transcript_ids": [
+          "PATZ1-202"
+        ]
+      }
+    ],
+    "reactions": [
+      {
+        "reaction_id": "transcript_end_reaction_8981f059e1e6f750",
+        "first_end_class_id": "transcript_first_end_7954110483075819",
+        "terminal_end_class_id": "transcript_terminal_end_17e2eac3abcda939",
+        "representative_transcript_id": "PATZ1-203",
+        "supported_transcript_ids": [
+          "PATZ1-203"
+        ],
+        "supported_equivalence_group_ids": [
+          "cdna_eq_bf8de0081e092d6f"
+        ],
+        "template_length_bp": 100,
+        "forward_window_start_0based": 0,
+        "forward_window_end_0based_exclusive": 40,
+        "reverse_window_start_0based": 60,
+        "reverse_window_end_0based_exclusive": 100,
+        "forward_window_length_bp": 40,
+        "reverse_window_length_bp": 40,
+        "minimum_possible_amplicon_bp": 56,
+        "maximum_possible_amplicon_bp": 100,
+        "status": "primer_search_required",
+        "primer3_warranted": true,
+        "blockers": []
+      },
+      {
+        "reaction_id": "transcript_end_reaction_bd6bab5140872754",
+        "first_end_class_id": "transcript_first_end_014d9baa04012942",
+        "terminal_end_class_id": "transcript_terminal_end_4ce59d05fe69a8a2",
+        "representative_transcript_id": "PATZ1-201",
+        "supported_transcript_ids": [
+          "PATZ1-201"
+        ],
+        "supported_equivalence_group_ids": [
+          "cdna_eq_da6a2f3dbe1d4447"
+        ],
+        "template_length_bp": 120,
+        "forward_window_start_0based": 0,
+        "forward_window_end_0based_exclusive": 40,
+        "reverse_window_start_0based": 80,
+        "reverse_window_end_0based_exclusive": 120,
+        "forward_window_length_bp": 40,
+        "reverse_window_length_bp": 40,
+        "minimum_possible_amplicon_bp": 76,
+        "maximum_possible_amplicon_bp": 120,
+        "status": "primer_search_required",
+        "primer3_warranted": true,
+        "blockers": []
+      },
+      {
+        "reaction_id": "transcript_end_reaction_db5d9946d8b7cf59",
+        "first_end_class_id": "transcript_first_end_0dd8f7224167bfc7",
+        "terminal_end_class_id": "transcript_terminal_end_cdd60d42a9e9a959",
+        "representative_transcript_id": "PATZ1-202",
+        "supported_transcript_ids": [
+          "PATZ1-202"
+        ],
+        "supported_equivalence_group_ids": [
+          "cdna_eq_6c73e2052bd828f3"
+        ],
+        "template_length_bp": 80,
+        "forward_window_start_0based": 0,
+        "forward_window_end_0based_exclusive": 40,
+        "reverse_window_start_0based": 40,
+        "reverse_window_end_0based_exclusive": 80,
+        "forward_window_length_bp": 40,
+        "reverse_window_length_bp": 40,
+        "minimum_possible_amplicon_bp": 36,
+        "maximum_possible_amplicon_bp": 80,
+        "status": "primer_search_required",
+        "primer3_warranted": true,
+        "blockers": []
+      }
+    ],
+    "structurally_impossible_reaction_ids": [],
+    "structurally_impossible_equivalence_group_ids": [],
+    "primer3_warranted_reaction_count": 3,
+    "primer3_warranted_template_bp_total": 300,
+    "primer3_warranted_max_template_bp": 120,
+    "primer3_candidate_pair_request_upper_bound": 12,
+    "execution_recommendation": "primer_search_required",
+    "warnings": [
+      "Geometry feasibility excludes only deterministic annotation/length impossibilities; Primer3 must still evaluate sequence composition, Tm, repeats, complementarity, and other thermodynamic constraints."
+    ]
+  },
   "end_classes": [
     {
       "end_class_id": "transcript_first_end_014d9baa04012942",
