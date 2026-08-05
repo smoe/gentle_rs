@@ -3540,6 +3540,19 @@
       },
       {
          "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "mcp",
+            "cli-direct"
+         ],
+         "path": "primers inspect-transcript-assay-feasibility",
+         "summary": "Inspect endpoint isoform-matrix annotation and primer-window feasibility for an exact operation without running Primer3.",
+         "usage": "primers inspect-transcript-assay-feasibility OPERATION_JSON_OR_@FILE [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
          "engine_operations": [
             "PlanGeneIsoformAssayStudy"
          ],
@@ -3585,9 +3598,21 @@
             "gui-shell",
             "cli-direct"
          ],
+         "path": "primers inspect-gene-isoform-study-reuse",
+         "summary": "Inspect private approved-operation checkpoints and emit a content-bound, explicitly approvable exact-prefix reuse proposal without importing state or running Primer3.",
+         "usage": "primers inspect-gene-isoform-study-reuse BATCH_JSON_OR_@FILE --checkpoint-dir DIR [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
          "path": "primers execute-gene-isoform-study-workflow-batch",
-         "summary": "Revalidate every file and digest in an approved multi-study workflow batch, then execute the complete ordered set through one state-bound command.",
-         "usage": "primers execute-gene-isoform-study-workflow-batch BATCH_JSON_OR_@FILE"
+         "summary": "Revalidate an approved multi-study batch, execute it against a detached engine, optionally checkpoint successful operations, optionally import one separately approved exact-prefix checkpoint, and commit project state only after complete success.",
+         "usage": "primers execute-gene-isoform-study-workflow-batch BATCH_JSON_OR_@FILE [--checkpoint-dir DIR] [--reuse-proposal PROPOSAL_JSON_OR_@FILE --approve-reuse-sha256 SHA256]"
       },
       {
          "aliases": [],

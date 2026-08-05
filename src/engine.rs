@@ -835,6 +835,10 @@ pub const GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_SCHEMA: &str =
     "gentle.gene_isoform_assay_study_workflow_batch.v1";
 pub const GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_EXECUTION_SCHEMA: &str =
     "gentle.gene_isoform_assay_study_workflow_batch_execution.v1";
+pub const GENE_ISOFORM_ASSAY_STUDY_CHECKPOINT_SCHEMA: &str =
+    "gentle.gene_isoform_assay_study_checkpoint.v1";
+pub const GENE_ISOFORM_ASSAY_STUDY_REUSE_PROPOSAL_SCHEMA: &str =
+    "gentle.gene_isoform_assay_study_reuse_proposal.v1";
 pub const PRIMER_VARIANT_EVIDENCE_SCHEMA: &str = "gentle.primer_variant_evidence.v1";
 const CDNA_ASSAY_TRANSCRIPT_MAP_SCHEMA: &str = "gentle.cdna_assay_transcript_map.v1";
 const CDNA_ASSAY_PRODUCT_MATERIALIZATION_SCHEMA: &str =
@@ -851,6 +855,8 @@ const TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_ACCEPTANCE_SCHEMA: &str =
     "gentle.transcript_assay_panel_specificity_acceptance.v2";
 pub const TRANSCRIPT_QPCR_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_qpcr_panel.v1";
 pub const TRANSCRIPT_ASSAY_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_assay_panel.v2";
+pub const TRANSCRIPT_ASSAY_PANEL_FEASIBILITY_SCHEMA: &str =
+    "gentle.transcript_assay_panel_feasibility.v1";
 pub const GENE_TRANSCRIPT_ASSAY_ROUTINE_SCHEMA: &str = "gentle.gene_transcript_assay_routine.v1";
 pub const PRIMER_PAIR_SUMMARY_SCHEMA: &str = "gentle.primer_pair_summary.v2";
 const RESTRICTION_CLONING_PCR_HANDOFF_REPORT_SCHEMA: &str =
@@ -6426,9 +6432,24 @@ impl DetachedEngineExecution {
         &mut self.engine
     }
 
-    #[cfg(test)]
     pub(crate) fn engine(&self) -> &GentleEngine {
         &self.engine
+    }
+
+    /// Replace the detached execution with a verified serialized checkpoint.
+    /// Revision identities are rebased onto the live baseline so the final
+    /// optimistic commit remains the only mutation of the live engine.
+    pub(crate) fn import_checkpoint_engine(&mut self, mut checkpoint: GentleEngine) {
+        checkpoint.reconcile_lineage_nodes();
+        checkpoint.reconcile_containers();
+        checkpoint.reseed_op_counter_from_state();
+        checkpoint.execution_revision = self.engine.execution_revision.wrapping_add(1);
+        checkpoint.mutation_revision = self.engine.mutation_revision.wrapping_add(1);
+        checkpoint.structural_revision = self.engine.structural_revision.wrapping_add(1);
+        checkpoint.undo_stack.clear();
+        checkpoint.redo_stack.clear();
+        checkpoint.history_limit = self.engine.history_limit_or_default();
+        self.engine = checkpoint;
     }
 }
 
@@ -6533,6 +6554,10 @@ impl GentleEngine {
     /// Monotonic identity for biological/project structure, excluding display-only edits.
     pub fn structural_revision(&self) -> u64 {
         self.structural_revision
+    }
+
+    pub(crate) fn journal_len(&self) -> usize {
+        self.journal.len()
     }
 
     /// Clone the execution baseline without inherited undo/redo checkpoints.

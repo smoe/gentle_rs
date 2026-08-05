@@ -54,11 +54,14 @@ use crate::{
         FeatureExpertTarget, FeatureExpertView, FeatureLocationEditRequest,
         FeatureLocationEditStrand, FeatureRecordCreateRequest, FeatureRecordCurationRequest,
         FeatureRecordDeleteRequest, FeatureRecordMergeRequest, FeatureRecordQualifier,
-        FeatureRecordSplitRequest, FlexibilityModel, GENE_ISOFORM_ASSAY_STUDY_PLAN_SCHEMA,
+        FeatureRecordSplitRequest, FlexibilityModel, GENE_ISOFORM_ASSAY_STUDY_CHECKPOINT_SCHEMA,
+        GENE_ISOFORM_ASSAY_STUDY_PLAN_SCHEMA, GENE_ISOFORM_ASSAY_STUDY_REUSE_PROPOSAL_SCHEMA,
         GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_EXECUTION_SCHEMA,
         GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_REQUEST_SCHEMA,
         GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_SCHEMA, GUIDE_DESIGN_METADATA_KEY,
+        GeneIsoformAssayStudyCheckpoint, GeneIsoformAssayStudyCheckpointOperation,
         GeneIsoformAssayStudyPlanReport, GeneIsoformAssayStudyPlanRequest,
+        GeneIsoformAssayStudyReuseProposal, GeneIsoformAssayStudyRuntimeIdentity,
         GeneIsoformAssayStudyWorkflowBatch, GeneIsoformAssayStudyWorkflowBatchEntry,
         GeneIsoformAssayStudyWorkflowBatchRequest, GeneIsoformEvidenceRequest,
         GeneLocusEvidenceDisplayRequest, GeneSetCohortRelationship, GeneSetPoolMemberBinding,
@@ -115,8 +118,9 @@ use crate::{
         TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric, TranscriptAssayAmpliconRange,
         TranscriptAssayCdnaSynthesis, TranscriptAssayCoveragePolicy,
         TranscriptAssayJunctionPriority, TranscriptAssayJunctionRequest, TranscriptAssayKind,
-        TranscriptAssayPanelObjective, TranscriptAssayPanelSpecificityExecutionManifest,
-        TranscriptAssayPracticalityPolicy, TranscriptAssaySpecificityRequest,
+        TranscriptAssayPanelFeasibilityReport, TranscriptAssayPanelObjective,
+        TranscriptAssayPanelSpecificityExecutionManifest, TranscriptAssayPracticalityPolicy,
+        TranscriptAssaySpecificityRequest,
         TranscriptAssayUseTier, TranslationSpeedMark, TranslationSpeedProfile,
         UniprotFeatureCodingDnaQueryMode, VariantAlleleChoice,
         WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
@@ -2671,6 +2675,10 @@ pub enum ShellCommand {
         backend: Option<PrimerDesignBackend>,
         primer3_executable: Option<String>,
     },
+    PrimersInspectTranscriptAssayFeasibility {
+        operation_json: String,
+        path: Option<String>,
+    },
     PrimersPlanGeneIsoformAssayStudy {
         request_json: String,
         normalize_only: bool,
@@ -2685,8 +2693,16 @@ pub enum ShellCommand {
     PrimersComposeGeneIsoformAssayStudyWorkflowBatch {
         request_json: String,
     },
+    PrimersInspectGeneIsoformAssayStudyReuse {
+        batch_json: String,
+        checkpoint_dir: String,
+        path: Option<String>,
+    },
     PrimersExecuteGeneIsoformAssayStudyWorkflowBatch {
         batch_json: String,
+        checkpoint_dir: Option<String>,
+        reuse_proposal_json: Option<String>,
+        approve_reuse_sha256: Option<String>,
     },
     PrimersPublishGeneIsoformAssayStudy {
         request_path: String,
@@ -11711,6 +11727,14 @@ impl ShellCommand {
                     .filter(|value| !value.is_empty())
                     .unwrap_or("default"),
             ),
+            Self::PrimersInspectTranscriptAssayFeasibility {
+                operation_json,
+                path,
+            } => format!(
+                "inspect transcript endpoint-assay feasibility from full operation JSON (len={}, path={})",
+                operation_json.len(),
+                path.as_deref().unwrap_or("none"),
+            ),
             Self::PrimersPlanGeneIsoformAssayStudy {
                 request_json,
                 normalize_only,
@@ -11735,7 +11759,16 @@ impl ShellCommand {
                 "compose exact multi-study gene isoform assay workflow batch from JSON request (len={})",
                 request_json.len()
             ),
-            Self::PrimersExecuteGeneIsoformAssayStudyWorkflowBatch { batch_json } => format!(
+            Self::PrimersInspectGeneIsoformAssayStudyReuse {
+                batch_json,
+                checkpoint_dir,
+                ..
+            } => format!(
+                "inspect approved gene isoform assay checkpoint reuse (batch_len={}, checkpoint_dir={})",
+                batch_json.len(),
+                checkpoint_dir
+            ),
+            Self::PrimersExecuteGeneIsoformAssayStudyWorkflowBatch { batch_json, .. } => format!(
                 "execute approved multi-study gene isoform assay workflow batch (len={})",
                 batch_json.len()
             ),
@@ -23228,6 +23261,29 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "registry": registry_metadata_for_introspection("DesignTranscriptAssayPanel")
         }),
         json!({
+            "id": "primers inspect-transcript-assay-feasibility",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "OPERATION_JSON", "required": true, "subject_kind": "other", "detail": "exact DesignTranscriptAssayPanel operation payload to assess without changing it"},
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded annotated sequence named inside the operation payload"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional feasibility-report JSON path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Inspect deterministic annotation and end-window feasibility for an exact endpoint isoform-matrix operation without running Primer3.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers inspect-transcript-assay-feasibility")
+        }),
+        json!({
             "id": "PlanGeneIsoformAssayStudy",
             "kind": "operation",
             "mutating": "false",
@@ -28259,7 +28315,9 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "primers export-qpcr-report" => Some(vec![
             json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "qpcr_design"}),
         ]),
-        "primers design-transcript-assay-panel" | "DesignTranscriptAssayPanel" => Some(vec![
+        "primers design-transcript-assay-panel"
+        | "primers inspect-transcript-assay-feasibility"
+        | "DesignTranscriptAssayPanel" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
         "primers plan-gene-isoform-study" | "PlanGeneIsoformAssayStudy" => Some(vec![]),
@@ -54300,6 +54358,39 @@ fn execute_primers_command(
                 options,
             )
         }
+        ShellCommand::PrimersInspectTranscriptAssayFeasibility {
+            operation_json,
+            path,
+        } => {
+            let json_text = parse_json_payload(operation_json)?;
+            let operation = parse_design_transcript_assay_panel_operation_request(&json_text)?;
+            let report = engine
+                .inspect_transcript_assay_panel_feasibility_operation(&operation)
+                .map_err(|error| error.to_string())?;
+            if let Some(path) = path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                ensure_shell_output_parent_dir(path)?;
+                let json_text = serde_json::to_string_pretty(&report).map_err(|error| {
+                    format!("Could not serialize transcript assay feasibility report: {error}")
+                })?;
+                fs::write(path, json_text).map_err(|error| {
+                    format!(
+                        "Could not write transcript assay feasibility report to '{path}': {error}"
+                    )
+                })?;
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.transcript_assay_panel_feasibility_command.v1",
+                    "report": report,
+                    "path": path,
+                }),
+            })
+        }
         ShellCommand::PrimersPlanGeneIsoformAssayStudy {
             request_json,
             normalize_only,
@@ -54369,9 +54460,29 @@ fn execute_primers_command(
         ShellCommand::PrimersComposeGeneIsoformAssayStudyWorkflowBatch { request_json } => {
             compose_gene_isoform_assay_study_workflow_batch(request_json)
         }
-        ShellCommand::PrimersExecuteGeneIsoformAssayStudyWorkflowBatch { batch_json } => {
-            execute_approved_gene_isoform_assay_study_workflow_batch(engine, batch_json)
-        }
+        ShellCommand::PrimersInspectGeneIsoformAssayStudyReuse {
+            batch_json,
+            checkpoint_dir,
+            path,
+        } => inspect_gene_isoform_assay_study_reuse(
+            engine,
+            batch_json,
+            checkpoint_dir,
+            path.as_deref(),
+        ),
+        ShellCommand::PrimersExecuteGeneIsoformAssayStudyWorkflowBatch {
+            batch_json,
+            checkpoint_dir,
+            reuse_proposal_json,
+            approve_reuse_sha256,
+        } => execute_approved_gene_isoform_assay_study_workflow_batch_with_reuse(
+            engine,
+            batch_json,
+            checkpoint_dir.as_deref(),
+            reuse_proposal_json.as_deref(),
+            approve_reuse_sha256.as_deref(),
+            options,
+        ),
         ShellCommand::PrimersPublishGeneIsoformAssayStudy {
             request_path,
             output_directory,
@@ -59567,9 +59678,10 @@ fn verify_approved_gene_isoform_assay_study_workflow(
     workflow_text: &str,
     source_label: &str,
 ) -> Result<VerifiedGeneIsoformAssayStudyWorkflow, String> {
-    let plan: GeneIsoformAssayStudyPlanReport = serde_json::from_str(plan_text).map_err(|error| {
-        format!("Could not parse gene isoform assay study plan from '{source_label}': {error}")
-    })?;
+    let plan: GeneIsoformAssayStudyPlanReport =
+        serde_json::from_str(plan_text).map_err(|error| {
+            format!("Could not parse gene isoform assay study plan from '{source_label}': {error}")
+        })?;
     if plan.schema != GENE_ISOFORM_ASSAY_STUDY_PLAN_SCHEMA {
         return Err(format!(
             "Gene isoform assay study plan '{}' uses unsupported schema '{}'; expected '{}'",
@@ -59610,6 +59722,57 @@ fn verify_approved_gene_isoform_assay_study_workflow(
     })
 }
 
+fn preflight_approved_transcript_assay_operations(
+    engine: &GentleEngine,
+    operations: &[Operation],
+    source_label: &str,
+) -> Result<Vec<TranscriptAssayPanelFeasibilityReport>, String> {
+    let mut reports = vec![];
+    for (index, operation) in operations.iter().enumerate() {
+        let Operation::DesignTranscriptAssayPanel {
+            assay_kind: TranscriptAssayKind::EndpointRtPcr,
+            objective: TranscriptAssayPanelObjective::IsoformEndMatrix,
+            coverage_policy,
+            ..
+        } = operation
+        else {
+            continue;
+        };
+        let report = engine
+            .inspect_transcript_assay_panel_feasibility_operation(operation)
+            .map_err(|error| {
+                format!(
+                    "Could not preflight approved endpoint operation {} from '{}': {}; no operations were executed",
+                    index.saturating_add(1),
+                    source_label,
+                    error
+                )
+            })?;
+        if *coverage_policy == TranscriptAssayCoveragePolicy::RequireAll
+            && !report.structurally_impossible_reaction_ids.is_empty()
+        {
+            let report_json = serde_json::to_string(&report).map_err(|error| {
+                format!(
+                    "Could not serialize rejected endpoint feasibility report for '{}': {error}; no operations were executed",
+                    source_label
+                )
+            })?;
+            return Err(format!(
+                "Approved endpoint operation {} from '{}' is structurally infeasible under require_all: reactions [{}], equivalence classes [{}]; no Primer3 process was started and no operations were executed. The exact operation remains unchanged. feasibility_report={}",
+                index.saturating_add(1),
+                source_label,
+                report.structurally_impossible_reaction_ids.join(", "),
+                report
+                    .structurally_impossible_equivalence_group_ids
+                    .join(", "),
+                report_json
+            ));
+        }
+        reports.push(report);
+    }
+    Ok(reports)
+}
+
 fn execute_approved_gene_isoform_assay_study_workflow(
     engine: &mut GentleEngine,
     plan_json: &str,
@@ -59617,11 +59780,10 @@ fn execute_approved_gene_isoform_assay_study_workflow(
 ) -> Result<ShellRunResult, String> {
     let plan_text = parse_json_payload(plan_json)?;
     let workflow_text = parse_json_payload(workflow_json)?;
-    let verified = verify_approved_gene_isoform_assay_study_workflow(
-        &plan_text,
-        &workflow_text,
-        plan_json,
-    )?;
+    let verified =
+        verify_approved_gene_isoform_assay_study_workflow(&plan_text, &workflow_text, plan_json)?;
+    let feasibility =
+        preflight_approved_transcript_assay_operations(engine, &verified.workflow.ops, plan_json)?;
 
     let execution = execute_parsed_workflow_command(engine, verified.workflow)?;
     Ok(ShellRunResult {
@@ -59632,6 +59794,7 @@ fn execute_approved_gene_isoform_assay_study_workflow(
             "approved_workflow_sha256": verified.workflow_sha256,
             "operation_batch_sha256": verified.operation_batch_sha256,
             "workflow_verified": true,
+            "endpoint_feasibility": feasibility,
             "execution": execution.output,
         }),
     })
@@ -59750,13 +59913,82 @@ fn compose_gene_isoform_assay_study_workflow_batch(
     })
 }
 
-fn execute_approved_gene_isoform_assay_study_workflow_batch(
-    engine: &mut GentleEngine,
+#[derive(Clone)]
+struct ApprovedStudyBatchOperation {
+    binding: GeneIsoformAssayStudyCheckpointOperation,
+    operation: Operation,
+}
+
+struct VerifiedApprovedStudyBatch {
+    batch: GeneIsoformAssayStudyWorkflowBatch,
+    entries: Vec<VerifiedGeneIsoformAssayStudyWorkflow>,
+    operations: Vec<ApprovedStudyBatchOperation>,
+    endpoint_feasibility: Vec<TranscriptAssayPanelFeasibilityReport>,
+}
+
+fn canonical_json_sha256<T: Serialize>(value: &T, label: &str) -> Result<String, String> {
+    let value = serde_json::to_value(value)
+        .map_err(|error| format!("Could not serialize {label} for hashing: {error}"))?;
+    let bytes = serde_json::to_vec(&value)
+        .map_err(|error| format!("Could not canonicalize {label} for hashing: {error}"))?;
+    Ok(crate::digest_utils::sha256_prefixed_bytes(&bytes))
+}
+
+fn current_gene_isoform_study_runtime_identity(
+    engine: &GentleEngine,
+) -> Result<GeneIsoformAssayStudyRuntimeIdentity, String> {
+    let executable = std::env::current_exe()
+        .map_err(|error| format!("Could not resolve the running GENtle executable: {error}"))?;
+    let executable = fs::canonicalize(&executable).unwrap_or(executable);
+    let executable_sha256 = crate::digest_utils::sha256_file_hex(&executable).map_err(|error| {
+        format!(
+            "Could not fingerprint GENtle executable '{}': {error}",
+            executable.display()
+        )
+    })?;
+    let backend = engine.state().parameters.primer_design_backend;
+    let primer3 = (backend != PrimerDesignBackend::Internal)
+        .then(|| engine.primer3_preflight_report(Some(backend), None));
+    let primer3_executable_path = primer3
+        .as_ref()
+        .and_then(|report| report.resolved_path.clone());
+    let primer3_executable_sha256 = primer3_executable_path
+        .as_deref()
+        .map(Path::new)
+        .filter(|path| path.is_file())
+        .map(|path| {
+            crate::digest_utils::sha256_file_hex(path)
+                .map(|digest| format!("sha256:{digest}"))
+                .map_err(|error| {
+                    format!(
+                        "Could not fingerprint Primer3 executable '{}': {error}",
+                        path.display()
+                    )
+                })
+        })
+        .transpose()?;
+    Ok(GeneIsoformAssayStudyRuntimeIdentity {
+        gentle_package_version: crate::about::GENTLE_PACKAGE_VERSION.to_string(),
+        gentle_build: crate::about::GENTLE_BUILD_N.to_string(),
+        executable_path: executable.to_string_lossy().to_string(),
+        executable_sha256: format!("sha256:{executable_sha256}"),
+        primer_backend: backend.as_str().to_string(),
+        primer3_executable_path,
+        primer3_executable_sha256,
+        primer3_version: primer3.as_ref().and_then(|report| report.version.clone()),
+        primer3_version_probe_ok: primer3
+            .as_ref()
+            .is_some_and(|report| report.version_probe_ok),
+    })
+}
+
+fn verify_approved_gene_isoform_assay_study_workflow_batch(
+    engine: &GentleEngine,
     batch_json: &str,
-) -> Result<ShellRunResult, String> {
+) -> Result<VerifiedApprovedStudyBatch, String> {
     let batch_text = parse_json_payload(batch_json)?;
-    let batch: GeneIsoformAssayStudyWorkflowBatch = serde_json::from_str(&batch_text)
-        .map_err(|error| {
+    let batch: GeneIsoformAssayStudyWorkflowBatch =
+        serde_json::from_str(&batch_text).map_err(|error| {
             format!(
                 "Could not parse gene isoform assay workflow batch from '{batch_json}': {error}"
             )
@@ -59773,8 +60005,7 @@ fn execute_approved_gene_isoform_assay_study_workflow_batch(
             batch.batch_id
         ));
     }
-    let observed_batch_basis_sha256 =
-        gene_isoform_assay_study_workflow_batch_basis_sha256(&batch)?;
+    let observed_batch_basis_sha256 = gene_isoform_assay_study_workflow_batch_basis_sha256(&batch)?;
     if observed_batch_basis_sha256 != batch.batch_basis_sha256 {
         return Err(format!(
             "Gene isoform assay workflow batch '{}' basis digest mismatch: expected '{}', observed '{}'; no operations were executed",
@@ -59782,9 +60013,11 @@ fn execute_approved_gene_isoform_assay_study_workflow_batch(
         ));
     }
 
-    let mut verified_entries = Vec::with_capacity(batch.entries.len());
+    let mut entries = Vec::with_capacity(batch.entries.len());
+    let mut operations = vec![];
     let mut combined_operations = vec![];
     let mut seen_plan_ids = HashSet::new();
+    let mut global_operation_ordinal = 0usize;
     for (index, entry) in batch.entries.iter().enumerate() {
         let expected_ordinal = index.saturating_add(1);
         if entry.ordinal != expected_ordinal {
@@ -59806,10 +60039,7 @@ fn execute_approved_gene_isoform_assay_study_workflow_batch(
         if observed_workflow_file_sha256 != entry.workflow_sha256 {
             return Err(format!(
                 "Study workflow file digest mismatch for batch '{}' entry {}: expected '{}', observed '{}'; no operations were executed",
-                batch.batch_id,
-                entry.ordinal,
-                entry.workflow_sha256,
-                observed_workflow_file_sha256
+                batch.batch_id, entry.ordinal, entry.workflow_sha256, observed_workflow_file_sha256
             ));
         }
         let verified = verify_approved_gene_isoform_assay_study_workflow(
@@ -59839,8 +60069,26 @@ fn execute_approved_gene_isoform_assay_study_workflow_batch(
                 batch.batch_id, entry.ordinal
             ));
         }
+        for (operation_index, operation) in verified.workflow.ops.iter().enumerate() {
+            global_operation_ordinal = global_operation_ordinal.saturating_add(1);
+            let operation_sha256 = canonical_json_sha256(operation, "approved operation")?;
+            operations.push(ApprovedStudyBatchOperation {
+                binding: GeneIsoformAssayStudyCheckpointOperation {
+                    global_operation_ordinal,
+                    workflow_ordinal: entry.ordinal,
+                    workflow_operation_ordinal: operation_index.saturating_add(1),
+                    plan_id: verified.plan.plan_id.clone(),
+                    plan_sha256: entry.plan_sha256.clone(),
+                    gene_symbol: verified.plan.gene_symbol.clone(),
+                    workflow_run_id: verified.workflow.run_id.clone(),
+                    workflow_sha256: verified.workflow_sha256.clone(),
+                    operation_sha256,
+                },
+                operation: operation.clone(),
+            });
+        }
         combined_operations.extend(verified.workflow.ops.iter().cloned());
-        verified_entries.push(verified);
+        entries.push(verified);
     }
     if combined_operations.len() != batch.total_operation_count {
         return Err(format!(
@@ -59862,32 +60110,641 @@ fn execute_approved_gene_isoform_assay_study_workflow_batch(
             observed_combined_operation_batch_sha256
         ));
     }
+    let endpoint_feasibility = preflight_approved_transcript_assay_operations(
+        engine,
+        &combined_operations,
+        &format!("approved batch {}", batch.batch_id),
+    )?;
+    Ok(VerifiedApprovedStudyBatch {
+        batch,
+        entries,
+        operations,
+        endpoint_feasibility,
+    })
+}
 
-    let mut state_changed = false;
+fn completed_workflow_count(
+    batch: &GeneIsoformAssayStudyWorkflowBatch,
+    completed_operation_count: usize,
+) -> usize {
+    let mut seen = 0usize;
+    batch
+        .entries
+        .iter()
+        .take_while(|entry| {
+            seen = seen.saturating_add(entry.operation_count);
+            seen <= completed_operation_count
+        })
+        .count()
+}
+
+fn approved_study_batch_progress_detail(
+    batch_id: &str,
+    binding: &GeneIsoformAssayStudyCheckpointOperation,
+    workflow_count: usize,
+    operation_count: usize,
+    completed_workflows: usize,
+) -> String {
+    format!(
+        "batch={} gene={} plan={} workflow={}/{} operation={}/{} workflow_operation={} completed_genes={}/{} remaining_genes={} completed_operations={}/{}",
+        batch_id,
+        if binding.gene_symbol.trim().is_empty() {
+            "unspecified"
+        } else {
+            binding.gene_symbol.as_str()
+        },
+        binding.plan_id,
+        binding.workflow_ordinal,
+        workflow_count,
+        binding.global_operation_ordinal,
+        operation_count,
+        binding.workflow_operation_ordinal,
+        completed_workflows,
+        workflow_count,
+        workflow_count.saturating_sub(completed_workflows),
+        binding.global_operation_ordinal.saturating_sub(1),
+        operation_count
+    )
+}
+
+fn checkpoint_basis_sha256(checkpoint: &GeneIsoformAssayStudyCheckpoint) -> Result<String, String> {
+    let mut basis = checkpoint.clone();
+    basis.checkpoint_id.clear();
+    canonical_json_sha256(&basis, "gene isoform assay checkpoint basis")
+}
+
+fn write_gene_isoform_assay_checkpoint(
+    root: &Path,
+    detached: &crate::engine::DetachedEngineExecution,
+    verified: &VerifiedApprovedStudyBatch,
+    runtime: &GeneIsoformAssayStudyRuntimeIdentity,
+    baseline_state_sha256: &str,
+    completed_operations: &[GeneIsoformAssayStudyCheckpointOperation],
+    operation_results: &[crate::engine::OpResult],
+) -> Result<PathBuf, String> {
+    fs::create_dir_all(root).map_err(|error| {
+        format!(
+            "Could not create study checkpoint directory '{}': {error}",
+            root.display()
+        )
+    })?;
+    let engine_bytes = serde_json::to_vec(detached.engine())
+        .map_err(|error| format!("Could not serialize detached GENtle checkpoint: {error}"))?;
+    let engine_sha256 = crate::digest_utils::sha256_prefixed_bytes(&engine_bytes);
+    let completed_operation_count = completed_operations.len();
+    let current = completed_operations.last().ok_or_else(|| {
+        "Cannot write a study checkpoint before an operation has completed".to_string()
+    })?;
+    let mut checkpoint = GeneIsoformAssayStudyCheckpoint {
+        schema: GENE_ISOFORM_ASSAY_STUDY_CHECKPOINT_SCHEMA.to_string(),
+        checkpoint_id: String::new(),
+        source_batch_id: verified.batch.batch_id.clone(),
+        source_batch_basis_sha256: verified.batch.batch_basis_sha256.clone(),
+        baseline_state_sha256: baseline_state_sha256.to_string(),
+        runtime: runtime.clone(),
+        completed_operations: completed_operations.to_vec(),
+        completed_operation_count,
+        completed_workflow_count: completed_workflow_count(
+            &verified.batch,
+            completed_operation_count,
+        ),
+        current_workflow_ordinal: current.workflow_ordinal,
+        current_plan_id: current.plan_id.clone(),
+        current_gene_symbol: current.gene_symbol.clone(),
+        engine_path: "engine.json".to_string(),
+        engine_sha256,
+        engine_journal_len: detached.engine().journal_len(),
+        operation_results: operation_results.to_vec(),
+    };
+    let checkpoint_basis = checkpoint_basis_sha256(&checkpoint)?;
+    checkpoint.checkpoint_id = format!(
+        "study_checkpoint_{}",
+        checkpoint_basis
+            .strip_prefix("sha256:")
+            .unwrap_or(&checkpoint_basis)[..16]
+            .to_string()
+    );
+    let checkpoint_dir = root.join(&checkpoint.checkpoint_id);
+    fs::create_dir_all(&checkpoint_dir).map_err(|error| {
+        format!(
+            "Could not create content-bound checkpoint '{}': {error}",
+            checkpoint_dir.display()
+        )
+    })?;
+    let engine_path = checkpoint_dir.join(&checkpoint.engine_path);
+    fs::write(&engine_path, &engine_bytes).map_err(|error| {
+        format!(
+            "Could not write checkpoint engine '{}': {error}",
+            engine_path.display()
+        )
+    })?;
+    let manifest_path = checkpoint_dir.join("manifest.json");
+    let manifest_bytes = serde_json::to_vec_pretty(&checkpoint)
+        .map_err(|error| format!("Could not serialize checkpoint manifest: {error}"))?;
+    fs::write(&manifest_path, manifest_bytes).map_err(|error| {
+        format!(
+            "Could not write checkpoint manifest '{}': {error}",
+            manifest_path.display()
+        )
+    })?;
+    Ok(manifest_path)
+}
+
+fn proposal_basis_sha256(proposal: &GeneIsoformAssayStudyReuseProposal) -> Result<String, String> {
+    let mut basis = proposal.clone();
+    basis.proposal_id.clear();
+    basis.proposal_sha256.clear();
+    canonical_json_sha256(&basis, "gene isoform assay reuse proposal")
+}
+
+fn checkpoint_matches_batch_prefix(
+    checkpoint: &GeneIsoformAssayStudyCheckpoint,
+    verified: &VerifiedApprovedStudyBatch,
+) -> bool {
+    checkpoint.completed_operation_count > 0
+        && checkpoint.completed_operation_count <= verified.operations.len()
+        && checkpoint.completed_operations.len() == checkpoint.completed_operation_count
+        && checkpoint
+            .completed_operations
+            .iter()
+            .zip(verified.operations.iter())
+            .all(|(cached, target)| cached == &target.binding)
+}
+
+fn read_checkpoint_manifest(
+    manifest_path: &Path,
+) -> Result<(GeneIsoformAssayStudyCheckpoint, String), String> {
+    let bytes = fs::read(manifest_path).map_err(|error| {
+        format!(
+            "Could not read checkpoint manifest '{}': {error}",
+            manifest_path.display()
+        )
+    })?;
+    let sha256 = crate::digest_utils::sha256_prefixed_bytes(&bytes);
+    let checkpoint =
+        serde_json::from_slice::<GeneIsoformAssayStudyCheckpoint>(&bytes).map_err(|error| {
+            format!(
+                "Could not parse checkpoint manifest '{}': {error}",
+                manifest_path.display()
+            )
+        })?;
+    if checkpoint.schema != GENE_ISOFORM_ASSAY_STUDY_CHECKPOINT_SCHEMA {
+        return Err(format!(
+            "Checkpoint '{}' uses unsupported schema '{}'",
+            manifest_path.display(),
+            checkpoint.schema
+        ));
+    }
+    let expected_id = checkpoint_basis_sha256(&checkpoint)?;
+    let expected_id = format!(
+        "study_checkpoint_{}",
+        &expected_id.strip_prefix("sha256:").unwrap_or(&expected_id)[..16]
+    );
+    if checkpoint.checkpoint_id != expected_id {
+        return Err(format!(
+            "Checkpoint '{}' has a content identity mismatch",
+            manifest_path.display()
+        ));
+    }
+    Ok((checkpoint, sha256))
+}
+
+fn validate_checkpoint_engine(
+    manifest_path: &Path,
+    checkpoint: &GeneIsoformAssayStudyCheckpoint,
+) -> Result<GentleEngine, String> {
+    let engine_path = manifest_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(&checkpoint.engine_path);
+    let bytes = fs::read(&engine_path).map_err(|error| {
+        format!(
+            "Could not read checkpoint engine '{}': {error}",
+            engine_path.display()
+        )
+    })?;
+    let observed_sha256 = crate::digest_utils::sha256_prefixed_bytes(&bytes);
+    if observed_sha256 != checkpoint.engine_sha256 {
+        return Err(format!(
+            "Checkpoint engine digest mismatch for '{}': expected '{}', observed '{}'",
+            engine_path.display(),
+            checkpoint.engine_sha256,
+            observed_sha256
+        ));
+    }
+    let checkpoint_engine = serde_json::from_slice::<GentleEngine>(&bytes).map_err(|error| {
+        format!(
+            "Could not parse checkpoint engine '{}': {error}",
+            engine_path.display()
+        )
+    })?;
+    if checkpoint_engine.journal_len() != checkpoint.engine_journal_len {
+        return Err(format!(
+            "Checkpoint engine journal length mismatch for '{}': expected {}, observed {}",
+            engine_path.display(),
+            checkpoint.engine_journal_len,
+            checkpoint_engine.journal_len()
+        ));
+    }
+    Ok(checkpoint_engine)
+}
+
+fn inspect_gene_isoform_assay_study_reuse(
+    engine: &GentleEngine,
+    batch_json: &str,
+    checkpoint_dir: &str,
+    output_path: Option<&str>,
+) -> Result<ShellRunResult, String> {
+    let verified = verify_approved_gene_isoform_assay_study_workflow_batch(engine, batch_json)?;
+    let baseline_state_sha256 = canonical_json_sha256(engine.snapshot(), "project baseline")?;
+    let runtime = current_gene_isoform_study_runtime_identity(engine)?;
+    let root = Path::new(checkpoint_dir);
+    let mut candidates = vec![];
+    if root.is_dir() {
+        for entry in fs::read_dir(root).map_err(|error| {
+            format!(
+                "Could not inspect checkpoint directory '{}': {error}",
+                root.display()
+            )
+        })? {
+            let Ok(entry) = entry else { continue };
+            let manifest_path = entry.path().join("manifest.json");
+            if !manifest_path.is_file() {
+                continue;
+            }
+            let Ok((checkpoint, manifest_sha256)) = read_checkpoint_manifest(&manifest_path) else {
+                continue;
+            };
+            if checkpoint.baseline_state_sha256 != baseline_state_sha256
+                || checkpoint.runtime != runtime
+                || !checkpoint_matches_batch_prefix(&checkpoint, &verified)
+                || validate_checkpoint_engine(&manifest_path, &checkpoint).is_err()
+            {
+                continue;
+            }
+            candidates.push((checkpoint, manifest_path, manifest_sha256));
+        }
+    }
+    candidates.sort_by(|left, right| {
+        right
+            .0
+            .completed_operation_count
+            .cmp(&left.0.completed_operation_count)
+            .then(left.0.checkpoint_id.cmp(&right.0.checkpoint_id))
+    });
+    let Some((checkpoint, manifest_path, manifest_sha256)) = candidates.into_iter().next() else {
+        let mut proposal = GeneIsoformAssayStudyReuseProposal {
+            schema: GENE_ISOFORM_ASSAY_STUDY_REUSE_PROPOSAL_SCHEMA.to_string(),
+            target_batch_id: verified.batch.batch_id,
+            target_batch_basis_sha256: verified.batch.batch_basis_sha256,
+            baseline_state_sha256,
+            runtime,
+            remaining_operation_count: verified.operations.len(),
+            remaining_workflow_count: verified.entries.len(),
+            approval_required: false,
+            warnings: vec![
+                "No checkpoint matched the current project baseline, GENtle executable, and exact approved operation prefix; execute the batch without reuse or create fresh checkpoints."
+                    .to_string(),
+            ],
+            ..GeneIsoformAssayStudyReuseProposal::default()
+        };
+        proposal.proposal_sha256 = proposal_basis_sha256(&proposal)?;
+        proposal.proposal_id = format!(
+            "study_reuse_{}",
+            &proposal
+                .proposal_sha256
+                .strip_prefix("sha256:")
+                .unwrap_or(&proposal.proposal_sha256)[..16]
+        );
+        if let Some(path) = output_path {
+            fs::write(
+                path,
+                serde_json::to_vec_pretty(&proposal).map_err(|e| e.to_string())?,
+            )
+            .map_err(|error| format!("Could not write reuse proposal '{path}': {error}"))?;
+        }
+        return Ok(ShellRunResult {
+            state_changed: false,
+            output: json!(proposal),
+        });
+    };
+    let reusable_operation_count = checkpoint.completed_operation_count;
+    let reusable_workflow_count = checkpoint.completed_workflow_count;
+    let mut proposal = GeneIsoformAssayStudyReuseProposal {
+        schema: GENE_ISOFORM_ASSAY_STUDY_REUSE_PROPOSAL_SCHEMA.to_string(),
+        target_batch_id: verified.batch.batch_id.clone(),
+        target_batch_basis_sha256: verified.batch.batch_basis_sha256.clone(),
+        baseline_state_sha256,
+        runtime,
+        checkpoint_manifest_path: fs::canonicalize(&manifest_path)
+            .unwrap_or(manifest_path)
+            .to_string_lossy()
+            .to_string(),
+        checkpoint_manifest_sha256: manifest_sha256,
+        checkpoint_id: checkpoint.checkpoint_id,
+        reusable_operation_count,
+        reusable_workflow_count,
+        remaining_operation_count: verified
+            .operations
+            .len()
+            .saturating_sub(reusable_operation_count),
+        remaining_workflow_count: verified
+            .entries
+            .len()
+            .saturating_sub(reusable_workflow_count),
+        reusable_operations: checkpoint.completed_operations,
+        approval_required: true,
+        warnings: vec![
+            "Approval authorizes import of the named checkpoint only; it does not validate primer biology or permit GENtle/runtime/input mismatches."
+                .to_string(),
+        ],
+        ..GeneIsoformAssayStudyReuseProposal::default()
+    };
+    proposal.proposal_sha256 = proposal_basis_sha256(&proposal)?;
+    proposal.proposal_id = format!(
+        "study_reuse_{}",
+        &proposal
+            .proposal_sha256
+            .strip_prefix("sha256:")
+            .unwrap_or(&proposal.proposal_sha256)[..16]
+    );
+    if let Some(path) = output_path {
+        fs::write(
+            path,
+            serde_json::to_vec_pretty(&proposal).map_err(|e| e.to_string())?,
+        )
+        .map_err(|error| format!("Could not write reuse proposal '{path}': {error}"))?;
+    }
+    Ok(ShellRunResult {
+        state_changed: false,
+        output: json!(proposal),
+    })
+}
+
+fn execute_approved_gene_isoform_assay_study_workflow_batch_with_reuse(
+    engine: &mut GentleEngine,
+    batch_json: &str,
+    checkpoint_dir: Option<&str>,
+    reuse_proposal_json: Option<&str>,
+    approve_reuse_sha256: Option<&str>,
+    options: &ShellExecutionOptions,
+) -> Result<ShellRunResult, String> {
+    let verified = verify_approved_gene_isoform_assay_study_workflow_batch(engine, batch_json)?;
+    let baseline_state_sha256 = canonical_json_sha256(engine.snapshot(), "project baseline")?;
+    let runtime = current_gene_isoform_study_runtime_identity(engine)?;
+    let mut detached = engine.fork_detached_execution();
+    let mut completed_bindings = Vec::<GeneIsoformAssayStudyCheckpointOperation>::new();
+    let mut operation_results = Vec::<crate::engine::OpResult>::new();
+    let mut reused_operation_count = 0usize;
+    let mut reused_workflow_count = 0usize;
+    let mut reused_checkpoint_id = None::<String>;
+
+    if let Some(proposal_json) = reuse_proposal_json {
+        let approved = approve_reuse_sha256
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                "Checkpoint reuse requires --approve-reuse-sha256 with the exact proposal digest"
+                    .to_string()
+            })?;
+        let proposal_text = parse_json_payload(proposal_json)?;
+        let proposal: GeneIsoformAssayStudyReuseProposal = serde_json::from_str(&proposal_text)
+            .map_err(|error| {
+                format!(
+                    "Could not parse gene isoform assay reuse proposal from '{proposal_json}': {error}"
+                )
+            })?;
+        if proposal.schema != GENE_ISOFORM_ASSAY_STUDY_REUSE_PROPOSAL_SCHEMA {
+            return Err(format!(
+                "Reuse proposal '{}' uses unsupported schema '{}'",
+                proposal.proposal_id, proposal.schema
+            ));
+        }
+        let observed_proposal_sha256 = proposal_basis_sha256(&proposal)?;
+        if observed_proposal_sha256 != proposal.proposal_sha256
+            || approved != proposal.proposal_sha256
+        {
+            return Err(format!(
+                "Reuse approval digest mismatch: proposal records '{}', observed '{}', approved '{}'; no checkpoint was imported and no operations were executed",
+                proposal.proposal_sha256, observed_proposal_sha256, approved
+            ));
+        }
+        if !proposal.approval_required || proposal.reusable_operation_count == 0 {
+            return Err(
+                "Reuse proposal does not authorize any checkpoint import; execute without --reuse-proposal"
+                    .to_string(),
+            );
+        }
+        if proposal.target_batch_id != verified.batch.batch_id
+            || proposal.target_batch_basis_sha256 != verified.batch.batch_basis_sha256
+            || proposal.baseline_state_sha256 != baseline_state_sha256
+            || proposal.runtime != runtime
+        {
+            return Err(
+                "Reuse proposal no longer matches the target batch, project baseline, or running GENtle executable; inspect reuse again"
+                    .to_string(),
+            );
+        }
+        let manifest_path = PathBuf::from(&proposal.checkpoint_manifest_path);
+        let (checkpoint, observed_manifest_sha256) = read_checkpoint_manifest(&manifest_path)?;
+        if observed_manifest_sha256 != proposal.checkpoint_manifest_sha256
+            || checkpoint.checkpoint_id != proposal.checkpoint_id
+            || checkpoint.baseline_state_sha256 != baseline_state_sha256
+            || checkpoint.runtime != runtime
+            || checkpoint.completed_operation_count != proposal.reusable_operation_count
+            || checkpoint.completed_operations != proposal.reusable_operations
+            || !checkpoint_matches_batch_prefix(&checkpoint, &verified)
+        {
+            return Err(
+                "Approved reuse checkpoint no longer matches its proposal or the exact target operation prefix; no checkpoint was imported"
+                    .to_string(),
+            );
+        }
+        if checkpoint.operation_results.len() != checkpoint.completed_operation_count {
+            return Err(format!(
+                "Checkpoint '{}' contains {} result(s) for {} completed operation(s)",
+                checkpoint.checkpoint_id,
+                checkpoint.operation_results.len(),
+                checkpoint.completed_operation_count
+            ));
+        }
+        let checkpoint_engine = validate_checkpoint_engine(&manifest_path, &checkpoint)?;
+        detached.import_checkpoint_engine(checkpoint_engine);
+        reused_operation_count = checkpoint.completed_operation_count;
+        reused_workflow_count = checkpoint.completed_workflow_count;
+        reused_checkpoint_id = Some(checkpoint.checkpoint_id.clone());
+        completed_bindings = checkpoint.completed_operations;
+        operation_results = checkpoint.operation_results;
+    }
+
+    let workflow_count = verified.entries.len();
+    let operation_count = verified.operations.len();
+    let batch_frame = runtime_status_registry().push_with_detail(
+        RuntimeStatusFrameKind::ForegroundOperation,
+        "approved gene isoform assay workflow batch",
+        Some(format!(
+            "batch={} completed_genes={}/{} remaining_genes={} completed_operations={}/{}",
+            verified.batch.batch_id,
+            reused_workflow_count,
+            workflow_count,
+            workflow_count.saturating_sub(reused_workflow_count),
+            reused_operation_count,
+            operation_count
+        )),
+    );
+    batch_frame.update_phase("execute_approved_operations");
+    let checkpoint_root = checkpoint_dir
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from);
+    let mut last_checkpoint_manifest = None::<PathBuf>;
+
+    for approved_operation in verified.operations.iter().skip(reused_operation_count) {
+        let binding = &approved_operation.binding;
+        let completed_workflows = completed_workflow_count(
+            &verified.batch,
+            binding.global_operation_ordinal.saturating_sub(1),
+        );
+        let detail = approved_study_batch_progress_detail(
+            &verified.batch.batch_id,
+            binding,
+            workflow_count,
+            operation_count,
+            completed_workflows,
+        );
+        batch_frame.update_detail(detail);
+        batch_frame.update_progress(Some(
+            100.0 * binding.global_operation_ordinal.saturating_sub(1) as f64
+                / operation_count.max(1) as f64,
+        ));
+        let one_operation_workflow = Workflow {
+            run_id: binding.workflow_run_id.clone(),
+            ops: vec![approved_operation.operation.clone()],
+        };
+        let mut progress_error = None::<String>;
+        let result = detached.engine_mut().apply_workflow_with_progress(
+            one_operation_workflow,
+            |progress| match forward_shell_progress(options, progress) {
+                Ok(keep_running) => keep_running,
+                Err(error) => {
+                    progress_error = Some(error);
+                    false
+                }
+            },
+        );
+        if let Some(error) = progress_error {
+            batch_frame.fail(&error);
+            return Err(error);
+        }
+        let mut results = match result {
+            Ok(results) => results,
+            Err(error) => {
+                let receipt = last_checkpoint_manifest
+                    .as_ref()
+                    .map(|path| {
+                        format!(
+                            "; last successful checkpoint='{}' completed_operations={} completed_genes={}",
+                            path.display(),
+                            completed_bindings.len(),
+                            completed_workflow_count(&verified.batch, completed_bindings.len())
+                        )
+                    })
+                    .unwrap_or_default();
+                let message = format!(
+                    "Approved batch '{}' failed at gene '{}' plan '{}' workflow {}/{} operation {}/{}: {}{}. Live project state was not changed",
+                    verified.batch.batch_id,
+                    binding.gene_symbol,
+                    binding.plan_id,
+                    binding.workflow_ordinal,
+                    workflow_count,
+                    binding.global_operation_ordinal,
+                    operation_count,
+                    error,
+                    receipt
+                );
+                batch_frame.fail(&message);
+                return Err(message);
+            }
+        };
+        let result = results.pop().ok_or_else(|| {
+            "Approved one-operation workflow returned no operation result".to_string()
+        })?;
+        operation_results.push(result);
+        completed_bindings.push(binding.clone());
+        if let Some(root) = checkpoint_root.as_deref() {
+            last_checkpoint_manifest = Some(write_gene_isoform_assay_checkpoint(
+                root,
+                &detached,
+                &verified,
+                &runtime,
+                &baseline_state_sha256,
+                &completed_bindings,
+                &operation_results,
+            )?);
+        }
+    }
+
+    let final_state_sha256 =
+        canonical_json_sha256(detached.engine().snapshot(), "completed project state")?;
+    let state_changed = final_state_sha256 != baseline_state_sha256;
+    let prior_engine = engine
+        .commit_detached_execution(&mut detached)
+        .map_err(|error| error.to_string())?;
+    drop(prior_engine);
+    batch_frame.update_progress(Some(100.0));
+    batch_frame.update_detail(format!(
+        "batch={} completed_genes={}/{} remaining_genes=0 completed_operations={}/{} committed=true",
+        verified.batch.batch_id, workflow_count, workflow_count, operation_count, operation_count
+    ));
+    batch_frame.update_state(crate::runtime_status::RuntimeStatusFrameState::Completed);
+
     let mut executions = vec![];
-    for verified in verified_entries {
-        let plan_id = verified.plan.plan_id.clone();
-        let workflow_sha256 = verified.workflow_sha256.clone();
-        let operation_batch_sha256 = verified.operation_batch_sha256.clone();
-        let execution = execute_parsed_workflow_command(engine, verified.workflow)?;
-        state_changed |= execution.state_changed;
+    let mut result_offset = 0usize;
+    for (index, entry) in verified.entries.iter().enumerate() {
+        let result_end = result_offset.saturating_add(entry.workflow.ops.len());
+        let results = operation_results
+            .get(result_offset..result_end)
+            .unwrap_or_default()
+            .to_vec();
+        let reused_in_workflow = reused_operation_count
+            .saturating_sub(result_offset)
+            .min(entry.workflow.ops.len());
         executions.push(json!({
-            "plan_id": plan_id,
-            "approved_workflow_sha256": workflow_sha256,
-            "operation_batch_sha256": operation_batch_sha256,
-            "execution": execution.output,
+            "ordinal": index.saturating_add(1),
+            "plan_id": entry.plan.plan_id,
+            "gene_symbol": entry.plan.gene_symbol,
+            "approved_workflow_sha256": entry.workflow_sha256,
+            "operation_batch_sha256": entry.operation_batch_sha256,
+            "operation_count": entry.workflow.ops.len(),
+            "reused_operation_count": reused_in_workflow,
+            "execution": {
+                "results": results,
+            },
         }));
+        result_offset = result_end;
     }
     Ok(ShellRunResult {
         state_changed,
         output: json!({
             "schema": GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_EXECUTION_SCHEMA,
-            "batch_id": batch.batch_id,
-            "batch_basis_sha256": batch.batch_basis_sha256,
-            "combined_operation_batch_sha256": batch.combined_operation_batch_sha256,
-            "total_operation_count": batch.total_operation_count,
-            "workflow_count": batch.entries.len(),
+            "batch_id": verified.batch.batch_id,
+            "batch_basis_sha256": verified.batch.batch_basis_sha256,
+            "combined_operation_batch_sha256": verified.batch.combined_operation_batch_sha256,
+            "total_operation_count": operation_count,
+            "workflow_count": workflow_count,
             "batch_verified_before_execution": true,
+            "atomic_detached_execution": true,
+            "baseline_state_sha256": baseline_state_sha256,
+            "final_state_sha256": final_state_sha256,
+            "runtime": runtime,
+            "endpoint_feasibility": verified.endpoint_feasibility,
+            "reuse": {
+                "approved": reused_operation_count > 0,
+                "checkpoint_id": reused_checkpoint_id,
+                "reused_operation_count": reused_operation_count,
+                "reused_workflow_count": reused_workflow_count,
+            },
+            "last_checkpoint_manifest": last_checkpoint_manifest,
             "executions": executions,
         }),
     })
@@ -60768,9 +61625,11 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::PrimersTranscriptQpcrPanel { .. }
             | ShellCommand::PrimersDesignTranscriptAssayPanel { .. }
             | ShellCommand::PrimersDesignTranscriptAssayPanelRequest { .. }
+            | ShellCommand::PrimersInspectTranscriptAssayFeasibility { .. }
             | ShellCommand::PrimersPlanGeneIsoformAssayStudy { .. }
             | ShellCommand::PrimersExecuteGeneIsoformAssayStudyWorkflow { .. }
             | ShellCommand::PrimersComposeGeneIsoformAssayStudyWorkflowBatch { .. }
+            | ShellCommand::PrimersInspectGeneIsoformAssayStudyReuse { .. }
             | ShellCommand::PrimersExecuteGeneIsoformAssayStudyWorkflowBatch { .. }
             | ShellCommand::PrimersPublishGeneIsoformAssayStudy { .. }
             | ShellCommand::PrimersComposeGeneTranscriptAssayRoutine { .. }
@@ -62539,9 +63398,11 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersTranscriptQpcrPanel { .. }
         | ShellCommand::PrimersDesignTranscriptAssayPanel { .. }
         | ShellCommand::PrimersDesignTranscriptAssayPanelRequest { .. }
+        | ShellCommand::PrimersInspectTranscriptAssayFeasibility { .. }
         | ShellCommand::PrimersPlanGeneIsoformAssayStudy { .. }
         | ShellCommand::PrimersExecuteGeneIsoformAssayStudyWorkflow { .. }
         | ShellCommand::PrimersComposeGeneIsoformAssayStudyWorkflowBatch { .. }
+        | ShellCommand::PrimersInspectGeneIsoformAssayStudyReuse { .. }
         | ShellCommand::PrimersExecuteGeneIsoformAssayStudyWorkflowBatch { .. }
         | ShellCommand::PrimersPublishGeneIsoformAssayStudy { .. }
         | ShellCommand::PrimersComposeGeneTranscriptAssayRoutine { .. }

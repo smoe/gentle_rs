@@ -29,6 +29,22 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
 understand what changed.
 
+## 2026-08-05
+
+- Made approved multi-gene isoform-assay execution truly atomic in memory and
+  on disk, added gene/workflow/operation ordinals to runtime/SIGUSR1 status,
+  and added opt-in content-bound operation checkpoints with a separately
+  approved exact-prefix reuse proposal. Compatible work can now survive a
+  later batch failure or an appended gene without automatic reuse or weakened
+  approval/provenance checks.
+- Added deterministic pre-Primer3 feasibility for endpoint transcript end
+  matrices. Exact approved operations now expose stable reaction/class ids and
+  structural blockers through `gentle.transcript_assay_panel_feasibility.v1`;
+  strict single- or multi-study execution rejects impossible geometry before
+  any operation runs, while explicit best-effort reports retain skipped
+  reactions. Endpoint searches now request four candidate pairs per reaction
+  by default instead of the previous tenfold candidate surplus.
+
 ## 2026-08-04
 
 - Integrated Primer3 bounded-progress reporting across engine, GUI, and CLI.

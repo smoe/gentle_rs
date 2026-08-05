@@ -5483,6 +5483,12 @@ const MCP_TOOL_NAMES: &[(&str, &str, &str, CapabilityMutation)] = &[
         CapabilityMutation::ReadOnly,
     ),
     (
+        "transcript_assay_feasibility",
+        "Transcript Assay Feasibility",
+        "Inspect deterministic endpoint isoform-matrix geometry for an exact DesignTranscriptAssayPanel operation without running Primer3.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
         "agent_systems",
         "Agent Systems",
         "Return configured GENtle agent systems via the shared `agents list` contract.",

@@ -79,6 +79,9 @@ struct TranscriptQpcrDesignTemplate {
     exon_chain: Vec<(usize, usize)>,
 }
 
+const TRANSCRIPT_ASSAY_DEFAULT_MAX_ASSAYS_PER_CLASS: usize = 12;
+const TRANSCRIPT_ASSAY_DEFAULT_ENDPOINT_PAIRS_PER_REACTION: usize = 4;
+
 #[derive(Debug, Clone)]
 struct NormalizedCdnaAssayTestRequest {
     forward_primer: String,
@@ -14698,6 +14701,7 @@ impl GentleEngine {
         annotation_release: Option<String>,
         assay_kind: TranscriptAssayKind,
         objective: TranscriptAssayPanelObjective,
+        coverage_policy: TranscriptAssayCoveragePolicy,
         assay_tier: TranscriptAssayUseTier,
         min_amplicon_bp: usize,
         preferred_max_amplicon_bp: usize,
@@ -14711,7 +14715,7 @@ impl GentleEngine {
             assay_kind,
             cdna_synthesis: TranscriptAssayCdnaSynthesis::OligoDt,
             objective,
-            coverage_policy: TranscriptAssayCoveragePolicy::RequireAll,
+            coverage_policy,
             assay_tier,
             practicality: Some(TranscriptAssayPracticalityPolicy {
                 preferred_amplicon_bp: Some(TranscriptAssayAmpliconRange {
@@ -14731,7 +14735,11 @@ impl GentleEngine {
             max_amplicon_bp: Some(max_amplicon_bp),
             max_tm_delta_c: Some(2.0),
             max_probe_tm_delta_c: Some(10.0),
-            max_assays_per_class: Some(12),
+            max_assays_per_class: Some(if assay_kind == TranscriptAssayKind::EndpointRtPcr {
+                TRANSCRIPT_ASSAY_DEFAULT_ENDPOINT_PAIRS_PER_REACTION
+            } else {
+                TRANSCRIPT_ASSAY_DEFAULT_MAX_ASSAYS_PER_CLASS
+            }),
             max_mismatches: Some(0),
             require_3prime_exact_bases: Some(8),
             oligo_dt_5prime_risk_threshold_bp,
@@ -15061,6 +15069,7 @@ impl GentleEngine {
                 isoform_report.annotation_release.clone(),
                 TranscriptAssayKind::SybrQpcr,
                 TranscriptAssayPanelObjective::PanTranscript,
+                TranscriptAssayCoveragePolicy::RequireAll,
                 TranscriptAssayUseTier::RoutineCommonRegionScreen,
                 policy.short_min_amplicon_bp,
                 policy.short_max_amplicon_bp,
@@ -15077,6 +15086,7 @@ impl GentleEngine {
                 isoform_report.annotation_release.clone(),
                 TranscriptAssayKind::SybrQpcr,
                 objective,
+                TranscriptAssayCoveragePolicy::RequireAll,
                 TranscriptAssayUseTier::IsoformDiscrimination,
                 policy.short_min_amplicon_bp,
                 policy.short_max_amplicon_bp,
@@ -15093,6 +15103,7 @@ impl GentleEngine {
                 isoform_report.annotation_release.clone(),
                 TranscriptAssayKind::EndpointRtPcr,
                 TranscriptAssayPanelObjective::IsoformEndMatrix,
+                policy.endpoint_coverage_policy,
                 TranscriptAssayUseTier::LongRangeStructureDiscovery,
                 policy.endpoint_min_amplicon_bp,
                 policy.endpoint_preferred_max_amplicon_bp,
@@ -15149,6 +15160,14 @@ impl GentleEngine {
                         cause_chain: vec![],
                     })?,
                 );
+                let feasibility = match operation {
+                    Operation::DesignTranscriptAssayPanel {
+                        assay_kind: TranscriptAssayKind::EndpointRtPcr,
+                        objective: TranscriptAssayPanelObjective::IsoformEndMatrix,
+                        ..
+                    } => Some(self.inspect_transcript_assay_panel_feasibility_operation(operation)?),
+                    _ => None,
+                };
                 Ok(GeneIsoformAssayStudyPlannedOperation {
                     step_index: index.saturating_add(1),
                     step_id: format!("design_{:02}", index.saturating_add(1)),
@@ -15160,6 +15179,7 @@ impl GentleEngine {
                     },
                     operation: operation_value,
                     operation_sha256,
+                    feasibility,
                 })
             })
             .collect::<Result<Vec<_>, EngineError>>()?;
@@ -15222,6 +15242,21 @@ impl GentleEngine {
                 "Retained assay identifiers require renewed readiness and specificity checks in this iteration."
                     .to_string(),
             );
+        }
+        for planned in &planned_operations {
+            let Some(feasibility) = planned.feasibility.as_ref() else {
+                continue;
+            };
+            if !feasibility.structurally_impossible_reaction_ids.is_empty() {
+                warnings.push(format!(
+                    "Planned endpoint step '{}' has {} structurally impossible reaction(s) before primer search ({}); coverage_policy={} and execution_recommendation={}.",
+                    planned.step_id,
+                    feasibility.structurally_impossible_reaction_ids.len(),
+                    feasibility.structurally_impossible_reaction_ids.join(", "),
+                    feasibility.coverage_policy.as_str(),
+                    feasibility.execution_recommendation
+                ));
+            }
         }
         warnings.sort();
         warnings.dedup();
@@ -19570,6 +19605,411 @@ impl GentleEngine {
         )
     }
 
+    fn transcript_assay_allowed_amplicon_range(
+        assay_kind: TranscriptAssayKind,
+        practicality: Option<&TranscriptAssayPracticalityPolicy>,
+        min_amplicon_bp: Option<usize>,
+        max_amplicon_bp: Option<usize>,
+    ) -> Result<(usize, usize), EngineError> {
+        let default_min = match assay_kind {
+            TranscriptAssayKind::EndpointRtPcr => 200,
+            TranscriptAssayKind::SybrQpcr | TranscriptAssayKind::TaqmanQpcr => 70,
+        };
+        let default_max = match assay_kind {
+            TranscriptAssayKind::EndpointRtPcr => 10_000,
+            TranscriptAssayKind::SybrQpcr | TranscriptAssayKind::TaqmanQpcr => 250,
+        };
+        let policy_range = practicality.and_then(|policy| policy.allowed_amplicon_bp.as_ref());
+        if let Some(allowed) = policy_range
+            && (min_amplicon_bp.is_some_and(|value| value != allowed.min_bp)
+                || max_amplicon_bp.is_some_and(|value| value != allowed.max_bp))
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Transcript assay practicality.allowed_amplicon_bp must match explicitly supplied min_amplicon_bp/max_amplicon_bp; provide one consistent allowed range."
+                    .to_string(),
+                cause_chain: vec![],
+            });
+        }
+        let min = policy_range
+            .map(|range| range.min_bp)
+            .or(min_amplicon_bp)
+            .unwrap_or(default_min);
+        let max = policy_range
+            .map(|range| range.max_bp)
+            .or(max_amplicon_bp)
+            .unwrap_or(default_max);
+        if min == 0 || min > max {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Transcript assay panel amplicon range must satisfy 1 <= min <= max (received {min}..{max})"
+                ),
+                cause_chain: vec![],
+            });
+        }
+        if assay_kind == TranscriptAssayKind::EndpointRtPcr && max > 10_000 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Endpoint RT-PCR panel max_amplicon_bp must not exceed the configured 10,000 bp ceiling (received {max})"
+                ),
+                cause_chain: vec![],
+            });
+        }
+        Ok((min, max))
+    }
+
+    fn transcript_assay_operation_sha256(
+        operation: &Operation,
+    ) -> Result<String, EngineError> {
+        let operation_value = serde_json::to_value(operation).map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize transcript assay operation: {error}"),
+            cause_chain: vec![],
+        })?;
+        let operation_bytes =
+            serde_json::to_vec(&operation_value).map_err(|error| EngineError {
+                code: ErrorCode::Internal,
+                message: format!("Could not fingerprint transcript assay operation: {error}"),
+                cause_chain: vec![],
+            })?;
+        Ok(sha256_prefixed_bytes(&operation_bytes))
+    }
+
+    fn transcript_assay_end_matrix_feasibility(
+        operation_sha256: String,
+        seq_id: &str,
+        source_feature_id: usize,
+        group_label: &str,
+        strand: &str,
+        coverage_policy: TranscriptAssayCoveragePolicy,
+        templates: &[TranscriptQpcrDesignTemplate],
+        equivalence_groups: &[TranscriptAssayEquivalenceInternal],
+        end_classes: &[TranscriptAssayEndClassInternal],
+        end_reactions: &[TranscriptAssayEndReactionInternal],
+        forward: &PrimerDesignSideConstraint,
+        reverse: &PrimerDesignSideConstraint,
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        primer3_candidate_pair_limit_per_reaction: usize,
+    ) -> TranscriptAssayPanelFeasibilityReport {
+        let mut reactions = vec![];
+        for reaction in end_reactions {
+            let template = &templates[reaction.representative_template_index];
+            let first = template.local_exon_segments.first();
+            let terminal = template.local_exon_segments.last();
+            let mut blockers = vec![];
+            let (forward_start, forward_end) = first
+                .map(|segment| (segment.local_start_0based, segment.local_end_0based_exclusive))
+                .unwrap_or((0, 0));
+            let (reverse_start, reverse_end) = terminal
+                .map(|segment| (segment.local_start_0based, segment.local_end_0based_exclusive))
+                .unwrap_or((0, 0));
+            let forward_len = forward_end.saturating_sub(forward_start);
+            let reverse_len = reverse_end.saturating_sub(reverse_start);
+            if first.is_none() || terminal.is_none() {
+                blockers.push(TranscriptAssayFeasibilityBlocker {
+                    code: "missing_transcript_end_annotation".to_string(),
+                    detail: "The representative transcript lacks a first or terminal exon segment."
+                        .to_string(),
+                });
+            }
+            if forward_end > template.sequence.len()
+                || reverse_end > template.sequence.len()
+                || forward_start >= forward_end
+                || reverse_start >= reverse_end
+                || forward_start > reverse_end
+            {
+                blockers.push(TranscriptAssayFeasibilityBlocker {
+                    code: "invalid_transcript_end_geometry".to_string(),
+                    detail: format!(
+                        "Transcript-local end windows {}..{} and {}..{} are incompatible with a {} bp mature cDNA.",
+                        forward_start,
+                        forward_end,
+                        reverse_start,
+                        reverse_end,
+                        template.sequence.len()
+                    ),
+                });
+            }
+            if forward_len < forward.min_length {
+                blockers.push(TranscriptAssayFeasibilityBlocker {
+                    code: "first_end_shorter_than_minimum_primer".to_string(),
+                    detail: format!(
+                        "First-end window is {forward_len} bp, shorter than the configured {} bp forward-primer minimum.",
+                        forward.min_length
+                    ),
+                });
+            }
+            if reverse_len < reverse.min_length {
+                blockers.push(TranscriptAssayFeasibilityBlocker {
+                    code: "terminal_end_shorter_than_minimum_primer".to_string(),
+                    detail: format!(
+                        "Terminal-end window is {reverse_len} bp, shorter than the configured {} bp reverse-primer minimum.",
+                        reverse.min_length
+                    ),
+                });
+            }
+            let geometry_valid = blockers
+                .iter()
+                .all(|blocker| blocker.code != "invalid_transcript_end_geometry")
+                && first.is_some()
+                && terminal.is_some();
+            let (minimum_possible_amplicon_bp, maximum_possible_amplicon_bp) =
+                if geometry_valid
+                    && forward_len >= forward.min_length
+                    && reverse_len >= reverse.min_length
+                {
+                    let minimum = if forward_end <= reverse_start {
+                        reverse_start
+                            .saturating_add(reverse.min_length)
+                            .saturating_sub(forward_end.saturating_sub(forward.min_length))
+                    } else {
+                        // Overlapping end windows do not provide a safe geometric lower
+                        // bound; Primer3 remains authoritative for those candidates.
+                        1
+                    };
+                    let maximum = reverse_end.saturating_sub(forward_start);
+                    if minimum.max(min_amplicon_bp) > maximum.min(max_amplicon_bp) {
+                        blockers.push(TranscriptAssayFeasibilityBlocker {
+                            code: "amplicon_range_has_no_geometric_intersection".to_string(),
+                            detail: format!(
+                                "Annotation permits approximately {minimum}..{maximum} bp products, which does not intersect the requested {min_amplicon_bp}..{max_amplicon_bp} bp range."
+                            ),
+                        });
+                    }
+                    (Some(minimum), Some(maximum))
+                } else {
+                    (None, None)
+                };
+            let mut supported_equivalence_group_ids = equivalence_groups
+                .iter()
+                .filter(|group| {
+                    group.report.members.iter().any(|member| {
+                        reaction
+                            .report
+                            .supported_transcript_ids
+                            .contains(&member.transcript_id)
+                    })
+                })
+                .map(|group| group.report.equivalence_group_id.clone())
+                .collect::<Vec<_>>();
+            supported_equivalence_group_ids.sort();
+            supported_equivalence_group_ids.dedup();
+            let status = if blockers.is_empty() {
+                TranscriptAssayEndReactionFeasibilityStatus::PrimerSearchRequired
+            } else {
+                TranscriptAssayEndReactionFeasibilityStatus::StructurallyImpossible
+            };
+            reactions.push(TranscriptAssayEndReactionFeasibility {
+                reaction_id: reaction.report.reaction_id.clone(),
+                first_end_class_id: reaction.report.first_end_class_id.clone(),
+                terminal_end_class_id: reaction.report.terminal_end_class_id.clone(),
+                representative_transcript_id: template.transcript_id.clone(),
+                supported_transcript_ids: reaction.report.supported_transcript_ids.clone(),
+                supported_equivalence_group_ids,
+                template_length_bp: template.sequence.len(),
+                forward_window_start_0based: forward_start,
+                forward_window_end_0based_exclusive: forward_end,
+                reverse_window_start_0based: reverse_start,
+                reverse_window_end_0based_exclusive: reverse_end,
+                forward_window_length_bp: forward_len,
+                reverse_window_length_bp: reverse_len,
+                minimum_possible_amplicon_bp,
+                maximum_possible_amplicon_bp,
+                status,
+                primer3_warranted: status
+                    == TranscriptAssayEndReactionFeasibilityStatus::PrimerSearchRequired,
+                blockers,
+            });
+        }
+        reactions.sort_by(|left, right| left.reaction_id.cmp(&right.reaction_id));
+        let structurally_impossible_reaction_ids = reactions
+            .iter()
+            .filter(|reaction| {
+                reaction.status
+                    == TranscriptAssayEndReactionFeasibilityStatus::StructurallyImpossible
+            })
+            .map(|reaction| reaction.reaction_id.clone())
+            .collect::<Vec<_>>();
+        let mut structurally_impossible_equivalence_group_ids = reactions
+            .iter()
+            .filter(|reaction| {
+                reaction.status
+                    == TranscriptAssayEndReactionFeasibilityStatus::StructurallyImpossible
+            })
+            .flat_map(|reaction| reaction.supported_equivalence_group_ids.iter().cloned())
+            .collect::<Vec<_>>();
+        structurally_impossible_equivalence_group_ids.sort();
+        structurally_impossible_equivalence_group_ids.dedup();
+        let primer3_warranted_reaction_count = reactions
+            .iter()
+            .filter(|reaction| reaction.primer3_warranted)
+            .count();
+        let primer3_warranted_template_bp_total = reactions
+            .iter()
+            .filter(|reaction| reaction.primer3_warranted)
+            .map(|reaction| reaction.template_length_bp)
+            .sum();
+        let primer3_warranted_max_template_bp = reactions
+            .iter()
+            .filter(|reaction| reaction.primer3_warranted)
+            .map(|reaction| reaction.template_length_bp)
+            .max()
+            .unwrap_or(0);
+        let primer3_candidate_pair_request_upper_bound = primer3_warranted_reaction_count
+            .saturating_mul(primer3_candidate_pair_limit_per_reaction);
+        let execution_recommendation = if structurally_impossible_reaction_ids.is_empty() {
+            "primer_search_required"
+        } else if coverage_policy == TranscriptAssayCoveragePolicy::RequireAll {
+            "reject_before_primer_search"
+        } else if primer3_warranted_reaction_count == 0 {
+            "return_best_effort_without_primer_search"
+        } else {
+            "run_primer_search_for_feasible_reactions_only"
+        };
+        TranscriptAssayPanelFeasibilityReport {
+            schema: TRANSCRIPT_ASSAY_PANEL_FEASIBILITY_SCHEMA.to_string(),
+            operation_sha256,
+            source_seq_id: seq_id.to_string(),
+            source_feature_id,
+            group_label: group_label.to_string(),
+            strand: strand.to_string(),
+            assay_kind: TranscriptAssayKind::EndpointRtPcr,
+            objective: TranscriptAssayPanelObjective::IsoformEndMatrix,
+            coverage_policy,
+            transcript_count: templates.len(),
+            equivalence_group_count: equivalence_groups.len(),
+            first_end_class_count: end_classes
+                .iter()
+                .filter(|class| class.report.kind == TranscriptAssayEndKind::First)
+                .count(),
+            terminal_end_class_count: end_classes
+                .iter()
+                .filter(|class| class.report.kind == TranscriptAssayEndKind::Terminal)
+                .count(),
+            reaction_count: reactions.len(),
+            minimum_forward_primer_bp: forward.min_length,
+            minimum_reverse_primer_bp: reverse.min_length,
+            requested_min_amplicon_bp: min_amplicon_bp,
+            requested_max_amplicon_bp: max_amplicon_bp,
+            primer3_candidate_pair_limit_per_reaction,
+            end_classes: end_classes.iter().map(|class| class.report.clone()).collect(),
+            reactions,
+            structurally_impossible_reaction_ids,
+            structurally_impossible_equivalence_group_ids,
+            primer3_warranted_reaction_count,
+            primer3_warranted_template_bp_total,
+            primer3_warranted_max_template_bp,
+            primer3_candidate_pair_request_upper_bound,
+            execution_recommendation: execution_recommendation.to_string(),
+            warnings: vec![
+                "Geometry feasibility excludes only deterministic annotation/length impossibilities; Primer3 must still evaluate sequence composition, Tm, repeats, complementarity, and other thermodynamic constraints."
+                    .to_string(),
+            ],
+        }
+    }
+
+    pub(crate) fn inspect_transcript_assay_panel_feasibility_operation(
+        &self,
+        operation: &Operation,
+    ) -> Result<TranscriptAssayPanelFeasibilityReport, EngineError> {
+        let Operation::DesignTranscriptAssayPanel {
+            seq_id,
+            source_feature_id,
+            assay_kind,
+            objective,
+            coverage_policy,
+            practicality,
+            forward,
+            reverse,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_assays_per_class,
+            ..
+        } = operation
+        else {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Transcript assay feasibility expects a DesignTranscriptAssayPanel operation."
+                    .to_string(),
+                cause_chain: vec![],
+            });
+        };
+        if *assay_kind != TranscriptAssayKind::EndpointRtPcr
+            || *objective != TranscriptAssayPanelObjective::IsoformEndMatrix
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Transcript assay feasibility currently applies to endpoint_rt_pcr with objective isoform_end_matrix."
+                    .to_string(),
+                cause_chain: vec![],
+            });
+        }
+        Self::validate_primer_design_side_constraints("forward", forward)?;
+        Self::validate_primer_design_side_constraints("reverse", reverse)?;
+        let (min_amplicon_bp, max_amplicon_bp) = Self::transcript_assay_allowed_amplicon_range(
+            *assay_kind,
+            practicality.as_ref(),
+            *min_amplicon_bp,
+            *max_amplicon_bp,
+        )?;
+        let primer3_candidate_pair_limit_per_reaction = max_assays_per_class.unwrap_or(
+            TRANSCRIPT_ASSAY_DEFAULT_ENDPOINT_PAIRS_PER_REACTION,
+        );
+        if primer3_candidate_pair_limit_per_reaction == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Transcript assay panel max_assays_per_class must be >= 1".to_string(),
+                cause_chain: vec![],
+            });
+        }
+        let source_dna = self.state.sequences.get(seq_id).ok_or_else(|| EngineError {
+            code: ErrorCode::NotFound,
+            message: format!("Sequence '{seq_id}' not found"),
+            cause_chain: vec![],
+        })?;
+        let splicing = self.build_splicing_expert_view(
+            seq_id,
+            *source_feature_id,
+            SplicingScopePreset::TargetGroupTargetStrand,
+        )?;
+        let templates = Self::build_qpcr_transcript_design_templates(source_dna, &splicing)?;
+        if templates.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "No transcript-derived cDNA templates were found for feature n-{} on '{}'",
+                    source_feature_id.saturating_add(1),
+                    seq_id
+                ),
+                cause_chain: vec![],
+            });
+        }
+        let equivalence_groups = Self::transcript_assay_exact_equivalence_groups(&templates);
+        let (end_classes, end_reactions) =
+            Self::transcript_assay_end_classes_and_reactions(&templates);
+        let operation_sha256 = Self::transcript_assay_operation_sha256(operation)?;
+        Ok(Self::transcript_assay_end_matrix_feasibility(
+            operation_sha256,
+            seq_id,
+            *source_feature_id,
+            &splicing.group_label,
+            &splicing.strand,
+            *coverage_policy,
+            &templates,
+            &equivalence_groups,
+            &end_classes,
+            &end_reactions,
+            forward,
+            reverse,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            primer3_candidate_pair_limit_per_reaction,
+        ))
+    }
+
     fn transcript_assay_candidate_rois(
         template: &TranscriptQpcrDesignTemplate,
     ) -> Vec<(usize, usize)> {
@@ -21814,6 +22254,7 @@ impl GentleEngine {
         &mut self,
         result: &mut OpResult,
         run_id: &str,
+        operation_sha256: String,
         on_progress: &mut dyn FnMut(OperationProgress) -> bool,
         seq_id: SeqId,
         source_feature_id: usize,
@@ -21875,56 +22316,26 @@ impl GentleEngine {
             });
         }
 
-        let default_min_amplicon_bp = match assay_kind {
-            TranscriptAssayKind::EndpointRtPcr => 200,
-            TranscriptAssayKind::SybrQpcr | TranscriptAssayKind::TaqmanQpcr => 70,
-        };
-        let default_max_amplicon_bp = match assay_kind {
-            TranscriptAssayKind::EndpointRtPcr => 10_000,
-            TranscriptAssayKind::SybrQpcr | TranscriptAssayKind::TaqmanQpcr => 250,
-        };
-        let requested_allowed = practicality
-            .as_ref()
-            .and_then(|policy| policy.allowed_amplicon_bp.clone());
-        if let Some(allowed) = requested_allowed.as_ref() {
-            if min_amplicon_bp.is_some_and(|value| value != allowed.min_bp)
-                || max_amplicon_bp.is_some_and(|value| value != allowed.max_bp)
-            {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: "Transcript assay practicality.allowed_amplicon_bp must match explicitly supplied min_amplicon_bp/max_amplicon_bp; provide one consistent allowed range."
-                        .to_string(),
-                    cause_chain: vec![],
-                });
-            }
-        }
-        let min_amplicon_bp = requested_allowed
-            .as_ref()
-            .map(|range| range.min_bp)
-            .or(min_amplicon_bp)
-            .unwrap_or(default_min_amplicon_bp);
-        let max_amplicon_bp = requested_allowed
-            .as_ref()
-            .map(|range| range.max_bp)
-            .or(max_amplicon_bp)
-            .unwrap_or(default_max_amplicon_bp);
+        let (min_amplicon_bp, max_amplicon_bp) =
+            Self::transcript_assay_allowed_amplicon_range(
+                assay_kind,
+                practicality.as_ref(),
+                min_amplicon_bp,
+                max_amplicon_bp,
+            )?;
         let max_tm_delta_c = max_tm_delta_c.unwrap_or(2.0);
         let max_probe_tm_delta_c = max_probe_tm_delta_c.unwrap_or(10.0);
-        let max_assays_per_class = max_assays_per_class.unwrap_or(12);
+        let max_assays_per_class = max_assays_per_class.unwrap_or_else(|| {
+            if assay_kind == TranscriptAssayKind::EndpointRtPcr {
+                TRANSCRIPT_ASSAY_DEFAULT_ENDPOINT_PAIRS_PER_REACTION
+            } else {
+                TRANSCRIPT_ASSAY_DEFAULT_MAX_ASSAYS_PER_CLASS
+            }
+        });
         let max_mismatches = max_mismatches.unwrap_or(0);
         let require_3prime_exact_bases = require_3prime_exact_bases.unwrap_or(8);
         let min_3prime_junction_overlap_bp = min_3prime_junction_overlap_bp.unwrap_or(4);
         let min_5prime_junction_overlap_bp = min_5prime_junction_overlap_bp.unwrap_or(7);
-        if min_amplicon_bp == 0 || min_amplicon_bp > max_amplicon_bp {
-            return Err(EngineError {
-                code: ErrorCode::InvalidInput,
-                message: format!(
-                    "Transcript assay panel amplicon range must satisfy 1 <= min <= max (received {min_amplicon_bp}..{max_amplicon_bp})"
-                ),
-
-                cause_chain: vec![],
-            });
-        }
         let allowed_amplicon_bp = TranscriptAssayAmpliconRange {
             min_bp: min_amplicon_bp,
             max_bp: max_amplicon_bp,
@@ -21964,15 +22375,6 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "Oligo-dT 5-prime risk threshold must be >= 1 bp when supplied"
                     .to_string(),
-                cause_chain: vec![],
-            });
-        }
-        if max_amplicon_bp > 10_000 && assay_kind == TranscriptAssayKind::EndpointRtPcr {
-            return Err(EngineError {
-                code: ErrorCode::InvalidInput,
-                message: format!(
-                    "Endpoint RT-PCR panel max_amplicon_bp must not exceed the configured 10,000 bp ceiling (received {max_amplicon_bp})"
-                ),
                 cause_chain: vec![],
             });
         }
@@ -22130,6 +22532,81 @@ impl GentleEngine {
             } else {
                 (vec![], vec![])
             };
+        let end_matrix_feasibility =
+            (objective == TranscriptAssayPanelObjective::IsoformEndMatrix).then(|| {
+                Self::transcript_assay_end_matrix_feasibility(
+                    operation_sha256.clone(),
+                    &seq_id,
+                    source_feature_id,
+                    &splicing.group_label,
+                    &splicing.strand,
+                    coverage_policy,
+                    &templates,
+                    &equivalence_groups,
+                    &end_classes_internal,
+                    &end_reactions_internal,
+                    &forward,
+                    &reverse,
+                    min_amplicon_bp,
+                    max_amplicon_bp,
+                    max_assays_per_class,
+                )
+            });
+        if let Some(feasibility) = end_matrix_feasibility.as_ref() {
+            if coverage_policy == TranscriptAssayCoveragePolicy::RequireAll
+                && !feasibility
+                    .structurally_impossible_reaction_ids
+                    .is_empty()
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Endpoint transcript-assay feasibility rejected strict require_all before Primer3: structurally impossible reactions: {}; affected equivalence classes: {}. Run 'primers inspect-transcript-assay-feasibility' with the exact operation for blocker details, or explicitly approve best_effort without changing the approved operation after approval.",
+                        feasibility.structurally_impossible_reaction_ids.join("; "),
+                        if feasibility
+                            .structurally_impossible_equivalence_group_ids
+                            .is_empty()
+                        {
+                            "none".to_string()
+                        } else {
+                            feasibility
+                                .structurally_impossible_equivalence_group_ids
+                                .join("; ")
+                        }
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            let feasibility_by_reaction = feasibility
+                .reactions
+                .iter()
+                .map(|reaction| (reaction.reaction_id.as_str(), reaction))
+                .collect::<HashMap<_, _>>();
+            for reaction in &mut end_reactions_internal {
+                if let Some(feasibility) =
+                    feasibility_by_reaction.get(reaction.report.reaction_id.as_str())
+                    && feasibility.status
+                        == TranscriptAssayEndReactionFeasibilityStatus::StructurallyImpossible
+                {
+                    reaction.report.status = "structurally_impossible".to_string();
+                    reaction.report.reason = Some(
+                        feasibility
+                            .blockers
+                            .iter()
+                            .map(|blocker| format!("{}: {}", blocker.code, blocker.detail))
+                            .collect::<Vec<_>>()
+                            .join("; "),
+                    );
+                }
+            }
+            if !feasibility.structurally_impossible_reaction_ids.is_empty() {
+                warnings.push(format!(
+                    "{} endpoint reaction(s) were structurally impossible from annotation geometry and were not sent to Primer3: {}.",
+                    feasibility.structurally_impossible_reaction_ids.len(),
+                    feasibility.structurally_impossible_reaction_ids.join(", ")
+                ));
+            }
+        }
         let mut equivalence_group_index_by_template = HashMap::<usize, usize>::new();
         for (group_index, group) in equivalence_groups.iter().enumerate() {
             for template_index in &group.member_template_indices {
@@ -22139,6 +22616,9 @@ impl GentleEngine {
         let mut targets = vec![];
         if objective == TranscriptAssayPanelObjective::IsoformEndMatrix {
             for reaction in &end_reactions_internal {
+                if reaction.report.status == "structurally_impossible" {
+                    continue;
+                }
                 let template = &templates[reaction.representative_template_index];
                 let Some(first) = template.local_exon_segments.first() else {
                     continue;
@@ -22305,6 +22785,11 @@ impl GentleEngine {
             let progress_id = format!("{}:{}", seq_id, template.transcript_id);
             let pair_generation_limit = if target.junction.is_some() {
                 500
+            } else if assay_kind == TranscriptAssayKind::EndpointRtPcr {
+                // Each endpoint reaction selects at most one pair. Respect the
+                // caller's explicit alternative budget (default four) instead
+                // of asking Primer3 for a tenfold surplus for every reaction.
+                remaining
             } else {
                 remaining.saturating_mul(10).clamp(remaining, 500)
             };
@@ -22675,6 +23160,9 @@ impl GentleEngine {
             }
             TranscriptAssayPanelObjective::IsoformEndMatrix => {
                 for reaction in &mut end_reactions_internal {
+                    if reaction.report.status == "structurally_impossible" {
+                        continue;
+                    }
                     let best = evaluated_candidates
                         .iter()
                         .enumerate()
@@ -22699,9 +23187,9 @@ impl GentleEngine {
                             vec![evaluated_candidates[index].assay_id.clone()];
                         reaction.report.status = "designed".to_string();
                     } else {
-                        reaction.report.status = "not_assayable".to_string();
+                        reaction.report.status = "primer_search_exhausted".to_string();
                         reaction.report.reason = Some(
-                            "No first-exon x terminal-exon primer pair met the configured primer and 10 kb product constraints."
+                            "Primer search completed without a first-exon x terminal-exon pair satisfying the configured sequence, thermodynamic, and product constraints."
                                 .to_string(),
                         );
                     }
@@ -23346,6 +23834,7 @@ impl GentleEngine {
             uncovered_equivalence_group_ids,
             unresolved_group_pairs,
             backend_runs,
+            feasibility: end_matrix_feasibility,
             end_classes: end_classes_internal
                 .iter()
                 .map(|class| class.report.clone())
@@ -29731,6 +30220,14 @@ impl GentleEngine {
                 output_prefix,
             },
             other => other,
+        };
+        let transcript_assay_operation_sha256 = if matches!(
+            &op,
+            Operation::DesignTranscriptAssayPanel { .. }
+        ) {
+            Some(Self::transcript_assay_operation_sha256(&op)?)
+        } else {
+            None
         };
         let op_id = self.next_op_id();
         let mut parent_seq_ids: Vec<SeqId> = vec![];
@@ -36350,6 +36847,7 @@ impl GentleEngine {
                     self.execute_design_transcript_assay_panel(
                         &mut result,
                         run_id,
+                        transcript_assay_operation_sha256.unwrap_or_default(),
                         on_progress,
                         seq_id,
                         source_feature_id,

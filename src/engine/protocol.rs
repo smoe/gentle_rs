@@ -9005,7 +9005,7 @@ pub enum TranscriptAssayEndKind {
     Terminal,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
 /// One distinct first- or terminal-exon/junction class.
 pub struct TranscriptAssayEndClass {
@@ -9024,7 +9024,7 @@ pub struct TranscriptAssayEndClass {
     pub transcript_ids: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
 /// One annotated first-end x terminal-end reaction represented by transcripts.
 pub struct TranscriptAssayEndReaction {
@@ -9038,6 +9038,106 @@ pub struct TranscriptAssayEndReaction {
     pub status: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Geometry-only feasibility classification made before primer search.
+pub enum TranscriptAssayEndReactionFeasibilityStatus {
+    /// Annotation geometry cannot satisfy at least one hard request constraint.
+    StructurallyImpossible,
+    /// Geometry permits a design, but sequence/Tm/structure suitability remains unknown.
+    #[default]
+    PrimerSearchRequired,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One deterministic blocker that makes an endpoint reaction impossible before search.
+pub struct TranscriptAssayFeasibilityBlocker {
+    pub code: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Cheap annotation/geometry assessment for one first-end x terminal-end reaction.
+pub struct TranscriptAssayEndReactionFeasibility {
+    pub reaction_id: String,
+    pub first_end_class_id: String,
+    pub terminal_end_class_id: String,
+    pub representative_transcript_id: String,
+    #[serde(default)]
+    pub supported_transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub supported_equivalence_group_ids: Vec<String>,
+    pub template_length_bp: usize,
+    pub forward_window_start_0based: usize,
+    pub forward_window_end_0based_exclusive: usize,
+    pub reverse_window_start_0based: usize,
+    pub reverse_window_end_0based_exclusive: usize,
+    pub forward_window_length_bp: usize,
+    pub reverse_window_length_bp: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minimum_possible_amplicon_bp: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maximum_possible_amplicon_bp: Option<usize>,
+    #[serde(default)]
+    pub status: TranscriptAssayEndReactionFeasibilityStatus,
+    pub primer3_warranted: bool,
+    #[serde(default)]
+    pub blockers: Vec<TranscriptAssayFeasibilityBlocker>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Deterministic, read-only endpoint-matrix feasibility report.
+///
+/// This report proves only hard annotation/geometry exclusions. A
+/// `primer_search_required` row is not a prediction that Primer3 will find a
+/// thermodynamically suitable pair.
+pub struct TranscriptAssayPanelFeasibilityReport {
+    pub schema: String,
+    pub operation_sha256: String,
+    pub source_seq_id: String,
+    pub source_feature_id: usize,
+    pub group_label: String,
+    pub strand: String,
+    #[serde(default)]
+    pub assay_kind: TranscriptAssayKind,
+    #[serde(default)]
+    pub objective: TranscriptAssayPanelObjective,
+    #[serde(default)]
+    pub coverage_policy: TranscriptAssayCoveragePolicy,
+    pub transcript_count: usize,
+    pub equivalence_group_count: usize,
+    pub first_end_class_count: usize,
+    pub terminal_end_class_count: usize,
+    pub reaction_count: usize,
+    pub minimum_forward_primer_bp: usize,
+    pub minimum_reverse_primer_bp: usize,
+    pub requested_min_amplicon_bp: usize,
+    pub requested_max_amplicon_bp: usize,
+    /// Effective maximum passed to Primer3 for each feasible endpoint reaction.
+    pub primer3_candidate_pair_limit_per_reaction: usize,
+    #[serde(default)]
+    pub end_classes: Vec<TranscriptAssayEndClass>,
+    #[serde(default)]
+    pub reactions: Vec<TranscriptAssayEndReactionFeasibility>,
+    #[serde(default)]
+    pub structurally_impossible_reaction_ids: Vec<String>,
+    #[serde(default)]
+    pub structurally_impossible_equivalence_group_ids: Vec<String>,
+    pub primer3_warranted_reaction_count: usize,
+    /// Sum of representative cDNA template lengths over warranted reactions.
+    pub primer3_warranted_template_bp_total: usize,
+    /// Longest representative cDNA template still requiring Primer3.
+    pub primer3_warranted_max_template_bp: usize,
+    /// Warranted reaction count multiplied by the approved per-reaction limit.
+    pub primer3_candidate_pair_request_upper_bound: usize,
+    pub execution_recommendation: String,
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -9342,6 +9442,9 @@ pub struct TranscriptAssayPanelReport {
     pub unresolved_group_pairs: Vec<TranscriptAssayUnresolvedPair>,
     #[serde(default)]
     pub backend_runs: Vec<TranscriptAssayPanelBackendRun>,
+    /// Geometry-only preflight used before endpoint Primer3 execution.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feasibility: Option<TranscriptAssayPanelFeasibilityReport>,
     #[serde(default)]
     pub end_classes: Vec<TranscriptAssayEndClass>,
     #[serde(default)]
@@ -9503,6 +9606,10 @@ pub struct GeneIsoformAssayStudyPolicy {
     pub endpoint_min_amplicon_bp: usize,
     pub endpoint_preferred_max_amplicon_bp: usize,
     pub endpoint_max_amplicon_bp: usize,
+    /// Strict remains the backward-compatible default. Partial endpoint
+    /// matrices require an explicit best-effort policy in the approved plan.
+    #[serde(default)]
+    pub endpoint_coverage_policy: TranscriptAssayCoveragePolicy,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub oligo_dt_5prime_risk_threshold_bp: Option<usize>,
 }
@@ -9525,6 +9632,7 @@ impl Default for GeneIsoformAssayStudyPolicy {
             endpoint_min_amplicon_bp: 200,
             endpoint_preferred_max_amplicon_bp: 2_000,
             endpoint_max_amplicon_bp: 10_000,
+            endpoint_coverage_policy: TranscriptAssayCoveragePolicy::RequireAll,
             oligo_dt_5prime_risk_threshold_bp: None,
         }
     }
@@ -9698,6 +9806,10 @@ pub struct GeneIsoformAssayStudyPlannedOperation {
     pub purpose: String,
     pub operation: serde_json::Value,
     pub operation_sha256: String,
+    /// Cheap endpoint geometry assessment, when applicable. It is advisory at
+    /// approval time and is recomputed against the exact operation before run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feasibility: Option<TranscriptAssayPanelFeasibilityReport>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
@@ -9801,6 +9913,90 @@ pub struct GeneIsoformAssayStudyWorkflowBatch {
     /// Digest over this record with this field cleared. It makes accidental
     /// materialization or ordering changes detectable before approval.
     pub batch_basis_sha256: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Exact runtime identity required for reusing an approved computation.
+pub struct GeneIsoformAssayStudyRuntimeIdentity {
+    pub gentle_package_version: String,
+    pub gentle_build: String,
+    pub executable_path: String,
+    pub executable_sha256: String,
+    pub primer_backend: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primer3_executable_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primer3_executable_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primer3_version: Option<String>,
+    pub primer3_version_probe_ok: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One approved operation in the ordered prefix captured by a checkpoint.
+pub struct GeneIsoformAssayStudyCheckpointOperation {
+    pub global_operation_ordinal: usize,
+    pub workflow_ordinal: usize,
+    pub workflow_operation_ordinal: usize,
+    pub plan_id: String,
+    pub plan_sha256: String,
+    pub gene_symbol: String,
+    pub workflow_run_id: String,
+    pub workflow_sha256: String,
+    pub operation_sha256: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Content-bound detached-engine checkpoint written after a successful
+/// approved operation. It is inert until a separately approved reuse proposal
+/// imports it into another exact-prefix batch execution.
+pub struct GeneIsoformAssayStudyCheckpoint {
+    pub schema: String,
+    pub checkpoint_id: String,
+    pub source_batch_id: String,
+    pub source_batch_basis_sha256: String,
+    pub baseline_state_sha256: String,
+    pub runtime: GeneIsoformAssayStudyRuntimeIdentity,
+    pub completed_operations: Vec<GeneIsoformAssayStudyCheckpointOperation>,
+    pub completed_operation_count: usize,
+    pub completed_workflow_count: usize,
+    pub current_workflow_ordinal: usize,
+    pub current_plan_id: String,
+    pub current_gene_symbol: String,
+    pub engine_path: String,
+    pub engine_sha256: String,
+    pub engine_journal_len: usize,
+    #[serde(default)]
+    pub operation_results: Vec<OpResult>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Read-only proposal for importing one prior exact-prefix checkpoint. The
+/// proposal digest is the explicit approval token; execution never discovers
+/// or adopts cached work implicitly.
+pub struct GeneIsoformAssayStudyReuseProposal {
+    pub schema: String,
+    pub proposal_id: String,
+    pub proposal_sha256: String,
+    pub target_batch_id: String,
+    pub target_batch_basis_sha256: String,
+    pub baseline_state_sha256: String,
+    pub runtime: GeneIsoformAssayStudyRuntimeIdentity,
+    pub checkpoint_manifest_path: String,
+    pub checkpoint_manifest_sha256: String,
+    pub checkpoint_id: String,
+    pub reusable_operation_count: usize,
+    pub reusable_workflow_count: usize,
+    pub remaining_operation_count: usize,
+    pub remaining_workflow_count: usize,
+    pub reusable_operations: Vec<GeneIsoformAssayStudyCheckpointOperation>,
+    pub approval_required: bool,
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]

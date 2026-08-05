@@ -3961,6 +3961,15 @@ Shared shell command:
         receive deterministic `not_found` rows instead of silent omission
     - Transcript assay panel v2 notes
       (`primers design-transcript-assay-panel`):
+      - preflight an exact endpoint operation with
+        `primers inspect-transcript-assay-feasibility OPERATION_JSON_OR_@FILE
+        [--path OUTPUT.json]`. The read-only command emits
+        `gentle.transcript_assay_panel_feasibility.v1`, keeps the operation
+        digest, stable end-class/reaction ids, effective primer/product
+        constraints, and deterministic geometry blockers, and never starts
+        Primer3. MCP exposes the same non-mutating route as
+        `transcript_assay_feasibility`, accepting the exact operation object or
+        its JSON string
       - the command accepts either the concise `SEQ_ID FEATURE_ID` flag form or
         a complete externally tagged `DesignTranscriptAssayPanel` operation as
         inline JSON / `@FILE`. The operation form exposes every shared primer,
@@ -3976,7 +3985,10 @@ Shared shell command:
       - endpoint mode requires `--objective isoform-end-matrix`, constructs
         only annotated first-end x terminal-end combinations, defaults to a
         10,000 bp ceiling, and reports the predicted band sizes for every
-        selected assay against every transcript
+        selected assay against every transcript. When
+        `--max-assays-per-class` is omitted, endpoint searches ask Primer3 for
+        at most four candidate pairs per reaction; callers can still approve a
+        different explicit limit
       - SYBR mode never fabricates an internal probe; its selected assays keep
         primer Tm/structure checks and the same full transcript product matrix
       - explicit junctions can be supplied with `--junctions` in transcript-
@@ -3991,6 +4003,12 @@ Shared shell command:
         an assay that omits any exact cDNA class is rejected rather than saved
       - `--coverage-policy best-effort` is an explicit opt-in that saves a
         visibly partial report with uncovered class ids and warnings
+      - strict endpoint matrices now reject annotation/geometry impossibilities
+        before Primer3. Explicit best-effort matrices skip only those proven
+        impossible reactions and retain each reaction, equivalence class, and
+        blocker in the canonical report; feasible reactions can still end as
+        `primer_search_exhausted`, which is distinct from structural
+        impossibility and timeout/interruption
       - `--assay-tier` records experimental purpose independently of the
         objective. `routine-common-region-screen` requires `pan-transcript`
         and accepts commonality only from transcript annotation; Clariom PSR
@@ -4075,9 +4093,24 @@ Shared shell command:
         Review and approve the emitted
         `gentle.gene_isoform_assay_study_workflow_batch.v1`, then run
         `primers execute-gene-isoform-study-workflow-batch BATCH_JSON_OR_@FILE`.
-        GENtle validates the complete ordered set before the first operation
-        and executes it through one state-bound command; the single-study route
-        remains available
+        GENtle validates the complete ordered set before the first operation,
+        executes against a detached project snapshot, and commits the project
+        only after the entire batch succeeds; the single-study route remains
+        available
+      - add `--checkpoint-dir DIR` to retain a content-bound checkpoint after
+        each successful approved operation even if a later operation fails.
+        Checkpoints do not alter the live project and are never reused
+        automatically
+      - inspect an unchanged approved prefix with
+        `primers inspect-gene-isoform-study-reuse BATCH_JSON_OR_@FILE
+        --checkpoint-dir DIR [--path PROPOSAL.json]`. A matching
+        `gentle.gene_isoform_assay_study_reuse_proposal.v1` binds the baseline
+        project, exact ordered prefix, checkpoint bytes, and running GENtle
+        executable. Approve that exact `proposal_sha256`, then execute with
+        `--reuse-proposal @PROPOSAL.json --approve-reuse-sha256 SHA256`.
+        Rebuilding GENtle, changing an approved operation, or changing the
+        baseline invalidates the proposal instead of silently recomputing or
+        importing work
 
         ```json
         {

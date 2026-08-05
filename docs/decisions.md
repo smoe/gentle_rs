@@ -542,3 +542,23 @@ canonical report without another scientific approval; they still produce an
 execution receipt and remain subject to ordinary file-overwrite safety. An
 outer agent may host or shorten those declared projections, but cannot author
 new scientific blocks.
+
+## DEC-034: Approved Batch Reuse Is Explicit, Exact-Prefix, and Detached
+
+Status: active
+
+Long-running approved isoform-assay batches execute against a detached engine;
+the live project is committed only after the complete ordered batch succeeds.
+An explicitly configured private checkpoint directory may retain the detached
+state and exact operation results after each successful approved operation.
+These artifacts survive a later rollback, but they are not project mutations
+and are never discovered or imported during ordinary execution.
+
+Reuse is a separate read-only proposal followed by explicit approval of that
+proposal digest. The proposal binds the target batch, baseline project hash,
+exact approved-operation prefix, checkpoint manifest and engine bytes, and the
+running GENtle executable identity. Execution revalidates every binding and
+imports only into another detached run. Adding work after an unchanged prefix
+is supported; arbitrary branch-state merging, cross-build reuse, payload drift,
+and approval-based waivers of provenance mismatches are not. Approval
+authorizes transfer of prior computation and does not validate the biology.

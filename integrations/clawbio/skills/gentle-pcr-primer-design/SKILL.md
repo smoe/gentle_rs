@@ -6,7 +6,7 @@ description: >-
   scientific operation to GENtle through the registered gentle-cloning skill,
   preserving GENtle's typed reports, evidence states, provenance, and review
   gates.
-version: 0.6.0
+version: 0.7.0
 author: GENtle project
 license: MIT
 tags: [primer-design, pcr, rt-pcr, sybr, qpcr, taqman, isoforms, specificity, provenance]
@@ -130,10 +130,20 @@ This skill owns:
    compose them with
    `primers compose-gene-isoform-study-workflow-batch REQUEST.json`, and obtain
    one second-stage approval for the emitted batch. Execute only that batch via
-   `primers execute-gene-isoform-study-workflow-batch BATCH.json`. GENtle
+   `primers execute-gene-isoform-study-workflow-batch BATCH.json
+   --checkpoint-dir .gentle/isoform-study-checkpoints`. GENtle
    prevalidates every referenced plan/workflow and the combined ordered digest
-   before the first operation and keeps the execution inside one state-bound
-   command. Do not loop over independently state-bound execution proposals.
+   before the first operation, runs in a detached engine, checkpoints successful
+   approved operations, and commits project state only after complete success.
+   Do not loop over independently state-bound execution proposals.
+   Checkpoint existence is never permission to reuse it. For an extended or
+   retried batch, first call `primers inspect-gene-isoform-study-reuse ...` and
+   show the returned reusable/remaining gene and operation counts plus warnings.
+   Only after the user approves that exact `proposal_sha256` may the skill use
+   `--reuse-proposal` with `--approve-reuse-sha256`. Never repair a mismatch,
+   substitute another checkpoint, or interpret transfer approval as biological
+   approval. A changed GENtle executable, baseline state, or approved prefix
+   requires fresh computation.
    Set the delegated `execution_timeout_secs` before approval. Treat it as an
    operational wrapper ceiling, not a Primer3 parameter or a predicted wall
    time. Review transcript count, mature-cDNA spans, automatic and requested

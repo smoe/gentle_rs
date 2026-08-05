@@ -12602,6 +12602,111 @@ fn transcript_qpcr_panel_test_engine() -> GentleEngine {
     engine
 }
 
+fn transcript_endpoint_structural_failure_engine() -> GentleEngine {
+    let short_first = "ATGCCGTAGCTTACGAT";
+    let long_first = "CGTACGATTCGGAACCTGATCGATGCTTACGGTACCGATCTAGGCTTACGATCG";
+    let middle = "GATCGTACCGATGCTAGCTAGGATCCGATCGTACGATCCGTTACGATGCTAGCTAGGCTACGATCGGATCCGT";
+    let terminal_a = "GCTAACGATCCGATGCTAACGTCGATCGTAGCTAACCGATGCTAGCTTACCGATGCTAG";
+    let terminal_b = "TACGATGCTAGGCTACGATCGGATCCGTACGATTCGGAACCTGATCGATGCTTACGGT";
+    let spacer = "N".repeat(24);
+    let short_start = 0usize;
+    let short_end = short_start + short_first.len();
+    let long_start = short_end + spacer.len();
+    let long_end = long_start + long_first.len();
+    let middle_start = long_end + spacer.len();
+    let middle_end = middle_start + middle.len();
+    let terminal_a_start = middle_end + spacer.len();
+    let terminal_a_end = terminal_a_start + terminal_a.len();
+    let terminal_b_start = terminal_a_end + spacer.len();
+    let terminal_b_end = terminal_b_start + terminal_b.len();
+    let mut dna = seq(&format!(
+        "{short_first}{spacer}{long_first}{spacer}{middle}{spacer}{terminal_a}{spacer}{terminal_b}"
+    ));
+    for (transcript_id, first_start, first_end, terminal_start, terminal_end) in [
+        (
+            "TX_SHORT_A",
+            short_start,
+            short_end,
+            terminal_a_start,
+            terminal_a_end,
+        ),
+        (
+            "TX_SHORT_B",
+            short_start,
+            short_end,
+            terminal_b_start,
+            terminal_b_end,
+        ),
+        (
+            "TX_LONG_A",
+            long_start,
+            long_end,
+            terminal_a_start,
+            terminal_a_end,
+        ),
+    ] {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::Join(vec![
+                gb_io::seq::Location::simple_range(first_start as i64, first_end as i64),
+                gb_io::seq::Location::simple_range(middle_start as i64, middle_end as i64),
+                gb_io::seq::Location::simple_range(terminal_start as i64, terminal_end as i64),
+            ]),
+            qualifiers: vec![
+                ("gene".into(), Some("ENDGEOM1".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(format!("ENDGEOM1 {transcript_id}"))),
+            ],
+        });
+    }
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("endpoint_structural".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
+    engine.state_mut().parameters.primer3_executable =
+        "definitely_missing_primer3_for_feasibility_test".to_string();
+    engine
+}
+
+fn transcript_endpoint_structural_failure_operation(
+    coverage_policy: TranscriptAssayCoveragePolicy,
+    side: PrimerDesignSideConstraint,
+) -> Operation {
+    Operation::DesignTranscriptAssayPanel {
+        seq_id: "endpoint_structural".to_string(),
+        source_feature_id: 0,
+        assay_kind: TranscriptAssayKind::EndpointRtPcr,
+        cdna_synthesis: TranscriptAssayCdnaSynthesis::OligoDt,
+        objective: TranscriptAssayPanelObjective::IsoformEndMatrix,
+        coverage_policy,
+        assay_tier: TranscriptAssayUseTier::LongRangeStructureDiscovery,
+        practicality: None,
+        forward: side.clone(),
+        reverse: side.clone(),
+        probe: side,
+        pair_constraints: PrimerDesignPairConstraint::default(),
+        min_amplicon_bp: Some(40),
+        max_amplicon_bp: Some(10_000),
+        max_tm_delta_c: Some(100.0),
+        max_probe_tm_delta_c: None,
+        max_assays_per_class: None,
+        max_mismatches: Some(0),
+        require_3prime_exact_bases: Some(8),
+        oligo_dt_5prime_risk_threshold_bp: None,
+        junctions: vec![],
+        junction_evidence_paths: vec![],
+        junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
+        min_3prime_junction_overlap_bp: None,
+        min_5prime_junction_overlap_bp: None,
+        annotation_release: Some("synthetic structural feasibility".to_string()),
+        specificity: None,
+        report_id: Some("endpoint_structural_feasibility".to_string()),
+        path: None,
+    }
+}
+
 fn transcript_assay_common_region_test_engine() -> GentleEngine {
     let synthetic_dna = |mut state: u64, len: usize| {
         (0..len)
@@ -14903,6 +15008,144 @@ fn transcript_assay_panel_old_payload_defaults_to_taqman_mode() {
     assert_eq!(
         cell.oligo_dt_5prime_reach.status,
         TranscriptAssayOligoDtReachStatus::NotApplicable
+    );
+}
+
+#[test]
+fn transcript_endpoint_feasibility_reports_stable_structural_blockers_before_primer3() {
+    let mut engine = transcript_endpoint_structural_failure_engine();
+    let operation = transcript_endpoint_structural_failure_operation(
+        TranscriptAssayCoveragePolicy::RequireAll,
+        PrimerDesignSideConstraint::default(),
+    );
+    let first = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&operation)
+        .expect("inspect endpoint feasibility");
+    let second = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&operation)
+        .expect("repeat endpoint feasibility");
+    assert_eq!(first, second, "feasibility ids and ordering must be stable");
+    assert_eq!(first.schema, TRANSCRIPT_ASSAY_PANEL_FEASIBILITY_SCHEMA);
+    assert_eq!(first.reaction_count, 3);
+    assert_eq!(first.structurally_impossible_reaction_ids.len(), 2);
+    assert_eq!(first.primer3_warranted_reaction_count, 1);
+    assert_eq!(first.primer3_candidate_pair_limit_per_reaction, 4);
+    assert!(first.primer3_warranted_template_bp_total > 0);
+    assert_eq!(
+        first.primer3_warranted_template_bp_total,
+        first.primer3_warranted_max_template_bp
+    );
+    assert_eq!(first.primer3_candidate_pair_request_upper_bound, 4);
+    assert_eq!(first.execution_recommendation, "reject_before_primer_search");
+    let blocked = first
+        .reactions
+        .iter()
+        .filter(|reaction| {
+            reaction.status
+                == TranscriptAssayEndReactionFeasibilityStatus::StructurallyImpossible
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(blocked.len(), 2);
+    assert!(blocked.iter().all(|reaction| {
+        reaction.forward_window_length_bp == 17
+            && !reaction.primer3_warranted
+            && reaction.blockers.iter().any(|blocker| {
+                blocker.code == "first_end_shorter_than_minimum_primer"
+                    && blocker.detail.contains("17 bp")
+                    && blocker.detail.contains("20 bp")
+            })
+    }));
+    let before = engine
+        .state()
+        .metadata
+        .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+        .cloned();
+    let error = engine
+        .apply(operation)
+        .expect_err("strict structural blocker must fail before Primer3");
+    assert!(error.message.contains("before Primer3"), "{}", error.message);
+    assert!(
+        !error.message.contains("definitely_missing_primer3"),
+        "the missing executable proves Primer3 was never reached: {}",
+        error.message
+    );
+    assert_eq!(
+        engine
+            .state()
+            .metadata
+            .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+            .cloned(),
+        before
+    );
+}
+
+#[test]
+fn transcript_endpoint_best_effort_preserves_structural_failures_without_search() {
+    let mut engine = transcript_endpoint_structural_failure_engine();
+    let impossible_side = PrimerDesignSideConstraint {
+        min_length: 100,
+        max_length: 110,
+        min_tm_c: 0.0,
+        max_tm_c: 100.0,
+        min_gc_fraction: 0.0,
+        max_gc_fraction: 1.0,
+        max_anneal_hits: 10_000,
+        ..PrimerDesignSideConstraint::default()
+    };
+    let operation = transcript_endpoint_structural_failure_operation(
+        TranscriptAssayCoveragePolicy::BestEffort,
+        impossible_side,
+    );
+    let expected_operation_sha256 = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&operation)
+        .expect("inspect exact best-effort operation")
+        .operation_sha256;
+    let report = engine
+        .apply(operation)
+        .expect("explicit best effort returns a partial report")
+        .transcript_assay_panel
+        .expect("best-effort endpoint report");
+    assert_eq!(
+        report.completion_status,
+        TranscriptAssayPanelCompletionStatus::Partial
+    );
+    assert!(report.selected_assays.is_empty());
+    assert_eq!(report.uncovered_equivalence_group_ids.len(), 3);
+    assert!(report.end_reactions.iter().all(|reaction| {
+        reaction.status == "structurally_impossible"
+            && reaction
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("minimum_primer"))
+    }));
+    let feasibility = report.feasibility.expect("embedded feasibility report");
+    assert_eq!(feasibility.operation_sha256, expected_operation_sha256);
+    assert_eq!(
+        feasibility.execution_recommendation,
+        "return_best_effort_without_primer_search"
+    );
+    assert_eq!(feasibility.primer3_warranted_reaction_count, 0);
+    assert!(report.warnings.iter().any(|warning| {
+        warning.contains("structurally impossible") && warning.contains("not sent to Primer3")
+    }));
+    assert!(report.warnings.iter().any(|warning| {
+        warning.contains("must not be interpreted as isoform absence")
+    }));
+}
+
+#[test]
+fn gene_isoform_assay_study_policy_defaults_legacy_endpoint_coverage_to_strict() {
+    let mut legacy =
+        serde_json::to_value(GeneIsoformAssayStudyPolicy::default()).expect("serialize policy");
+    legacy
+        .as_object_mut()
+        .expect("policy object")
+        .remove("endpoint_coverage_policy");
+    let parsed: GeneIsoformAssayStudyPolicy =
+        serde_json::from_value(legacy).expect("deserialize legacy policy");
+    assert_eq!(
+        parsed.endpoint_coverage_policy,
+        TranscriptAssayCoveragePolicy::RequireAll
     );
 }
 
@@ -57495,6 +57738,27 @@ fn gene_isoform_assay_study_planner_normalizes_inputs_and_emits_exact_operation_
         .iter()
         .all(|step| step.operation_sha256.starts_with("sha256:")
             && step.operation.get("DesignTranscriptAssayPanel").is_some()));
+    let endpoint_step = plan
+        .planned_operations
+        .iter()
+        .find(|step| step.purpose == TranscriptAssayUseTier::LongRangeStructureDiscovery.as_str())
+        .expect("comprehensive plan contains endpoint step");
+    let endpoint_feasibility = endpoint_step
+        .feasibility
+        .as_ref()
+        .expect("planner embeds endpoint geometry feasibility");
+    assert_eq!(
+        endpoint_feasibility.operation_sha256,
+        endpoint_step.operation_sha256
+    );
+    assert_eq!(
+        endpoint_feasibility.primer3_candidate_pair_limit_per_reaction,
+        4
+    );
+    assert_eq!(
+        endpoint_feasibility.coverage_policy,
+        TranscriptAssayCoveragePolicy::RequireAll
+    );
     let workflow_bytes = fs::read(&workflow_path).expect("read emitted workflow");
     let workflow: Workflow =
         serde_json::from_slice(&workflow_bytes).expect("parse emitted workflow");

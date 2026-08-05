@@ -2,7 +2,7 @@
   "schema": "gentle.clawbio_skill_request.v1",
   "claim_attribution_mode": "strict",
   "presentation_profile": "pcr_primer_design",
-  "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.6.0", "intent_id": "offline_imported_primer_demo", "plan_step_index": 0},
+  "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.7.0", "intent_id": "offline_imported_primer_demo", "plan_step_index": 0},
   "mode": "workflow",
   "state_path": ".gentle_state.json",
   "workflow_path": "integrations/clawbio/skills/gentle-pcr-primer-design/examples/workflows/imported_primer_review_offline.workflow.json",

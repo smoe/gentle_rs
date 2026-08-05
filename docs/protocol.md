@@ -9060,6 +9060,20 @@ Primer-design shell command family (implemented):
   reference strand labels are included when a genome anchor is available.
 - Transcript assay panel schema:
   - `gentle.transcript_assay_panel.v2`
+  - `gentle.transcript_assay_panel_feasibility.v1` is the read-only,
+    pre-Primer3 endpoint-matrix assessment returned by
+    `primers inspect-transcript-assay-feasibility`. It binds the exact
+    `DesignTranscriptAssayPanel` operation SHA-256 and carries stable
+    first/terminal class and reaction ids, transcript-local end windows,
+    effective primer/product limits, proven structural blockers, and the count
+    of reactions for which Primer3 is still warranted. Workload fields retain
+    the warranted total/max template bp and candidate-pair request upper bound
+    so a scheduler can apply an explicit timeout policy without GENtle claiming
+    an exact duration. It proves only certain
+    annotation/geometry negatives; `primer_search_required` is not a promise
+    that sequence composition or thermodynamics will yield a pair. The MCP
+    `transcript_assay_feasibility` tool delegates to this same shared shell and
+    engine path
   - new reports persist `source_genome_anchor` at design time, including the
     source sequence, genome/reference id, chromosome, one-based inclusive
     interval, strand, and verification state. Whole-panel genomic specificity
@@ -9113,7 +9127,9 @@ Primer-design shell command family (implemented):
     above 10,000 bp. Its `end_classes[]`, `end_reactions[]`, and
     `band_size_matrix[]` make differently sized transcript products explicit.
     Endpoint-gel band intensity is rough or semi-quantitative, not a
-    quantitative transcript-abundance measurement.
+    quantitative transcript-abundance measurement. Endpoint searches default
+    to four requested candidate pairs per annotated end reaction when
+    `max_assays_per_class` is omitted; an explicit value remains authoritative
   - SYBR mode defaults to short products and never fabricates an internal
     probe. `short_sybr_junction_assays[]` is the primer-only subset whose
     selected forward or reverse primer satisfies a requested junction overlap.
@@ -9139,7 +9155,12 @@ Primer-design shell command family (implemented):
     an error that enumerates uncovered equivalence classes and persists no
     report. `best_effort` must be selected explicitly and returns
     `completion_status = partial`, warnings, uncovered class ids, and unresolved
-    class pairs where applicable.
+    class pairs where applicable. For endpoint matrices, hard annotation/window
+    blockers reject `require_all` before Primer3. Explicit `best_effort` skips
+    those reactions while retaining `structurally_impossible` status and
+    blocker details; a feasible search that finds no acceptable pair instead
+    records `primer_search_exhausted`. Cancellation/timeout remains an
+    execution error and is not reclassified as either scientific outcome
   - the detection matrix records `no_product`, `single_product`, or
     `multiple_products` for every selected assay and transcript row. Transcript
     interpretation is typed as `specific`, `shared_family`, `no_product`, or
@@ -9287,7 +9308,11 @@ Primer-design shell command family (implemented):
   - `planned_operations[]` stores each complete
     `DesignTranscriptAssayPanel` payload and digest. `operation_batch_sha256`
     binds their exact order; `approved_workflow_sha256` binds the exact
-    canonical workflow bytes written by `--workflow OUTPUT.json`
+    canonical workflow bytes written by `--workflow OUTPUT.json`. Endpoint
+    planned operations additionally echo the geometry-only feasibility report;
+    `policy.endpoint_coverage_policy` defaults to `require_all`, and an
+    explicitly approved `best_effort` value is carried unchanged into the
+    emitted endpoint operation
   - `primers execute-gene-isoform-study-workflow PLAN_JSON_OR_@FILE
     WORKFLOW_JSON_OR_@FILE` verifies both digests before executing the already
     parsed workflow. A missing legacy workflow digest or any byte/operation
@@ -9306,13 +9331,41 @@ Primer-design shell command family (implemented):
     hashes the compact JSON serialization of all workflow `ops` concatenated in entry order; the
     batch-basis digest hashes compact JSON of the complete batch with
     `batch_basis_sha256` cleared
-  - `primers execute-gene-isoform-study-workflow-batch BATCH_JSON_OR_@FILE`
+  - `primers execute-gene-isoform-study-workflow-batch BATCH_JSON_OR_@FILE
+    [--checkpoint-dir DIR] [--reuse-proposal PROPOSAL_JSON_OR_@FILE
+    --approve-reuse-sha256 SHA256]`
     rechecks the batch-basis hash and every referenced file, plan identity,
     workflow-byte hash, operation hash/count, and combined ordered digest
-    before executing the first workflow. Success returns
+    before executing the first workflow. It also evaluates every exact endpoint
+    operation after those digest checks but before the first workflow: a
+    structurally impossible strict operation rejects the complete batch with
+    its machine-readable feasibility report, starts no Primer3 process, and
+    applies no operation. Success returns
     `gentle.gene_isoform_assay_study_workflow_batch_execution.v1`. This keeps a
     multi-gene second stage inside one state-bound command instead of approving
-    several commands against a shared state that the first command then changes
+    several commands against a shared state that the first command then
+    changes. Execution now occurs in a detached engine and the live project is
+    replaced only after complete success. SIGUSR1/runtime status names the
+    current gene, plan, workflow and operation ordinals plus honest completed
+    and remaining workflow counts
+  - with `--checkpoint-dir`, every successful approved operation writes a
+    `gentle.gene_isoform_assay_study_checkpoint.v1` manifest and a hash-bound
+    detached-engine snapshot. A later batch failure leaves the live state
+    unchanged but retains those private checkpoint artifacts and exact result
+    records
+  - `primers inspect-gene-isoform-study-reuse BATCH_JSON_OR_@FILE
+    --checkpoint-dir DIR [--path OUTPUT.json]` is read-only. It selects only the
+    longest checkpoint whose baseline state, GENtle package/build/executable
+    hash, and complete ordered operation prefix match the target batch, and
+    emits `gentle.gene_isoform_assay_study_reuse_proposal.v1`. Appending a gene
+    can therefore reuse an unchanged prefix; changing GENtle or any prefix
+    payload cannot
+  - reuse requires both the stored proposal and its exact
+    `proposal_sha256`. Execution revalidates the proposal, manifest and engine
+    bytes before importing the checkpoint into a detached run. Approval means
+    “transfer this exact prior computation”; it does not validate assay biology
+    and cannot waive an identity mismatch. Without those two flags, GENtle
+    starts fresh even when compatible checkpoints exist
   - prior plans and unvalidated observations support an explicit next
     iteration. Retained assay ids are recorded but do not silently alter the
     automatic evidence recommendation

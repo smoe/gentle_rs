@@ -89,7 +89,7 @@ def test_every_execution_delegates_to_registered_generic_runtime() -> None:
             assert template["delegation"] == {
                 "schema": "gentle.clawbio_skill_delegation.v1",
                 "source_skill": "gentle-pcr-primer-design",
-                "source_skill_version": "0.6.0",
+                "source_skill_version": "0.7.0",
                 "intent_id": route["intent_id"],
                 "plan_step_index": step_index,
             }
@@ -122,6 +122,7 @@ def test_only_read_only_or_diagnostic_routes_execute_without_approval() -> None:
     assert automatic_routes == {
         "primer_design_preflight",
         "compose_isoform_study_workflow_batch",
+        "inspect_isoform_study_checkpoint_reuse",
         "normalize_isoform_study_request",
         "primer_report_list",
         "primer_report_show",
@@ -225,6 +226,8 @@ def test_isoform_study_routes_preserve_two_stage_approval_and_exact_batch_bindin
     execution = routes["approved_isoform_operation_batch"]
     compose_batch = routes["compose_isoform_study_workflow_batch"]
     execute_batch = routes["approved_isoform_study_workflow_batch"]
+    inspect_reuse = routes["inspect_isoform_study_checkpoint_reuse"]
+    execute_reuse = routes["approved_isoform_study_checkpoint_reuse"]
 
     assert normalize.get("requires_confirmation", False) is False
     assert normalize["plan"][0]["input_template"]["shell_line"].endswith(
@@ -264,7 +267,8 @@ def test_isoform_study_routes_preserve_two_stage_approval_and_exact_batch_bindin
     )
     assert execute_batch["requires_confirmation"] is True
     assert execute_batch["plan"][0]["input_template"]["shell_line"] == (
-        "primers execute-gene-isoform-study-workflow-batch @{batch_path}"
+        "primers execute-gene-isoform-study-workflow-batch @{batch_path} "
+        "--checkpoint-dir {checkpoint_dir}"
     )
     assert execute_batch["plan"][0]["input_template"]["timeout_secs"] == (
         "{execution_timeout_secs}"
@@ -272,6 +276,14 @@ def test_isoform_study_routes_preserve_two_stage_approval_and_exact_batch_bindin
     assert execute_batch["plan"][0]["slots"]["execution_timeout_secs"]["default"] == (
         "28800"
     )
+    assert inspect_reuse.get("requires_confirmation", False) is False
+    assert inspect_reuse["plan"][0]["input_template"]["shell_line"].startswith(
+        "primers inspect-gene-isoform-study-reuse "
+    )
+    assert execute_reuse["requires_confirmation"] is True
+    reuse_line = execute_reuse["plan"][0]["input_template"]["shell_line"]
+    assert "--reuse-proposal @{reuse_proposal_path}" in reuse_line
+    assert "--approve-reuse-sha256 {reuse_proposal_sha256}" in reuse_line
 
 
 def test_transcript_assay_design_timeout_is_explicit_and_approval_bound() -> None:

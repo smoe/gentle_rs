@@ -932,6 +932,29 @@ fn tool_list() -> Value {
                 "additionalProperties": false
             }
         }));
+        items.push(json!({
+            "name": "transcript_assay_feasibility",
+            "title": "Transcript Assay Feasibility",
+            "description": "Inspect deterministic endpoint isoform-matrix geometry for an exact DesignTranscriptAssayPanel operation without running Primer3.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "state_path": {
+                        "type": "string",
+                        "description": "Optional project state path. Defaults to server startup state path."
+                    },
+                    "operation": {
+                        "description": "Exact externally tagged DesignTranscriptAssayPanel operation object or JSON string.",
+                        "oneOf": [
+                            { "type": "object" },
+                            { "type": "string" }
+                        ]
+                    }
+                },
+                "required": ["operation"],
+                "additionalProperties": false
+            }
+        }));
         items.insert(
             2,
             json!({
@@ -1299,6 +1322,9 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
         "blast_async_list" => &["genomes blast-list", "helpers blast-list"],
         "exon_skip_plan" => &["transcripts exon-skip-plan"],
         "exon_skip_materialize" => &["transcripts exon-skip-materialize"],
+        "transcript_assay_feasibility" => {
+            &["primers inspect-transcript-assay-feasibility"]
+        }
         _ => &[],
     }
 }
@@ -2285,6 +2311,38 @@ fn exon_skip_materialize_tool_result(default_state_path: &str, arguments: &Value
         &args,
         tokens,
         "exon_skip_materialize",
+    ) {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
+fn transcript_assay_feasibility_tool_result(
+    default_state_path: &str,
+    arguments: &Value,
+) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let operation = match optional_json_string_arg(&args, "operation") {
+        Ok(Some(value)) => value,
+        Ok(None) => {
+            return tool_result_text(
+                "MCP argument 'operation' is required and must be an exact DesignTranscriptAssayPanel object or JSON string"
+                    .to_string(),
+                "text",
+                true,
+            );
+        }
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    match run_non_mutating_shell_tool(
+        default_state_path,
+        &args,
+        vec![
+            "primers".to_string(),
+            "inspect-transcript-assay-feasibility".to_string(),
+            operation,
+        ],
+        "transcript_assay_feasibility",
     ) {
         Ok(output) => tool_result_json(output, false),
         Err(err) => tool_result_text(err, "text", true),
@@ -3286,6 +3344,9 @@ fn tool_call_result(default_state_path: &str, params: ToolCallParams) -> Value {
         "exon_skip_materialize" => {
             exon_skip_materialize_tool_result(default_state_path, &params.arguments)
         }
+        "transcript_assay_feasibility" => {
+            transcript_assay_feasibility_tool_result(default_state_path, &params.arguments)
+        }
         "agent_systems" => agent_systems_tool_result(default_state_path, &params.arguments),
         "agent_preflight" => agent_preflight_tool_result(default_state_path, &params.arguments),
         "agent_models" => agent_models_tool_result(default_state_path, &params.arguments),
@@ -3739,6 +3800,48 @@ mod tests {
         state_path
     }
 
+    fn write_transcript_assay_feasibility_mcp_state(path: &Path) -> String {
+        let first = "ATGCCGTAGCTTACGAT";
+        let middle = "GATCGTACCGATGCTAGCTAGGATCCGATCGTACGATCCGTTACGATGCTAGC";
+        let terminal = "GCTAACGATCCGATGCTAACGTCGATCGTAGCTAACCGATGCTAGCTTACCG";
+        let spacer = "N".repeat(20);
+        let middle_start = first.len() + spacer.len();
+        let middle_end = middle_start + middle.len();
+        let terminal_start = middle_end + spacer.len();
+        let terminal_end = terminal_start + terminal.len();
+        let mut dna = DNAsequence::from_sequence(&format!(
+            "{first}{spacer}{middle}{spacer}{terminal}"
+        ))
+        .expect("valid endpoint DNA");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::Join(vec![
+                gb_io::seq::Location::simple_range(0, first.len() as i64),
+                gb_io::seq::Location::simple_range(
+                    middle_start as i64,
+                    middle_end as i64,
+                ),
+                gb_io::seq::Location::simple_range(
+                    terminal_start as i64,
+                    terminal_end as i64,
+                ),
+            ]),
+            qualifiers: vec![
+                ("gene".into(), Some("MCPEND".to_string())),
+                ("transcript_id".into(), Some("TX_MCP_END".to_string())),
+            ],
+        });
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("mcp_endpoint".to_string(), dna);
+        let state_path = path.to_string_lossy().to_string();
+        state
+            .save_to_path(&state_path)
+            .expect("save endpoint feasibility state");
+        state_path
+    }
+
     #[test]
     fn read_framed_json_rejects_oversized_content_length() {
         let oversized = MAX_MCP_CONTENT_LENGTH_BYTES + 1;
@@ -3923,6 +4026,47 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(required.contains(&"confirm"));
         assert!(required.contains(&"plan_id"));
+    }
+
+    #[test]
+    fn mcp_transcript_assay_feasibility_uses_shared_non_mutating_route() {
+        let temp = tempdir().expect("tempdir");
+        let state_path = write_transcript_assay_feasibility_mcp_state(
+            &temp.path().join("transcript-feasibility-state.json"),
+        );
+        let response = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "transcript_assay_feasibility",
+            json!({
+                "state_path": state_path,
+                "operation": {
+                    "DesignTranscriptAssayPanel": {
+                        "seq_id": "mcp_endpoint",
+                        "source_feature_id": 0,
+                        "assay_kind": "endpoint_rt_pcr",
+                        "objective": "isoform_end_matrix",
+                        "coverage_policy": "require_all",
+                        "min_amplicon_bp": 40,
+                        "max_amplicon_bp": 10000
+                    }
+                }
+            }),
+        );
+        let structured = &response["result"]["structuredContent"];
+        assert_eq!(
+            structured["report"]["schema"],
+            "gentle.transcript_assay_panel_feasibility.v1"
+        );
+        assert_eq!(
+            structured["report"]["execution_recommendation"],
+            "reject_before_primer_search"
+        );
+        assert_eq!(
+            structured["report"]["structurally_impossible_reaction_ids"]
+                .as_array()
+                .map(Vec::len),
+            Some(1)
+        );
     }
 
     #[test]

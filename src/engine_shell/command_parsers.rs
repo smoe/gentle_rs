@@ -6854,6 +6854,38 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 primer3_executable,
             })
         }
+        "inspect-transcript-assay-feasibility" => {
+            const USAGE: &str = "primers inspect-transcript-assay-feasibility OPERATION_JSON_OR_@FILE [--path OUTPUT.json]";
+            if tokens.len() < 3 {
+                return Err(format!(
+                    "primers inspect-transcript-assay-feasibility requires an exact DesignTranscriptAssayPanel operation:\n       {USAGE}"
+                ));
+            }
+            let operation_json = tokens[2].clone();
+            let mut path = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--path" => {
+                        path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--path",
+                            "primers inspect-transcript-assay-feasibility",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for primers inspect-transcript-assay-feasibility"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PrimersInspectTranscriptAssayFeasibility {
+                operation_json,
+                path,
+            })
+        }
         "test-cdna-qpcr-fasta" | "screen-cdna-qpcr" => {
             if tokens.len() < 3 {
                 return Err(
@@ -7350,7 +7382,8 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             })
         }
         "compose-gene-isoform-study-workflow-batch" => {
-            const USAGE: &str = "primers compose-gene-isoform-study-workflow-batch REQUEST_JSON_OR_@FILE";
+            const USAGE: &str =
+                "primers compose-gene-isoform-study-workflow-batch REQUEST_JSON_OR_@FILE";
             if tokens.len() != 3 {
                 return Err(format!(
                     "primers compose-gene-isoform-study-workflow-batch requires:\n       {USAGE}"
@@ -7362,17 +7395,105 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 },
             )
         }
+        "inspect-gene-isoform-study-reuse" => {
+            const USAGE: &str = "primers inspect-gene-isoform-study-reuse BATCH_JSON_OR_@FILE --checkpoint-dir DIR [--path OUTPUT.json]";
+            if tokens.len() < 5 {
+                return Err(format!(
+                    "primers inspect-gene-isoform-study-reuse requires:\n       {USAGE}"
+                ));
+            }
+            let batch_json = tokens[2].clone();
+            let context = "primers inspect-gene-isoform-study-reuse";
+            let mut checkpoint_dir = None;
+            let mut path = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--checkpoint-dir" => {
+                        checkpoint_dir = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--checkpoint-dir",
+                            context,
+                        )?);
+                    }
+                    "--path" | "--output" => {
+                        let flag = tokens[idx].clone();
+                        path = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {context}\n       {USAGE}"
+                        ));
+                    }
+                }
+            }
+            let checkpoint_dir = checkpoint_dir.ok_or_else(|| {
+                format!("{context} requires --checkpoint-dir DIR\n       {USAGE}")
+            })?;
+            Ok(ShellCommand::PrimersInspectGeneIsoformAssayStudyReuse {
+                batch_json,
+                checkpoint_dir,
+                path,
+            })
+        }
         "execute-gene-isoform-study-workflow-batch" => {
-            const USAGE: &str =
-                "primers execute-gene-isoform-study-workflow-batch BATCH_JSON_OR_@FILE";
-            if tokens.len() != 3 {
+            const USAGE: &str = "primers execute-gene-isoform-study-workflow-batch BATCH_JSON_OR_@FILE [--checkpoint-dir DIR] [--reuse-proposal PROPOSAL_JSON_OR_@FILE --approve-reuse-sha256 SHA256]";
+            if tokens.len() < 3 {
                 return Err(format!(
                     "primers execute-gene-isoform-study-workflow-batch requires:\n       {USAGE}"
                 ));
             }
+            let batch_json = tokens[2].clone();
+            let context = "primers execute-gene-isoform-study-workflow-batch";
+            let mut checkpoint_dir = None;
+            let mut reuse_proposal_json = None;
+            let mut approve_reuse_sha256 = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--checkpoint-dir" => {
+                        checkpoint_dir = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--checkpoint-dir",
+                            context,
+                        )?);
+                    }
+                    "--reuse-proposal" => {
+                        reuse_proposal_json = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--reuse-proposal",
+                            context,
+                        )?);
+                    }
+                    "--approve-reuse-sha256" => {
+                        approve_reuse_sha256 = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--approve-reuse-sha256",
+                            context,
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {context}\n       {USAGE}"
+                        ));
+                    }
+                }
+            }
+            if reuse_proposal_json.is_some() != approve_reuse_sha256.is_some() {
+                return Err(format!(
+                    "{context} requires --reuse-proposal and --approve-reuse-sha256 together\n       {USAGE}"
+                ));
+            }
             Ok(
                 ShellCommand::PrimersExecuteGeneIsoformAssayStudyWorkflowBatch {
-                    batch_json: tokens[2].clone(),
+                    batch_json,
+                    checkpoint_dir,
+                    reuse_proposal_json,
+                    approve_reuse_sha256,
                 },
             )
         }

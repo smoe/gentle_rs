@@ -2,7 +2,7 @@
   "schema": "gentle.clawbio_skill_request.v1",
   "claim_attribution_mode": "strict",
   "presentation_profile": "pcr_primer_design",
-  "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.6.0", "intent_id": "specificity_plan_only_demo", "plan_step_index": 0},
+  "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.7.0", "intent_id": "specificity_plan_only_demo", "plan_step_index": 0},
   "mode": "shell",
   "state_path": ".gentle_state.json",
   "shell_line": "primers specificity-plan PRIMER_REPORT_ID --pair-rank 1 --target-genome PREPARED_REFERENCE_ID --output-dir analysis/primer_specificity_plan",

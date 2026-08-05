@@ -471,6 +471,7 @@ an agent has selected a deterministic operation.
 - `primers design`
 - `primers design-transcript-assay-panel`
 - `primers compose-gene-isoform-study-workflow-batch`
+- `primers inspect-gene-isoform-study-reuse`
 - `primers execute-gene-isoform-study-workflow`
 - `primers execute-gene-isoform-study-workflow-batch`
 - `primers design-qpcr`
