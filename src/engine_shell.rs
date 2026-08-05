@@ -23284,6 +23284,45 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "registry": registry_metadata_for_introspection("primers inspect-transcript-assay-feasibility")
         }),
         json!({
+            "id": "transcript_assay_feasibility",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "OPERATION_JSON", "required": true, "subject_kind": "other", "detail": "exact DesignTranscriptAssayPanel operation payload to assess without changing it"},
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded annotated sequence named inside the operation payload"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Inspect deterministic annotation and end-window feasibility through the MCP projection without running Primer3.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("transcript_assay_feasibility")
+        }),
+        json!({
+            "id": "primers inspect-gene-isoform-study-reuse",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "BATCH_JSON", "required": true, "subject_kind": "other", "detail": "approved gene isoform-assay workflow batch"},
+                {"name": "CHECKPOINT_DIR", "required": true, "subject_kind": "other", "detail": "private checkpoint directory to inspect"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional reuse-proposal JSON path"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Inspect approved-operation checkpoints and emit an exact-prefix reuse proposal without importing state or running Primer3.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers inspect-gene-isoform-study-reuse")
+        }),
+        json!({
             "id": "PlanGeneIsoformAssayStudy",
             "kind": "operation",
             "mutating": "false",

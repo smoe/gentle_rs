@@ -592,6 +592,23 @@ fn shell_command_line_with_option(base: &str, flag: &str, value: Option<&str>) -
     Some(tokens.join(" "))
 }
 
+fn add_required_glossary_flag_companion(path: &str, flag: &str, line: &mut String) {
+    let companion = match (path, flag) {
+        (
+            "primers execute-gene-isoform-study-workflow-batch",
+            "--reuse-proposal",
+        ) => Some(" --approve-reuse-sha256 demo"),
+        (
+            "primers execute-gene-isoform-study-workflow-batch",
+            "--approve-reuse-sha256",
+        ) => Some(" --reuse-proposal demo"),
+        _ => None,
+    };
+    if let Some(companion) = companion {
+        line.push_str(companion);
+    }
+}
+
 #[test]
 fn glossary_cli_usage_smoke_commands_parse() {
     let glossary = glossary_fixture();
@@ -630,9 +647,11 @@ fn glossary_cli_usage_flags_parse_one_by_one() {
             if skip_glossary_flag_parse(&command.path, &flag) {
                 continue;
             }
-            let Some(line) = shell_command_line_with_option(&base, &flag, value.as_deref()) else {
+            let Some(mut line) = shell_command_line_with_option(&base, &flag, value.as_deref())
+            else {
                 continue;
             };
+            add_required_glossary_flag_companion(&command.path, &flag, &mut line);
             if let Err(error) = parse_shell_line(&line) {
                 failures.push(format!(
                     "{} flag {}\n  usage: {}\n  smoke: {}\n  error: {}",

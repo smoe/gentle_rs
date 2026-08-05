@@ -19663,11 +19663,22 @@ impl GentleEngine {
     fn transcript_assay_operation_sha256(
         operation: &Operation,
     ) -> Result<String, EngineError> {
-        let operation_value = serde_json::to_value(operation).map_err(|error| EngineError {
+        let mut operation_value = serde_json::to_value(operation).map_err(|error| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize transcript assay operation: {error}"),
             cause_chain: vec![],
         })?;
+        let payload = operation_value
+            .get_mut("DesignTranscriptAssayPanel")
+            .and_then(serde_json::Value::as_object_mut)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::Internal,
+                message: "Could not fingerprint a non-transcript-assay operation as transcript assay feasibility"
+                    .to_string(),
+                cause_chain: vec![],
+            })?;
+        // Feasibility is a property of the design request, not its export destination.
+        payload.insert("path".to_string(), serde_json::Value::Null);
         let operation_bytes =
             serde_json::to_vec(&operation_value).map_err(|error| EngineError {
                 code: ErrorCode::Internal,

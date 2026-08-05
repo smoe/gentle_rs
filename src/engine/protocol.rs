@@ -9098,6 +9098,9 @@ pub struct TranscriptAssayEndReactionFeasibility {
 /// thermodynamically suitable pair.
 pub struct TranscriptAssayPanelFeasibilityReport {
     pub schema: String,
+    /// SHA-256 of the canonical design operation. The output-only `path` is
+    /// normalized away so the same computation has stable provenance across
+    /// export directories. This is not an execution-approval digest.
     pub operation_sha256: String,
     pub source_seq_id: String,
     pub source_feature_id: usize,

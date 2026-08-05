@@ -57747,9 +57747,33 @@ fn gene_isoform_assay_study_planner_normalizes_inputs_and_emits_exact_operation_
         .feasibility
         .as_ref()
         .expect("planner embeds endpoint geometry feasibility");
+    let endpoint_operation: Operation = serde_json::from_value(endpoint_step.operation.clone())
+        .expect("parse planned endpoint operation");
+    let independently_inspected = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&endpoint_operation)
+        .expect("inspect planned endpoint feasibility");
     assert_eq!(
         endpoint_feasibility.operation_sha256,
-        endpoint_step.operation_sha256
+        independently_inspected.operation_sha256
+    );
+    assert_ne!(
+        endpoint_feasibility.operation_sha256,
+        endpoint_step.operation_sha256,
+        "feasibility excludes the output path while approval binds the exact operation"
+    );
+    let mut relocated_endpoint_operation = endpoint_operation.clone();
+    let Operation::DesignTranscriptAssayPanel { path, .. } = &mut relocated_endpoint_operation
+    else {
+        panic!("planned endpoint operation has the expected variant");
+    };
+    *path = Some("another/export/location.json".to_string());
+    let relocated_feasibility = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&relocated_endpoint_operation)
+        .expect("inspect relocated endpoint feasibility");
+    assert_eq!(
+        relocated_feasibility.operation_sha256,
+        endpoint_feasibility.operation_sha256,
+        "an export-only path change must not alter computational feasibility provenance"
     );
     assert_eq!(
         endpoint_feasibility.primer3_candidate_pair_limit_per_reaction,

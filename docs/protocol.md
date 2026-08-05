@@ -9309,7 +9309,12 @@ Primer-design shell command family (implemented):
     `DesignTranscriptAssayPanel` payload and digest. `operation_batch_sha256`
     binds their exact order; `approved_workflow_sha256` binds the exact
     canonical workflow bytes written by `--workflow OUTPUT.json`. Endpoint
-    planned operations additionally echo the geometry-only feasibility report;
+    planned operations additionally echo the geometry-only feasibility report.
+    Its `operation_sha256` fingerprints the canonical computational request
+    with the output-only `path` normalized away, so relocating an export does
+    not change feasibility provenance. It is not an approval digest; the
+    planned-operation, batch, and workflow digests continue to bind the exact
+    payload including its destination path;
     `policy.endpoint_coverage_policy` defaults to `require_all`, and an
     explicitly approved `best_effort` value is carried unchanged into the
     emitted endpoint operation
