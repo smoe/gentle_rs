@@ -5598,12 +5598,38 @@ pub struct DbSnpFetchProgress {
 /// Primer3's bounded, per-input-record search-work counters.
 ///
 /// `completed` never decreases and `bound` never increases within one record.
-/// The counters measure instrumented candidate evaluations, not elapsed time,
-/// and therefore must not be presented as an ETA.
+/// The counters measure instrumented candidate evaluations, not elapsed time.
+/// GENtle may attach a separately labelled, uncertain wall-clock projection;
+/// consumers must not present the raw work fraction itself as an ETA.
 pub struct Primer3Progress {
     pub record: u64,
     pub completed: u64,
     pub bound: u64,
+    /// GENtle bounded-record identity. Native Primer3 does not emit these
+    /// fields; the transcript-assay adapter attaches them before forwarding.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_target_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_record_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bounded_record_ordinal: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bounded_record_count: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bounded_candidate_pair_upper_bound: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bounded_candidate_pair_total_upper_bound: Option<usize>,
+    /// Wall-clock observation attached by GENtle, never emitted by Primer3.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub elapsed_ms: Option<u128>,
+    /// Remaining deterministic candidate-work units.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work_remaining: Option<u64>,
+    /// Uncertain linear wall-clock projection, kept separate from work units.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub projected_total_ms: Option<u128>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_assessment: Option<String>,
 }
 
 impl Default for Primer3Progress {
@@ -5612,6 +5638,16 @@ impl Default for Primer3Progress {
             record: 0,
             completed: 0,
             bound: 0,
+            search_target_id: None,
+            search_record_id: None,
+            bounded_record_ordinal: None,
+            bounded_record_count: None,
+            bounded_candidate_pair_upper_bound: None,
+            bounded_candidate_pair_total_upper_bound: None,
+            elapsed_ms: None,
+            work_remaining: None,
+            projected_total_ms: None,
+            runtime_assessment: None,
         }
     }
 }
@@ -9058,6 +9094,160 @@ pub struct TranscriptAssayFeasibilityBlocker {
     pub detail: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+/// Deterministic limits applied before and while Primer3 evaluates transcript assays.
+///
+/// These limits reduce computational freedom only. They never change the
+/// requested transcript coverage policy.
+pub struct TranscriptAssayPrimerSearchPolicy {
+    /// Largest transcript-local interval offered to one primer side in one
+    /// Primer3 input record.
+    pub max_primer_window_bp: usize,
+    /// Maximum deterministic candidate-pair combinations in one record.
+    pub max_candidate_pairs_per_record: usize,
+    /// Maximum records retained for one biological target/reaction.
+    pub max_records_per_target: usize,
+    /// Maximum deterministic candidate-pair combinations across the operation.
+    pub max_candidate_pairs_total: usize,
+    /// Homopolymer runs longer than this are excluded during search planning.
+    pub max_homopolymer_run_bp: usize,
+    /// Emit a suspicious-runtime warning after this elapsed time when the
+    /// uncertain wall-clock projection exceeds the warning threshold.
+    pub runtime_warning_after_secs: u64,
+    pub runtime_warning_projected_total_secs: u64,
+    /// Stop the current record after this elapsed time when the uncertain
+    /// wall-clock projection exceeds the reduction threshold.
+    pub runtime_reduce_after_secs: u64,
+    pub runtime_reduce_projected_total_secs: u64,
+    /// Stop a record that has emitted no usable progress for this long.
+    pub runtime_no_progress_reduce_after_secs: u64,
+    /// Continue with other precomputed bounded records after a runtime
+    /// anomaly. Strict biological coverage is still evaluated afterwards.
+    pub continue_after_runtime_reduction: bool,
+}
+
+impl Default for TranscriptAssayPrimerSearchPolicy {
+    fn default() -> Self {
+        Self {
+            max_primer_window_bp: 96,
+            max_candidate_pairs_per_record: 250_000,
+            max_records_per_target: 12,
+            max_candidate_pairs_total: 2_000_000,
+            max_homopolymer_run_bp: 6,
+            runtime_warning_after_secs: 10 * 60,
+            runtime_warning_projected_total_secs: 5 * 60 * 60,
+            runtime_reduce_after_secs: 30 * 60,
+            runtime_reduce_projected_total_secs: 10 * 60 * 60,
+            runtime_no_progress_reduce_after_secs: 5 * 60 * 60,
+            continue_after_runtime_reduction: true,
+        }
+    }
+}
+
+impl TranscriptAssayPrimerSearchPolicy {
+    pub fn is_default(&self) -> bool {
+        self == &Self::default()
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Pre-Primer3 disposition of a bounded transcript-assay search plan.
+pub enum TranscriptAssayPrimerSearchPlanStatus {
+    #[default]
+    Ready,
+    SearchSpaceTooBroad,
+    NoAdmissibleRegions,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One allowed or rejected transcript-local primer interval.
+pub struct TranscriptAssayPrimerSearchInterval {
+    pub target_id: String,
+    pub representative_transcript_id: String,
+    pub side: String,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub reason_code: String,
+    pub reason: String,
+    #[serde(default)]
+    pub exon_ordinals: Vec<usize>,
+    #[serde(default)]
+    pub junction_ids: Vec<String>,
+    pub estimated_candidate_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Exact Primer3 field emitted for one bounded input record.
+pub struct TranscriptAssayPrimer3Field {
+    pub name: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One independently bounded Primer3 record.
+pub struct TranscriptAssayPrimerSearchRecord {
+    pub search_record_id: String,
+    pub target_id: String,
+    pub representative_transcript_id: String,
+    pub template_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_reaction_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub junction_id: Option<String>,
+    pub left_interval: TranscriptAssayPrimerSearchInterval,
+    pub right_interval: TranscriptAssayPrimerSearchInterval,
+    pub estimated_left_candidate_count: usize,
+    pub estimated_right_candidate_count: usize,
+    pub estimated_candidate_pair_count: usize,
+    /// Conservative product of all primer placements Primer3 may enumerate
+    /// inside the two allowed windows. This is reported separately from the
+    /// quality-filtered estimate used by the declared search budget.
+    pub candidate_pair_search_space_upper_bound: usize,
+    #[serde(default)]
+    pub primer3_fields: Vec<TranscriptAssayPrimer3Field>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One runtime record skipped after Primer3 progress became anomalous.
+pub struct TranscriptAssayPrimerSearchRuntimeReduction {
+    pub search_record_id: String,
+    pub target_id: String,
+    pub reason_code: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Inspectable, byte-stable pre-Primer3 search plan.
+pub struct TranscriptAssayPrimerSearchPlan {
+    pub schema: String,
+    pub operation_sha256: String,
+    pub policy: TranscriptAssayPrimerSearchPolicy,
+    #[serde(default)]
+    pub records: Vec<TranscriptAssayPrimerSearchRecord>,
+    #[serde(default)]
+    pub rejected_intervals: Vec<TranscriptAssayPrimerSearchInterval>,
+    pub target_count: usize,
+    pub planned_target_count: usize,
+    pub estimated_candidate_pair_count_total: usize,
+    /// Sum of the per-record conservative Primer3 search-space bounds.
+    pub candidate_pair_search_space_upper_bound_total: usize,
+    #[serde(default)]
+    pub blocked_target_ids: Vec<String>,
+    #[serde(default)]
+    pub status: TranscriptAssayPrimerSearchPlanStatus,
+    #[serde(default)]
+    pub runtime_reductions: Vec<TranscriptAssayPrimerSearchRuntimeReduction>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
 /// Cheap annotation/geometry assessment for one first-end x terminal-end reaction.
@@ -9137,6 +9327,9 @@ pub struct TranscriptAssayPanelFeasibilityReport {
     pub primer3_warranted_max_template_bp: usize,
     /// Warranted reaction count multiplied by the approved per-reaction limit.
     pub primer3_candidate_pair_request_upper_bound: usize,
+    /// Sequence-aware bounded records that Primer3 would receive.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_plan: Option<TranscriptAssayPrimerSearchPlan>,
     pub execution_recommendation: String,
     #[serde(default)]
     pub warnings: Vec<String>,
@@ -9447,6 +9640,9 @@ pub struct TranscriptAssayPanelReport {
     /// Geometry-only preflight used before endpoint Primer3 execution.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub feasibility: Option<TranscriptAssayPanelFeasibilityReport>,
+    /// Sequence-aware bounded Primer3 records used for this run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_plan: Option<TranscriptAssayPrimerSearchPlan>,
     #[serde(default)]
     pub end_classes: Vec<TranscriptAssayEndClass>,
     #[serde(default)]

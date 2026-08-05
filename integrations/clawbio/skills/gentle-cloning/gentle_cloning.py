@@ -17,8 +17,10 @@ import platform
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
+import threading
 from typing import Any
 import xml.etree.ElementTree as ET
 
@@ -3646,13 +3648,80 @@ def _run_cli_command(
 ) -> tuple[subprocess.CompletedProcess[str], dict[str, Any]]:
     command = resolution.argv_prefix + cli_args
     started_utc = _now_utc_iso()
-    run_result = subprocess.run(
+    popen_kwargs: dict[str, Any] = {
+        "cwd": execution_cwd,
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.PIPE,
+        "text": False,
+    }
+    if os.name == "posix":
+        popen_kwargs["start_new_session"] = True
+    elif os.name == "nt":
+        popen_kwargs["creationflags"] = getattr(
+            subprocess, "CREATE_NEW_PROCESS_GROUP", 0
+        )
+    process = subprocess.Popen(
         command,
-        cwd=execution_cwd,
-        capture_output=True,
-        text=True,
-        timeout=timeout_secs,
-        check=False,
+        **popen_kwargs,
+    )
+    forwarded_signals: list[dict[str, Any]] = []
+    previous_handlers: dict[int, Any] = {}
+
+    def forward_signal(signum: int, _frame: Any) -> None:
+        record = {
+            "signal": signum,
+            "signal_name": signal.Signals(signum).name,
+            "forwarded": False,
+            "error": None,
+        }
+        try:
+            if os.name == "posix":
+                os.killpg(process.pid, signum)
+            else:
+                process.send_signal(signum)
+            record["forwarded"] = True
+        except (OSError, ProcessLookupError, ValueError) as error:
+            record["error"] = str(error)
+        forwarded_signals.append(record)
+
+    signal_names = ("SIGINT", "SIGTERM", "SIGHUP", "SIGUSR1")
+    if threading.current_thread() is threading.main_thread():
+        for name in signal_names:
+            signum = getattr(signal, name, None)
+            if signum is None:
+                continue
+            previous_handlers[signum] = signal.getsignal(signum)
+            signal.signal(signum, forward_signal)
+    timed_out = False
+    try:
+        stdout_bytes, stderr_bytes = process.communicate(timeout=timeout_secs)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        try:
+            if os.name == "posix":
+                os.killpg(process.pid, signal.SIGTERM)
+            else:
+                process.terminate()
+            stdout_bytes, stderr_bytes = process.communicate(timeout=5)
+        except (subprocess.TimeoutExpired, OSError):
+            if os.name == "posix":
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            else:
+                process.kill()
+            stdout_bytes, stderr_bytes = process.communicate()
+    finally:
+        for signum, previous in previous_handlers.items():
+            signal.signal(signum, previous)
+    stdout = stdout_bytes.decode("utf-8", errors="replace")
+    stderr = stderr_bytes.decode("utf-8", errors="replace")
+    run_result = subprocess.CompletedProcess(
+        command,
+        process.returncode,
+        stdout=stdout,
+        stderr=stderr,
     )
     ended_utc = _now_utc_iso()
     step = {
@@ -3662,7 +3731,17 @@ def _run_cli_command(
         "exit_code": run_result.returncode,
         "stdout": run_result.stdout,
         "stderr": run_result.stderr,
-        "status": ("ok" if run_result.returncode == 0 else "command_failed"),
+        "stdout_bytes": len(stdout_bytes),
+        "stderr_bytes": len(stderr_bytes),
+        "stdout_sha256": _sha256_prefixed_bytes(stdout_bytes),
+        "stderr_sha256": _sha256_prefixed_bytes(stderr_bytes),
+        "forwarded_signals": forwarded_signals,
+        "timeout_secs": timeout_secs,
+        "status": (
+            "timed_out"
+            if timed_out
+            else ("ok" if run_result.returncode == 0 else "command_failed")
+        ),
     }
     return run_result, step
 

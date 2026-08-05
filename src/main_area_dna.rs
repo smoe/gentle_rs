@@ -20214,6 +20214,25 @@ impl MainAreaDna {
                         .fraction()
                         .map(|fraction| format!(" ({:.1}%)", fraction * 100.0))
                         .unwrap_or_default();
+                    let bounded_record =
+                        match (work.bounded_record_ordinal, work.bounded_record_count) {
+                            (Some(ordinal), Some(count)) => {
+                                format!(" bounded record {ordinal}/{count}")
+                            }
+                            _ => String::new(),
+                        };
+                    let projection = work
+                        .projected_total_ms
+                        .map(|millis| {
+                            format!(", uncertain projection {:.1} min", millis as f64 / 60_000.0)
+                        })
+                        .unwrap_or_default();
+                    let assessment = work
+                        .runtime_assessment
+                        .as_deref()
+                        .filter(|value| *value != "within_runtime_policy")
+                        .map(|value| format!(", {value}"))
+                        .unwrap_or_default();
                     format!(
                         "{}{}: Primer3 record {} bounded work {}/{}{}",
                         backend_prefix,
@@ -20221,7 +20240,7 @@ impl MainAreaDna {
                         work.record,
                         work.completed,
                         work.bound,
-                        percent
+                        format!("{percent}{bounded_record}{projection}{assessment}")
                     )
                 })
                 .unwrap_or_else(|| {

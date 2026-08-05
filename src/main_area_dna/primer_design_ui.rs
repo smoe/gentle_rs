@@ -1299,6 +1299,7 @@ impl MainAreaDna {
                 &ui.oligo_dt_5prime_risk_threshold_bp,
                 "oligo_dt_5prime_risk_threshold_bp",
             )?,
+            search_policy: None,
             junctions: explicit_junctions,
             junction_evidence_paths,
             junction_evidence_priority: ui.junction_evidence_priority,

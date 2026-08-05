@@ -607,6 +607,14 @@ Alternative runtimes:
 - `--gentle-cli "<command>"`
 - repository-local `cargo run --quiet --bin gentle_cli --`
 
+The Python adapter supervises each delegated CLI invocation as its own process
+group. On supported POSIX systems it forwards `SIGINT`, `SIGTERM`, `SIGHUP`,
+and status-only `SIGUSR1` to the active GENtle/Primer3 descendants without
+letting `SIGUSR1` terminate the wrapper. Timeout and child-failure receipts
+retain the child exit code plus the exact stdout/stderr byte counts and
+SHA-256 hashes. Windows uses a new process group and forwards the signals the
+platform exposes; it does not claim POSIX-only `SIGUSR1` support.
+
 ## Request schema
 
 - `schema`: `gentle.clawbio_skill_request.v1`

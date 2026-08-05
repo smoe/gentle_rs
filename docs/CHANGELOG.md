@@ -31,6 +31,13 @@ understand what changed.
 
 ## 2026-08-05
 
+- Added sequence-aware bounded Primer3 search plans for transcript-assay
+  operations. Endpoint and junction targets now expose annotation-anchored
+  allowed/rejected intervals, deterministic work budgets, exact Primer3 fields,
+  and fail-before-launch statuses; suspicious progress can stop one bounded
+  record without weakening strict coverage. ClawBio process supervision now
+  forwards status/termination signals to the active process group and records
+  exact child output hashes.
 - Made approved multi-gene isoform-assay execution truly atomic in memory and
   on disk, added gene/workflow/operation ordinals to runtime/SIGUSR1 status,
   and added opt-in content-bound operation checkpoints with a separately

@@ -923,6 +923,38 @@ impl ProgressPrinter {
             if let Some(fraction) = progress.fraction() {
                 parts.push(format!("primer3_percent={:.1}", fraction * 100.0));
             }
+            if let Some(target_id) = progress.search_target_id.as_deref() {
+                parts.push(format!("search_target={target_id}"));
+            }
+            if let Some(record_id) = progress.search_record_id.as_deref() {
+                parts.push(format!("search_record={record_id}"));
+            }
+            if let (Some(ordinal), Some(count)) = (
+                progress.bounded_record_ordinal,
+                progress.bounded_record_count,
+            ) {
+                parts.push(format!("bounded_record={ordinal}/{count}"));
+            }
+            if let Some(bound) = progress.bounded_candidate_pair_upper_bound {
+                parts.push(format!("bounded_pair_upper={bound}"));
+            }
+            if let Some(bound) = progress.bounded_candidate_pair_total_upper_bound {
+                parts.push(format!("bounded_pair_total_upper={bound}"));
+            }
+            if let Some(elapsed_ms) = progress.elapsed_ms {
+                parts.push(format!("primer3_elapsed_ms={elapsed_ms}"));
+            }
+            if let Some(remaining) = progress.work_remaining {
+                parts.push(format!("primer3_work_remaining={remaining}"));
+            }
+            if let Some(projected_total_ms) = progress.projected_total_ms {
+                parts.push(format!(
+                    "primer3_uncertain_projected_total_ms={projected_total_ms}"
+                ));
+            }
+            if let Some(assessment) = progress.runtime_assessment.as_deref() {
+                parts.push(format!("primer3_runtime_assessment={assessment}"));
+            }
         }
         parts.push(format!("max_output={}", p.max_output));
         parts.push(format!("done={}", p.done));

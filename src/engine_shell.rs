@@ -54363,6 +54363,7 @@ fn execute_primers_command(
                 max_mismatches: *max_mismatches,
                 require_3prime_exact_bases: *require_3prime_exact_bases,
                 oligo_dt_5prime_risk_threshold_bp: *oligo_dt_5prime_risk_threshold_bp,
+                search_policy: None,
                 junctions,
                 junction_evidence_paths: junction_evidence_paths.clone(),
                 junction_evidence_priority: *junction_evidence_priority,
@@ -59803,6 +59804,22 @@ fn preflight_approved_transcript_assay_operations(
                 report
                     .structurally_impossible_equivalence_group_ids
                     .join(", "),
+                report_json
+            ));
+        }
+        if report.search_plan.as_ref().is_some_and(|plan| {
+            plan.status != crate::engine::TranscriptAssayPrimerSearchPlanStatus::Ready
+        }) {
+            let report_json = serde_json::to_string(&report).map_err(|error| {
+                format!(
+                    "Could not serialize rejected endpoint search plan for '{}': {error}; no operations were executed",
+                    source_label
+                )
+            })?;
+            return Err(format!(
+                "Approved endpoint operation {} from '{}' has no acceptable bounded Primer3 search plan; no Primer3 process was started and no operations were executed. The exact operation and require_all policy remain unchanged. feasibility_report={}",
+                index.saturating_add(1),
+                source_label,
                 report_json
             ));
         }

@@ -856,6 +856,8 @@ pub const TRANSCRIPT_QPCR_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_qpcr_pa
 pub const TRANSCRIPT_ASSAY_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_assay_panel.v2";
 pub const TRANSCRIPT_ASSAY_PANEL_FEASIBILITY_SCHEMA: &str =
     "gentle.transcript_assay_panel_feasibility.v1";
+pub const TRANSCRIPT_ASSAY_PRIMER_SEARCH_PLAN_SCHEMA: &str =
+    "gentle.transcript_assay_primer_search_plan.v1";
 pub const GENE_TRANSCRIPT_ASSAY_ROUTINE_SCHEMA: &str = "gentle.gene_transcript_assay_routine.v1";
 pub const PRIMER_PAIR_SUMMARY_SCHEMA: &str = "gentle.primer_pair_summary.v2";
 const RESTRICTION_CLONING_PCR_HANDOFF_REPORT_SCHEMA: &str =
@@ -4532,6 +4534,10 @@ pub enum Operation {
         /// reach reported in oligo-dT transcript-by-assay cells.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         oligo_dt_5prime_risk_threshold_bp: Option<usize>,
+        /// Optional deterministic search budget. Omitted/default policy is
+        /// not serialized so legacy operation digests remain stable.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        search_policy: Option<TranscriptAssayPrimerSearchPolicy>,
         #[serde(default)]
         junctions: Vec<TranscriptAssayJunctionRequest>,
         /// Existing probe-evidence interpretation reports whose JUC rows

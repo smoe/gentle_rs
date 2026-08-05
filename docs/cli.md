@@ -2242,8 +2242,11 @@ search counts, for example `progress primers ... stage=pair_search ...` and
 `progress primers ... stage=assay_search_complete ...`.
 Progress-capable Primer3 builds additionally emit
 `stage=primer3_search primer3_record=N primer3_work=COMPLETED/BOUND
-primer3_percent=P`. The work values count bounded candidate evaluations; they
-are not seconds and do not predict a completion time. GENtle runs older
+primer3_percent=P`. Transcript-assay runs also attach the GENtle bounded
+search-record id and ordinal, deterministic record/operation pair-work bounds,
+elapsed time, and a separately labelled uncertain linear runtime projection.
+The native work values count bounded candidate evaluations; they are not
+seconds and must not themselves be presented as an ETA. GENtle runs older
 Primer3 binaries in legacy mode when `--help` omits `--progress`, so those
 installations continue to work but expose only the coarse Primer3 stages.
 When `--progress-stdout` is used, progress lines are emitted before the final JSON output.
@@ -3970,6 +3973,16 @@ Shared shell command:
         Primer3. MCP exposes the same non-mutating route as
         `transcript_assay_feasibility`, accepting the exact operation object or
         its JSON string
+      - the same preflight now derives
+        `gentle.transcript_assay_primer_search_plan.v1`: narrow annotation-
+        anchored left/right intervals, rejected sequence regions with reasons,
+        deterministic candidate/pair estimates, and the exact
+        `SEQUENCE_PRIMER_PAIR_OK_REGION_LIST`, junction/target, exclusion, and
+        product-range fields that a subsequent Primer3 run will receive. It
+        returns `search_space_too_broad` or `no_admissible_regions` before
+        launching Primer3 when a required target cannot fit the declared
+        budget. The complete operation-JSON form can set the optional
+        `search_policy`; concise CLI flags retain its documented defaults
       - the command accepts either the concise `SEQ_ID FEATURE_ID` flag form or
         a complete externally tagged `DesignTranscriptAssayPanel` operation as
         inline JSON / `@FILE`. The operation form exposes every shared primer,
@@ -4003,6 +4016,11 @@ Shared shell command:
         an assay that omits any exact cDNA class is rejected rather than saved
       - `--coverage-policy best-effort` is an explicit opt-in that saves a
         visibly partial report with uncovered class ids and warnings
+      - anomalous wall-clock behavior does not silently select biological
+        `best-effort`: GENtle may stop one bounded Primer3 record and continue
+        other already planned records, but the requested coverage policy is
+        unchanged and `require-all` still rejects any resulting uncovered
+        class or endpoint reaction
       - strict endpoint matrices now reject annotation/geometry impossibilities
         before Primer3. Explicit best-effort matrices skip only those proven
         impossible reactions and retain each reaction, equivalence class, and

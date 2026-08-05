@@ -9074,6 +9074,37 @@ Primer-design shell command family (implemented):
     that sequence composition or thermodynamics will yield a pair. The MCP
     `transcript_assay_feasibility` tool delegates to this same shared shell and
     engine path
+  - feasibility and completed panel reports may embed
+    `gentle.transcript_assay_primer_search_plan.v1`. This sequence-aware plan
+    is produced before Primer3 and binds the exact operation digest, effective
+    `search_policy`, transcript-local allowed intervals, rejected starts and
+    reasons, exon/junction context, quality-filtered candidate estimates, a
+    conservative placement upper bound, and the exact bounded Primer3 fields.
+    The default policy offers no primer side more than 96 bp in one record (or
+    the caller's larger explicit minimum primer length for legacy requests) and
+    caps per-record, per-target, and operation-wide estimated pair work. A
+    required target with no admissible interval is `no_admissible_regions`; a
+    declared budget that cannot contain the search is
+    `search_space_too_broad`. Both stop before Primer3. Increasing a budget is
+    an explicit request change and never changes `coverage_policy`. Required
+    endpoint/junction targets receive budget before GENtle-generated optional
+    anchors; optional anchors may be omitted with a warning, but final assay
+    coverage is still evaluated normally
+  - `DesignTranscriptAssayPanel.search_policy` is additive and optional. Old
+    requests use the documented default. During a progress-capable Primer3
+    run, progress rows retain native bounded work counters and add the GENtle
+    search target/record ids, record ordinal/count, deterministic pair-work
+    bounds, elapsed time, and a separately labelled uncertain linear runtime
+    projection. After ten minutes, a projection above five hours is marked
+    suspicious; after thirty minutes, a projection above ten hours stops only
+    that bounded record. Five hours without usable progress also stops the
+    record. Other precomputed records may continue, but strict final coverage
+    still fails when the stopped record leaves a required class/reaction
+    uncovered; that strict failure carries the structured runtime-reduction
+    receipts, including the stopped child's output byte counts and hashes.
+    Malformed future `PRIMER3_PROGRESS` rows are retained in stderr
+    provenance and surfaced in the Primer3 explanation rather than silently
+    treated as valid counters
   - new reports persist `source_genome_anchor` at design time, including the
     source sequence, genome/reference id, chromosome, one-based inclusive
     interval, strand, and verification state. Whole-panel genomic specificity

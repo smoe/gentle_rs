@@ -193,6 +193,10 @@ struct TranscriptAssayDesignTarget {
     end_reaction_id: Option<String>,
     forward_window_0based: Option<(usize, usize)>,
     reverse_window_0based: Option<(usize, usize)>,
+    search_target_id: Option<String>,
+    search_record_id: Option<String>,
+    search_required: bool,
+    excluded_regions_0based: Vec<(usize, usize)>,
 }
 
 impl GentleEngine {
@@ -14755,6 +14759,7 @@ impl GentleEngine {
             max_mismatches: Some(0),
             require_3prime_exact_bases: Some(8),
             oligo_dt_5prime_risk_threshold_bp,
+            search_policy: None,
             junctions: vec![],
             junction_evidence_paths,
             junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
@@ -19710,6 +19715,780 @@ impl GentleEngine {
         Ok(sha256_prefixed_bytes(&operation_bytes))
     }
 
+    fn validate_transcript_assay_search_policy(
+        policy: &TranscriptAssayPrimerSearchPolicy,
+        forward: &PrimerDesignSideConstraint,
+        reverse: &PrimerDesignSideConstraint,
+    ) -> Result<(), EngineError> {
+        let minimum_window = forward.min_length.max(reverse.min_length);
+        if policy.max_primer_window_bp < minimum_window {
+            return Err(EngineError::invalid_input(format!(
+                "Transcript assay search policy max_primer_window_bp ({}) must be >= the largest primer minimum ({minimum_window})",
+                policy.max_primer_window_bp
+            )));
+        }
+        if policy.max_candidate_pairs_per_record == 0
+            || policy.max_records_per_target == 0
+            || policy.max_candidate_pairs_total == 0
+        {
+            return Err(EngineError::invalid_input(
+                "Transcript assay search budgets must each be >= 1",
+            ));
+        }
+        if policy.max_homopolymer_run_bp == 0 {
+            return Err(EngineError::invalid_input(
+                "Transcript assay search policy max_homopolymer_run_bp must be >= 1",
+            ));
+        }
+        if policy.runtime_warning_after_secs > policy.runtime_reduce_after_secs
+            || policy.runtime_warning_projected_total_secs
+                > policy.runtime_reduce_projected_total_secs
+            || policy.runtime_reduce_after_secs == 0
+            || policy.runtime_reduce_projected_total_secs == 0
+            || policy.runtime_no_progress_reduce_after_secs == 0
+        {
+            return Err(EngineError::invalid_input(
+                "Transcript assay runtime thresholds must be non-zero and warning thresholds must not exceed reduction thresholds",
+            ));
+        }
+        Ok(())
+    }
+
+    fn effective_transcript_assay_search_policy(
+        requested: Option<&TranscriptAssayPrimerSearchPolicy>,
+        forward: &PrimerDesignSideConstraint,
+        reverse: &PrimerDesignSideConstraint,
+    ) -> Result<TranscriptAssayPrimerSearchPolicy, EngineError> {
+        let mut policy = requested.cloned().unwrap_or_default();
+        if requested.is_none() {
+            // Preserve legacy requests with unusually long primers: the
+            // default is bounded, but cannot be narrower than an explicitly
+            // requested minimum primer length. Explicit policies remain exact.
+            policy.max_primer_window_bp = policy
+                .max_primer_window_bp
+                .max(forward.min_length)
+                .max(reverse.min_length);
+        }
+        Self::validate_transcript_assay_search_policy(&policy, forward, reverse)?;
+        Ok(policy)
+    }
+
+    fn transcript_assay_search_exon_ordinals(
+        template: &TranscriptQpcrDesignTemplate,
+        start: usize,
+        end: usize,
+    ) -> Vec<usize> {
+        template
+            .local_exon_segments
+            .iter()
+            .enumerate()
+            .filter_map(|(index, exon)| {
+                (start < exon.local_end_0based_exclusive && end > exon.local_start_0based)
+                    .then_some(index.saturating_add(1))
+            })
+            .collect()
+    }
+
+    fn transcript_assay_search_rejected_intervals(
+        side: &str,
+        rejected_starts: &[(usize, String)],
+        primer_length: usize,
+        target_id: &str,
+        template: &TranscriptQpcrDesignTemplate,
+        junction_ids: &[String],
+    ) -> Vec<TranscriptAssayPrimerSearchInterval> {
+        let mut intervals = vec![];
+        let mut index = 0usize;
+        while index < rejected_starts.len() {
+            let (start, reason) = &rejected_starts[index];
+            let mut end_start = *start;
+            index = index.saturating_add(1);
+            while index < rejected_starts.len()
+                && rejected_starts[index].0 == end_start.saturating_add(1)
+                && rejected_starts[index].1 == *reason
+            {
+                end_start = rejected_starts[index].0;
+                index = index.saturating_add(1);
+            }
+            let detail = match reason.as_str() {
+                "ambiguous_sequence" => "Candidate starts overlap non-ACGT sequence.",
+                "low_complexity_homopolymer" => {
+                    "Every tested primer at these starts exceeded the configured homopolymer limit."
+                }
+                "local_non_unique_sequence" => {
+                    "Every tested primer at these starts exceeded the permitted exact local binding count."
+                }
+                "primer_sequence_constraint" => {
+                    "Every tested primer at these starts failed an explicit side-sequence constraint."
+                }
+                "tm_or_gc_out_of_range" => {
+                    "Every tested primer at these starts failed the configured Tm or GC range."
+                }
+                _ => "No complete admissible primer interval starts here.",
+            };
+            intervals.push(TranscriptAssayPrimerSearchInterval {
+                target_id: target_id.to_string(),
+                representative_transcript_id: template.transcript_id.clone(),
+                side: side.to_string(),
+                start_0based: *start,
+                end_0based_exclusive: end_start
+                    .saturating_add(primer_length)
+                    .max(start.saturating_add(1)),
+                reason_code: reason.clone(),
+                reason: detail.to_string(),
+                exon_ordinals: Self::transcript_assay_search_exon_ordinals(
+                    template,
+                    *start,
+                    end_start.saturating_add(primer_length),
+                ),
+                junction_ids: junction_ids.to_vec(),
+                ..TranscriptAssayPrimerSearchInterval::default()
+            });
+        }
+        intervals
+    }
+
+    fn transcript_assay_primer3_excluded_regions(
+        template: &[u8],
+        interval: (usize, usize),
+    ) -> Vec<(usize, usize)> {
+        // An excluded-region tag rejects every primer overlapping the region.
+        // Only ambiguous template bases are certainly invalid under that
+        // interpretation. Homopolymer and local-repeat findings remain in the
+        // inspectable rejection ledger and are enforced by Primer3/post-checks;
+        // converting a rejected *start* into an excluded span could remove a
+        // valid neighboring primer.
+        let mut regions = template
+            .iter()
+            .enumerate()
+            .skip(interval.0)
+            .take(interval.1.saturating_sub(interval.0))
+            .filter_map(|(index, base)| {
+                (!matches!(base, b'A' | b'C' | b'G' | b'T'))
+                    .then_some((index, index.saturating_add(1)))
+            })
+            .collect::<Vec<_>>();
+        regions.sort_unstable();
+        let mut merged = vec![];
+        for (start, end) in regions {
+            if let Some((_, previous_end)) = merged.last_mut()
+                && start <= *previous_end
+            {
+                *previous_end = (*previous_end).max(end);
+            } else {
+                merged.push((start, end));
+            }
+        }
+        merged
+    }
+
+    fn transcript_assay_candidate_placement_upper_bound(
+        interval: (usize, usize),
+        side: &PrimerDesignSideConstraint,
+    ) -> usize {
+        let width = interval.1.saturating_sub(interval.0);
+        if let Some(location) = side.location_0based {
+            if location < interval.0 || location >= interval.1 {
+                return 0;
+            }
+            return (side.min_length..=side.max_length)
+                .filter(|length| location.saturating_add(*length) <= interval.1)
+                .count();
+        }
+        (side.min_length..=side.max_length).fold(0usize, |total, length| {
+            total.saturating_add(if width >= length {
+                width - length + 1
+            } else {
+                0
+            })
+        })
+    }
+
+    fn transcript_assay_search_target_id(
+        target: &TranscriptAssayDesignTarget,
+        template: &TranscriptQpcrDesignTemplate,
+    ) -> String {
+        target
+            .search_target_id
+            .clone()
+            .or_else(|| target.end_reaction_id.clone())
+            .or_else(|| {
+                target
+                    .junction
+                    .as_ref()
+                    .map(|junction| format!("junction_target_{}", junction.request_index))
+            })
+            .unwrap_or_else(|| {
+                short_sha256_id(
+                    "transcript_search_target",
+                    &format!(
+                        "{}|{}|{}|{:?}|{:?}",
+                        template.transcript_id,
+                        target.roi_start_0based,
+                        target.roi_end_0based,
+                        target.forward_window_0based,
+                        target.reverse_window_0based
+                    ),
+                )
+            })
+    }
+
+    fn transcript_assay_search_target_windows(
+        target: &TranscriptAssayDesignTarget,
+        template_len: usize,
+        max_amplicon_bp: usize,
+        max_primer_bp: usize,
+        max_window_bp: usize,
+    ) -> ((usize, usize), (usize, usize)) {
+        let left = target.forward_window_0based.unwrap_or_else(|| {
+            if let Some(junction) = target.junction.as_ref() {
+                (
+                    junction
+                        .local_position_0based
+                        .saturating_sub(max_amplicon_bp),
+                    junction
+                        .local_position_0based
+                        .saturating_add(max_primer_bp)
+                        .min(template_len),
+                )
+            } else {
+                (
+                    target.roi_start_0based.saturating_sub(max_amplicon_bp),
+                    target.roi_start_0based.min(template_len),
+                )
+            }
+        });
+        let right = target.reverse_window_0based.unwrap_or_else(|| {
+            if let Some(junction) = target.junction.as_ref() {
+                (
+                    junction.local_position_0based.saturating_sub(max_primer_bp),
+                    junction
+                        .local_position_0based
+                        .saturating_add(max_amplicon_bp)
+                        .min(template_len),
+                )
+            } else {
+                (
+                    target.roi_end_0based.min(template_len),
+                    target
+                        .roi_end_0based
+                        .saturating_add(max_amplicon_bp)
+                        .min(template_len),
+                )
+            }
+        });
+        let left = (left.0.min(template_len), left.1.min(template_len));
+        let right = (right.0.min(template_len), right.1.min(template_len));
+        if let Some(junction) = target.junction.as_ref() {
+            let centered = |interval: (usize, usize)| {
+                if interval.1.saturating_sub(interval.0) <= max_window_bp {
+                    return interval;
+                }
+                let half = max_window_bp / 2;
+                let start = junction
+                    .local_position_0based
+                    .saturating_sub(half)
+                    .max(interval.0);
+                let end = start.saturating_add(max_window_bp).min(interval.1);
+                (end.saturating_sub(max_window_bp).max(interval.0), end)
+            };
+            (centered(left), centered(right))
+        } else {
+            let left = if left.1.saturating_sub(left.0) > max_window_bp {
+                (left.1.saturating_sub(max_window_bp), left.1)
+            } else {
+                left
+            };
+            let right = if right.1.saturating_sub(right.0) > max_window_bp {
+                (right.0, right.0.saturating_add(max_window_bp))
+            } else {
+                right
+            };
+            (left, right)
+        }
+    }
+
+    fn transcript_assay_search_candidates_in_interval<'a>(
+        candidates: &'a [PrimerDesignCandidate],
+        interval: (usize, usize),
+    ) -> Vec<&'a PrimerDesignCandidate> {
+        candidates
+            .iter()
+            .filter(|candidate| {
+                candidate.start_0based >= interval.0 && candidate.end_0based_exclusive <= interval.1
+            })
+            .collect()
+    }
+
+    fn transcript_assay_search_pair_count(
+        forward_candidates: &[&PrimerDesignCandidate],
+        reverse_candidates: &[&PrimerDesignCandidate],
+        target: &TranscriptAssayDesignTarget,
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        min_3prime_junction_overlap_bp: usize,
+        min_5prime_junction_overlap_bp: usize,
+    ) -> usize {
+        let mut count = 0usize;
+        for forward in forward_candidates {
+            for reverse in reverse_candidates {
+                if reverse.end_0based_exclusive <= forward.start_0based {
+                    continue;
+                }
+                let amplicon_len = reverse
+                    .end_0based_exclusive
+                    .saturating_sub(forward.start_0based);
+                if amplicon_len < min_amplicon_bp || amplicon_len > max_amplicon_bp {
+                    continue;
+                }
+                if let Some(junction) = target.junction.as_ref() {
+                    let spans = Self::transcript_assay_interval_spans_junction(
+                        forward.start_0based,
+                        forward.end_0based_exclusive,
+                        false,
+                        junction.local_position_0based,
+                        min_3prime_junction_overlap_bp,
+                        min_5prime_junction_overlap_bp,
+                    ) || Self::transcript_assay_interval_spans_junction(
+                        reverse.start_0based,
+                        reverse.end_0based_exclusive,
+                        true,
+                        junction.local_position_0based,
+                        min_3prime_junction_overlap_bp,
+                        min_5prime_junction_overlap_bp,
+                    );
+                    if !spans {
+                        continue;
+                    }
+                } else if forward.start_0based > target.roi_start_0based
+                    || reverse.end_0based_exclusive < target.roi_end_0based
+                {
+                    continue;
+                }
+                count = count.saturating_add(1);
+            }
+        }
+        count
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn transcript_assay_build_primer_search_plan(
+        operation_sha256: &str,
+        templates: &[TranscriptQpcrDesignTemplate],
+        targets: &[TranscriptAssayDesignTarget],
+        forward: &PrimerDesignSideConstraint,
+        forward_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        reverse: &PrimerDesignSideConstraint,
+        reverse_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        min_3prime_junction_overlap_bp: usize,
+        min_5prime_junction_overlap_bp: usize,
+        policy: &TranscriptAssayPrimerSearchPolicy,
+    ) -> Result<
+        (
+            TranscriptAssayPrimerSearchPlan,
+            Vec<TranscriptAssayDesignTarget>,
+        ),
+        EngineError,
+    > {
+        Self::validate_transcript_assay_search_policy(policy, forward, reverse)?;
+        let mut plan = TranscriptAssayPrimerSearchPlan {
+            schema: TRANSCRIPT_ASSAY_PRIMER_SEARCH_PLAN_SCHEMA.to_string(),
+            operation_sha256: operation_sha256.to_string(),
+            policy: policy.clone(),
+            target_count: targets.len(),
+            warnings: vec![
+                "Local exact-repeat and low-complexity screening is planning evidence only; cross-transcript cDNA and genomic specificity remain separate QA gates after candidate generation."
+                    .to_string(),
+            ],
+            ..TranscriptAssayPrimerSearchPlan::default()
+        };
+        let mut planned_targets = vec![];
+        let max_primer_bp = forward.max_length.max(reverse.max_length);
+        let mut ordered_targets = targets.to_vec();
+        // Caller-required endpoint/junction targets receive the declared
+        // budget before GENtle-generated exploratory anchors. Reducing optional
+        // anchors is computational best effort, not a coverage-policy change.
+        ordered_targets.sort_by_key(|target| !target.search_required);
+        for target in &ordered_targets {
+            let template = templates.get(target.template_index).ok_or_else(|| {
+                EngineError::internal("Transcript assay search target lost its cDNA template")
+            })?;
+            let target_id = Self::transcript_assay_search_target_id(target, template);
+            let target_junction_ids = target
+                .junction
+                .as_ref()
+                .map(|_| vec![target_id.clone()])
+                .unwrap_or_default();
+            let (left_broad, right_broad) = Self::transcript_assay_search_target_windows(
+                target,
+                template.sequence.len(),
+                max_amplicon_bp,
+                max_primer_bp,
+                policy.max_primer_window_bp,
+            );
+            let mut left_side = forward.clone();
+            left_side.start_0based = Some(left_broad.0);
+            left_side.end_0based = Some(left_broad.1);
+            let mut right_side = reverse.clone();
+            right_side.start_0based = Some(right_broad.0);
+            right_side.end_0based = Some(right_broad.1);
+            let left_estimate = Self::estimate_primer_side_search_candidates(
+                template.sequence.as_bytes(),
+                &left_side,
+                forward_sequence_constraints,
+                false,
+                policy.max_homopolymer_run_bp,
+            );
+            let right_estimate = Self::estimate_primer_side_search_candidates(
+                template.sequence.as_bytes(),
+                &right_side,
+                reverse_sequence_constraints,
+                true,
+                policy.max_homopolymer_run_bp,
+            );
+            plan.rejected_intervals
+                .extend(Self::transcript_assay_search_rejected_intervals(
+                    "left",
+                    &left_estimate.rejected_starts,
+                    forward.min_length,
+                    &target_id,
+                    template,
+                    &target_junction_ids,
+                ));
+            plan.rejected_intervals
+                .extend(Self::transcript_assay_search_rejected_intervals(
+                    "right",
+                    &right_estimate.rejected_starts,
+                    reverse.min_length,
+                    &target_id,
+                    template,
+                    &target_junction_ids,
+                ));
+
+            let mut pending = vec![(left_broad, right_broad)];
+            let mut target_records = vec![];
+            let mut target_budget_exhausted = false;
+            let mut target_candidate_pair_count = 0usize;
+            while let Some((left_interval, right_interval)) = pending.pop() {
+                let left_candidates = Self::transcript_assay_search_candidates_in_interval(
+                    &left_estimate.candidates,
+                    left_interval,
+                );
+                let right_candidates = Self::transcript_assay_search_candidates_in_interval(
+                    &right_estimate.candidates,
+                    right_interval,
+                );
+                let pair_count = Self::transcript_assay_search_pair_count(
+                    &left_candidates,
+                    &right_candidates,
+                    target,
+                    min_amplicon_bp,
+                    max_amplicon_bp,
+                    min_3prime_junction_overlap_bp,
+                    min_5prime_junction_overlap_bp,
+                );
+                if pair_count == 0 {
+                    continue;
+                }
+                let left_search_space =
+                    Self::transcript_assay_candidate_placement_upper_bound(left_interval, forward);
+                let right_search_space =
+                    Self::transcript_assay_candidate_placement_upper_bound(right_interval, reverse);
+                let search_space_upper_bound = left_search_space.saturating_mul(right_search_space);
+                let left_width = left_interval.1.saturating_sub(left_interval.0);
+                let right_width = right_interval.1.saturating_sub(right_interval.0);
+                let must_split = left_width > policy.max_primer_window_bp
+                    || right_width > policy.max_primer_window_bp
+                    || pair_count > policy.max_candidate_pairs_per_record;
+                if must_split {
+                    if pending.len().saturating_add(target_records.len())
+                        >= policy.max_records_per_target.saturating_mul(2)
+                    {
+                        target_budget_exhausted = true;
+                        break;
+                    }
+                    let split_left = (left_width >= right_width
+                        && left_width > forward.min_length.saturating_mul(2))
+                        || right_width <= reverse.min_length.saturating_mul(2);
+                    let interval = if split_left {
+                        left_interval
+                    } else {
+                        right_interval
+                    };
+                    let minimum = if split_left {
+                        forward.min_length
+                    } else {
+                        reverse.min_length
+                    };
+                    if interval.1.saturating_sub(interval.0) <= minimum.saturating_mul(2) {
+                        target_budget_exhausted = true;
+                        continue;
+                    }
+                    let midpoint = interval.0 + interval.1.saturating_sub(interval.0) / 2;
+                    let overlap = max_primer_bp.saturating_sub(1);
+                    let first = (interval.0, midpoint.saturating_add(overlap).min(interval.1));
+                    let second = (midpoint.saturating_sub(overlap).max(interval.0), interval.1);
+                    if split_left {
+                        pending.push((second, right_interval));
+                        pending.push((first, right_interval));
+                    } else {
+                        pending.push((left_interval, second));
+                        pending.push((left_interval, first));
+                    }
+                    continue;
+                }
+                if target_records.len() >= policy.max_records_per_target
+                    || plan
+                        .estimated_candidate_pair_count_total
+                        .saturating_add(target_candidate_pair_count)
+                        .saturating_add(pair_count)
+                        > policy.max_candidate_pairs_total
+                {
+                    target_budget_exhausted = true;
+                    continue;
+                }
+                let search_record_id = short_sha256_id(
+                    "primer_search_record",
+                    &format!(
+                        "{}|{}|{}|{}|{}|{}",
+                        operation_sha256,
+                        target_id,
+                        left_interval.0,
+                        left_interval.1,
+                        right_interval.0,
+                        right_interval.1
+                    ),
+                );
+                let ok_region = format!(
+                    "{},{},{},{}",
+                    left_interval.0,
+                    left_interval.1.saturating_sub(left_interval.0),
+                    right_interval.0,
+                    right_interval.1.saturating_sub(right_interval.0)
+                );
+                let mut excluded_regions = Self::transcript_assay_primer3_excluded_regions(
+                    template.sequence.as_bytes(),
+                    left_interval,
+                );
+                excluded_regions.extend(Self::transcript_assay_primer3_excluded_regions(
+                    template.sequence.as_bytes(),
+                    right_interval,
+                ));
+                excluded_regions.sort_unstable();
+                excluded_regions.dedup();
+                let mut primer3_fields = vec![TranscriptAssayPrimer3Field {
+                    name: "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST".to_string(),
+                    value: ok_region,
+                }];
+                if !excluded_regions.is_empty() {
+                    primer3_fields.push(TranscriptAssayPrimer3Field {
+                        name: "SEQUENCE_EXCLUDED_REGION".to_string(),
+                        value: excluded_regions
+                            .iter()
+                            .map(|(start, end)| format!("{start},{}", end.saturating_sub(*start)))
+                            .collect::<Vec<_>>()
+                            .join(" "),
+                    });
+                }
+                primer3_fields.extend([
+                    TranscriptAssayPrimer3Field {
+                        name: "PRIMER_MAX_POLY_X".to_string(),
+                        value: policy.max_homopolymer_run_bp.to_string(),
+                    },
+                    TranscriptAssayPrimer3Field {
+                        name: "PRIMER_MAX_NS_ACCEPTED".to_string(),
+                        value: "0".to_string(),
+                    },
+                ]);
+                if let Some(junction) = target.junction.as_ref() {
+                    primer3_fields.extend([
+                        TranscriptAssayPrimer3Field {
+                            name: "SEQUENCE_OVERLAP_JUNCTION_LIST".to_string(),
+                            value: junction.local_position_0based.to_string(),
+                        },
+                        TranscriptAssayPrimer3Field {
+                            name: "PRIMER_MIN_3_PRIME_OVERLAP_OF_JUNCTION".to_string(),
+                            value: min_3prime_junction_overlap_bp.to_string(),
+                        },
+                        TranscriptAssayPrimer3Field {
+                            name: "PRIMER_MIN_5_PRIME_OVERLAP_OF_JUNCTION".to_string(),
+                            value: min_5prime_junction_overlap_bp.to_string(),
+                        },
+                    ]);
+                } else {
+                    primer3_fields.push(TranscriptAssayPrimer3Field {
+                        name: "SEQUENCE_TARGET".to_string(),
+                        value: format!(
+                            "{},{}",
+                            target.roi_start_0based,
+                            target
+                                .roi_end_0based
+                                .saturating_sub(target.roi_start_0based)
+                        ),
+                    });
+                }
+                primer3_fields.push(TranscriptAssayPrimer3Field {
+                    name: "PRIMER_PRODUCT_SIZE_RANGE".to_string(),
+                    value: format!("{min_amplicon_bp}-{max_amplicon_bp}"),
+                });
+                let reason_code = if target.end_reaction_id.is_some() {
+                    "annotated_transcript_end_reaction"
+                } else if target.junction.is_some() {
+                    "requested_exon_junction"
+                } else if target.forward_window_0based.is_some() {
+                    "annotation_common_region"
+                } else {
+                    "transcript_family_discrimination"
+                };
+                let junction_ids = target
+                    .junction
+                    .as_ref()
+                    .map(|_| vec![target_id.clone()])
+                    .unwrap_or_default();
+                let record = TranscriptAssayPrimerSearchRecord {
+                    search_record_id: search_record_id.clone(),
+                    target_id: target_id.clone(),
+                    representative_transcript_id: template.transcript_id.clone(),
+                    template_sha256: sha256_prefixed_bytes(template.sequence.as_bytes()),
+                    end_reaction_id: target.end_reaction_id.clone(),
+                    junction_id: junction_ids.first().cloned(),
+                    left_interval: TranscriptAssayPrimerSearchInterval {
+                        target_id: target_id.clone(),
+                        representative_transcript_id: template.transcript_id.clone(),
+                        side: "left".to_string(),
+                        start_0based: left_interval.0,
+                        end_0based_exclusive: left_interval.1,
+                        reason_code: reason_code.to_string(),
+                        reason: if target.end_reaction_id.is_some() {
+                            "Junction-proximal first-end window bounded from transcript annotation, product length, and local sequence admissibility before Primer3."
+                                .to_string()
+                        } else {
+                            "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3."
+                                .to_string()
+                        },
+                        exon_ordinals: Self::transcript_assay_search_exon_ordinals(
+                            template,
+                            left_interval.0,
+                            left_interval.1,
+                        ),
+                        junction_ids: junction_ids.clone(),
+                        estimated_candidate_count: left_candidates.len(),
+                    },
+                    right_interval: TranscriptAssayPrimerSearchInterval {
+                        target_id: target_id.clone(),
+                        representative_transcript_id: template.transcript_id.clone(),
+                        side: "right".to_string(),
+                        start_0based: right_interval.0,
+                        end_0based_exclusive: right_interval.1,
+                        reason_code: reason_code.to_string(),
+                        reason: if target.end_reaction_id.is_some() {
+                            "Junction-proximal terminal-end window bounded from transcript annotation, product length, and local sequence admissibility before Primer3."
+                                .to_string()
+                        } else {
+                            "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3."
+                                .to_string()
+                        },
+                        exon_ordinals: Self::transcript_assay_search_exon_ordinals(
+                            template,
+                            right_interval.0,
+                            right_interval.1,
+                        ),
+                        junction_ids,
+                        estimated_candidate_count: right_candidates.len(),
+                    },
+                    estimated_left_candidate_count: left_candidates.len(),
+                    estimated_right_candidate_count: right_candidates.len(),
+                    estimated_candidate_pair_count: pair_count,
+                    candidate_pair_search_space_upper_bound: search_space_upper_bound,
+                    primer3_fields,
+                };
+                let mut planned = target.clone();
+                planned.forward_window_0based = Some(left_interval);
+                planned.reverse_window_0based = Some(right_interval);
+                planned.search_target_id = Some(target_id.clone());
+                planned.search_record_id = Some(search_record_id);
+                planned.excluded_regions_0based = excluded_regions;
+                target_candidate_pair_count =
+                    target_candidate_pair_count.saturating_add(pair_count);
+                target_records.push((record, planned));
+            }
+            target_records.sort_by(|(left, _), (right, _)| {
+                left.estimated_candidate_pair_count
+                    .cmp(&right.estimated_candidate_pair_count)
+                    .then(left.search_record_id.cmp(&right.search_record_id))
+            });
+            if target_records.is_empty() && target.search_required {
+                plan.blocked_target_ids.push(target_id.clone());
+            }
+            if target_budget_exhausted {
+                if target.search_required {
+                    plan.warnings.push(format!(
+                        "Required search target '{target_id}' exceeded the declared record/pair budget."
+                    ));
+                    plan.blocked_target_ids.push(target_id.clone());
+                    plan.status = TranscriptAssayPrimerSearchPlanStatus::SearchSpaceTooBroad;
+                } else {
+                    plan.warnings.push(format!(
+                        "Optional GENtle-generated search target '{target_id}' was reduced by the declared record/pair budget; biological coverage is still evaluated from the retained assays."
+                    ));
+                }
+            }
+            if !target_records.is_empty() {
+                plan.planned_target_count = plan.planned_target_count.saturating_add(1);
+            }
+            for (record, planned) in target_records {
+                plan.estimated_candidate_pair_count_total = plan
+                    .estimated_candidate_pair_count_total
+                    .saturating_add(record.estimated_candidate_pair_count);
+                plan.candidate_pair_search_space_upper_bound_total = plan
+                    .candidate_pair_search_space_upper_bound_total
+                    .saturating_add(record.candidate_pair_search_space_upper_bound);
+                plan.records.push(record);
+                planned_targets.push(planned);
+            }
+        }
+        plan.blocked_target_ids.sort();
+        plan.blocked_target_ids.dedup();
+        if !plan.blocked_target_ids.is_empty()
+            && plan.status != TranscriptAssayPrimerSearchPlanStatus::SearchSpaceTooBroad
+        {
+            plan.status = TranscriptAssayPrimerSearchPlanStatus::NoAdmissibleRegions;
+        }
+        plan.records.sort_by(|left, right| {
+            left.target_id
+                .cmp(&right.target_id)
+                .then(
+                    left.estimated_candidate_pair_count
+                        .cmp(&right.estimated_candidate_pair_count),
+                )
+                .then(left.search_record_id.cmp(&right.search_record_id))
+        });
+        plan.rejected_intervals.sort_by(|left, right| {
+            left.target_id
+                .cmp(&right.target_id)
+                .then(
+                    left.representative_transcript_id
+                        .cmp(&right.representative_transcript_id),
+                )
+                .then(left.side.cmp(&right.side))
+                .then(left.start_0based.cmp(&right.start_0based))
+                .then(left.end_0based_exclusive.cmp(&right.end_0based_exclusive))
+                .then(left.reason_code.cmp(&right.reason_code))
+        });
+        planned_targets.sort_by(|left, right| {
+            left.search_target_id
+                .cmp(&right.search_target_id)
+                .then(left.search_record_id.cmp(&right.search_record_id))
+        });
+        plan.warnings.push(
+            "Candidate-pair counts are deterministic local preflight estimates; Primer3 thermodynamic evaluation remains authoritative for retained records, and wall-clock projections remain uncertain."
+                .to_string(),
+        );
+        Ok((plan, planned_targets))
+    }
+
     fn transcript_assay_end_matrix_feasibility(
         operation_sha256: String,
         seq_id: &str,
@@ -19945,6 +20724,7 @@ impl GentleEngine {
             primer3_warranted_template_bp_total,
             primer3_warranted_max_template_bp,
             primer3_candidate_pair_request_upper_bound,
+            search_plan: None,
             execution_recommendation: execution_recommendation.to_string(),
             warnings: vec![
                 "Geometry feasibility excludes only deterministic annotation/length impossibilities; Primer3 must still evaluate sequence composition, Tm, repeats, complementarity, and other thermodynamic constraints."
@@ -19969,6 +20749,9 @@ impl GentleEngine {
             min_amplicon_bp,
             max_amplicon_bp,
             max_assays_per_class,
+            search_policy,
+            min_3prime_junction_overlap_bp,
+            min_5prime_junction_overlap_bp,
             ..
         } = operation
         else {
@@ -20037,7 +20820,7 @@ impl GentleEngine {
         let (end_classes, end_reactions) =
             Self::transcript_assay_end_classes_and_reactions(&templates);
         let operation_sha256 = Self::transcript_assay_operation_sha256(operation)?;
-        Ok(Self::transcript_assay_end_matrix_feasibility(
+        let mut report = Self::transcript_assay_end_matrix_feasibility(
             operation_sha256,
             seq_id,
             *source_feature_id,
@@ -20053,7 +20836,87 @@ impl GentleEngine {
             min_amplicon_bp,
             max_amplicon_bp,
             primer3_candidate_pair_limit_per_reaction,
-        ))
+        );
+        let feasibility_by_reaction = report
+            .reactions
+            .iter()
+            .map(|reaction| (reaction.reaction_id.as_str(), reaction))
+            .collect::<HashMap<_, _>>();
+        let targets = end_reactions
+            .iter()
+            .filter_map(|reaction| {
+                let feasibility =
+                    feasibility_by_reaction.get(reaction.report.reaction_id.as_str())?;
+                if !feasibility.primer3_warranted {
+                    return None;
+                }
+                let template = templates.get(reaction.representative_template_index)?;
+                let first = template.local_exon_segments.first()?;
+                let terminal = template.local_exon_segments.last()?;
+                let (roi_start, roi_end) =
+                    if first.local_end_0based_exclusive <= terminal.local_start_0based {
+                        (
+                            first.local_end_0based_exclusive.saturating_sub(1),
+                            terminal.local_start_0based.saturating_add(1),
+                        )
+                    } else {
+                        let midpoint = template.sequence.len() / 2;
+                        (midpoint.saturating_sub(1), midpoint.saturating_add(1))
+                    };
+                Some(TranscriptAssayDesignTarget {
+                    template_index: reaction.representative_template_index,
+                    roi_start_0based: roi_start,
+                    roi_end_0based: roi_end.min(template.sequence.len()),
+                    junction: None,
+                    end_reaction_id: Some(reaction.report.reaction_id.clone()),
+                    forward_window_0based: Some((
+                        first.local_start_0based,
+                        first.local_end_0based_exclusive,
+                    )),
+                    reverse_window_0based: Some((
+                        terminal.local_start_0based,
+                        terminal.local_end_0based_exclusive,
+                    )),
+                    search_target_id: Some(reaction.report.reaction_id.clone()),
+                    search_record_id: None,
+                    search_required: true,
+                    excluded_regions_0based: vec![],
+                })
+            })
+            .collect::<Vec<_>>();
+        let forward_sequence_constraints =
+            Self::normalize_primer_side_sequence_constraints(forward)?;
+        let reverse_sequence_constraints =
+            Self::normalize_primer_side_sequence_constraints(reverse)?;
+        let effective_search_policy = Self::effective_transcript_assay_search_policy(
+            search_policy.as_ref(),
+            forward,
+            reverse,
+        )?;
+        let (search_plan, _) = Self::transcript_assay_build_primer_search_plan(
+            &report.operation_sha256,
+            &templates,
+            &targets,
+            forward,
+            &forward_sequence_constraints,
+            reverse,
+            &reverse_sequence_constraints,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            min_3prime_junction_overlap_bp.unwrap_or(4),
+            min_5prime_junction_overlap_bp.unwrap_or(7),
+            &effective_search_policy,
+        )?;
+        if search_plan.status != TranscriptAssayPrimerSearchPlanStatus::Ready
+            && !matches!(
+                report.execution_recommendation.as_str(),
+                "reject_before_primer_search" | "return_best_effort_without_primer_search"
+            )
+        {
+            report.execution_recommendation = "search_space_too_broad".to_string();
+        }
+        report.search_plan = Some(search_plan);
+        Ok(report)
     }
 
     fn transcript_assay_candidate_rois(
@@ -21147,7 +22010,15 @@ impl GentleEngine {
                 roi_end_0based_exclusive: roi_end_0based,
                 max_output: max_pairs,
             };
-            let mut emit = |progress: Primer3Progress| {
+            let mut emit = |mut progress: Primer3Progress| {
+                progress.search_target_id = primer3_options.search_target_id.clone();
+                progress.search_record_id = primer3_options.search_record_id.clone();
+                progress.bounded_record_ordinal = primer3_options.bounded_record_ordinal;
+                progress.bounded_record_count = primer3_options.bounded_record_count;
+                progress.bounded_candidate_pair_upper_bound =
+                    primer3_options.bounded_candidate_pair_upper_bound;
+                progress.bounded_candidate_pair_total_upper_bound =
+                    primer3_options.bounded_candidate_pair_total_upper_bound;
                 on_progress(OperationProgress::PrimerDesign(
                     Self::primer3_operation_progress(&progress_context, progress),
                 ))
@@ -21199,7 +22070,9 @@ impl GentleEngine {
                     (pairs, rejections)
                 }
                 Err(error) => {
-                    if Self::is_primer_design_cancelled_error(&error) {
+                    if Self::is_primer_design_cancelled_error(&error)
+                        || Self::is_primer3_runtime_reduction_error(&error)
+                    {
                         return Err(error);
                     }
                     backend.used = PrimerDesignBackend::Internal.as_str().to_string();
@@ -22322,6 +23195,7 @@ impl GentleEngine {
         max_mismatches: Option<usize>,
         require_3prime_exact_bases: Option<usize>,
         oligo_dt_5prime_risk_threshold_bp: Option<usize>,
+        search_policy: Option<TranscriptAssayPrimerSearchPolicy>,
         mut junctions: Vec<TranscriptAssayJunctionRequest>,
         junction_evidence_paths: Vec<String>,
         junction_evidence_priority: TranscriptAssayJunctionPriority,
@@ -22577,8 +23451,8 @@ impl GentleEngine {
             } else {
                 (vec![], vec![])
             };
-        let end_matrix_feasibility = (objective == TranscriptAssayPanelObjective::IsoformEndMatrix)
-            .then(|| {
+        let mut end_matrix_feasibility =
+            (objective == TranscriptAssayPanelObjective::IsoformEndMatrix).then(|| {
                 Self::transcript_assay_end_matrix_feasibility(
                     operation_sha256.clone(),
                     &seq_id,
@@ -22693,6 +23567,10 @@ impl GentleEngine {
                         terminal.local_start_0based,
                         terminal.local_end_0based_exclusive,
                     )),
+                    search_target_id: Some(reaction.report.reaction_id.clone()),
+                    search_record_id: None,
+                    search_required: true,
+                    excluded_regions_0based: vec![],
                 });
             }
             if !junctions.is_empty() {
@@ -22733,6 +23611,10 @@ impl GentleEngine {
                             end_reaction_id: None,
                             forward_window_0based: Some((local_start, local_end)),
                             reverse_window_0based: Some((local_start, local_end)),
+                            search_target_id: None,
+                            search_record_id: None,
+                            search_required: false,
+                            excluded_regions_0based: vec![],
                         });
                         scheduled_common_target = true;
                     }
@@ -22759,6 +23641,11 @@ impl GentleEngine {
                     end_reaction_id: None,
                     forward_window_0based: None,
                     reverse_window_0based: None,
+                    search_target_id: Some(junctions[resolved.request_index].junction_id.clone()),
+                    search_record_id: None,
+                    search_required: junctions[resolved.request_index].priority
+                        == TranscriptAssayJunctionPriority::Required,
+                    excluded_regions_0based: vec![],
                 });
             }
             for group in &equivalence_groups {
@@ -22772,14 +23659,74 @@ impl GentleEngine {
                         end_reaction_id: None,
                         forward_window_0based: None,
                         reverse_window_0based: None,
+                        search_target_id: None,
+                        search_record_id: None,
+                        search_required: false,
+                        excluded_regions_0based: vec![],
                     });
                 }
             }
         }
 
+        let effective_search_policy = Self::effective_transcript_assay_search_policy(
+            search_policy.as_ref(),
+            &forward,
+            &reverse,
+        )?;
+        let base_forward_sequence_constraints =
+            Self::normalize_primer_side_sequence_constraints(&forward)?;
+        let base_reverse_sequence_constraints =
+            Self::normalize_primer_side_sequence_constraints(&reverse)?;
+        let (mut primer_search_plan, targets) = Self::transcript_assay_build_primer_search_plan(
+            &operation_sha256,
+            &templates,
+            &targets,
+            &forward,
+            &base_forward_sequence_constraints,
+            &reverse,
+            &base_reverse_sequence_constraints,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            min_3prime_junction_overlap_bp,
+            min_5prime_junction_overlap_bp,
+            &effective_search_policy,
+        )?;
+        if let Some(feasibility) = end_matrix_feasibility.as_mut() {
+            feasibility.search_plan = Some(primer_search_plan.clone());
+        }
+        if primer_search_plan.status != TranscriptAssayPrimerSearchPlanStatus::Ready {
+            let plan_json = serde_json::to_string(&primer_search_plan).map_err(|error| {
+                EngineError::internal(format!(
+                    "Could not serialize rejected transcript assay search plan: {error}"
+                ))
+            })?;
+            return Err(EngineError::invalid_input(format!(
+                "Transcript assay search_space_too_broad or no admissible bounded region before Primer3 (status={:?}, blocked targets=[{}]). Refine biological windows or explicitly increase the search policy budget without changing coverage semantics. search_plan={plan_json}",
+                primer_search_plan.status,
+                primer_search_plan.blocked_target_ids.join(", ")
+            )));
+        }
+
         let mut candidate_by_id = BTreeMap::<String, TranscriptAssayEvaluatedCandidate>::new();
         let mut group_candidate_ids = vec![BTreeSet::<String>::new(); equivalence_groups.len()];
         let mut group_backend = vec![None::<PrimerDesignBackendInfo>; equivalence_groups.len()];
+        let bounded_record_count = primer_search_plan.records.len();
+        let bounded_record_ordinal_by_id = primer_search_plan
+            .records
+            .iter()
+            .enumerate()
+            .map(|(index, record)| (record.search_record_id.clone(), index.saturating_add(1)))
+            .collect::<BTreeMap<_, _>>();
+        let bounded_candidate_pair_upper_bound_by_id = primer_search_plan
+            .records
+            .iter()
+            .map(|record| {
+                (
+                    record.search_record_id.clone(),
+                    record.candidate_pair_search_space_upper_bound,
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
         for target in targets {
             let template = &templates[target.template_index];
             let Some(group_index) = equivalence_group_index_by_template
@@ -22816,6 +23763,23 @@ impl GentleEngine {
                 min_5prime_overlap_bp: min_5prime_junction_overlap_bp,
                 left_window_0based: target.forward_window_0based,
                 right_window_0based: target.reverse_window_0based,
+                excluded_regions_0based: target.excluded_regions_0based.clone(),
+                max_poly_x: Some(effective_search_policy.max_homopolymer_run_bp),
+                runtime_policy: effective_search_policy.clone(),
+                search_target_id: target.search_target_id.clone(),
+                search_record_id: target.search_record_id.clone(),
+                bounded_record_ordinal: target
+                    .search_record_id
+                    .as_ref()
+                    .and_then(|id| bounded_record_ordinal_by_id.get(id).copied()),
+                bounded_record_count: Some(bounded_record_count),
+                bounded_candidate_pair_upper_bound: target
+                    .search_record_id
+                    .as_ref()
+                    .and_then(|id| bounded_candidate_pair_upper_bound_by_id.get(id).copied()),
+                bounded_candidate_pair_total_upper_bound: Some(
+                    primer_search_plan.candidate_pair_search_space_upper_bound_total,
+                ),
             };
             let remaining = if requested_target {
                 max_assays_per_class
@@ -22836,29 +23800,65 @@ impl GentleEngine {
             } else {
                 remaining.saturating_mul(10).clamp(remaining, 500)
             };
-            let (pairs, pair_rejections, backend, backend_warnings) = self
-                .run_transcript_assay_pair_generation_with_backend(
-                    &progress_id,
-                    match assay_kind {
-                        TranscriptAssayKind::EndpointRtPcr => "endpoint_rt_pcr",
-                        TranscriptAssayKind::SybrQpcr => "sybr_qpcr",
-                        TranscriptAssayKind::TaqmanQpcr => "taqman_qpcr",
-                    },
-                    template,
-                    target.roi_start_0based,
-                    target.roi_end_0based,
-                    &effective_forward,
-                    &effective_forward_sequence_constraints,
-                    &effective_reverse,
-                    &effective_reverse_sequence_constraints,
-                    &pair_constraints_normalized,
-                    min_amplicon_bp,
-                    max_amplicon_bp,
-                    max_tm_delta_c,
-                    pair_generation_limit,
-                    &primer3_options,
-                    on_progress,
-                )?;
+            let generation = self.run_transcript_assay_pair_generation_with_backend(
+                &progress_id,
+                match assay_kind {
+                    TranscriptAssayKind::EndpointRtPcr => "endpoint_rt_pcr",
+                    TranscriptAssayKind::SybrQpcr => "sybr_qpcr",
+                    TranscriptAssayKind::TaqmanQpcr => "taqman_qpcr",
+                },
+                template,
+                target.roi_start_0based,
+                target.roi_end_0based,
+                &effective_forward,
+                &effective_forward_sequence_constraints,
+                &effective_reverse,
+                &effective_reverse_sequence_constraints,
+                &pair_constraints_normalized,
+                min_amplicon_bp,
+                max_amplicon_bp,
+                max_tm_delta_c,
+                pair_generation_limit,
+                &primer3_options,
+                on_progress,
+            );
+            let (pairs, pair_rejections, backend, backend_warnings) = match generation {
+                Ok(value) => value,
+                Err(error) if Self::is_primer3_runtime_reduction_error(&error) => {
+                    let reason_code = if error.message.contains("no_progress") {
+                        "primer3_no_progress_runtime_reduction"
+                    } else {
+                        "primer3_projected_runtime_reduction"
+                    };
+                    primer_search_plan.runtime_reductions.push(
+                        TranscriptAssayPrimerSearchRuntimeReduction {
+                            search_record_id: target
+                                .search_record_id
+                                .clone()
+                                .unwrap_or_else(|| "unbound_search_record".to_string()),
+                            target_id: target
+                                .search_target_id
+                                .clone()
+                                .unwrap_or_else(|| "unbound_search_target".to_string()),
+                            reason_code: reason_code.to_string(),
+                            detail: error.message.clone(),
+                        },
+                    );
+                    warnings.push(format!(
+                        "Bounded Primer3 record '{}' was stopped because its runtime looked anomalous; GENtle continues only with other precomputed bounded records and does not weaken coverage policy '{}'.",
+                        target
+                            .search_record_id
+                            .as_deref()
+                            .unwrap_or("unbound_search_record"),
+                        coverage_policy.as_str()
+                    ));
+                    if effective_search_policy.continue_after_runtime_reduction {
+                        continue;
+                    }
+                    return Err(error);
+                }
+                Err(error) => return Err(error),
+            };
             if group_backend[group_index].is_none() {
                 group_backend[group_index] = Some(backend);
             }
@@ -23301,6 +24301,15 @@ impl GentleEngine {
                 _ => true,
             };
         if coverage_policy == TranscriptAssayCoveragePolicy::RequireAll && !complete {
+            let runtime_reduction_receipt = if primer_search_plan.runtime_reductions.is_empty() {
+                "none".to_string()
+            } else {
+                serde_json::to_string(&primer_search_plan.runtime_reductions).map_err(|error| {
+                    EngineError::internal(format!(
+                        "Could not serialize Primer3 runtime-reduction receipts: {error}"
+                    ))
+                })?
+            };
             let uncovered = uncovered_group_indices
                 .iter()
                 .map(|index| {
@@ -23330,7 +24339,7 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!(
-                    "Transcript assay panel objective '{}' with coverage policy 'require_all' could not be satisfied. Uncovered equivalence classes: {}. Unresolved class pairs: {}. Uncovered end reactions: {}. Required junctions without a spanning assay: {}. Annotation-confirmed routine common region: {}.",
+                    "Transcript assay panel objective '{}' with coverage policy 'require_all' could not be satisfied. Uncovered equivalence classes: {}. Unresolved class pairs: {}. Uncovered end reactions: {}. Required junctions without a spanning assay: {}. Annotation-confirmed routine common region: {}. Primer3 runtime-reduction receipts: {}.",
                     objective.as_str(),
                     if uncovered.is_empty() {
                         "none".to_string()
@@ -23357,6 +24366,7 @@ impl GentleEngine {
                     } else {
                         "not_requested".to_string()
                     },
+                    runtime_reduction_receipt,
                 ),
 
                 cause_chain: vec![],
@@ -23878,6 +24888,7 @@ impl GentleEngine {
             unresolved_group_pairs,
             backend_runs,
             feasibility: end_matrix_feasibility,
+            search_plan: Some(primer_search_plan),
             end_classes: end_classes_internal
                 .iter()
                 .map(|class| class.report.clone())
@@ -36872,6 +37883,7 @@ impl GentleEngine {
                     max_mismatches,
                     require_3prime_exact_bases,
                     oligo_dt_5prime_risk_threshold_bp,
+                    search_policy,
                     junctions,
                     junction_evidence_paths,
                     junction_evidence_priority,
@@ -36908,6 +37920,7 @@ impl GentleEngine {
                         max_mismatches,
                         require_3prime_exact_bases,
                         oligo_dt_5prime_risk_threshold_bp,
+                        search_policy,
                         junctions,
                         junction_evidence_paths,
                         junction_evidence_priority,

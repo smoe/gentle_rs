@@ -8340,6 +8340,7 @@ fn approved_gene_isoform_study_batch_rejects_structural_endpoint_before_mutation
             max_mismatches: Some(0),
             require_3prime_exact_bases: Some(8),
             oligo_dt_5prime_risk_threshold_bp: None,
+            search_policy: None,
             junctions: vec![],
             junction_evidence_paths: vec![],
             junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,

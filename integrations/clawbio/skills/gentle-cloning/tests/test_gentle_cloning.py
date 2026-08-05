@@ -5,10 +5,13 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import signal
 import shlex
 import shutil
 import subprocess
 import sys
+import threading
+import time
 
 import pytest
 
@@ -55,6 +58,101 @@ def _local_checkout_script() -> Path:
 
 def _examples_dir() -> Path:
     return Path(__file__).resolve().parents[1] / "examples"
+
+
+def test_run_cli_command_preserves_child_failure_bytes_and_hashes(tmp_path: Path) -> None:
+    module = _skill_module()
+    child = tmp_path / "child_failure.py"
+    child.write_text(
+        "import sys\nsys.stdout.buffer.write(b'out\\x00bytes')\n"
+        "sys.stderr.buffer.write(b'err\\xffbytes')\nsys.exit(7)\n",
+        encoding="utf-8",
+    )
+    resolution = module.CliResolution(
+        argv_prefix=[sys.executable, str(child)],
+        cwd=None,
+        label="synthetic failing child",
+    )
+
+    result, step = module._run_cli_command(resolution, [], tmp_path, 5)
+
+    assert result.returncode == 7
+    assert step["status"] == "command_failed"
+    assert step["stdout_bytes"] == len(b"out\x00bytes")
+    assert step["stderr_bytes"] == len(b"err\xffbytes")
+    assert step["stdout_sha256"] == module._sha256_prefixed_bytes(b"out\x00bytes")
+    assert step["stderr_sha256"] == module._sha256_prefixed_bytes(b"err\xffbytes")
+
+
+def test_run_cli_command_timeout_preserves_partial_output_receipt(tmp_path: Path) -> None:
+    module = _skill_module()
+    child = tmp_path / "child_timeout.py"
+    child.write_text(
+        "import os, time\nos.write(1, b'before-timeout')\n"
+        "os.write(2, b'timeout-diagnostic')\ntime.sleep(60)\n",
+        encoding="utf-8",
+    )
+    resolution = module.CliResolution(
+        argv_prefix=[sys.executable, str(child)],
+        cwd=None,
+        label="synthetic timed-out child",
+    )
+
+    result, step = module._run_cli_command(resolution, [], tmp_path, 1.0)
+
+    assert result.returncode is not None
+    assert step["status"] == "timed_out"
+    assert step["stdout_bytes"] == len(b"before-timeout")
+    assert step["stderr_bytes"] == len(b"timeout-diagnostic")
+    assert step["stdout_sha256"] == module._sha256_prefixed_bytes(b"before-timeout")
+    assert step["stderr_sha256"] == module._sha256_prefixed_bytes(b"timeout-diagnostic")
+
+
+@pytest.mark.skipif(os.name != "posix" or not hasattr(signal, "SIGUSR1"), reason="POSIX signal contract")
+def test_run_cli_command_forwards_sigusr1_without_terminating_wrapper(tmp_path: Path) -> None:
+    module = _skill_module()
+    ready = tmp_path / "child.ready"
+    child = tmp_path / "signal_child.py"
+    child.write_text(
+        "import pathlib, signal, sys, time\n"
+        "seen = False\n"
+        "def handle(_signum, _frame):\n"
+        "    global seen\n"
+        "    seen = True\n"
+        "signal.signal(signal.SIGUSR1, handle)\n"
+        f"pathlib.Path({str(ready)!r}).write_text('ready', encoding='utf-8')\n"
+        "deadline = time.monotonic() + 4\n"
+        "while not seen and time.monotonic() < deadline:\n"
+        "    time.sleep(0.01)\n"
+        "print('SIGUSR1 forwarded' if seen else 'SIGUSR1 missing')\n"
+        "sys.exit(0 if seen else 9)\n",
+        encoding="utf-8",
+    )
+    resolution = module.CliResolution(
+        argv_prefix=[sys.executable, str(child)],
+        cwd=None,
+        label="synthetic signal child",
+    )
+
+    def signal_wrapper() -> None:
+        deadline = time.monotonic() + 3
+        while not ready.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        time.sleep(0.05)
+        os.kill(os.getpid(), signal.SIGUSR1)
+
+    sender = threading.Thread(target=signal_wrapper, daemon=True)
+    sender.start()
+    result, step = module._run_cli_command(resolution, [], tmp_path, 5)
+    sender.join(timeout=1)
+
+    assert result.returncode == 0, result.stderr
+    assert "SIGUSR1 forwarded" in result.stdout
+    assert step["status"] == "ok"
+    assert any(
+        record["signal_name"] == "SIGUSR1" and record["forwarded"]
+        for record in step["forwarded_signals"]
+    )
 
 
 # These examples are intentionally not direct top-level intent routes. They are

@@ -21,6 +21,8 @@ const PRIMER3_PROGRESS_SIGNAL_AFTER: Duration = Duration::from_secs(2);
 const PRIMER3_PROGRESS_SIGNAL_AFTER: Duration = Duration::from_millis(100);
 const PRIMER3_PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const PRIMER_DESIGN_CANCELLED_MESSAGE: &str = "Primer design cancelled during progress reporting";
+const PRIMER3_RUNTIME_REDUCTION_MESSAGE: &str =
+    "Primer3 bounded search stopped after suspicious runtime";
 
 struct Primer3ProcessOutput {
     status: std::process::ExitStatus,
@@ -39,6 +41,12 @@ pub(crate) struct PrimerDesignProgressContext<'a> {
     pub(crate) max_output: usize,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct PrimerSideSearchEstimate {
+    pub(crate) candidates: Vec<PrimerDesignCandidate>,
+    pub(crate) rejected_starts: Vec<(usize, String)>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Primer3PairDesignOptions {
     /// Primer3 junction positions are one-based base indexes: a value N means
@@ -49,6 +57,22 @@ pub(crate) struct Primer3PairDesignOptions {
     /// Zero-based half-open allowed windows for left and right primers.
     pub(crate) left_window_0based: Option<(usize, usize)>,
     pub(crate) right_window_0based: Option<(usize, usize)>,
+    pub(crate) excluded_regions_0based: Vec<(usize, usize)>,
+    pub(crate) max_poly_x: Option<usize>,
+    pub(crate) runtime_policy: TranscriptAssayPrimerSearchPolicy,
+    pub(crate) search_target_id: Option<String>,
+    pub(crate) search_record_id: Option<String>,
+    pub(crate) bounded_record_ordinal: Option<usize>,
+    pub(crate) bounded_record_count: Option<usize>,
+    pub(crate) bounded_candidate_pair_upper_bound: Option<usize>,
+    pub(crate) bounded_candidate_pair_total_upper_bound: Option<usize>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(super) struct Primer3RuntimeAssessment {
+    pub(super) projected_total_ms: Option<u128>,
+    pub(super) status: &'static str,
+    pub(super) reduce: bool,
 }
 
 fn fact_subject(kind: FactSubjectKind, id: impl Into<String>) -> FactSubject {
@@ -5907,6 +5931,179 @@ impl GentleEngine {
         ret
     }
 
+    /// Cheap deterministic candidate enumeration used to budget Primer3.
+    ///
+    /// This mirrors the hard local sequence filters used by the internal
+    /// candidate generator, but indexes exact subsequences once so planning a
+    /// broad transcript does not become its own quadratic search.
+    pub(super) fn estimate_primer_side_search_candidates(
+        template: &[u8],
+        side: &PrimerDesignSideConstraint,
+        sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        reverse_orientation: bool,
+        max_homopolymer_run_bp: usize,
+    ) -> PrimerSideSearchEstimate {
+        if template.is_empty() || side.min_length > template.len() {
+            return PrimerSideSearchEstimate {
+                candidates: vec![],
+                rejected_starts: vec![],
+            };
+        }
+        let first_start = side.start_0based.unwrap_or(0).min(template.len());
+        let last_end = side
+            .end_0based
+            .unwrap_or(template.len())
+            .min(template.len());
+        let lengths = side.min_length..=side.max_length.min(template.len());
+        let mut occurrence_counts = HashMap::<usize, HashMap<Vec<u8>, usize>>::new();
+        for length in lengths.clone() {
+            let mut bounded_sequences = HashMap::<Vec<u8>, usize>::new();
+            for start in first_start..last_end {
+                if side
+                    .location_0based
+                    .is_some_and(|location| location != start)
+                {
+                    continue;
+                }
+                let Some(end) = start.checked_add(length) else {
+                    continue;
+                };
+                if end > last_end || end > template.len() {
+                    break;
+                }
+                let binding_window = &template[start..end];
+                if binding_window
+                    .iter()
+                    .all(|base| matches!(base, b'A' | b'C' | b'G' | b'T'))
+                    && Self::max_homopolymer_run(binding_window) <= max_homopolymer_run_bp
+                {
+                    bounded_sequences
+                        .entry(binding_window.to_vec())
+                        .or_insert(0);
+                }
+            }
+            if bounded_sequences.is_empty() {
+                continue;
+            }
+            for start in 0..=template.len().saturating_sub(length) {
+                if let Some(count) =
+                    bounded_sequences.get_mut(&template[start..start.saturating_add(length)])
+                {
+                    *count = count.saturating_add(1);
+                }
+            }
+            occurrence_counts.insert(length, bounded_sequences);
+        }
+
+        let mut candidates = vec![];
+        let mut rejected_starts = vec![];
+        for start in first_start..last_end {
+            if side
+                .location_0based
+                .is_some_and(|location| location != start)
+            {
+                continue;
+            }
+            let mut accepted_at_start = 0usize;
+            let mut saw_ambiguous = false;
+            let mut saw_low_complexity = false;
+            let mut saw_non_unique = false;
+            let mut saw_tm_or_gc = false;
+            let mut saw_sequence_constraint = false;
+            for length in lengths.clone() {
+                let Some(end) = start.checked_add(length) else {
+                    continue;
+                };
+                if end > last_end || end > template.len() {
+                    break;
+                }
+                let binding_window = &template[start..end];
+                if !binding_window
+                    .iter()
+                    .all(|base| matches!(base, b'A' | b'C' | b'G' | b'T'))
+                {
+                    saw_ambiguous = true;
+                    continue;
+                }
+                if Self::max_homopolymer_run(binding_window) > max_homopolymer_run_bp {
+                    saw_low_complexity = true;
+                    continue;
+                }
+                let anneal_hits = occurrence_counts
+                    .get(&length)
+                    .and_then(|counts| counts.get(binding_window))
+                    .copied()
+                    .unwrap_or(0);
+                if anneal_hits == 0 || anneal_hits > side.max_anneal_hits {
+                    saw_non_unique = true;
+                    continue;
+                }
+                let anneal_bytes = if reverse_orientation {
+                    Self::reverse_complement_bytes(binding_window)
+                } else {
+                    binding_window.to_vec()
+                };
+                let gc_fraction = Self::sequence_gc_fraction(&anneal_bytes).unwrap_or(0.0);
+                let tm_c = Self::estimate_primer_tm_c(&anneal_bytes);
+                if gc_fraction < side.min_gc_fraction
+                    || gc_fraction > side.max_gc_fraction
+                    || tm_c < side.min_tm_c
+                    || tm_c > side.max_tm_c
+                {
+                    saw_tm_or_gc = true;
+                    continue;
+                }
+                let mut primer_bytes = vec![];
+                if let Some(tail) = &sequence_constraints.non_annealing_5prime_tail {
+                    primer_bytes.extend_from_slice(tail.as_bytes());
+                }
+                primer_bytes.extend_from_slice(&anneal_bytes);
+                if !Self::primer_sequence_matches_side_constraints(
+                    &primer_bytes,
+                    sequence_constraints,
+                ) {
+                    saw_sequence_constraint = true;
+                    continue;
+                }
+                accepted_at_start = accepted_at_start.saturating_add(1);
+                candidates.push(PrimerDesignCandidate {
+                    sequence: String::from_utf8(primer_bytes).unwrap_or_default(),
+                    start_0based: start,
+                    end_0based_exclusive: end,
+                    tm_c,
+                    gc_fraction,
+                    anneal_hits,
+                });
+            }
+            if accepted_at_start == 0 {
+                let reason = if saw_ambiguous {
+                    "ambiguous_sequence"
+                } else if saw_low_complexity {
+                    "low_complexity_homopolymer"
+                } else if saw_non_unique {
+                    "local_non_unique_sequence"
+                } else if saw_sequence_constraint {
+                    "primer_sequence_constraint"
+                } else if saw_tm_or_gc {
+                    "tm_or_gc_out_of_range"
+                } else {
+                    "no_complete_primer_interval"
+                };
+                rejected_starts.push((start, reason.to_string()));
+            }
+        }
+        candidates.sort_by(|left, right| {
+            left.start_0based
+                .cmp(&right.start_0based)
+                .then(left.end_0based_exclusive.cmp(&right.end_0based_exclusive))
+                .then(left.sequence.cmp(&right.sequence))
+        });
+        PrimerSideSearchEstimate {
+            candidates,
+            rejected_starts,
+        }
+    }
+
     pub(super) fn primer_sequence_matches_side_constraints(
         primer_sequence: &[u8],
         constraints: &NormalizedPrimerSideSequenceConstraints,
@@ -8012,7 +8209,62 @@ impl GentleEngine {
             record,
             completed,
             bound,
+            ..Primer3Progress::default()
         })
+    }
+
+    pub(super) fn assess_primer3_runtime(
+        progress: Option<&Primer3Progress>,
+        elapsed: Duration,
+        time_since_progress: Duration,
+        policy: &TranscriptAssayPrimerSearchPolicy,
+    ) -> Primer3RuntimeAssessment {
+        if time_since_progress >= Duration::from_secs(policy.runtime_no_progress_reduce_after_secs)
+        {
+            return Primer3RuntimeAssessment {
+                status: "runtime_reduction_no_progress",
+                reduce: true,
+                ..Primer3RuntimeAssessment::default()
+            };
+        }
+        let projected_total_ms = progress.and_then(|value| {
+            (value.completed > 0 && value.bound >= value.completed).then(|| {
+                elapsed.as_millis().saturating_mul(value.bound as u128) / value.completed as u128
+            })
+        });
+        let projected_total = projected_total_ms
+            .map(|millis| Duration::from_millis(millis.min(u64::MAX as u128) as u64));
+        if elapsed >= Duration::from_secs(policy.runtime_reduce_after_secs)
+            && projected_total.is_some_and(|projection| {
+                projection >= Duration::from_secs(policy.runtime_reduce_projected_total_secs)
+            })
+        {
+            return Primer3RuntimeAssessment {
+                projected_total_ms,
+                status: "runtime_reduction_projected_too_long",
+                reduce: true,
+            };
+        }
+        if elapsed >= Duration::from_secs(policy.runtime_warning_after_secs)
+            && projected_total.is_some_and(|projection| {
+                projection >= Duration::from_secs(policy.runtime_warning_projected_total_secs)
+            })
+        {
+            return Primer3RuntimeAssessment {
+                projected_total_ms,
+                status: "suspicious_runtime_projection",
+                reduce: false,
+            };
+        }
+        Primer3RuntimeAssessment {
+            projected_total_ms,
+            status: "within_runtime_policy",
+            reduce: false,
+        }
+    }
+
+    pub(crate) fn is_primer3_runtime_reduction_error(error: &EngineError) -> bool {
+        error.message.starts_with(PRIMER3_RUNTIME_REDUCTION_MESSAGE)
     }
 
     fn primer3_progress_flag_unsupported(output: &Primer3ProcessOutput) -> bool {
@@ -8042,6 +8294,22 @@ impl GentleEngine {
             .map(str::trim)
             .find(|line| !line.is_empty() && Self::parse_primer3_progress_line(line).is_none())
             .map(ToOwned::to_owned)
+    }
+
+    pub(super) fn primer3_progress_parse_warning(stderr: &[u8]) -> Option<String> {
+        let malformed_count = String::from_utf8_lossy(stderr)
+            .lines()
+            .map(str::trim)
+            .filter(|line| {
+                line.starts_with(PRIMER3_PROGRESS_PREFIX)
+                    && Self::parse_primer3_progress_line(line).is_none()
+            })
+            .count();
+        (malformed_count > 0).then(|| {
+            format!(
+                "Primer3 emitted {malformed_count} unparsed PRIMER3_PROGRESS record(s); bounded work counters and runtime projections omit those records."
+            )
+        })
     }
 
     #[cfg(unix)]
@@ -8097,6 +8365,7 @@ impl GentleEngine {
         primer3_executable: &str,
         input: &str,
         progress_enabled: bool,
+        runtime_policy: &TranscriptAssayPrimerSearchPolicy,
         mut on_progress: Option<&mut dyn FnMut(Primer3Progress) -> bool>,
     ) -> Result<Primer3ProcessOutput, EngineError> {
         let mut command = Command::new(primer3_executable);
@@ -8193,22 +8462,43 @@ impl GentleEngine {
                 .map(|error| error.to_string())
         });
 
-        let mut progress_observed = false;
-        let mut last_progress_at = Instant::now();
-        let mut last_signal_at = Instant::now();
+        let started = Instant::now();
+        let mut last_progress_at = started;
+        let mut last_signal_at = started;
+        let mut last_progress = None::<Primer3Progress>;
         let mut stderr_open = true;
         let mut cancelled = false;
+        let mut runtime_reduction_reason = None::<String>;
         let status = loop {
             if stderr_open {
                 match stderr_rx.recv_timeout(PRIMER3_PROCESS_POLL_INTERVAL) {
                     Ok(line) => {
-                        if let Some(keep_running) =
-                            Self::dispatch_primer3_progress_line(&line, &mut on_progress)
-                        {
-                            progress_observed = true;
+                        if let Some(mut progress) = Self::parse_primer3_progress_line(&line) {
                             last_progress_at = Instant::now();
+                            let assessment = Self::assess_primer3_runtime(
+                                Some(&progress),
+                                started.elapsed(),
+                                Duration::ZERO,
+                                runtime_policy,
+                            );
+                            progress.elapsed_ms = Some(started.elapsed().as_millis());
+                            progress.work_remaining =
+                                Some(progress.bound.saturating_sub(progress.completed));
+                            progress.projected_total_ms = assessment.projected_total_ms;
+                            progress.runtime_assessment = Some(assessment.status.to_string());
+                            let keep_running = on_progress
+                                .as_deref_mut()
+                                .is_none_or(|callback| callback(progress.clone()));
+                            last_progress = Some(progress);
                             if !keep_running {
                                 cancelled = true;
+                            }
+                            if assessment.reduce {
+                                runtime_reduction_reason = Some(format!(
+                                    "{} after {} ms",
+                                    assessment.status,
+                                    started.elapsed().as_millis()
+                                ));
                             }
                         }
                     }
@@ -8221,13 +8511,26 @@ impl GentleEngine {
                 std::thread::sleep(PRIMER3_PROCESS_POLL_INTERVAL);
             }
 
-            if cancelled {
+            if cancelled || runtime_reduction_reason.is_some() {
                 let _ = child.kill();
                 break child.wait().map_err(|error| EngineError {
                     code: ErrorCode::Io,
                     message: format!("Could not stop cancelled Primer3 process: {error}"),
                     cause_chain: vec![],
                 });
+            }
+            let runtime_assessment = Self::assess_primer3_runtime(
+                last_progress.as_ref(),
+                started.elapsed(),
+                last_progress_at.elapsed(),
+                runtime_policy,
+            );
+            if runtime_assessment.reduce {
+                runtime_reduction_reason = Some(format!(
+                    "{} after {} ms",
+                    runtime_assessment.status,
+                    started.elapsed().as_millis()
+                ));
             }
             match child.try_wait() {
                 Ok(Some(status)) => break Ok(status),
@@ -8242,7 +8545,6 @@ impl GentleEngine {
                 }
             }
             if progress_enabled
-                && progress_observed
                 && last_progress_at.elapsed() >= PRIMER3_PROGRESS_SIGNAL_AFTER
                 && last_signal_at.elapsed() >= PRIMER3_PROGRESS_SIGNAL_AFTER
             {
@@ -8285,6 +8587,26 @@ impl GentleEngine {
             }
         }
         let status = status?;
+        if let Some(reason) = runtime_reduction_reason {
+            let progress_warning = Self::primer3_progress_parse_warning(&stderr)
+                .map(|warning| format!("; {warning}"))
+                .unwrap_or_default();
+            let exit_status = status
+                .code()
+                .map(|code| code.to_string())
+                .unwrap_or_else(|| "signal".to_string());
+            return Err(EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "{PRIMER3_RUNTIME_REDUCTION_MESSAGE}: {reason}{progress_warning}; child_status={exit_status}; stdout_bytes={}; stdout_sha256={}; stderr_bytes={}; stderr_sha256={}",
+                    stdout.len(),
+                    sha256_prefixed_bytes(&stdout),
+                    stderr.len(),
+                    sha256_prefixed_bytes(&stderr)
+                ),
+                cause_chain: vec![],
+            });
+        }
         if cancelled {
             return Err(EngineError {
                 code: ErrorCode::Internal,
@@ -8304,6 +8626,7 @@ impl GentleEngine {
     fn run_primer3_process(
         primer3_executable: &str,
         input: &str,
+        runtime_policy: &TranscriptAssayPrimerSearchPolicy,
         on_progress: Option<&mut dyn FnMut(Primer3Progress) -> bool>,
     ) -> Result<Primer3ProcessOutput, EngineError> {
         let progress_supported =
@@ -8312,10 +8635,17 @@ impl GentleEngine {
             primer3_executable,
             input,
             progress_supported,
+            runtime_policy,
             on_progress,
         )?;
         let output = if progress_supported && Self::primer3_progress_flag_unsupported(&output) {
-            Self::run_primer3_process_attempt(primer3_executable, input, false, None)?
+            Self::run_primer3_process_attempt(
+                primer3_executable,
+                input,
+                false,
+                runtime_policy,
+                None,
+            )?
         } else {
             output
         };
@@ -8536,6 +8866,23 @@ impl GentleEngine {
                 ));
             }
         }
+        if !options.excluded_regions_0based.is_empty() {
+            let excluded = options
+                .excluded_regions_0based
+                .iter()
+                .filter(|(start, end)| start < end)
+                .map(|(start, end)| format!("{start},{}", end.saturating_sub(*start)))
+                .collect::<Vec<_>>()
+                .join(" ");
+            if !excluded.is_empty() {
+                sequence_tags.push_str(&format!("SEQUENCE_EXCLUDED_REGION={excluded}\n"));
+            }
+        }
+        if let Some(max_poly_x) = options.max_poly_x {
+            sequence_tags.push_str(&format!(
+                "PRIMER_MAX_POLY_X={max_poly_x}\nPRIMER_MAX_NS_ACCEPTED=0\n"
+            ));
+        }
         // A Primer3 target must be flanked by the pair, which conflicts with
         // requiring either primer to overlap a splice junction at that target.
         let target_tag = options
@@ -8546,10 +8893,21 @@ impl GentleEngine {
         let input = format!(
             "SEQUENCE_ID=gentle_primer_design\nSEQUENCE_TEMPLATE={template_seq}\n{target_tag}{sequence_tags}PRIMER_TASK=generic\nPRIMER_PICK_LEFT_PRIMER=1\nPRIMER_PICK_RIGHT_PRIMER=1\nPRIMER_PICK_INTERNAL_OLIGO=0\nPRIMER_MIN_SIZE={min_size}\nPRIMER_MAX_SIZE={max_size}\nPRIMER_MIN_TM={min_tm:.3}\nPRIMER_MAX_TM={max_tm:.3}\nPRIMER_MIN_GC={min_gc_percent:.3}\nPRIMER_MAX_GC={max_gc_percent:.3}\nPRIMER_PRODUCT_SIZE_RANGE={min_amplicon_bp}-{max_amplicon_bp}\nPRIMER_NUM_RETURN={num_return}\nPRIMER_EXPLAIN_FLAG=1\n=\n"
         );
-        let output = Self::run_primer3_process(primer3_executable, &input, on_progress)?;
+        let output = Self::run_primer3_process(
+            primer3_executable,
+            &input,
+            &options.runtime_policy,
+            on_progress,
+        )?;
         let stdout_text = String::from_utf8_lossy(&output.stdout).to_string();
         let map = Self::parse_primer3_kv_output(&stdout_text);
-        let primer3_explain = Self::primer3_explain_summary(&map);
+        let mut primer3_explain = Self::primer3_explain_summary(&map);
+        if let Some(progress_warning) = Self::primer3_progress_parse_warning(&output.stderr) {
+            primer3_explain = Some(match primer3_explain {
+                Some(existing) => format!("{existing}; {progress_warning}"),
+                None => progress_warning,
+            });
+        }
 
         if let Some(primer_error) = map.get("PRIMER_ERROR") {
             return Err(EngineError {

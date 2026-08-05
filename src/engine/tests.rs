@@ -16,6 +16,7 @@ use crate::allele_hash_screen::{
 use crate::attract_motifs::{
     ATTRACT_MOTIF_SNAPSHOT_SCHEMA, AttractMotifRecord, AttractMotifSnapshot, AttractPfmRows,
 };
+use crate::engine::sequence_ops::Primer3PairDesignOptions;
 use crate::engine_shell::{ShellCommand, execute_shell_command};
 use crate::ensembl_gene::{
     EnsemblGeneEntry, EnsemblGeneExonSummary, EnsemblGeneTranscriptSummary,
@@ -3847,6 +3848,7 @@ if [ "$1" = "--version" ]; then
   exit 0
 fi
 [ "$progress" -eq 1 ] && echo "PRIMER3_PROGRESS=record=1 4<16" >&2
+[ "$progress" -eq 1 ] && echo "PRIMER3_PROGRESS=record=1 phase=future-format" >&2
 cat > "{}"
 echo "PRIMER_PAIR_NUM_RETURNED=0"
 echo "PRIMER_LEFT_NUM_RETURNED=0"
@@ -3993,6 +3995,30 @@ exit 9
         .permissions();
     perms.set_mode(0o755);
     std::fs::set_permissions(&script_path, perms).expect("chmod signal-driven fake primer3");
+    script_path.display().to_string()
+}
+
+#[cfg(unix)]
+fn install_fake_long_running_progress_primer3(path: &Path) -> String {
+    let script_path = path.join("fake_long_running_progress_primer3.sh");
+    let script = r#"#!/bin/sh
+if [ "$1" = "--help" ]; then
+  echo "USAGE: primer3_core [--progress] [input_file]"
+  exit 0
+fi
+if [ "$1" = "--progress" ]; then
+  shift
+fi
+cat >/dev/null
+echo "PRIMER3_PROGRESS=record=1 1<100" >&2
+exec sleep 60
+"#;
+    std::fs::write(&script_path, script).expect("write long-running fake primer3");
+    let mut perms = std::fs::metadata(&script_path)
+        .expect("metadata long-running fake primer3")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script_path, perms).expect("chmod long-running fake primer3");
     script_path.display().to_string()
 }
 
@@ -12703,6 +12729,7 @@ fn transcript_endpoint_structural_failure_operation(
         max_mismatches: Some(0),
         require_3prime_exact_bases: Some(8),
         oligo_dt_5prime_risk_threshold_bp: None,
+        search_policy: None,
         junctions: vec![],
         junction_evidence_paths: vec![],
         junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
@@ -12972,6 +12999,7 @@ fn transcript_assay_panel_operation(
         max_mismatches: Some(max_mismatches),
         require_3prime_exact_bases: Some(8),
         oligo_dt_5prime_risk_threshold_bp: None,
+        search_policy: None,
         junctions: vec![],
         junction_evidence_paths: vec![],
         junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
@@ -13051,6 +13079,43 @@ fn transcript_assay_specificity_execution_manifest(
         panel_digest: handoff.panel_digest.clone(),
         executions,
     }
+}
+
+#[cfg(unix)]
+fn transcript_assay_specificity_execution_manifest_with_off_target(
+    handoff: &TranscriptAssayPanelSpecificityHandoff,
+) -> TranscriptAssayPanelSpecificityExecutionManifest {
+    let mut manifest = transcript_assay_specificity_execution_manifest(handoff, false);
+    let assay = handoff.assays.first().expect("one planned assay");
+    for command in &assay.handoff.commands {
+        let (subject_start, subject_end) = match command.role {
+            PrimerSpecificityPrimerRole::Forward => {
+                (700usize, 700 + command.query_length_bp.saturating_sub(1))
+            }
+            PrimerSpecificityPrimerRole::Reverse => {
+                (850usize, 850 - command.query_length_bp.saturating_sub(1))
+            }
+        };
+        let bytes = format!(
+            "{}\tchr1\t100\t{}\t0\t0\t1\t{}\t{}\t{}\t1e-20\t80\t100\n",
+            command.query_label,
+            command.query_length_bp,
+            command.query_length_bp,
+            subject_start,
+            subject_end,
+        )
+        .into_bytes();
+        fs::write(&command.output_tsv_path, &bytes)
+            .expect("write synthetic off-target BLAST output");
+        let execution = manifest
+            .executions
+            .iter_mut()
+            .find(|row| row.command_id == command.command_id)
+            .expect("execution row for synthetic off-target command");
+        execution.output_size_bytes = Some(bytes.len() as u64);
+        execution.output_sha256 = Some(sha256_prefixed_bytes(&bytes));
+    }
+    manifest
 }
 
 #[cfg(unix)]
@@ -13390,14 +13455,15 @@ fn transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_o
             &root.join("fail").to_string_lossy(),
         )
         .expect("plan biologically failing panel handoff");
-    let fail_manifest = transcript_assay_specificity_execution_manifest(&fail_handoff, false);
+    let fail_manifest =
+        transcript_assay_specificity_execution_manifest_with_off_target(&fail_handoff);
     let specificity_fail = engine
         .finalize_transcript_assay_panel_specificity_handoff(
             &fail_handoff.handoff_path,
             fail_manifest.clone(),
             None,
         )
-        .expect("interpret completed empty BLAST outputs");
+        .expect("interpret a completed BLAST search with one unintended product");
     assert_eq!(
         specificity_fail.status,
         TranscriptAssayPanelSpecificityAcceptanceStatus::SpecificityFail
@@ -14956,6 +15022,7 @@ fn transcript_assay_panel_does_not_equate_one_base_near_matches() {
             max_mismatches: Some(0),
             require_3prime_exact_bases: Some(8),
             oligo_dt_5prime_risk_threshold_bp: None,
+            search_policy: None,
             junctions: vec![],
             junction_evidence_paths: vec![],
             junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
@@ -15048,6 +15115,52 @@ fn transcript_endpoint_feasibility_reports_stable_structural_blockers_before_pri
         first.execution_recommendation,
         "reject_before_primer_search"
     );
+    let search_plan = first.search_plan.as_ref().expect("bounded search plan");
+    assert_eq!(
+        search_plan.schema,
+        TRANSCRIPT_ASSAY_PRIMER_SEARCH_PLAN_SCHEMA
+    );
+    assert_eq!(search_plan.operation_sha256, first.operation_sha256);
+    assert_eq!(search_plan.target_count, 1);
+    assert!(!search_plan.records.is_empty());
+    assert!(search_plan.records.iter().all(|record| {
+        record
+            .left_interval
+            .end_0based_exclusive
+            .saturating_sub(record.left_interval.start_0based)
+            <= search_plan.policy.max_primer_window_bp
+            && record
+                .right_interval
+                .end_0based_exclusive
+                .saturating_sub(record.right_interval.start_0based)
+                <= search_plan.policy.max_primer_window_bp
+            && record.estimated_candidate_pair_count
+                <= search_plan.policy.max_candidate_pairs_per_record
+            && record
+                .primer3_fields
+                .iter()
+                .any(|field| field.name == "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST")
+            && record
+                .primer3_fields
+                .iter()
+                .any(|field| field.name == "PRIMER_PRODUCT_SIZE_RANGE")
+    }));
+    assert_eq!(
+        search_plan.estimated_candidate_pair_count_total,
+        search_plan
+            .records
+            .iter()
+            .map(|record| record.estimated_candidate_pair_count)
+            .sum::<usize>()
+    );
+    assert_eq!(
+        search_plan.candidate_pair_search_space_upper_bound_total,
+        search_plan
+            .records
+            .iter()
+            .map(|record| record.candidate_pair_search_space_upper_bound)
+            .sum::<usize>()
+    );
     let blocked = first
         .reactions
         .iter()
@@ -15090,6 +15203,210 @@ fn transcript_endpoint_feasibility_reports_stable_structural_blockers_before_pri
             .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
             .cloned(),
         before
+    );
+}
+
+#[test]
+fn transcript_endpoint_search_budget_refuses_before_primer3_without_weakening_coverage() {
+    let relaxed_side = PrimerDesignSideConstraint {
+        min_length: 8,
+        max_length: 12,
+        min_tm_c: 0.0,
+        max_tm_c: 100.0,
+        min_gc_fraction: 0.0,
+        max_gc_fraction: 1.0,
+        max_anneal_hits: 10_000,
+        ..PrimerDesignSideConstraint::default()
+    };
+    let mut operation = transcript_endpoint_structural_failure_operation(
+        TranscriptAssayCoveragePolicy::RequireAll,
+        relaxed_side,
+    );
+    let Operation::DesignTranscriptAssayPanel { search_policy, .. } = &mut operation else {
+        panic!("endpoint fixture must produce transcript-assay operation");
+    };
+    *search_policy = Some(TranscriptAssayPrimerSearchPolicy {
+        max_candidate_pairs_per_record: 1,
+        max_records_per_target: 1,
+        max_candidate_pairs_total: 1,
+        ..TranscriptAssayPrimerSearchPolicy::default()
+    });
+
+    let mut engine = transcript_endpoint_structural_failure_engine();
+    let feasibility = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&operation)
+        .expect("inspect deliberately tiny search budget");
+    let search_plan = feasibility.search_plan.expect("search plan");
+    assert_eq!(
+        search_plan.status,
+        TranscriptAssayPrimerSearchPlanStatus::SearchSpaceTooBroad
+    );
+    assert_eq!(
+        feasibility.execution_recommendation,
+        "search_space_too_broad"
+    );
+    assert_eq!(
+        feasibility.coverage_policy,
+        TranscriptAssayCoveragePolicy::RequireAll
+    );
+    let before = serde_json::to_value(engine.state()).expect("serialize preflight state");
+    let error = engine
+        .apply(operation)
+        .expect_err("excessive bounded search must fail before Primer3");
+    assert!(error.message.contains("search_space_too_broad"));
+    assert!(!error.message.contains("definitely_missing_primer3"));
+    assert_eq!(
+        serde_json::to_value(engine.state()).expect("serialize state after rejection"),
+        before
+    );
+}
+
+#[test]
+fn transcript_assay_search_estimate_rejects_local_repeat_candidates_deterministically() {
+    let template = b"ACGTACGTACGTACGTACGTACGTACGTACGT";
+    let side = PrimerDesignSideConstraint {
+        min_length: 8,
+        max_length: 8,
+        min_tm_c: 0.0,
+        max_tm_c: 100.0,
+        min_gc_fraction: 0.0,
+        max_gc_fraction: 1.0,
+        max_anneal_hits: 1,
+        ..PrimerDesignSideConstraint::default()
+    };
+    let constraints = GentleEngine::normalize_primer_side_sequence_constraints(&side)
+        .expect("normalize repeated-sequence constraints");
+    let first = GentleEngine::estimate_primer_side_search_candidates(
+        template,
+        &side,
+        &constraints,
+        false,
+        6,
+    );
+    let second = GentleEngine::estimate_primer_side_search_candidates(
+        template,
+        &side,
+        &constraints,
+        false,
+        6,
+    );
+    assert!(first.candidates.is_empty());
+    assert_eq!(first.rejected_starts, second.rejected_starts);
+    assert!(
+        first
+            .rejected_starts
+            .iter()
+            .any(|(_, reason)| reason == "local_non_unique_sequence")
+    );
+    assert!(first.rejected_starts.iter().all(|(_, reason)| matches!(
+        reason.as_str(),
+        "local_non_unique_sequence" | "no_complete_primer_interval"
+    )));
+}
+
+#[test]
+fn primer3_runtime_policy_warns_then_reduces_without_changing_work_counters() {
+    let policy = TranscriptAssayPrimerSearchPolicy::default();
+    let progress = Primer3Progress {
+        record: 1,
+        completed: 1,
+        bound: 100,
+        ..Primer3Progress::default()
+    };
+    let warning = GentleEngine::assess_primer3_runtime(
+        Some(&progress),
+        Duration::from_secs(11 * 60),
+        Duration::ZERO,
+        &policy,
+    );
+    assert_eq!(warning.status, "suspicious_runtime_projection");
+    assert!(!warning.reduce);
+    assert!(warning.projected_total_ms.is_some());
+
+    let reduction = GentleEngine::assess_primer3_runtime(
+        Some(&progress),
+        Duration::from_secs(31 * 60),
+        Duration::ZERO,
+        &policy,
+    );
+    assert_eq!(reduction.status, "runtime_reduction_projected_too_long");
+    assert!(reduction.reduce);
+
+    let stalled = GentleEngine::assess_primer3_runtime(
+        None,
+        Duration::from_secs(5 * 60 * 60),
+        Duration::from_secs(5 * 60 * 60),
+        &policy,
+    );
+    assert_eq!(stalled.status, "runtime_reduction_no_progress");
+    assert!(stalled.reduce);
+    assert_eq!((progress.completed, progress.bound), (1, 100));
+}
+
+#[cfg(unix)]
+#[test]
+fn primer3_runtime_reduction_stops_child_and_preserves_output_receipt() {
+    let temp = tempdir().expect("temporary Primer3 runtime-reduction fixture");
+    let primer3 = install_fake_long_running_progress_primer3(temp.path());
+    let template = "ATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCGATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCG";
+    let side = PrimerDesignSideConstraint {
+        min_tm_c: 0.0,
+        max_tm_c: 100.0,
+        min_gc_fraction: 0.0,
+        max_gc_fraction: 1.0,
+        max_anneal_hits: 100,
+        ..PrimerDesignSideConstraint::default()
+    };
+    let side_constraints = GentleEngine::normalize_primer_side_sequence_constraints(&side)
+        .expect("normalize Primer3 runtime-reduction side constraints");
+    let pair_constraints = GentleEngine::normalize_primer_pair_constraints(
+        &PrimerDesignPairConstraint::default(),
+    )
+    .expect("normalize Primer3 runtime-reduction pair constraints");
+    let options = Primer3PairDesignOptions {
+        runtime_policy: TranscriptAssayPrimerSearchPolicy {
+            runtime_warning_after_secs: 0,
+            runtime_warning_projected_total_secs: 0,
+            runtime_reduce_after_secs: 0,
+            runtime_reduce_projected_total_secs: 0,
+            runtime_no_progress_reduce_after_secs: 60,
+            ..TranscriptAssayPrimerSearchPolicy::default()
+        },
+        ..Primer3PairDesignOptions::default()
+    };
+    let mut progress = vec![];
+    let error = GentleEngine::design_primer_pairs_primer3_with_options(
+        template,
+        20,
+        40,
+        &side,
+        &side_constraints,
+        &side,
+        &side_constraints,
+        &pair_constraints,
+        40,
+        100,
+        100.0,
+        1,
+        &primer3,
+        &options,
+        Some(&mut |row| {
+            progress.push(row);
+            true
+        }),
+    )
+    .expect_err("projected runtime policy must stop the fake Primer3 child");
+    assert!(GentleEngine::is_primer3_runtime_reduction_error(&error));
+    assert!(error.message.contains("runtime_reduction_projected_too_long"));
+    assert!(error.message.contains("child_status="));
+    assert!(error.message.contains("stdout_bytes=0"));
+    assert!(error.message.contains("stdout_sha256=sha256:"));
+    assert!(error.message.contains("stderr_bytes="));
+    assert!(error.message.contains("stderr_sha256=sha256:"));
+    assert_eq!(progress.len(), 1);
+    assert_eq!(
+        progress[0].runtime_assessment.as_deref(),
+        Some("runtime_reduction_projected_too_long")
     );
 }
 
@@ -15192,6 +15509,7 @@ fn transcript_assay_endpoint_end_matrix_is_primer_only_and_warns_for_oligo_dt() 
             max_mismatches: Some(0),
             require_3prime_exact_bases: Some(8),
             oligo_dt_5prime_risk_threshold_bp: None,
+            search_policy: None,
             junctions: vec![],
             junction_evidence_paths: vec![],
             junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
@@ -15321,6 +15639,7 @@ fn transcript_assay_sybr_evaluates_patz1_clariom_juc_without_probe() {
             max_mismatches: Some(0),
             require_3prime_exact_bases: Some(6),
             oligo_dt_5prime_risk_threshold_bp: Some(200),
+            search_policy: None,
             junctions: vec![
                 TranscriptAssayJunctionRequest {
                     junction_id: "PATZ1-202_local_40".to_string(),
@@ -15357,6 +15676,27 @@ fn transcript_assay_sybr_evaluates_patz1_clariom_juc_without_probe() {
     assert_eq!(report.assay_kind, TranscriptAssayKind::SybrQpcr);
     assert_eq!(report.provenance.junction_sources.len(), 1);
     assert_eq!(report.junction_evaluations.len(), 3);
+    let search_plan = report.search_plan.as_ref().expect("junction search plan");
+    let junction_records = search_plan
+        .records
+        .iter()
+        .filter(|record| record.junction_id.is_some())
+        .collect::<Vec<_>>();
+    assert!(junction_records.len() >= 3);
+    assert!(junction_records.iter().all(|record| {
+        record
+            .primer3_fields
+            .iter()
+            .any(|field| field.name == "SEQUENCE_OVERLAP_JUNCTION_LIST")
+            && record
+                .left_interval
+                .junction_ids
+                .contains(record.junction_id.as_ref().expect("junction id"))
+            && record
+                .right_interval
+                .junction_ids
+                .contains(record.junction_id.as_ref().expect("junction id"))
+    }));
     for source_kind in [
         "explicit_transcript_local",
         "explicit_genomic",
@@ -15570,6 +15910,7 @@ fn transcript_assay_primer3_emits_native_junction_overlap_tags() {
             max_mismatches: Some(0),
             require_3prime_exact_bases: Some(8),
             oligo_dt_5prime_risk_threshold_bp: None,
+            search_policy: None,
             junctions: vec![TranscriptAssayJunctionRequest {
                 junction_id: "TX1_exon_1_2".to_string(),
                 priority: TranscriptAssayJunctionPriority::Required,
@@ -15600,6 +15941,9 @@ fn transcript_assay_primer3_emits_native_junction_overlap_tags() {
         .expect("junction-target Primer3 request");
     assert!(request.contains("PRIMER_MIN_3_PRIME_OVERLAP_OF_JUNCTION=5"));
     assert!(request.contains("PRIMER_MIN_5_PRIME_OVERLAP_OF_JUNCTION=8"));
+    assert!(request.contains("SEQUENCE_PRIMER_PAIR_OK_REGION_LIST="));
+    assert!(request.contains("PRIMER_MAX_POLY_X=6"));
+    assert!(request.contains("PRIMER_MAX_NS_ACCEPTED=0"));
     assert!(
         !request.contains("SEQUENCE_TARGET="),
         "a flanked target would conflict with a primer-overlap junction request"
@@ -15676,6 +16020,7 @@ fn transcript_assay_endpoint_long_product_respects_ten_kb_ceiling() {
             max_mismatches: Some(0),
             require_3prime_exact_bases: Some(8),
             oligo_dt_5prime_risk_threshold_bp: Some(5_000),
+            search_policy: None,
             junctions: vec![],
             junction_evidence_paths: vec![],
             junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
@@ -15746,6 +16091,7 @@ fn transcript_assay_endpoint_long_product_respects_ten_kb_ceiling() {
             max_mismatches: Some(0),
             require_3prime_exact_bases: Some(8),
             oligo_dt_5prime_risk_threshold_bp: None,
+            search_policy: None,
             junctions: vec![],
             junction_evidence_paths: vec![],
             junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
@@ -16361,6 +16707,14 @@ fn test_design_primer_pairs_primer3_zero_pairs_persists_request_and_explain() {
             .as_deref()
             .unwrap_or_default()
             .contains("PRIMER_PAIR_EXPLAIN")
+    );
+    assert!(
+        report
+            .backend
+            .primer3_explain
+            .as_deref()
+            .unwrap_or_default()
+            .contains("unparsed PRIMER3_PROGRESS")
     );
     let request_payload = report
         .backend

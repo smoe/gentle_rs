@@ -13251,12 +13251,20 @@ fn primer_design_progress_summary_reports_primer3_bounded_work() {
             record: 1,
             completed: 25,
             bound: 100,
+            bounded_record_ordinal: Some(2),
+            bounded_record_count: Some(7),
+            projected_total_ms: Some(600_000),
+            runtime_assessment: Some("suspicious_runtime_projection".to_string()),
+            ..Primer3Progress::default()
         }),
         max_output: 10,
         done: false,
     });
 
     assert!(summary.contains("Primer3 record 1 bounded work 25/100 (25.0%)"));
+    assert!(summary.contains("bounded record 2/7"));
+    assert!(summary.contains("uncertain projection 10.0 min"));
+    assert!(summary.contains("suspicious_runtime_projection"));
 }
 
 #[test]
