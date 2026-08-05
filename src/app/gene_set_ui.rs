@@ -1101,10 +1101,7 @@ impl GENtleApp {
             member_bindings,
             motifs,
             min_llr_bits: parse_optional_f64(&form.min_llr_bits, "Minimum LLR bits")?,
-            min_llr_quantile: parse_optional_f64(
-                &form.min_llr_quantile,
-                "Minimum LLR quantile",
-            )?,
+            min_llr_quantile: parse_optional_f64(&form.min_llr_quantile, "Minimum LLR quantile")?,
             per_tf_thresholds: parse_tfbs_threshold_overrides(
                 &form.per_tf_min_llr_bits,
                 &form.per_tf_min_llr_quantile,
@@ -2509,11 +2506,7 @@ impl GENtleApp {
         });
     }
 
-    fn render_gene_set_tfbs_scan_form(
-        &mut self,
-        ui: &mut Ui,
-        choice: &GeneSetResolutionChoice,
-    ) {
+    fn render_gene_set_tfbs_scan_form(&mut self, ui: &mut Ui, choice: &GeneSetResolutionChoice) {
         let sequence_ids = self
             .engine
             .read()
@@ -2597,14 +2590,18 @@ impl GENtleApp {
                     .desired_width(360.0)
                     .hint_text("SP1, CTCF, MA0139.1"),
             )
-            .on_hover_text("Comma-separated motif IDs, TF names, groups, family prefixes, or IUPAC motifs");
+            .on_hover_text(
+                "Comma-separated motif IDs, TF names, groups, family prefixes, or IUPAC motifs",
+            );
             ui.label("Max hits / member");
             ui.add(
                 egui::TextEdit::singleline(&mut form.max_hits_per_member)
                     .desired_width(100.0)
                     .hint_text("Unlimited"),
             )
-            .on_hover_text("A cap can stop motif iteration; leave empty for complete aggregate counts");
+            .on_hover_text(
+                "A cap can stop motif iteration; leave empty for complete aggregate counts",
+            );
         });
         ui.horizontal_wrapped(|ui| {
             ui.label("Minimum LLR bits");
@@ -4347,8 +4344,7 @@ mod tests {
         app.gene_set_inspector.promoter_form.genome_id = "manual-genome".to_string();
         app.seed_gene_set_promoter_form_from_selection(false);
         assert_eq!(
-            app.gene_set_inspector.promoter_form.genome_id,
-            "manual-genome",
+            app.gene_set_inspector.promoter_form.genome_id, "manual-genome",
             "opening or reloading the same selection preserves an explicit form value"
         );
 
@@ -4545,15 +4541,11 @@ mod tests {
         app.gene_set_inspector.tfbs_scan_form.motifs = "SP1, CTCF".to_string();
         app.gene_set_inspector.tfbs_scan_form.min_llr_bits = "3.5".to_string();
         app.gene_set_inspector.tfbs_scan_form.min_llr_quantile = "0.9".to_string();
-        app.gene_set_inspector
-            .tfbs_scan_form
-            .per_tf_min_llr_bits = "SP1=4.5".to_string();
+        app.gene_set_inspector.tfbs_scan_form.per_tf_min_llr_bits = "SP1=4.5".to_string();
         app.gene_set_inspector
             .tfbs_scan_form
             .per_tf_min_llr_quantile = "CTCF=0.95".to_string();
-        app.gene_set_inspector
-            .tfbs_scan_form
-            .max_hits_per_member = "40".to_string();
+        app.gene_set_inspector.tfbs_scan_form.max_hits_per_member = "40".to_string();
 
         let gui_command = app
             .gene_set_tfbs_scan_shell_command()

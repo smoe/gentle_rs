@@ -40,7 +40,9 @@ pub(crate) enum ProbeRegionBoundedCommandError {
         message: String,
     },
     Poll(String),
-    TimedOut { elapsed_ms: u128 },
+    TimedOut {
+        elapsed_ms: u128,
+    },
 }
 
 #[derive(Default)]

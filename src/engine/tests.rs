@@ -12233,11 +12233,16 @@ fn test_cdna_pcr_assay_matches_mixed_iupac_base_as_allele_set() {
         .iter()
         .map(|row| (row.transcript_id.as_str(), row.products.len()))
         .collect::<BTreeMap<_, _>>();
-    assert_eq!(product_counts["TX_A"], 1, "R/Y must accept A-oriented alleles");
-    assert_eq!(product_counts["TX_G"], 1, "R/Y must accept G-oriented alleles");
     assert_eq!(
-        product_counts["TX_OTHER"],
-        0,
+        product_counts["TX_A"], 1,
+        "R/Y must accept A-oriented alleles"
+    );
+    assert_eq!(
+        product_counts["TX_G"], 1,
+        "R/Y must accept G-oriented alleles"
+    );
+    assert_eq!(
+        product_counts["TX_OTHER"], 0,
         "R/Y must reject unrelated alleles"
     );
     assert_eq!(report.product_count, 2);
@@ -15036,13 +15041,15 @@ fn transcript_endpoint_feasibility_reports_stable_structural_blockers_before_pri
         first.primer3_warranted_max_template_bp
     );
     assert_eq!(first.primer3_candidate_pair_request_upper_bound, 4);
-    assert_eq!(first.execution_recommendation, "reject_before_primer_search");
+    assert_eq!(
+        first.execution_recommendation,
+        "reject_before_primer_search"
+    );
     let blocked = first
         .reactions
         .iter()
         .filter(|reaction| {
-            reaction.status
-                == TranscriptAssayEndReactionFeasibilityStatus::StructurallyImpossible
+            reaction.status == TranscriptAssayEndReactionFeasibilityStatus::StructurallyImpossible
         })
         .collect::<Vec<_>>();
     assert_eq!(blocked.len(), 2);
@@ -15063,7 +15070,11 @@ fn transcript_endpoint_feasibility_reports_stable_structural_blockers_before_pri
     let error = engine
         .apply(operation)
         .expect_err("strict structural blocker must fail before Primer3");
-    assert!(error.message.contains("before Primer3"), "{}", error.message);
+    assert!(
+        error.message.contains("before Primer3"),
+        "{}",
+        error.message
+    );
     assert!(
         !error.message.contains("definitely_missing_primer3"),
         "the missing executable proves Primer3 was never reached: {}",
@@ -15128,9 +15139,12 @@ fn transcript_endpoint_best_effort_preserves_structural_failures_without_search(
     assert!(report.warnings.iter().any(|warning| {
         warning.contains("structurally impossible") && warning.contains("not sent to Primer3")
     }));
-    assert!(report.warnings.iter().any(|warning| {
-        warning.contains("must not be interpreted as isoform absence")
-    }));
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| { warning.contains("must not be interpreted as isoform absence") })
+    );
 }
 
 #[test]
@@ -16286,17 +16300,17 @@ fn test_design_primer_pairs_primer3_zero_pairs_persists_request_and_explain() {
     engine
         .apply_with_progress(
             Operation::DesignPrimerPairs {
-            template: "tpl".to_string(),
-            roi_start_0based: 10,
-            roi_end_0based: 30,
-            forward: PrimerDesignSideConstraint::default(),
-            reverse: PrimerDesignSideConstraint::default(),
-            pair_constraints: PrimerDesignPairConstraint::default(),
-            min_amplicon_bp: 20,
-            max_amplicon_bp: 80,
-            max_tm_delta_c: Some(10.0),
-            max_pairs: Some(10),
-            report_id: Some("tp73_roi_primer3_zero".to_string()),
+                template: "tpl".to_string(),
+                roi_start_0based: 10,
+                roi_end_0based: 30,
+                forward: PrimerDesignSideConstraint::default(),
+                reverse: PrimerDesignSideConstraint::default(),
+                pair_constraints: PrimerDesignPairConstraint::default(),
+                min_amplicon_bp: 20,
+                max_amplicon_bp: 80,
+                max_tm_delta_c: Some(10.0),
+                max_pairs: Some(10),
+                report_id: Some("tp73_roi_primer3_zero".to_string()),
             },
             |progress| {
                 if let OperationProgress::PrimerDesign(progress) = progress {
@@ -16411,8 +16425,7 @@ fn test_design_primer_pairs_primer3_retries_when_help_and_runtime_disagree() {
     let mut engine = GentleEngine::from_state(state);
     engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
     let tmp = tempdir().expect("tempdir");
-    let (fake_primer3, request_capture) =
-        install_fake_inconsistent_primer3_zero_pairs(tmp.path());
+    let (fake_primer3, request_capture) = install_fake_inconsistent_primer3_zero_pairs(tmp.path());
     engine.state_mut().parameters.primer3_executable = fake_primer3;
 
     engine
@@ -16433,7 +16446,11 @@ fn test_design_primer_pairs_primer3_retries_when_help_and_runtime_disagree() {
 
     let captured = std::fs::read_to_string(request_capture).expect("fallback captured request");
     assert!(captured.contains("SEQUENCE_TEMPLATE="));
-    assert!(engine.get_primer_design_report("inconsistent_primer3").is_ok());
+    assert!(
+        engine
+            .get_primer_design_report("inconsistent_primer3")
+            .is_ok()
+    );
 }
 
 #[cfg(unix)]
@@ -30463,8 +30480,7 @@ fn digest_sequence_and_container_reject_partially_unknown_enzyme_lists_before_mu
     let mut state = ProjectState::default();
     state.sequences.insert(
         "digest_input".to_string(),
-        DNAsequence::from_sequence("ATGGATCCGCATGGATCCGC")
-            .expect("digest input sequence"),
+        DNAsequence::from_sequence("ATGGATCCGCATGGATCCGC").expect("digest input sequence"),
     );
     let mut engine = GentleEngine::from_state(state);
     let initial_sequence_count = engine.state().sequences.len();
@@ -38784,8 +38800,7 @@ fn test_build_lineage_svg_graph_projects_gene_set_artifacts() {
         .as_ref()
         .expect("promoter cohort report");
     assert_eq!(
-        promoter_cohort.gene_set_resolution.op_id,
-        resolution.op_id,
+        promoter_cohort.gene_set_resolution.op_id, resolution.op_id,
         "derivation must retain the persisted source report identity"
     );
     assert_ne!(
@@ -54788,8 +54803,7 @@ fn collection_restriction_scan_matches_direct_scans_defaults_and_circular_geomet
     assert_eq!(
         serde_json::to_value(&collection_builtin_default.member_reports[0].report.rows)
             .expect("mapped built-in default rows"),
-        serde_json::to_value(&direct_builtin_default.rows)
-            .expect("direct built-in default rows")
+        serde_json::to_value(&direct_builtin_default.rows).expect("direct built-in default rows")
     );
 
     let error = engine
@@ -55011,7 +55025,10 @@ fn collection_tfbs_scan_matches_direct_scans_and_round_trips_complete_aggregates
             .sum::<usize>()
     );
     assert_eq!(
-        collection.retained_hit_counts_by_tf_id.values().sum::<usize>(),
+        collection
+            .retained_hit_counts_by_tf_id
+            .values()
+            .sum::<usize>(),
         collection.total_retained_hit_count
     );
     let encoded = serde_json::to_value(&collection).expect("serialize collection report");
@@ -55090,10 +55107,16 @@ fn collection_tfbs_scan_marks_capped_or_unbound_members_incomplete() {
             .message
             .contains("requires an explicit member-to-sequence binding")
     }));
-    assert!(collection.collection_operation.aggregate_warnings.iter().any(|warning| {
-        warning.contains("retained TFBS hit counts are incomplete")
-            && warning.contains("CCC")
-    }));
+    assert!(
+        collection
+            .collection_operation
+            .aggregate_warnings
+            .iter()
+            .any(|warning| {
+                warning.contains("retained TFBS hit counts are incomplete")
+                    && warning.contains("CCC")
+            })
+    );
 }
 
 #[test]
@@ -57724,7 +57747,9 @@ fn gene_isoform_assay_study_planner_normalizes_inputs_and_emits_exact_operation_
             .expect("normalized policy digest")
     );
     assert_eq!(
-        plan.normalized_request.isoform_evidence_report_id.as_deref(),
+        plan.normalized_request
+            .isoform_evidence_report_id
+            .as_deref(),
         Some("panel1_isoforms")
     );
     assert_eq!(plan.planned_operations.len(), 3);
@@ -57733,11 +57758,12 @@ fn gene_isoform_assay_study_planner_normalizes_inputs_and_emits_exact_operation_
         plan.normalized_request.observations[0].validation_status,
         "user_supplied_unvalidated"
     );
-    assert!(plan
-        .planned_operations
-        .iter()
-        .all(|step| step.operation_sha256.starts_with("sha256:")
-            && step.operation.get("DesignTranscriptAssayPanel").is_some()));
+    assert!(
+        plan.planned_operations
+            .iter()
+            .all(|step| step.operation_sha256.starts_with("sha256:")
+                && step.operation.get("DesignTranscriptAssayPanel").is_some())
+    );
     let endpoint_step = plan
         .planned_operations
         .iter()
@@ -57757,8 +57783,7 @@ fn gene_isoform_assay_study_planner_normalizes_inputs_and_emits_exact_operation_
         independently_inspected.operation_sha256
     );
     assert_ne!(
-        endpoint_feasibility.operation_sha256,
-        endpoint_step.operation_sha256,
+        endpoint_feasibility.operation_sha256, endpoint_step.operation_sha256,
         "feasibility excludes the output path while approval binds the exact operation"
     );
     let mut relocated_endpoint_operation = endpoint_operation.clone();
@@ -57771,8 +57796,7 @@ fn gene_isoform_assay_study_planner_normalizes_inputs_and_emits_exact_operation_
         .inspect_transcript_assay_panel_feasibility_operation(&relocated_endpoint_operation)
         .expect("inspect relocated endpoint feasibility");
     assert_eq!(
-        relocated_feasibility.operation_sha256,
-        endpoint_feasibility.operation_sha256,
+        relocated_feasibility.operation_sha256, endpoint_feasibility.operation_sha256,
         "an export-only path change must not alter computational feasibility provenance"
     );
     assert_eq!(
@@ -57912,7 +57936,12 @@ fn experimental_handoff_order_form_requires_approved_digest_and_order_ready_rows
         .expect("build order-ready handoff")
         .experimental_assay_handoff
         .expect("handoff report");
-    assert!(handoff.order_readiness_table.iter().all(|row| row.order_ready));
+    assert!(
+        handoff
+            .order_readiness_table
+            .iter()
+            .all(|row| row.order_ready)
+    );
     let bytes = fs::read(&handoff_path).expect("read handoff");
     let digest = sha256_prefixed_bytes(&bytes);
     let missing_digest = engine
@@ -57966,9 +57995,8 @@ fn experimental_handoff_order_form_requires_approved_digest_and_order_ready_rows
         serde_json::to_vec_pretty(&candidate_handoff).expect("serialize candidate handoff"),
     )
     .expect("write candidate handoff");
-    let candidate_digest = sha256_prefixed_bytes(
-        &fs::read(&candidate_path).expect("read candidate handoff"),
-    );
+    let candidate_digest =
+        sha256_prefixed_bytes(&fs::read(&candidate_path).expect("read candidate handoff"));
     let error = engine
         .create_oligo_order_form_from_experimental_handoff(
             candidate_path.to_str().expect("candidate path"),

@@ -13148,10 +13148,7 @@ mod gene_locus_probe_effect_tests {
             .expect("first PATZ1 PSR");
         assert_eq!(first.effects.len(), 6);
         assert_eq!(first.effects[0].unit, "log2 mean probe-set activity");
-        assert_eq!(
-            first.effects[3].unit,
-            "log2 probe-set activity difference"
-        );
+        assert_eq!(first.effects[3].unit, "log2 probe-set activity difference");
         assert_eq!(differential_abs_max, Some(1.4116));
     }
 

@@ -7374,9 +7374,7 @@ Error: `{err}`"
                     .and_then(|progress| progress.fraction())
                     .map(|fraction| fraction as f32)
                     .or_else(|| match (p.pair_evaluated, p.pair_evaluation_limit) {
-                        (Some(done), Some(total)) if total > 0 => {
-                            Some(done as f32 / total as f32)
-                        }
+                        (Some(done), Some(total)) if total > 0 => Some(done as f32 / total as f32),
                         _ if p.done => Some(1.0),
                         _ => None,
                     });

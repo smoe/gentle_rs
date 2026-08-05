@@ -1322,9 +1322,7 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
         "blast_async_list" => &["genomes blast-list", "helpers blast-list"],
         "exon_skip_plan" => &["transcripts exon-skip-plan"],
         "exon_skip_materialize" => &["transcripts exon-skip-materialize"],
-        "transcript_assay_feasibility" => {
-            &["primers inspect-transcript-assay-feasibility"]
-        }
+        "transcript_assay_feasibility" => &["primers inspect-transcript-assay-feasibility"],
         _ => &[],
     }
 }
@@ -2317,10 +2315,7 @@ fn exon_skip_materialize_tool_result(default_state_path: &str, arguments: &Value
     }
 }
 
-fn transcript_assay_feasibility_tool_result(
-    default_state_path: &str,
-    arguments: &Value,
-) -> Value {
+fn transcript_assay_feasibility_tool_result(default_state_path: &str, arguments: &Value) -> Value {
     let args = arguments.as_object().cloned().unwrap_or_default();
     let operation = match optional_json_string_arg(&args, "operation") {
         Ok(Some(value)) => value,
@@ -3809,22 +3804,15 @@ mod tests {
         let middle_end = middle_start + middle.len();
         let terminal_start = middle_end + spacer.len();
         let terminal_end = terminal_start + terminal.len();
-        let mut dna = DNAsequence::from_sequence(&format!(
-            "{first}{spacer}{middle}{spacer}{terminal}"
-        ))
-        .expect("valid endpoint DNA");
+        let mut dna =
+            DNAsequence::from_sequence(&format!("{first}{spacer}{middle}{spacer}{terminal}"))
+                .expect("valid endpoint DNA");
         dna.features_mut().push(gb_io::seq::Feature {
             kind: "mRNA".into(),
             location: gb_io::seq::Location::Join(vec![
                 gb_io::seq::Location::simple_range(0, first.len() as i64),
-                gb_io::seq::Location::simple_range(
-                    middle_start as i64,
-                    middle_end as i64,
-                ),
-                gb_io::seq::Location::simple_range(
-                    terminal_start as i64,
-                    terminal_end as i64,
-                ),
+                gb_io::seq::Location::simple_range(middle_start as i64, middle_end as i64),
+                gb_io::seq::Location::simple_range(terminal_start as i64, terminal_end as i64),
             ]),
             qualifiers: vec![
                 ("gene".into(), Some("MCPEND".to_string())),
@@ -3832,9 +3820,7 @@ mod tests {
             ],
         });
         let mut state = ProjectState::default();
-        state
-            .sequences
-            .insert("mcp_endpoint".to_string(), dna);
+        state.sequences.insert("mcp_endpoint".to_string(), dna);
         let state_path = path.to_string_lossy().to_string();
         state
             .save_to_path(&state_path)

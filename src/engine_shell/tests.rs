@@ -25,20 +25,19 @@ use crate::engine::{
     ContainerKind, CutRunAlignConfig, CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout,
     CutRunSeedFilterConfig, DesignDecisionNode, DesignEvidence, DesignFact, DisplayTarget,
     EditableStatus, ExonSkipReturnKind, GeneIsoformAssayStudyWorkflowBatchRequestEntry,
-    GeneSetCohortRelationship, GeneSetResolutionReviewStatus,
-    InlineSequenceTopology, OrthologAmbiguityPolicy, PrimerDesignProgress,
-    PrimerSpecificityAmpliconCeilingSource, PrimerSpecificityReportDetailMode, PromoterCohortKind,
-    PromoterTfbsGeneQuery, ProteinExternalOpinionSource, ProteinFeatureFilter,
-    QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargetingMode, Rack, RackAuthoringTemplate,
-    RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
-    RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
-    ReadAcquisitionAnalysisFormat, ReadAcquisitionReadLayout, RepeatEnvironmentGeometryMode,
-    RestrictionCloningPcrHandoffMode, RnaReadAlignConfig, RnaReadInterpretationHit,
-    RnaReadInterpretationReport, RnaReadMappingHit, RnaReadOriginClass, SequenceOrigin,
-    SequenceScanTarget, TfThresholdOverride, TfbsScoreTrackCorrelationSignalSource,
-    TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric, TranscriptAssayCdnaSynthesis,
-    TranscriptAssayCoveragePolicy, TranscriptAssayJunctionPriority, TranscriptAssayKind,
-    TranscriptAssayPanelObjective,
+    GeneSetCohortRelationship, GeneSetResolutionReviewStatus, InlineSequenceTopology,
+    OrthologAmbiguityPolicy, PrimerDesignProgress, PrimerSpecificityAmpliconCeilingSource,
+    PrimerSpecificityReportDetailMode, PromoterCohortKind, PromoterTfbsGeneQuery,
+    ProteinExternalOpinionSource, ProteinFeatureFilter, QpcrTranscriptSpecificityEvidence,
+    QpcrTranscriptTargetingMode, Rack, RackAuthoringTemplate, RackCarrierLabelPreset,
+    RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
+    RackPlacementEntry, RackProfileKind, RackProfileSnapshot, ReadAcquisitionAnalysisFormat,
+    ReadAcquisitionReadLayout, RepeatEnvironmentGeometryMode, RestrictionCloningPcrHandoffMode,
+    RnaReadAlignConfig, RnaReadInterpretationHit, RnaReadInterpretationReport, RnaReadMappingHit,
+    RnaReadOriginClass, SequenceOrigin, SequenceScanTarget, TfThresholdOverride,
+    TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
+    TfbsTrackSimilarityRankingMetric, TranscriptAssayCdnaSynthesis, TranscriptAssayCoveragePolicy,
+    TranscriptAssayJunctionPriority, TranscriptAssayKind, TranscriptAssayPanelObjective,
 };
 use crate::ensembl_gene::{
     EnsemblGeneEntry, EnsemblGeneExonSummary, EnsemblGeneTranscriptSummary,
@@ -474,18 +473,16 @@ fn smoke_command_override(path: &str) -> Option<&'static str> {
         "gene-sets promoter-cohort" => {
             Some("gene-sets promoter-cohort ToyGenome --group yamanaka_factors")
         }
-        "gene-sets create-pool" => Some(
-            "gene-sets create-pool resolution:demo --member-container GENE1=container-1",
-        ),
+        "gene-sets create-pool" => {
+            Some("gene-sets create-pool resolution:demo --member-container GENE1=container-1")
+        }
         "collections run primer-specificity" => Some(
             "collections run primer-specificity --seq-ids demo --pair-rank 1 --target-genome demo",
         ),
         "collections run restriction-scan" => {
             Some("collections run restriction-scan --seq-ids demo --enzyme EcoRI")
         }
-        "collections run tfbs-scan" => {
-            Some("collections run tfbs-scan --seq-ids demo --motif AAA")
-        }
+        "collections run tfbs-scan" => Some("collections run tfbs-scan --seq-ids demo --motif AAA"),
         "collections run digest" => Some("collections run digest --seq-ids demo --enzyme EcoRI"),
         "digest" => Some("digest demo --enzyme EcoRI"),
         "seq-confirm run" => Some("seq-confirm run expected --reads read1"),
@@ -594,14 +591,12 @@ fn shell_command_line_with_option(base: &str, flag: &str, value: Option<&str>) -
 
 fn add_required_glossary_flag_companion(path: &str, flag: &str, line: &mut String) {
     let companion = match (path, flag) {
-        (
-            "primers execute-gene-isoform-study-workflow-batch",
-            "--reuse-proposal",
-        ) => Some(" --approve-reuse-sha256 demo"),
-        (
-            "primers execute-gene-isoform-study-workflow-batch",
-            "--approve-reuse-sha256",
-        ) => Some(" --reuse-proposal demo"),
+        ("primers execute-gene-isoform-study-workflow-batch", "--reuse-proposal") => {
+            Some(" --approve-reuse-sha256 demo")
+        }
+        ("primers execute-gene-isoform-study-workflow-batch", "--approve-reuse-sha256") => {
+            Some(" --reuse-proposal demo")
+        }
         _ => None,
     };
     if let Some(companion) = companion {
@@ -8266,9 +8261,7 @@ fn approved_gene_isoform_study_batch_rejects_structural_endpoint_before_mutation
             operation_batch_sha256: crate::digest_utils::sha256_prefixed_bytes(
                 &serde_json::to_vec(&workflow.ops).expect("serialize operations"),
             ),
-            approved_workflow_sha256: crate::digest_utils::sha256_prefixed_bytes(
-                &workflow_bytes,
-            ),
+            approved_workflow_sha256: crate::digest_utils::sha256_prefixed_bytes(&workflow_bytes),
             ..GeneIsoformAssayStudyPlanReport::default()
         };
         let plan_path = directory.join(format!("{plan_id}.plan.json"));
@@ -8290,10 +8283,9 @@ fn approved_gene_isoform_study_batch_rejects_structural_endpoint_before_mutation
     let middle_end = middle_start + middle.len();
     let terminal_start = middle_end + spacer.len();
     let terminal_end = terminal_start + terminal.len();
-    let mut dna = DNAsequence::from_sequence(&format!(
-        "{short_first}{spacer}{middle}{spacer}{terminal}"
-    ))
-    .expect("synthetic endpoint sequence");
+    let mut dna =
+        DNAsequence::from_sequence(&format!("{short_first}{spacer}{middle}{spacer}{terminal}"))
+            .expect("synthetic endpoint sequence");
     dna.features_mut().push(gb_io::seq::Feature {
         kind: "mRNA".into(),
         location: gb_io::seq::Location::Join(vec![
@@ -8387,8 +8379,7 @@ fn approved_gene_isoform_study_batch_rejects_structural_endpoint_before_mutation
         Some(1)
     );
     assert!(!engine.state().sequences.contains_key("must_not_be_created"));
-    let (plan_a, workflow_a) =
-        write_approved_pair(temp.path(), "first_plan", &first_workflow);
+    let (plan_a, workflow_a) = write_approved_pair(temp.path(), "first_plan", &first_workflow);
     let (plan_b, workflow_b) =
         write_approved_pair(temp.path(), "endpoint_plan", &endpoint_workflow);
     let request = GeneIsoformAssayStudyWorkflowBatchRequest {
@@ -18402,10 +18393,9 @@ fn execute_collection_tfbs_scan_returns_non_mutating_completeness_aware_report()
         DNAsequence::from_sequence("CCCCCCCCCCCC").expect("sequence b"),
     );
     let mut engine = GentleEngine::from_state(state);
-    let command = parse_shell_line(
-        "collections run tfbs-scan --seq-ids seq_a,seq_b --motif AAA --motif CCC",
-    )
-    .expect("parse collection TFBS command");
+    let command =
+        parse_shell_line("collections run tfbs-scan --seq-ids seq_a,seq_b --motif AAA --motif CCC")
+            .expect("parse collection TFBS command");
     let run = execute_shell_command(&mut engine, &command).expect("execute collection TFBS scan");
 
     assert!(!run.state_changed);
@@ -18424,8 +18414,7 @@ fn execute_collection_tfbs_scan_returns_non_mutating_completeness_aware_report()
         Some(2)
     );
     assert_eq!(
-        run.output["report"]["collection_operation"]["per_member_status"][0]
-            ["produced_report_ids"]
+        run.output["report"]["collection_operation"]["per_member_status"][0]["produced_report_ids"]
             .as_array()
             .map(Vec::len),
         Some(0),

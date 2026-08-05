@@ -7921,9 +7921,7 @@ impl GentleEngine {
             .arg("--help")
             .output()
             .ok()
-            .map(|output| {
-                Self::primer3_help_advertises_progress(&output.stdout, &output.stderr)
-            });
+            .map(|output| Self::primer3_help_advertises_progress(&output.stdout, &output.stderr));
         if let Ok(mut cache) = cache.lock() {
             cache.insert(key, supported);
         }
@@ -8147,8 +8145,7 @@ impl GentleEngine {
                 let mut reader = BufReader::new(stdout);
                 let mut bytes = Vec::new();
                 reader.read_to_end(&mut bytes).map(|_| bytes)
-            })
-        {
+            }) {
             Ok(reader) => reader,
             Err(error) => {
                 Self::stop_primer3_process(&mut child);
@@ -8176,8 +8173,7 @@ impl GentleEngine {
                     let _ = stderr_tx.send(String::from_utf8_lossy(&line).trim().to_string());
                 }
                 Ok::<Vec<u8>, std::io::Error>(bytes)
-            })
-        {
+            }) {
             Ok(reader) => reader,
             Err(error) => {
                 Self::stop_primer3_process(&mut child);

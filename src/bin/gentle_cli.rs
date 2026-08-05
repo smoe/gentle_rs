@@ -52,9 +52,9 @@ use gentle::{
     runtime_status,
     service_readiness::service_readiness_status,
 };
-use gentle_protocol::{EngineError, ErrorCode};
 #[cfg(test)]
 use gentle_protocol::CollectionSubjectRef;
+use gentle_protocol::{EngineError, ErrorCode};
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::json;

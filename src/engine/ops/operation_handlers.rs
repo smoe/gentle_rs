@@ -12035,7 +12035,10 @@ impl GentleEngine {
         .cloned()
         .ok_or_else(|| EngineError {
             code: ErrorCode::Unsupported,
-            message: format!("ScanTfbsHits has no collection lift policy for {:?}", subject_kind),
+            message: format!(
+                "ScanTfbsHits has no collection lift policy for {:?}",
+                subject_kind
+            ),
             cause_chain: vec![],
         })?;
         if !matches!(
@@ -12185,8 +12188,8 @@ impl GentleEngine {
                 Some(run_id),
             ) {
                 Ok(report) => {
-                    total_retained_hit_count = total_retained_hit_count
-                        .saturating_add(report.matched_hit_count);
+                    total_retained_hit_count =
+                        total_retained_hit_count.saturating_add(report.matched_hit_count);
                     for row in &report.rows {
                         *retained_hit_counts_by_tf_id
                             .entry(row.tf_id.clone())
@@ -14427,12 +14430,26 @@ impl GentleEngine {
         input.report_id = value
             .as_ref()
             .and_then(|value| {
-                ["report_id", "panel_id", "evidence_id", "package_id", "form_id"]
-                    .iter()
-                    .find_map(|field| value.get(*field).and_then(serde_json::Value::as_str))
+                [
+                    "report_id",
+                    "panel_id",
+                    "evidence_id",
+                    "package_id",
+                    "form_id",
+                ]
+                .iter()
+                .find_map(|field| value.get(*field).and_then(serde_json::Value::as_str))
             })
             .map(str::to_string)
-            .or_else(|| Some(format!("content_{}", observed.trim_start_matches("sha256:").get(..16).unwrap_or_default())));
+            .or_else(|| {
+                Some(format!(
+                    "content_{}",
+                    observed
+                        .trim_start_matches("sha256:")
+                        .get(..16)
+                        .unwrap_or_default()
+                ))
+            });
         input.expected_sha256 = Some(observed);
         Ok(input)
     }
@@ -14566,9 +14583,7 @@ impl GentleEngine {
                 .filter(|value| !value.is_empty())
                 .collect();
             if contrast.condition_labels.is_empty() {
-                contrast
-                    .condition_labels
-                    .push(contrast.contrast_id.clone());
+                contrast.condition_labels.push(contrast.contrast_id.clone());
             }
             contrast.condition_labels.sort();
             contrast.condition_labels.dedup();
@@ -14587,9 +14602,9 @@ impl GentleEngine {
                 .cmp(&right.input_kind)
                 .then(left.path.cmp(&right.path))
         });
-        request.junction_evidence.dedup_by(|left, right| {
-            left.input_kind == right.input_kind && left.path == right.path
-        });
+        request
+            .junction_evidence
+            .dedup_by(|left, right| left.input_kind == right.input_kind && left.path == right.path);
 
         if let Some(override_request) = &mut request.profile_override {
             override_request.reason = override_request.reason.trim().to_string();
@@ -14663,13 +14678,10 @@ impl GentleEngine {
                     cause_chain: vec![],
                 });
             }
-            let prior_report: GeneIsoformAssayStudyPlanReport =
-                serde_json::from_slice(&bytes).map_err(|error| EngineError {
+            let prior_report: GeneIsoformAssayStudyPlanReport = serde_json::from_slice(&bytes)
+                .map_err(|error| EngineError {
                     code: ErrorCode::InvalidInput,
-                    message: format!(
-                        "Could not parse prior study plan '{}': {error}",
-                        prior.path
-                    ),
+                    message: format!("Could not parse prior study plan '{}': {error}", prior.path),
                     cause_chain: vec![],
                 })?;
             if prior_report.schema != GENE_ISOFORM_ASSAY_STUDY_PLAN_SCHEMA {
@@ -14768,10 +14780,8 @@ impl GentleEngine {
             ),
             cause_chain: vec![],
         })?;
-        let isoform_report = Self::parse_gene_isoform_evidence_report(
-            isoform_path,
-            &isoform_bytes,
-        )?;
+        let isoform_report =
+            Self::parse_gene_isoform_evidence_report(isoform_path, &isoform_bytes)?;
         let splicing = isoform_report.splicing.as_ref().ok_or_else(|| EngineError {
             code: ErrorCode::InvalidInput,
             message: format!(
@@ -14845,56 +14855,61 @@ impl GentleEngine {
             })
             .collect::<Vec<_>>();
         let mut has_responsiveness_measurement = false;
-        let mut inspect_components = |region_id: &str, components: &GeneIsoformEvidenceComponents| {
-            if !matches!(
-                components.assayability.status,
-                IsoformEvidenceAssessmentStatus::NotEvaluated
-                    | IsoformEvidenceAssessmentStatus::Unknown
-            ) {
-                assayable_regions.insert(region_id.to_string());
-            }
-            if !matches!(
-                components.abundance.status,
-                IsoformEvidenceAssessmentStatus::NotEvaluated
-                    | IsoformEvidenceAssessmentStatus::Unknown
-            ) && (components.abundance.value.is_some()
-                || !components.abundance.measurements.is_empty())
-            {
-                abundance_regions.insert(region_id.to_string());
-            }
-            for measurement in &components.responsiveness.measurements {
-                has_responsiveness_measurement = true;
-                let Some(condition) = measurement.condition.as_deref() else {
-                    continue;
-                };
-                let Some(value) = measurement.value.filter(|value| value.is_finite()) else {
-                    continue;
-                };
-                for (index, contrast) in request.contrasts.iter().enumerate() {
-                    if contrast.condition_labels.iter().any(|label| label == condition) {
-                        contrast_summaries[index].matched_measurement_count = contrast_summaries
-                            [index]
-                            .matched_measurement_count
-                            .saturating_add(1);
-                        let abs_value = value.abs();
-                        contrast_summaries[index].maximum_abs_effect = Some(
-                            contrast_summaries[index]
-                                .maximum_abs_effect
-                                .unwrap_or(0.0)
-                                .max(abs_value),
-                        );
-                        if abs_value >= request.policy.min_abs_regional_effect
-                            && informative_regions.contains(region_id)
+        let mut inspect_components =
+            |region_id: &str, components: &GeneIsoformEvidenceComponents| {
+                if !matches!(
+                    components.assayability.status,
+                    IsoformEvidenceAssessmentStatus::NotEvaluated
+                        | IsoformEvidenceAssessmentStatus::Unknown
+                ) {
+                    assayable_regions.insert(region_id.to_string());
+                }
+                if !matches!(
+                    components.abundance.status,
+                    IsoformEvidenceAssessmentStatus::NotEvaluated
+                        | IsoformEvidenceAssessmentStatus::Unknown
+                ) && (components.abundance.value.is_some()
+                    || !components.abundance.measurements.is_empty())
+                {
+                    abundance_regions.insert(region_id.to_string());
+                }
+                for measurement in &components.responsiveness.measurements {
+                    has_responsiveness_measurement = true;
+                    let Some(condition) = measurement.condition.as_deref() else {
+                        continue;
+                    };
+                    let Some(value) = measurement.value.filter(|value| value.is_finite()) else {
+                        continue;
+                    };
+                    for (index, contrast) in request.contrasts.iter().enumerate() {
+                        if contrast
+                            .condition_labels
+                            .iter()
+                            .any(|label| label == condition)
                         {
-                            responsive_regions.insert(region_id.to_string());
-                            contrast_summaries[index]
-                                .responsive_region_ids
-                                .push(region_id.to_string());
+                            contrast_summaries[index].matched_measurement_count =
+                                contrast_summaries[index]
+                                    .matched_measurement_count
+                                    .saturating_add(1);
+                            let abs_value = value.abs();
+                            contrast_summaries[index].maximum_abs_effect = Some(
+                                contrast_summaries[index]
+                                    .maximum_abs_effect
+                                    .unwrap_or(0.0)
+                                    .max(abs_value),
+                            );
+                            if abs_value >= request.policy.min_abs_regional_effect
+                                && informative_regions.contains(region_id)
+                            {
+                                responsive_regions.insert(region_id.to_string());
+                                contrast_summaries[index]
+                                    .responsive_region_ids
+                                    .push(region_id.to_string());
+                            }
                         }
                     }
                 }
-            }
-        };
+            };
         for exon in &isoform_report.exon_families {
             inspect_components(&exon.exon_family_id, &exon.components);
         }
@@ -14946,33 +14961,31 @@ impl GentleEngine {
 
         let high_priority = request.prior_priority == GeneIsoformAssayPriorPriority::High;
         let elevated_priority = request.prior_priority == GeneIsoformAssayPriorPriority::Elevated;
-        let comprehensive_complexity = equivalence_groups.len()
-            >= request.policy.min_equivalence_groups_for_comprehensive;
-        let comprehensive_response = responsive_regions.len()
-            >= request.policy.min_responsive_regions_for_comprehensive;
-        let discrimination_complexity = equivalence_groups.len()
-            >= request.policy.min_equivalence_groups_for_discrimination;
-        let targeted_response = responsive_regions.len()
-            >= request.policy.min_responsive_regions_for_targeted;
+        let comprehensive_complexity =
+            equivalence_groups.len() >= request.policy.min_equivalence_groups_for_comprehensive;
+        let comprehensive_response =
+            responsive_regions.len() >= request.policy.min_responsive_regions_for_comprehensive;
+        let discrimination_complexity =
+            equivalence_groups.len() >= request.policy.min_equivalence_groups_for_discrimination;
+        let targeted_response =
+            responsive_regions.len() >= request.policy.min_responsive_regions_for_targeted;
         let poor_probe_coverage = probe_coverage_fraction
             .is_some_and(|fraction| fraction < request.policy.poor_probe_coverage_fraction);
         let missing_array_requires_inspection = !has_array_evidence && equivalence_groups.len() > 1;
-        let recommended_profile = if high_priority
-            || comprehensive_complexity
-            || comprehensive_response
-        {
-            GeneIsoformAssayStudyProfile::ComprehensiveIsoformDossier
-        } else if elevated_priority
-            || discrimination_complexity
-            || poor_probe_coverage
-            || missing_array_requires_inspection
-        {
-            GeneIsoformAssayStudyProfile::IsoformDiscrimination
-        } else if targeted_response {
-            GeneIsoformAssayStudyProfile::TargetedJunctionValidation
-        } else {
-            GeneIsoformAssayStudyProfile::RoutineCommonRegionScreen
-        };
+        let recommended_profile =
+            if high_priority || comprehensive_complexity || comprehensive_response {
+                GeneIsoformAssayStudyProfile::ComprehensiveIsoformDossier
+            } else if elevated_priority
+                || discrimination_complexity
+                || poor_probe_coverage
+                || missing_array_requires_inspection
+            {
+                GeneIsoformAssayStudyProfile::IsoformDiscrimination
+            } else if targeted_response {
+                GeneIsoformAssayStudyProfile::TargetedJunctionValidation
+            } else {
+                GeneIsoformAssayStudyProfile::RoutineCommonRegionScreen
+            };
         let selected_profile = request
             .profile_override
             .as_ref()
@@ -15004,7 +15017,8 @@ impl GentleEngine {
                 triggered: targeted_response,
                 summary: format!(
                     "{} annotation-informative region(s) reached the declared absolute-effect threshold {} across exact condition labels",
-                    responsive_regions.len(), request.policy.min_abs_regional_effect
+                    responsive_regions.len(),
+                    request.policy.min_abs_regional_effect
                 ),
                 evidence_ids: responsive_regions.iter().cloned().collect(),
             },
@@ -15016,40 +15030,47 @@ impl GentleEngine {
                         "array evidence covers {:.3} of informative regions; policy threshold={:.3}",
                         value, request.policy.poor_probe_coverage_fraction
                     ),
-                    None => "array coverage is unknown and was not treated as low coverage"
-                        .to_string(),
+                    None => {
+                        "array coverage is unknown and was not treated as low coverage".to_string()
+                    }
                 },
                 evidence_ids: array_supported_regions.iter().cloned().collect(),
             },
             GeneIsoformAssayStudyDecisionFactor {
                 rule_id: "missing_array_evidence".to_string(),
                 triggered: !has_array_evidence,
-                summary: "Missing array evidence remains unknown; it never silently lowers study depth."
-                    .to_string(),
+                summary:
+                    "Missing array evidence remains unknown; it never silently lowers study depth."
+                        .to_string(),
                 evidence_ids: vec![],
             },
         ];
 
-        let normalized_request_bytes = serde_json::to_vec(&request).map_err(|error| EngineError {
-            code: ErrorCode::Internal,
-            message: format!("Could not serialize normalized study request: {error}"),
-            cause_chain: vec![],
-        })?;
-        let request_sha256 = sha256_prefixed_bytes(&normalized_request_bytes);
-        let policy_sha256 = sha256_prefixed_bytes(
-            &serde_json::to_vec(&request.policy).map_err(|error| EngineError {
+        let normalized_request_bytes =
+            serde_json::to_vec(&request).map_err(|error| EngineError {
                 code: ErrorCode::Internal,
-                message: format!("Could not serialize study policy: {error}"),
+                message: format!("Could not serialize normalized study request: {error}"),
                 cause_chain: vec![],
-            })?,
-        );
+            })?;
+        let request_sha256 = sha256_prefixed_bytes(&normalized_request_bytes);
+        let policy_sha256 =
+            sha256_prefixed_bytes(&serde_json::to_vec(&request.policy).map_err(|error| {
+                EngineError {
+                    code: ErrorCode::Internal,
+                    message: format!("Could not serialize study policy: {error}"),
+                    cause_chain: vec![],
+                }
+            })?);
         let plan_id = request.plan_id.clone().unwrap_or_else(|| {
             short_sha256_id(
                 "isoform_assay_plan",
                 &format!(
                     "{}|{}|{}",
                     request_sha256,
-                    request.expected_isoform_evidence_sha256.as_deref().unwrap_or_default(),
+                    request
+                        .expected_isoform_evidence_sha256
+                        .as_deref()
+                        .unwrap_or_default(),
                     selected_profile.as_str()
                 ),
             )
@@ -15135,24 +15156,24 @@ impl GentleEngine {
                 operations.push(endpoint_operation());
             }
         }
-        let operation_batch_sha256 = sha256_prefixed_bytes(
-            &serde_json::to_vec(&operations).map_err(|error| EngineError {
-                code: ErrorCode::Internal,
-                message: format!("Could not serialize planned operation batch: {error}"),
-                cause_chain: vec![],
-            })?,
-        );
+        let operation_batch_sha256 =
+            sha256_prefixed_bytes(&serde_json::to_vec(&operations).map_err(|error| {
+                EngineError {
+                    code: ErrorCode::Internal,
+                    message: format!("Could not serialize planned operation batch: {error}"),
+                    cause_chain: vec![],
+                }
+            })?);
         let planned_operations = operations
             .iter()
             .enumerate()
             .map(|(index, operation)| {
-                let operation_value = serde_json::to_value(operation).map_err(|error| {
-                    EngineError {
+                let operation_value =
+                    serde_json::to_value(operation).map_err(|error| EngineError {
                         code: ErrorCode::Internal,
                         message: format!("Could not serialize planned operation: {error}"),
                         cause_chain: vec![],
-                    }
-                })?;
+                    })?;
                 let operation_sha256 = sha256_prefixed_bytes(
                     &serde_json::to_vec(&operation_value).map_err(|error| EngineError {
                         code: ErrorCode::Internal,
@@ -15165,7 +15186,9 @@ impl GentleEngine {
                         assay_kind: TranscriptAssayKind::EndpointRtPcr,
                         objective: TranscriptAssayPanelObjective::IsoformEndMatrix,
                         ..
-                    } => Some(self.inspect_transcript_assay_panel_feasibility_operation(operation)?),
+                    } => {
+                        Some(self.inspect_transcript_assay_panel_feasibility_operation(operation)?)
+                    }
                     _ => None,
                 };
                 Ok(GeneIsoformAssayStudyPlannedOperation {
@@ -15191,8 +15214,8 @@ impl GentleEngine {
                 message: format!("Could not read prior study plan '{}': {error}", prior.path),
                 cause_chain: vec![],
             })?;
-            let prior_report: GeneIsoformAssayStudyPlanReport =
-                serde_json::from_slice(&bytes).map_err(|error| EngineError {
+            let prior_report: GeneIsoformAssayStudyPlanReport = serde_json::from_slice(&bytes)
+                .map_err(|error| EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!("Could not parse prior study plan '{}': {error}", prior.path),
                     cause_chain: vec![],
@@ -15526,9 +15549,10 @@ impl GentleEngine {
                     .to_string(),
             );
         }
-        if assay_panels.iter().any(|panel| {
-            panel.role == GeneTranscriptAssayRoutinePanelRole::QuantitativeValidation
-        }) {
+        if assay_panels
+            .iter()
+            .any(|panel| panel.role == GeneTranscriptAssayRoutinePanelRole::QuantitativeValidation)
+        {
             recommended_experimental_sequence.push(
                 "Use short quantitative assays only after reviewing transcript-family scope and assay specificity."
                     .to_string(),
@@ -19660,9 +19684,7 @@ impl GentleEngine {
         Ok((min, max))
     }
 
-    fn transcript_assay_operation_sha256(
-        operation: &Operation,
-    ) -> Result<String, EngineError> {
+    fn transcript_assay_operation_sha256(operation: &Operation) -> Result<String, EngineError> {
         let mut operation_value = serde_json::to_value(operation).map_err(|error| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize transcript assay operation: {error}"),
@@ -19712,10 +19734,20 @@ impl GentleEngine {
             let terminal = template.local_exon_segments.last();
             let mut blockers = vec![];
             let (forward_start, forward_end) = first
-                .map(|segment| (segment.local_start_0based, segment.local_end_0based_exclusive))
+                .map(|segment| {
+                    (
+                        segment.local_start_0based,
+                        segment.local_end_0based_exclusive,
+                    )
+                })
                 .unwrap_or((0, 0));
             let (reverse_start, reverse_end) = terminal
-                .map(|segment| (segment.local_start_0based, segment.local_end_0based_exclusive))
+                .map(|segment| {
+                    (
+                        segment.local_start_0based,
+                        segment.local_end_0based_exclusive,
+                    )
+                })
                 .unwrap_or((0, 0));
             let forward_len = forward_end.saturating_sub(forward_start);
             let reverse_len = reverse_end.saturating_sub(reverse_start);
@@ -19767,33 +19799,32 @@ impl GentleEngine {
                 .all(|blocker| blocker.code != "invalid_transcript_end_geometry")
                 && first.is_some()
                 && terminal.is_some();
-            let (minimum_possible_amplicon_bp, maximum_possible_amplicon_bp) =
-                if geometry_valid
-                    && forward_len >= forward.min_length
-                    && reverse_len >= reverse.min_length
-                {
-                    let minimum = if forward_end <= reverse_start {
-                        reverse_start
-                            .saturating_add(reverse.min_length)
-                            .saturating_sub(forward_end.saturating_sub(forward.min_length))
-                    } else {
-                        // Overlapping end windows do not provide a safe geometric lower
-                        // bound; Primer3 remains authoritative for those candidates.
-                        1
-                    };
-                    let maximum = reverse_end.saturating_sub(forward_start);
-                    if minimum.max(min_amplicon_bp) > maximum.min(max_amplicon_bp) {
-                        blockers.push(TranscriptAssayFeasibilityBlocker {
+            let (minimum_possible_amplicon_bp, maximum_possible_amplicon_bp) = if geometry_valid
+                && forward_len >= forward.min_length
+                && reverse_len >= reverse.min_length
+            {
+                let minimum = if forward_end <= reverse_start {
+                    reverse_start
+                        .saturating_add(reverse.min_length)
+                        .saturating_sub(forward_end.saturating_sub(forward.min_length))
+                } else {
+                    // Overlapping end windows do not provide a safe geometric lower
+                    // bound; Primer3 remains authoritative for those candidates.
+                    1
+                };
+                let maximum = reverse_end.saturating_sub(forward_start);
+                if minimum.max(min_amplicon_bp) > maximum.min(max_amplicon_bp) {
+                    blockers.push(TranscriptAssayFeasibilityBlocker {
                             code: "amplicon_range_has_no_geometric_intersection".to_string(),
                             detail: format!(
                                 "Annotation permits approximately {minimum}..{maximum} bp products, which does not intersect the requested {min_amplicon_bp}..{max_amplicon_bp} bp range."
                             ),
                         });
-                    }
-                    (Some(minimum), Some(maximum))
-                } else {
-                    (None, None)
-                };
+                }
+                (Some(minimum), Some(maximum))
+            } else {
+                (None, None)
+            };
             let mut supported_equivalence_group_ids = equivalence_groups
                 .iter()
                 .filter(|group| {
@@ -19943,8 +19974,9 @@ impl GentleEngine {
         else {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
-                message: "Transcript assay feasibility expects a DesignTranscriptAssayPanel operation."
-                    .to_string(),
+                message:
+                    "Transcript assay feasibility expects a DesignTranscriptAssayPanel operation."
+                        .to_string(),
                 cause_chain: vec![],
             });
         };
@@ -19966,9 +19998,8 @@ impl GentleEngine {
             *min_amplicon_bp,
             *max_amplicon_bp,
         )?;
-        let primer3_candidate_pair_limit_per_reaction = max_assays_per_class.unwrap_or(
-            TRANSCRIPT_ASSAY_DEFAULT_ENDPOINT_PAIRS_PER_REACTION,
-        );
+        let primer3_candidate_pair_limit_per_reaction =
+            max_assays_per_class.unwrap_or(TRANSCRIPT_ASSAY_DEFAULT_ENDPOINT_PAIRS_PER_REACTION);
         if primer3_candidate_pair_limit_per_reaction == 0 {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
@@ -19976,11 +20007,15 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
-        let source_dna = self.state.sequences.get(seq_id).ok_or_else(|| EngineError {
-            code: ErrorCode::NotFound,
-            message: format!("Sequence '{seq_id}' not found"),
-            cause_chain: vec![],
-        })?;
+        let source_dna = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{seq_id}' not found"),
+                cause_chain: vec![],
+            })?;
         let splicing = self.build_splicing_expert_view(
             seq_id,
             *source_feature_id,
@@ -22327,13 +22362,12 @@ impl GentleEngine {
             });
         }
 
-        let (min_amplicon_bp, max_amplicon_bp) =
-            Self::transcript_assay_allowed_amplicon_range(
-                assay_kind,
-                practicality.as_ref(),
-                min_amplicon_bp,
-                max_amplicon_bp,
-            )?;
+        let (min_amplicon_bp, max_amplicon_bp) = Self::transcript_assay_allowed_amplicon_range(
+            assay_kind,
+            practicality.as_ref(),
+            min_amplicon_bp,
+            max_amplicon_bp,
+        )?;
         let max_tm_delta_c = max_tm_delta_c.unwrap_or(2.0);
         let max_probe_tm_delta_c = max_probe_tm_delta_c.unwrap_or(10.0);
         let max_assays_per_class = max_assays_per_class.unwrap_or_else(|| {
@@ -22543,8 +22577,8 @@ impl GentleEngine {
             } else {
                 (vec![], vec![])
             };
-        let end_matrix_feasibility =
-            (objective == TranscriptAssayPanelObjective::IsoformEndMatrix).then(|| {
+        let end_matrix_feasibility = (objective == TranscriptAssayPanelObjective::IsoformEndMatrix)
+            .then(|| {
                 Self::transcript_assay_end_matrix_feasibility(
                     operation_sha256.clone(),
                     &seq_id,
@@ -22565,9 +22599,7 @@ impl GentleEngine {
             });
         if let Some(feasibility) = end_matrix_feasibility.as_ref() {
             if coverage_policy == TranscriptAssayCoveragePolicy::RequireAll
-                && !feasibility
-                    .structurally_impossible_reaction_ids
-                    .is_empty()
+                && !feasibility.structurally_impossible_reaction_ids.is_empty()
             {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
@@ -30232,14 +30264,12 @@ impl GentleEngine {
             },
             other => other,
         };
-        let transcript_assay_operation_sha256 = if matches!(
-            &op,
-            Operation::DesignTranscriptAssayPanel { .. }
-        ) {
-            Some(Self::transcript_assay_operation_sha256(&op)?)
-        } else {
-            None
-        };
+        let transcript_assay_operation_sha256 =
+            if matches!(&op, Operation::DesignTranscriptAssayPanel { .. }) {
+                Some(Self::transcript_assay_operation_sha256(&op)?)
+            } else {
+                None
+            };
         let op_id = self.next_op_id();
         let mut parent_seq_ids: Vec<SeqId> = vec![];
         let mut result = OpResult {
@@ -34146,9 +34176,7 @@ impl GentleEngine {
                             run_id,
                         )?;
                     report.collection_operation = Some(Box::new(collection_operation.clone()));
-                    self.upsert_gene_set_resolution_artifact(
-                        report.gene_set_resolution.clone(),
-                    )?;
+                    self.upsert_gene_set_resolution_artifact(report.gene_set_resolution.clone())?;
                     self.upsert_gene_set_promoter_cohort_artifact(report.clone())?;
                     if let Some(path) = path.as_deref() {
                         self.write_pretty_json_file(&report, path, "gene-set promoter cohort")?;
@@ -36332,9 +36360,9 @@ impl GentleEngine {
                             path,
                             "collection TFBS hit scan report",
                         )?;
-                        result.messages.push(format!(
-                            "Wrote collection TFBS hit scan report to '{path}'"
-                        ));
+                        result
+                            .messages
+                            .push(format!("Wrote collection TFBS hit scan report to '{path}'"));
                     }
                     let succeeded = report
                         .collection_operation
@@ -36919,9 +36947,9 @@ impl GentleEngine {
                                 cause_chain: vec![],
                             },
                         )?;
-                        result.messages.push(format!(
-                            "Wrote gene isoform assay study plan to '{path}'"
-                        ));
+                        result
+                            .messages
+                            .push(format!("Wrote gene isoform assay study plan to '{path}'"));
                     }
                     if let Some(path) = workflow_path
                         .as_deref()
@@ -42943,9 +42971,8 @@ mod molecular_weight_tests {
             .expect("alanine molecular weight");
         let expected = ((71.0788_f64 + 18.015_28_f64) / 1_000.0) as f32;
         assert!((observed - expected).abs() < 1e-6);
-        let ambiguous =
-            GentleEngine::require_protein_molecular_weight_kda("MXZ", "protein 'demo'")
-                .expect_err("ambiguous protein mass should be rejected");
+        let ambiguous = GentleEngine::require_protein_molecular_weight_kda("MXZ", "protein 'demo'")
+            .expect_err("ambiguous protein mass should be rejected");
         assert_eq!(ambiguous.code, ErrorCode::InvalidInput);
         assert_eq!(
             ambiguous.message,

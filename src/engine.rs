@@ -827,8 +827,7 @@ pub const GENE_ISOFORM_ASSAY_STUDY_PLAN_REQUEST_SCHEMA: &str =
     "gentle.gene_isoform_assay_study_plan_request.v1";
 pub const GENE_ISOFORM_ASSAY_STUDY_POLICY_SCHEMA: &str =
     "gentle.gene_isoform_assay_study_policy.v1";
-pub const GENE_ISOFORM_ASSAY_STUDY_PLAN_SCHEMA: &str =
-    "gentle.gene_isoform_assay_study_plan.v1";
+pub const GENE_ISOFORM_ASSAY_STUDY_PLAN_SCHEMA: &str = "gentle.gene_isoform_assay_study_plan.v1";
 pub const GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_REQUEST_SCHEMA: &str =
     "gentle.gene_isoform_assay_study_workflow_batch_request.v1";
 pub const GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_SCHEMA: &str =
@@ -1196,6 +1195,8 @@ mod candidate_guides;
 mod candidate_metrics;
 #[path = "engine/cutrun.rs"]
 mod cutrun;
+#[path = "engine/ops/external_primer_pairs.rs"]
+mod external_primer_pairs;
 #[path = "engine/state/feature_coordinate_formulas.rs"]
 mod feature_coordinate_formulas;
 #[path = "engine/analysis/feature_expert_ops.rs"]
@@ -1218,8 +1219,6 @@ mod microarray_tracks;
 mod motif_statistics;
 #[path = "engine/ops/operation_handlers.rs"]
 mod operation_handlers;
-#[path = "engine/ops/external_primer_pairs.rs"]
-mod external_primer_pairs;
 #[path = "engine/analysis/orthologs.rs"]
 mod orthologs;
 #[path = "engine/io/probe_region_evidence_svg.rs"]
@@ -13341,9 +13340,7 @@ impl GentleEngine {
         }
         let handoff_bytes = std::fs::read(handoff_path).map_err(|error| EngineError {
             code: ErrorCode::Io,
-            message: format!(
-                "Could not read experimental-assay handoff '{handoff_path}': {error}"
-            ),
+            message: format!("Could not read experimental-assay handoff '{handoff_path}': {error}"),
             cause_chain: vec![],
         })?;
         let handoff_sha256 = sha256_prefixed_bytes(&handoff_bytes);
@@ -13388,10 +13385,8 @@ impl GentleEngine {
             message: format!("Could not identify readiness policy: {error}"),
             cause_chain: vec![],
         })?;
-        let expected_policy_id = format!(
-            "readiness_policy_sha256_{}",
-            sha256_hex_str(&policy_text)
-        );
+        let expected_policy_id =
+            format!("readiness_policy_sha256_{}", sha256_hex_str(&policy_text));
         if handoff.policy_id != expected_policy_id {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
@@ -13459,7 +13454,9 @@ impl GentleEngine {
             }
             for oligo in &card.oligos {
                 if !readiness_row.oligo_ids.contains(&oligo.oligo_id)
-                    || !readiness_row.sequences_5_to_3.contains(&oligo.sequence_5_to_3)
+                    || !readiness_row
+                        .sequences_5_to_3
+                        .contains(&oligo.sequence_5_to_3)
                 {
                     return Err(EngineError {
                         code: ErrorCode::InvalidInput,
@@ -13484,10 +13481,7 @@ impl GentleEngine {
                     line_items.push(OligoOrderLineItem {
                         line_id: String::new(),
                         line_no: 0,
-                        name: format!(
-                            "{}_{}_{}",
-                            card.display_label, card.pair_rank, oligo.role
-                        ),
+                        name: format!("{}_{}_{}", card.display_label, card.pair_rank, oligo.role),
                         role: oligo.role.clone(),
                         sequence_5_to_3: oligo.sequence_5_to_3.clone(),
                         length_nt: oligo.length_nt,
@@ -27338,8 +27332,7 @@ impl GentleEngine {
                         Ok(resolved) => {
                             if resolved.seq_id != actual_request.seq_id
                                 || resolved.mode != actual_request.mode
-                                || resolved.span_start_0based
-                                    != actual_request.span_start_0based
+                                || resolved.span_start_0based != actual_request.span_start_0based
                                 || resolved.span_end_0based != actual_request.span_end_0based
                             {
                                 reasons.push(
@@ -27347,14 +27340,13 @@ impl GentleEngine {
                                         .to_string(),
                                 );
                             }
-                            let live_validation =
-                                construct_reasoning_dotplot_inspection_provenance(
-                                    &graph,
-                                    action,
-                                    &snapshot_status,
-                                    &resolved,
-                                    actual_request.clone(),
-                                );
+                            let live_validation = construct_reasoning_dotplot_inspection_provenance(
+                                &graph,
+                                action,
+                                &snapshot_status,
+                                &resolved,
+                                actual_request.clone(),
+                            );
                             reasons.extend(live_validation.verification_reasons);
                         }
                         Err(error) => reasons.push(format!(

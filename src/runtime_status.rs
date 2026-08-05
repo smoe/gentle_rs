@@ -6,6 +6,8 @@
 //! work leaves scope.
 
 use serde::{Deserialize, Serialize};
+#[cfg(unix)]
+use std::sync::atomic::AtomicBool;
 use std::{
     cell::RefCell,
     collections::BTreeMap,
@@ -17,8 +19,6 @@ use std::{
     thread,
     time::{SystemTime, UNIX_EPOCH},
 };
-#[cfg(unix)]
-use std::sync::atomic::AtomicBool;
 
 /// Schema identifier for the process-local runtime status snapshot.
 pub const RUNTIME_STATUS_SCHEMA: &str = "gentle.runtime_status.v1";

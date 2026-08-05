@@ -594,8 +594,9 @@ impl WindowDna {
 
     pub fn focus_primer_specificity_report(&mut self, report_id: &str) {
         if self.pending_dna_load.is_some() {
-            self.deferred_analysis_focus =
-                Some(DeferredAnalysisFocus::PrimerSpecificity(report_id.to_string()));
+            self.deferred_analysis_focus = Some(DeferredAnalysisFocus::PrimerSpecificity(
+                report_id.to_string(),
+            ));
             return;
         }
         self.main_area.focus_primer_specificity_report(report_id);

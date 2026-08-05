@@ -2635,8 +2635,7 @@ pub struct TfbsHitScanReport {
     pub rows: Vec<TfbsHitScanRow>,
 }
 
-pub const COLLECTION_TFBS_HIT_SCAN_REPORT_SCHEMA: &str =
-    "gentle.collection_tfbs_hit_scan.v1";
+pub const COLLECTION_TFBS_HIT_SCAN_REPORT_SCHEMA: &str = "gentle.collection_tfbs_hit_scan.v1";
 
 /// Explicitly binds one logical collection member to one loaded DNA sequence.
 ///

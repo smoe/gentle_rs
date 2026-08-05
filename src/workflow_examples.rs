@@ -7205,8 +7205,7 @@ mod tests {
         fs::create_dir_all(fixture_path.parent().expect("fixture parent"))
             .expect("create fixture parent");
         let lf_content = "{\n  \"schema\": \"synthetic.fixture.v1\"\n}\n";
-        let expected_sha256 =
-            crate::digest_utils::sha256_prefixed_bytes(lf_content.as_bytes());
+        let expected_sha256 = crate::digest_utils::sha256_prefixed_bytes(lf_content.as_bytes());
         fs::write(&fixture_path, lf_content.replace('\n', "\r\n")).expect("write CRLF fixture");
 
         let build_example = |expected_sha256: String| WorkflowExample {
@@ -7242,9 +7241,11 @@ mod tests {
         else {
             panic!("unexpected operation: {:?}", rewritten.workflow.ops[0]);
         };
-        assert!(request.isoform_evidence_path.starts_with(&display_path(
-            &run_dir.path().join("normalized-inputs")
-        )));
+        assert!(
+            request
+                .isoform_evidence_path
+                .starts_with(&display_path(&run_dir.path().join("normalized-inputs")))
+        );
         let staged = fs::read(&request.isoform_evidence_path).expect("read staged LF input");
         assert_eq!(staged, lf_content.as_bytes());
         assert_eq!(

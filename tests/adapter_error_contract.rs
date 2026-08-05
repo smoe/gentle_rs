@@ -1,5 +1,5 @@
-use gentle_protocol::{CapabilityAdapter, CapabilitySource, EngineError};
 use gentle::{dna_sequence::DNAsequence, engine::ProjectState};
+use gentle_protocol::{CapabilityAdapter, CapabilitySource, EngineError};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeSet,
@@ -57,8 +57,7 @@ fn mcp_digest_keeps_stdout_protocol_framed() {
     let mut state = ProjectState::default();
     state.sequences.insert(
         "digest_input".to_string(),
-        DNAsequence::from_sequence("ATGGATCCGCATGGATCCGC")
-            .expect("digest input sequence"),
+        DNAsequence::from_sequence("ATGGATCCGCATGGATCCGC").expect("digest input sequence"),
     );
     state
         .save_to_path(&state_path.to_string_lossy())

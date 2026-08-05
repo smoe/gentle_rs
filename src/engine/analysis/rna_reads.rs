@@ -6086,11 +6086,8 @@ impl GentleEngine {
         }
 
         let args = command_tokens[1..].to_vec();
-        let verifier_output = Self::probe_region_bounded_command_output(
-            rscript_program,
-            &args,
-            verifier_timeout,
-        );
+        let verifier_output =
+            Self::probe_region_bounded_command_output(rscript_program, &args, verifier_timeout);
         let mut result = base_result;
         match verifier_output {
             Ok(output) => {
