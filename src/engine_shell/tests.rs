@@ -8128,6 +8128,73 @@ fn approved_gene_isoform_study_checkpoints_require_explicit_reuse_approval() {
         proposal_sha256
     ))
     .expect("parse approved reuse");
+
+    let checkpoint_manifest_path = PathBuf::from(
+        proposal_result.output["checkpoint_manifest_path"]
+            .as_str()
+            .expect("checkpoint manifest path"),
+    );
+    let checkpoint_manifest_bytes = fs::read(&checkpoint_manifest_path).expect("read manifest");
+    let mut tampered_manifest_bytes = checkpoint_manifest_bytes.clone();
+    tampered_manifest_bytes.push(b'\n');
+    fs::write(&checkpoint_manifest_path, tampered_manifest_bytes).expect("tamper manifest");
+    let error = execute_shell_command(&mut resumed_engine, &approved)
+        .expect_err("manifest changed after approval must fail closed");
+    assert!(error.contains("no checkpoint was imported"), "{error}");
+    assert!(resumed_engine.state().sequences.is_empty());
+    fs::write(&checkpoint_manifest_path, checkpoint_manifest_bytes).expect("restore manifest");
+
+    let mut changed_baseline_engine = GentleEngine::new();
+    changed_baseline_engine
+        .apply_workflow(Workflow {
+            run_id: "changed_baseline".to_string(),
+            ops: vec![Operation::CreateSequenceFromText {
+                sequence_text: "AAAACCCC".to_string(),
+                output_id: Some("unrelated_baseline_sequence".to_string()),
+                name: Some("Unrelated baseline sequence".to_string()),
+                circular: false,
+            }],
+        })
+        .expect("change project baseline");
+    let error = execute_shell_command(&mut changed_baseline_engine, &approved)
+        .expect_err("baseline changed after approval must fail closed");
+    assert!(error.contains("project baseline"), "{error}");
+    assert!(
+        !changed_baseline_engine
+            .state()
+            .sequences
+            .contains_key("reused_first_gene")
+    );
+
+    let diverged = write_pair(
+        temp.path(),
+        "diverged_prefix_plan",
+        "DIVERGED",
+        Operation::CreateSequenceFromText {
+            sequence_text: "GGGGAAAA".to_string(),
+            output_id: Some("diverged_first_gene".to_string()),
+            name: Some("Diverged first gene".to_string()),
+            circular: false,
+        },
+    );
+    let mut diverged_engine = GentleEngine::new();
+    let diverged_batch = compose_batch(
+        &mut diverged_engine,
+        temp.path(),
+        "diverged_target_batch",
+        &[diverged],
+    );
+    let inspect_diverged = parse_shell_line(&format!(
+        "primers inspect-gene-isoform-study-reuse @{} --checkpoint-dir {}",
+        diverged_batch.display(),
+        checkpoint_dir.display()
+    ))
+    .expect("parse diverged-prefix inspection");
+    let diverged_result = execute_shell_command(&mut diverged_engine, &inspect_diverged)
+        .expect("inspect diverged operation prefix");
+    assert_eq!(diverged_result.output["reusable_operation_count"], 0);
+    assert_eq!(diverged_result.output["approval_required"], false);
+
     let result = execute_shell_command(&mut resumed_engine, &approved)
         .expect("resume exact approved prefix");
     assert!(result.state_changed);
@@ -8158,7 +8225,7 @@ fn approved_gene_isoform_study_progress_names_gene_and_ordinals() {
         ..GeneIsoformAssayStudyCheckpointOperation::default()
     };
     let detail =
-        approved_study_batch_progress_detail("private_eleven_gene_batch", &binding, 11, 27, 3);
+        approved_study_batch_progress_detail("synthetic_eleven_gene_batch", &binding, 11, 27, 3);
     assert!(detail.contains("gene=SYNTHETIC_GENE_04"), "{detail}");
     assert!(detail.contains("workflow=4/11"), "{detail}");
     assert!(detail.contains("operation=8/27"), "{detail}");
