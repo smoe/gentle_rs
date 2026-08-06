@@ -6,8 +6,8 @@
 
 use gentle_protocol::{
     GeneIsoformAssayPublicationBlock, GeneIsoformAssayPublicationGene,
-    GeneIsoformAssayPublicationReport, GeneSetPublicationGene, GeneSetPublicationPrimerRow,
-    GeneSetPublicationReport,
+    GeneIsoformAssayPublicationGeneStatus, GeneIsoformAssayPublicationReport,
+    GeneSetPublicationGene, GeneSetPublicationPrimerRow, GeneSetPublicationReport,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -948,6 +948,77 @@ fn render_provenance(gene: &GeneIsoformAssayPublicationGene) -> String {
     )
 }
 
+fn gene_status_css_class(status: GeneIsoformAssayPublicationGeneStatus) -> &'static str {
+    match status {
+        GeneIsoformAssayPublicationGeneStatus::Resolved => "ready",
+        GeneIsoformAssayPublicationGeneStatus::Pending => "warning",
+        GeneIsoformAssayPublicationGeneStatus::Unresolved => "danger",
+    }
+}
+
+/// Sentence explaining a gene without results, preferring the author's own
+/// wording and falling back to a statement that is still honest without it.
+fn gene_status_sentence(gene: &GeneIsoformAssayPublicationGene) -> String {
+    if let Some(reason) = gene
+        .status_reason
+        .as_deref()
+        .map(str::trim)
+        .filter(|reason| !reason.is_empty())
+    {
+        return reason.to_string();
+    }
+    match gene.status {
+        GeneIsoformAssayPublicationGeneStatus::Resolved => String::new(),
+        GeneIsoformAssayPublicationGeneStatus::Pending => {
+            "Assay design for this gene has not produced results yet. This page is regenerated when they arrive."
+                .to_string()
+        }
+        GeneIsoformAssayPublicationGeneStatus::Unresolved => {
+            "This gene could not be addressed with the established automatism, and no reason was recorded."
+                .to_string()
+        }
+    }
+}
+
+/// Notice placed above a gene's sections so an incomplete gene is never read
+/// as a finished one.
+fn render_gene_status_notice(gene: &GeneIsoformAssayPublicationGene) -> String {
+    if gene.status.is_resolved() {
+        return String::new();
+    }
+    format!(
+        "<section><p class=\"notice\"><span class=\"status {}\">{}</span> — {}</p></section>",
+        gene_status_css_class(gene.status),
+        html_escape(gene.status.label()),
+        html_escape(&gene_status_sentence(gene))
+    )
+}
+
+/// Banner shown while any gene is still pending or unresolved. Biologists work
+/// from the finished genes immediately, so the page states what is missing
+/// instead of withholding everything.
+fn render_completion_banner(report: &GeneIsoformAssayPublicationReport) -> String {
+    if report.complete {
+        return String::new();
+    }
+    let mut outstanding = vec![];
+    if report.pending_gene_count > 0 {
+        outstanding.push(format!("{} pending", report.pending_gene_count));
+    }
+    if report.unresolved_gene_count > 0 {
+        outstanding.push(format!(
+            "{} not addressed automatically",
+            report.unresolved_gene_count
+        ));
+    }
+    format!(
+        "<section><p class=\"notice\"><span class=\"status warning\">Partial dossier</span> — {} of {} genes carry designed assay results ({}). The remaining genes are listed with their reasons and this dossier is regenerated once their results are in.</p></section>",
+        report.resolved_gene_count,
+        report.genes.len(),
+        html_escape(&outstanding.join(", "))
+    )
+}
+
 fn render_gene_blocks(
     report: &GeneIsoformAssayPublicationReport,
     gene_index: usize,
@@ -959,12 +1030,13 @@ fn render_gene_blocks(
         .ok_or_else(|| format!("Gene index {gene_index} is outside the canonical report"))?;
     let report_value = serde_json::to_value(report).map_err(|error| error.to_string())?;
     let mut html = format!(
-        "<section><h2>{}</h2><p><b>Plan:</b> <code>{}</code> · <b>operation batch:</b> <code>{}</code></p></section>",
+        "<section><h2>{}</h2><p><b>Plan:</b> <code>{}</code> · <b>operation batch:</b> <code>{}</code></p></section>{}",
         html_escape(&gene.gene_symbol),
         html_escape(&json_scalar(gene.study_plan.value.get("plan_id"))),
         html_escape(&json_scalar(
             gene.study_plan.value.get("operation_batch_sha256")
-        ))
+        )),
+        render_gene_status_notice(gene)
     );
     for block in blocks {
         if block
@@ -1005,7 +1077,22 @@ pub fn render_gene_isoform_assay_publication_index(
     let genes = report
         .genes
         .iter()
-        .map(|gene| format!("<tr><td><a href=\"{}\">{}</a></td><td><code>{}</code></td><td><code>{}</code></td></tr>", html_escape(&gene.page_path), html_escape(&gene.gene_symbol), html_escape(&json_scalar(gene.study_plan.value.get("selected_profile"))), html_escape(&json_scalar(gene.study_plan.value.get("operation_batch_sha256")))))
+        .map(|gene| {
+            format!(
+                "<tr><td><a href=\"{}\">{}</a></td><td><span class=\"status {}\">{}</span>{}</td><td><code>{}</code></td><td><code>{}</code></td></tr>",
+                html_escape(&gene.page_path),
+                html_escape(&gene.gene_symbol),
+                gene_status_css_class(gene.status),
+                html_escape(gene.status.label()),
+                if gene.status.is_resolved() {
+                    String::new()
+                } else {
+                    format!("<br><span class=\"muted\">{}</span>", html_escape(&gene_status_sentence(gene)))
+                },
+                html_escape(&json_scalar(gene.study_plan.value.get("selected_profile"))),
+                html_escape(&json_scalar(gene.study_plan.value.get("operation_batch_sha256")))
+            )
+        })
         .collect::<String>();
     let profiles = report
         .profiles
@@ -1020,7 +1107,8 @@ pub fn render_gene_isoform_assay_publication_index(
         })
         .collect::<String>();
     let content = format!(
-        "{}<section><h2>Genes</h2><div class=\"table-scroll\"><table><thead><tr><th>Gene report</th><th>Selected study profile</th><th>Operation batch</th></tr></thead><tbody>{genes}</tbody></table></div></section><section><h2>Presentation profiles</h2><ul>{profiles}</ul><p class=\"muted\">Presentation clients may select only these declared blocks. Selection changes layout and scope, not scientific content.</p></section>",
+        "{}{}<section><h2>Genes</h2><div class=\"table-scroll\"><table><thead><tr><th>Gene report</th><th>Status</th><th>Selected study profile</th><th>Operation batch</th></tr></thead><tbody>{genes}</tbody></table></div></section><section><h2>Presentation profiles</h2><ul>{profiles}</ul><p class=\"muted\">Presentation clients may select only these declared blocks. Selection changes layout and scope, not scientific content.</p></section>",
+        render_completion_banner(report),
         render_parameter_table(report)
     );
     publication_shell(report, &report.title, "", &content, false)
@@ -1061,7 +1149,8 @@ pub fn render_gene_isoform_assay_publication_print(
     requested_block_ids: &[String],
 ) -> Result<String, String> {
     let blocks = publication_blocks(report, profile_id, requested_block_ids)?;
-    let mut content = render_parameter_table(report);
+    let mut content = render_completion_banner(report);
+    content.push_str(&render_parameter_table(report));
     for gene_index in 0..report.genes.len() {
         content.push_str("<div class=\"page-break\"></div>");
         content.push_str(&render_gene_blocks(report, gene_index, &blocks)?);

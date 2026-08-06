@@ -7,6 +7,7 @@ use gentle_protocol::{
     GENE_SET_PUBLICATION_REPORT_SCHEMA, GENE_SET_PUBLICATION_REQUEST_SCHEMA,
     GeneIsoformAssayPublicationArtifact, GeneIsoformAssayPublicationBlock,
     GeneIsoformAssayPublicationBoundReport, GeneIsoformAssayPublicationGene,
+    GeneIsoformAssayPublicationGeneRequest, GeneIsoformAssayPublicationGeneStatus,
     GeneIsoformAssayPublicationParameter, GeneIsoformAssayPublicationParameterOverride,
     GeneIsoformAssayPublicationProfile, GeneIsoformAssayPublicationProjectionReport,
     GeneIsoformAssayPublicationReport, GeneIsoformAssayPublicationReportRef,
@@ -908,6 +909,61 @@ fn validate_order_form_handoff_binding(
     Ok(())
 }
 
+/// Decide whether one dossier gene shows results, is still expected, or could
+/// not be addressed automatically.
+///
+/// An omitted status is derived from the presence of assay handoffs so that
+/// dossiers written before this field existed report honestly instead of
+/// presenting a gene without results as finished. A declared status is checked
+/// against the gene's actual contents rather than trusted, because the whole
+/// point of the label is that a reader can rely on it.
+fn resolve_publication_gene_status(
+    request: &GeneIsoformAssayPublicationGeneRequest,
+    handoffs: &[GeneIsoformAssayPublicationBoundReport],
+) -> Result<(GeneIsoformAssayPublicationGeneStatus, Option<String>), String> {
+    let symbol = request.gene_symbol.trim();
+    let reason = request
+        .status_reason
+        .as_deref()
+        .map(str::trim)
+        .filter(|reason| !reason.is_empty())
+        .map(str::to_string);
+    let status = match request.status {
+        Some(declared) => declared,
+        None if handoffs.is_empty() => GeneIsoformAssayPublicationGeneStatus::Pending,
+        None => GeneIsoformAssayPublicationGeneStatus::Resolved,
+    };
+    match status {
+        GeneIsoformAssayPublicationGeneStatus::Resolved if handoffs.is_empty() => {
+            return Err(format!(
+                "Gene '{symbol}' is declared 'resolved' but carries no experimental assay handoff; declare 'pending' or 'unresolved' with a status_reason instead of publishing it as complete"
+            ));
+        }
+        GeneIsoformAssayPublicationGeneStatus::Resolved if reason.is_some() => {
+            return Err(format!(
+                "Gene '{symbol}' is 'resolved' and its status_reason would never be shown; remove the reason or declare 'pending' or 'unresolved'"
+            ));
+        }
+        GeneIsoformAssayPublicationGeneStatus::Unresolved if reason.is_none() => {
+            return Err(format!(
+                "Gene '{symbol}' is declared 'unresolved' and requires a status_reason stating why the established automatism could not address it"
+            ));
+        }
+        GeneIsoformAssayPublicationGeneStatus::Pending
+        | GeneIsoformAssayPublicationGeneStatus::Unresolved
+            if !handoffs.is_empty() =>
+        {
+            return Err(format!(
+                "Gene '{symbol}' is declared '{}' but carries {} experimental assay handoff(s); publish it as 'resolved' or remove the handoffs",
+                status.as_str(),
+                handoffs.len()
+            ));
+        }
+        _ => {}
+    }
+    Ok((status, reason))
+}
+
 fn validate_handoff_plan_binding(gene: &GeneIsoformAssayPublicationGene) -> Result<(), String> {
     let mut planned_panels = BTreeMap::new();
     for step in gene
@@ -1384,6 +1440,7 @@ pub fn generate_gene_isoform_assay_publication(
         let order_sheet_name = format!("{slug}-oligo-order.tsv");
         let order_sheet_path =
             (!order_forms.is_empty()).then(|| format!("data/{order_sheet_name}"));
+        let (status, status_reason) = resolve_publication_gene_status(gene_request, &handoffs)?;
         let gene = GeneIsoformAssayPublicationGene {
             gene_symbol: symbol.to_string(),
             page_path: format!("gene-{slug}.html"),
@@ -1393,6 +1450,8 @@ pub fn generate_gene_isoform_assay_publication(
             figures,
             order_sheet_path,
             warnings: vec![],
+            status,
+            status_reason,
         };
         validate_handoff_plan_binding(&gene)?;
         validate_order_form_handoff_binding(&gene)?;
@@ -1541,6 +1600,19 @@ pub fn generate_gene_isoform_assay_publication(
             block_ids: ordering,
         },
     ];
+    let gene_count = genes.len();
+    let resolved_gene_count = genes
+        .iter()
+        .filter(|gene| gene.status.is_resolved())
+        .count();
+    let pending_gene_count = genes
+        .iter()
+        .filter(|gene| gene.status == GeneIsoformAssayPublicationGeneStatus::Pending)
+        .count();
+    let unresolved_gene_count = genes
+        .iter()
+        .filter(|gene| gene.status == GeneIsoformAssayPublicationGeneStatus::Unresolved)
+        .count();
     let report = GeneIsoformAssayPublicationReport {
         schema: GENE_ISOFORM_ASSAY_PUBLICATION_SCHEMA.to_string(),
         report_id: request.report_id.clone(),
@@ -1557,10 +1629,22 @@ pub fn generate_gene_isoform_assay_publication(
         profiles,
         footer: request.footer.clone(),
         favicon_path,
-        warnings: vec![
-            "GENtle report values remain sequence/evidence/design records; approval authorizes an exact operation payload but does not validate its biological interpretation."
-                .to_string(),
-        ],
+        warnings: {
+            let mut warnings = vec![
+                "GENtle report values remain sequence/evidence/design records; approval authorizes an exact operation payload but does not validate its biological interpretation."
+                    .to_string(),
+            ];
+            if pending_gene_count > 0 || unresolved_gene_count > 0 {
+                warnings.push(format!(
+                    "This dossier is partial: {resolved_gene_count} of {gene_count} genes carry designed assay results, {pending_gene_count} are pending, and {unresolved_gene_count} could not be addressed with the established automatism. Regenerate it once the outstanding results are in."
+                ));
+            }
+            warnings
+        },
+        resolved_gene_count,
+        pending_gene_count,
+        unresolved_gene_count,
+        complete: pending_gene_count == 0 && unresolved_gene_count == 0,
     };
     let selected_profile = selected_profile
         .map(str::trim)
@@ -1966,6 +2050,123 @@ mod tests {
         }
         assert!(!output.join("report.pdf").exists());
         assert!(!output.join("projection-report.json").exists());
+    }
+
+    /// Rewrite the single gene of the minimal request so a test can declare a
+    /// status without rebuilding the whole fixture.
+    fn set_minimal_request_gene_status(
+        request_path: &Path,
+        status: &str,
+        status_reason: Option<&str>,
+    ) {
+        let mut request: serde_json::Value =
+            serde_json::from_slice(&fs::read(request_path).expect("read request"))
+                .expect("parse request");
+        request["genes"][0]["status"] = serde_json::Value::String(status.to_string());
+        if let Some(reason) = status_reason {
+            request["genes"][0]["status_reason"] = serde_json::Value::String(reason.to_string());
+        }
+        fs::write(
+            request_path,
+            serde_json::to_vec_pretty(&request).expect("serialize request"),
+        )
+        .expect("write request");
+    }
+
+    #[test]
+    fn isoform_assay_gene_without_results_is_published_as_pending() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let request_path = write_minimal_isoform_publication_request(temp.path());
+        let output = temp.path().join("out");
+        generate_gene_isoform_assay_publication(&request_path, &output, Some("full"), &[], false)
+            .expect("publish a dossier whose only gene has no results yet");
+
+        let canonical: serde_json::Value =
+            serde_json::from_slice(&fs::read(output.join("canonical-report.json")).unwrap())
+                .expect("parse canonical report");
+        assert_eq!(canonical["genes"][0]["status"], "pending");
+        assert_eq!(canonical["complete"], false);
+        assert_eq!(canonical["resolved_gene_count"], 0);
+        assert_eq!(canonical["pending_gene_count"], 1);
+        assert_eq!(canonical["unresolved_gene_count"], 0);
+
+        let index = fs::read_to_string(output.join("index.html")).expect("index page");
+        assert!(index.contains("Partial dossier"), "{index}");
+        assert!(index.contains("Pending"), "{index}");
+        assert!(index.contains("0 of 1 genes carry designed assay results"));
+        let gene_page = fs::read_to_string(output.join("gene-GENE1.html")).expect("gene page");
+        assert!(gene_page.contains("Pending"), "{gene_page}");
+        assert!(
+            gene_page.contains("has not produced results yet"),
+            "{gene_page}"
+        );
+    }
+
+    #[test]
+    fn isoform_assay_unresolved_gene_states_why_the_automatism_could_not_address_it() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let request_path = write_minimal_isoform_publication_request(temp.path());
+        set_minimal_request_gene_status(&request_path, "unresolved", None);
+        let output = temp.path().join("out");
+        let error = generate_gene_isoform_assay_publication(
+            &request_path,
+            &output,
+            Some("full"),
+            &[],
+            false,
+        )
+        .expect_err("an unresolved gene without a reason must be rejected");
+        assert!(error.contains("requires a status_reason"), "{error}");
+
+        set_minimal_request_gene_status(
+            &request_path,
+            "unresolved",
+            Some("Primer3 found no admissible bounded region for the junction target."),
+        );
+        let output = temp.path().join("out-with-reason");
+        generate_gene_isoform_assay_publication(&request_path, &output, Some("full"), &[], false)
+            .expect("publish an unresolved gene that states its reason");
+
+        let canonical: serde_json::Value =
+            serde_json::from_slice(&fs::read(output.join("canonical-report.json")).unwrap())
+                .expect("parse canonical report");
+        assert_eq!(canonical["genes"][0]["status"], "unresolved");
+        assert_eq!(canonical["unresolved_gene_count"], 1);
+        assert_eq!(canonical["complete"], false);
+
+        for page in ["index.html", "gene-GENE1.html", "print.html"] {
+            let html = fs::read_to_string(output.join(page)).expect(page);
+            assert!(
+                html.contains("no admissible bounded region"),
+                "{page} must state the reason: {html}"
+            );
+        }
+        let gene_page = fs::read_to_string(output.join("gene-GENE1.html")).unwrap();
+        assert!(
+            gene_page.contains("Not addressed automatically"),
+            "{gene_page}"
+        );
+    }
+
+    #[test]
+    fn isoform_assay_gene_declared_resolved_without_handoffs_is_rejected() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let request_path = write_minimal_isoform_publication_request(temp.path());
+        set_minimal_request_gene_status(&request_path, "resolved", None);
+        let output = temp.path().join("out");
+        let error = generate_gene_isoform_assay_publication(
+            &request_path,
+            &output,
+            Some("full"),
+            &[],
+            false,
+        )
+        .expect_err("a gene without results must not claim to be resolved");
+        assert!(
+            error.contains("carries no experimental assay handoff"),
+            "{error}"
+        );
+        assert!(error.contains("publishing it as complete"), "{error}");
     }
 
     #[test]

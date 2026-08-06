@@ -136,6 +136,16 @@ This skill owns:
    before the first operation, runs in a detached engine, checkpoints successful
    approved operations, and commits project state only after complete success.
    Do not loop over independently state-bound execution proposals.
+   `--on-gene-failure continue` is available when the user wants the remaining
+   genes attempted despite an earlier failure. It lowers atomicity from the
+   batch to the gene rather than ignoring errors: each failing gene is rolled
+   back whole. Ask for it explicitly, never select it to work around a failure
+   the user has not seen. Its result is partial by construction, so when
+   `batch_complete` is false, report the completed genes and the
+   `gene_failures[]` entries with their reasons together, do not describe the
+   study as finished, and do not present a skipped gene as a negative
+   biological finding. Its frozen checkpoint cannot be reused afterwards; the
+   follow-up is a new batch containing only the failed genes.
    Checkpoint existence is never permission to reuse it. For an extended or
    retried batch, first call `primers inspect-gene-isoform-study-reuse ...` and
    show the returned reusable/remaining gene and operation counts plus warnings.

@@ -6441,6 +6441,18 @@ impl DetachedEngineExecution {
         &self.engine
     }
 
+    /// Restore an in-memory boundary snapshot taken earlier in this same
+    /// detached run.
+    ///
+    /// Unlike `import_checkpoint_engine` the snapshot was never serialized, so
+    /// it needs no lineage or container reconciliation, and its own revision
+    /// identities are exactly the ones that were valid at the boundary. Callers
+    /// use this to discard a partially applied unit of work without discarding
+    /// the units that already succeeded.
+    pub(crate) fn restore_boundary_engine(&mut self, boundary: GentleEngine) {
+        self.engine = boundary;
+    }
+
     /// Replace the detached execution with a verified serialized checkpoint.
     /// Revision identities are rebased onto the live baseline so the final
     /// optimistic commit remains the only mutation of the live engine.

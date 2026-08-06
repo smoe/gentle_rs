@@ -40,6 +40,25 @@ describe what GENtle processed and content-bind the exact source bytes; they do
 not promote user-supplied/external claims into GENtle results or make approval
 a biological validation.
 
+A dossier may be published while part of a study is still running or has
+failed, so each request gene carries a `status` of `resolved`, `pending`, or
+`unresolved` plus an optional `status_reason`. An omitted status is derived
+from the gene's contents — a gene with at least one experimental handoff is
+`resolved` and a gene without one is `pending` — so a request written before
+this field existed still reports honestly instead of presenting a gene without
+results as finished. A declared status is checked rather than trusted:
+`unresolved` requires a `status_reason` stating why the established automatism
+could not address the gene, `resolved` without any handoff is rejected, and
+`pending`/`unresolved` with handoffs present is rejected. The canonical report
+adds `resolved_gene_count`, `pending_gene_count`, `unresolved_gene_count`, and
+`complete`, and gains a warning naming the outstanding genes while `complete`
+is false. The index lists every gene with its status and reason, and each
+incomplete gene page and the print document open with a visible notice, so the
+finished genes are usable immediately and the dossier is regenerated from the
+same request once the outstanding results arrive. The natural producer of an
+`unresolved` reason is a `gene_failures[]` entry from
+`primers execute-gene-isoform-study-workflow-batch --on-gene-failure continue`.
+
 This document defines the draft machine-facing protocol for operating GENtle
 through a shared core engine.
 
@@ -9369,7 +9388,7 @@ Primer-design shell command family (implemented):
     `batch_basis_sha256` cleared
   - `primers execute-gene-isoform-study-workflow-batch BATCH_JSON_OR_@FILE
     [--checkpoint-dir DIR] [--reuse-proposal PROPOSAL_JSON_OR_@FILE
-    --approve-reuse-sha256 SHA256]`
+    --approve-reuse-sha256 SHA256] [--on-gene-failure abort|continue]`
     rechecks the batch-basis hash and every referenced file, plan identity,
     workflow-byte hash, operation hash/count, and combined ordered digest
     before executing the first workflow. It also evaluates every exact endpoint
@@ -9380,15 +9399,45 @@ Primer-design shell command family (implemented):
     `gentle.gene_isoform_assay_study_workflow_batch_execution.v1`. This keeps a
     multi-gene second stage inside one state-bound command instead of approving
     several commands against a shared state that the first command then
-    changes. Execution now occurs in a detached engine and the live project is
-    replaced only after complete success. SIGUSR1/runtime status names the
-    current gene, plan, workflow and operation ordinals plus honest completed
-    and remaining workflow counts
+    changes. Execution occurs in a detached engine. SIGUSR1/runtime status
+    names the current gene, plan, workflow and operation ordinals plus honest
+    completed, failed, and remaining workflow counts
+  - `--on-gene-failure` selects the unit of atomicity. Under the default
+    `abort` the live project is replaced only after the complete batch
+    succeeds. Under `continue` each gene is atomic instead of the batch: a
+    failing gene is restored to an in-memory boundary snapshot taken when that
+    gene started, so its earlier operations are never committed, and execution
+    proceeds with the remaining precomputed genes. The report then carries
+    `execution_atomicity: "per_gene"`, `atomic_detached_execution: false`,
+    `batch_complete: false`, honest `completed_workflow_count` /
+    `failed_workflow_count` / `skipped_operation_count`, a `gene_failures[]`
+    entry per skipped gene (ordinals, `reason_code`, `detail`,
+    `rolled_back_operation_count`), and a `status` of `completed` or `failed`
+    on every `executions[]` entry. A batch in which no gene completed returns
+    an error and commits nothing, exactly as `abort` does
+  - `continue` relaxes execution atomicity only. Approval and verification
+    failures — batch-basis, plan, workflow, operation digests, endpoint
+    feasibility — still refuse the complete batch under either policy, and the
+    requested coverage policy is untouched: a gene failing `require-all`
+    coverage is skipped, never downgraded
   - with `--checkpoint-dir`, every successful approved operation writes a
     `gentle.gene_isoform_assay_study_checkpoint.v1` manifest and a hash-bound
     detached-engine snapshot. A later batch failure leaves the live state
     unchanged but retains those private checkpoint artifacts and exact result
     records
+  - a checkpoint describes an exact contiguous ordered prefix. Under
+    `continue` the first skipped gene puts a hole in the completed set, so
+    checkpoint writing freezes at the last contiguous prefix and the report
+    records `reuse_checkpoint.frozen`,
+    `reuse_checkpoint.frozen_at_completed_operation_count`, and
+    `reason_code: "gene_failure_broke_exact_prefix"` rather than advancing a
+    prefix that no longer exists. Because such a run also commits the genes
+    that succeeded, the baseline it was proposed against is gone and that
+    frozen proposal is correctly refused afterwards; recovery is a new batch
+    containing only the failed genes, composed against the committed baseline.
+    For the same reason `continue` refuses to start from a reuse prefix that
+    ends inside a gene rather than on a gene boundary, since no in-memory
+    boundary exists for that gene
   - `primers inspect-gene-isoform-study-reuse BATCH_JSON_OR_@FILE
     --checkpoint-dir DIR [--path OUTPUT.json]` is read-only. It selects only the
     longest checkpoint whose baseline state, GENtle package/build/executable

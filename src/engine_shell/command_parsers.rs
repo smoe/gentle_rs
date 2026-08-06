@@ -7438,7 +7438,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             })
         }
         "execute-gene-isoform-study-workflow-batch" => {
-            const USAGE: &str = "primers execute-gene-isoform-study-workflow-batch BATCH_JSON_OR_@FILE [--checkpoint-dir DIR] [--reuse-proposal PROPOSAL_JSON_OR_@FILE --approve-reuse-sha256 SHA256]";
+            const USAGE: &str = "primers execute-gene-isoform-study-workflow-batch BATCH_JSON_OR_@FILE [--checkpoint-dir DIR] [--reuse-proposal PROPOSAL_JSON_OR_@FILE --approve-reuse-sha256 SHA256] [--on-gene-failure abort|continue]";
             if tokens.len() < 3 {
                 return Err(format!(
                     "primers execute-gene-isoform-study-workflow-batch requires:\n       {USAGE}"
@@ -7449,6 +7449,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             let mut checkpoint_dir = None;
             let mut reuse_proposal_json = None;
             let mut approve_reuse_sha256 = None;
+            let mut on_gene_failure = GeneIsoformAssayStudyGeneFailurePolicy::default();
             let mut idx = 3usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -7476,6 +7477,12 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                             context,
                         )?);
                     }
+                    "--on-gene-failure" => {
+                        let value =
+                            parse_option_path(tokens, &mut idx, "--on-gene-failure", context)?;
+                        on_gene_failure = GeneIsoformAssayStudyGeneFailurePolicy::parse(&value)
+                            .map_err(|error| format!("{error} for {context}\n       {USAGE}"))?;
+                    }
                     other => {
                         return Err(format!(
                             "Unknown option '{other}' for {context}\n       {USAGE}"
@@ -7494,6 +7501,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                     checkpoint_dir,
                     reuse_proposal_json,
                     approve_reuse_sha256,
+                    on_gene_failure,
                 },
             )
         }

@@ -3611,8 +3611,8 @@
             "cli-direct"
          ],
          "path": "primers execute-gene-isoform-study-workflow-batch",
-         "summary": "Revalidate an approved multi-study batch, execute it against a detached engine, optionally checkpoint successful operations, optionally import one separately approved exact-prefix checkpoint, and commit project state only after complete success.",
-         "usage": "primers execute-gene-isoform-study-workflow-batch BATCH_JSON_OR_@FILE [--checkpoint-dir DIR] [--reuse-proposal PROPOSAL_JSON_OR_@FILE --approve-reuse-sha256 SHA256]"
+         "summary": "Revalidate an approved multi-study batch, execute it against a detached engine, optionally checkpoint successful operations, optionally import one separately approved exact-prefix checkpoint, and commit project state only after complete success or, with --on-gene-failure continue, after rolling each failing gene back to its own boundary.",
+         "usage": "primers execute-gene-isoform-study-workflow-batch BATCH_JSON_OR_@FILE [--checkpoint-dir DIR] [--reuse-proposal PROPOSAL_JSON_OR_@FILE --approve-reuse-sha256 SHA256] [--on-gene-failure abort|continue]"
       },
       {
          "aliases": [],

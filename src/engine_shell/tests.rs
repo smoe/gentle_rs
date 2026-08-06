@@ -7615,10 +7615,12 @@ fn parse_primers_seed_from_feature_and_splicing() {
             checkpoint_dir,
             reuse_proposal_json,
             approve_reuse_sha256,
+            on_gene_failure,
         } if batch_json == "@approved-batch.json"
             && checkpoint_dir.as_deref() == Some("checkpoints")
             && reuse_proposal_json.as_deref() == Some("@reuse.json")
             && approve_reuse_sha256.as_deref() == Some("sha256:abc")
+            && on_gene_failure == GeneIsoformAssayStudyGeneFailurePolicy::Abort
     ));
     let inspect_reuse = parse_shell_line(
         "primers inspect-gene-isoform-study-reuse @approved-batch.json --checkpoint-dir checkpoints --path reuse.json",
@@ -8228,6 +8230,378 @@ fn approved_gene_isoform_study_checkpoints_require_explicit_reuse_approval() {
     );
 }
 
+/// Build one approved batch from `(plan_id, gene, [operations])` triples.
+fn compose_approved_study_batch(
+    engine: &mut GentleEngine,
+    directory: &Path,
+    batch_id: &str,
+    genes: &[(&str, &str, Vec<Operation>)],
+) -> PathBuf {
+    let mut entries = vec![];
+    for (plan_id, gene, ops) in genes {
+        let workflow = Workflow {
+            run_id: format!("{plan_id}_run"),
+            ops: ops.clone(),
+        };
+        let workflow_bytes = serde_json::to_vec_pretty(&workflow).expect("serialize workflow");
+        let plan = GeneIsoformAssayStudyPlanReport {
+            schema: GENE_ISOFORM_ASSAY_STUDY_PLAN_SCHEMA.to_string(),
+            plan_id: (*plan_id).to_string(),
+            gene_symbol: (*gene).to_string(),
+            operation_batch_sha256: crate::digest_utils::sha256_prefixed_bytes(
+                &serde_json::to_vec(&workflow.ops).expect("serialize operations"),
+            ),
+            approved_workflow_sha256: crate::digest_utils::sha256_prefixed_bytes(&workflow_bytes),
+            ..GeneIsoformAssayStudyPlanReport::default()
+        };
+        let plan_path = directory.join(format!("{plan_id}.plan.json"));
+        let workflow_path = directory.join(format!("{plan_id}.workflow.json"));
+        fs::write(&plan_path, serde_json::to_vec_pretty(&plan).unwrap()).unwrap();
+        fs::write(&workflow_path, workflow_bytes).unwrap();
+        entries.push(GeneIsoformAssayStudyWorkflowBatchRequestEntry {
+            plan_path: plan_path.to_string_lossy().to_string(),
+            workflow_path: workflow_path.to_string_lossy().to_string(),
+        });
+    }
+    let request = GeneIsoformAssayStudyWorkflowBatchRequest {
+        schema: GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_REQUEST_SCHEMA.to_string(),
+        batch_id: batch_id.to_string(),
+        entries,
+    };
+    let request_path = directory.join(format!("{batch_id}.request.json"));
+    fs::write(&request_path, serde_json::to_vec_pretty(&request).unwrap()).unwrap();
+    let command = parse_shell_line(&format!(
+        "primers compose-gene-isoform-study-workflow-batch @{}",
+        request_path.display()
+    ))
+    .expect("parse composition");
+    let composed = execute_shell_command(engine, &command).expect("compose batch");
+    let batch_path = directory.join(format!("{batch_id}.json"));
+    fs::write(
+        &batch_path,
+        serde_json::to_vec_pretty(&composed.output).unwrap(),
+    )
+    .unwrap();
+    batch_path
+}
+
+fn failing_export_operation(directory: &Path) -> Operation {
+    Operation::SaveFile {
+        seq_id: "missing_sequence".to_string(),
+        path: directory
+            .join("must_not_exist.gb")
+            .to_string_lossy()
+            .to_string(),
+        format: crate::engine::ExportFormat::GenBank,
+    }
+}
+
+fn create_sequence_operation(output_id: &str, sequence_text: &str) -> Operation {
+    Operation::CreateSequenceFromText {
+        sequence_text: sequence_text.to_string(),
+        output_id: Some(output_id.to_string()),
+        name: Some(format!("Synthetic {output_id}")),
+        circular: false,
+    }
+}
+
+#[test]
+fn approved_gene_isoform_study_batch_continues_with_remaining_genes_after_failure() {
+    let temp = tempdir().expect("tempdir");
+    let genes = vec![
+        (
+            "first_plan",
+            "FIRST",
+            vec![create_sequence_operation("gene_first", "ACGTACGT")],
+        ),
+        (
+            "failing_plan",
+            "FAIL",
+            vec![failing_export_operation(temp.path())],
+        ),
+        (
+            "third_plan",
+            "THIRD",
+            vec![create_sequence_operation("gene_third", "TTTTCCCC")],
+        ),
+    ];
+
+    // The default policy still refuses the whole batch.
+    let mut aborting_engine = GentleEngine::new();
+    let aborting_batch = compose_approved_study_batch(
+        &mut aborting_engine,
+        temp.path(),
+        "abort_policy_batch",
+        &genes,
+    );
+    let abort_command = parse_shell_line(&format!(
+        "primers execute-gene-isoform-study-workflow-batch @{}",
+        aborting_batch.display()
+    ))
+    .expect("parse default execution");
+    let error = execute_shell_command(&mut aborting_engine, &abort_command)
+        .expect_err("default policy must refuse the batch");
+    assert!(
+        error.contains("Live project state was not changed"),
+        "{error}"
+    );
+    assert!(aborting_engine.state().sequences.is_empty());
+
+    let mut engine = GentleEngine::new();
+    let batch_path =
+        compose_approved_study_batch(&mut engine, temp.path(), "continue_policy_batch", &genes);
+    let command = parse_shell_line(&format!(
+        "primers execute-gene-isoform-study-workflow-batch @{} --on-gene-failure continue",
+        batch_path.display()
+    ))
+    .expect("parse continuing execution");
+    let executed =
+        execute_shell_command(&mut engine, &command).expect("continue past the failing gene");
+
+    assert!(executed.state_changed);
+    assert!(engine.state().sequences.contains_key("gene_first"));
+    assert!(engine.state().sequences.contains_key("gene_third"));
+    assert_eq!(executed.output["gene_failure_policy"], "continue");
+    assert_eq!(executed.output["execution_atomicity"], "per_gene");
+    assert_eq!(executed.output["atomic_detached_execution"], false);
+    assert_eq!(executed.output["batch_complete"], false);
+    assert_eq!(executed.output["completed_workflow_count"], 2);
+    assert_eq!(executed.output["failed_workflow_count"], 1);
+    assert_eq!(executed.output["gene_failures"][0]["gene_symbol"], "FAIL");
+    assert_eq!(executed.output["gene_failures"][0]["ordinal"], 2);
+    assert_eq!(
+        executed.output["gene_failures"][0]["rolled_back_to_gene_boundary"],
+        true
+    );
+    assert_eq!(executed.output["executions"][0]["status"], "completed");
+    assert_eq!(executed.output["executions"][1]["status"], "failed");
+    assert_eq!(executed.output["executions"][2]["status"], "completed");
+    assert_eq!(
+        executed.output["executions"][2]["execution"]["results"]
+            .as_array()
+            .map(Vec::len),
+        Some(1),
+        "a gene after the failure keeps its own results"
+    );
+    assert!(
+        executed.output["warnings"]
+            .as_array()
+            .expect("warnings array")
+            .iter()
+            .any(|warning| warning
+                .as_str()
+                .is_some_and(|warning| warning.contains("coverage policy"))),
+        "{:?}",
+        executed.output["warnings"]
+    );
+}
+
+#[test]
+fn approved_gene_isoform_study_batch_rolls_a_failing_gene_back_to_its_boundary() {
+    let temp = tempdir().expect("tempdir");
+    // The failing gene creates a sequence first, so a partial commit would be
+    // visible in the live project.
+    let genes = vec![
+        (
+            "leading_plan",
+            "LEADING",
+            vec![create_sequence_operation("gene_leading", "ACGTACGT")],
+        ),
+        (
+            "partial_plan",
+            "PARTIAL",
+            vec![
+                create_sequence_operation("gene_partial_first_half", "GGGGCCCC"),
+                failing_export_operation(temp.path()),
+            ],
+        ),
+        (
+            "trailing_plan",
+            "TRAILING",
+            vec![create_sequence_operation("gene_trailing", "TTTTCCCC")],
+        ),
+    ];
+    let mut engine = GentleEngine::new();
+    let batch_path =
+        compose_approved_study_batch(&mut engine, temp.path(), "boundary_batch", &genes);
+    let command = parse_shell_line(&format!(
+        "primers execute-gene-isoform-study-workflow-batch @{} --on-gene-failure continue",
+        batch_path.display()
+    ))
+    .expect("parse continuing execution");
+    let executed =
+        execute_shell_command(&mut engine, &command).expect("continue past partial gene");
+
+    assert!(engine.state().sequences.contains_key("gene_leading"));
+    assert!(engine.state().sequences.contains_key("gene_trailing"));
+    assert!(
+        !engine
+            .state()
+            .sequences
+            .contains_key("gene_partial_first_half"),
+        "the failing gene's earlier operation must be rolled back, not committed"
+    );
+    assert_eq!(executed.output["completed_workflow_count"], 2);
+    assert_eq!(executed.output["failed_workflow_count"], 1);
+    assert_eq!(
+        executed.output["gene_failures"][0]["rolled_back_operation_count"],
+        1
+    );
+    assert_eq!(
+        executed.output["gene_failures"][0]["failed_workflow_operation_ordinal"],
+        2
+    );
+    assert_eq!(
+        executed.output["executions"][1]["execution"]["results"]
+            .as_array()
+            .map(Vec::len),
+        Some(0)
+    );
+}
+
+#[test]
+fn approved_gene_isoform_study_batch_refuses_when_every_gene_fails() {
+    let temp = tempdir().expect("tempdir");
+    let genes = vec![
+        (
+            "only_failing_plan",
+            "FAIL_ONE",
+            vec![failing_export_operation(temp.path())],
+        ),
+        (
+            "second_failing_plan",
+            "FAIL_TWO",
+            vec![failing_export_operation(temp.path())],
+        ),
+    ];
+    let mut engine = GentleEngine::new();
+    let batch_path =
+        compose_approved_study_batch(&mut engine, temp.path(), "all_failing_batch", &genes);
+    let command = parse_shell_line(&format!(
+        "primers execute-gene-isoform-study-workflow-batch @{} --on-gene-failure continue",
+        batch_path.display()
+    ))
+    .expect("parse continuing execution");
+    let error = execute_shell_command(&mut engine, &command)
+        .expect_err("a batch that completed no gene must not commit");
+    assert!(error.contains("completed no gene"), "{error}");
+    assert!(
+        error.contains("Live project state was not changed"),
+        "{error}"
+    );
+    assert!(engine.state().sequences.is_empty());
+}
+
+#[test]
+fn approved_gene_isoform_study_batch_freezes_reuse_checkpoint_after_a_gene_failure() {
+    let temp = tempdir().expect("tempdir");
+    let checkpoint_dir = temp.path().join("checkpoints");
+    let genes = vec![
+        (
+            "kept_plan",
+            "KEPT",
+            vec![create_sequence_operation("gene_kept", "ACGTACGT")],
+        ),
+        (
+            "broken_plan",
+            "BROKEN",
+            vec![failing_export_operation(temp.path())],
+        ),
+        (
+            "later_plan",
+            "LATER",
+            vec![create_sequence_operation("gene_later", "TTTTCCCC")],
+        ),
+    ];
+    let mut engine = GentleEngine::new();
+    let batch_path = compose_approved_study_batch(&mut engine, temp.path(), "freeze_batch", &genes);
+    let command = parse_shell_line(&format!(
+        "primers execute-gene-isoform-study-workflow-batch @{} --checkpoint-dir {} --on-gene-failure continue",
+        batch_path.display(),
+        checkpoint_dir.display()
+    ))
+    .expect("parse checkpointed continuing execution");
+    let executed = execute_shell_command(&mut engine, &command).expect("continue with checkpoints");
+
+    assert_eq!(executed.output["reuse_checkpoint"]["frozen"], true);
+    assert_eq!(
+        executed.output["reuse_checkpoint"]["frozen_at_completed_operation_count"], 1,
+        "the checkpoint stays at the last contiguous prefix"
+    );
+    assert_eq!(
+        executed.output["reuse_checkpoint"]["reason_code"],
+        "gene_failure_broke_exact_prefix"
+    );
+    // The gene that ran after the failure is committed but must not appear in
+    // any checkpoint, because a checkpoint describes an exact ordered prefix.
+    assert!(engine.state().sequences.contains_key("gene_later"));
+    let checkpoint_text = fs::read_dir(&checkpoint_dir)
+        .expect("checkpoint directory")
+        .filter_map(Result::ok)
+        .map(|entry| {
+            fs::read_dir(entry.path())
+                .map(|inner| {
+                    inner
+                        .filter_map(Result::ok)
+                        .filter_map(|file| fs::read_to_string(file.path()).ok())
+                        .collect::<String>()
+                })
+                .unwrap_or_default()
+        })
+        .collect::<String>();
+    assert!(
+        !checkpoint_text.contains("gene_later"),
+        "a frozen checkpoint must not record work done after the failure"
+    );
+}
+
+#[test]
+fn approved_gene_isoform_study_batch_verification_still_refuses_under_continue() {
+    let temp = tempdir().expect("tempdir");
+    let genes = vec![(
+        "verified_plan",
+        "VERIFIED",
+        vec![create_sequence_operation("gene_verified", "ACGTACGT")],
+    )];
+    let mut engine = GentleEngine::new();
+    let batch_path =
+        compose_approved_study_batch(&mut engine, temp.path(), "tampered_batch", &genes);
+    let mut batch: serde_json::Value =
+        serde_json::from_slice(&fs::read(&batch_path).expect("read batch")).expect("parse batch");
+    batch["batch_basis_sha256"] = serde_json::Value::String("sha256:tampered".to_string());
+    fs::write(&batch_path, serde_json::to_vec_pretty(&batch).unwrap()).unwrap();
+    let command = parse_shell_line(&format!(
+        "primers execute-gene-isoform-study-workflow-batch @{} --on-gene-failure continue",
+        batch_path.display()
+    ))
+    .expect("parse continuing execution");
+    let error = execute_shell_command(&mut engine, &command)
+        .expect_err("an approval failure is not an execution failure");
+    assert!(error.contains("basis digest mismatch"), "{error}");
+    assert!(engine.state().sequences.is_empty());
+}
+
+#[test]
+fn approved_gene_isoform_study_batch_rejects_unknown_gene_failure_policy() {
+    let error = parse_shell_line(
+        "primers execute-gene-isoform-study-workflow-batch @batch.json --on-gene-failure ignore",
+    )
+    .expect_err("unknown policy must be rejected");
+    assert!(error.contains("Unknown gene failure policy"), "{error}");
+
+    let parsed = parse_shell_line(
+        "primers execute-gene-isoform-study-workflow-batch @batch.json --on-gene-failure continue",
+    )
+    .expect("parse continue policy");
+    assert!(matches!(
+        parsed,
+        ShellCommand::PrimersExecuteGeneIsoformAssayStudyWorkflowBatch {
+            on_gene_failure: GeneIsoformAssayStudyGeneFailurePolicy::Continue,
+            ..
+        }
+    ));
+}
+
 #[test]
 fn approved_gene_isoform_study_progress_names_gene_and_ordinals() {
     let binding = GeneIsoformAssayStudyCheckpointOperation {
@@ -8239,12 +8613,18 @@ fn approved_gene_isoform_study_progress_names_gene_and_ordinals() {
         ..GeneIsoformAssayStudyCheckpointOperation::default()
     };
     let detail =
-        approved_study_batch_progress_detail("synthetic_eleven_gene_batch", &binding, 11, 27, 3);
+        approved_study_batch_progress_detail("synthetic_eleven_gene_batch", &binding, 11, 27, 3, 0);
     assert!(detail.contains("gene=SYNTHETIC_GENE_04"), "{detail}");
     assert!(detail.contains("workflow=4/11"), "{detail}");
     assert!(detail.contains("operation=8/27"), "{detail}");
     assert!(detail.contains("completed_genes=3/11"), "{detail}");
+    assert!(detail.contains("failed_genes=0"), "{detail}");
     assert!(detail.contains("remaining_genes=8"), "{detail}");
+
+    let with_failure =
+        approved_study_batch_progress_detail("synthetic_eleven_gene_batch", &binding, 11, 27, 3, 2);
+    assert!(with_failure.contains("failed_genes=2"), "{with_failure}");
+    assert!(with_failure.contains("remaining_genes=6"), "{with_failure}");
 }
 
 #[test]

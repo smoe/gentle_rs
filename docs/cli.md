@@ -4119,6 +4119,25 @@ Shared shell command:
         each successful approved operation even if a later operation fails.
         Checkpoints do not alter the live project and are never reused
         automatically
+      - `--on-gene-failure abort|continue` (default `abort`) selects what a
+        failing gene does to the rest of the batch. `continue` moves atomicity
+        down one level rather than removing it: the failing gene is rolled back
+        to the boundary at which it started, so a gene is never committed
+        half-applied, and GENtle then continues with the other precomputed
+        genes. The report names every skipped gene in `gene_failures[]`, sets
+        `batch_complete: false`, and reports `execution_atomicity: "per_gene"`.
+        A batch in which every gene failed still commits nothing
+      - `continue` governs execution failures only. A batch-basis, plan,
+        workflow, operation-digest, or endpoint-feasibility rejection still
+        refuses the complete batch under either policy, because those are
+        approval failures rather than results. The requested
+        `--coverage-policy` is also unchanged: a gene that fails strict
+        coverage is skipped, never downgraded
+      - after a `continue` run with failures the live baseline has changed, so
+        that run's frozen checkpoint no longer matches and its reuse proposal
+        is correctly refused. Compose a new batch containing only the failed
+        genes against the committed baseline; do not re-run the original batch
+        with `--reuse-proposal`
       - inspect an unchanged approved prefix with
         `primers inspect-gene-isoform-study-reuse BATCH_JSON_OR_@FILE
         --checkpoint-dir DIR [--path PROPOSAL.json]`. A matching
@@ -4146,6 +4165,21 @@ Shared shell command:
       - `primers publish-gene-isoform-study REQUEST.json OUTPUT_DIR [--profile ID] [--blocks ID,ID] [--pdf]` renders only declared blocks from
         content-addressed plan/handoff/order reports. It emits a meta-page, one
         HTML page per gene, `print.html`, order TSVs, and a projection receipt
+      - a dossier can be published while part of a study is still running or
+        has failed. Each request gene may declare `status` (`resolved`,
+        `pending`, `unresolved`) and a `status_reason`. An omitted status is
+        derived: a gene with at least one assay handoff is `resolved`, a gene
+        without one is `pending`, so an existing request keeps working and
+        still reports honestly. `unresolved` requires a `status_reason` stating
+        why the established automatism could not address the gene, and a gene
+        declared `resolved` without any handoff is rejected rather than
+        published as complete
+      - the index lists every gene with its status and reason, the canonical
+        report carries `resolved_gene_count`, `pending_gene_count`,
+        `unresolved_gene_count`, and `complete`, and each incomplete gene page
+        and the print document open with a visible notice. Biologists can start
+        on the finished genes immediately; regenerate the dossier from the same
+        request once the outstanding results are in
       - all standard profiles include a detailed quality-assurance block with
         the exact handoff policy and panel hash, every per-assay gate and
         required flag, GENtle's recorded status/summary, evidence-report ids,

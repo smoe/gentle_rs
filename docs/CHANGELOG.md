@@ -29,6 +29,22 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
 understand what changed.
 
+## 2026-08-06
+
+- Added opt-in per-gene continuation to approved multi-gene study batches.
+  `primers execute-gene-isoform-study-workflow-batch --on-gene-failure continue`
+  rolls a failing gene back to its own boundary and carries on with the other
+  precomputed genes, moving atomicity from the batch down to the gene rather
+  than removing it. Approval, verification, and coverage semantics are
+  unchanged, the reuse checkpoint freezes at the last contiguous prefix, and
+  the report names every skipped gene.
+- Isoform-assay dossiers can now be published while a study is incomplete.
+  Genes carry a `resolved`/`pending`/`unresolved` status with a reason, derived
+  from the gene's own contents when the request does not declare one. The index
+  lists what is outstanding and every incomplete page opens with a notice, so
+  biologists can start on the finished genes and the dossier is regenerated
+  once the remaining results arrive.
+
 ## 2026-08-05
 
 - Added sequence-aware bounded Primer3 search plans for transcript-assay

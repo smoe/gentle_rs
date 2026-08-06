@@ -548,7 +548,9 @@ new scientific blocks.
 Status: active
 
 Long-running approved isoform-assay batches execute against a detached engine;
-the live project is committed only after the complete ordered batch succeeds.
+by default the live project is committed only after the complete ordered batch
+succeeds. DEC-035 adds an explicit opt-in that lowers this unit from the batch
+to the gene without removing it.
 An explicitly configured private checkpoint directory may retain the detached
 state and exact operation results after each successful approved operation.
 These artifacts survive a later rollback, but they are not project mutations
@@ -562,3 +564,50 @@ imports only into another detached run. Adding work after an unchanged prefix
 is supported; arbitrary branch-state merging, cross-build reuse, payload drift,
 and approval-based waivers of provenance mismatches are not. Approval
 authorizes transfer of prior computation and does not validate the biology.
+
+## DEC-035: Per-Gene Continuation Lowers Atomicity, It Does Not Remove It
+
+Status: active
+
+`--on-gene-failure continue` is opt-in, and the default stays `abort` so an
+existing command keeps its exact behaviour and output. Under `continue` the
+unit of atomicity moves from the batch to the gene: a failing gene is restored
+to an in-memory boundary snapshot taken when that gene started, so a gene is
+never committed half-applied, and the remaining precomputed genes still run. A
+batch in which no gene completed commits nothing.
+
+The flag governs execution failures only. Approval and verification failures
+still refuse the whole batch under either policy, because they say the request
+was not the approved one rather than that a result was not obtained. The
+requested coverage policy is likewise untouched: coverage is a biological
+statement about one assay, this flag is an execution statement about a batch,
+and a gene failing `require-all` is skipped rather than downgraded. A report
+from a run with failures sets `batch_complete: false` and never presents itself
+as a finished study.
+
+Checkpoints keep describing an exact contiguous ordered prefix. Rather than
+teaching the checkpoint schema about gaps — which would cost the invariant that
+makes reuse trustworthy — checkpoint writing freezes at the last contiguous
+prefix once a gene has been skipped. Because such a run also commits the genes
+that succeeded, its own frozen proposal is correctly refused afterwards, and
+recovery is a new batch of only the failed genes against the committed
+baseline. For the same reason `continue` refuses to resume from a reuse prefix
+that ends inside a gene, where no boundary snapshot can exist.
+
+## DEC-036: A Dossier States What Is Missing Rather Than Waiting For It
+
+Status: active
+
+Experimental work starts from whichever genes are ready, so an isoform-assay
+dossier is publishable while a study is incomplete. Each gene carries a
+`resolved`, `pending`, or `unresolved` status; `unresolved` requires a reason
+stating why the established automatism could not address that gene. The index,
+each incomplete gene page, and the print document say so visibly, and the
+canonical report carries per-status counts and a `complete` flag.
+
+An omitted status is derived from the gene's own contents rather than assumed
+to be `resolved`, so a request written before this field existed reports
+honestly instead of rendering a gene without results as finished. A declared
+status is validated against those contents for the same reason: the label is
+only worth having if a reader can rely on it, which is why `resolved` without
+any assay handoff is an error rather than a silently empty section.

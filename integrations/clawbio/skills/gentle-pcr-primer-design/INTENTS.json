@@ -503,7 +503,7 @@
             "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.7.0", "intent_id": "approved_isoform_study_workflow_batch", "plan_step_index": 0},
             "mode": "shell",
             "state_path": ".gentle_state.json",
-            "shell_line": "primers execute-gene-isoform-study-workflow-batch @{batch_path} --checkpoint-dir {checkpoint_dir}",
+            "shell_line": "primers execute-gene-isoform-study-workflow-batch @{batch_path} --checkpoint-dir {checkpoint_dir} --on-gene-failure {on_gene_failure}",
             "timeout_secs": "{execution_timeout_secs}"
           },
           "slots": {
@@ -519,6 +519,13 @@
               "pattern": "(?:checkpoint(?:[_ -]?dir(?:ectory)?)?)[=: ]+([A-Za-z0-9_./-]+)",
               "ignore_case": true,
               "default": ".gentle/isoform-study-checkpoints"
+            },
+            "on_gene_failure": {
+              "required": false,
+              "description": "abort (default) refuses the whole batch and changes nothing. continue rolls each failing gene back to its own boundary and runs the remaining precomputed genes, producing a partial result: the report then sets batch_complete=false and lists every skipped gene in gene_failures[]. Never present such a run as a finished study, never treat a skipped gene as a negative biological finding, and report the failed genes and their reasons alongside the completed ones.",
+              "pattern": "(?:on[_ -]?gene[_ -]?failure)[=: ]+(abort|continue)",
+              "ignore_case": true,
+              "default": "abort"
             },
             "execution_timeout_secs": {
               "required": false,

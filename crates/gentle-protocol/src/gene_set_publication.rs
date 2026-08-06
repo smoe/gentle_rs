@@ -301,6 +301,47 @@ pub struct GeneIsoformAssayPublicationReportRef {
     pub expected_sha256: String,
 }
 
+/// Whether one dossier gene already carries designed assay results.
+///
+/// A dossier is published while parts of a study are still running or have
+/// failed, so a gene without results must be visibly labelled rather than
+/// rendered as if it were complete.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GeneIsoformAssayPublicationGeneStatus {
+    /// Assay handoffs exist and the gene page shows designed results.
+    #[default]
+    Resolved,
+    /// Planned and expected to complete; results are not available yet.
+    Pending,
+    /// The established automatism could not address this gene. The reason is
+    /// required so the page states why rather than showing an empty section.
+    Unresolved,
+}
+
+impl GeneIsoformAssayPublicationGeneStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Resolved => "resolved",
+            Self::Pending => "pending",
+            Self::Unresolved => "unresolved",
+        }
+    }
+
+    /// Short label for a reader who is not tracking GENtle vocabulary.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Resolved => "Results available",
+            Self::Pending => "Pending",
+            Self::Unresolved => "Not addressed automatically",
+        }
+    }
+
+    pub fn is_resolved(self) -> bool {
+        matches!(self, Self::Resolved)
+    }
+}
+
 /// One gene and its immutable GENtle planning, handoff, and procurement inputs.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
@@ -313,6 +354,12 @@ pub struct GeneIsoformAssayPublicationGeneRequest {
     pub order_forms: Vec<GeneIsoformAssayPublicationReportRef>,
     #[serde(default)]
     pub figures: Vec<GeneSetPublicationFigureRequest>,
+    /// Omitted status is derived from the presence of assay handoffs, so an
+    /// existing request keeps working and still reports honestly.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<GeneIsoformAssayPublicationGeneStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status_reason: Option<String>,
 }
 
 /// Request for a multi-page, content-addressed gene isoform-assay dossier.
@@ -406,6 +453,13 @@ pub struct GeneIsoformAssayPublicationGene {
     pub order_sheet_path: Option<String>,
     #[serde(default)]
     pub warnings: Vec<String>,
+    /// Resolved status of this gene in the published dossier. Declared by the
+    /// request or derived from the presence of assay handoffs.
+    #[serde(default)]
+    pub status: GeneIsoformAssayPublicationGeneStatus,
+    /// Why the gene is pending or unresolved, in the author's own words.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status_reason: Option<String>,
 }
 
 /// Pointer-only description of one renderable dossier section.
@@ -458,6 +512,19 @@ pub struct GeneIsoformAssayPublicationReport {
     pub favicon_path: Option<String>,
     #[serde(default)]
     pub warnings: Vec<String>,
+    /// Genes whose pages show designed assay results.
+    #[serde(default)]
+    pub resolved_gene_count: usize,
+    /// Genes that are still expected to complete.
+    #[serde(default)]
+    pub pending_gene_count: usize,
+    /// Genes the established automatism could not address.
+    #[serde(default)]
+    pub unresolved_gene_count: usize,
+    /// False while any gene is pending or unresolved. A dossier may be
+    /// published in that state; it must not claim to be finished.
+    #[serde(default)]
+    pub complete: bool,
 }
 
 /// One generated file bound to its exact bytes.

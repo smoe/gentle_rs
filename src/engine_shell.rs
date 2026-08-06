@@ -529,6 +529,41 @@ impl MacroTemplatePreflightReport {
     }
 }
 
+/// What an approved multi-gene study batch does when one gene's operation
+/// fails.
+///
+/// This governs execution failures only. A digest, plan, workflow, or
+/// feasibility rejection still refuses the complete batch under either policy,
+/// because those are approval failures rather than results.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum GeneIsoformAssayStudyGeneFailurePolicy {
+    /// Refuse the whole batch and leave the live project unchanged.
+    #[default]
+    Abort,
+    /// Roll the failing gene back to its own boundary and continue with the
+    /// other precomputed genes.
+    Continue,
+}
+
+impl GeneIsoformAssayStudyGeneFailurePolicy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Abort => "abort",
+            Self::Continue => "continue",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value.trim() {
+            "abort" => Ok(Self::Abort),
+            "continue" => Ok(Self::Continue),
+            other => Err(format!(
+                "Unknown gene failure policy '{other}'; expected 'abort' or 'continue'"
+            )),
+        }
+    }
+}
+
 /// Canonical parsed shared-shell command enum.
 ///
 /// GUI Shell, `gentle_cli shell`, and any future textual shell adapter should
@@ -2702,6 +2737,7 @@ pub enum ShellCommand {
         checkpoint_dir: Option<String>,
         reuse_proposal_json: Option<String>,
         approve_reuse_sha256: Option<String>,
+        on_gene_failure: GeneIsoformAssayStudyGeneFailurePolicy,
     },
     PrimersPublishGeneIsoformAssayStudy {
         request_path: String,
@@ -11767,9 +11803,14 @@ impl ShellCommand {
                 batch_json.len(),
                 checkpoint_dir
             ),
-            Self::PrimersExecuteGeneIsoformAssayStudyWorkflowBatch { batch_json, .. } => format!(
-                "execute approved multi-study gene isoform assay workflow batch (len={})",
-                batch_json.len()
+            Self::PrimersExecuteGeneIsoformAssayStudyWorkflowBatch {
+                batch_json,
+                on_gene_failure,
+                ..
+            } => format!(
+                "execute approved multi-study gene isoform assay workflow batch (len={}, on_gene_failure={})",
+                batch_json.len(),
+                on_gene_failure.as_str()
             ),
             Self::PrimersPublishGeneIsoformAssayStudy {
                 request_path,
@@ -54514,12 +54555,14 @@ fn execute_primers_command(
             checkpoint_dir,
             reuse_proposal_json,
             approve_reuse_sha256,
+            on_gene_failure,
         } => execute_approved_gene_isoform_assay_study_workflow_batch_with_reuse(
             engine,
             batch_json,
             checkpoint_dir.as_deref(),
             reuse_proposal_json.as_deref(),
             approve_reuse_sha256.as_deref(),
+            *on_gene_failure,
             options,
         ),
         ShellCommand::PrimersPublishGeneIsoformAssayStudy {
@@ -60193,15 +60236,45 @@ fn completed_workflow_count(
         .count()
 }
 
+/// Count genes whose every approved operation completed.
+///
+/// `completed_workflow_count` assumes the completed set is a contiguous
+/// prefix, which holds for checkpoints but not once a gene has been rolled
+/// back and later genes have run.
+fn fully_completed_workflow_count(
+    batch: &GeneIsoformAssayStudyWorkflowBatch,
+    completed: &[GeneIsoformAssayStudyCheckpointOperation],
+) -> usize {
+    let mut completed_per_workflow = BTreeMap::<usize, usize>::new();
+    for binding in completed {
+        *completed_per_workflow
+            .entry(binding.workflow_ordinal)
+            .or_default() += 1;
+    }
+    batch
+        .entries
+        .iter()
+        .enumerate()
+        .filter(|(index, entry)| {
+            completed_per_workflow
+                .get(&index.saturating_add(1))
+                .copied()
+                .unwrap_or_default()
+                == entry.operation_count
+        })
+        .count()
+}
+
 fn approved_study_batch_progress_detail(
     batch_id: &str,
     binding: &GeneIsoformAssayStudyCheckpointOperation,
     workflow_count: usize,
     operation_count: usize,
     completed_workflows: usize,
+    failed_workflows: usize,
 ) -> String {
     format!(
-        "batch={} gene={} plan={} workflow={}/{} operation={}/{} workflow_operation={} completed_genes={}/{} remaining_genes={} completed_operations={}/{}",
+        "batch={} gene={} plan={} workflow={}/{} operation={}/{} workflow_operation={} completed_genes={}/{} failed_genes={} remaining_genes={} completed_operations={}/{}",
         batch_id,
         if binding.gene_symbol.trim().is_empty() {
             "unspecified"
@@ -60216,7 +60289,10 @@ fn approved_study_batch_progress_detail(
         binding.workflow_operation_ordinal,
         completed_workflows,
         workflow_count,
-        workflow_count.saturating_sub(completed_workflows),
+        failed_workflows,
+        workflow_count
+            .saturating_sub(completed_workflows)
+            .saturating_sub(failed_workflows),
         binding.global_operation_ordinal.saturating_sub(1),
         operation_count
     )
@@ -60542,6 +60618,7 @@ fn execute_approved_gene_isoform_assay_study_workflow_batch_with_reuse(
     checkpoint_dir: Option<&str>,
     reuse_proposal_json: Option<&str>,
     approve_reuse_sha256: Option<&str>,
+    on_gene_failure: GeneIsoformAssayStudyGeneFailurePolicy,
     options: &ShellExecutionOptions,
 ) -> Result<ShellRunResult, String> {
     let verified = verify_approved_gene_isoform_assay_study_workflow_batch(engine, batch_json)?;
@@ -60638,7 +60715,7 @@ fn execute_approved_gene_isoform_assay_study_workflow_batch_with_reuse(
         RuntimeStatusFrameKind::ForegroundOperation,
         "approved gene isoform assay workflow batch",
         Some(format!(
-            "batch={} completed_genes={}/{} remaining_genes={} completed_operations={}/{}",
+            "batch={} completed_genes={}/{} failed_genes=0 remaining_genes={} completed_operations={}/{}",
             verified.batch.batch_id,
             reused_workflow_count,
             workflow_count,
@@ -60653,9 +60730,57 @@ fn execute_approved_gene_isoform_assay_study_workflow_batch_with_reuse(
         .filter(|value| !value.is_empty())
         .map(PathBuf::from);
     let mut last_checkpoint_manifest = None::<PathBuf>;
+    let mut gene_failures = Vec::<serde_json::Value>::new();
+    let mut warnings = Vec::<String>::new();
+    let mut skipped_operation_count = 0usize;
+    let mut skipping_workflow_ordinal = None::<usize>;
+    let mut gene_boundary = None::<(usize, crate::engine::GentleEngine, usize)>;
+    let mut reuse_checkpoint_frozen_at = None::<usize>;
+
+    // Per-gene continuation rolls a failing gene back to the boundary at which
+    // it started. A reused prefix that stops in the middle of a gene leaves no
+    // such boundary in memory, so refuse rather than commit a half-applied gene.
+    if on_gene_failure == GeneIsoformAssayStudyGeneFailurePolicy::Continue
+        && reused_operation_count > 0
+        && verified
+            .batch
+            .entries
+            .iter()
+            .take(reused_workflow_count)
+            .map(|entry| entry.operation_count)
+            .sum::<usize>()
+            != reused_operation_count
+    {
+        let message = format!(
+            "Approved batch '{}' cannot use --on-gene-failure continue with a reuse prefix that ends inside gene {} instead of on a gene boundary; re-inspect reuse for a whole-gene prefix or execute with --on-gene-failure abort. No operations were executed",
+            verified.batch.batch_id,
+            reused_workflow_count.saturating_add(1)
+        );
+        batch_frame.fail(&message);
+        return Err(message);
+    }
 
     for approved_operation in verified.operations.iter().skip(reused_operation_count) {
         let binding = &approved_operation.binding;
+        if skipping_workflow_ordinal == Some(binding.workflow_ordinal) {
+            skipped_operation_count = skipped_operation_count.saturating_add(1);
+            continue;
+        }
+        // Snapshot the detached engine when a gene starts so that a failure
+        // inside it can be undone without discarding the genes that already
+        // finished.
+        if on_gene_failure == GeneIsoformAssayStudyGeneFailurePolicy::Continue
+            && gene_boundary
+                .as_ref()
+                .map(|(ordinal, _, _)| *ordinal)
+                .is_none_or(|ordinal| ordinal != binding.workflow_ordinal)
+        {
+            gene_boundary = Some((
+                binding.workflow_ordinal,
+                detached.engine().clone_without_history(),
+                completed_bindings.len(),
+            ));
+        }
         let completed_workflows = completed_workflow_count(
             &verified.batch,
             binding.global_operation_ordinal.saturating_sub(1),
@@ -60666,6 +60791,7 @@ fn execute_approved_gene_isoform_assay_study_workflow_batch_with_reuse(
             workflow_count,
             operation_count,
             completed_workflows,
+            gene_failures.len(),
         );
         batch_frame.update_detail(detail);
         batch_frame.update_progress(Some(
@@ -60693,6 +60819,62 @@ fn execute_approved_gene_isoform_assay_study_workflow_batch_with_reuse(
         }
         let mut results = match result {
             Ok(results) => results,
+            Err(error) if on_gene_failure == GeneIsoformAssayStudyGeneFailurePolicy::Continue => {
+                // Undo this gene entirely, keep the genes that already
+                // succeeded, and carry on with the remaining precomputed ones.
+                let (_, boundary_engine, boundary_completed_operations) =
+                    gene_boundary.take().ok_or_else(|| {
+                        format!(
+                            "Approved batch '{}' lost the gene boundary snapshot for gene '{}'; no operation was committed",
+                            verified.batch.batch_id, binding.gene_symbol
+                        )
+                    })?;
+                let rolled_back_operation_count = completed_bindings
+                    .len()
+                    .saturating_sub(boundary_completed_operations);
+                detached.restore_boundary_engine(boundary_engine);
+                completed_bindings.truncate(boundary_completed_operations);
+                operation_results.truncate(boundary_completed_operations);
+                if reuse_checkpoint_frozen_at.is_none() {
+                    reuse_checkpoint_frozen_at = Some(completed_bindings.len());
+                }
+                gene_failures.push(json!({
+                    "ordinal": binding.workflow_ordinal,
+                    "plan_id": binding.plan_id,
+                    "gene_symbol": binding.gene_symbol,
+                    "workflow_run_id": binding.workflow_run_id,
+                    "failed_global_operation_ordinal": binding.global_operation_ordinal,
+                    "failed_workflow_operation_ordinal": binding.workflow_operation_ordinal,
+                    "reason_code": "approved_operation_failed",
+                    "detail": error.to_string(),
+                    "rolled_back_to_gene_boundary": true,
+                    "rolled_back_operation_count": rolled_back_operation_count,
+                }));
+                warnings.push(format!(
+                    "Gene '{}' (plan '{}') was rolled back to its own boundary after operation {}/{} failed: {}. GENtle continued with the other precomputed genes in batch '{}'; the requested coverage policy is unchanged and this gene has no designed assay in the committed project.",
+                    binding.gene_symbol,
+                    binding.plan_id,
+                    binding.workflow_operation_ordinal,
+                    verified
+                        .batch
+                        .entries
+                        .get(binding.workflow_ordinal.saturating_sub(1))
+                        .map(|entry| entry.operation_count)
+                        .unwrap_or_default(),
+                    error,
+                    verified.batch.batch_id
+                ));
+                skipping_workflow_ordinal = Some(binding.workflow_ordinal);
+                batch_frame.update_detail(approved_study_batch_progress_detail(
+                    &verified.batch.batch_id,
+                    binding,
+                    workflow_count,
+                    operation_count,
+                    fully_completed_workflow_count(&verified.batch, &completed_bindings),
+                    gene_failures.len(),
+                ));
+                continue;
+            }
             Err(error) => {
                 let receipt = last_checkpoint_manifest
                     .as_ref()
@@ -60726,7 +60908,12 @@ fn execute_approved_gene_isoform_assay_study_workflow_batch_with_reuse(
         })?;
         operation_results.push(result);
         completed_bindings.push(binding.clone());
-        if let Some(root) = checkpoint_root.as_deref() {
+        // Reuse imports an exact contiguous operation prefix. Once a gene has
+        // been skipped the completed set has a hole, so the checkpoint stops
+        // advancing rather than describing a prefix that no longer exists.
+        if let Some(root) = checkpoint_root.as_deref()
+            && reuse_checkpoint_frozen_at.is_none()
+        {
             last_checkpoint_manifest = Some(write_gene_isoform_assay_checkpoint(
                 root,
                 &detached,
@@ -60739,6 +60926,28 @@ fn execute_approved_gene_isoform_assay_study_workflow_batch_with_reuse(
         }
     }
 
+    let completed_workflows = fully_completed_workflow_count(&verified.batch, &completed_bindings);
+    let failed_workflow_count = gene_failures.len();
+    if failed_workflow_count > 0 && completed_bindings.is_empty() {
+        let message = format!(
+            "Approved batch '{}' completed no gene: all {} gene(s) failed under --on-gene-failure continue. Live project state was not changed. Per-gene detail: {}",
+            verified.batch.batch_id,
+            failed_workflow_count,
+            serde_json::to_string(&gene_failures).map_err(|error| error.to_string())?
+        );
+        batch_frame.fail(&message);
+        return Err(message);
+    }
+    if failed_workflow_count > 0 {
+        warnings.push(format!(
+            "Batch '{}' is partial: {}/{} gene(s) completed and {} failed. The requested coverage policy was not weakened; compose a new batch for the failed gene(s) against the committed baseline rather than reusing this run's checkpoint.",
+            verified.batch.batch_id,
+            completed_workflows,
+            workflow_count,
+            failed_workflow_count
+        ));
+    }
+
     let final_state_sha256 =
         canonical_json_sha256(detached.engine().snapshot(), "completed project state")?;
     let state_changed = final_state_sha256 != baseline_state_sha256;
@@ -60748,35 +60957,63 @@ fn execute_approved_gene_isoform_assay_study_workflow_batch_with_reuse(
     drop(prior_engine);
     batch_frame.update_progress(Some(100.0));
     batch_frame.update_detail(format!(
-        "batch={} completed_genes={}/{} remaining_genes=0 completed_operations={}/{} committed=true",
-        verified.batch.batch_id, workflow_count, workflow_count, operation_count, operation_count
+        "batch={} completed_genes={}/{} failed_genes={} remaining_genes=0 completed_operations={}/{} committed=true",
+        verified.batch.batch_id,
+        completed_workflows,
+        workflow_count,
+        failed_workflow_count,
+        completed_bindings.len(),
+        operation_count
     ));
     batch_frame.update_state(crate::runtime_status::RuntimeStatusFrameState::Completed);
 
+    // Group results by the gene that produced them. A rolled-back gene
+    // contributes none, so results can no longer be sliced by cumulative
+    // operation offsets.
+    let mut results_by_workflow_ordinal = BTreeMap::<usize, Vec<crate::engine::OpResult>>::new();
+    for (binding, result) in completed_bindings.iter().zip(operation_results.iter()) {
+        results_by_workflow_ordinal
+            .entry(binding.workflow_ordinal)
+            .or_default()
+            .push(result.clone());
+    }
+    let failure_by_workflow_ordinal = gene_failures
+        .iter()
+        .filter_map(|failure| {
+            failure
+                .get("ordinal")
+                .and_then(serde_json::Value::as_u64)
+                .map(|ordinal| (ordinal as usize, failure))
+        })
+        .collect::<BTreeMap<_, _>>();
+
     let mut executions = vec![];
-    let mut result_offset = 0usize;
+    let mut operation_offset = 0usize;
     for (index, entry) in verified.entries.iter().enumerate() {
-        let result_end = result_offset.saturating_add(entry.workflow.ops.len());
-        let results = operation_results
-            .get(result_offset..result_end)
-            .unwrap_or_default()
-            .to_vec();
+        let ordinal = index.saturating_add(1);
+        let results = results_by_workflow_ordinal
+            .get(&ordinal)
+            .cloned()
+            .unwrap_or_default();
         let reused_in_workflow = reused_operation_count
-            .saturating_sub(result_offset)
+            .saturating_sub(operation_offset)
             .min(entry.workflow.ops.len());
+        let failure = failure_by_workflow_ordinal.get(&ordinal).copied();
         executions.push(json!({
-            "ordinal": index.saturating_add(1),
+            "ordinal": ordinal,
             "plan_id": entry.plan.plan_id,
             "gene_symbol": entry.plan.gene_symbol,
             "approved_workflow_sha256": entry.workflow_sha256,
             "operation_batch_sha256": entry.operation_batch_sha256,
             "operation_count": entry.workflow.ops.len(),
             "reused_operation_count": reused_in_workflow,
+            "status": if failure.is_some() { "failed" } else { "completed" },
+            "failure": failure,
             "execution": {
                 "results": results,
             },
         }));
-        result_offset = result_end;
+        operation_offset = operation_offset.saturating_add(entry.workflow.ops.len());
     }
     Ok(ShellRunResult {
         state_changed,
@@ -60788,7 +61025,15 @@ fn execute_approved_gene_isoform_assay_study_workflow_batch_with_reuse(
             "total_operation_count": operation_count,
             "workflow_count": workflow_count,
             "batch_verified_before_execution": true,
-            "atomic_detached_execution": true,
+            "atomic_detached_execution": failed_workflow_count == 0,
+            "execution_atomicity": if failed_workflow_count == 0 { "batch" } else { "per_gene" },
+            "gene_failure_policy": on_gene_failure.as_str(),
+            "batch_complete": failed_workflow_count == 0,
+            "completed_workflow_count": completed_workflows,
+            "failed_workflow_count": failed_workflow_count,
+            "completed_operation_count": completed_bindings.len(),
+            "skipped_operation_count": skipped_operation_count,
+            "gene_failures": gene_failures,
             "baseline_state_sha256": baseline_state_sha256,
             "final_state_sha256": final_state_sha256,
             "runtime": runtime,
@@ -60799,7 +61044,14 @@ fn execute_approved_gene_isoform_assay_study_workflow_batch_with_reuse(
                 "reused_operation_count": reused_operation_count,
                 "reused_workflow_count": reused_workflow_count,
             },
+            "reuse_checkpoint": {
+                "frozen": reuse_checkpoint_frozen_at.is_some(),
+                "frozen_at_completed_operation_count": reuse_checkpoint_frozen_at,
+                "reason_code": reuse_checkpoint_frozen_at
+                    .map(|_| "gene_failure_broke_exact_prefix"),
+            },
             "last_checkpoint_manifest": last_checkpoint_manifest,
+            "warnings": warnings,
             "executions": executions,
         }),
     })

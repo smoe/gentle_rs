@@ -268,7 +268,7 @@ def test_isoform_study_routes_preserve_two_stage_approval_and_exact_batch_bindin
     assert execute_batch["requires_confirmation"] is True
     assert execute_batch["plan"][0]["input_template"]["shell_line"] == (
         "primers execute-gene-isoform-study-workflow-batch @{batch_path} "
-        "--checkpoint-dir {checkpoint_dir}"
+        "--checkpoint-dir {checkpoint_dir} --on-gene-failure {on_gene_failure}"
     )
     assert execute_batch["plan"][0]["input_template"]["timeout_secs"] == (
         "{execution_timeout_secs}"
@@ -276,6 +276,11 @@ def test_isoform_study_routes_preserve_two_stage_approval_and_exact_batch_bindin
     assert execute_batch["plan"][0]["slots"]["execution_timeout_secs"]["default"] == (
         "28800"
     )
+    # Continuing past a failing gene must stay an explicit user choice.
+    on_gene_failure = execute_batch["plan"][0]["slots"]["on_gene_failure"]
+    assert on_gene_failure["default"] == "abort"
+    assert on_gene_failure["required"] is False
+    assert "batch_complete=false" in on_gene_failure["description"]
     assert inspect_reuse.get("requires_confirmation", False) is False
     assert inspect_reuse["plan"][0]["input_template"]["shell_line"].startswith(
         "primers inspect-gene-isoform-study-reuse "
