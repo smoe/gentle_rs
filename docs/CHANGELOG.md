@@ -31,6 +31,14 @@ understand what changed.
 
 ## 2026-08-06
 
+- GENtle now chooses between multiple installed Primer3 builds instead of
+  taking the first `PATH` match: `--progress` support wins first, then the
+  highest version, then the newest file. An explicitly configured path is still
+  used unchanged, and `primers preflight` reports every candidate and why one
+  was selected.
+- Primer3 tests now run only where a real `primer3_core` is installed, so a
+  machine without Primer3 no longer reports Primer3 results it could not have
+  produced.
 - Added opt-in per-gene continuation to approved multi-gene study batches.
   `primers execute-gene-isoform-study-workflow-batch --on-gene-failure continue`
   rolls a failing gene back to its own boundary and carries on with the other

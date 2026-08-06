@@ -8342,10 +8342,9 @@ impl GentleEngine {
         let template_bytes = template_seq.as_bytes();
         let pair_generation_limit = max_assays.saturating_mul(25).clamp(max_assays, 5000);
         let requested_backend = self.state.parameters.primer_design_backend;
-        let primer3_executable = {
-            let raw = self.state.parameters.primer3_executable.trim();
-            if raw.is_empty() { "primer3_core" } else { raw }
-        };
+        let primer3_executable =
+            Self::resolve_primer3_executable(&self.state.parameters.primer3_executable);
+        let primer3_executable = primer3_executable.as_str();
         let mut warnings = vec![];
         let mut backend = PrimerDesignBackendInfo {
             requested: requested_backend.as_str().to_string(),
@@ -21917,10 +21916,9 @@ impl GentleEngine {
         EngineError,
     > {
         let requested_backend = self.state.parameters.primer_design_backend;
-        let primer3_executable = {
-            let raw = self.state.parameters.primer3_executable.trim();
-            if raw.is_empty() { "primer3_core" } else { raw }
-        };
+        let primer3_executable =
+            Self::resolve_primer3_executable(&self.state.parameters.primer3_executable);
+        let primer3_executable = primer3_executable.as_str();
         let run_internal = |on_progress: &mut dyn FnMut(OperationProgress) -> bool| {
             let progress_context = PrimerDesignProgressContext {
                 seq_id: progress_seq_id,
@@ -27389,10 +27387,9 @@ impl GentleEngine {
         }
 
         let requested_backend = self.state.parameters.primer_design_backend;
-        let primer3_executable = {
-            let raw = self.state.parameters.primer3_executable.trim();
-            if raw.is_empty() { "primer3_core" } else { raw }
-        };
+        let primer3_executable =
+            Self::resolve_primer3_executable(&self.state.parameters.primer3_executable);
+        let primer3_executable = primer3_executable.as_str();
         let mut backend = PrimerDesignBackendInfo {
             requested: requested_backend.as_str().to_string(),
             ..PrimerDesignBackendInfo::default()

@@ -7764,6 +7764,31 @@ pub struct Primer3PreflightReport {
     pub detail: Option<String>,
     pub error: Option<String>,
     pub probe_time_ms: u128,
+    /// Every `PATH` candidate considered when the configured executable was a
+    /// bare name, in `PATH` order. Empty when an explicit path was configured
+    /// or only one candidate exists, because no choice was made.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub candidates: Vec<Primer3CandidateSummary>,
+    /// Why this executable was chosen over the other candidates.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One Primer3 build discovered on `PATH` while selecting which to run.
+pub struct Primer3CandidateSummary {
+    pub path: String,
+    /// `Some(true)` when `--help` advertises `--progress`, `Some(false)` when
+    /// help is readable but omits it, and `None` when probing was unavailable.
+    pub progress_supported: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    /// Filesystem creation time, falling back to the modification time where
+    /// the platform or filesystem records no birth time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_unix_ms: Option<u128>,
+    pub selected: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

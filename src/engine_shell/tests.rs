@@ -49,6 +49,7 @@ use crate::ensembl_protein::{
 use crate::primerbank::{
     PRIMERBANK_SEARCH_REPORT_SCHEMA, PrimerBankCdnaTestReport, PrimerBankSearchReport,
 };
+use crate::require_real_primer3;
 use crate::runtime_status::{RuntimeStatusFrameKind, runtime_status_registry};
 use crate::test_support::{
     decision_trace_fixture_state, decision_trace_with_construct_reasoning_fixture_state,
@@ -19278,6 +19279,7 @@ fn execute_variant_materialize_allele_shell_command_creates_sequence() {
 #[cfg(unix)]
 #[test]
 fn execute_primers_design_internal_vs_primer3_fixture_normalization_parity() {
+    require_real_primer3!();
     let mut state = ProjectState::default();
     state.sequences.insert(
             "tpl".to_string(),
@@ -19416,6 +19418,7 @@ fn execute_primers_design_internal_vs_primer3_fixture_normalization_parity() {
 #[cfg(unix)]
 #[test]
 fn execute_primers_preflight_reports_reachable_primer3() {
+    require_real_primer3!();
     let mut engine = GentleEngine::from_state(ProjectState::default());
     let tmp = tempdir().expect("tempdir");
     let fixture_path = Path::new(&primer3_fixture_path("pairs.location_5_60.kv")).to_path_buf();

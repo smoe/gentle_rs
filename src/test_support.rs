@@ -974,6 +974,56 @@ pub fn write_demo_pool_json(dir: &Path) -> PathBuf {
     path
 }
 
+/// Whether a real Primer3 is installed on this machine.
+///
+/// Primer3 behaviour is only asserted where the genuine tool exists, including
+/// in tests that drive a scripted stand-in for behaviour no released Primer3
+/// exposes. A machine without Primer3 therefore never reports a Primer3 result
+/// it could not have produced.
+///
+/// Resolution mirrors the engine default: the `primer3_core` name is looked up
+/// across `PATH`. Exit status is not consulted because Primer3 returns a
+/// non-zero status for `--version`.
+#[cfg(test)]
+pub fn real_primer3_available() -> bool {
+    let Some(path) = std::env::var_os("PATH") else {
+        return false;
+    };
+    std::env::split_paths(&path).any(|dir| {
+        let candidate = dir.join("primer3_core");
+        candidate.is_file() && is_executable(&candidate)
+    })
+}
+
+#[cfg(all(test, unix))]
+fn is_executable(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    fs::metadata(path).is_ok_and(|meta| meta.permissions().mode() & 0o111 != 0)
+}
+
+#[cfg(all(test, not(unix)))]
+fn is_executable(path: &Path) -> bool {
+    path.is_file()
+}
+
+/// Skip the calling test when no real Primer3 is installed.
+///
+/// Placed at the top of a test body, this returns early with a visible note so
+/// a skipped Primer3 test is never mistaken for a passing one.
+#[cfg(test)]
+#[macro_export]
+macro_rules! require_real_primer3 {
+    () => {
+        if !$crate::test_support::real_primer3_available() {
+            eprintln!(
+                "skipping {}: no real primer3_core on PATH",
+                concat!(module_path!(), "::", line!())
+            );
+            return;
+        }
+    };
+}
+
 #[cfg(test)]
 mod visual_svg_lint_tests {
     use super::*;

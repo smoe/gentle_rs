@@ -594,6 +594,27 @@ recovery is a new batch of only the failed genes against the committed
 baseline. For the same reason `continue` refuses to resume from a reuse prefix
 that ends inside a gene, where no boundary snapshot can exist.
 
+## DEC-037: Primer3 Is Selected By Capability, Then Version, Then Recency
+
+Status: active
+
+Where several Primer3 builds are installed, taking the first `PATH` match makes
+GENtle's behaviour depend on shell configuration. A bare configured name is
+therefore resolved by ranking every candidate: a build advertising `--progress`
+beats one that does not, because bounded search reporting and SIGUSR1 status
+are built on it and a legacy build silently degrades them; then the highest
+version, compared component by component rather than lexically; then the newest
+file, which resolves the remaining ties without reintroducing `PATH` order.
+
+A configured value naming a path is authoritative and is never overridden by
+discovery, because an operator pinning a build has made exactly the decision
+this ranking would otherwise take back. The selection is reported rather than
+implicit: preflight lists every candidate with its capability, version and
+creation time, and states why the winner won, so a result can be traced to the
+build that produced it. It is also cached per candidate set and file identity,
+because checkpoint reuse binds the running executable and must not see a
+different choice mid-run.
+
 ## DEC-036: A Dossier States What Is Missing Rather Than Waiting For It
 
 Status: active

@@ -9539,6 +9539,19 @@ Primer-design shell command family (implemented):
   diagnostics. Its additive `progress_supported` field is `true` when
   `--help` advertises `--progress`, `false` when readable help omits it, and
   `null` when the capability could not be determined.
+- a bare configured name such as the default `primer3_core` selects among every
+  `PATH` match rather than the first: `--progress` support wins first, because
+  bounded search reporting and SIGUSR1 status depend on it; then the highest
+  version, compared component by component so `2.10.0` outranks `2.6.1`; then
+  the latest filesystem creation time, falling back to the modification time
+  where no birth time is recorded. A configured value naming a path is
+  authoritative and used unchanged. The additive `candidates[]` records each
+  considered build's path, `progress_supported`, `version`, `created_unix_ms`
+  and `selected` flag, and `selection_reason` states why the winner won.
+  `executable` remains the requested name; the chosen build is `resolved_path`.
+  The selection is cached per candidate set and file identity so every
+  operation in one run binds the same executable, which checkpoint reuse
+  depends on.
 - `primers prepare-restriction-cloning` expects an operation payload whose root
   variant is `{"PrepareRestrictionCloningPcrHandoff": {...}}`.
 - `primers seed-restriction-cloning-handoff` is non-mutating and returns a

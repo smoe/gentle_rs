@@ -17,8 +17,14 @@ use std::os::unix::process::CommandExt;
 const PRIMER3_PROGRESS_PREFIX: &str = "PRIMER3_PROGRESS=";
 #[cfg(not(test))]
 const PRIMER3_PROGRESS_SIGNAL_AFTER: Duration = Duration::from_secs(2);
+// Tests shorten the interval so a stalled-progress case does not take seconds,
+// but it must stay above the time a freshly spawned child needs to install its
+// SIGUSR1 handler. SIGUSR1 terminates a process that has not installed one yet,
+// so signalling too eagerly kills the child instead of polling it: at 100ms a
+// loaded machine could signal a Primer3 stand-in before it had even been
+// scheduled, which made these tests fail under parallel load.
 #[cfg(test)]
-const PRIMER3_PROGRESS_SIGNAL_AFTER: Duration = Duration::from_millis(100);
+const PRIMER3_PROGRESS_SIGNAL_AFTER: Duration = Duration::from_millis(750);
 const PRIMER3_PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const PRIMER_DESIGN_CANCELLED_MESSAGE: &str = "Primer design cancelled during progress reporting";
 const PRIMER3_RUNTIME_REDUCTION_MESSAGE: &str =
@@ -8125,6 +8131,205 @@ impl GentleEngine {
         supported
     }
 
+    /// Every executable named `name` reachable through `PATH`, in `PATH` order
+    /// and without duplicates.
+    fn primer3_path_candidates(name: &str) -> Vec<PathBuf> {
+        let Some(path_env) = std::env::var_os("PATH") else {
+            return vec![];
+        };
+        let mut seen = std::collections::BTreeSet::new();
+        let mut candidates = vec![];
+        for dir in std::env::split_paths(&path_env) {
+            let joined = dir.join(name);
+            if !joined.is_file() {
+                continue;
+            }
+            let canonical = std::fs::canonicalize(&joined).unwrap_or_else(|_| joined.clone());
+            if seen.insert(canonical.clone()) {
+                candidates.push(canonical);
+            }
+        }
+        candidates
+    }
+
+    /// Comparable numeric form of a Primer3 version line.
+    ///
+    /// Primer3 reports versions inside prose such as `libprimer3 release
+    /// 2.6.1`, so the first dotted-number token is used and compared component
+    /// by component. A line without one sorts below every parsed version.
+    pub(crate) fn primer3_version_sort_key(version: Option<&str>) -> Vec<u64> {
+        let Some(version) = version else {
+            return vec![];
+        };
+        version
+            .split(|ch: char| !ch.is_ascii_digit() && ch != '.')
+            .find(|token| token.contains('.') && token.starts_with(|ch: char| ch.is_ascii_digit()))
+            .map(|token| {
+                token
+                    .split('.')
+                    .filter(|part| !part.is_empty())
+                    .filter_map(|part| part.parse::<u64>().ok())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Creation time as nanoseconds since the epoch.
+    ///
+    /// Not every platform and filesystem records a birth time; where it is
+    /// unavailable the modification time stands in, which keeps the ordering
+    /// total instead of dropping the candidate.
+    fn primer3_creation_unix_nanos(path: &Path) -> Option<u128> {
+        let metadata = std::fs::metadata(path).ok()?;
+        metadata
+            .created()
+            .or_else(|_| metadata.modified())
+            .ok()?
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()
+            .map(|duration| duration.as_nanos())
+    }
+
+    /// Rank one Primer3 candidate. Larger sorts better.
+    fn primer3_candidate_rank(path: &Path) -> (bool, Vec<u64>, u128) {
+        let display = path.display().to_string();
+        (
+            Self::probe_primer3_progress_support(&display).unwrap_or(false),
+            Self::primer3_version_sort_key(Self::probe_primer3_version(&display).as_deref()),
+            Self::primer3_creation_unix_nanos(path).unwrap_or(0),
+        )
+    }
+
+    /// Choose which Primer3 build GENtle should run.
+    ///
+    /// A configured value naming a path is authoritative and returned
+    /// unchanged; discovery would otherwise silently override an operator's
+    /// pin. A bare name is looked up across `PATH` and ranked: a build
+    /// advertising `--progress` beats one that does not, because GENtle's
+    /// bounded search reporting and SIGUSR1 status depend on it; then the
+    /// highest version wins; then the most recently created file.
+    pub(crate) fn resolve_primer3_executable(configured: &str) -> String {
+        let trimmed = configured.trim();
+        let name = if trimmed.is_empty() {
+            "primer3_core"
+        } else {
+            trimmed
+        };
+        if Path::new(name).components().count() > 1 {
+            return name.to_string();
+        }
+        let candidates = Self::primer3_path_candidates(name);
+        if candidates.len() < 2 {
+            return candidates
+                .first()
+                .map(|path| path.display().to_string())
+                .unwrap_or_else(|| name.to_string());
+        }
+
+        // Ranking spawns probe processes, and the choice has to stay identical
+        // for every operation in a run because checkpoint reuse binds the
+        // selected executable. The candidate set and each file's size/mtime key
+        // the cache, so a changed installation is still noticed.
+        static CACHE: std::sync::OnceLock<
+            std::sync::Mutex<std::collections::HashMap<String, String>>,
+        > = std::sync::OnceLock::new();
+        let cache_key = candidates
+            .iter()
+            .map(|path| Self::primer3_progress_cache_key(&path.display().to_string()))
+            .collect::<Vec<_>>()
+            .join(";");
+        let cache = CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+        if let Ok(cache) = cache.lock()
+            && let Some(selected) = cache.get(&cache_key)
+        {
+            return selected.clone();
+        }
+
+        let selected = Self::select_primer3_from_candidates(&candidates, name);
+        if let Ok(mut cache) = cache.lock() {
+            cache.insert(cache_key, selected.clone());
+        }
+        selected
+    }
+
+    /// Rank an explicit candidate list. Separated from `PATH` discovery so the
+    /// ordering can be exercised without mutating process-global environment.
+    pub(crate) fn select_primer3_from_candidates(candidates: &[PathBuf], name: &str) -> String {
+        // `max_by_key` keeps the last maximum, so the reversed index makes the
+        // earliest candidate win a complete tie rather than the last.
+        candidates
+            .iter()
+            .enumerate()
+            .max_by_key(|(index, path)| {
+                (
+                    Self::primer3_candidate_rank(path),
+                    std::cmp::Reverse(*index),
+                )
+            })
+            .map(|(_, path)| path.display().to_string())
+            .unwrap_or_else(|| name.to_string())
+    }
+
+    /// Describe the candidates a bare-name lookup weighed, and why the winner
+    /// won, so a reader can tell which Primer3 produced a result.
+    fn primer3_selection_provenance(
+        requested: &str,
+        selected: &str,
+    ) -> (Vec<Primer3CandidateSummary>, Option<String>) {
+        let trimmed = requested.trim();
+        let name = if trimmed.is_empty() {
+            "primer3_core"
+        } else {
+            trimmed
+        };
+        if Path::new(name).components().count() > 1 {
+            return (
+                vec![],
+                Some(format!(
+                    "configured executable '{name}' names a path and is used as configured"
+                )),
+            );
+        }
+        let candidates = Self::primer3_path_candidates(name);
+        if candidates.len() < 2 {
+            return (vec![], None);
+        }
+        let summaries = candidates
+            .iter()
+            .map(|path| {
+                let display = path.display().to_string();
+                Primer3CandidateSummary {
+                    progress_supported: Self::probe_primer3_progress_support(&display),
+                    version: Self::probe_primer3_version(&display),
+                    created_unix_ms: Self::primer3_creation_unix_nanos(path)
+                        .map(|nanos| nanos / 1_000_000),
+                    selected: display == selected,
+                    path: display,
+                }
+            })
+            .collect::<Vec<_>>();
+        let winner = summaries.iter().find(|entry| entry.selected);
+        let progress_capable = summaries
+            .iter()
+            .filter(|entry| entry.progress_supported == Some(true))
+            .count();
+        let reason = winner.map(|winner| {
+            let basis = if winner.progress_supported == Some(true) && progress_capable == 1 {
+                "it is the only candidate advertising --progress"
+            } else if winner.progress_supported == Some(true) {
+                "it advertises --progress and has the highest version, then the latest creation time"
+            } else {
+                "no candidate advertises --progress, so the highest version won, then the latest creation time"
+            };
+            format!(
+                "selected '{}' from {} PATH candidates for '{name}' because {basis}",
+                winner.path,
+                summaries.len()
+            )
+        });
+        (summaries, reason)
+    }
+
     pub(super) fn probe_primer3_executable_status(executable: &str) -> Primer3PreflightReport {
         let mut report = Primer3PreflightReport {
             executable: executable.to_string(),
@@ -8179,8 +8384,16 @@ impl GentleEngine {
             .unwrap_or_else(|| self.state.parameters.primer3_executable.trim());
         let configured_executable =
             (!configured_executable.is_empty()).then(|| configured_executable.to_string());
-        let executable = configured_executable.as_deref().unwrap_or("primer3_core");
-        let mut report = Self::probe_primer3_executable_status(executable);
+        let requested = configured_executable.as_deref().unwrap_or("primer3_core");
+        let executable = Self::resolve_primer3_executable(requested);
+        let mut report = Self::probe_primer3_executable_status(&executable);
+        // `executable` stays the name that was asked for; the build selection
+        // lands in `resolved_path` alongside the candidates it was chosen from.
+        report.executable = requested.to_string();
+        let (candidates, selection_reason) =
+            Self::primer3_selection_provenance(requested, &executable);
+        report.candidates = candidates;
+        report.selection_reason = selection_reason;
         report.backend = backend.as_str().to_string();
         report.configured_executable = configured_executable;
         report.used_default_executable = report.configured_executable.is_none();

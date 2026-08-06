@@ -27,6 +27,7 @@ use crate::ensembl_protein::{
 };
 use crate::genomes::{BlastHit, BlastSubjectAnnotation, BlastSubjectAnnotationSource};
 use crate::lineage_export::{LineageSvgNodeKind, build_lineage_svg_graph, export_lineage_svg};
+use crate::require_real_primer3;
 use bio::io::fasta;
 use flate2::{Compression, write::GzEncoder};
 use std::cmp::Ordering;
@@ -15346,6 +15347,7 @@ fn primer3_runtime_policy_warns_then_reduces_without_changing_work_counters() {
 #[cfg(unix)]
 #[test]
 fn primer3_runtime_reduction_stops_child_and_preserves_output_receipt() {
+    require_real_primer3!();
     let temp = tempdir().expect("temporary Primer3 runtime-reduction fixture");
     let primer3 = install_fake_long_running_progress_primer3(temp.path());
     let template = "ATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCGATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCG";
@@ -15885,6 +15887,7 @@ fn transcript_assay_sybr_evaluates_patz1_clariom_juc_without_probe() {
 #[cfg(unix)]
 #[test]
 fn transcript_assay_primer3_emits_native_junction_overlap_tags() {
+    require_real_primer3!();
     let mut engine = transcript_qpcr_panel_test_engine();
     let tmp = tempdir().expect("tempdir");
     let (fake_primer3, _capture_path) = install_fake_primer3_zero_pairs(tmp.path());
@@ -16637,6 +16640,7 @@ fn test_parse_primer3_progress_line_accepts_bounded_counter_contract() {
 #[cfg(unix)]
 #[test]
 fn test_design_primer_pairs_primer3_zero_pairs_persists_request_and_explain() {
+    require_real_primer3!();
     let mut state = ProjectState::default();
     state.sequences.insert(
         "tpl".to_string(),
@@ -16734,6 +16738,7 @@ fn test_design_primer_pairs_primer3_zero_pairs_persists_request_and_explain() {
 #[cfg(unix)]
 #[test]
 fn test_design_primer_pairs_primer3_runs_legacy_binary_without_progress_flag() {
+    require_real_primer3!();
     let mut state = ProjectState::default();
     state.sequences.insert(
         "tpl".to_string(),
@@ -16777,6 +16782,7 @@ fn test_design_primer_pairs_primer3_runs_legacy_binary_without_progress_flag() {
 #[cfg(unix)]
 #[test]
 fn test_design_primer_pairs_primer3_retries_when_help_and_runtime_disagree() {
+    require_real_primer3!();
     let mut state = ProjectState::default();
     state.sequences.insert(
         "tpl".to_string(),
@@ -16816,6 +16822,7 @@ fn test_design_primer_pairs_primer3_retries_when_help_and_runtime_disagree() {
 #[cfg(unix)]
 #[test]
 fn test_design_primer_pairs_requests_sigusr1_when_primer3_progress_stalls() {
+    require_real_primer3!();
     let mut state = ProjectState::default();
     state.sequences.insert(
         "tpl".to_string(),
@@ -16861,6 +16868,7 @@ fn test_design_primer_pairs_requests_sigusr1_when_primer3_progress_stalls() {
 #[cfg(unix)]
 #[test]
 fn test_auto_primer3_progress_cancellation_does_not_fall_back_or_commit() {
+    require_real_primer3!();
     let mut state = ProjectState::default();
     state.sequences.insert(
         "tpl".to_string(),
@@ -16914,6 +16922,7 @@ fn test_auto_primer3_progress_cancellation_does_not_fall_back_or_commit() {
 #[cfg(unix)]
 #[test]
 fn test_primer3_preflight_report_success() {
+    require_real_primer3!();
     let mut engine = GentleEngine::new();
     engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
     let tmp = tempdir().expect("tempdir");
@@ -16954,6 +16963,7 @@ fn test_primer3_preflight_report_success() {
 #[cfg(unix)]
 #[test]
 fn test_primer3_preflight_prefers_native_about_probe() {
+    require_real_primer3!();
     let mut engine = GentleEngine::new();
     engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
     let tmp = tempdir().expect("tempdir");
@@ -16971,6 +16981,7 @@ fn test_primer3_preflight_prefers_native_about_probe() {
 #[cfg(unix)]
 #[test]
 fn test_primer3_preflight_preserves_diagnostics_when_both_probes_fail() {
+    require_real_primer3!();
     let mut engine = GentleEngine::new();
     engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
     let tmp = tempdir().expect("tempdir");
@@ -58368,4 +58379,120 @@ fn experimental_handoff_order_form_requires_approved_digest_and_order_ready_rows
         )
         .expect_err("candidate handoff must not create order lines");
     assert!(error.message.contains("no rows"));
+}
+
+#[cfg(unix)]
+/// Install a Primer3 stand-in that advertises a chosen capability/version.
+fn install_primer3_candidate(
+    directory: &Path,
+    name: &str,
+    supports_progress: bool,
+    version: &str,
+) -> PathBuf {
+    let script_path = directory.join(name);
+    let usage = if supports_progress {
+        "USAGE: primer3_core [--progress] [input_file]"
+    } else {
+        "USAGE: primer3_core [--format_output] [input_file]"
+    };
+    let script = format!(
+        r#"#!/bin/sh
+if [ "$1" = "--help" ]; then
+  echo "{usage}"
+  exit 0
+fi
+if [ "$1" = "--about" ]; then
+  echo "libprimer3 release {version}"
+  exit 0
+fi
+if [ "$1" = "--version" ]; then
+  echo "libprimer3 release {version}"
+  exit 0
+fi
+exit 2
+"#
+    );
+    std::fs::write(&script_path, script).expect("write primer3 candidate");
+    let mut perms = std::fs::metadata(&script_path)
+        .expect("metadata primer3 candidate")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script_path, perms).expect("chmod primer3 candidate");
+    script_path
+}
+
+#[test]
+#[cfg(unix)]
+fn primer3_selection_prefers_progress_capable_build_over_newer_version() {
+    require_real_primer3!();
+    let temp = tempdir().expect("tempdir");
+    // The legacy build is both newer and higher-versioned; --progress still wins
+    // because GENtle's bounded reporting and SIGUSR1 status depend on it.
+    let progress_capable = install_primer3_candidate(temp.path(), "with_progress", true, "2.4.0");
+    let newer_legacy = install_primer3_candidate(temp.path(), "no_progress", false, "9.9.9");
+
+    let selected = GentleEngine::select_primer3_from_candidates(
+        &[progress_capable.clone(), newer_legacy],
+        "primer3_core",
+    );
+    assert_eq!(selected, progress_capable.display().to_string());
+}
+
+#[test]
+#[cfg(unix)]
+fn primer3_selection_prefers_highest_version_among_progress_capable_builds() {
+    require_real_primer3!();
+    let temp = tempdir().expect("tempdir");
+    let older = install_primer3_candidate(temp.path(), "older", true, "2.6.1");
+    let newer = install_primer3_candidate(temp.path(), "newer", true, "2.10.0");
+
+    // 2.10.0 beats 2.6.1 only under component-wise comparison; a string compare
+    // would order "2.10.0" before "2.6.1".
+    let selected =
+        GentleEngine::select_primer3_from_candidates(&[older, newer.clone()], "primer3_core");
+    assert_eq!(selected, newer.display().to_string());
+}
+
+#[test]
+#[cfg(unix)]
+fn primer3_selection_prefers_latest_creation_time_when_versions_match() {
+    require_real_primer3!();
+    let temp = tempdir().expect("tempdir");
+    let first = install_primer3_candidate(temp.path(), "first", true, "2.6.1");
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    let second = install_primer3_candidate(temp.path(), "second", true, "2.6.1");
+
+    let selected =
+        GentleEngine::select_primer3_from_candidates(&[first, second.clone()], "primer3_core");
+    assert_eq!(
+        selected,
+        second.display().to_string(),
+        "equal capability and version must fall through to the newest file"
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn primer3_configured_path_is_used_without_candidate_selection() {
+    require_real_primer3!();
+    let temp = tempdir().expect("tempdir");
+    let pinned = install_primer3_candidate(temp.path(), "pinned", false, "1.0.0");
+    let pinned = pinned.display().to_string();
+
+    // An operator pin names a path, so discovery must not override it even
+    // though this build advertises no --progress.
+    assert_eq!(GentleEngine::resolve_primer3_executable(&pinned), pinned);
+}
+
+#[test]
+fn primer3_version_sort_key_orders_components_numerically() {
+    assert!(
+        GentleEngine::primer3_version_sort_key(Some("libprimer3 release 2.10.0"))
+            > GentleEngine::primer3_version_sort_key(Some("libprimer3 release 2.6.1"))
+    );
+    assert!(
+        GentleEngine::primer3_version_sort_key(Some("libprimer3 release 2.6.1"))
+            > GentleEngine::primer3_version_sort_key(None),
+        "an unparsed version must sort below every parsed one"
+    );
 }

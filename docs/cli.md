@@ -2251,6 +2251,17 @@ Primer3 binaries in legacy mode when `--help` omits `--progress`, so those
 installations continue to work but expose only the coarse Primer3 stages.
 When `--progress-stdout` is used, progress lines are emitted before the final JSON output.
 
+When the configured Primer3 is a bare name such as the default `primer3_core`,
+GENtle considers every match on `PATH` rather than taking the first. It selects
+a build advertising `--progress` over one that does not, because bounded search
+reporting and SIGUSR1 status depend on it; then the highest version, compared
+component by component so `2.10.0` outranks `2.6.1`; then the most recently
+created file, falling back to the modification time where the filesystem
+records no birth time. A configured value naming a path is authoritative and is
+used unchanged, so an operator's pin is never silently overridden. `primers
+preflight` reports the candidates considered, each one's `--progress` support,
+version and creation time, and a `selection_reason` naming the winner.
+
 `state-summary` output includes:
 
 - sequences
