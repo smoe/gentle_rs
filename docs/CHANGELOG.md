@@ -37,6 +37,9 @@ understand what changed.
   indistinguishable from real QC failure. `warning` is now `incomplete`: it
   still blocks under the default policy, and a recorded `fail` still blocks
   unconditionally.
+- Regenerated the PATZ1 transcript-assay tutorial artifacts, which had not been
+  refreshed when bounded Primer3 search landed and therefore no longer matched
+  the generator.
 - GENtle now chooses between multiple installed Primer3 builds instead of
   taking the first `PATH` match: `--progress` support wins first, then the
   highest version, then the newest file. An explicitly configured path is still

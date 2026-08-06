@@ -34,10 +34,10 @@
   "completion_status": "complete",
   "transcript_count": 3,
   "equivalence_group_count": 3,
-  "candidate_assay_count": 8,
+  "candidate_assay_count": 12,
   "selected_assay_count": 1,
-  "exact_negative_prefilter_count": 8,
-  "full_assay_evaluation_count": 16,
+  "exact_negative_prefilter_count": 13,
+  "full_assay_evaluation_count": 23,
   "min_amplicon_bp": 30,
   "max_amplicon_bp": 120,
   "max_mismatches": 0,
@@ -94,14 +94,14 @@
   ],
   "selected_assays": [
     {
-      "assay_id": "transcript_assay_41bc3460097e42d4",
+      "assay_id": "transcript_assay_8b1abcb77b679385",
       "rank": 1,
       "assay_kind": "sybr_qpcr",
-      "design_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
-      "design_transcript_id": "PATZ1-202",
+      "design_equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447",
+      "design_transcript_id": "PATZ1-201",
       "primer_pair": {
         "rank": 1,
-        "score": 989.1643788740628,
+        "score": 951.6945804098265,
         "score_terms": [
           {
             "term": "baseline",
@@ -112,16 +112,16 @@
           },
           {
             "term": "tm_delta",
-            "raw_value": 0.26178105629686144,
+            "raw_value": 0.14027097950867784,
             "weight": -20.0,
-            "contribution": -5.235621125937229,
+            "contribution": -2.805419590173557,
             "detail": "Absolute forward/reverse melting-temperature difference in degrees Celsius."
           },
           {
             "term": "amplicon_length_fit",
-            "raw_value": 36.0,
+            "raw_value": 35.0,
             "weight": -0.1,
-            "contribution": -3.6,
+            "contribution": -3.5,
             "detail": "Absolute distance from the configured midpoint target of 75 bp."
           },
           {
@@ -147,9 +147,9 @@
           },
           {
             "term": "self_complementarity_excess",
-            "raw_value": 0.0,
+            "raw_value": 2.0,
             "weight": -12.0,
-            "contribution": -0.0,
+            "contribution": -24.0,
             "detail": "Combined self-complementary-run excess above 6 bp."
           },
           {
@@ -168,56 +168,56 @@
           },
           {
             "term": "three_prime_gc_clamp_balance",
-            "raw_value": 1.0,
+            "raw_value": 0.0,
             "weight": 16.0,
-            "contribution": 16.0,
+            "contribution": 0.0,
             "detail": "Balance around one 3-prime GC clamp across the two primers."
           }
         ],
         "forward": {
-          "sequence": "ATCCGATCAGGTACGCTAAC",
-          "start_0based": 41,
-          "end_0based_exclusive": 61,
-          "length_bp": 20,
-          "anneal_length_bp": 20,
-          "non_annealing_5prime_tail_bp": 0,
-          "tm_c": 62.085299542971825,
-          "gc_fraction": 0.5,
-          "anneal_hits": 1,
-          "three_prime_base": "C",
-          "three_prime_gc_clamp": true,
-          "longest_homopolymer_run_bp": 2,
-          "self_complementary_run_bp": 4
-        },
-        "reverse": {
-          "sequence": "ATGCCGTAGCTTACGATCC",
-          "start_0based": 61,
-          "end_0based_exclusive": 80,
+          "sequence": "CGGATCCGATCGTAGCCTA",
+          "start_0based": 0,
+          "end_0based_exclusive": 19,
           "length_bp": 19,
           "anneal_length_bp": 19,
           "non_annealing_5prime_tail_bp": 0,
-          "tm_c": 62.347080599268686,
-          "gc_fraction": 0.5263157894736842,
+          "tm_c": 63.36277805528183,
+          "gc_fraction": 0.5789473684210527,
           "anneal_hits": 1,
-          "three_prime_base": "C",
+          "three_prime_base": "A",
+          "three_prime_gc_clamp": false,
+          "longest_homopolymer_run_bp": 2,
+          "self_complementary_run_bp": 8
+        },
+        "reverse": {
+          "sequence": "CCGATGCTAGCTTACCGATG",
+          "start_0based": 20,
+          "end_0based_exclusive": 40,
+          "length_bp": 20,
+          "anneal_length_bp": 20,
+          "non_annealing_5prime_tail_bp": 0,
+          "tm_c": 63.22250707577315,
+          "gc_fraction": 0.55,
+          "anneal_hits": 1,
+          "three_prime_base": "G",
           "three_prime_gc_clamp": true,
           "longest_homopolymer_run_bp": 2,
-          "self_complementary_run_bp": 4
+          "self_complementary_run_bp": 6
         },
-        "amplicon_start_0based": 41,
-        "amplicon_end_0based_exclusive": 80,
-        "amplicon_length_bp": 39,
-        "tm_delta_c": 0.26178105629686144,
+        "amplicon_start_0based": 0,
+        "amplicon_end_0based_exclusive": 40,
+        "amplicon_length_bp": 40,
+        "tm_delta_c": 0.14027097950867784,
         "primer_pair_complementary_run_bp": 4,
-        "primer_pair_3prime_complementary_run_bp": 2,
+        "primer_pair_3prime_complementary_run_bp": 3,
         "rule_flags": {
           "roi_covered": true,
           "amplicon_size_in_range": true,
           "tm_delta_in_range": true,
-          "forward_secondary_structure_ok": true,
+          "forward_secondary_structure_ok": false,
           "reverse_secondary_structure_ok": true,
           "primer_pair_dimer_risk_low": true,
-          "forward_three_prime_gc_clamp": true,
+          "forward_three_prime_gc_clamp": false,
           "reverse_three_prime_gc_clamp": true
         }
       },
@@ -230,12 +230,12 @@
       ],
       "primer_pair_summary": {
         "schema": "gentle.primer_pair_summary.v2",
-        "assay_id": "transcript_assay_41bc3460097e42d4",
-        "pair_id": "pair_sha256_8fcb8e896eec3c423058874ed5c8f25c6320648dc8ada9036b8c160f236e4ecc",
+        "assay_id": "transcript_assay_8b1abcb77b679385",
+        "pair_id": "pair_sha256_5d46739df7d24ab30d769e2064ebd6d367a69ee2d30c8fe7c68dcc324d186e5b",
         "pair_rank": 1,
-        "design_transcript_id": "PATZ1-202",
-        "design_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
-        "display_label": "PATZ1_E2F-E2R",
+        "design_transcript_id": "PATZ1-201",
+        "design_equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447",
+        "display_label": "PATZ1_E1F-E1R",
         "aliases": [],
         "selection_role": null,
         "assay_tier": "routine_common_region_screen",
@@ -260,52 +260,42 @@
           ],
           "source_ranges_0based": [
             {
-              "start_0based": 20,
-              "end_0based_exclusive": 59
+              "start_0based": 180,
+              "end_0based_exclusive": 220
             }
           ],
           "supporting_psr_evidence_ids": []
         },
         "considered_alternatives": [
           {
-            "assay_id": "transcript_assay_dacae680b662df5d",
-            "design_transcript_id": "PATZ1-202",
-            "design_amplicon_length_bp": 40,
+            "assay_id": "transcript_assay_38825ad30d190f7b",
+            "design_transcript_id": "PATZ1-201",
+            "design_amplicon_length_bp": 39,
             "practicality_classification": "allowed_nonpreferred",
             "common_region_status": "confirmed",
-            "existing_candidate_score": 983.0121072594483,
+            "existing_candidate_score": 947.0215985703193,
             "disposition": "not_selected",
             "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
           },
           {
-            "assay_id": "transcript_assay_dd6c462d32961daf",
-            "design_transcript_id": "PATZ1-202",
+            "assay_id": "transcript_assay_2c350712839b8d4f",
+            "design_transcript_id": "PATZ1-201",
             "design_amplicon_length_bp": 38,
             "practicality_classification": "allowed_nonpreferred",
             "common_region_status": "confirmed",
-            "existing_candidate_score": 972.2150598237604,
+            "existing_candidate_score": 936.7924161328128,
             "disposition": "not_selected",
             "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
           },
           {
-            "assay_id": "transcript_assay_0831b817fdc9448f",
-            "design_transcript_id": "PATZ1-202",
-            "design_amplicon_length_bp": 40,
+            "assay_id": "transcript_assay_e37e210e13057c3b",
+            "design_transcript_id": "PATZ1-201",
+            "design_amplicon_length_bp": 39,
             "practicality_classification": "allowed_nonpreferred",
             "common_region_status": "confirmed",
-            "existing_candidate_score": 967.8188398103349,
+            "existing_candidate_score": 934.7997249899697,
             "disposition": "not_selected",
             "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
-          },
-          {
-            "assay_id": "transcript_assay_4bfca8feaf7962e9",
-            "design_transcript_id": "PATZ1-202",
-            "design_amplicon_length_bp": 50,
-            "practicality_classification": "routine",
-            "common_region_status": "not_common",
-            "existing_candidate_score": 1010.2149849402733,
-            "disposition": "not_selected",
-            "explanation": "Not selected because annotation did not confirm the full amplicon as common across the intended transcript set."
           }
         ],
         "satisfied_design_objective": "pan_transcript",
@@ -337,9 +327,9 @@
           },
           {
             "code": "allowed_nonpreferred_product",
-            "message": "The 39 bp designed amplicon is below the configured preferred range but inside the allowed range; it is retained as an allowed nonpreferred product, not described as long-range PCR.",
+            "message": "The 40 bp designed amplicon is below the configured preferred range but inside the allowed range; it is retained as an allowed nonpreferred product, not described as long-range PCR.",
             "related_ids": [
-              "transcript_assay_41bc3460097e42d4"
+              "transcript_assay_8b1abcb77b679385"
             ]
           }
         ],
@@ -347,59 +337,59 @@
         "selection_provenance_status": "de_novo_no_external_selection_evidence",
         "binding_coordinate_system": "design_transcript_cdna_0based_half_open",
         "forward": {
-          "primer_id": "primer_a9542cbe348d8f26",
+          "primer_id": "primer_fd2c3595e64b0ba2",
           "role": "forward",
-          "display_label": "PATZ1_E2_F",
+          "display_label": "PATZ1_E1_F",
           "aliases": [],
           "origin": "de_novo",
-          "sequence_5_to_3": "ATCCGATCAGGTACGCTAAC",
-          "length_nt": 20,
-          "anneal_length_nt": 20,
-          "tm_c": 62.085299542971825,
-          "gc_fraction": 0.5,
-          "gc_percent": 50.0,
-          "anneal_hit_count": 1,
-          "binding_start_0based": 41,
-          "binding_end_0based_exclusive": 61,
-          "exon_ordinals": [
-            2
-          ],
-          "primer_spans_junction": false,
-          "three_prime_base": "C",
-          "three_prime_gc_clamp": true,
-          "longest_homopolymer_run_bp": 2,
-          "self_complementary_run_bp": 4
-        },
-        "reverse": {
-          "primer_id": "primer_2f6052de29f687b6",
-          "role": "reverse",
-          "display_label": "PATZ1_E2_R",
-          "aliases": [],
-          "origin": "de_novo",
-          "sequence_5_to_3": "ATGCCGTAGCTTACGATCC",
+          "sequence_5_to_3": "CGGATCCGATCGTAGCCTA",
           "length_nt": 19,
           "anneal_length_nt": 19,
-          "tm_c": 62.347080599268686,
-          "gc_fraction": 0.5263157894736842,
-          "gc_percent": 52.63157894736842,
+          "tm_c": 63.36277805528183,
+          "gc_fraction": 0.5789473684210527,
+          "gc_percent": 57.89473684210527,
           "anneal_hit_count": 1,
-          "binding_start_0based": 61,
-          "binding_end_0based_exclusive": 80,
+          "binding_start_0based": 0,
+          "binding_end_0based_exclusive": 19,
           "exon_ordinals": [
-            2
+            1
           ],
           "primer_spans_junction": false,
-          "three_prime_base": "C",
+          "three_prime_base": "A",
+          "three_prime_gc_clamp": false,
+          "longest_homopolymer_run_bp": 2,
+          "self_complementary_run_bp": 8
+        },
+        "reverse": {
+          "primer_id": "primer_f09d438cacc169c1",
+          "role": "reverse",
+          "display_label": "PATZ1_E1_R",
+          "aliases": [],
+          "origin": "de_novo",
+          "sequence_5_to_3": "CCGATGCTAGCTTACCGATG",
+          "length_nt": 20,
+          "anneal_length_nt": 20,
+          "tm_c": 63.22250707577315,
+          "gc_fraction": 0.55,
+          "gc_percent": 55.00000000000001,
+          "anneal_hit_count": 1,
+          "binding_start_0based": 20,
+          "binding_end_0based_exclusive": 40,
+          "exon_ordinals": [
+            1
+          ],
+          "primer_spans_junction": false,
+          "three_prime_base": "G",
           "three_prime_gc_clamp": true,
           "longest_homopolymer_run_bp": 2,
-          "self_complementary_run_bp": 4
+          "self_complementary_run_bp": 6
         },
-        "design_amplicon_start_0based": 41,
-        "design_amplicon_end_0based_exclusive": 80,
-        "design_amplicon_length_bp": 39,
-        "tm_delta_c": 0.26178105629686144,
+        "design_amplicon_start_0based": 0,
+        "design_amplicon_end_0based_exclusive": 40,
+        "design_amplicon_length_bp": 40,
+        "tm_delta_c": 0.14027097950867784,
         "predicted_amplicon_lengths_bp": [
-          39
+          40
         ],
         "predicted_products": [
           {
@@ -410,7 +400,7 @@
             "detail_status": "single_product",
             "product_count": 1,
             "amplicon_lengths_bp": [
-              39
+              40
             ]
           },
           {
@@ -421,7 +411,7 @@
             "detail_status": "single_product",
             "product_count": 1,
             "amplicon_lengths_bp": [
-              39
+              40
             ]
           },
           {
@@ -432,25 +422,28 @@
             "detail_status": "single_product",
             "product_count": 1,
             "amplicon_lengths_bp": [
-              39
+              40
             ]
           }
         ],
         "oligo_qc": {
-          "status": "pass",
-          "warnings": [],
+          "status": "warning",
+          "warnings": [
+            "Forward primer did not satisfy the stored secondary-structure rule (2 bp homopolymer run; 8 bp self-complementary run).",
+            "Forward primer has no stored 3-prime GC clamp."
+          ],
           "rule_flags": {
             "roi_covered": true,
             "amplicon_size_in_range": true,
             "tm_delta_in_range": true,
-            "forward_secondary_structure_ok": true,
+            "forward_secondary_structure_ok": false,
             "reverse_secondary_structure_ok": true,
             "primer_pair_dimer_risk_low": true,
-            "forward_three_prime_gc_clamp": true,
+            "forward_three_prime_gc_clamp": false,
             "reverse_three_prime_gc_clamp": true
           },
           "primer_pair_complementary_run_bp": 4,
-          "primer_pair_3prime_complementary_run_bp": 2
+          "primer_pair_3prime_complementary_run_bp": 3
         },
         "amplicon_spans_junction": false,
         "selected_because_of_junction_evidence": false,
@@ -466,7 +459,7 @@
           "primer_backend_requested": "internal",
           "primer_backend_used": "internal",
           "annotation_release": "synthetic Ensembl116-like PATZ1 fixture",
-          "exon_numbering_reference_transcript_id": "PATZ1-202",
+          "exon_numbering_reference_transcript_id": "PATZ1-201",
           "exon_numbering_basis": "design_transcript_5prime_to_3prime",
           "exon_numbering_status": "reference_transcript_and_annotation_release_recorded"
         }
@@ -475,7 +468,7 @@
   ],
   "detection_matrix": [
     {
-      "assay_id": "transcript_assay_41bc3460097e42d4",
+      "assay_id": "transcript_assay_8b1abcb77b679385",
       "equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
       "transcript_feature_id": 3,
       "transcript_id": "PATZ1-202",
@@ -483,25 +476,25 @@
       "detail_status": "single_product",
       "product_count": 1,
       "amplicon_lengths_bp": [
-        39
+        40
       ],
       "exact_negative_prefiltered": false,
       "oligo_dt_5prime_reach": {
         "status": "distance_reported_unthresholded",
-        "maximum_required_cdna_reach_from_3prime_end_bp": 39,
+        "maximum_required_cdna_reach_from_3prime_end_bp": 80,
         "product_reaches": [
           {
-            "amplicon_start_0based": 41,
-            "amplicon_end_0based_exclusive": 80,
-            "amplicon_length_bp": 39,
-            "required_cdna_reach_from_3prime_end_bp": 39
+            "amplicon_start_0based": 0,
+            "amplicon_end_0based_exclusive": 40,
+            "amplicon_length_bp": 40,
+            "required_cdna_reach_from_3prime_end_bp": 80
           }
         ],
         "basis": "required reach is measured from the annotated transcript 3' end to each predicted amplicon's most 5' base; it is not an observed reverse-transcription length"
       }
     },
     {
-      "assay_id": "transcript_assay_41bc3460097e42d4",
+      "assay_id": "transcript_assay_8b1abcb77b679385",
       "equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
       "transcript_feature_id": 4,
       "transcript_id": "PATZ1-203",
@@ -509,25 +502,25 @@
       "detail_status": "single_product",
       "product_count": 1,
       "amplicon_lengths_bp": [
-        39
+        40
       ],
       "exact_negative_prefiltered": false,
       "oligo_dt_5prime_reach": {
         "status": "distance_reported_unthresholded",
-        "maximum_required_cdna_reach_from_3prime_end_bp": 39,
+        "maximum_required_cdna_reach_from_3prime_end_bp": 100,
         "product_reaches": [
           {
-            "amplicon_start_0based": 61,
-            "amplicon_end_0based_exclusive": 100,
-            "amplicon_length_bp": 39,
-            "required_cdna_reach_from_3prime_end_bp": 39
+            "amplicon_start_0based": 0,
+            "amplicon_end_0based_exclusive": 40,
+            "amplicon_length_bp": 40,
+            "required_cdna_reach_from_3prime_end_bp": 100
           }
         ],
         "basis": "required reach is measured from the annotated transcript 3' end to each predicted amplicon's most 5' base; it is not an observed reverse-transcription length"
       }
     },
     {
-      "assay_id": "transcript_assay_41bc3460097e42d4",
+      "assay_id": "transcript_assay_8b1abcb77b679385",
       "equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447",
       "transcript_feature_id": 2,
       "transcript_id": "PATZ1-201",
@@ -535,18 +528,18 @@
       "detail_status": "single_product",
       "product_count": 1,
       "amplicon_lengths_bp": [
-        39
+        40
       ],
       "exact_negative_prefiltered": false,
       "oligo_dt_5prime_reach": {
         "status": "distance_reported_unthresholded",
-        "maximum_required_cdna_reach_from_3prime_end_bp": 39,
+        "maximum_required_cdna_reach_from_3prime_end_bp": 120,
         "product_reaches": [
           {
-            "amplicon_start_0based": 81,
-            "amplicon_end_0based_exclusive": 120,
-            "amplicon_length_bp": 39,
-            "required_cdna_reach_from_3prime_end_bp": 39
+            "amplicon_start_0based": 0,
+            "amplicon_end_0based_exclusive": 40,
+            "amplicon_length_bp": 40,
+            "required_cdna_reach_from_3prime_end_bp": 120
           }
         ],
         "basis": "required reach is measured from the annotated transcript 3' end to each predicted amplicon's most 5' base; it is not an observed reverse-transcription length"
@@ -561,7 +554,7 @@
       "equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447",
       "status": "shared_family",
       "covering_assay_ids": [
-        "transcript_assay_41bc3460097e42d4"
+        "transcript_assay_8b1abcb77b679385"
       ],
       "notes": []
     },
@@ -572,7 +565,7 @@
       "equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
       "status": "shared_family",
       "covering_assay_ids": [
-        "transcript_assay_41bc3460097e42d4"
+        "transcript_assay_8b1abcb77b679385"
       ],
       "notes": []
     },
@@ -583,7 +576,7 @@
       "equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
       "status": "shared_family",
       "covering_assay_ids": [
-        "transcript_assay_41bc3460097e42d4"
+        "transcript_assay_8b1abcb77b679385"
       ],
       "notes": []
     }
@@ -603,7 +596,7 @@
         "primer3_explain": null,
         "primer3_request_boulder_io": null
       },
-      "generated_candidate_count": 8
+      "generated_candidate_count": 4
     },
     {
       "equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
@@ -634,6 +627,1852 @@
       "generated_candidate_count": 4
     }
   ],
+  "search_plan": {
+    "schema": "gentle.transcript_assay_primer_search_plan.v1",
+    "operation_sha256": "sha256:05307c944a0cfcd8737fa31dc9f56030baddc9648900662f0723ffa233564a20",
+    "policy": {
+      "max_primer_window_bp": 96,
+      "max_candidate_pairs_per_record": 250000,
+      "max_records_per_target": 12,
+      "max_candidate_pairs_total": 2000000,
+      "max_homopolymer_run_bp": 6,
+      "runtime_warning_after_secs": 600,
+      "runtime_warning_projected_total_secs": 18000,
+      "runtime_reduce_after_secs": 1800,
+      "runtime_reduce_projected_total_secs": 36000,
+      "runtime_no_progress_reduce_after_secs": 18000,
+      "continue_after_runtime_reduction": true
+    },
+    "records": [
+      {
+        "search_record_id": "primer_search_record_091aa7856643f74e",
+        "target_id": "JUC2200054820.hg.1:PATZ1-202:1-2",
+        "representative_transcript_id": "PATZ1-202",
+        "template_sha256": "sha256:6c73e2052bd828f3e28df7ced43b911ccaa1202c32614cf32e52573a17cdef5e",
+        "junction_id": "JUC2200054820.hg.1:PATZ1-202:1-2",
+        "left_interval": {
+          "target_id": "JUC2200054820.hg.1:PATZ1-202:1-2",
+          "representative_transcript_id": "PATZ1-202",
+          "side": "left",
+          "start_0based": 0,
+          "end_0based_exclusive": 62,
+          "reason_code": "requested_exon_junction",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            1,
+            2
+          ],
+          "junction_ids": [
+            "JUC2200054820.hg.1:PATZ1-202:1-2"
+          ],
+          "estimated_candidate_count": 215
+        },
+        "right_interval": {
+          "target_id": "JUC2200054820.hg.1:PATZ1-202:1-2",
+          "representative_transcript_id": "PATZ1-202",
+          "side": "right",
+          "start_0based": 18,
+          "end_0based_exclusive": 80,
+          "reason_code": "requested_exon_junction",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            1,
+            2
+          ],
+          "junction_ids": [
+            "JUC2200054820.hg.1:PATZ1-202:1-2"
+          ],
+          "estimated_candidate_count": 215
+        },
+        "estimated_left_candidate_count": 215,
+        "estimated_right_candidate_count": 215,
+        "estimated_candidate_pair_count": 11100,
+        "candidate_pair_search_space_upper_bound": 46225,
+        "primer3_fields": [
+          {
+            "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
+            "value": "0,62,18,62"
+          },
+          {
+            "name": "PRIMER_MAX_POLY_X",
+            "value": "6"
+          },
+          {
+            "name": "PRIMER_MAX_NS_ACCEPTED",
+            "value": "0"
+          },
+          {
+            "name": "SEQUENCE_OVERLAP_JUNCTION_LIST",
+            "value": "40"
+          },
+          {
+            "name": "PRIMER_MIN_3_PRIME_OVERLAP_OF_JUNCTION",
+            "value": "4"
+          },
+          {
+            "name": "PRIMER_MIN_5_PRIME_OVERLAP_OF_JUNCTION",
+            "value": "7"
+          },
+          {
+            "name": "PRIMER_PRODUCT_SIZE_RANGE",
+            "value": "30-120"
+          }
+        ]
+      },
+      {
+        "search_record_id": "primer_search_record_0a8d8a2d1f7a16d5",
+        "target_id": "transcript_search_target_074a540dce4858e3",
+        "representative_transcript_id": "PATZ1-203",
+        "template_sha256": "sha256:bf8de0081e092d6fc8056f13c01c7971611b3f1e1cde08aa87c33b95c9c00092",
+        "left_interval": {
+          "target_id": "transcript_search_target_074a540dce4858e3",
+          "representative_transcript_id": "PATZ1-203",
+          "side": "left",
+          "start_0based": 0,
+          "end_0based_exclusive": 24,
+          "reason_code": "transcript_family_discrimination",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            1
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 25
+        },
+        "right_interval": {
+          "target_id": "transcript_search_target_074a540dce4858e3",
+          "representative_transcript_id": "PATZ1-203",
+          "side": "right",
+          "start_0based": 26,
+          "end_0based_exclusive": 100,
+          "reason_code": "transcript_family_discrimination",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            1,
+            2,
+            3
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 275
+        },
+        "estimated_left_candidate_count": 25,
+        "estimated_right_candidate_count": 275,
+        "estimated_candidate_pair_count": 6875,
+        "candidate_pair_search_space_upper_bound": 6875,
+        "primer3_fields": [
+          {
+            "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
+            "value": "0,24,26,74"
+          },
+          {
+            "name": "PRIMER_MAX_POLY_X",
+            "value": "6"
+          },
+          {
+            "name": "PRIMER_MAX_NS_ACCEPTED",
+            "value": "0"
+          },
+          {
+            "name": "SEQUENCE_TARGET",
+            "value": "24,2"
+          },
+          {
+            "name": "PRIMER_PRODUCT_SIZE_RANGE",
+            "value": "30-120"
+          }
+        ]
+      },
+      {
+        "search_record_id": "primer_search_record_a43282064bf25d03",
+        "target_id": "transcript_search_target_196965bf0b372bea",
+        "representative_transcript_id": "PATZ1-203",
+        "template_sha256": "sha256:bf8de0081e092d6fc8056f13c01c7971611b3f1e1cde08aa87c33b95c9c00092",
+        "left_interval": {
+          "target_id": "transcript_search_target_196965bf0b372bea",
+          "representative_transcript_id": "PATZ1-203",
+          "side": "left",
+          "start_0based": 0,
+          "end_0based_exclusive": 49,
+          "reason_code": "transcript_family_discrimination",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            1,
+            2
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 150
+        },
+        "right_interval": {
+          "target_id": "transcript_search_target_196965bf0b372bea",
+          "representative_transcript_id": "PATZ1-203",
+          "side": "right",
+          "start_0based": 51,
+          "end_0based_exclusive": 100,
+          "reason_code": "transcript_family_discrimination",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            2,
+            3
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 150
+        },
+        "estimated_left_candidate_count": 150,
+        "estimated_right_candidate_count": 150,
+        "estimated_candidate_pair_count": 22500,
+        "candidate_pair_search_space_upper_bound": 22500,
+        "primer3_fields": [
+          {
+            "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
+            "value": "0,49,51,49"
+          },
+          {
+            "name": "PRIMER_MAX_POLY_X",
+            "value": "6"
+          },
+          {
+            "name": "PRIMER_MAX_NS_ACCEPTED",
+            "value": "0"
+          },
+          {
+            "name": "SEQUENCE_TARGET",
+            "value": "49,2"
+          },
+          {
+            "name": "PRIMER_PRODUCT_SIZE_RANGE",
+            "value": "30-120"
+          }
+        ]
+      },
+      {
+        "search_record_id": "primer_search_record_949cf4c52e1f86a3",
+        "target_id": "transcript_search_target_2614bcf742387597",
+        "representative_transcript_id": "PATZ1-203",
+        "template_sha256": "sha256:bf8de0081e092d6fc8056f13c01c7971611b3f1e1cde08aa87c33b95c9c00092",
+        "left_interval": {
+          "target_id": "transcript_search_target_2614bcf742387597",
+          "representative_transcript_id": "PATZ1-203",
+          "side": "left",
+          "start_0based": 0,
+          "end_0based_exclusive": 74,
+          "reason_code": "transcript_family_discrimination",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            1,
+            2,
+            3
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 275
+        },
+        "right_interval": {
+          "target_id": "transcript_search_target_2614bcf742387597",
+          "representative_transcript_id": "PATZ1-203",
+          "side": "right",
+          "start_0based": 76,
+          "end_0based_exclusive": 100,
+          "reason_code": "transcript_family_discrimination",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            3
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 25
+        },
+        "estimated_left_candidate_count": 275,
+        "estimated_right_candidate_count": 25,
+        "estimated_candidate_pair_count": 6875,
+        "candidate_pair_search_space_upper_bound": 6875,
+        "primer3_fields": [
+          {
+            "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
+            "value": "0,74,76,24"
+          },
+          {
+            "name": "PRIMER_MAX_POLY_X",
+            "value": "6"
+          },
+          {
+            "name": "PRIMER_MAX_NS_ACCEPTED",
+            "value": "0"
+          },
+          {
+            "name": "SEQUENCE_TARGET",
+            "value": "74,2"
+          },
+          {
+            "name": "PRIMER_PRODUCT_SIZE_RANGE",
+            "value": "30-120"
+          }
+        ]
+      },
+      {
+        "search_record_id": "primer_search_record_04ac80c775acebd1",
+        "target_id": "transcript_search_target_28f008879a5eab86",
+        "representative_transcript_id": "PATZ1-202",
+        "template_sha256": "sha256:6c73e2052bd828f3e28df7ced43b911ccaa1202c32614cf32e52573a17cdef5e",
+        "left_interval": {
+          "target_id": "transcript_search_target_28f008879a5eab86",
+          "representative_transcript_id": "PATZ1-202",
+          "side": "left",
+          "start_0based": 0,
+          "end_0based_exclusive": 39,
+          "reason_code": "transcript_family_discrimination",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            1
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 100
+        },
+        "right_interval": {
+          "target_id": "transcript_search_target_28f008879a5eab86",
+          "representative_transcript_id": "PATZ1-202",
+          "side": "right",
+          "start_0based": 41,
+          "end_0based_exclusive": 80,
+          "reason_code": "transcript_family_discrimination",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            2
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 100
+        },
+        "estimated_left_candidate_count": 100,
+        "estimated_right_candidate_count": 100,
+        "estimated_candidate_pair_count": 10000,
+        "candidate_pair_search_space_upper_bound": 10000,
+        "primer3_fields": [
+          {
+            "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
+            "value": "0,39,41,39"
+          },
+          {
+            "name": "PRIMER_MAX_POLY_X",
+            "value": "6"
+          },
+          {
+            "name": "PRIMER_MAX_NS_ACCEPTED",
+            "value": "0"
+          },
+          {
+            "name": "SEQUENCE_TARGET",
+            "value": "39,2"
+          },
+          {
+            "name": "PRIMER_PRODUCT_SIZE_RANGE",
+            "value": "30-120"
+          }
+        ]
+      },
+      {
+        "search_record_id": "primer_search_record_cba7717d4bbec5a6",
+        "target_id": "transcript_search_target_2dba3d18f4b15751",
+        "representative_transcript_id": "PATZ1-201",
+        "template_sha256": "sha256:da6a2f3dbe1d4447c5d2b0b01469c7c566a99aa66b15e57064612cef7cff646c",
+        "left_interval": {
+          "target_id": "transcript_search_target_2dba3d18f4b15751",
+          "representative_transcript_id": "PATZ1-201",
+          "side": "left",
+          "start_0based": 0,
+          "end_0based_exclusive": 40,
+          "reason_code": "annotation_common_region",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            1
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 105
+        },
+        "right_interval": {
+          "target_id": "transcript_search_target_2dba3d18f4b15751",
+          "representative_transcript_id": "PATZ1-201",
+          "side": "right",
+          "start_0based": 0,
+          "end_0based_exclusive": 40,
+          "reason_code": "annotation_common_region",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            1
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 105
+        },
+        "estimated_left_candidate_count": 105,
+        "estimated_right_candidate_count": 105,
+        "estimated_candidate_pair_count": 1650,
+        "candidate_pair_search_space_upper_bound": 11025,
+        "primer3_fields": [
+          {
+            "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
+            "value": "0,40,0,40"
+          },
+          {
+            "name": "PRIMER_MAX_POLY_X",
+            "value": "6"
+          },
+          {
+            "name": "PRIMER_MAX_NS_ACCEPTED",
+            "value": "0"
+          },
+          {
+            "name": "SEQUENCE_TARGET",
+            "value": "19,2"
+          },
+          {
+            "name": "PRIMER_PRODUCT_SIZE_RANGE",
+            "value": "30-120"
+          }
+        ]
+      },
+      {
+        "search_record_id": "primer_search_record_a596ca8c9981c77d",
+        "target_id": "transcript_search_target_32dd1b46d5a917a1",
+        "representative_transcript_id": "PATZ1-202",
+        "template_sha256": "sha256:6c73e2052bd828f3e28df7ced43b911ccaa1202c32614cf32e52573a17cdef5e",
+        "left_interval": {
+          "target_id": "transcript_search_target_32dd1b46d5a917a1",
+          "representative_transcript_id": "PATZ1-202",
+          "side": "left",
+          "start_0based": 0,
+          "end_0based_exclusive": 40,
+          "reason_code": "annotation_common_region",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            1
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 105
+        },
+        "right_interval": {
+          "target_id": "transcript_search_target_32dd1b46d5a917a1",
+          "representative_transcript_id": "PATZ1-202",
+          "side": "right",
+          "start_0based": 0,
+          "end_0based_exclusive": 40,
+          "reason_code": "annotation_common_region",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            1
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 105
+        },
+        "estimated_left_candidate_count": 105,
+        "estimated_right_candidate_count": 105,
+        "estimated_candidate_pair_count": 1650,
+        "candidate_pair_search_space_upper_bound": 11025,
+        "primer3_fields": [
+          {
+            "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
+            "value": "0,40,0,40"
+          },
+          {
+            "name": "PRIMER_MAX_POLY_X",
+            "value": "6"
+          },
+          {
+            "name": "PRIMER_MAX_NS_ACCEPTED",
+            "value": "0"
+          },
+          {
+            "name": "SEQUENCE_TARGET",
+            "value": "19,2"
+          },
+          {
+            "name": "PRIMER_PRODUCT_SIZE_RANGE",
+            "value": "30-120"
+          }
+        ]
+      },
+      {
+        "search_record_id": "primer_search_record_0bba1760134648cf",
+        "target_id": "transcript_search_target_3722668535545366",
+        "representative_transcript_id": "PATZ1-202",
+        "template_sha256": "sha256:6c73e2052bd828f3e28df7ced43b911ccaa1202c32614cf32e52573a17cdef5e",
+        "left_interval": {
+          "target_id": "transcript_search_target_3722668535545366",
+          "representative_transcript_id": "PATZ1-202",
+          "side": "left",
+          "start_0based": 0,
+          "end_0based_exclusive": 59,
+          "reason_code": "transcript_family_discrimination",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            1,
+            2
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 200
+        },
+        "right_interval": {
+          "target_id": "transcript_search_target_3722668535545366",
+          "representative_transcript_id": "PATZ1-202",
+          "side": "right",
+          "start_0based": 61,
+          "end_0based_exclusive": 80,
+          "reason_code": "transcript_family_discrimination",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            2
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 3
+        },
+        "estimated_left_candidate_count": 200,
+        "estimated_right_candidate_count": 3,
+        "estimated_candidate_pair_count": 600,
+        "candidate_pair_search_space_upper_bound": 600,
+        "primer3_fields": [
+          {
+            "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
+            "value": "0,59,61,19"
+          },
+          {
+            "name": "PRIMER_MAX_POLY_X",
+            "value": "6"
+          },
+          {
+            "name": "PRIMER_MAX_NS_ACCEPTED",
+            "value": "0"
+          },
+          {
+            "name": "SEQUENCE_TARGET",
+            "value": "59,2"
+          },
+          {
+            "name": "PRIMER_PRODUCT_SIZE_RANGE",
+            "value": "30-120"
+          }
+        ]
+      },
+      {
+        "search_record_id": "primer_search_record_40a0a535c4fe4f83",
+        "target_id": "transcript_search_target_3d93466a3f2f683c",
+        "representative_transcript_id": "PATZ1-201",
+        "template_sha256": "sha256:da6a2f3dbe1d4447c5d2b0b01469c7c566a99aa66b15e57064612cef7cff646c",
+        "left_interval": {
+          "target_id": "transcript_search_target_3d93466a3f2f683c",
+          "representative_transcript_id": "PATZ1-201",
+          "side": "left",
+          "start_0based": 0,
+          "end_0based_exclusive": 29,
+          "reason_code": "transcript_family_discrimination",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            1
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 50
+        },
+        "right_interval": {
+          "target_id": "transcript_search_target_3d93466a3f2f683c",
+          "representative_transcript_id": "PATZ1-201",
+          "side": "right",
+          "start_0based": 31,
+          "end_0based_exclusive": 120,
+          "reason_code": "transcript_family_discrimination",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            1,
+            2,
+            3
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 350
+        },
+        "estimated_left_candidate_count": 50,
+        "estimated_right_candidate_count": 350,
+        "estimated_candidate_pair_count": 17500,
+        "candidate_pair_search_space_upper_bound": 17500,
+        "primer3_fields": [
+          {
+            "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
+            "value": "0,29,31,89"
+          },
+          {
+            "name": "PRIMER_MAX_POLY_X",
+            "value": "6"
+          },
+          {
+            "name": "PRIMER_MAX_NS_ACCEPTED",
+            "value": "0"
+          },
+          {
+            "name": "SEQUENCE_TARGET",
+            "value": "29,2"
+          },
+          {
+            "name": "PRIMER_PRODUCT_SIZE_RANGE",
+            "value": "30-120"
+          }
+        ]
+      },
+      {
+        "search_record_id": "primer_search_record_d72a5d4bdc5befe8",
+        "target_id": "transcript_search_target_43b91847eead44ab",
+        "representative_transcript_id": "PATZ1-202",
+        "template_sha256": "sha256:6c73e2052bd828f3e28df7ced43b911ccaa1202c32614cf32e52573a17cdef5e",
+        "left_interval": {
+          "target_id": "transcript_search_target_43b91847eead44ab",
+          "representative_transcript_id": "PATZ1-202",
+          "side": "left",
+          "start_0based": 40,
+          "end_0based_exclusive": 80,
+          "reason_code": "annotation_common_region",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            2
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 105
+        },
+        "right_interval": {
+          "target_id": "transcript_search_target_43b91847eead44ab",
+          "representative_transcript_id": "PATZ1-202",
+          "side": "right",
+          "start_0based": 40,
+          "end_0based_exclusive": 80,
+          "reason_code": "annotation_common_region",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            2
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 105
+        },
+        "estimated_left_candidate_count": 105,
+        "estimated_right_candidate_count": 105,
+        "estimated_candidate_pair_count": 1650,
+        "candidate_pair_search_space_upper_bound": 11025,
+        "primer3_fields": [
+          {
+            "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
+            "value": "40,40,40,40"
+          },
+          {
+            "name": "PRIMER_MAX_POLY_X",
+            "value": "6"
+          },
+          {
+            "name": "PRIMER_MAX_NS_ACCEPTED",
+            "value": "0"
+          },
+          {
+            "name": "SEQUENCE_TARGET",
+            "value": "59,2"
+          },
+          {
+            "name": "PRIMER_PRODUCT_SIZE_RANGE",
+            "value": "30-120"
+          }
+        ]
+      },
+      {
+        "search_record_id": "primer_search_record_a984624fdc20bccf",
+        "target_id": "transcript_search_target_5a00b602d43d4377",
+        "representative_transcript_id": "PATZ1-203",
+        "template_sha256": "sha256:bf8de0081e092d6fc8056f13c01c7971611b3f1e1cde08aa87c33b95c9c00092",
+        "left_interval": {
+          "target_id": "transcript_search_target_5a00b602d43d4377",
+          "representative_transcript_id": "PATZ1-203",
+          "side": "left",
+          "start_0based": 60,
+          "end_0based_exclusive": 100,
+          "reason_code": "annotation_common_region",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            3
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 105
+        },
+        "right_interval": {
+          "target_id": "transcript_search_target_5a00b602d43d4377",
+          "representative_transcript_id": "PATZ1-203",
+          "side": "right",
+          "start_0based": 60,
+          "end_0based_exclusive": 100,
+          "reason_code": "annotation_common_region",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            3
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 105
+        },
+        "estimated_left_candidate_count": 105,
+        "estimated_right_candidate_count": 105,
+        "estimated_candidate_pair_count": 1650,
+        "candidate_pair_search_space_upper_bound": 11025,
+        "primer3_fields": [
+          {
+            "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
+            "value": "60,40,60,40"
+          },
+          {
+            "name": "PRIMER_MAX_POLY_X",
+            "value": "6"
+          },
+          {
+            "name": "PRIMER_MAX_NS_ACCEPTED",
+            "value": "0"
+          },
+          {
+            "name": "SEQUENCE_TARGET",
+            "value": "79,2"
+          },
+          {
+            "name": "PRIMER_PRODUCT_SIZE_RANGE",
+            "value": "30-120"
+          }
+        ]
+      },
+      {
+        "search_record_id": "primer_search_record_ff46cd22eb829098",
+        "target_id": "transcript_search_target_7bd49ae36bde2fc4",
+        "representative_transcript_id": "PATZ1-202",
+        "template_sha256": "sha256:6c73e2052bd828f3e28df7ced43b911ccaa1202c32614cf32e52573a17cdef5e",
+        "left_interval": {
+          "target_id": "transcript_search_target_7bd49ae36bde2fc4",
+          "representative_transcript_id": "PATZ1-202",
+          "side": "left",
+          "start_0based": 0,
+          "end_0based_exclusive": 19,
+          "reason_code": "transcript_family_discrimination",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            1
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 3
+        },
+        "right_interval": {
+          "target_id": "transcript_search_target_7bd49ae36bde2fc4",
+          "representative_transcript_id": "PATZ1-202",
+          "side": "right",
+          "start_0based": 21,
+          "end_0based_exclusive": 80,
+          "reason_code": "transcript_family_discrimination",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            1,
+            2
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 200
+        },
+        "estimated_left_candidate_count": 3,
+        "estimated_right_candidate_count": 200,
+        "estimated_candidate_pair_count": 600,
+        "candidate_pair_search_space_upper_bound": 600,
+        "primer3_fields": [
+          {
+            "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
+            "value": "0,19,21,59"
+          },
+          {
+            "name": "PRIMER_MAX_POLY_X",
+            "value": "6"
+          },
+          {
+            "name": "PRIMER_MAX_NS_ACCEPTED",
+            "value": "0"
+          },
+          {
+            "name": "SEQUENCE_TARGET",
+            "value": "19,2"
+          },
+          {
+            "name": "PRIMER_PRODUCT_SIZE_RANGE",
+            "value": "30-120"
+          }
+        ]
+      },
+      {
+        "search_record_id": "primer_search_record_efd8dcd918a727d2",
+        "target_id": "transcript_search_target_8ca3318210de876d",
+        "representative_transcript_id": "PATZ1-203",
+        "template_sha256": "sha256:bf8de0081e092d6fc8056f13c01c7971611b3f1e1cde08aa87c33b95c9c00092",
+        "left_interval": {
+          "target_id": "transcript_search_target_8ca3318210de876d",
+          "representative_transcript_id": "PATZ1-203",
+          "side": "left",
+          "start_0based": 0,
+          "end_0based_exclusive": 39,
+          "reason_code": "transcript_family_discrimination",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            1
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 100
+        },
+        "right_interval": {
+          "target_id": "transcript_search_target_8ca3318210de876d",
+          "representative_transcript_id": "PATZ1-203",
+          "side": "right",
+          "start_0based": 41,
+          "end_0based_exclusive": 100,
+          "reason_code": "transcript_family_discrimination",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            2,
+            3
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 200
+        },
+        "estimated_left_candidate_count": 100,
+        "estimated_right_candidate_count": 200,
+        "estimated_candidate_pair_count": 20000,
+        "candidate_pair_search_space_upper_bound": 20000,
+        "primer3_fields": [
+          {
+            "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
+            "value": "0,39,41,59"
+          },
+          {
+            "name": "PRIMER_MAX_POLY_X",
+            "value": "6"
+          },
+          {
+            "name": "PRIMER_MAX_NS_ACCEPTED",
+            "value": "0"
+          },
+          {
+            "name": "SEQUENCE_TARGET",
+            "value": "39,2"
+          },
+          {
+            "name": "PRIMER_PRODUCT_SIZE_RANGE",
+            "value": "30-120"
+          }
+        ]
+      },
+      {
+        "search_record_id": "primer_search_record_c109f800061fb811",
+        "target_id": "transcript_search_target_91817a4d9202eb85",
+        "representative_transcript_id": "PATZ1-201",
+        "template_sha256": "sha256:da6a2f3dbe1d4447c5d2b0b01469c7c566a99aa66b15e57064612cef7cff646c",
+        "left_interval": {
+          "target_id": "transcript_search_target_91817a4d9202eb85",
+          "representative_transcript_id": "PATZ1-201",
+          "side": "left",
+          "start_0based": 0,
+          "end_0based_exclusive": 39,
+          "reason_code": "transcript_family_discrimination",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            1
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 100
+        },
+        "right_interval": {
+          "target_id": "transcript_search_target_91817a4d9202eb85",
+          "representative_transcript_id": "PATZ1-201",
+          "side": "right",
+          "start_0based": 41,
+          "end_0based_exclusive": 120,
+          "reason_code": "transcript_family_discrimination",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            2,
+            3
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 300
+        },
+        "estimated_left_candidate_count": 100,
+        "estimated_right_candidate_count": 300,
+        "estimated_candidate_pair_count": 30000,
+        "candidate_pair_search_space_upper_bound": 30000,
+        "primer3_fields": [
+          {
+            "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
+            "value": "0,39,41,79"
+          },
+          {
+            "name": "PRIMER_MAX_POLY_X",
+            "value": "6"
+          },
+          {
+            "name": "PRIMER_MAX_NS_ACCEPTED",
+            "value": "0"
+          },
+          {
+            "name": "SEQUENCE_TARGET",
+            "value": "39,2"
+          },
+          {
+            "name": "PRIMER_PRODUCT_SIZE_RANGE",
+            "value": "30-120"
+          }
+        ]
+      },
+      {
+        "search_record_id": "primer_search_record_2ab6f49c2ff267cd",
+        "target_id": "transcript_search_target_91c9d21211523118",
+        "representative_transcript_id": "PATZ1-201",
+        "template_sha256": "sha256:da6a2f3dbe1d4447c5d2b0b01469c7c566a99aa66b15e57064612cef7cff646c",
+        "left_interval": {
+          "target_id": "transcript_search_target_91c9d21211523118",
+          "representative_transcript_id": "PATZ1-201",
+          "side": "left",
+          "start_0based": 0,
+          "end_0based_exclusive": 79,
+          "reason_code": "transcript_family_discrimination",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            1,
+            2
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 300
+        },
+        "right_interval": {
+          "target_id": "transcript_search_target_91c9d21211523118",
+          "representative_transcript_id": "PATZ1-201",
+          "side": "right",
+          "start_0based": 81,
+          "end_0based_exclusive": 120,
+          "reason_code": "transcript_family_discrimination",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            3
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 100
+        },
+        "estimated_left_candidate_count": 300,
+        "estimated_right_candidate_count": 100,
+        "estimated_candidate_pair_count": 30000,
+        "candidate_pair_search_space_upper_bound": 30000,
+        "primer3_fields": [
+          {
+            "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
+            "value": "0,79,81,39"
+          },
+          {
+            "name": "PRIMER_MAX_POLY_X",
+            "value": "6"
+          },
+          {
+            "name": "PRIMER_MAX_NS_ACCEPTED",
+            "value": "0"
+          },
+          {
+            "name": "SEQUENCE_TARGET",
+            "value": "79,2"
+          },
+          {
+            "name": "PRIMER_PRODUCT_SIZE_RANGE",
+            "value": "30-120"
+          }
+        ]
+      },
+      {
+        "search_record_id": "primer_search_record_89857ce6ba2936a1",
+        "target_id": "transcript_search_target_a081b42119a2e82f",
+        "representative_transcript_id": "PATZ1-201",
+        "template_sha256": "sha256:da6a2f3dbe1d4447c5d2b0b01469c7c566a99aa66b15e57064612cef7cff646c",
+        "left_interval": {
+          "target_id": "transcript_search_target_a081b42119a2e82f",
+          "representative_transcript_id": "PATZ1-201",
+          "side": "left",
+          "start_0based": 0,
+          "end_0based_exclusive": 59,
+          "reason_code": "transcript_family_discrimination",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            1,
+            2
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 200
+        },
+        "right_interval": {
+          "target_id": "transcript_search_target_a081b42119a2e82f",
+          "representative_transcript_id": "PATZ1-201",
+          "side": "right",
+          "start_0based": 61,
+          "end_0based_exclusive": 120,
+          "reason_code": "transcript_family_discrimination",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            2,
+            3
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 200
+        },
+        "estimated_left_candidate_count": 200,
+        "estimated_right_candidate_count": 200,
+        "estimated_candidate_pair_count": 40000,
+        "candidate_pair_search_space_upper_bound": 40000,
+        "primer3_fields": [
+          {
+            "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
+            "value": "0,59,61,59"
+          },
+          {
+            "name": "PRIMER_MAX_POLY_X",
+            "value": "6"
+          },
+          {
+            "name": "PRIMER_MAX_NS_ACCEPTED",
+            "value": "0"
+          },
+          {
+            "name": "SEQUENCE_TARGET",
+            "value": "59,2"
+          },
+          {
+            "name": "PRIMER_PRODUCT_SIZE_RANGE",
+            "value": "30-120"
+          }
+        ]
+      },
+      {
+        "search_record_id": "primer_search_record_83c80fc36066c1d4",
+        "target_id": "transcript_search_target_cc4b3590a97bb0d5",
+        "representative_transcript_id": "PATZ1-201",
+        "template_sha256": "sha256:da6a2f3dbe1d4447c5d2b0b01469c7c566a99aa66b15e57064612cef7cff646c",
+        "left_interval": {
+          "target_id": "transcript_search_target_cc4b3590a97bb0d5",
+          "representative_transcript_id": "PATZ1-201",
+          "side": "left",
+          "start_0based": 0,
+          "end_0based_exclusive": 89,
+          "reason_code": "transcript_family_discrimination",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            1,
+            2,
+            3
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 350
+        },
+        "right_interval": {
+          "target_id": "transcript_search_target_cc4b3590a97bb0d5",
+          "representative_transcript_id": "PATZ1-201",
+          "side": "right",
+          "start_0based": 91,
+          "end_0based_exclusive": 120,
+          "reason_code": "transcript_family_discrimination",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            3
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 50
+        },
+        "estimated_left_candidate_count": 350,
+        "estimated_right_candidate_count": 50,
+        "estimated_candidate_pair_count": 17500,
+        "candidate_pair_search_space_upper_bound": 17500,
+        "primer3_fields": [
+          {
+            "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
+            "value": "0,89,91,29"
+          },
+          {
+            "name": "PRIMER_MAX_POLY_X",
+            "value": "6"
+          },
+          {
+            "name": "PRIMER_MAX_NS_ACCEPTED",
+            "value": "0"
+          },
+          {
+            "name": "SEQUENCE_TARGET",
+            "value": "89,2"
+          },
+          {
+            "name": "PRIMER_PRODUCT_SIZE_RANGE",
+            "value": "30-120"
+          }
+        ]
+      },
+      {
+        "search_record_id": "primer_search_record_ed1ad672aa7b14dd",
+        "target_id": "transcript_search_target_d281d41c778c5994",
+        "representative_transcript_id": "PATZ1-203",
+        "template_sha256": "sha256:bf8de0081e092d6fc8056f13c01c7971611b3f1e1cde08aa87c33b95c9c00092",
+        "left_interval": {
+          "target_id": "transcript_search_target_d281d41c778c5994",
+          "representative_transcript_id": "PATZ1-203",
+          "side": "left",
+          "start_0based": 0,
+          "end_0based_exclusive": 59,
+          "reason_code": "transcript_family_discrimination",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            1,
+            2
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 200
+        },
+        "right_interval": {
+          "target_id": "transcript_search_target_d281d41c778c5994",
+          "representative_transcript_id": "PATZ1-203",
+          "side": "right",
+          "start_0based": 61,
+          "end_0based_exclusive": 100,
+          "reason_code": "transcript_family_discrimination",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            3
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 100
+        },
+        "estimated_left_candidate_count": 200,
+        "estimated_right_candidate_count": 100,
+        "estimated_candidate_pair_count": 20000,
+        "candidate_pair_search_space_upper_bound": 20000,
+        "primer3_fields": [
+          {
+            "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
+            "value": "0,59,61,39"
+          },
+          {
+            "name": "PRIMER_MAX_POLY_X",
+            "value": "6"
+          },
+          {
+            "name": "PRIMER_MAX_NS_ACCEPTED",
+            "value": "0"
+          },
+          {
+            "name": "SEQUENCE_TARGET",
+            "value": "59,2"
+          },
+          {
+            "name": "PRIMER_PRODUCT_SIZE_RANGE",
+            "value": "30-120"
+          }
+        ]
+      },
+      {
+        "search_record_id": "primer_search_record_1028a85f4a2e580f",
+        "target_id": "transcript_search_target_f5c1e4d19d8405d1",
+        "representative_transcript_id": "PATZ1-203",
+        "template_sha256": "sha256:bf8de0081e092d6fc8056f13c01c7971611b3f1e1cde08aa87c33b95c9c00092",
+        "left_interval": {
+          "target_id": "transcript_search_target_f5c1e4d19d8405d1",
+          "representative_transcript_id": "PATZ1-203",
+          "side": "left",
+          "start_0based": 0,
+          "end_0based_exclusive": 40,
+          "reason_code": "annotation_common_region",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            1
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 105
+        },
+        "right_interval": {
+          "target_id": "transcript_search_target_f5c1e4d19d8405d1",
+          "representative_transcript_id": "PATZ1-203",
+          "side": "right",
+          "start_0based": 0,
+          "end_0based_exclusive": 40,
+          "reason_code": "annotation_common_region",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            1
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 105
+        },
+        "estimated_left_candidate_count": 105,
+        "estimated_right_candidate_count": 105,
+        "estimated_candidate_pair_count": 1650,
+        "candidate_pair_search_space_upper_bound": 11025,
+        "primer3_fields": [
+          {
+            "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
+            "value": "0,40,0,40"
+          },
+          {
+            "name": "PRIMER_MAX_POLY_X",
+            "value": "6"
+          },
+          {
+            "name": "PRIMER_MAX_NS_ACCEPTED",
+            "value": "0"
+          },
+          {
+            "name": "SEQUENCE_TARGET",
+            "value": "19,2"
+          },
+          {
+            "name": "PRIMER_PRODUCT_SIZE_RANGE",
+            "value": "30-120"
+          }
+        ]
+      },
+      {
+        "search_record_id": "primer_search_record_cef27ef7819f101a",
+        "target_id": "transcript_search_target_f5dae1259b59855b",
+        "representative_transcript_id": "PATZ1-201",
+        "template_sha256": "sha256:da6a2f3dbe1d4447c5d2b0b01469c7c566a99aa66b15e57064612cef7cff646c",
+        "left_interval": {
+          "target_id": "transcript_search_target_f5dae1259b59855b",
+          "representative_transcript_id": "PATZ1-201",
+          "side": "left",
+          "start_0based": 80,
+          "end_0based_exclusive": 120,
+          "reason_code": "annotation_common_region",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            3
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 105
+        },
+        "right_interval": {
+          "target_id": "transcript_search_target_f5dae1259b59855b",
+          "representative_transcript_id": "PATZ1-201",
+          "side": "right",
+          "start_0based": 80,
+          "end_0based_exclusive": 120,
+          "reason_code": "annotation_common_region",
+          "reason": "Bounded from transcript annotation, product length, and local sequence admissibility before Primer3.",
+          "exon_ordinals": [
+            3
+          ],
+          "junction_ids": [],
+          "estimated_candidate_count": 105
+        },
+        "estimated_left_candidate_count": 105,
+        "estimated_right_candidate_count": 105,
+        "estimated_candidate_pair_count": 1650,
+        "candidate_pair_search_space_upper_bound": 11025,
+        "primer3_fields": [
+          {
+            "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
+            "value": "80,40,80,40"
+          },
+          {
+            "name": "PRIMER_MAX_POLY_X",
+            "value": "6"
+          },
+          {
+            "name": "PRIMER_MAX_NS_ACCEPTED",
+            "value": "0"
+          },
+          {
+            "name": "SEQUENCE_TARGET",
+            "value": "99,2"
+          },
+          {
+            "name": "PRIMER_PRODUCT_SIZE_RANGE",
+            "value": "30-120"
+          }
+        ]
+      }
+    ],
+    "rejected_intervals": [
+      {
+        "target_id": "JUC2200054820.hg.1:PATZ1-202:1-2",
+        "representative_transcript_id": "PATZ1-202",
+        "side": "left",
+        "start_0based": 45,
+        "end_0based_exclusive": 79,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          2
+        ],
+        "junction_ids": [
+          "JUC2200054820.hg.1:PATZ1-202:1-2"
+        ],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "JUC2200054820.hg.1:PATZ1-202:1-2",
+        "representative_transcript_id": "PATZ1-202",
+        "side": "right",
+        "start_0based": 63,
+        "end_0based_exclusive": 97,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          2
+        ],
+        "junction_ids": [
+          "JUC2200054820.hg.1:PATZ1-202:1-2"
+        ],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_074a540dce4858e3",
+        "representative_transcript_id": "PATZ1-203",
+        "side": "left",
+        "start_0based": 7,
+        "end_0based_exclusive": 41,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          1,
+          2
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_074a540dce4858e3",
+        "representative_transcript_id": "PATZ1-203",
+        "side": "right",
+        "start_0based": 83,
+        "end_0based_exclusive": 117,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          3
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_196965bf0b372bea",
+        "representative_transcript_id": "PATZ1-203",
+        "side": "left",
+        "start_0based": 32,
+        "end_0based_exclusive": 66,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          1,
+          2,
+          3
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_196965bf0b372bea",
+        "representative_transcript_id": "PATZ1-203",
+        "side": "right",
+        "start_0based": 83,
+        "end_0based_exclusive": 117,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          3
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_2614bcf742387597",
+        "representative_transcript_id": "PATZ1-203",
+        "side": "left",
+        "start_0based": 57,
+        "end_0based_exclusive": 91,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          2,
+          3
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_2614bcf742387597",
+        "representative_transcript_id": "PATZ1-203",
+        "side": "right",
+        "start_0based": 83,
+        "end_0based_exclusive": 117,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          3
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_28f008879a5eab86",
+        "representative_transcript_id": "PATZ1-202",
+        "side": "left",
+        "start_0based": 22,
+        "end_0based_exclusive": 56,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          1,
+          2
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_28f008879a5eab86",
+        "representative_transcript_id": "PATZ1-202",
+        "side": "right",
+        "start_0based": 63,
+        "end_0based_exclusive": 97,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          2
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_2dba3d18f4b15751",
+        "representative_transcript_id": "PATZ1-201",
+        "side": "left",
+        "start_0based": 23,
+        "end_0based_exclusive": 57,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          1,
+          2
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_2dba3d18f4b15751",
+        "representative_transcript_id": "PATZ1-201",
+        "side": "right",
+        "start_0based": 23,
+        "end_0based_exclusive": 57,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          1,
+          2
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_32dd1b46d5a917a1",
+        "representative_transcript_id": "PATZ1-202",
+        "side": "left",
+        "start_0based": 23,
+        "end_0based_exclusive": 57,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          1,
+          2
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_32dd1b46d5a917a1",
+        "representative_transcript_id": "PATZ1-202",
+        "side": "right",
+        "start_0based": 23,
+        "end_0based_exclusive": 57,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          1,
+          2
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_3722668535545366",
+        "representative_transcript_id": "PATZ1-202",
+        "side": "left",
+        "start_0based": 42,
+        "end_0based_exclusive": 76,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          2
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_3722668535545366",
+        "representative_transcript_id": "PATZ1-202",
+        "side": "right",
+        "start_0based": 63,
+        "end_0based_exclusive": 97,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          2
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_3d93466a3f2f683c",
+        "representative_transcript_id": "PATZ1-201",
+        "side": "left",
+        "start_0based": 12,
+        "end_0based_exclusive": 46,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          1,
+          2
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_3d93466a3f2f683c",
+        "representative_transcript_id": "PATZ1-201",
+        "side": "right",
+        "start_0based": 103,
+        "end_0based_exclusive": 137,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          3
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_43b91847eead44ab",
+        "representative_transcript_id": "PATZ1-202",
+        "side": "left",
+        "start_0based": 63,
+        "end_0based_exclusive": 97,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          2
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_43b91847eead44ab",
+        "representative_transcript_id": "PATZ1-202",
+        "side": "right",
+        "start_0based": 63,
+        "end_0based_exclusive": 97,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          2
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_5a00b602d43d4377",
+        "representative_transcript_id": "PATZ1-203",
+        "side": "left",
+        "start_0based": 83,
+        "end_0based_exclusive": 117,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          3
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_5a00b602d43d4377",
+        "representative_transcript_id": "PATZ1-203",
+        "side": "right",
+        "start_0based": 83,
+        "end_0based_exclusive": 117,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          3
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_7bd49ae36bde2fc4",
+        "representative_transcript_id": "PATZ1-202",
+        "side": "left",
+        "start_0based": 2,
+        "end_0based_exclusive": 36,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          1
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_7bd49ae36bde2fc4",
+        "representative_transcript_id": "PATZ1-202",
+        "side": "right",
+        "start_0based": 63,
+        "end_0based_exclusive": 97,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          2
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_8ca3318210de876d",
+        "representative_transcript_id": "PATZ1-203",
+        "side": "left",
+        "start_0based": 22,
+        "end_0based_exclusive": 56,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          1,
+          2
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_8ca3318210de876d",
+        "representative_transcript_id": "PATZ1-203",
+        "side": "right",
+        "start_0based": 83,
+        "end_0based_exclusive": 117,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          3
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_91817a4d9202eb85",
+        "representative_transcript_id": "PATZ1-201",
+        "side": "left",
+        "start_0based": 22,
+        "end_0based_exclusive": 56,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          1,
+          2
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_91817a4d9202eb85",
+        "representative_transcript_id": "PATZ1-201",
+        "side": "right",
+        "start_0based": 103,
+        "end_0based_exclusive": 137,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          3
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_91c9d21211523118",
+        "representative_transcript_id": "PATZ1-201",
+        "side": "left",
+        "start_0based": 62,
+        "end_0based_exclusive": 96,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          2,
+          3
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_91c9d21211523118",
+        "representative_transcript_id": "PATZ1-201",
+        "side": "right",
+        "start_0based": 103,
+        "end_0based_exclusive": 137,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          3
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_a081b42119a2e82f",
+        "representative_transcript_id": "PATZ1-201",
+        "side": "left",
+        "start_0based": 42,
+        "end_0based_exclusive": 76,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          2
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_a081b42119a2e82f",
+        "representative_transcript_id": "PATZ1-201",
+        "side": "right",
+        "start_0based": 103,
+        "end_0based_exclusive": 137,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          3
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_cc4b3590a97bb0d5",
+        "representative_transcript_id": "PATZ1-201",
+        "side": "left",
+        "start_0based": 72,
+        "end_0based_exclusive": 106,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          2,
+          3
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_cc4b3590a97bb0d5",
+        "representative_transcript_id": "PATZ1-201",
+        "side": "right",
+        "start_0based": 103,
+        "end_0based_exclusive": 137,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          3
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_d281d41c778c5994",
+        "representative_transcript_id": "PATZ1-203",
+        "side": "left",
+        "start_0based": 42,
+        "end_0based_exclusive": 76,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          2,
+          3
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_d281d41c778c5994",
+        "representative_transcript_id": "PATZ1-203",
+        "side": "right",
+        "start_0based": 83,
+        "end_0based_exclusive": 117,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          3
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_f5c1e4d19d8405d1",
+        "representative_transcript_id": "PATZ1-203",
+        "side": "left",
+        "start_0based": 23,
+        "end_0based_exclusive": 57,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          1,
+          2
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_f5c1e4d19d8405d1",
+        "representative_transcript_id": "PATZ1-203",
+        "side": "right",
+        "start_0based": 23,
+        "end_0based_exclusive": 57,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          1,
+          2
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_f5dae1259b59855b",
+        "representative_transcript_id": "PATZ1-201",
+        "side": "left",
+        "start_0based": 103,
+        "end_0based_exclusive": 137,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          3
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      },
+      {
+        "target_id": "transcript_search_target_f5dae1259b59855b",
+        "representative_transcript_id": "PATZ1-201",
+        "side": "right",
+        "start_0based": 103,
+        "end_0based_exclusive": 137,
+        "reason_code": "no_complete_primer_interval",
+        "reason": "No complete admissible primer interval starts here.",
+        "exon_ordinals": [
+          3
+        ],
+        "junction_ids": [],
+        "estimated_candidate_count": 0
+      }
+    ],
+    "target_count": 20,
+    "planned_target_count": 20,
+    "estimated_candidate_pair_count_total": 243450,
+    "candidate_pair_search_space_upper_bound_total": 334825,
+    "blocked_target_ids": [],
+    "status": "ready",
+    "runtime_reductions": [],
+    "warnings": [
+      "Local exact-repeat and low-complexity screening is planning evidence only; cross-transcript cDNA and genomic specificity remain separate QA gates after candidate generation.",
+      "Candidate-pair counts are deterministic local preflight estimates; Primer3 thermodynamic evaluation remains authoritative for retained records, and wall-clock projections remain uncertain."
+    ]
+  },
   "end_classes": [],
   "end_reactions": [],
   "band_size_matrix": [],
@@ -656,31 +2495,31 @@
   "short_sybr_junction_assays": [],
   "order_ready_primers": [
     {
-      "line_id": "transcript_assay_oligo_bc8ae94e9fd82b13",
-      "assay_id": "transcript_assay_41bc3460097e42d4",
+      "line_id": "transcript_assay_oligo_716a2b638f336685",
+      "assay_id": "transcript_assay_8b1abcb77b679385",
       "assay_rank": 1,
       "name": "patz1_routine_common_region_screen_1_forward",
       "role": "forward",
-      "sequence_5_to_3": "ATCCGATCAGGTACGCTAAC",
-      "length_nt": 20
+      "sequence_5_to_3": "CGGATCCGATCGTAGCCTA",
+      "length_nt": 19
     },
     {
-      "line_id": "transcript_assay_oligo_d481385e8958e3da",
-      "assay_id": "transcript_assay_41bc3460097e42d4",
+      "line_id": "transcript_assay_oligo_1d9ad0d0b48fd351",
+      "assay_id": "transcript_assay_8b1abcb77b679385",
       "assay_rank": 1,
       "name": "patz1_routine_common_region_screen_1_reverse",
       "role": "reverse",
-      "sequence_5_to_3": "ATGCCGTAGCTTACGATCC",
-      "length_nt": 19
+      "sequence_5_to_3": "CCGATGCTAGCTTACCGATG",
+      "length_nt": 20
     }
   ],
   "genomic_specificity_assessments": [],
   "specificity_followups": [
     {
-      "assay_id": "transcript_assay_41bc3460097e42d4",
+      "assay_id": "transcript_assay_8b1abcb77b679385",
       "local_cdna_matrix_status": "completed",
       "genomic_confirmation_status": "not_run",
-      "shell_command_template": "primers specificity-plan --forward ATCCGATCAGGTACGCTAAC --reverse ATGCCGTAGCTTACGATCC --target-genome GENOME_ID --output-dir OUTPUT_DIR/transcript_assay_41bc3460097e42d4"
+      "shell_command_template": "primers specificity-plan --forward CGGATCCGATCGTAGCCTA --reverse CCGATGCTAGCTTACCGATG --target-genome GENOME_ID --output-dir OUTPUT_DIR/transcript_assay_8b1abcb77b679385"
     }
   ],
   "provenance": {
