@@ -836,7 +836,6 @@ impl GentleEngine {
                 message:
                     "SuggestSequencingPrimers requires at least one primer sequence id or a saved sequencing-confirmation report"
                         .to_string(),
-            
                 cause_chain: vec![],});
         }
         if min_3prime_anneal_bp == 0 {
@@ -2055,7 +2054,6 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "ConfirmConstructReads requires min_target_coverage_fraction in the range (0.0, 1.0]"
                     .to_string(),
-            
                 cause_chain: vec![],});
         }
         let expected_dna =
@@ -3168,7 +3166,6 @@ impl GentleEngine {
                 "Could not write sequencing-confirmation TSV header '{}': {e}",
                 path
             ),
-        
             cause_chain: vec![],})?;
         for target in &report.targets {
             writeln!(

@@ -6303,14 +6303,12 @@ impl GentleEngine {
                             message: format!(
                                 "Generated genomic annotation sequence '{genomic_seq_id}' not found while building exon-skip return payload"
                             ),
-                        
                             cause_chain: vec![],})?;
                     let text = dna.to_genbank_string().map_err(|e| EngineError {
                         code: ErrorCode::Io,
                         message: format!(
                             "Could not render exon-skip genomic annotation '{genomic_seq_id}' as GenBank: {e}"
                         ),
-                    
                         cause_chain: vec![],})?;
                     payloads.push(ExonSkipReturnPayload {
                         kind: *kind,
@@ -6332,7 +6330,6 @@ impl GentleEngine {
                             message: format!(
                                 "Generated cDNA sequence '{cdna_seq_id}' not found while building exon-skip return payload"
                             ),
-                        
                             cause_chain: vec![],})?;
                     let label = dna
                         .name()
@@ -7559,7 +7556,6 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Insertion anchor geometry is invalid: requested forward 3' end must be <= requested reverse 3' start".to_string(),
-            
                 cause_chain: vec![],});
         }
         let mut normalized = insertion.clone();
@@ -8962,7 +8958,6 @@ impl GentleEngine {
                         message:
                             "Transcript-aware qPCR distinguish_transcript mode requires transcript_id"
                                 .to_string(),
-                    
                         cause_chain: vec![],})?;
                 let selected = all_templates
                     .iter()
@@ -26534,7 +26529,6 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Transcript-aware qPCR design currently requires unconstrained primer/probe positions; use the splicing seed helpers and omit explicit location/start/end/fixed amplicon coordinates.".to_string(),
-            
                 cause_chain: vec![],});
         }
 
@@ -27825,7 +27819,6 @@ impl GentleEngine {
                         "Could not materialize forward primer sequence for report '{}' pair {}: {e}",
                         report.report_id, pair_rank
                     ),
-                
                     cause_chain: vec![],})?;
                 forward_primer.set_circular(false);
                 forward_primer.set_name(forward_seq_id.clone());
@@ -27846,7 +27839,6 @@ impl GentleEngine {
                         "Could not materialize reverse primer sequence for report '{}' pair {}: {e}",
                         report.report_id, pair_rank
                     ),
-                
                     cause_chain: vec![],})?;
                 reverse_primer.set_circular(false);
                 reverse_primer.set_name(reverse_seq_id.clone());
@@ -28048,7 +28040,6 @@ impl GentleEngine {
                 message:
                     "directed_pair restriction-cloning handoff requires different forward and reverse enzymes"
                         .to_string(),
-            
                 cause_chain: vec![],});
         }
         let forward_leader_5prime = forward_leader_5prime
@@ -28201,7 +28192,6 @@ impl GentleEngine {
                     "Could not materialize predicted tailed amplicon for primer report '{}' pair {}: {e}",
                     primer_report_id, pair_rank
                 ),
-            
                 cause_chain: vec![],})?;
         tailed_amplicon_dna.set_circular(false);
         *tailed_amplicon_dna.restriction_enzymes_mut() = active_restriction_enzymes();
@@ -28645,7 +28635,6 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "PcrOverlapExtensionMutagenesis requires an insertion/deletion/replacement (received a no-op edit)".to_string(),
-            
                 cause_chain: vec![],});
         }
 
@@ -29101,7 +29090,6 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "No overlap-extension insertion/deletion mutagenesis primer set satisfied constraints".to_string(),
-            
                 cause_chain: vec![],});
         };
 
@@ -35781,7 +35769,6 @@ impl GentleEngine {
                         message:
                             "AuditUniprotProjectionConsistency requires a non-empty projection_id"
                                 .to_string(),
-                    
                         cause_chain: vec![],});
                     }
                     let resolved_report_id = report_id
@@ -36349,7 +36336,6 @@ impl GentleEngine {
                         code: ErrorCode::InvalidInput,
                         message: "Ligation output_id can only be used when exactly one product is produced"
                             .to_string(),
-                    
                         cause_chain: vec![],});
                     }
 
@@ -36506,7 +36492,6 @@ impl GentleEngine {
                         message:
                             "PCR output_id can only be used when exactly one amplicon is produced"
                                 .to_string(),
-                    
                         cause_chain: vec![],});
                     }
 
@@ -36698,7 +36683,6 @@ impl GentleEngine {
                         message:
                             "PCR output_id can only be used when exactly one amplicon is produced"
                                 .to_string(),
-                    
                         cause_chain: vec![],});
                     }
 
@@ -36996,7 +36980,6 @@ impl GentleEngine {
                         message:
                             "PCR output_id can only be used when exactly one amplicon is produced"
                                 .to_string(),
-                    
                         cause_chain: vec![],});
                     }
 
@@ -38178,7 +38161,6 @@ impl GentleEngine {
                         serde_json::to_writer_pretty(writer, &report).map_err(|e| EngineError {
                             code: ErrorCode::Io,
                             message: format!("Could not serialize cDNA qPCR FASTA assay-test report '{path}': {e}"),
-                        
                             cause_chain: vec![],})?;
                         result.messages.push(format!(
                             "Wrote cDNA qPCR FASTA assay-test report to '{path}'"
@@ -38199,7 +38181,6 @@ impl GentleEngine {
                             message: format!(
                                 "Could not write cDNA qPCR FASTA transcript-map SVG '{svg_path}': {e}"
                             ),
-                        
                             cause_chain: vec![],})?;
                         result.messages.push(format!(
                             "Wrote cDNA qPCR FASTA transcript-map SVG to '{svg_path}'"
@@ -39601,7 +39582,6 @@ impl GentleEngine {
                                 "DeriveSplicingReferences requires a seed mRNA feature id or at least one mRNA feature overlapping span {}..{} in '{}'",
                                 span_start_0based, span_end_0based, seq_id
                             ),
-                        
                             cause_chain: vec![],})?
                     };
                     let splicing =
@@ -39806,7 +39786,6 @@ impl GentleEngine {
                             "Could not create exon-reference sequence from '{}' transcripts: {e}",
                             seq_id
                         ),
-                    
                         cause_chain: vec![],})?;
                         exon_reference.set_circular(false);
                         let exon_reference_seq_id =
@@ -41688,7 +41667,6 @@ impl GentleEngine {
                                 "Could not create RNA-read hit sequence '{}' from report '{}': {e}",
                                 hit.header_id, report.report_id
                             ),
-                        
                             cause_chain: vec![],})?;
                         dna.set_name(seq_id.clone());
                         dna.set_circular(false);
@@ -43159,7 +43137,6 @@ impl GentleEngine {
                         message:
                             "SetParameter max_fragments_per_container requires a positive integer"
                                 .to_string(),
-                    
                         cause_chain: vec![],}
                         })?;
                         if raw == 0 {
@@ -43340,14 +43317,12 @@ impl GentleEngine {
                             message:
                                 "linear_external_feature_label_font_size must be a finite number"
                                     .to_string(),
-                        
                             cause_chain: vec![],});
                         }
                         if !(8.0..=24.0).contains(&raw) {
                             return Err(EngineError {
                             code: ErrorCode::InvalidInput,
                             message: "linear_external_feature_label_font_size must be between 8.0 and 24.0".to_string(),
-                        
                             cause_chain: vec![],});
                         }
                         self.state.display.linear_external_feature_label_font_size = raw as f32;
@@ -43369,14 +43344,12 @@ impl GentleEngine {
                             return Err(EngineError {
                             code: ErrorCode::InvalidInput,
                             message: "linear_external_feature_label_background_opacity must be a finite number".to_string(),
-                        
                             cause_chain: vec![],});
                         }
                         if !(0.0..=1.0).contains(&raw) {
                             return Err(EngineError {
                             code: ErrorCode::InvalidInput,
                             message: "linear_external_feature_label_background_opacity must be between 0.0 and 1.0".to_string(),
-                        
                             cause_chain: vec![],});
                         }
                         self.state
@@ -43577,7 +43550,6 @@ impl GentleEngine {
                             message:
                                 "linear_sequence_helical_phase_offset_bp must be between 0 and 9"
                                     .to_string(),
-                        
                             cause_chain: vec![],});
                         }
                         self.state.display.linear_sequence_helical_phase_offset_bp = raw as usize;
@@ -43628,7 +43600,6 @@ impl GentleEngine {
                             message:
                                 "SetParameter blast_options_defaults_path requires a string or null"
                                     .to_string(),
-                        
                             cause_chain: vec![],}
                             })?;
                             let trimmed = raw.trim();
@@ -43880,7 +43851,6 @@ impl GentleEngine {
                                     return Err(EngineError {
                                         code: ErrorCode::InvalidInput,
                                         message: "vcf_display_required_info_keys array entries must be strings".to_string(),
-                                    
                                         cause_chain: vec![],});
                                 };
                                 values.push(raw.to_string());
@@ -43896,7 +43866,6 @@ impl GentleEngine {
                             return Err(EngineError {
                                 code: ErrorCode::InvalidInput,
                                 message: "SetParameter vcf_display_required_info_keys requires a string (CSV) or string array".to_string(),
-                            
                                 cause_chain: vec![],});
                         };
                         for key in &mut keys {
@@ -43921,7 +43890,6 @@ impl GentleEngine {
                                     return Err(EngineError {
                                     code: ErrorCode::InvalidInput,
                                     message: "preferred_restriction_enzymes array entries must be strings".to_string(),
-                                
                                     cause_chain: vec![],});
                                 };
                                 values.push(raw.to_string());
@@ -43937,7 +43905,6 @@ impl GentleEngine {
                             return Err(EngineError {
                             code: ErrorCode::InvalidInput,
                             message: "SetParameter preferred_restriction_enzymes requires a string (CSV) or string array".to_string(),
-                        
                             cause_chain: vec![],});
                         };
                         let normalized =

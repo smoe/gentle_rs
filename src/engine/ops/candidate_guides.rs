@@ -848,7 +848,6 @@ impl GentleEngine {
                     "Unknown guide oligo template '{}'; supported templates: lenti_bsmbi_u6_default, plain_forward_reverse",
                     template_id
                 ),
-            
                 cause_chain: vec![],}
         })?;
         let apply_5prime_g_extension = apply_5prime_g_extension.unwrap_or(false);
@@ -884,7 +883,6 @@ impl GentleEngine {
                         "No practical filter report found for '{}' (required because passed_only=true)",
                         guide_set_id
                     ),
-                
                     cause_chain: vec![],})?;
             Some(
                 report

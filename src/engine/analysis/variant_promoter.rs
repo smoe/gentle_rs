@@ -2819,7 +2819,6 @@ impl GentleEngine {
                 message:
                     "Selected variant feature does not carry a single-base reference allele (vcf_ref)"
                         .to_string(),
-            
                 cause_chain: vec![],})?;
         let alternate_raw =
             Self::feature_qualifier_text(variant_feature, "vcf_alt").ok_or_else(|| {

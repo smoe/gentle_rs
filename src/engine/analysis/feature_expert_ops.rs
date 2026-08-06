@@ -835,7 +835,6 @@ impl GentleEngine {
             message:
                 "Could not resolve TF motif for feature (missing tf_id/label resolvable in motif registry)"
                     .to_string(),
-        
             cause_chain: vec![],}))
     }
 
@@ -1396,7 +1395,6 @@ impl GentleEngine {
                 message:
                     "projection_id must contain at least one ASCII letter, digit, '.', '-', '_' or '@'"
                         .to_string(),
-            
                 cause_chain: vec![],});
         }
         Ok(normalized)
@@ -3799,7 +3797,6 @@ impl GentleEngine {
                             "Ensembl gene symbol query '{}' requires --species (for example homo_sapiens)",
                             query
                         ),
-                    
                         cause_chain: vec![],})?;
                 (
                     format!(
@@ -9544,7 +9541,6 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::NotFound,
                 message: "No ATtRACT runtime snapshot is active yet. Run `resources sync-attract ATtRACT.zip` first.".to_string(),
-            
                 cause_chain: vec![],});
         }
         let view = self.build_splicing_expert_view(seq_id, feature_id, settings.scope)?;
@@ -12895,14 +12891,12 @@ impl GentleEngine {
                             "Protein comparison external source '{}' is not implemented yet",
                             source.as_str()
                         ),
-                    
                         cause_chain: vec![],}),
                     _ => Err(EngineError {
                         code: ErrorCode::InvalidInput,
                         message:
                             "Protein comparison external_source and external_entry_id must either both be set or both be omitted"
                                 .to_string(),
-                    
                         cause_chain: vec![],}),
                 }
             }

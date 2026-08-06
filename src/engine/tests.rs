@@ -15359,10 +15359,9 @@ fn primer3_runtime_reduction_stops_child_and_preserves_output_receipt() {
     };
     let side_constraints = GentleEngine::normalize_primer_side_sequence_constraints(&side)
         .expect("normalize Primer3 runtime-reduction side constraints");
-    let pair_constraints = GentleEngine::normalize_primer_pair_constraints(
-        &PrimerDesignPairConstraint::default(),
-    )
-    .expect("normalize Primer3 runtime-reduction pair constraints");
+    let pair_constraints =
+        GentleEngine::normalize_primer_pair_constraints(&PrimerDesignPairConstraint::default())
+            .expect("normalize Primer3 runtime-reduction pair constraints");
     let options = Primer3PairDesignOptions {
         runtime_policy: TranscriptAssayPrimerSearchPolicy {
             runtime_warning_after_secs: 0,
@@ -15397,7 +15396,11 @@ fn primer3_runtime_reduction_stops_child_and_preserves_output_receipt() {
     )
     .expect_err("projected runtime policy must stop the fake Primer3 child");
     assert!(GentleEngine::is_primer3_runtime_reduction_error(&error));
-    assert!(error.message.contains("runtime_reduction_projected_too_long"));
+    assert!(
+        error
+            .message
+            .contains("runtime_reduction_projected_too_long")
+    );
     assert!(error.message.contains("child_status="));
     assert!(error.message.contains("stdout_bytes=0"));
     assert!(error.message.contains("stdout_sha256=sha256:"));

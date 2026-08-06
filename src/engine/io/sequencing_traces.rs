@@ -413,7 +413,6 @@ fn parse_abi_trace(path: &str, bytes: &[u8]) -> Result<ParsedSequencingTrace, En
             message: format!(
                 "ABIF trace '{path}' lacks PBAS1/PBAS2 called bases and is not a supported sequencing trace"
             ),
-        
             cause_chain: vec![],}
     })?;
     let called_bases = decode_abif_text(called_entry, bytes)?;

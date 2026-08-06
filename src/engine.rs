@@ -2431,7 +2431,6 @@ impl ProjectState {
                             final_dir.display(),
                             backup.display()
                         ),
-                    
                         cause_chain: vec![],})?;
                     backup_dir = Some(backup);
                 }
@@ -2496,7 +2495,6 @@ impl ProjectState {
                                 "Could not remove partially committed candidate-sidecar directory '{}': {e}",
                                 final_dir.display()
                             ),
-                        
                             cause_chain: vec![],})?;
                     }
                     std::fs::rename(&backup, &final_dir).map_err(|e| EngineError {
@@ -2516,7 +2514,6 @@ impl ProjectState {
                             "Could not remove new candidate-sidecar directory '{}' during rollback: {e}",
                             final_dir.display()
                         ),
-                    
                         cause_chain: vec![],})?;
                 }
                 Ok(())
@@ -6999,7 +6996,6 @@ impl GentleEngine {
                 message:
                     "No genome-anchored sequence is available. Extract a genome region or gene first."
                         .to_string(),
-            
                 cause_chain: vec![],});
         }
         let mut report = self.apply_track_subscription_to_seq_ids(&seq_ids, &normalized);
@@ -7037,7 +7033,6 @@ impl GentleEngine {
                 message:
                     "No genome-anchored sequence is available. Extract a genome region or gene first."
                         .to_string(),
-            
                 cause_chain: vec![],});
         }
         let mut report = self.apply_track_subscription_to_seq_ids(&seq_ids, &subscription);
@@ -10778,7 +10773,6 @@ impl GentleEngine {
                                 available_names.join(", ")
                             )
                         },
-                    
                         cause_chain: vec![],})
         };
         let explicit_forward = forward_enzyme
@@ -10822,7 +10816,6 @@ impl GentleEngine {
                                     "Vector '{}' has no recommended single-site restriction cutters for restriction-cloning seed generation",
                                     destination_vector_seq_id
                                 ),
-                            
                                 cause_chain: vec![],})?;
                         (
                             suggestion.enzyme.clone(),
@@ -10837,7 +10830,6 @@ impl GentleEngine {
                         return Err(EngineError {
                             code: ErrorCode::InvalidInput,
                             message: "Restriction-cloning directed_pair seed requires both forward and reverse enzymes, or neither to use the top recommendation".to_string(),
-                        
                             cause_chain: vec![],});
                     }
                     if let (Some(fwd), Some(rev)) = (explicit_forward, explicit_reverse) {
@@ -10893,7 +10885,6 @@ impl GentleEngine {
                                     "Vector '{}' has no recommended directed restriction-site pairs for restriction-cloning seed generation",
                                     destination_vector_seq_id
                                 ),
-                            
                                 cause_chain: vec![],})?;
                         (
                             suggestion.forward_enzyme.clone(),
@@ -14126,7 +14117,6 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "Sequence-context inspection requires both viewport_start_0based and viewport_end_0based_exclusive"
                     .to_string(),
-            
                 cause_chain: vec![],});
         }
         let (viewport_start_0based, viewport_end_0based_exclusive) = if let (
@@ -15163,7 +15153,6 @@ impl GentleEngine {
                 message:
                     "FindRestrictionSites requires at least one enzyme or configured preferred restriction enzymes"
                         .to_string(),
-            
                 cause_chain: vec![],});
         }
 
@@ -15427,7 +15416,6 @@ impl GentleEngine {
                 message:
                     "TFBS context range requires both context_start_0based and context_end_0based_exclusive"
                         .to_string(),
-            
                 cause_chain: vec![],});
         }
         let (context_start, context_end) = match (
@@ -21076,7 +21064,6 @@ impl GentleEngine {
                     "Evidence '{}' referenced by annotation candidate '{}' was not found in graph '{}'",
                     candidate.evidence_id, annotation_id, graph_id
                 ),
-            
                 cause_chain: vec![],})?;
         let mut writeback = AnnotationCandidateWriteback {
             graph_id: graph.graph_id.clone(),
@@ -29518,7 +29505,6 @@ impl GentleEngine {
             message: format!(
                 "Sequence '{seq_id}' is not anchored to a genome interval; run ExtractGenomeRegion/ExtractGenomeGene/ExtendGenomeAnchor first"
             ),
-        
             cause_chain: vec![],})
     }
 

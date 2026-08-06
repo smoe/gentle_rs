@@ -1499,7 +1499,6 @@ pub fn derive_gibson_execution_plan(
                         message:
                             "Executable Gibson preview did not retain the left terminal junction"
                                 .to_string(),
-                    
                         cause_chain: vec![],}
                         })?;
                 let right_terminal_overlap =
@@ -1512,7 +1511,6 @@ pub fn derive_gibson_execution_plan(
                         message:
                             "Executable Gibson preview did not retain the right terminal junction"
                                 .to_string(),
-                    
                         cause_chain: vec![],}
                         })?;
                 build_defined_site_product_sequence_with_terminal_overlaps(
@@ -1536,7 +1534,6 @@ pub fn derive_gibson_execution_plan(
                     message: format!(
                         "Could not materialize Gibson assembled product with engineered terminal overlap: {message}"
                     ),
-                
                     cause_chain: vec![],})?
             } else {
                 let start =
@@ -1559,7 +1556,6 @@ pub fn derive_gibson_execution_plan(
                         message:
                             "Executable Gibson defined-site preview did not retain end_0based_exclusive"
                                 .to_string(),
-                    
                         cause_chain: vec![],})?;
                 format!(
                     "{}{}{}",
@@ -1682,7 +1678,6 @@ fn build_gibson_assembled_product(
                     message:
                         "Multi-insert Gibson feature transfer currently requires a defined destination opening"
                             .to_string(),
-                
                     cause_chain: vec![],});
             }
             features.extend(clone_shifted_features(destination, 0));

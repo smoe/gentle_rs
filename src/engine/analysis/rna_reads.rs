@@ -3000,7 +3000,6 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA-read transcript catalog index requires at least one --transcript-fasta path".to_string(),
-            
                 cause_chain: vec![],});
         }
         if seed_kmer_len == 0 || seed_kmer_len > 16 {
@@ -4426,7 +4425,6 @@ impl GentleEngine {
                 record_index + 1,
                 report.report_id
             ),
-        
             cause_chain: vec![],})?;
         let (aligned_query, aligned_relation, aligned_target, _insertions, _deletions) =
             Self::format_rna_read_alignment_strings(
@@ -4563,7 +4561,6 @@ impl GentleEngine {
                 "Could not write RNA-read alignment TSV header to '{}': {e}",
                 path
             ),
-        
             cause_chain: vec![],})?;
         for row in &inspection.rows {
             let full_length_class = Self::rna_read_full_length_class_label(
@@ -4622,7 +4619,6 @@ impl GentleEngine {
                     "Could not write RNA-read alignment TSV row to '{}': {e}",
                     path
                 ),
-            
                 cause_chain: vec![],})?;
         }
         writer.flush().map_err(|e| EngineError {
@@ -5287,7 +5283,6 @@ impl GentleEngine {
                 "Could not write RNA-read exon-path export header to '{}': {e}",
                 path
             ),
-        
             cause_chain: vec![],})?;
         let explicit_record_filter = selected_record_indices
             .iter()
@@ -5447,7 +5442,6 @@ impl GentleEngine {
                 "Could not write RNA-read exon-abundance header to '{}': {e}",
                 path
             ),
-        
             cause_chain: vec![],})?;
         let mut exon_counts = BTreeMap::<usize, usize>::new();
         let mut transition_counts = BTreeMap::<(usize, usize), (usize, usize)>::new();
@@ -6834,7 +6828,6 @@ impl GentleEngine {
             .map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not write sample-sheet header to '{}': {e}", path),
-            
                 cause_chain: vec![],})?;
         }
 
@@ -6942,7 +6935,6 @@ impl GentleEngine {
                             "Could not serialize gene-support requested_gene_ids for report '{}': {e}",
                             report.report_id
                         ),
-                    
                         cause_chain: vec![],})?,
                     serde_json::to_string(&summary.matched_gene_ids).map_err(|e| EngineError {
                         code: ErrorCode::Internal,
@@ -6950,7 +6942,6 @@ impl GentleEngine {
                             "Could not serialize gene-support matched_gene_ids for report '{}': {e}",
                             report.report_id
                         ),
-                    
                         cause_chain: vec![],})?,
                     serde_json::to_string(&summary.missing_gene_ids).map_err(|e| EngineError {
                         code: ErrorCode::Internal,
@@ -6958,7 +6949,6 @@ impl GentleEngine {
                             "Could not serialize gene-support missing_gene_ids for report '{}': {e}",
                             report.report_id
                         ),
-                    
                         cause_chain: vec![],})?,
                     summary.complete_rule.as_str().to_string(),
                     summary.aligned_base_count,
@@ -6985,7 +6975,6 @@ impl GentleEngine {
                                 "Could not serialize gene-support exon rows for report '{}': {e}",
                                 report.report_id
                             ),
-                        
                             cause_chain: vec![],}
                     })?,
                     serde_json::to_string(&summary.all_target.exon_pair_support).map_err(
@@ -6995,7 +6984,6 @@ impl GentleEngine {
                                 "Could not serialize gene-support exon-pair rows for report '{}': {e}",
                                 report.report_id
                             ),
-                        
                             cause_chain: vec![],},
                     )?,
                     serde_json::to_string(&summary.all_target.direct_transition_support).map_err(
@@ -7005,7 +6993,6 @@ impl GentleEngine {
                                 "Could not serialize gene-support direct-transition rows for report '{}': {e}",
                                 report.report_id
                             ),
-                        
                             cause_chain: vec![],},
                     )?,
                 )
@@ -7104,7 +7091,6 @@ impl GentleEngine {
                     "Could not write RNA-read sample sheet row to '{}': {e}",
                     path
                 ),
-            
                 cause_chain: vec![],})?;
         }
         writer.flush().map_err(|e| EngineError {
@@ -8484,7 +8470,6 @@ impl GentleEngine {
                             "sample '{}' input_path '{}' does not exist",
                             manifest_row.sample_id, input_path
                         ),
-                    
                         cause_chain: vec![],});
                 }
                 let report_id = match manifest_row.report_id.as_deref() {
@@ -9462,7 +9447,6 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "rna-reads preflight-isoforms --optimize-parameters requires at least one --control-transcript-fasta"
                     .to_string(),
-            
                 cause_chain: vec![],});
         }
         if !(0.0..=1.0).contains(&max_control_match_probability) {
@@ -9703,7 +9687,6 @@ impl GentleEngine {
         .map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write RNA seed-hash catalog header to '{}': {e}", path),
-        
             cause_chain: vec![],})?;
 
         let mut unique_hashes = HashSet::<u32>::new();

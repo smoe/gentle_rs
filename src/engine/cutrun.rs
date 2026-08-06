@@ -1846,7 +1846,6 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "CUT&RUN report_id must contain at least one ASCII letter, digit, '-', '_' or '.'"
                     .to_string(),
-            
                 cause_chain: vec![],});
         }
         Ok(out)
@@ -2196,7 +2195,6 @@ impl GentleEngine {
                     "CUT&RUN dataset '{}' has not been prepared yet; run prepare before dataset-backed interpret",
                     status.dataset_id
                 ),
-            
                 cause_chain: vec![],})?;
             let r1 = manifest
                 .reads_r1
@@ -2225,7 +2223,6 @@ impl GentleEngine {
                                 "Prepared CUT&RUN dataset '{}' is paired-end but does not contain reads_r2",
                                 status.dataset_id
                             ),
-                        
                             cause_chain: vec![],})?,
                 ),
             };
@@ -2348,7 +2345,6 @@ impl GentleEngine {
                     "Could not list chromosome lengths for genome '{}' while preparing CUT&RUN ROI window: {}",
                     genome_id, e
                 ),
-            
                 cause_chain: vec![],})?;
         let normalized = Self::normalize_chromosome_alias(chromosome);
         records
@@ -5019,7 +5015,6 @@ impl GentleEngine {
                 message:
                     "InspectCutRunRegulatorySupport requires at least one dataset or read-report source"
                         .to_string(),
-            
                 cause_chain: vec![],});
         }
 
