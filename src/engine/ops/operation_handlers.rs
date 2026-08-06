@@ -25526,10 +25526,20 @@ impl GentleEngine {
             gates.push(Self::experimental_assay_gate(
                 "critical_qc",
                 policy.require_critical_qc_pass,
-                if summary.oligo_qc.status == "pass" {
-                    ExperimentalAssayGateStatus::Pass
-                } else {
-                    ExperimentalAssayGateStatus::Fail
+                match summary.oligo_qc.status.as_str() {
+                    "pass" => ExperimentalAssayGateStatus::Pass,
+                    // A recorded failure is a negative result and blocks
+                    // whether or not the gate is required.
+                    "fail" => ExperimentalAssayGateStatus::Fail,
+                    // A warning is a caution rather than a negative result. It
+                    // still blocks while this gate is required, which is the
+                    // default, but an explicit policy may waive it. Reporting
+                    // it as a failure made a caution unwaivable and, worse,
+                    // indistinguishable from real QC failure.
+                    "warning" => ExperimentalAssayGateStatus::Incomplete,
+                    // An unknown or absent status means QC was never
+                    // determined; it is not evidence of passing.
+                    _ => ExperimentalAssayGateStatus::NotEvaluated,
                 },
                 format!("Stored primer-pair QC status: {}", summary.oligo_qc.status),
                 vec![summary.assay_id.clone()],

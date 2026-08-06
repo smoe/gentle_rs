@@ -31,6 +31,12 @@ understand what changed.
 
 ## 2026-08-06
 
+- A primer-pair QC status of `warning` is no longer reported as a failed
+  `critical_qc` gate. A failed gate blocks regardless of whether the policy
+  requires it, so treating a caution as a failure made it unwaivable and
+  indistinguishable from real QC failure. `warning` is now `incomplete`: it
+  still blocks under the default policy, and a recorded `fail` still blocks
+  unconditionally.
 - GENtle now chooses between multiple installed Primer3 builds instead of
   taking the first `PATH` match: `--progress` support wins first, then the
   highest version, then the newest file. An explicitly configured path is still
