@@ -2698,7 +2698,7 @@ impl GentleEngine {
         summary
     }
 
-    pub(super) fn collect_run_bundle_export_paths(op: &Operation) -> Vec<String> {
+    pub(crate) fn collect_run_bundle_export_paths(op: &Operation) -> Vec<String> {
         let mut paths: Vec<String> = vec![];
         let mut push = |path: &str| Self::push_unique_token(&mut paths, path);
         match op {
@@ -2728,6 +2728,9 @@ impl GentleEngine {
             | Operation::ExportGuideOligos { path, .. }
             | Operation::ExportGuideProtocolText { path, .. }
             | Operation::ExportPrimerDesignReport { path, .. }
+            | Operation::DesignTranscriptAssayPanel {
+                path: Some(path), ..
+            }
             | Operation::AssessPrimerPairSpecificity {
                 path: Some(path), ..
             }
@@ -8069,13 +8072,57 @@ impl GentleEngine {
                 .then(|| Self::primer3_preflight_display_path(candidate));
         }
         let path_env = std::env::var_os("PATH")?;
+        let candidate_names = Self::primer3_executable_names_for_path_lookup(
+            trimmed,
+            Self::primer3_platform_path_extensions().as_deref(),
+        );
         for dir in std::env::split_paths(&path_env) {
-            let joined = dir.join(trimmed);
-            if joined.exists() {
-                return Some(Self::primer3_preflight_display_path(&joined));
+            for candidate_name in &candidate_names {
+                let joined = dir.join(candidate_name);
+                if joined.is_file() {
+                    return Some(Self::primer3_preflight_display_path(&joined));
+                }
             }
         }
         None
+    }
+
+    fn primer3_platform_path_extensions() -> Option<String> {
+        if !cfg!(windows) {
+            return None;
+        }
+        Some(std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string()))
+    }
+
+    /// Literal executable name plus platform launcher spellings such as
+    /// `primer3_core.exe`. The explicit spelling remains first and names that
+    /// already carry an extension are never rewritten.
+    pub(crate) fn primer3_executable_names_for_path_lookup(
+        name: &str,
+        path_extensions: Option<&str>,
+    ) -> Vec<String> {
+        let mut names = vec![name.to_string()];
+        if Path::new(name).extension().is_some() {
+            return names;
+        }
+        let mut seen = std::collections::BTreeSet::from([name.to_ascii_lowercase()]);
+        for extension in path_extensions
+            .into_iter()
+            .flat_map(|extensions| extensions.split(';'))
+            .map(str::trim)
+            .filter(|extension| !extension.is_empty())
+        {
+            let extension = if extension.starts_with('.') {
+                extension.to_string()
+            } else {
+                format!(".{extension}")
+            };
+            let candidate = format!("{name}{extension}");
+            if seen.insert(candidate.to_ascii_lowercase()) {
+                names.push(candidate);
+            }
+        }
+        names
     }
 
     fn primer3_progress_cache_key(executable: &str) -> String {
@@ -8137,16 +8184,22 @@ impl GentleEngine {
         let Some(path_env) = std::env::var_os("PATH") else {
             return vec![];
         };
+        let candidate_names = Self::primer3_executable_names_for_path_lookup(
+            name,
+            Self::primer3_platform_path_extensions().as_deref(),
+        );
         let mut seen = std::collections::BTreeSet::new();
         let mut candidates = vec![];
         for dir in std::env::split_paths(&path_env) {
-            let joined = dir.join(name);
-            if !joined.is_file() {
-                continue;
-            }
-            let canonical = std::fs::canonicalize(&joined).unwrap_or_else(|_| joined.clone());
-            if seen.insert(canonical.clone()) {
-                candidates.push(canonical);
+            for candidate_name in &candidate_names {
+                let joined = dir.join(candidate_name);
+                if !joined.is_file() {
+                    continue;
+                }
+                let canonical = std::fs::canonicalize(&joined).unwrap_or_else(|_| joined.clone());
+                if seen.insert(canonical.clone()) {
+                    candidates.push(canonical);
+                }
             }
         }
         candidates
@@ -8758,6 +8811,7 @@ impl GentleEngine {
                 }
             }
             if progress_enabled
+                && last_progress.is_some()
                 && last_progress_at.elapsed() >= PRIMER3_PROGRESS_SIGNAL_AFTER
                 && last_signal_at.elapsed() >= PRIMER3_PROGRESS_SIGNAL_AFTER
             {

@@ -1121,6 +1121,13 @@ ClawBio/OpenClaw compatibility direction:
   (`commands.sh`, `environment.yml`, checksums).
 - Keep command contracts explicit in request payloads so orchestration layers
   can route high-level asks while execution remains replayable.
+- The wrapper is also the process-supervision boundary. Status-only `SIGUSR1`
+  targets the exact active GENtle child, never its process group; GENtle owns
+  any downstream Primer3 status request. `SIGINT`/`SIGTERM` terminate the
+  child-owned execution group with bounded escalation, and timeout or
+  interruption remains a failed wrapper outcome even when the child exits
+  zero. Signal events belong to orchestration provenance, not scientific
+  claims.
 
 Current work satisfies (1) through (4) for most operations; remaining gaps are
 mainly view-model formalization and promoting remaining adapter-level utility

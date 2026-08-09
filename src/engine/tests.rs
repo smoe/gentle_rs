@@ -27,7 +27,6 @@ use crate::ensembl_protein::{
 };
 use crate::genomes::{BlastHit, BlastSubjectAnnotation, BlastSubjectAnnotationSource};
 use crate::lineage_export::{LineageSvgNodeKind, build_lineage_svg_graph, export_lineage_svg};
-use crate::require_real_primer3;
 use bio::io::fasta;
 use flate2::{Compression, write::GzEncoder};
 use std::cmp::Ordering;
@@ -3996,6 +3995,36 @@ exit 9
         .permissions();
     perms.set_mode(0o755);
     std::fs::set_permissions(&script_path, perms).expect("chmod signal-driven fake primer3");
+    script_path.display().to_string()
+}
+
+#[cfg(unix)]
+fn install_fake_delayed_progress_primer3(path: &Path) -> String {
+    let script_path = path.join("fake_delayed_progress_primer3.sh");
+    let script = r#"#!/bin/sh
+if [ "$1" = "--help" ]; then
+  echo "USAGE: primer3_core [--progress] [input_file]"
+  exit 0
+fi
+if [ "$1" != "--progress" ]; then
+  exit 2
+fi
+cat >/dev/null
+# Deliberately install no USR1 handler and emit no progress row. A supervisor
+# must not infer runtime signal readiness from help text alone.
+sleep 1
+echo "PRIMER_PAIR_NUM_RETURNED=0"
+echo "PRIMER_LEFT_NUM_RETURNED=0"
+echo "PRIMER_RIGHT_NUM_RETURNED=0"
+echo "PRIMER_PAIR_EXPLAIN=considered 0, no acceptable primer pairs"
+echo "="
+"#;
+    std::fs::write(&script_path, script).expect("write delayed-progress fake primer3");
+    let mut perms = std::fs::metadata(&script_path)
+        .expect("metadata delayed-progress fake primer3")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script_path, perms).expect("chmod delayed-progress fake primer3");
     script_path.display().to_string()
 }
 
@@ -15263,6 +15292,28 @@ fn transcript_endpoint_search_budget_refuses_before_primer3_without_weakening_co
 }
 
 #[test]
+fn transcript_assay_panel_path_is_classified_as_external_output() {
+    let mut operation = transcript_endpoint_structural_failure_operation(
+        TranscriptAssayCoveragePolicy::RequireAll,
+        PrimerDesignSideConstraint::default(),
+    );
+    let Operation::DesignTranscriptAssayPanel { path, .. } = &mut operation else {
+        panic!("endpoint fixture must produce transcript-assay operation");
+    };
+    *path = Some("panel/report.json".to_string());
+    assert_eq!(
+        GentleEngine::collect_run_bundle_export_paths(&operation),
+        vec!["panel/report.json".to_string()]
+    );
+
+    let Operation::DesignTranscriptAssayPanel { path, .. } = &mut operation else {
+        unreachable!();
+    };
+    *path = None;
+    assert!(GentleEngine::collect_run_bundle_export_paths(&operation).is_empty());
+}
+
+#[test]
 fn transcript_assay_search_estimate_rejects_local_repeat_candidates_deterministically() {
     let template = b"ACGTACGTACGTACGTACGTACGTACGTACGT";
     let side = PrimerDesignSideConstraint {
@@ -15347,7 +15398,6 @@ fn primer3_runtime_policy_warns_then_reduces_without_changing_work_counters() {
 #[cfg(unix)]
 #[test]
 fn primer3_runtime_reduction_stops_child_and_preserves_output_receipt() {
-    require_real_primer3!();
     let temp = tempdir().expect("temporary Primer3 runtime-reduction fixture");
     let primer3 = install_fake_long_running_progress_primer3(temp.path());
     let template = "ATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCGATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCG";
@@ -15887,7 +15937,6 @@ fn transcript_assay_sybr_evaluates_patz1_clariom_juc_without_probe() {
 #[cfg(unix)]
 #[test]
 fn transcript_assay_primer3_emits_native_junction_overlap_tags() {
-    require_real_primer3!();
     let mut engine = transcript_qpcr_panel_test_engine();
     let tmp = tempdir().expect("tempdir");
     let (fake_primer3, _capture_path) = install_fake_primer3_zero_pairs(tmp.path());
@@ -16640,7 +16689,6 @@ fn test_parse_primer3_progress_line_accepts_bounded_counter_contract() {
 #[cfg(unix)]
 #[test]
 fn test_design_primer_pairs_primer3_zero_pairs_persists_request_and_explain() {
-    require_real_primer3!();
     let mut state = ProjectState::default();
     state.sequences.insert(
         "tpl".to_string(),
@@ -16738,7 +16786,6 @@ fn test_design_primer_pairs_primer3_zero_pairs_persists_request_and_explain() {
 #[cfg(unix)]
 #[test]
 fn test_design_primer_pairs_primer3_runs_legacy_binary_without_progress_flag() {
-    require_real_primer3!();
     let mut state = ProjectState::default();
     state.sequences.insert(
         "tpl".to_string(),
@@ -16782,7 +16829,6 @@ fn test_design_primer_pairs_primer3_runs_legacy_binary_without_progress_flag() {
 #[cfg(unix)]
 #[test]
 fn test_design_primer_pairs_primer3_retries_when_help_and_runtime_disagree() {
-    require_real_primer3!();
     let mut state = ProjectState::default();
     state.sequences.insert(
         "tpl".to_string(),
@@ -16822,7 +16868,6 @@ fn test_design_primer_pairs_primer3_retries_when_help_and_runtime_disagree() {
 #[cfg(unix)]
 #[test]
 fn test_design_primer_pairs_requests_sigusr1_when_primer3_progress_stalls() {
-    require_real_primer3!();
     let mut state = ProjectState::default();
     state.sequences.insert(
         "tpl".to_string(),
@@ -16867,8 +16912,44 @@ fn test_design_primer_pairs_requests_sigusr1_when_primer3_progress_stalls() {
 
 #[cfg(unix)]
 #[test]
+fn test_design_primer_pairs_does_not_signal_before_first_progress_row() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "tpl".to_string(),
+        seq("ATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCGATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCG"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
+    let tmp = tempdir().expect("tempdir");
+    engine.state_mut().parameters.primer3_executable =
+        install_fake_delayed_progress_primer3(tmp.path());
+
+    engine
+        .apply(Operation::DesignPrimerPairs {
+            template: "tpl".to_string(),
+            roi_start_0based: 10,
+            roi_end_0based: 30,
+            forward: PrimerDesignSideConstraint::default(),
+            reverse: PrimerDesignSideConstraint::default(),
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: 20,
+            max_amplicon_bp: 80,
+            max_tm_delta_c: Some(10.0),
+            max_pairs: Some(10),
+            report_id: Some("delayed_progress_primer3".to_string()),
+        })
+        .expect("help-advertised progress must not authorize SIGUSR1 before a progress row");
+
+    assert!(
+        engine
+            .get_primer_design_report("delayed_progress_primer3")
+            .is_ok()
+    );
+}
+
+#[cfg(unix)]
+#[test]
 fn test_auto_primer3_progress_cancellation_does_not_fall_back_or_commit() {
-    require_real_primer3!();
     let mut state = ProjectState::default();
     state.sequences.insert(
         "tpl".to_string(),
@@ -16922,7 +17003,6 @@ fn test_auto_primer3_progress_cancellation_does_not_fall_back_or_commit() {
 #[cfg(unix)]
 #[test]
 fn test_primer3_preflight_report_success() {
-    require_real_primer3!();
     let mut engine = GentleEngine::new();
     engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
     let tmp = tempdir().expect("tempdir");
@@ -16963,7 +17043,6 @@ fn test_primer3_preflight_report_success() {
 #[cfg(unix)]
 #[test]
 fn test_primer3_preflight_prefers_native_about_probe() {
-    require_real_primer3!();
     let mut engine = GentleEngine::new();
     engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
     let tmp = tempdir().expect("tempdir");
@@ -16981,7 +17060,6 @@ fn test_primer3_preflight_prefers_native_about_probe() {
 #[cfg(unix)]
 #[test]
 fn test_primer3_preflight_preserves_diagnostics_when_both_probes_fail() {
-    require_real_primer3!();
     let mut engine = GentleEngine::new();
     engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
     let tmp = tempdir().expect("tempdir");
@@ -58424,7 +58502,6 @@ exit 2
 #[test]
 #[cfg(unix)]
 fn primer3_selection_prefers_progress_capable_build_over_newer_version() {
-    require_real_primer3!();
     let temp = tempdir().expect("tempdir");
     // The legacy build is both newer and higher-versioned; --progress still wins
     // because GENtle's bounded reporting and SIGUSR1 status depend on it.
@@ -58439,9 +58516,31 @@ fn primer3_selection_prefers_progress_capable_build_over_newer_version() {
 }
 
 #[test]
+fn primer3_path_lookup_adds_windows_pathext_spellings_without_duplicates() {
+    assert_eq!(
+        GentleEngine::primer3_executable_names_for_path_lookup(
+            "primer3_core",
+            Some(".EXE;CMD;.exe;.BAT"),
+        ),
+        vec![
+            "primer3_core".to_string(),
+            "primer3_core.EXE".to_string(),
+            "primer3_core.CMD".to_string(),
+            "primer3_core.BAT".to_string(),
+        ]
+    );
+    assert_eq!(
+        GentleEngine::primer3_executable_names_for_path_lookup(
+            "primer3_core.exe",
+            Some(".EXE;.CMD"),
+        ),
+        vec!["primer3_core.exe".to_string()]
+    );
+}
+
+#[test]
 #[cfg(unix)]
 fn primer3_selection_prefers_highest_version_among_progress_capable_builds() {
-    require_real_primer3!();
     let temp = tempdir().expect("tempdir");
     let older = install_primer3_candidate(temp.path(), "older", true, "2.6.1");
     let newer = install_primer3_candidate(temp.path(), "newer", true, "2.10.0");
@@ -58456,7 +58555,6 @@ fn primer3_selection_prefers_highest_version_among_progress_capable_builds() {
 #[test]
 #[cfg(unix)]
 fn primer3_selection_prefers_latest_creation_time_when_versions_match() {
-    require_real_primer3!();
     let temp = tempdir().expect("tempdir");
     let first = install_primer3_candidate(temp.path(), "first", true, "2.6.1");
     std::thread::sleep(std::time::Duration::from_millis(20));
@@ -58474,7 +58572,6 @@ fn primer3_selection_prefers_latest_creation_time_when_versions_match() {
 #[test]
 #[cfg(unix)]
 fn primer3_configured_path_is_used_without_candidate_selection() {
-    require_real_primer3!();
     let temp = tempdir().expect("tempdir");
     let pinned = install_primer3_candidate(temp.path(), "pinned", false, "1.0.0");
     let pinned = pinned.display().to_string();

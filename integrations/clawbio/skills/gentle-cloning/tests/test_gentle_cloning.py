@@ -100,12 +100,69 @@ def test_run_cli_command_timeout_preserves_partial_output_receipt(tmp_path: Path
 
     result, step = module._run_cli_command(resolution, [], tmp_path, 1.0)
 
-    assert result.returncode is not None
+    assert result.returncode == 124
     assert step["status"] == "timed_out"
+    assert step["timed_out"] is True
+    assert step["child_exit_code"] is not None
     assert step["stdout_bytes"] == len(b"before-timeout")
     assert step["stderr_bytes"] == len(b"timeout-diagnostic")
     assert step["stdout_sha256"] == module._sha256_prefixed_bytes(b"before-timeout")
     assert step["stderr_sha256"] == module._sha256_prefixed_bytes(b"timeout-diagnostic")
+
+
+def test_run_cli_command_timeout_stays_failed_when_child_exits_zero(
+    tmp_path: Path,
+) -> None:
+    module = _skill_module()
+    child = tmp_path / "child_graceful_timeout.py"
+    child.write_text(
+        "import os, signal, sys, time\n"
+        "def stop(_signum, _frame):\n"
+        "    os.write(1, b'graceful-timeout-exit')\n"
+        "    raise SystemExit(0)\n"
+        "signal.signal(signal.SIGTERM, stop)\n"
+        "os.write(2, b'ready-for-timeout')\n"
+        "time.sleep(60)\n",
+        encoding="utf-8",
+    )
+    resolution = module.CliResolution(
+        argv_prefix=[sys.executable, str(child)],
+        cwd=None,
+        label="synthetic graceful timeout child",
+    )
+
+    result, step = module._run_cli_command(resolution, [], tmp_path, 0.5)
+
+    assert result.returncode == 124
+    assert step["child_exit_code"] == 0
+    assert step["status"] == "timed_out"
+    assert step["timed_out"] is True
+    assert result.stdout == "graceful-timeout-exit"
+    assert result.stderr == "ready-for-timeout"
+    assert any(
+        record["source"] == "timeout"
+        and record["purpose"] == "shutdown"
+        and record["forwarded"]
+        for record in step["forwarded_signals"]
+    )
+
+
+@pytest.mark.skipif(
+    os.name != "posix" or not hasattr(signal, "SIGUSR1"),
+    reason="POSIX signal contract",
+)
+def test_sigusr1_without_active_child_is_harmless(capfd: pytest.CaptureFixture[str]) -> None:
+    module = _skill_module()
+    assert module._ensure_idle_sigusr1_handler() is True
+    before = len(module._idle_sigusr1_events())
+
+    os.kill(os.getpid(), signal.SIGUSR1)
+
+    events = module._idle_sigusr1_events()
+    assert len(events) == before + 1
+    assert events[-1]["disposition"] == "no_active_child"
+    assert events[-1]["forwarded"] is False
+    assert "status request ignored" in capfd.readouterr().err
 
 
 @pytest.mark.skipif(os.name != "posix" or not hasattr(signal, "SIGUSR1"), reason="POSIX signal contract")
@@ -153,6 +210,257 @@ def test_run_cli_command_forwards_sigusr1_without_terminating_wrapper(tmp_path: 
         record["signal_name"] == "SIGUSR1" and record["forwarded"]
         for record in step["forwarded_signals"]
     )
+
+
+@pytest.mark.skipif(
+    os.name != "posix" or not hasattr(signal, "SIGUSR1"),
+    reason="POSIX signal contract",
+)
+def test_run_cli_command_forwards_repeated_sigusr1_and_preserves_output(
+    tmp_path: Path,
+) -> None:
+    module = _skill_module()
+    ready = tmp_path / "repeated.ready"
+    child = tmp_path / "repeated_signal_child.py"
+    child.write_text(
+        "import os, pathlib, signal, time\n"
+        "seen = 0\n"
+        "def handle(_signum, _frame):\n"
+        "    global seen\n"
+        "    seen += 1\n"
+        "    os.write(1, f'status-{seen}\\n'.encode())\n"
+        "signal.signal(signal.SIGUSR1, handle)\n"
+        f"pathlib.Path({str(ready)!r}).write_text('ready', encoding='utf-8')\n"
+        "deadline = time.monotonic() + 5\n"
+        "while seen < 3 and time.monotonic() < deadline:\n"
+        "    time.sleep(0.01)\n"
+        "os.write(2, b'complete-stderr')\n"
+        "raise SystemExit(0 if seen == 3 else 9)\n",
+        encoding="utf-8",
+    )
+    resolution = module.CliResolution(
+        argv_prefix=[sys.executable, str(child)],
+        cwd=None,
+        label="synthetic repeated signal child",
+    )
+
+    def signal_wrapper() -> None:
+        deadline = time.monotonic() + 3
+        while not ready.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        for _ in range(3):
+            os.kill(os.getpid(), signal.SIGUSR1)
+            time.sleep(0.1)
+
+    sender = threading.Thread(target=signal_wrapper, daemon=True)
+    sender.start()
+    result, step = module._run_cli_command(resolution, [], tmp_path, 6)
+    sender.join(timeout=1)
+
+    assert result.returncode == 0
+    assert result.stdout == "status-1\nstatus-2\nstatus-3\n"
+    assert result.stderr == "complete-stderr"
+    status_events = [
+        event
+        for event in step["forwarded_signals"]
+        if event["signal_name"] == "SIGUSR1"
+    ]
+    assert len(status_events) == 3
+    assert all(event["forwarded"] for event in status_events)
+    assert [event["sequence"] for event in status_events] == [1, 2, 3]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX signal contract")
+@pytest.mark.parametrize("signal_name", ["SIGTERM", "SIGINT"])
+def test_run_cli_command_interrupts_fail_closed_and_retains_child_exit(
+    tmp_path: Path,
+    signal_name: str,
+) -> None:
+    module = _skill_module()
+    signum = getattr(signal, signal_name)
+    ready = tmp_path / f"{signal_name}.ready"
+    child = tmp_path / f"{signal_name}_child.py"
+    child.write_text(
+        "import os, pathlib, signal, time\n"
+        "def stop(signum, _frame):\n"
+        "    os.write(1, f'interrupted-{signum}'.encode())\n"
+        "    os.write(2, b'graceful-shutdown')\n"
+        "    raise SystemExit(0)\n"
+        f"signal.signal({signum}, stop)\n"
+        f"pathlib.Path({str(ready)!r}).write_text('ready', encoding='utf-8')\n"
+        "time.sleep(60)\n",
+        encoding="utf-8",
+    )
+    resolution = module.CliResolution(
+        argv_prefix=[sys.executable, str(child)],
+        cwd=None,
+        label=f"synthetic {signal_name} child",
+    )
+
+    def signal_wrapper() -> None:
+        deadline = time.monotonic() + 3
+        while not ready.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        os.kill(os.getpid(), signum)
+
+    sender = threading.Thread(target=signal_wrapper, daemon=True)
+    sender.start()
+    result, step = module._run_cli_command(resolution, [], tmp_path, 5)
+    sender.join(timeout=1)
+
+    assert result.returncode == 128 + signum
+    assert step["child_exit_code"] == 0
+    assert step["status"] == "interrupted"
+    assert step["initiating_signal"]["signal_name"] == signal_name
+    assert result.stdout == f"interrupted-{signum}"
+    assert result.stderr == "graceful-shutdown"
+
+
+@pytest.mark.skipif(
+    os.name != "posix" or not hasattr(signal, "SIGUSR1"),
+    reason="POSIX signal contract",
+)
+def test_supervisor_does_not_signal_a_child_that_already_exited(tmp_path: Path) -> None:
+    module = _skill_module()
+    process = subprocess.Popen(
+        [sys.executable, "-c", "raise SystemExit(0)"],
+        cwd=tmp_path,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=False,
+        start_new_session=True,
+    )
+    process.communicate(timeout=5)
+    supervisor = module._CliProcessSupervisor(process)
+
+    supervisor.enqueue_wrapper_signal(signal.SIGUSR1)
+    supervisor.drain_pending_signals()
+
+    assert supervisor.signal_events == [
+        {
+            "sequence": 1,
+            "signal": signal.SIGUSR1,
+            "signal_name": "SIGUSR1",
+            "source": "wrapper_signal",
+            "purpose": "status",
+            "target": "direct_child",
+            "forwarded": False,
+            "disposition": "child_exited",
+            "error": None,
+        }
+    ]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX process-group contract")
+def test_run_cli_command_timeout_cleans_up_signal_ignoring_descendant(
+    tmp_path: Path,
+) -> None:
+    module = _skill_module()
+    module._CLI_TERMINATION_GRACE_SECONDS = 0.1
+    child = tmp_path / "ignore_shutdown.py"
+    child.write_text(
+        "import os, signal, subprocess, sys, time\n"
+        "descendant = \"import os, signal, time; "
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+        "os.write(1, b'descendant-ready'); time.sleep(60)\"\n"
+        "subprocess.Popen([sys.executable, '-c', descendant])\n"
+        "def stop(_signum, _frame):\n"
+        "    os.write(2, b'parent-exited-zero')\n"
+        "    raise SystemExit(0)\n"
+        "signal.signal(signal.SIGTERM, stop)\n"
+        "os.write(1, b'parent-ready')\n"
+        "time.sleep(60)\n",
+        encoding="utf-8",
+    )
+    resolution = module.CliResolution(
+        argv_prefix=[sys.executable, str(child)],
+        cwd=None,
+        label="synthetic forced shutdown child",
+    )
+
+    result, step = module._run_cli_command(resolution, [], tmp_path, 0.5)
+
+    assert result.returncode == 124
+    assert step["child_exit_code"] == 0
+    assert "parent-ready" in result.stdout
+    assert "descendant-ready" in result.stdout
+    assert result.stderr == "parent-exited-zero"
+    assert step["status"] == "timed_out"
+    assert step["forced_termination"] is True
+    forced = [
+        event
+        for event in step["forwarded_signals"]
+        if event["purpose"] == "forced_shutdown"
+    ]
+    assert len(forced) == 1
+    assert forced[0]["target"] == "child_process_group"
+    assert forced[0]["forwarded"] is True
+
+
+def test_wrapper_timeout_manifest_is_failed_even_when_child_returns_json_and_zero(
+    tmp_path: Path,
+) -> None:
+    fake_cli = tmp_path / "fake_timeout_cli.py"
+    fake_cli.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, signal, sys, time\n"
+        "if sys.argv[1:] == ['--version']:\n"
+        "    print('gentle_cli timeout-test')\n"
+        "    raise SystemExit(0)\n"
+        "def stop(_signum, _frame):\n"
+        "    print(json.dumps({'schema': 'gentle.partial.v1', "
+        "'summary_lines': ['must not become a scientific claim']}))\n"
+        "    raise SystemExit(0)\n"
+        "signal.signal(signal.SIGTERM, stop)\n"
+        "time.sleep(60)\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "capabilities",
+                "timeout_secs": 1,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "output"
+
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+
+    assert run.returncode == 1
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["status"] == "timed_out"
+    assert result["exit_code"] == 124
+    assert result["stdout_json"] is None
+    assert result["execution_manifest"]["execution_outcome"] == "failed"
+    main_step = result["execution_manifest"]["execution_steps"][-1]
+    assert main_step["stage"] == "main_command"
+    assert main_step["status"] == "timed_out"
+    assert main_step["exit_code"] == 124
+    assert main_step["child_exit_code"] == 0
+    assert result["execution_manifest"]["native_result"]["schema"] is None
+    assert result["claim_ledger"] is None
 
 
 # These examples are intentionally not direct top-level intent routes. They are
@@ -1380,6 +1688,13 @@ def test_delegated_run_binds_route_runtime_state_and_native_verdict(
         "runtime_preflight",
         "main_command",
     ]
+    main_step = manifest["execution_steps"][1]
+    assert main_step["exit_code"] == 0
+    assert main_step["child_exit_code"] == 0
+    assert main_step["timed_out"] is False
+    assert main_step["initiating_signal"] is None
+    assert main_step["forced_termination"] is False
+    assert main_step["forwarded_signals"] == []
     assert {
         (binding["field"], binding["value"])
         for binding in manifest["native_result"]["reported_status_bindings"]
@@ -5552,6 +5867,11 @@ def test_failed_command_reports_command_exit_code_and_stderr_preview(tmp_path: P
         ),
         "execution_cwd": str(tmp_path.resolve()),
         "exit_code": 17,
+        "child_exit_code": 17,
+        "execution_status": "command_failed",
+        "initiating_signal": None,
+        "timed_out": False,
+        "forced_termination": False,
         "stderr_preview": "catalog file missing",
         "stdout_preview": None,
     }

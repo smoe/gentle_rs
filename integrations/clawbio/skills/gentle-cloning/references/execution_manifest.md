@@ -21,8 +21,11 @@ ledger, or scientific interpretation.
 - The resolved runtime command, content hashes for local launcher/image/binary
   files that appear in the resolved command, and the GENtle version returned by
   the mandatory preflight for delegated runs.
-- Every executed command step, with timing, exit state, and stdout/stderr
-  hashes.
+- Every executed command step, with timing, the fail-closed wrapper exit code,
+  actual child exit code, timeout/interruption state, forwarded-signal and
+  forced-termination provenance, and stdout/stderr hashes. A timeout or
+  wrapper-directed interruption is never `completed`, even if the child traps
+  the shutdown signal and exits zero.
 - The native GENtle JSON payload hash, native report/run/operation identifiers,
   and native status fields without reinterpreting them.
 - Collected, scientific, report, replay, environment, and claim-ledger

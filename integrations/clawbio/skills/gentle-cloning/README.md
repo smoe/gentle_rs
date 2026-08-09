@@ -607,13 +607,24 @@ Alternative runtimes:
 - `--gentle-cli "<command>"`
 - repository-local `cargo run --quiet --bin gentle_cli --`
 
-The Python adapter supervises each delegated CLI invocation as its own process
-group. On supported POSIX systems it forwards `SIGINT`, `SIGTERM`, `SIGHUP`,
-and status-only `SIGUSR1` to the active GENtle/Primer3 descendants without
-letting `SIGUSR1` terminate the wrapper. Timeout and child-failure receipts
-retain the child exit code plus the exact stdout/stderr byte counts and
-SHA-256 hashes. Windows uses a new process group and forwards the signals the
-platform exposes; it does not claim POSIX-only `SIGUSR1` support.
+The Python adapter supervises each delegated CLI invocation as a child-owned
+execution group. On supported POSIX systems, status-only `SIGUSR1` is forwarded
+once to the exact active GENtle child PID; GENtle remains responsible for any
+subsequent Primer3 status request. `SIGUSR1` never targets the whole process
+group, and a request received while no child is active is a harmless
+orchestration-level no-op. `SIGINT` and `SIGTERM` request graceful shutdown of
+the child execution group and escalate after a bounded grace period. The
+wrapper deliberately does not appropriate `SIGHUP`, `SIGUSR2`, or unrelated
+signals.
+
+Timeout and interruption receipts fail closed even when a child handles the
+shutdown signal and exits with status zero. They retain both the wrapper's
+effective non-zero exit code and the child's actual exit code, signal
+provenance, escalation outcome, complete captured stdout/stderr, byte counts,
+and SHA-256 hashes. Signal records are orchestration provenance only and never
+become `[gentle]` scientific claims. Windows retains child-process supervision
+and bounded termination using the signals available on that platform; it does
+not claim POSIX-only `SIGUSR1` support or POSIX process-tree semantics.
 
 ## Request schema
 
@@ -648,6 +659,9 @@ See
 For this gated path, the included local Cargo launcher is converted to the
 already-built, hash-bound `gentle_cli` executable before approval; OCI
 execution requires a digest-addressed image rather than a mutable tag.
+Because the wrapper itself is content-bound, updating its supervision logic
+also invalidates proposals approved against the previous wrapper hash; create
+and review a fresh proposal rather than attempting to reuse the old approval.
 
 The caller/OpenClaw control plane owns approver identity and authorization.
 The GENtle wrapper verifies the digest and execution bindings; it cannot prove

@@ -576,6 +576,15 @@ to an in-memory boundary snapshot taken when that gene started, so a gene is
 never committed half-applied, and the remaining precomputed genes still run. A
 batch in which no gene completed commits nothing.
 
+This rollback guarantee is limited to engine state. Therefore `continue`
+refuses the complete batch before its first operation if any approved operation
+declares an external output path; a file already written cannot be made atomic
+by restoring an in-memory engine snapshot. Callers must omit per-operation
+paths or retain the default batch-level `abort` policy. The boundary snapshot
+also includes the reported checkpoint pointer, so a failed gene cannot leave
+`last_checkpoint_manifest` naming a partial-gene checkpoint that was rolled
+back.
+
 The flag governs execution failures only. Approval and verification failures
 still refuse the whole batch under either policy, because they say the request
 was not the approved one rather than that a result was not obtained. The

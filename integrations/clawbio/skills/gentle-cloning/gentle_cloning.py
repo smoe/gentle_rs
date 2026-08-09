@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+from collections import deque
 import dataclasses
 import datetime as dt
 import hashlib
@@ -21,6 +22,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 from typing import Any
 import xml.etree.ElementTree as ET
 
@@ -2622,6 +2624,21 @@ def _build_failure_summary(
         "command_text": _format_command_text(command),
         "execution_cwd": (str(execution_cwd) if execution_cwd is not None else None),
         "exit_code": (step.get("exit_code") if isinstance(step, dict) else None),
+        "child_exit_code": (
+            step.get("child_exit_code") if isinstance(step, dict) else None
+        ),
+        "execution_status": (
+            step.get("status") if isinstance(step, dict) else None
+        ),
+        "initiating_signal": (
+            step.get("initiating_signal") if isinstance(step, dict) else None
+        ),
+        "timed_out": (
+            bool(step.get("timed_out")) if isinstance(step, dict) else False
+        ),
+        "forced_termination": (
+            bool(step.get("forced_termination")) if isinstance(step, dict) else False
+        ),
         "stderr_preview": (
             _preview_text(step.get("stderr", "")) if isinstance(step, dict) else None
         ),
@@ -2653,6 +2670,14 @@ def _build_failure_message(
     exit_code = failure_summary.get("exit_code")
     if exit_code is not None:
         parts.append(f"Exit code: `{exit_code}`.")
+    child_exit_code = failure_summary.get("child_exit_code")
+    if child_exit_code is not None and child_exit_code != exit_code:
+        parts.append(f"Child exit code: `{child_exit_code}`.")
+    initiating_signal = failure_summary.get("initiating_signal")
+    if isinstance(initiating_signal, dict) and initiating_signal.get("signal_name"):
+        parts.append(
+            f"Initiating signal: `{initiating_signal['signal_name']}`."
+        )
     stderr_preview = failure_summary.get("stderr_preview")
     stdout_preview = failure_summary.get("stdout_preview")
     if isinstance(stderr_preview, str) and stderr_preview:
@@ -3640,14 +3665,309 @@ def _build_reference_prepare_args(reference: EnsureReferencePrepared) -> list[st
     return args
 
 
+_CLI_SIGNAL_POLL_SECONDS = 0.05
+_CLI_TERMINATION_GRACE_SECONDS = 5.0
+_ACTIVE_CLI_SUPERVISOR: Any | None = None
+_IDLE_SIGUSR1_EVENTS: deque[dict[str, Any]] = deque()
+
+
+def _signal_name(signum: int) -> str:
+    try:
+        return signal.Signals(signum).name
+    except ValueError:
+        return f"SIGNAL_{signum}"
+
+
+def _record_idle_sigusr1(signum: int) -> None:
+    record = {
+        "sequence": len(_IDLE_SIGUSR1_EVENTS) + 1,
+        "signal": signum,
+        "signal_name": _signal_name(signum),
+        "source": "wrapper_signal",
+        "purpose": "status",
+        "target": "none",
+        "forwarded": False,
+        "disposition": "no_active_child",
+        "error": None,
+    }
+    _IDLE_SIGUSR1_EVENTS.append(record)
+    try:
+        os.write(
+            2,
+            (
+                "[clawbio-wrapper] SIGUSR1 received with no active GENtle child; "
+                "status request ignored\n"
+            ).encode("utf-8"),
+        )
+    except OSError:
+        pass
+
+
+def _wrapper_signal_handler(signum: int, _frame: Any) -> None:
+    supervisor = _ACTIVE_CLI_SUPERVISOR
+    if supervisor is None:
+        if signum == getattr(signal, "SIGUSR1", None):
+            _record_idle_sigusr1(signum)
+        return
+    supervisor.enqueue_wrapper_signal(signum)
+
+
+def _ensure_idle_sigusr1_handler() -> bool:
+    if (
+        os.name != "posix"
+        or not hasattr(signal, "SIGUSR1")
+        or threading.current_thread() is not threading.main_thread()
+    ):
+        return False
+    signum = signal.SIGUSR1
+    if signal.getsignal(signum) is not _wrapper_signal_handler:
+        signal.signal(signum, _wrapper_signal_handler)
+    return True
+
+
+def _idle_sigusr1_events() -> list[dict[str, Any]]:
+    """Return orchestration-only status requests received without a child."""
+
+    return list(_IDLE_SIGUSR1_EVENTS)
+
+
+class _CliProcessSupervisor:
+    def __init__(self, process: subprocess.Popen[bytes]) -> None:
+        self.process = process
+        self.pending_signals: deque[int] = deque()
+        self.signal_events: list[dict[str, Any]] = []
+        self.initiating_signal: int | None = None
+        self.timed_out = False
+        self.shutdown_deadline: float | None = None
+        self.forced_termination = False
+        self.process_group_id: int | None = None
+        if os.name == "posix":
+            try:
+                process_group_id = os.getpgid(process.pid)
+            except ProcessLookupError:
+                process_group_id = None
+            if process_group_id == process.pid and process_group_id != os.getpgrp():
+                self.process_group_id = process_group_id
+
+    def enqueue_wrapper_signal(self, signum: int) -> None:
+        self.pending_signals.append(signum)
+
+    def _record_signal_event(
+        self,
+        *,
+        signum: int,
+        source: str,
+        purpose: str,
+        target: str,
+        forwarded: bool,
+        disposition: str,
+        error: str | None = None,
+    ) -> None:
+        self.signal_events.append(
+            {
+                "sequence": len(self.signal_events) + 1,
+                "signal": signum,
+                "signal_name": _signal_name(signum),
+                "source": source,
+                "purpose": purpose,
+                "target": target,
+                "forwarded": forwarded,
+                "disposition": disposition,
+                "error": error,
+            }
+        )
+
+    def _forward_status_signal(self, signum: int) -> None:
+        if self.process.poll() is not None:
+            self._record_signal_event(
+                signum=signum,
+                source="wrapper_signal",
+                purpose="status",
+                target="direct_child",
+                forwarded=False,
+                disposition="child_exited",
+            )
+            return
+        try:
+            # Popen.send_signal protects the direct-child identity against the
+            # common poll/kill PID-reuse race. Status requests intentionally do
+            # not target the child process group.
+            self.process.send_signal(signum)
+        except (OSError, ProcessLookupError, ValueError) as error:
+            self._record_signal_event(
+                signum=signum,
+                source="wrapper_signal",
+                purpose="status",
+                target="direct_child",
+                forwarded=False,
+                disposition="forward_failed",
+                error=str(error),
+            )
+            return
+        self._record_signal_event(
+            signum=signum,
+            source="wrapper_signal",
+            purpose="status",
+            target="direct_child",
+            forwarded=True,
+            disposition="forwarded",
+        )
+
+    def _forward_shutdown_signal(self, signum: int, source: str) -> None:
+        if self.process.poll() is not None and self.process_group_id is None:
+            self._record_signal_event(
+                signum=signum,
+                source=source,
+                purpose="shutdown",
+                target="child_process_group",
+                forwarded=False,
+                disposition="child_exited",
+            )
+            return
+        target = "direct_child"
+        try:
+            if os.name == "posix" and self.process_group_id is not None:
+                child_group = self.process_group_id
+                target = "child_process_group"
+                os.killpg(child_group, signum)
+            elif signum == getattr(signal, "SIGINT", None) and hasattr(
+                signal, "CTRL_BREAK_EVENT"
+            ):
+                target = "child_process_group"
+                self.process.send_signal(signal.CTRL_BREAK_EVENT)
+            else:
+                self.process.terminate()
+        except (OSError, ProcessLookupError, RuntimeError, ValueError) as error:
+            self._record_signal_event(
+                signum=signum,
+                source=source,
+                purpose="shutdown",
+                target=target,
+                forwarded=False,
+                disposition="forward_failed",
+                error=str(error),
+            )
+            return
+        self._record_signal_event(
+            signum=signum,
+            source=source,
+            purpose="shutdown",
+            target=target,
+            forwarded=True,
+            disposition="forwarded",
+        )
+
+    def request_shutdown(self, signum: int, source: str) -> None:
+        if (
+            source == "wrapper_signal"
+            and self.initiating_signal is None
+            and not self.timed_out
+            and self.shutdown_deadline is None
+        ):
+            self.initiating_signal = signum
+        if self.shutdown_deadline is not None:
+            self._record_signal_event(
+                signum=signum,
+                source=source,
+                purpose="shutdown",
+                target="child_process_group",
+                forwarded=False,
+                disposition="shutdown_already_requested",
+            )
+            return
+        self._forward_shutdown_signal(signum, source)
+        self.shutdown_deadline = time.monotonic() + _CLI_TERMINATION_GRACE_SECONDS
+
+    def request_timeout(self) -> None:
+        if self.timed_out:
+            return
+        self.timed_out = True
+        self.request_shutdown(getattr(signal, "SIGTERM", 15), "timeout")
+
+    def drain_pending_signals(self) -> None:
+        while self.pending_signals:
+            signum = self.pending_signals.popleft()
+            if signum == getattr(signal, "SIGUSR1", None):
+                self._forward_status_signal(signum)
+            elif signum in {
+                getattr(signal, "SIGINT", None),
+                getattr(signal, "SIGTERM", None),
+            }:
+                self.request_shutdown(signum, "wrapper_signal")
+
+    def force_termination_if_due(self) -> None:
+        if (
+            self.shutdown_deadline is None
+            or self.forced_termination
+            or time.monotonic() < self.shutdown_deadline
+        ):
+            return
+        self.forced_termination = True
+        signum = getattr(signal, "SIGKILL", 9)
+        target = "direct_child"
+        try:
+            if os.name == "posix" and self.process_group_id is not None:
+                child_group = self.process_group_id
+                target = "child_process_group"
+                os.killpg(child_group, signum)
+            elif self.process.poll() is not None:
+                self._record_signal_event(
+                    signum=signum,
+                    source="escalation",
+                    purpose="forced_shutdown",
+                    target=target,
+                    forwarded=False,
+                    disposition="child_exited",
+                )
+                return
+            else:
+                self.process.kill()
+        except (OSError, ProcessLookupError, RuntimeError, ValueError) as error:
+            self._record_signal_event(
+                signum=signum,
+                source="escalation",
+                purpose="forced_shutdown",
+                target=target,
+                forwarded=False,
+                disposition="forward_failed",
+                error=str(error),
+            )
+            return
+        self._record_signal_event(
+            signum=signum,
+            source="escalation",
+            purpose="forced_shutdown",
+            target=target,
+            forwarded=True,
+            disposition="forwarded",
+        )
+
+    def effective_returncode(self) -> int:
+        if self.timed_out:
+            return 124
+        if self.initiating_signal is not None:
+            return 128 + self.initiating_signal
+        return self.process.returncode if self.process.returncode is not None else 1
+
+    def status(self) -> str:
+        if self.timed_out:
+            return "timed_out"
+        if self.initiating_signal is not None:
+            return "interrupted"
+        return "ok" if self.process.returncode == 0 else "command_failed"
+
+
 def _run_cli_command(
     resolution: CliResolution,
     cli_args: list[str],
     execution_cwd: Path,
     timeout_secs: int,
 ) -> tuple[subprocess.CompletedProcess[str], dict[str, Any]]:
+    global _ACTIVE_CLI_SUPERVISOR
+
     command = resolution.argv_prefix + cli_args
     started_utc = _now_utc_iso()
+    _ensure_idle_sigusr1_handler()
     popen_kwargs: dict[str, Any] = {
         "cwd": execution_cwd,
         "stdout": subprocess.PIPE,
@@ -3664,62 +3984,60 @@ def _run_cli_command(
         command,
         **popen_kwargs,
     )
-    forwarded_signals: list[dict[str, Any]] = []
+    supervisor = _CliProcessSupervisor(process)
+    if _ACTIVE_CLI_SUPERVISOR is not None:
+        process.kill()
+        process.wait()
+        raise RuntimeError("the ClawBio wrapper already supervises an active CLI child")
+    _ACTIVE_CLI_SUPERVISOR = supervisor
     previous_handlers: dict[int, Any] = {}
-
-    def forward_signal(signum: int, _frame: Any) -> None:
-        record = {
-            "signal": signum,
-            "signal_name": signal.Signals(signum).name,
-            "forwarded": False,
-            "error": None,
-        }
-        try:
-            if os.name == "posix":
-                os.killpg(process.pid, signum)
-            else:
-                process.send_signal(signum)
-            record["forwarded"] = True
-        except (OSError, ProcessLookupError, ValueError) as error:
-            record["error"] = str(error)
-        forwarded_signals.append(record)
-
-    signal_names = ("SIGINT", "SIGTERM", "SIGHUP", "SIGUSR1")
     if threading.current_thread() is threading.main_thread():
-        for name in signal_names:
+        for name in ("SIGINT", "SIGTERM"):
             signum = getattr(signal, name, None)
             if signum is None:
                 continue
             previous_handlers[signum] = signal.getsignal(signum)
-            signal.signal(signum, forward_signal)
-    timed_out = False
+            signal.signal(signum, _wrapper_signal_handler)
+    deadline = time.monotonic() + max(float(timeout_secs), 0.0)
+    stdout_bytes = b""
+    stderr_bytes = b""
     try:
-        stdout_bytes, stderr_bytes = process.communicate(timeout=timeout_secs)
-    except subprocess.TimeoutExpired:
-        timed_out = True
-        try:
-            if os.name == "posix":
-                os.killpg(process.pid, signal.SIGTERM)
-            else:
-                process.terminate()
-            stdout_bytes, stderr_bytes = process.communicate(timeout=5)
-        except (subprocess.TimeoutExpired, OSError):
-            if os.name == "posix":
-                try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-            else:
-                process.kill()
-            stdout_bytes, stderr_bytes = process.communicate()
+        while True:
+            supervisor.drain_pending_signals()
+            if (
+                not supervisor.timed_out
+                and supervisor.initiating_signal is None
+                and supervisor.shutdown_deadline is None
+                and time.monotonic() >= deadline
+            ):
+                supervisor.request_timeout()
+            supervisor.force_termination_if_due()
+            next_deadline = time.monotonic() + _CLI_SIGNAL_POLL_SECONDS
+            if (
+                not supervisor.timed_out
+                and supervisor.initiating_signal is None
+                and supervisor.shutdown_deadline is None
+            ):
+                next_deadline = min(next_deadline, deadline)
+            if supervisor.shutdown_deadline is not None:
+                next_deadline = min(next_deadline, supervisor.shutdown_deadline)
+            wait_secs = max(0.001, next_deadline - time.monotonic())
+            try:
+                stdout_bytes, stderr_bytes = process.communicate(timeout=wait_secs)
+            except subprocess.TimeoutExpired:
+                continue
+            supervisor.drain_pending_signals()
+            break
     finally:
+        _ACTIVE_CLI_SUPERVISOR = None
         for signum, previous in previous_handlers.items():
             signal.signal(signum, previous)
     stdout = stdout_bytes.decode("utf-8", errors="replace")
     stderr = stderr_bytes.decode("utf-8", errors="replace")
+    child_exit_code = process.returncode
     run_result = subprocess.CompletedProcess(
         command,
-        process.returncode,
+        supervisor.effective_returncode(),
         stdout=stdout,
         stderr=stderr,
     )
@@ -3729,19 +4047,27 @@ def _run_cli_command(
         "started_utc": started_utc,
         "ended_utc": ended_utc,
         "exit_code": run_result.returncode,
+        "child_exit_code": child_exit_code,
         "stdout": run_result.stdout,
         "stderr": run_result.stderr,
         "stdout_bytes": len(stdout_bytes),
         "stderr_bytes": len(stderr_bytes),
         "stdout_sha256": _sha256_prefixed_bytes(stdout_bytes),
         "stderr_sha256": _sha256_prefixed_bytes(stderr_bytes),
-        "forwarded_signals": forwarded_signals,
+        "forwarded_signals": supervisor.signal_events,
         "timeout_secs": timeout_secs,
-        "status": (
-            "timed_out"
-            if timed_out
-            else ("ok" if run_result.returncode == 0 else "command_failed")
+        "timed_out": supervisor.timed_out,
+        "initiating_signal": (
+            {
+                "signal": supervisor.initiating_signal,
+                "signal_name": _signal_name(supervisor.initiating_signal),
+            }
+            if supervisor.initiating_signal is not None
+            else None
         ),
+        "forced_termination": supervisor.forced_termination,
+        "termination_grace_secs": _CLI_TERMINATION_GRACE_SECONDS,
+        "status": supervisor.status(),
     }
     return run_result, step
 
@@ -4858,7 +5184,12 @@ def _execution_step_manifest(step: dict[str, Any]) -> dict[str, Any]:
         "started_utc": step.get("started_utc"),
         "ended_utc": step.get("ended_utc"),
         "exit_code": step.get("exit_code"),
+        "child_exit_code": step.get("child_exit_code"),
         "status": step.get("status"),
+        "timed_out": step.get("timed_out", False),
+        "initiating_signal": step.get("initiating_signal"),
+        "forced_termination": step.get("forced_termination", False),
+        "forwarded_signals": list(step.get("forwarded_signals") or []),
         "stdout_sha256": _sha256_prefixed_bytes(stdout.encode("utf-8")),
         "stderr_sha256": _sha256_prefixed_bytes(stderr.encode("utf-8")),
     }
@@ -7929,6 +8260,7 @@ def _default_demo_request() -> Request:
 
 
 def main() -> int:
+    _ensure_idle_sigusr1_handler()
     parser = argparse.ArgumentParser(
         description=(
             "GENtle ClawBio skill wrapper. Executes deterministic gentle_cli "
@@ -8331,18 +8663,30 @@ def main() -> int:
             )
             main_execution_step = main_step
             command = main_step["command"]
-            status = "ok" if run_result.returncode == 0 else "command_failed"
+            status = (
+                "ok"
+                if run_result.returncode == 0
+                else str(main_step.get("status") or "command_failed")
+            )
             if run_result.returncode != 0:
                 failure_summary = _build_failure_summary(
                     stage="main_command",
                     step=main_step,
                     execution_cwd=execution_cwd,
                 )
+                headline = {
+                    "timed_out": "gentle_cli exceeded the approved execution timeout.",
+                    "interrupted": "gentle_cli execution was interrupted.",
+                }.get(status, "gentle_cli exited with a non-zero status.")
                 error_message = _build_failure_message(
-                    headline="gentle_cli exited with a non-zero status.",
+                    headline=headline,
                     failure_summary=failure_summary,
                 )
-            stdout_json = _parse_stdout_json(run_result.stdout)
+            stdout_json = (
+                None
+                if status in {"timed_out", "interrupted"}
+                else _parse_stdout_json(run_result.stdout)
+            )
             if request.mode == "version" and run_result.returncode == 0:
                 gentle_runtime_version = (
                     run_result.stdout.strip() or run_result.stderr.strip() or None

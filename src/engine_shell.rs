@@ -60622,6 +60622,22 @@ fn execute_approved_gene_isoform_assay_study_workflow_batch_with_reuse(
     options: &ShellExecutionOptions,
 ) -> Result<ShellRunResult, String> {
     let verified = verify_approved_gene_isoform_assay_study_workflow_batch(engine, batch_json)?;
+    if on_gene_failure == GeneIsoformAssayStudyGeneFailurePolicy::Continue {
+        let mut external_output_paths = verified
+            .operations
+            .iter()
+            .flat_map(|approved| GentleEngine::collect_run_bundle_export_paths(&approved.operation))
+            .collect::<Vec<_>>();
+        external_output_paths.sort();
+        external_output_paths.dedup();
+        if !external_output_paths.is_empty() {
+            return Err(format!(
+                "Approved batch '{}' cannot use --on-gene-failure continue because its operations declare external output path(s) that cannot participate in the in-memory per-gene rollback: {}. Remove those output paths or execute with --on-gene-failure abort; no operations were executed",
+                verified.batch.batch_id,
+                external_output_paths.join(", ")
+            ));
+        }
+    }
     let baseline_state_sha256 = canonical_json_sha256(engine.snapshot(), "project baseline")?;
     let runtime = current_gene_isoform_study_runtime_identity(engine)?;
     let mut detached = engine.fork_detached_execution();
@@ -60734,7 +60750,7 @@ fn execute_approved_gene_isoform_assay_study_workflow_batch_with_reuse(
     let mut warnings = Vec::<String>::new();
     let mut skipped_operation_count = 0usize;
     let mut skipping_workflow_ordinal = None::<usize>;
-    let mut gene_boundary = None::<(usize, crate::engine::GentleEngine, usize)>;
+    let mut gene_boundary = None::<(usize, crate::engine::GentleEngine, usize, Option<PathBuf>)>;
     let mut reuse_checkpoint_frozen_at = None::<usize>;
 
     // Per-gene continuation rolls a failing gene back to the boundary at which
@@ -60772,13 +60788,14 @@ fn execute_approved_gene_isoform_assay_study_workflow_batch_with_reuse(
         if on_gene_failure == GeneIsoformAssayStudyGeneFailurePolicy::Continue
             && gene_boundary
                 .as_ref()
-                .map(|(ordinal, _, _)| *ordinal)
+                .map(|(ordinal, _, _, _)| *ordinal)
                 .is_none_or(|ordinal| ordinal != binding.workflow_ordinal)
         {
             gene_boundary = Some((
                 binding.workflow_ordinal,
                 detached.engine().clone_without_history(),
                 completed_bindings.len(),
+                last_checkpoint_manifest.clone(),
             ));
         }
         let completed_workflows = completed_workflow_count(
@@ -60822,7 +60839,12 @@ fn execute_approved_gene_isoform_assay_study_workflow_batch_with_reuse(
             Err(error) if on_gene_failure == GeneIsoformAssayStudyGeneFailurePolicy::Continue => {
                 // Undo this gene entirely, keep the genes that already
                 // succeeded, and carry on with the remaining precomputed ones.
-                let (_, boundary_engine, boundary_completed_operations) =
+                let (
+                    _,
+                    boundary_engine,
+                    boundary_completed_operations,
+                    boundary_checkpoint_manifest,
+                ) =
                     gene_boundary.take().ok_or_else(|| {
                         format!(
                             "Approved batch '{}' lost the gene boundary snapshot for gene '{}'; no operation was committed",
@@ -60835,6 +60857,7 @@ fn execute_approved_gene_isoform_assay_study_workflow_batch_with_reuse(
                 detached.restore_boundary_engine(boundary_engine);
                 completed_bindings.truncate(boundary_completed_operations);
                 operation_results.truncate(boundary_completed_operations);
+                last_checkpoint_manifest = boundary_checkpoint_manifest;
                 if reuse_checkpoint_frozen_at.is_none() {
                     reuse_checkpoint_frozen_at = Some(completed_bindings.len());
                 }

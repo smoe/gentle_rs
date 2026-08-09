@@ -4138,6 +4138,14 @@ Shared shell command:
         genes. The report names every skipped gene in `gene_failures[]`, sets
         `batch_complete: false`, and reports `execution_atomicity: "per_gene"`.
         A batch in which every gene failed still commits nothing
+      - `continue` is available only when no approved operation declares an
+        external output path. GENtle checks this before the first operation and
+        refuses the batch otherwise, because an in-memory gene rollback cannot
+        revoke a file already written. Remove operation-level output paths or
+        use the default `abort` policy for an all-or-nothing detached run
+      - after a failed gene is rolled back, `last_checkpoint_manifest` points
+        to the last checkpoint from a fully retained gene; it never names an
+        operation checkpoint whose state was subsequently discarded
       - `continue` governs execution failures only. A batch-basis, plan,
         workflow, operation-digest, or endpoint-feasibility rejection still
         refuses the complete batch under either policy, because those are

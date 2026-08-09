@@ -7802,6 +7802,13 @@ Operation progress/cancellation semantics:
       Primer3's bounded-progress contract. `completed / bound` is suitable for
       a progress indicator, but the counters measure candidate evaluations and
       must not be described as elapsed time or an ETA.
+    - Search records created by splitting a broad interval overlap by at most
+      `max_primer_length - 1` bases so a primer crossing the split is not lost.
+      Consequently, plan-level candidate and search-space totals are sums of
+      work performed per record, not counts of unique primer placements; an
+      overlap may be evaluated in both records. Removing that repeated work
+      requires an algorithmic de-duplication design, not an accounting-only
+      subtraction.
     - GENtle detects support through `primer3_core --help` and requests this
       stream only when `--progress` is advertised. On Unix it may send
       `SIGUSR1` after an already-confirmed progress stream becomes quiet,
@@ -9415,6 +9422,12 @@ Primer-design shell command family (implemented):
     `rolled_back_operation_count`), and a `status` of `completed` or `failed`
     on every `executions[]` entry. A batch in which no gene completed returns
     an error and commits nothing, exactly as `abort` does
+  - before a `continue` run starts, GENtle rejects any approved operation that
+    declares an external output path. Filesystem side effects cannot
+    participate in the in-memory per-gene rollback; callers must omit those
+    paths or use `abort`. After rollback, `last_checkpoint_manifest` is reset
+    to the checkpoint present at the failed gene's boundary, so it cannot
+    advertise a discarded partial-gene state
   - `continue` relaxes execution atomicity only. Approval and verification
     failures — batch-basis, plan, workflow, operation digests, endpoint
     feasibility — still refuse the complete batch under either policy, and the

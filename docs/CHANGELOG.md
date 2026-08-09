@@ -29,6 +29,24 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
 understand what changed.
 
+## 2026-08-09
+
+- Hardened ClawBio CLI supervision. On POSIX, `SIGUSR1` now reaches only the
+  exact active GENtle child, while `SIGINT`/`SIGTERM` stop the child-owned
+  execution group with bounded escalation. Timeout and interruption remain
+  failed wrapper outcomes even if a child handles the signal and exits zero;
+  receipts retain the actual child status, signal events, complete output, and
+  hashes as orchestration provenance rather than scientific claims.
+- Hardened bounded Primer3 integration around platform and signal behavior.
+  Engine-owned executable discovery now honors Windows `PATHEXT`, and a
+  progress-capable binary is not sent `SIGUSR1` until it has emitted its first
+  valid progress row. Repository-owned fake-binary protocol tests always run;
+  only separately marked live-binary integration tests remain opt-in.
+- Per-gene continuation now refuses approved operations with declared external
+  output paths before executing anything, because filesystem writes cannot be
+  revoked by its in-memory rollback. Rolling back a failed gene also restores
+  `last_checkpoint_manifest` to the last valid whole-gene boundary.
+
 ## 2026-08-06
 
 - A primer-pair QC status of `warning` is no longer reported as a failed
@@ -45,9 +63,11 @@ understand what changed.
   highest version, then the newest file. An explicitly configured path is still
   used unchanged, and `primers preflight` reports every candidate and why one
   was selected.
-- Primer3 tests now run only where a real `primer3_core` is installed, so a
-  machine without Primer3 no longer reports Primer3 results it could not have
-  produced.
+- Primer3 protocol, progress, runtime-reduction, preflight, and candidate
+  ranking tests use repository-owned deterministic fake executables and run
+  without a system Primer3 installation. The separate tests that intentionally
+  exercise a genuine installed binary remain explicit opt-in integration
+  checks.
 - Added opt-in per-gene continuation to approved multi-gene study batches.
   `primers execute-gene-isoform-study-workflow-batch --on-gene-failure continue`
   rolls a failing gene back to its own boundary and carries on with the other

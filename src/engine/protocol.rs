@@ -9261,7 +9261,9 @@ pub struct TranscriptAssayPrimerSearchPlan {
     pub target_count: usize,
     pub planned_target_count: usize,
     pub estimated_candidate_pair_count_total: usize,
-    /// Sum of the per-record conservative Primer3 search-space bounds.
+    /// Sum of the per-record conservative Primer3 search-space bounds. Split
+    /// records deliberately overlap, so this measures executed record work,
+    /// not unique primer placements.
     pub candidate_pair_search_space_upper_bound_total: usize,
     #[serde(default)]
     pub blocked_target_ids: Vec<String>,

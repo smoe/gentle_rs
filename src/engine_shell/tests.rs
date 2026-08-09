@@ -49,7 +49,6 @@ use crate::ensembl_protein::{
 use crate::primerbank::{
     PRIMERBANK_SEARCH_REPORT_SCHEMA, PrimerBankCdnaTestReport, PrimerBankSearchReport,
 };
-use crate::require_real_primer3;
 use crate::runtime_status::{RuntimeStatusFrameKind, runtime_status_registry};
 use crate::test_support::{
     decision_trace_fixture_state, decision_trace_with_construct_reasoning_fixture_state,
@@ -8297,6 +8296,16 @@ fn failing_export_operation(directory: &Path) -> Operation {
     }
 }
 
+fn failing_in_memory_operation() -> Operation {
+    Operation::Pcr {
+        template: "definitely_missing_template".to_string(),
+        forward_primer: "ACGTACGT".to_string(),
+        reverse_primer: "ACGTACGT".to_string(),
+        output_id: None,
+        unique: Some(true),
+    }
+}
+
 fn create_sequence_operation(output_id: &str, sequence_text: &str) -> Operation {
     Operation::CreateSequenceFromText {
         sequence_text: sequence_text.to_string(),
@@ -8315,11 +8324,7 @@ fn approved_gene_isoform_study_batch_continues_with_remaining_genes_after_failur
             "FIRST",
             vec![create_sequence_operation("gene_first", "ACGTACGT")],
         ),
-        (
-            "failing_plan",
-            "FAIL",
-            vec![failing_export_operation(temp.path())],
-        ),
+        ("failing_plan", "FAIL", vec![failing_in_memory_operation()]),
         (
             "third_plan",
             "THIRD",
@@ -8413,7 +8418,7 @@ fn approved_gene_isoform_study_batch_rolls_a_failing_gene_back_to_its_boundary()
             "PARTIAL",
             vec![
                 create_sequence_operation("gene_partial_first_half", "GGGGCCCC"),
-                failing_export_operation(temp.path()),
+                failing_in_memory_operation(),
             ],
         ),
         (
@@ -8461,18 +8466,110 @@ fn approved_gene_isoform_study_batch_rolls_a_failing_gene_back_to_its_boundary()
 }
 
 #[test]
+fn approved_gene_isoform_study_continue_refuses_external_output_paths_before_execution() {
+    let temp = tempdir().expect("tempdir");
+    let output_path = temp.path().join("must_not_exist.gb");
+    let genes = vec![
+        (
+            "leading_plan",
+            "LEADING",
+            vec![create_sequence_operation("gene_leading", "ACGTACGT")],
+        ),
+        (
+            "external_plan",
+            "EXTERNAL",
+            vec![failing_export_operation(temp.path())],
+        ),
+    ];
+    let mut engine = GentleEngine::new();
+    let batch_path = compose_approved_study_batch(
+        &mut engine,
+        temp.path(),
+        "external_output_continue_batch",
+        &genes,
+    );
+    let command = parse_shell_line(&format!(
+        "primers execute-gene-isoform-study-workflow-batch @{} --on-gene-failure continue",
+        batch_path.display()
+    ))
+    .expect("parse continuing execution");
+    let error = execute_shell_command(&mut engine, &command)
+        .expect_err("per-gene continuation must reject non-transactional output paths");
+
+    assert!(error.contains("external output path"), "{error}");
+    assert!(error.contains("--on-gene-failure abort"), "{error}");
+    assert!(engine.state().sequences.is_empty());
+    assert!(!output_path.exists());
+}
+
+#[test]
+fn approved_gene_isoform_study_rollback_reports_last_whole_gene_checkpoint() {
+    let temp = tempdir().expect("tempdir");
+    let checkpoint_dir = temp.path().join("checkpoints");
+    let genes = vec![
+        (
+            "kept_plan",
+            "KEPT",
+            vec![create_sequence_operation("gene_kept", "ACGTACGT")],
+        ),
+        (
+            "partial_plan",
+            "PARTIAL",
+            vec![
+                create_sequence_operation("gene_partial", "GGGGCCCC"),
+                failing_in_memory_operation(),
+            ],
+        ),
+        (
+            "later_plan",
+            "LATER",
+            vec![create_sequence_operation("gene_later", "TTTTCCCC")],
+        ),
+    ];
+    let mut engine = GentleEngine::new();
+    let batch_path = compose_approved_study_batch(
+        &mut engine,
+        temp.path(),
+        "whole_gene_checkpoint_batch",
+        &genes,
+    );
+    let command = parse_shell_line(&format!(
+        "primers execute-gene-isoform-study-workflow-batch @{} --checkpoint-dir {} --on-gene-failure continue",
+        batch_path.display(),
+        checkpoint_dir.display()
+    ))
+    .expect("parse checkpointed continuing execution");
+    let executed = execute_shell_command(&mut engine, &command).expect("execute partial batch");
+
+    let manifest_path = PathBuf::from(
+        executed.output["last_checkpoint_manifest"]
+            .as_str()
+            .expect("last whole-gene checkpoint path"),
+    );
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &fs::read(&manifest_path).expect("read reported checkpoint manifest"),
+    )
+    .expect("parse reported checkpoint manifest");
+    assert_eq!(manifest["completed_operation_count"], 1);
+    assert_eq!(manifest["completed_workflow_count"], 1);
+    assert!(engine.state().sequences.contains_key("gene_kept"));
+    assert!(engine.state().sequences.contains_key("gene_later"));
+    assert!(!engine.state().sequences.contains_key("gene_partial"));
+}
+
+#[test]
 fn approved_gene_isoform_study_batch_refuses_when_every_gene_fails() {
     let temp = tempdir().expect("tempdir");
     let genes = vec![
         (
             "only_failing_plan",
             "FAIL_ONE",
-            vec![failing_export_operation(temp.path())],
+            vec![failing_in_memory_operation()],
         ),
         (
             "second_failing_plan",
             "FAIL_TWO",
-            vec![failing_export_operation(temp.path())],
+            vec![failing_in_memory_operation()],
         ),
     ];
     let mut engine = GentleEngine::new();
@@ -8503,11 +8600,7 @@ fn approved_gene_isoform_study_batch_freezes_reuse_checkpoint_after_a_gene_failu
             "KEPT",
             vec![create_sequence_operation("gene_kept", "ACGTACGT")],
         ),
-        (
-            "broken_plan",
-            "BROKEN",
-            vec![failing_export_operation(temp.path())],
-        ),
+        ("broken_plan", "BROKEN", vec![failing_in_memory_operation()]),
         (
             "later_plan",
             "LATER",
@@ -19279,7 +19372,6 @@ fn execute_variant_materialize_allele_shell_command_creates_sequence() {
 #[cfg(unix)]
 #[test]
 fn execute_primers_design_internal_vs_primer3_fixture_normalization_parity() {
-    require_real_primer3!();
     let mut state = ProjectState::default();
     state.sequences.insert(
             "tpl".to_string(),
@@ -19418,7 +19510,6 @@ fn execute_primers_design_internal_vs_primer3_fixture_normalization_parity() {
 #[cfg(unix)]
 #[test]
 fn execute_primers_preflight_reports_reachable_primer3() {
-    require_real_primer3!();
     let mut engine = GentleEngine::from_state(ProjectState::default());
     let tmp = tempdir().expect("tempdir");
     let fixture_path = Path::new(&primer3_fixture_path("pairs.location_5_60.kv")).to_path_buf();
