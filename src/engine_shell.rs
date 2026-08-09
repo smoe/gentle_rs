@@ -60931,11 +60931,23 @@ fn execute_approved_gene_isoform_assay_study_workflow_batch_with_reuse(
         })?;
         operation_results.push(result);
         completed_bindings.push(binding.clone());
-        // Reuse imports an exact contiguous operation prefix. Once a gene has
-        // been skipped the completed set has a hole, so the checkpoint stops
-        // advancing rather than describing a prefix that no longer exists.
+        // Reuse imports an exact contiguous operation prefix. Continue-mode
+        // rollback is gene-atomic, so it must never persist a checkpoint for a
+        // partial gene that could later be rediscovered after that gene is
+        // rolled back. Abort mode retains per-operation recovery points.
+        let completed_gene_boundary = verified
+            .batch
+            .entries
+            .get(binding.workflow_ordinal.saturating_sub(1))
+            .is_some_and(|entry| binding.workflow_operation_ordinal == entry.operation_count);
+        let checkpoint_due = on_gene_failure == GeneIsoformAssayStudyGeneFailurePolicy::Abort
+            || completed_gene_boundary;
+        // Once a gene has been skipped the completed set has a hole, so the
+        // checkpoint stops advancing rather than describing a prefix that no
+        // longer exists.
         if let Some(root) = checkpoint_root.as_deref()
             && reuse_checkpoint_frozen_at.is_none()
+            && checkpoint_due
         {
             last_checkpoint_manifest = Some(write_gene_isoform_assay_checkpoint(
                 root,

@@ -290,6 +290,9 @@ wet-lab conclusions or unconfirmed mutations.
   too easy to miss.
 - SnapGene-style plasmid-map presentation parity and dense selected-site polish.
 - Engine-owned portable findings/artifact inspection for agent-driven work.
+- Engine-owned exhaustive operation-effect metadata so new filesystem-writing
+  operations cannot bypass rollback-safety classification or provenance path
+  collection when the `Operation` enum grows.
 - GUI batch display for RNA-read gene-cohort alignments with virtualization for
   thousands of per-read aligned-column blocks.
 - Vendor-protocol and deeper wet-lab process modeling primitives.

@@ -45,7 +45,10 @@ understand what changed.
 - Per-gene continuation now refuses approved operations with declared external
   output paths before executing anything, because filesystem writes cannot be
   revoked by its in-memory rollback. Rolling back a failed gene also restores
-  `last_checkpoint_manifest` to the last valid whole-gene boundary.
+  `last_checkpoint_manifest` to the last valid whole-gene boundary. Continue
+  mode now writes checkpoints only at complete-gene boundaries, so a
+  rolled-back partial gene emits no new discoverable checkpoint; abort mode
+  retains its existing per-operation recovery checkpoints.
 
 ## 2026-08-06
 

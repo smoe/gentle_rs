@@ -9426,8 +9426,10 @@ Primer-design shell command family (implemented):
     declares an external output path. Filesystem side effects cannot
     participate in the in-memory per-gene rollback; callers must omit those
     paths or use `abort`. After rollback, `last_checkpoint_manifest` is reset
-    to the checkpoint present at the failed gene's boundary, so it cannot
-    advertise a discarded partial-gene state
+    to the checkpoint present at the failed gene's boundary. Continue-mode
+    checkpoints are emitted only after a whole gene succeeds, so the run does
+    not add a checkpoint advertising a discarded partial-gene state. Abort
+    mode continues to emit per-operation recovery checkpoints
   - `continue` relaxes execution atomicity only. Approval and verification
     failures — batch-basis, plan, workflow, operation digests, endpoint
     feasibility — still refuse the complete batch under either policy, and the

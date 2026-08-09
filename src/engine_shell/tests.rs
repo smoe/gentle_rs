@@ -8315,6 +8315,24 @@ fn create_sequence_operation(output_id: &str, sequence_text: &str) -> Operation 
     }
 }
 
+fn read_study_checkpoint_manifests(checkpoint_dir: &Path) -> Vec<serde_json::Value> {
+    let mut manifests = fs::read_dir(checkpoint_dir)
+        .expect("checkpoint directory")
+        .filter_map(Result::ok)
+        .filter_map(|entry| fs::read(entry.path().join("manifest.json")).ok())
+        .map(|bytes| {
+            serde_json::from_slice::<serde_json::Value>(&bytes)
+                .expect("parse study checkpoint manifest")
+        })
+        .collect::<Vec<_>>();
+    manifests.sort_by_key(|manifest| {
+        manifest["completed_operation_count"]
+            .as_u64()
+            .unwrap_or_default()
+    });
+    manifests
+}
+
 #[test]
 fn approved_gene_isoform_study_batch_continues_with_remaining_genes_after_failure() {
     let temp = tempdir().expect("tempdir");
@@ -8552,9 +8570,63 @@ fn approved_gene_isoform_study_rollback_reports_last_whole_gene_checkpoint() {
     .expect("parse reported checkpoint manifest");
     assert_eq!(manifest["completed_operation_count"], 1);
     assert_eq!(manifest["completed_workflow_count"], 1);
+    let all_manifests = read_study_checkpoint_manifests(&checkpoint_dir);
+    assert_eq!(
+        all_manifests.len(),
+        1,
+        "continue mode must not leave a checkpoint for the partial gene"
+    );
+    assert_eq!(all_manifests[0]["current_gene_symbol"], "KEPT");
+    assert!(
+        !serde_json::to_string(&all_manifests)
+            .expect("serialize checkpoint manifests")
+            .contains("PARTIAL"),
+        "rolled-back gene state must not remain discoverable as a checkpoint"
+    );
     assert!(engine.state().sequences.contains_key("gene_kept"));
     assert!(engine.state().sequences.contains_key("gene_later"));
     assert!(!engine.state().sequences.contains_key("gene_partial"));
+}
+
+#[test]
+fn approved_gene_isoform_study_abort_retains_per_operation_checkpoints() {
+    let temp = tempdir().expect("tempdir");
+    let checkpoint_dir = temp.path().join("checkpoints");
+    let genes = vec![(
+        "abort_recovery_plan",
+        "ABORT_RECOVERY",
+        vec![
+            create_sequence_operation("abort_checkpoint_one", "ACGTACGT"),
+            create_sequence_operation("abort_checkpoint_two", "GGGGCCCC"),
+            failing_in_memory_operation(),
+        ],
+    )];
+    let mut engine = GentleEngine::new();
+    let batch_path = compose_approved_study_batch(
+        &mut engine,
+        temp.path(),
+        "abort_recovery_checkpoint_batch",
+        &genes,
+    );
+    let command = parse_shell_line(&format!(
+        "primers execute-gene-isoform-study-workflow-batch @{} --checkpoint-dir {}",
+        batch_path.display(),
+        checkpoint_dir.display()
+    ))
+    .expect("parse checkpointed abort execution");
+    execute_shell_command(&mut engine, &command)
+        .expect_err("default abort policy must reject the failing batch");
+
+    let manifests = read_study_checkpoint_manifests(&checkpoint_dir);
+    assert_eq!(
+        manifests
+            .iter()
+            .map(|manifest| manifest["completed_operation_count"].as_u64())
+            .collect::<Vec<_>>(),
+        vec![Some(1), Some(2)],
+        "abort mode keeps its existing per-operation recovery points"
+    );
+    assert!(engine.state().sequences.is_empty());
 }
 
 #[test]

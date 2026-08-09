@@ -583,7 +583,10 @@ by restoring an in-memory engine snapshot. Callers must omit per-operation
 paths or retain the default batch-level `abort` policy. The boundary snapshot
 also includes the reported checkpoint pointer, so a failed gene cannot leave
 `last_checkpoint_manifest` naming a partial-gene checkpoint that was rolled
-back.
+back. More strongly, `continue` persists checkpoints only at complete-gene
+boundaries; it never writes a partial-gene checkpoint that could remain
+discoverable after rollback. The default `abort` policy intentionally retains
+per-operation checkpoints because those are its recovery units.
 
 The flag governs execution failures only. Approval and verification failures
 still refuse the whole batch under either policy, because they say the request

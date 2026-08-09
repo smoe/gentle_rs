@@ -2698,6 +2698,12 @@ impl GentleEngine {
         summary
     }
 
+    /// Return every caller-selected path written by an operation.
+    ///
+    /// This list is safety-sensitive: run-bundle provenance uses it, and
+    /// per-gene continuation refuses operations reported here because an
+    /// in-memory rollback cannot revoke their filesystem effects. New
+    /// path-writing operation variants must be added here in the same change.
     pub(crate) fn collect_run_bundle_export_paths(op: &Operation) -> Vec<String> {
         let mut paths: Vec<String> = vec![];
         let mut push = |path: &str| Self::push_unique_token(&mut paths, path);

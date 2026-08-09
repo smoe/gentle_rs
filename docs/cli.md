@@ -4146,6 +4146,10 @@ Shared shell command:
       - after a failed gene is rolled back, `last_checkpoint_manifest` points
         to the last checkpoint from a fully retained gene; it never names an
         operation checkpoint whose state was subsequently discarded
+      - with `continue`, checkpoints are written only after a complete gene
+        succeeds. This prevents the run from adding a discoverable checkpoint
+        for a partial state from a later rolled-back gene. The default `abort`
+        policy retains per-operation checkpoints for failure recovery
       - `continue` governs execution failures only. A batch-basis, plan,
         workflow, operation-digest, or endpoint-feasibility rejection still
         refuses the complete batch under either policy, because those are
