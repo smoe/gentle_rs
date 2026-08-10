@@ -241,6 +241,16 @@ mod tests {
     }
 
     #[test]
+    fn german_about_label_is_localized() {
+        let i18n = I18n {
+            language: UiLanguage::DeDe,
+        };
+
+        assert_eq!(i18n.t("menu.help.about"), "Über GENtle");
+        assert_eq!(i18n.t("about.more_info"), "Weitere Infos …");
+    }
+
+    #[test]
     fn language_ids_roundtrip_through_json() {
         for language in UiLanguage::ALL {
             let json = serde_json::to_string(&language).unwrap();
