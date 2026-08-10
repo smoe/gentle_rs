@@ -45,40 +45,69 @@
       {
         "target_id": "transcript_coverage_target_b0988f749ebce6c9",
         "requested_transcript_id": "PATZ1-201",
+        "is_canonical_uniprot_target": false,
         "resolved_transcript_id": "PATZ1-201",
+        "mapped_transcript_ids": [],
         "equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447",
+        "equivalence_group_ids": [
+          "cdna_eq_da6a2f3dbe1d4447"
+        ],
         "source_report_ids": [],
         "uniprot_entry_ids": [],
         "uniprot_isoform_ids": [],
         "audit_statuses": [],
         "status": "included",
+        "coverage_status": "not_evaluated",
+        "distinction_status": "not_evaluated",
+        "covering_assay_ids": [],
+        "not_distinguished_from_target_ids": [],
         "notes": []
       },
       {
         "target_id": "transcript_coverage_target_e95dbbb5c7179178",
         "requested_transcript_id": "PATZ1-202",
+        "is_canonical_uniprot_target": false,
         "resolved_transcript_id": "PATZ1-202",
+        "mapped_transcript_ids": [],
         "equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+        "equivalence_group_ids": [
+          "cdna_eq_6c73e2052bd828f3"
+        ],
         "source_report_ids": [],
         "uniprot_entry_ids": [],
         "uniprot_isoform_ids": [],
         "audit_statuses": [],
         "status": "included",
+        "coverage_status": "not_evaluated",
+        "distinction_status": "not_evaluated",
+        "covering_assay_ids": [],
+        "not_distinguished_from_target_ids": [],
         "notes": []
       },
       {
         "target_id": "transcript_coverage_target_c64dba7e32025494",
         "requested_transcript_id": "PATZ1-203",
+        "is_canonical_uniprot_target": false,
         "resolved_transcript_id": "PATZ1-203",
+        "mapped_transcript_ids": [],
         "equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
+        "equivalence_group_ids": [
+          "cdna_eq_bf8de0081e092d6f"
+        ],
         "source_report_ids": [],
         "uniprot_entry_ids": [],
         "uniprot_isoform_ids": [],
         "audit_statuses": [],
         "status": "included",
+        "coverage_status": "not_evaluated",
+        "distinction_status": "not_evaluated",
+        "covering_assay_ids": [],
+        "not_distinguished_from_target_ids": [],
         "notes": []
       }
     ],
+    "uncovered_target_ids": [],
+    "unresolved_target_pairs": [],
     "warnings": []
   },
   "assay_tier": "long_range_structure_discovery",
@@ -292,6 +321,7 @@
         "cdna_eq_bf8de0081e092d6f",
         "cdna_eq_da6a2f3dbe1d4447"
       ],
+      "single_product_coverage_target_ids": [],
       "primer_pair_summary": {
         "schema": "gentle.primer_pair_summary.v2",
         "assay_id": "transcript_assay_27362fde0b95ba9d",
@@ -669,6 +699,7 @@
         "cdna_eq_bf8de0081e092d6f",
         "cdna_eq_da6a2f3dbe1d4447"
       ],
+      "single_product_coverage_target_ids": [],
       "primer_pair_summary": {
         "schema": "gentle.primer_pair_summary.v2",
         "assay_id": "transcript_assay_46b04036f2ccda49",
@@ -1096,7 +1127,9 @@
     }
   ],
   "uncovered_equivalence_group_ids": [],
+  "uncovered_coverage_target_ids": [],
   "unresolved_group_pairs": [],
+  "unresolved_coverage_target_pairs": [],
   "backend_runs": [
     {
       "equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
@@ -1176,40 +1209,69 @@
         {
           "target_id": "transcript_coverage_target_b0988f749ebce6c9",
           "requested_transcript_id": "PATZ1-201",
+          "is_canonical_uniprot_target": false,
           "resolved_transcript_id": "PATZ1-201",
+          "mapped_transcript_ids": [],
           "equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447",
+          "equivalence_group_ids": [
+            "cdna_eq_da6a2f3dbe1d4447"
+          ],
           "source_report_ids": [],
           "uniprot_entry_ids": [],
           "uniprot_isoform_ids": [],
           "audit_statuses": [],
           "status": "included",
+          "coverage_status": "not_evaluated",
+          "distinction_status": "not_evaluated",
+          "covering_assay_ids": [],
+          "not_distinguished_from_target_ids": [],
           "notes": []
         },
         {
           "target_id": "transcript_coverage_target_e95dbbb5c7179178",
           "requested_transcript_id": "PATZ1-202",
+          "is_canonical_uniprot_target": false,
           "resolved_transcript_id": "PATZ1-202",
+          "mapped_transcript_ids": [],
           "equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+          "equivalence_group_ids": [
+            "cdna_eq_6c73e2052bd828f3"
+          ],
           "source_report_ids": [],
           "uniprot_entry_ids": [],
           "uniprot_isoform_ids": [],
           "audit_statuses": [],
           "status": "included",
+          "coverage_status": "not_evaluated",
+          "distinction_status": "not_evaluated",
+          "covering_assay_ids": [],
+          "not_distinguished_from_target_ids": [],
           "notes": []
         },
         {
           "target_id": "transcript_coverage_target_c64dba7e32025494",
           "requested_transcript_id": "PATZ1-203",
+          "is_canonical_uniprot_target": false,
           "resolved_transcript_id": "PATZ1-203",
+          "mapped_transcript_ids": [],
           "equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
+          "equivalence_group_ids": [
+            "cdna_eq_bf8de0081e092d6f"
+          ],
           "source_report_ids": [],
           "uniprot_entry_ids": [],
           "uniprot_isoform_ids": [],
           "audit_statuses": [],
           "status": "included",
+          "coverage_status": "not_evaluated",
+          "distinction_status": "not_evaluated",
+          "covering_assay_ids": [],
+          "not_distinguished_from_target_ids": [],
           "notes": []
         }
       ],
+      "uncovered_target_ids": [],
+      "unresolved_target_pairs": [],
       "warnings": []
     },
     "transcript_count": 3,
