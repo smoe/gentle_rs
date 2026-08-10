@@ -1,5 +1,12 @@
 # GENtle Changelog
 
+- Replaced the sparse standard macOS About panel with one localized,
+  GENtle-owned About experience shared by the native application menu and the
+  in-app Help menu. The compact Finder-inspired card now presents version,
+  build, authorship, preview status, and licence; `More Info …` expands to the
+  mascot, reproducibility context, project/documentation/credit links, and a
+  copyable build identity. The German native menu item is now `Über GENtle`.
+
 - Replaced the PCR skill's hidden 30-minute isoform-workflow ceiling with an
   approval-bound `execution_timeout_secs` slot. Single-study design defaults to
   a two-hour allowance and ordered multi-study execution to eight hours, while

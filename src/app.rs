@@ -198,7 +198,7 @@ use crate::{
         suggest_gibson_destination_openings,
     },
     i18n::{I18n, UiLanguage},
-    icons::APP_ICON,
+    icons::{APP_ICON, SPLASH_SCREEN},
     lineage_export::{
         LineageSvgEdge, LineageSvgNode, LineageSvgNodeKind, export_projected_lineage_svg,
     },
@@ -313,6 +313,7 @@ const MACOS_HOSTED_CHILD_VIEWPORTS_ENV: &str = "GENTLE_MACOS_HOSTED_CHILD_VIEWPO
 const MACOS_NATIVE_CHILD_VIEWPORTS_ENV: &str = "GENTLE_MACOS_NATIVE_CHILD_VIEWPORTS";
 static NATIVE_HELP_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_HELP_OPEN_REQUESTED_AT_MS: AtomicU64 = AtomicU64::new(0);
+static NATIVE_ABOUT_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_SETTINGS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_SETTINGS_OPEN_GRAPHICS_TAB_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_PCR_DESIGN_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -352,6 +353,10 @@ fn default_prepare_timeout_secs_string() -> String {
 pub fn request_open_help_from_native_menu() {
     NATIVE_HELP_OPEN_REQUESTED_AT_MS.store(now_unix_ms_u64(), Ordering::SeqCst);
     NATIVE_HELP_OPEN_REQUESTED.store(true, Ordering::SeqCst);
+}
+
+pub fn request_open_about_from_native_menu() {
+    NATIVE_ABOUT_OPEN_REQUESTED.store(true, Ordering::SeqCst);
 }
 
 pub fn request_open_settings_from_native_menu() {
@@ -693,6 +698,7 @@ pub struct GENtleApp {
     splash_started_at: Instant,
     splash_dismissed: bool,
     show_about_dialog: bool,
+    show_about_details_dialog: bool,
     show_help_dialog: bool,
     help_doc: HelpDoc,
     help_markdown_cache: CommonMarkCache,
@@ -2521,6 +2527,7 @@ impl Default for GENtleApp {
             splash_started_at: Instant::now(),
             splash_dismissed: false,
             show_about_dialog: false,
+            show_about_details_dialog: false,
             show_help_dialog: false,
             help_doc: HelpDoc::Gui,
             help_markdown_cache: CommonMarkCache::default(),
@@ -3751,6 +3758,18 @@ Error: `{err}`"
                 self.note_slow_phase("Native Help menu dispatch", dispatch_elapsed_ms);
             }
             self.open_help_doc(HelpDoc::Gui);
+        }
+    }
+
+    fn open_about_dialog(&mut self) {
+        self.dismiss_splash_screen();
+        self.show_about_details_dialog = false;
+        self.show_about_dialog = true;
+    }
+
+    fn consume_native_about_request(&mut self) {
+        if NATIVE_ABOUT_OPEN_REQUESTED.swap(false, Ordering::SeqCst) {
+            self.open_about_dialog();
         }
     }
 
@@ -16782,11 +16801,11 @@ Error: `{err}`"
                 });
                 ui.separator();
                 if ui
-                    .button("About GENtle")
-                    .on_hover_text("Show version and build information")
+                    .button(self.tr("menu.help.about"))
+                    .on_hover_text(self.tr("menu.help.about.hover"))
                     .clicked()
                 {
-                    self.show_about_dialog = !about::show_native_about_panel();
+                    self.open_about_dialog();
                     ui.close();
                 }
             });
@@ -20876,6 +20895,7 @@ Error: `{err}`"
     fn apply_configuration_language(&mut self) {
         self.ui_language = self.configuration_ui_language;
         self.i18n.set_language(self.ui_language);
+        about::install_native_about_menu_bridge();
         self.configuration_language_dirty = false;
         self.configuration_status =
             format!("Interface language applied ({})", self.ui_language.label());
@@ -22017,23 +22037,193 @@ Error: `{err}`"
             return;
         }
         let mut open = self.show_about_dialog;
+        let mut show_details = false;
+        let mut close_requested = false;
         let spec = crate::egui_compat::ModalWindowSpec::new(
-            "About GENtle",
+            self.tr("about.title"),
             egui::Id::new("about_gentle_modal"),
-        );
+        )
+        .default_size(Vec2::new(460.0, 520.0))
+        .min_size(Vec2::new(420.0, 460.0));
         crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {
-            ui.vertical_centered(|ui| {
-                ui.add(APP_ICON.clone().fit_to_exact_size(Vec2::new(96.0, 96.0)));
-                for line in about::version_cli_text().lines() {
-                    if line.starts_with("GENtle ") {
-                        ui.heading(line);
-                    } else {
-                        ui.label(line);
-                    }
+            ui.set_min_width(390.0);
+            let dark_mode = ui.visuals().dark_mode;
+            let card_fill = if dark_mode {
+                egui::Color32::from_rgb(29, 36, 43)
+            } else {
+                egui::Color32::from_rgb(244, 247, 246)
+            };
+            egui::Frame::group(ui.style())
+                .fill(card_fill)
+                .corner_radius(14.0)
+                .inner_margin(egui::Margin::same(20))
+                .show(ui, |ui| {
+                    ui.vertical_centered(|ui| {
+                        ui.add(APP_ICON.clone().fit_to_exact_size(Vec2::new(112.0, 112.0)));
+                        ui.add_space(8.0);
+                        ui.label(egui::RichText::new("GENtle").size(30.0).strong());
+                        ui.label(
+                            egui::RichText::new(self.tr("about.subtitle"))
+                                .size(15.0)
+                                .color(ui.visuals().weak_text_color()),
+                        );
+                        ui.add_space(10.0);
+                        let status_fill = if dark_mode {
+                            egui::Color32::from_rgb(80, 64, 35)
+                        } else {
+                            egui::Color32::from_rgb(244, 225, 181)
+                        };
+                        egui::Frame::NONE
+                            .fill(status_fill)
+                            .corner_radius(10.0)
+                            .inner_margin(egui::Margin::symmetric(9, 3))
+                            .show(ui, |ui| {
+                                ui.small(egui::RichText::new(self.tr("about.status")).strong());
+                            });
+                        ui.add_space(14.0);
+                        ui.label(format!(
+                            "{} {}",
+                            self.tr("about.version"),
+                            about::GENTLE_PACKAGE_VERSION
+                        ));
+                        ui.small(format!(
+                            "{} {}",
+                            self.tr("about.build"),
+                            about::GENTLE_BUILD_N
+                        ));
+                        ui.add_space(14.0);
+                        ui.add(
+                            egui::Label::new(self.tr("about.summary"))
+                                .wrap()
+                                .halign(egui::Align::Center),
+                        );
+                        ui.add_space(12.0);
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(self.tr("about.created_by")).small(),
+                            )
+                            .wrap()
+                            .halign(egui::Align::Center),
+                        );
+                        ui.small(self.tr("about.license"));
+                    });
+                });
+            ui.add_space(12.0);
+            ui.horizontal(|ui| {
+                if ui
+                    .button(self.tr("about.more_info"))
+                    .on_hover_text(self.tr("about.more_info.hover"))
+                    .clicked()
+                {
+                    show_details = true;
                 }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button(self.tr("about.close")).clicked() {
+                        close_requested = true;
+                    }
+                });
             });
         });
-        self.show_about_dialog = open;
+        self.show_about_dialog = open && !show_details && !close_requested;
+        if show_details {
+            self.show_about_details_dialog = true;
+        }
+    }
+
+    fn render_about_details_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_about_details_dialog {
+            return;
+        }
+        let mut open = self.show_about_details_dialog;
+        let mut back_requested = false;
+        let mut close_requested = false;
+        let spec = crate::egui_compat::ModalWindowSpec::new(
+            self.tr("about.details.title"),
+            egui::Id::new("about_gentle_details_modal"),
+        )
+        .default_size(Vec2::new(760.0, 560.0))
+        .min_size(Vec2::new(620.0, 460.0))
+        .resizable(true);
+        crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.columns(2, |columns| {
+                    columns[0].vertical_centered(|ui| {
+                        ui.add_space(18.0);
+                        ui.add(
+                            SPLASH_SCREEN
+                                .clone()
+                                .fit_to_exact_size(Vec2::new(280.0, 245.0)),
+                        );
+                        ui.add_space(6.0);
+                        ui.label(egui::RichText::new("GENtle").size(25.0).strong());
+                        ui.small(format!(
+                            "{} {} · {} {}",
+                            self.tr("about.version"),
+                            about::GENTLE_PACKAGE_VERSION,
+                            self.tr("about.build"),
+                            about::GENTLE_BUILD_N
+                        ));
+                    });
+                    columns[1].vertical(|ui| {
+                        ui.heading(self.tr("about.details.heading"));
+                        ui.add_space(6.0);
+                        ui.add(egui::Label::new(self.tr("about.details.body")).wrap());
+                        ui.add_space(14.0);
+                        egui::Frame::group(ui.style()).show(ui, |ui| {
+                            ui.add(egui::Label::new(self.tr("about.preview_note")).wrap());
+                        });
+                        ui.add_space(16.0);
+                        egui::Grid::new("about_gentle_metadata")
+                            .num_columns(2)
+                            .spacing([12.0, 7.0])
+                            .show(ui, |ui| {
+                                ui.strong(self.tr("about.version"));
+                                ui.label(about::GENTLE_PACKAGE_VERSION);
+                                ui.end_row();
+                                ui.strong(self.tr("about.build"));
+                                ui.label(about::GENTLE_BUILD_N);
+                                ui.end_row();
+                                ui.strong(self.tr("about.license.label"));
+                                ui.label(about::GENTLE_LICENSE);
+                                ui.end_row();
+                            });
+                        ui.add_space(16.0);
+                        ui.hyperlink_to(self.tr("about.repository"), about::GENTLE_REPOSITORY_URL);
+                        ui.hyperlink_to(
+                            self.tr("about.documentation"),
+                            about::GENTLE_DOCUMENTATION_URL,
+                        );
+                        ui.hyperlink_to(
+                            self.tr("about.acknowledgements"),
+                            about::GENTLE_ACKNOWLEDGEMENTS_URL,
+                        );
+                        ui.add_space(12.0);
+                        if ui
+                            .button(self.tr("about.copy_build"))
+                            .on_hover_text(self.tr("about.copy_build.hover"))
+                            .clicked()
+                        {
+                            ui.ctx().copy_text(about::about_clipboard_text());
+                        }
+                    });
+                });
+            });
+            ui.separator();
+            ui.horizontal(|ui| {
+                if ui.button(self.tr("about.back")).clicked() {
+                    back_requested = true;
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button(self.tr("about.close")).clicked() {
+                        close_requested = true;
+                    }
+                });
+            });
+        });
+        self.show_about_details_dialog = open && !back_requested && !close_requested;
+        if back_requested {
+            self.show_about_dialog = true;
+        }
     }
 
     fn render_command_palette_dialog(&mut self, ctx: &egui::Context) {
@@ -24814,6 +25004,7 @@ impl GENtleApp {
             Self::configure_platform_viewport_mode(ctx);
             if self.take_root_initialization_request() {
                 egui_extras::install_image_loaders(ctx);
+                about::install_native_about_menu_bridge();
                 about::install_native_help_menu_bridge();
                 about::install_native_settings_menu_bridge();
                 about::install_native_windows_menu_bridge();
@@ -24823,6 +25014,7 @@ impl GENtleApp {
                 window_backdrop::preload_window_backdrop_images(ctx, &self.window_backdrops);
             }
             self.consume_native_help_request();
+            self.consume_native_about_request();
             self.consume_native_settings_request();
             self.consume_native_pcr_design_request();
             self.consume_native_jaspar_expert_request();
@@ -24926,6 +25118,7 @@ impl GENtleApp {
                 self.render_configuration_dialog(ctx);
                 self.render_help_dialog(ctx);
                 self.render_about_dialog(ctx);
+                self.render_about_details_dialog(ctx);
                 self.render_command_palette_dialog(ctx);
                 self.render_jobs_panel(ctx);
                 self.render_history_panel(ctx);

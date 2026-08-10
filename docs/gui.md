@@ -3246,15 +3246,24 @@ Persistence:
 
 ## About GENtle
 
-Two About entries exist on macOS:
+The in-app `Help -> About GENtle` entry and the native macOS application-menu
+entry open the same GENtle-owned About experience. The native label follows the
+selected presentation language, including `GENtle -> Über GENtle` in German;
+it no longer opens AppKit's sparse standard metadata panel.
 
-- `Help -> About GENtle`: custom GENtle About window (icon + version/build text)
-- app menu `GENtle -> About GENtle`: standard macOS About panel
+The compact, Finder-inspired About card shows the application icon, purpose,
+internal-preview status, semantic package version, build stamp, authorship, and
+licence. `More Info …` / `Weitere Infos …` opens a larger mascot view with:
 
-The custom window and CLI `--version` share the same text payload.
-- On Windows/Linux, the custom About window shows:
-  - semantic package version from `Cargo.toml` (for example `0.1.0-internal.2`)
-  - build stamp on the next line (`Build <epoch-ms>`)
+- the shared-engine and provenance model
+- the internal-preview bench-use caution
+- package version, build identity, and licence
+- direct links to the GitHub project, documentation, and credits
+- a copy action for reproducible build information
+
+The copied payload and CLI `--version` draw from the same compile-time About
+metadata. Windows and Linux use the same custom GUI panels; only the native
+application-menu bridge is macOS-specific.
 
 ## Open windows and focus
 

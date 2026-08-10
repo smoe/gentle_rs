@@ -18,8 +18,8 @@ use super::{
     GibsonUiInsertOrientation, GibsonUiInsertRow, GibsonUiOpeningMode, HelpDoc, HelpSearchMatch,
     HelpTutorialDocEntry, LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT,
     LineageAnalysisKind, LineageCopyPayloadKind, LineageNodeKind, LineageRow, MAX_RECENT_PROJECTS,
-    MISTRAL_API_KEY_AUTH_HINT, MISTRAL_API_KEY_ENV, OPENAI_API_KEY_ENV,
-    OPERATION_HISTORY_SCROLL_ID, PendingEnsemblCatalogUpdateDialog,
+    MISTRAL_API_KEY_AUTH_HINT, MISTRAL_API_KEY_ENV, NATIVE_ABOUT_OPEN_REQUESTED,
+    OPENAI_API_KEY_ENV, OPERATION_HISTORY_SCROLL_ID, PendingEnsemblCatalogUpdateDialog,
     PendingEnsemblInstallableGenomeDialog, PendingEnsemblQuickInstallDialog,
     PersistedConfiguration, PersistedLineageGraphWorkspace, PersistedLineageNodeGroup,
     PersistedRackWorkspace, PrepareGenomeDialogPrimaryAction, PrepareGenomeFailureRecovery,
@@ -34,6 +34,7 @@ use super::{
     TutorialProjectTaskProgress, gui_prominent_glossary_entries, load_agent_token_file_credentials,
     preferred_anthropic_agent_system_id, preferred_local_agent_system_id,
     preferred_mistral_agent_system_id, preferred_openai_agent_system_id,
+    request_open_about_from_native_menu,
 };
 use crate::{
     agent_bridge::{
@@ -217,6 +218,21 @@ fn splash_screen_hides_after_timeout_or_dismissal() {
     app.splash_started_at = now;
     app.dismiss_splash_screen();
     assert!(!app.splash_should_render_at(now));
+}
+
+#[test]
+fn native_about_request_opens_the_shared_about_dialog() {
+    NATIVE_ABOUT_OPEN_REQUESTED.store(false, Ordering::SeqCst);
+    let mut app = GENtleApp::default();
+    app.show_about_details_dialog = true;
+
+    request_open_about_from_native_menu();
+    app.consume_native_about_request();
+
+    assert!(app.show_about_dialog);
+    assert!(!app.show_about_details_dialog);
+    assert!(app.splash_dismissed);
+    assert!(!NATIVE_ABOUT_OPEN_REQUESTED.load(Ordering::SeqCst));
 }
 
 #[test]
