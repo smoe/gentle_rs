@@ -20,6 +20,67 @@
   "cdna_synthesis": "oligo_dt",
   "objective": "pan_transcript",
   "coverage_policy": "require_all",
+  "coverage_universe": {
+    "kind": "all_annotated_cdna_classes",
+    "required_transcript_ids": [],
+    "sources": []
+  },
+  "coverage_resolution": {
+    "universe": {
+      "kind": "all_annotated_cdna_classes",
+      "required_transcript_ids": [],
+      "sources": []
+    },
+    "annotated_transcript_count": 3,
+    "required_target_count": 3,
+    "included_transcript_ids": [
+      "PATZ1-201",
+      "PATZ1-202",
+      "PATZ1-203"
+    ],
+    "excluded_annotated_transcript_ids": [],
+    "unresolved_target_ids": [],
+    "ambiguous_target_ids": [],
+    "targets": [
+      {
+        "target_id": "transcript_coverage_target_b0988f749ebce6c9",
+        "requested_transcript_id": "PATZ1-201",
+        "resolved_transcript_id": "PATZ1-201",
+        "equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447",
+        "source_report_ids": [],
+        "uniprot_entry_ids": [],
+        "uniprot_isoform_ids": [],
+        "audit_statuses": [],
+        "status": "included",
+        "notes": []
+      },
+      {
+        "target_id": "transcript_coverage_target_e95dbbb5c7179178",
+        "requested_transcript_id": "PATZ1-202",
+        "resolved_transcript_id": "PATZ1-202",
+        "equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+        "source_report_ids": [],
+        "uniprot_entry_ids": [],
+        "uniprot_isoform_ids": [],
+        "audit_statuses": [],
+        "status": "included",
+        "notes": []
+      },
+      {
+        "target_id": "transcript_coverage_target_c64dba7e32025494",
+        "requested_transcript_id": "PATZ1-203",
+        "resolved_transcript_id": "PATZ1-203",
+        "equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
+        "source_report_ids": [],
+        "uniprot_entry_ids": [],
+        "uniprot_isoform_ids": [],
+        "audit_statuses": [],
+        "status": "included",
+        "notes": []
+      }
+    ],
+    "warnings": []
+  },
   "assay_tier": "routine_common_region_screen",
   "practicality_policy": {
     "preferred_amplicon_bp": {
