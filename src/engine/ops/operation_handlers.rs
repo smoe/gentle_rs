@@ -14474,18 +14474,37 @@ impl GentleEngine {
             .collect();
         universe.required_transcript_ids.sort();
         universe.required_transcript_ids.dedup();
+        for target in &mut universe.required_uniprot_isoforms {
+            target.entry_id = target.entry_id.trim().to_string();
+            target.isoform_id = target.isoform_id.trim().to_string();
+            target.name = target.name.trim().to_string();
+            target.aliases = target
+                .aliases
+                .drain(..)
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .collect();
+            target.aliases.sort();
+            target.aliases.dedup();
+        }
+        universe.required_uniprot_isoforms.sort();
+        universe.required_uniprot_isoforms.dedup();
 
         if universe.kind == TranscriptAssayCoverageUniverseKind::AllAnnotatedCdnaClasses {
-            if !universe.required_transcript_ids.is_empty() || !universe.sources.is_empty() {
+            if !universe.required_transcript_ids.is_empty()
+                || !universe.required_uniprot_isoforms.is_empty()
+                || !universe.sources.is_empty()
+            {
                 return Err(EngineError::invalid_input(
-                    "coverage_universe kind all_annotated_cdna_classes cannot carry required_transcript_ids or sources",
+                    "coverage_universe kind all_annotated_cdna_classes cannot carry required targets or sources",
                 ));
             }
             return Ok(universe);
         }
 
         let mut normalized_sources = vec![];
-        let mut uniprot_transcript_ids = BTreeMap::<String, String>::new();
+        let mut uniprot_targets =
+            BTreeMap::<(String, String), TranscriptAssayUniprotIsoformTargetRef>::new();
         for mut source in universe.sources {
             source.path = source.path.trim().to_string();
             if source.path.is_empty() {
@@ -14561,23 +14580,44 @@ impl GentleEngine {
                 }
                 source.report_id = Some(report.report_id.clone());
                 source.report_schema = Some(report.schema.clone());
-                for row in report
-                    .rows
-                    .iter()
-                    .filter(|row| !row.link_resolution.matched_xrefs.is_empty())
+                if !matches!(
+                    report.protein_isoform_inventory.status,
+                    UniprotProteinIsoformInventoryStatus::Complete
+                        | UniprotProteinIsoformInventoryStatus::CanonicalOnly
+                ) || report.protein_isoform_inventory.targets.is_empty()
                 {
-                    let stable = Self::transcript_assay_stable_transcript_id(&row.transcript_id);
-                    if !stable.is_empty() {
-                        let transcript_id = row.transcript_id.trim().to_string();
-                        uniprot_transcript_ids
-                            .entry(stable)
-                            .and_modify(|existing| {
-                                if transcript_id < *existing {
-                                    existing.clone_from(&transcript_id);
-                                }
-                            })
-                            .or_insert(transcript_id);
+                    return Err(EngineError::invalid_input(format!(
+                        "UniProt coverage source '{}' does not carry a complete protein_isoform_inventory; regenerate the projection audit from its stored UniProt entry before approving assay design",
+                        source.path
+                    )));
+                }
+                for target in &report.protein_isoform_inventory.targets {
+                    if target.entry_id.trim().is_empty() || target.isoform_id.trim().is_empty() {
+                        return Err(EngineError::invalid_input(format!(
+                            "UniProt coverage source '{}' contains an inventory target without entry_id/isoform_id",
+                            source.path
+                        )));
                     }
+                    let mut aliases = target.isoform_id_aliases.clone();
+                    aliases.sort();
+                    aliases.dedup();
+                    let normalized = TranscriptAssayUniprotIsoformTargetRef {
+                        entry_id: target.entry_id.trim().to_string(),
+                        isoform_id: target.isoform_id.trim().to_string(),
+                        name: target.name.trim().to_string(),
+                        aliases,
+                        is_canonical: target.is_canonical,
+                    };
+                    let key = (normalized.entry_id.clone(), normalized.isoform_id.clone());
+                    if let Some(previous) = uniprot_targets.get(&key)
+                        && previous != &normalized
+                    {
+                        return Err(EngineError::invalid_input(format!(
+                            "UniProt coverage sources disagree about target '{}:{}'",
+                            key.0, key.1
+                        )));
+                    }
+                    uniprot_targets.insert(key, normalized);
                 }
             }
             normalized_sources.push(source);
@@ -14600,6 +14640,11 @@ impl GentleEngine {
                         "coverage_universe kind explicit_transcripts requires required_transcript_ids",
                     ));
                 }
+                if !universe.required_uniprot_isoforms.is_empty() {
+                    return Err(EngineError::invalid_input(
+                        "coverage_universe kind explicit_transcripts cannot carry required_uniprot_isoforms",
+                    ));
+                }
             }
             TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms => {
                 if universe.sources.is_empty() {
@@ -14607,35 +14652,30 @@ impl GentleEngine {
                         "coverage_universe kind uniprot_supported_isoforms requires at least one content-bound UniProt projection-audit source",
                     ));
                 }
-                if uniprot_transcript_ids.is_empty() {
+                if !universe.required_transcript_ids.is_empty() {
                     return Err(EngineError::invalid_input(
-                        "UniProt projection-audit coverage sources contain no Ensembl-linked transcript rows",
+                        "UniProt coverage is protein-isoform-owned and cannot carry required_transcript_ids; regenerate legacy transcript-derived coverage requests from the audited protein_isoform_inventory",
                     ));
                 }
-                let derived_ids = uniprot_transcript_ids.values().cloned().collect::<Vec<_>>();
-                if !universe.required_transcript_ids.is_empty() {
-                    let supplied = universe
-                        .required_transcript_ids
-                        .iter()
-                        .map(|value| Self::transcript_assay_stable_transcript_id(value))
-                        .collect::<BTreeSet<_>>();
-                    let derived = derived_ids
-                        .iter()
-                        .map(|value| Self::transcript_assay_stable_transcript_id(value))
-                        .collect::<BTreeSet<_>>();
-                    if supplied != derived {
+                let derived_targets = uniprot_targets.into_values().collect::<Vec<_>>();
+                if !universe.required_uniprot_isoforms.is_empty() {
+                    if universe.required_uniprot_isoforms != derived_targets {
                         return Err(EngineError::invalid_input(format!(
-                            "Caller-supplied UniProt coverage transcripts [{}] do not match the content-bound audit-derived set [{}]",
-                            universe.required_transcript_ids.join(", "),
-                            derived_ids.join(", ")
+                            "Caller-supplied UniProt protein-isoform targets do not match the content-bound audit-derived inventory (supplied={}, derived={})",
+                            serde_json::to_string(&universe.required_uniprot_isoforms)
+                                .unwrap_or_else(|_| "<unavailable>".to_string()),
+                            serde_json::to_string(&derived_targets)
+                                .unwrap_or_else(|_| "<unavailable>".to_string())
                         )));
                     }
                 }
-                universe.required_transcript_ids = derived_ids;
+                universe.required_uniprot_isoforms = derived_targets;
             }
         }
         universe.required_transcript_ids.sort();
         universe.required_transcript_ids.dedup();
+        universe.required_uniprot_isoforms.sort();
+        universe.required_uniprot_isoforms.dedup();
         Ok(universe)
     }
 
@@ -14653,6 +14693,11 @@ impl GentleEngine {
     > {
         let universe =
             Self::normalize_transcript_assay_coverage_universe(universe, require_bound_sources)?;
+        if universe.kind == TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms {
+            return Self::resolve_transcript_assay_uniprot_coverage_universe(
+                universe, seq_id, templates,
+            );
+        }
         let mut resolution = TranscriptAssayCoverageResolution {
             universe: universe.clone(),
             annotated_transcript_count: templates.len(),
@@ -14683,67 +14728,6 @@ impl GentleEngine {
         }
 
         let mut metadata = BTreeMap::<String, TranscriptAssayCoverageTarget>::new();
-        if universe.kind == TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms {
-            for source in &universe.sources {
-                let bytes = fs::read(&source.path).map_err(|error| EngineError {
-                    code: ErrorCode::Io,
-                    message: format!(
-                        "Could not read transcript assay coverage source '{}': {error}",
-                        source.path
-                    ),
-                    cause_chain: vec![],
-                })?;
-                let report: UniprotProjectionAuditReport = serde_json::from_slice(&bytes)
-                    .map_err(|error| {
-                        EngineError::invalid_input(format!(
-                            "Could not parse UniProt projection audit coverage source '{}': {error}",
-                            source.path
-                        ))
-                    })?;
-                if report.seq_id != seq_id {
-                    return Err(EngineError::invalid_input(format!(
-                        "UniProt coverage report '{}' targets sequence '{}' but assay design targets '{}'",
-                        report.report_id, report.seq_id, seq_id
-                    )));
-                }
-                for row in report
-                    .rows
-                    .iter()
-                    .filter(|row| !row.link_resolution.matched_xrefs.is_empty())
-                {
-                    let stable = Self::transcript_assay_stable_transcript_id(&row.transcript_id);
-                    let target = metadata.entry(stable.clone()).or_insert_with(|| {
-                        TranscriptAssayCoverageTarget {
-                            target_id: short_sha256_id(
-                                "transcript_coverage_target",
-                                &format!("uniprot|{stable}"),
-                            ),
-                            requested_transcript_id: row.transcript_id.clone(),
-                            ..TranscriptAssayCoverageTarget::default()
-                        }
-                    });
-                    target.source_report_ids.push(report.report_id.clone());
-                    target.uniprot_entry_ids.push(report.entry_id.clone());
-                    target.audit_statuses.push(row.status.as_str().to_string());
-                    for isoform_id in row
-                        .link_resolution
-                        .matched_xrefs
-                        .iter()
-                        .filter_map(|xref| xref.isoform_id.clone())
-                    {
-                        target.uniprot_isoform_ids.push(isoform_id);
-                    }
-                    if row.status != UniprotProjectionAuditRowStatus::Consistent {
-                        target.notes.push(format!(
-                            "UniProt projection audit '{}' reports status '{}' for transcript '{}'; coverage is retained but this is not protein-expression validation.",
-                            report.report_id,
-                            row.status.as_str(),
-                            row.transcript_id
-                        ));
-                    }
-                }
-            }
-        }
 
         let mut template_indices_by_stable = BTreeMap::<String, Vec<usize>>::new();
         for (index, template) in templates.iter().enumerate() {
@@ -14848,12 +14832,232 @@ impl GentleEngine {
                 .cmp(&right.requested_transcript_id)
                 .then(left.target_id.cmp(&right.target_id))
         });
-        if universe.kind == TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms {
-            resolution.warnings.push(
-                "UniProt defines the required prioritization set; PCR still measures mapped mature-cDNA sequences and does not establish protein-isoform expression."
-                    .to_string(),
-            );
+        let selected = included_indices
+            .iter()
+            .map(|index| templates[*index].clone())
+            .collect::<Vec<_>>();
+        Ok((selected, resolution))
+    }
+
+    fn resolve_transcript_assay_uniprot_coverage_universe(
+        universe: TranscriptAssayCoverageUniverse,
+        seq_id: &str,
+        templates: &[TranscriptQpcrDesignTemplate],
+    ) -> Result<
+        (
+            Vec<TranscriptQpcrDesignTemplate>,
+            TranscriptAssayCoverageResolution,
+        ),
+        EngineError,
+    > {
+        let mut resolution = TranscriptAssayCoverageResolution {
+            universe: universe.clone(),
+            annotated_transcript_count: templates.len(),
+            required_target_count: universe.required_uniprot_isoforms.len(),
+            ..TranscriptAssayCoverageResolution::default()
+        };
+        let mut template_indices_by_stable = BTreeMap::<String, Vec<usize>>::new();
+        for (index, template) in templates.iter().enumerate() {
+            template_indices_by_stable
+                .entry(Self::transcript_assay_stable_transcript_id(
+                    &template.transcript_id,
+                ))
+                .or_default()
+                .push(index);
         }
+
+        let mut reports = vec![];
+        for source in &universe.sources {
+            let bytes = fs::read(&source.path).map_err(|error| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not read transcript assay coverage source '{}': {error}",
+                    source.path
+                ),
+                cause_chain: vec![],
+            })?;
+            let report: UniprotProjectionAuditReport =
+                serde_json::from_slice(&bytes).map_err(|error| {
+                    EngineError::invalid_input(format!(
+                        "Could not parse UniProt projection audit coverage source '{}': {error}",
+                        source.path
+                    ))
+                })?;
+            if report.seq_id != seq_id {
+                return Err(EngineError::invalid_input(format!(
+                    "UniProt coverage report '{}' targets sequence '{}' but assay design targets '{}'",
+                    report.report_id, report.seq_id, seq_id
+                )));
+            }
+            reports.push(report);
+        }
+
+        let audit_rank = |status: UniprotProjectionAuditRowStatus| match status {
+            UniprotProjectionAuditRowStatus::Consistent => 0usize,
+            UniprotProjectionAuditRowStatus::Warning => 1,
+            UniprotProjectionAuditRowStatus::Mismatch => 2,
+            UniprotProjectionAuditRowStatus::MissingEvidence => 3,
+        };
+        let mut included_indices = BTreeSet::<usize>::new();
+        for required in &universe.required_uniprot_isoforms {
+            let target_id = short_sha256_id(
+                "uniprot_protein_isoform_coverage_target",
+                &format!("{}|{}", required.entry_id, required.isoform_id),
+            );
+            let mut target = TranscriptAssayCoverageTarget {
+                target_id: target_id.clone(),
+                uniprot_entry_id: Some(required.entry_id.clone()),
+                uniprot_isoform_id: Some(required.isoform_id.clone()),
+                uniprot_isoform_name: Some(required.name.clone()),
+                is_canonical_uniprot_target: required.is_canonical,
+                uniprot_entry_ids: vec![required.entry_id.clone()],
+                uniprot_isoform_ids: std::iter::once(required.isoform_id.clone())
+                    .chain(required.aliases.iter().cloned())
+                    .collect(),
+                ..TranscriptAssayCoverageTarget::default()
+            };
+            let accepted_isoform_ids = target
+                .uniprot_isoform_ids
+                .iter()
+                .map(|value| value.as_str())
+                .collect::<BTreeSet<_>>();
+            let mut matching_template_ranks = BTreeMap::<usize, usize>::new();
+            let mut saw_matching_xref = false;
+            for report in reports
+                .iter()
+                .filter(|report| report.entry_id.eq_ignore_ascii_case(&required.entry_id))
+            {
+                let canonical_only = report.protein_isoform_inventory.status
+                    == UniprotProteinIsoformInventoryStatus::CanonicalOnly;
+                for row in &report.rows {
+                    let xref_matches = row.link_resolution.matched_xrefs.iter().any(|xref| {
+                        canonical_only
+                            || xref.isoform_id.as_deref().is_some_and(|id| {
+                                accepted_isoform_ids
+                                    .iter()
+                                    .any(|accepted| accepted.eq_ignore_ascii_case(id))
+                            })
+                            || (required.is_canonical && xref.isoform_id.is_none())
+                    });
+                    if !xref_matches {
+                        continue;
+                    }
+                    saw_matching_xref = true;
+                    target.source_report_ids.push(report.report_id.clone());
+                    target.audit_statuses.push(row.status.as_str().to_string());
+                    let stable = Self::transcript_assay_stable_transcript_id(&row.transcript_id);
+                    let exact = templates
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(index, template)| {
+                            (template.transcript_id == row.transcript_id).then_some(index)
+                        })
+                        .collect::<Vec<_>>();
+                    let matches = if exact.is_empty() {
+                        template_indices_by_stable
+                            .get(&stable)
+                            .cloned()
+                            .unwrap_or_default()
+                    } else {
+                        exact
+                    };
+                    if matches.is_empty() {
+                        target.notes.push(format!(
+                            "UniProt audit '{}' maps protein isoform '{}:{}' to transcript '{}', which is absent from the current assay annotation.",
+                            report.report_id,
+                            required.entry_id,
+                            required.isoform_id,
+                            row.transcript_id
+                        ));
+                    }
+                    for index in matches {
+                        matching_template_ranks
+                            .entry(index)
+                            .and_modify(|rank| *rank = (*rank).min(audit_rank(row.status)))
+                            .or_insert_with(|| audit_rank(row.status));
+                    }
+                    if row.status != UniprotProjectionAuditRowStatus::Consistent {
+                        target.notes.push(format!(
+                            "UniProt projection audit '{}' reports '{}' for mapped transcript '{}'. The mapping remains visible, but coding-model concordance and protein expression are not inferred.",
+                            report.report_id,
+                            row.status.as_str(),
+                            row.transcript_id
+                        ));
+                    }
+                }
+            }
+
+            if matching_template_ranks.is_empty() {
+                target.status = TranscriptAssayCoverageTargetStatus::Unresolved;
+                target.notes.push(if saw_matching_xref {
+                    "The named UniProt isoform has cross-references, but none resolve to a current annotated mature-cDNA template."
+                        .to_string()
+                } else {
+                    "The complete UniProt named-isoform inventory contains this mandatory target, but no Ensembl transcript cross-reference maps it."
+                        .to_string()
+                });
+                resolution.unresolved_target_ids.push(target_id);
+            } else {
+                let mut candidates = matching_template_ranks
+                    .iter()
+                    .map(|(index, rank)| (*rank, templates[*index].transcript_id.clone(), *index))
+                    .collect::<Vec<_>>();
+                candidates.sort();
+                let representative_index = candidates.first().map(|candidate| candidate.2).ok_or_else(|| {
+                    EngineError::internal(
+                        "UniProt coverage resolution lost all representative candidates after a non-empty mapping check",
+                    )
+                })?;
+                target.resolved_transcript_id =
+                    Some(templates[representative_index].transcript_id.clone());
+                target.mapped_transcript_ids = matching_template_ranks
+                    .keys()
+                    .map(|index| templates[*index].transcript_id.clone())
+                    .collect();
+                target.status = TranscriptAssayCoverageTargetStatus::Included;
+                target.notes.push(format!(
+                    "Representative assay template '{}' was selected deterministically by projection-audit status then transcript id; all mapped transcripts remain listed for interpretation.",
+                    templates[representative_index].transcript_id
+                ));
+                included_indices.extend(matching_template_ranks.keys().copied());
+            }
+            target.source_report_ids.sort();
+            target.source_report_ids.dedup();
+            target.uniprot_isoform_ids.sort();
+            target.uniprot_isoform_ids.dedup();
+            target.audit_statuses.sort();
+            target.audit_statuses.dedup();
+            target.mapped_transcript_ids.sort();
+            target.mapped_transcript_ids.dedup();
+            target.notes.sort();
+            target.notes.dedup();
+            resolution.targets.push(target);
+        }
+        resolution.included_transcript_ids = included_indices
+            .iter()
+            .map(|index| templates[*index].transcript_id.clone())
+            .collect();
+        resolution.excluded_annotated_transcript_ids = templates
+            .iter()
+            .enumerate()
+            .filter_map(|(index, template)| {
+                (!included_indices.contains(&index)).then_some(template.transcript_id.clone())
+            })
+            .collect();
+        resolution.included_transcript_ids.sort();
+        resolution.excluded_annotated_transcript_ids.sort();
+        resolution.unresolved_target_ids.sort();
+        resolution
+            .targets
+            .sort_by(|left, right| left.target_id.cmp(&right.target_id));
+        resolution.warnings.push(
+            "UniProt defines protein-isoform coverage targets; Ensembl/GenBank transcript mappings and CDS concordance remain separate evidence. PCR detects mapped mature cDNA and does not establish protein-isoform expression."
+                .to_string(),
+        );
+        resolution.warnings.push(
+            "Automatic candidate searches use one audit-ranked representative transcript per UniProt protein target. All mapped transcripts remain in the detection matrix; use a separate explicit/all-annotation plan when alternative transcript geometry itself must be searched."
+                .to_string(),
+        );
         let selected = included_indices
             .iter()
             .map(|index| templates[*index].clone())
@@ -14882,7 +15086,81 @@ impl GentleEngine {
                 .as_deref()
                 .and_then(|transcript_id| group_by_transcript.get(transcript_id).copied())
                 .map(str::to_string);
+            target.equivalence_group_ids = target
+                .mapped_transcript_ids
+                .iter()
+                .filter_map(|transcript_id| group_by_transcript.get(transcript_id.as_str()))
+                .map(|value| (*value).to_string())
+                .collect();
+            if target.equivalence_group_ids.is_empty()
+                && let Some(group_id) = target.equivalence_group_id.clone()
+            {
+                target.equivalence_group_ids.push(group_id);
+            }
+            target.equivalence_group_ids.sort();
+            target.equivalence_group_ids.dedup();
         }
+    }
+
+    fn transcript_assay_uniprot_representative_template_indices(
+        resolution: &TranscriptAssayCoverageResolution,
+        templates: &[TranscriptQpcrDesignTemplate],
+    ) -> Option<BTreeSet<usize>> {
+        if resolution.universe.kind != TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms
+        {
+            return None;
+        }
+        Some(
+            resolution
+                .targets
+                .iter()
+                .filter_map(|target| target.resolved_transcript_id.as_deref())
+                .filter_map(|transcript_id| {
+                    templates
+                        .iter()
+                        .position(|template| template.transcript_id == transcript_id)
+                })
+                .collect(),
+        )
+    }
+
+    fn transcript_assay_uniprot_target_group_indices(
+        resolution: &TranscriptAssayCoverageResolution,
+        equivalence_groups: &[TranscriptAssayEquivalenceInternal],
+    ) -> Vec<BTreeSet<usize>> {
+        let group_index_by_id = equivalence_groups
+            .iter()
+            .enumerate()
+            .map(|(index, group)| (group.report.equivalence_group_id.as_str(), index))
+            .collect::<HashMap<_, _>>();
+        resolution
+            .targets
+            .iter()
+            .map(|target| {
+                target
+                    .equivalence_group_ids
+                    .iter()
+                    .filter_map(|group_id| group_index_by_id.get(group_id.as_str()).copied())
+                    .collect()
+            })
+            .collect()
+    }
+
+    fn transcript_assay_detected_target_indices(
+        candidate: &TranscriptAssayEvaluatedCandidate,
+        target_group_indices: &[BTreeSet<usize>],
+    ) -> BTreeSet<usize> {
+        let detected_groups = Self::transcript_assay_detected_group_indices(candidate);
+        target_group_indices
+            .iter()
+            .enumerate()
+            .filter_map(|(target_index, groups)| {
+                groups
+                    .iter()
+                    .any(|group_index| detected_groups.contains(group_index))
+                    .then_some(target_index)
+            })
+            .collect()
     }
 
     /// Resolve all defaults and bind every file input before a planning
@@ -20001,6 +20279,7 @@ impl GentleEngine {
 
     fn transcript_assay_end_classes_and_reactions(
         templates: &[TranscriptQpcrDesignTemplate],
+        required_template_indices: Option<&BTreeSet<usize>>,
     ) -> (
         Vec<TranscriptAssayEndClassInternal>,
         Vec<TranscriptAssayEndReactionInternal>,
@@ -20008,6 +20287,9 @@ impl GentleEngine {
         let mut classes = BTreeMap::<String, TranscriptAssayEndClassInternal>::new();
         let mut template_class_pairs = vec![];
         for (template_index, template) in templates.iter().enumerate() {
+            if required_template_indices.is_some_and(|indices| !indices.contains(&template_index)) {
+                continue;
+            }
             let Some(first) = template.local_exon_segments.first() else {
                 continue;
             };
@@ -21335,8 +21617,15 @@ impl GentleEngine {
             &mut coverage_resolution,
             &equivalence_groups,
         );
-        let (end_classes, end_reactions) =
-            Self::transcript_assay_end_classes_and_reactions(&templates);
+        let representative_template_indices =
+            Self::transcript_assay_uniprot_representative_template_indices(
+                &coverage_resolution,
+                &templates,
+            );
+        let (end_classes, end_reactions) = Self::transcript_assay_end_classes_and_reactions(
+            &templates,
+            representative_template_indices.as_ref(),
+        );
         let operation_sha256 = Self::transcript_assay_operation_sha256(operation)?;
         let mut report = Self::transcript_assay_end_matrix_feasibility(
             operation_sha256,
@@ -24020,7 +24309,15 @@ impl GentleEngine {
             );
         let (end_classes_internal, mut end_reactions_internal) =
             if objective == TranscriptAssayPanelObjective::IsoformEndMatrix {
-                Self::transcript_assay_end_classes_and_reactions(&templates)
+                let representative_template_indices =
+                    Self::transcript_assay_uniprot_representative_template_indices(
+                        &coverage_resolution,
+                        &templates,
+                    );
+                Self::transcript_assay_end_classes_and_reactions(
+                    &templates,
+                    representative_template_indices.as_ref(),
+                )
             } else {
                 (vec![], vec![])
             };
@@ -24107,6 +24404,15 @@ impl GentleEngine {
                 equivalence_group_index_by_template.insert(*template_index, group_index);
             }
         }
+        let uniprot_design_group_ids = (coverage_resolution.universe.kind
+            == TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms)
+            .then(|| {
+                coverage_resolution
+                    .targets
+                    .iter()
+                    .filter_map(|target| target.equivalence_group_id.clone())
+                    .collect::<BTreeSet<_>>()
+            });
         let mut targets = vec![];
         if objective == TranscriptAssayPanelObjective::IsoformEndMatrix {
             for reaction in &end_reactions_internal {
@@ -24163,6 +24469,12 @@ impl GentleEngine {
                 let minimum_pair_footprint = forward.min_length.saturating_add(reverse.min_length);
                 let mut scheduled_common_target = false;
                 for group in &equivalence_groups {
+                    if uniprot_design_group_ids
+                        .as_ref()
+                        .is_some_and(|ids| !ids.contains(&group.report.equivalence_group_id))
+                    {
+                        continue;
+                    }
                     let template = &templates[group.representative_template_index];
                     for source_range in &common_source_ranges {
                         let local_ranges =
@@ -24226,6 +24538,12 @@ impl GentleEngine {
                 });
             }
             for group in &equivalence_groups {
+                if uniprot_design_group_ids
+                    .as_ref()
+                    .is_some_and(|ids| !ids.contains(&group.report.equivalence_group_id))
+                {
+                    continue;
+                }
                 let template = &templates[group.representative_template_index];
                 for (roi_start, roi_end) in Self::transcript_assay_candidate_rois(template) {
                     targets.push(TranscriptAssayDesignTarget {
@@ -24652,8 +24970,26 @@ impl GentleEngine {
         }
 
         let all_group_indices = (0..equivalence_groups.len()).collect::<BTreeSet<_>>();
-        let detected_indices = |candidate: &TranscriptAssayEvaluatedCandidate| {
+        let detected_group_indices = |candidate: &TranscriptAssayEvaluatedCandidate| {
             Self::transcript_assay_detected_group_indices(candidate)
+        };
+        let use_uniprot_target_semantics = coverage_resolution.universe.kind
+            == TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms;
+        let target_group_indices = Self::transcript_assay_uniprot_target_group_indices(
+            &coverage_resolution,
+            &equivalence_groups,
+        );
+        let all_requirement_indices = if use_uniprot_target_semantics {
+            (0..target_group_indices.len()).collect::<BTreeSet<_>>()
+        } else {
+            all_group_indices.clone()
+        };
+        let detected_requirement_indices = |candidate: &TranscriptAssayEvaluatedCandidate| {
+            if use_uniprot_target_semantics {
+                Self::transcript_assay_detected_target_indices(candidate, &target_group_indices)
+            } else {
+                detected_group_indices(candidate)
+            }
         };
         let mut selected_indices = vec![];
         for evaluation in junction_evaluations
@@ -24677,7 +25013,9 @@ impl GentleEngine {
                 let full = evaluated_candidates
                     .iter()
                     .enumerate()
-                    .filter(|(_, candidate)| detected_indices(candidate) == all_group_indices)
+                    .filter(|(_, candidate)| {
+                        detected_requirement_indices(candidate) == all_requirement_indices
+                    })
                     .max_by(|(_, left), (_, right)| {
                         Self::transcript_assay_candidate_preference(left, right, assay_tier)
                     })
@@ -24686,9 +25024,9 @@ impl GentleEngine {
                     .iter()
                     .enumerate()
                     .max_by(|(_, left), (_, right)| {
-                        detected_indices(left)
+                        detected_requirement_indices(left)
                             .len()
-                            .cmp(&detected_indices(right).len())
+                            .cmp(&detected_requirement_indices(right).len())
                             .then_with(|| {
                                 Self::transcript_assay_candidate_preference(left, right, assay_tier)
                             })
@@ -24700,18 +25038,17 @@ impl GentleEngine {
             }
             TranscriptAssayPanelObjective::OnePerClass => {
                 let mut seen = BTreeSet::new();
-                for group_index in 0..equivalence_groups.len() {
+                for requirement_index in 0..all_requirement_indices.len() {
                     let best = evaluated_candidates
                         .iter()
                         .enumerate()
                         .filter(|(_, candidate)| {
-                            candidate.group_evaluations[group_index].status
-                                == TranscriptAssayDetectionStatus::SingleProduct
+                            detected_requirement_indices(candidate).contains(&requirement_index)
                         })
                         .max_by(|(_, left), (_, right)| {
-                            detected_indices(right)
+                            detected_requirement_indices(right)
                                 .len()
-                                .cmp(&detected_indices(left).len())
+                                .cmp(&detected_requirement_indices(left).len())
                                 .then_with(|| {
                                     Self::transcript_assay_candidate_preference(
                                         left, right, assay_tier,
@@ -24728,8 +25065,8 @@ impl GentleEngine {
             }
             TranscriptAssayPanelObjective::MinimalDiscriminationPanel => {
                 let mut unresolved_pairs = BTreeSet::new();
-                for left in 0..equivalence_groups.len() {
-                    for right in left.saturating_add(1)..equivalence_groups.len() {
+                for left in 0..all_requirement_indices.len() {
+                    for right in left.saturating_add(1)..all_requirement_indices.len() {
                         unresolved_pairs.insert((left, right));
                     }
                 }
@@ -24741,7 +25078,7 @@ impl GentleEngine {
                         if selected.contains(&index) {
                             continue;
                         }
-                        let detected = detected_indices(candidate);
+                        let detected = detected_requirement_indices(candidate);
                         let separation_gain = unresolved_pairs
                             .iter()
                             .filter(|(left, right)| {
@@ -24776,12 +25113,12 @@ impl GentleEngine {
                     };
                     selected.insert(index);
                     selected_indices.push(index);
-                    let detected = detected_indices(&evaluated_candidates[index]);
+                    let detected = detected_requirement_indices(&evaluated_candidates[index]);
                     covered.extend(detected.iter().copied());
                     unresolved_pairs.retain(|(left, right)| {
                         detected.contains(left) == detected.contains(right)
                     });
-                    if unresolved_pairs.is_empty() && covered == all_group_indices {
+                    if unresolved_pairs.is_empty() && covered == all_requirement_indices {
                         break;
                     }
                 }
@@ -24829,10 +25166,25 @@ impl GentleEngine {
 
         let mut covered_group_indices = BTreeSet::new();
         for index in &selected_indices {
-            covered_group_indices.extend(detected_indices(&evaluated_candidates[*index]));
+            covered_group_indices.extend(detected_group_indices(&evaluated_candidates[*index]));
         }
         let uncovered_group_indices = all_group_indices
             .difference(&covered_group_indices)
+            .copied()
+            .collect::<Vec<_>>();
+        if use_uniprot_target_semantics && !uncovered_group_indices.is_empty() {
+            warnings.push(format!(
+                "{} mapped transcript cDNA class(es) are not detected by the selected panel. UniProt target coverage requires at least one mapped cDNA per protein target; inspect uncovered_equivalence_group_ids or run a separate all-annotation plan when every transcript model is mandatory.",
+                uncovered_group_indices.len()
+            ));
+        }
+        let mut covered_requirement_indices = BTreeSet::new();
+        for index in &selected_indices {
+            covered_requirement_indices
+                .extend(detected_requirement_indices(&evaluated_candidates[*index]));
+        }
+        let uncovered_requirement_indices = all_requirement_indices
+            .difference(&covered_requirement_indices)
             .copied()
             .collect::<Vec<_>>();
         let mut unresolved_group_index_pairs = vec![];
@@ -24840,11 +25192,27 @@ impl GentleEngine {
             for left in 0..equivalence_groups.len() {
                 for right in left.saturating_add(1)..equivalence_groups.len() {
                     let separated = selected_indices.iter().any(|index| {
-                        let detected = detected_indices(&evaluated_candidates[*index]);
+                        let detected = detected_group_indices(&evaluated_candidates[*index]);
                         detected.contains(&left) != detected.contains(&right)
                     });
                     if !separated {
                         unresolved_group_index_pairs.push((left, right));
+                    }
+                }
+            }
+        }
+        let mut unresolved_requirement_index_pairs = vec![];
+        if objective == TranscriptAssayPanelObjective::MinimalDiscriminationPanel
+            || use_uniprot_target_semantics
+        {
+            for left in 0..all_requirement_indices.len() {
+                for right in left.saturating_add(1)..all_requirement_indices.len() {
+                    let separated = selected_indices.iter().any(|index| {
+                        let detected = detected_requirement_indices(&evaluated_candidates[*index]);
+                        detected.contains(&left) != detected.contains(&right)
+                    });
+                    if !separated {
+                        unresolved_requirement_index_pairs.push((left, right));
                     }
                 }
             }
@@ -24867,17 +25235,23 @@ impl GentleEngine {
             || selected_indices.iter().any(|index| {
                 evaluated_candidates[*index].common_region_evidence.status
                     == TranscriptAssayCommonRegionStatus::Confirmed
-                    && detected_indices(&evaluated_candidates[*index]) == all_group_indices
+                    && detected_requirement_indices(&evaluated_candidates[*index])
+                        == all_requirement_indices
             });
-        let complete = uncovered_group_indices.is_empty()
-            && unresolved_group_index_pairs.is_empty()
+        let required_coverage_complete = if use_uniprot_target_semantics {
+            uncovered_requirement_indices.is_empty()
+        } else {
+            uncovered_group_indices.is_empty() && unresolved_group_index_pairs.is_empty()
+        };
+        let complete = required_coverage_complete
             && uncovered_end_reaction_ids.is_empty()
             && required_junction_failures.is_empty()
             && routine_common_region_satisfied
             && match objective {
                 TranscriptAssayPanelObjective::PanTranscript => {
                     selected_indices.iter().any(|index| {
-                        detected_indices(&evaluated_candidates[*index]) == all_group_indices
+                        detected_requirement_indices(&evaluated_candidates[*index])
+                            == all_requirement_indices
                     })
                 }
                 TranscriptAssayPanelObjective::IsoformEndMatrix => end_reactions_internal
@@ -24885,6 +25259,77 @@ impl GentleEngine {
                     .all(|reaction| reaction.report.status == "designed"),
                 _ => true,
             };
+        let uncovered_coverage_target_ids = if use_uniprot_target_semantics {
+            uncovered_requirement_indices
+                .iter()
+                .map(|index| coverage_resolution.targets[*index].target_id.clone())
+                .collect::<Vec<_>>()
+        } else {
+            vec![]
+        };
+        let unresolved_coverage_target_pairs = if use_uniprot_target_semantics {
+            unresolved_requirement_index_pairs
+                .iter()
+                .map(
+                    |(left, right)| TranscriptAssayCoverageUnresolvedTargetPair {
+                        left_target_id: coverage_resolution.targets[*left].target_id.clone(),
+                        right_target_id: coverage_resolution.targets[*right].target_id.clone(),
+                    },
+                )
+                .collect::<Vec<_>>()
+        } else {
+            vec![]
+        };
+        if use_uniprot_target_semantics {
+            coverage_resolution.uncovered_target_ids = uncovered_coverage_target_ids.clone();
+            coverage_resolution.unresolved_target_pairs = unresolved_coverage_target_pairs.clone();
+            let coverage_target_ids = coverage_resolution
+                .targets
+                .iter()
+                .map(|target| target.target_id.clone())
+                .collect::<Vec<_>>();
+            for (target_index, target) in coverage_resolution.targets.iter_mut().enumerate() {
+                target.covering_assay_ids = selected_indices
+                    .iter()
+                    .filter_map(|candidate_index| {
+                        Self::transcript_assay_detected_target_indices(
+                            &evaluated_candidates[*candidate_index],
+                            &target_group_indices,
+                        )
+                        .contains(&target_index)
+                        .then(|| evaluated_candidates[*candidate_index].assay_id.clone())
+                    })
+                    .collect();
+                target.covering_assay_ids.sort();
+                target.covering_assay_ids.dedup();
+                target.coverage_status = if target.covering_assay_ids.is_empty() {
+                    TranscriptAssayCoverageEvaluationStatus::Uncovered
+                } else {
+                    TranscriptAssayCoverageEvaluationStatus::Covered
+                };
+                target.not_distinguished_from_target_ids = unresolved_requirement_index_pairs
+                    .iter()
+                    .filter_map(|(left, right)| {
+                        if *left == target_index {
+                            Some(coverage_target_ids[*right].clone())
+                        } else if *right == target_index {
+                            Some(coverage_target_ids[*left].clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                target.distinction_status = if target.covering_assay_ids.is_empty() {
+                    TranscriptAssayCoverageDistinctionStatus::NotEvaluated
+                } else if coverage_target_ids.len() == 1 {
+                    TranscriptAssayCoverageDistinctionStatus::NotApplicableSingleTarget
+                } else if target.not_distinguished_from_target_ids.is_empty() {
+                    TranscriptAssayCoverageDistinctionStatus::Distinguished
+                } else {
+                    TranscriptAssayCoverageDistinctionStatus::NotDistinguished
+                };
+            }
+        }
         if coverage_policy == TranscriptAssayCoveragePolicy::RequireAll && !complete {
             let runtime_reduction_receipt = if primer_search_plan.runtime_reductions.is_empty() {
                 "none".to_string()
@@ -24921,11 +25366,29 @@ impl GentleEngine {
                     )
                 })
                 .collect::<Vec<_>>();
+            let uncovered_targets = uncovered_coverage_target_ids
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>();
+            let unresolved_targets = unresolved_coverage_target_pairs
+                .iter()
+                .map(|pair| format!("{} <-> {}", pair.left_target_id, pair.right_target_id))
+                .collect::<Vec<_>>();
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!(
-                    "Transcript assay panel objective '{}' with coverage policy 'require_all' could not be satisfied. Uncovered equivalence classes: {}. Unresolved class pairs: {}. Uncovered end reactions: {}. Required junctions without a spanning assay: {}. Annotation-confirmed routine common region: {}. Primer3 runtime-reduction receipts: {}.",
+                    "Transcript assay panel objective '{}' with coverage policy 'require_all' could not be satisfied. Uncovered mandatory coverage targets: {}. Protein targets not distinguished (informational for UniProt universes): {}. Uncovered equivalence classes: {}. Unresolved class pairs: {}. Uncovered end reactions: {}. Required junctions without a spanning assay: {}. Annotation-confirmed routine common region: {}. Primer3 runtime-reduction receipts: {}.",
                     objective.as_str(),
+                    if uncovered_targets.is_empty() {
+                        "none".to_string()
+                    } else {
+                        uncovered_targets.join("; ")
+                    },
+                    if unresolved_targets.is_empty() {
+                        "none".to_string()
+                    } else {
+                        unresolved_targets.join("; ")
+                    },
                     if uncovered.is_empty() {
                         "none".to_string()
                     } else {
@@ -24958,10 +25421,17 @@ impl GentleEngine {
             });
         }
         if !complete {
-            warnings.push(format!(
-                "best_effort returned a partial '{}' panel; inspect uncovered_equivalence_group_ids and unresolved_group_pairs before using the assays.",
-                objective.as_str()
-            ));
+            warnings.push(if use_uniprot_target_semantics {
+                format!(
+                    "best_effort returned a partial '{}' panel; inspect uncovered_coverage_target_ids and each protein target's mapping/coverage status before using the assays.",
+                    objective.as_str()
+                )
+            } else {
+                format!(
+                    "best_effort returned a partial '{}' panel; inspect uncovered_equivalence_group_ids and unresolved_group_pairs before using the assays.",
+                    objective.as_str()
+                )
+            });
         }
         if selected_indices.iter().any(|index| {
             evaluated_candidates[*index].practicality_classification
@@ -24999,6 +25469,14 @@ impl GentleEngine {
                     )
                 })
                 .collect::<Vec<_>>();
+            let single_product_coverage_target_ids = if use_uniprot_target_semantics {
+                Self::transcript_assay_detected_target_indices(candidate, &target_group_indices)
+                    .into_iter()
+                    .map(|target_index| coverage_resolution.targets[target_index].target_id.clone())
+                    .collect()
+            } else {
+                vec![]
+            };
             let design_template = templates
                 .iter()
                 .find(|template| template.transcript_id == candidate.design_transcript_id)
@@ -25041,6 +25519,7 @@ impl GentleEngine {
                 end_reaction_ids: candidate.end_reaction_ids.clone(),
                 junction_matches: candidate.junction_matches.clone(),
                 single_product_equivalence_group_ids,
+                single_product_coverage_target_ids,
                 primer_pair_summary,
             });
             for (group_index, group) in equivalence_groups.iter().enumerate() {
@@ -25484,7 +25963,9 @@ impl GentleEngine {
             detection_matrix,
             transcript_rows,
             uncovered_equivalence_group_ids,
+            uncovered_coverage_target_ids,
             unresolved_group_pairs,
+            unresolved_coverage_target_pairs,
             backend_runs,
             feasibility: end_matrix_feasibility,
             search_plan: Some(primer_search_plan),

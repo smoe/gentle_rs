@@ -25,7 +25,7 @@ use crate::ensembl_protein::{
     resolve_query as resolve_ensembl_query,
 };
 use crate::exon_frame::exon_cds_phase_cues;
-use crate::uniprot::{UniprotFeature, UniprotFeatureProjection};
+use crate::uniprot::{UniprotFeature, UniprotFeatureProjection, parse_alternative_products};
 use crate::{AMINO_ACIDS, amino_acids::STOP_CODON};
 use gentle_protocol::{
     AttractPwmMappingPolicy, AttractRegionClass, AttractSpeciesMatchMode,
@@ -2715,6 +2715,7 @@ impl GentleEngine {
             })
             .collect::<Vec<_>>();
         let email_draft = Self::build_uniprot_projection_audit_email_draft(entry, &rows);
+        let protein_isoform_inventory = Self::uniprot_protein_isoform_inventory(entry);
         UniprotProjectionAuditReport {
             schema: UNIPROT_PROJECTION_AUDIT_REPORT_SCHEMA.to_string(),
             report_id: report_id.to_string(),
@@ -2730,6 +2731,7 @@ impl GentleEngine {
             op_id,
             run_id,
             rows,
+            protein_isoform_inventory,
             warnings: link_report
                 .warnings
                 .iter()
@@ -2739,6 +2741,93 @@ impl GentleEngine {
                 .cloned()
                 .collect(),
             maintainer_email_draft: email_draft,
+        }
+    }
+
+    fn uniprot_protein_isoform_inventory(entry: &UniprotEntry) -> UniprotProteinIsoformInventory {
+        let parsed = if entry.alternative_products == Default::default()
+            && !entry.raw_swiss_prot_text.trim().is_empty()
+        {
+            parse_alternative_products(&entry.raw_swiss_prot_text)
+        } else {
+            entry.alternative_products.clone()
+        };
+        let mut warnings = parsed.warnings.clone();
+        let mut targets = vec![];
+        for isoform in &parsed.named_isoforms {
+            let Some(primary_id) = isoform.isoform_ids.first().cloned() else {
+                continue;
+            };
+            targets.push(UniprotProteinIsoformInventoryTarget {
+                entry_id: entry.entry_id.clone(),
+                isoform_id: primary_id,
+                name: isoform.name.clone(),
+                synonyms: isoform.synonyms.clone(),
+                isoform_id_aliases: isoform.isoform_ids.iter().skip(1).cloned().collect(),
+                is_canonical: isoform
+                    .sequence_status
+                    .as_deref()
+                    .is_some_and(|value| value.eq_ignore_ascii_case("displayed")),
+                sequence_status: isoform.sequence_status.clone(),
+            });
+        }
+        let count_matches = parsed
+            .declared_named_isoform_count
+            .is_some_and(|declared| declared == parsed.named_isoforms.len());
+        let unique_target_count = targets
+            .iter()
+            .map(|target| (target.entry_id.as_str(), target.isoform_id.as_str()))
+            .collect::<BTreeSet<_>>()
+            .len();
+        if unique_target_count != targets.len() {
+            warnings.push(
+                "UniProt alternative products contain duplicate primary isoform ids.".to_string(),
+            );
+        }
+        let status = if !parsed.named_isoforms.is_empty() {
+            if count_matches && targets.len() == parsed.named_isoforms.len() && warnings.is_empty()
+            {
+                UniprotProteinIsoformInventoryStatus::Complete
+            } else {
+                UniprotProteinIsoformInventoryStatus::Incomplete
+            }
+        } else if parsed.declared_named_isoform_count.unwrap_or(0) == 0 && warnings.is_empty() {
+            let canonical_id = if entry.accession.trim().is_empty() {
+                entry.entry_id.clone()
+            } else {
+                entry.accession.clone()
+            };
+            targets.push(UniprotProteinIsoformInventoryTarget {
+                entry_id: entry.entry_id.clone(),
+                isoform_id: canonical_id,
+                name: "Canonical UniProt protein".to_string(),
+                is_canonical: true,
+                sequence_status: Some("Displayed".to_string()),
+                ..UniprotProteinIsoformInventoryTarget::default()
+            });
+            UniprotProteinIsoformInventoryStatus::CanonicalOnly
+        } else {
+            UniprotProteinIsoformInventoryStatus::Incomplete
+        };
+        if status == UniprotProteinIsoformInventoryStatus::Incomplete {
+            warnings.push(
+                "The UniProt alternative-product inventory is incomplete; do not derive a mandatory assay universe from this audit."
+                    .to_string(),
+            );
+        }
+        targets.sort_by(|left, right| {
+            left.entry_id
+                .cmp(&right.entry_id)
+                .then(left.isoform_id.cmp(&right.isoform_id))
+        });
+        warnings.sort();
+        warnings.dedup();
+        UniprotProteinIsoformInventory {
+            entry_id: entry.entry_id.clone(),
+            declared_named_isoform_count: parsed.declared_named_isoform_count,
+            status,
+            targets,
+            warnings,
         }
     }
 

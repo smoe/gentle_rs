@@ -3822,6 +3822,13 @@ external coding agent runtime, see:
       `P04637` or `P53_HUMAN`; `--entry-id` names the local GENtle metadata
       entry.
   - `uniprot import-swissprot PATH [--entry-id ID]`
+    - `gentle.uniprot_entry.v1` preserves the parsed `CC   -!- ALTERNATIVE
+      PRODUCTS` declaration (named count, names/synonyms, IsoIds, displayed or
+      variant sequence status, and parse warnings) beside the raw record.
+      `gentle.uniprot_projection_audit.v1` copies that complete inventory into
+      `protein_isoform_inventory`; entries without named alternatives emit one
+      explicit canonical target. The inventory is distinct from Ensembl link,
+      current transcript geometry, and CDS/peptide concordance rows.
   - `uniprot list`
   - `uniprot show ENTRY_ID`
   - `uniprot map ENTRY_ID SEQ_ID [--projection-id ID] [--transcript ID]`
@@ -9151,21 +9158,36 @@ Primer-design shell command family (implemented):
     representative per class, and confirms candidates with the mismatch-aware
     cDNA assay path.
   - `coverage_universe` is a third, independent request axis. It does not
-    replace `objective` or `coverage_policy`: it selects which annotated
-    transcripts are mandatory, the objective chooses how to assay them, and
-    the policy decides whether incomplete coverage is accepted. Omission uses
+    replace `objective` or `coverage_policy`: it selects the mandatory
+    biological targets, the objective chooses how to assay them, and the
+    policy decides whether incomplete coverage is accepted. Omission uses
     `all_annotated_cdna_classes` and is not serialized, preserving historical
     operation bytes and approval/checkpoint digests. Other kinds are
     `explicit_transcripts` and `uniprot_supported_isoforms`.
   - UniProt-supported coverage is derived from one or more content-bound
-    `gentle.uniprot_projection_audit.v1` sources. Normalization records each
-    source SHA-256 and derived Ensembl transcript set; design execution
-    requires those hashes and rejects changed content. Reports retain source
-    report ids, UniProt entry/isoform ids, audit statuses, resolved annotation
-    transcript ids, and exact-cDNA equivalence ids. Missing or ambiguous
-    mandatory mappings fail before Primer3 even under `best_effort`.
-    UniProt is a prioritization source: PCR measures mapped mature cDNA and
-    does not establish that a protein isoform is expressed.
+    `gentle.uniprot_projection_audit.v1` sources. New audits carry the complete
+    parsed UniProt `ALTERNATIVE PRODUCTS` inventory. Each mandatory target is
+    `(UniProt entry id, named isoform id)`, not an Ensembl transcript row. An
+    entry without named alternative products contributes one canonical protein
+    target. Every mapped Ensembl/current-annotation transcript remains grouped
+    under its protein target, while GENtle deterministically chooses one
+    representative assay template by audit status and transcript id. This
+    prevents one protein isoform from becoming many mandatory Primer3 searches.
+  - Normalization records each audit SHA-256 plus the exact protein-target
+    inventory in `required_uniprot_isoforms`; execution requires those hashes
+    and rejects changed content. An old audit without the inventory must be
+    regenerated. A named isoform with no current transcript mapping is
+    `unresolved` and stops before Primer3 even under `best_effort`. Reports
+    retain every mapped transcript and exact-cDNA class, the representative
+    template, coverage assay ids, and whether the selected assays distinguish
+    each protein target from the others. Shared/indistinguishable coverage is
+    reported but is acceptable when every mandatory protein target is covered.
+  - UniProt identity, Ensembl cross-reference mapping, current GenBank/Ensembl
+    transcript geometry, and CDS/peptide audit status remain separate evidence
+    layers because those annotation sources need not specify identical coding
+    models. PCR measures mapped mature cDNA and does not establish protein-
+    isoform expression or repair a CDS disagreement. Use a separate
+    all-annotation plan when transcript-model coverage itself is the objective.
   - This additive axis deliberately preserves alternative plans. A user may
     keep separate named all-annotation, UniProt-prioritized, and explicit
     transcript plans, each with any existing objective, rather than replacing
@@ -9181,6 +9203,16 @@ Primer-design shell command family (implemented):
     last-junction classes, retains only combinations supported by an annotated
     mature transcript, and permits one physical primer pair to reference more
     than one supported end reaction.
+  - With `uniprot_supported_isoforms`, the existing objective names operate on
+    mandatory protein targets: pan coverage reaches every target, one-per-class
+    selects coverage per protein target, discrimination tries to separate
+    target detection patterns, and endpoint reactions derive from one recorded
+    representative per target. Exact-cDNA classes and every mapped transcript
+    remain in the report. Consequently `completion_status=complete` can coexist
+    with informational uncovered transcript classes; target completion is
+    stated separately in `uncovered_coverage_target_ids` and each target's
+    `coverage_status`. Failure to distinguish two covered targets is recorded,
+    not silently promoted to an uncovered target.
   - `assay_tier` is an independent experimental-purpose axis:
     `routine_common_region_screen`, `isoform_discrimination`, or
     `long_range_structure_discovery`. It does not replace the selection

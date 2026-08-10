@@ -10,9 +10,11 @@
 - Added an orthogonal transcript-assay coverage-universe contract. Existing
   all-annotation plans remain byte-compatible, while explicit transcript sets
   and content-bound UniProt projection audits can define mandatory targets for
-  any existing panel objective. Reports retain mapping/equivalence provenance,
-  and unresolved or ambiguous mandatory targets stop before Primer3 without
-  silently weakening `require_all` or `best_effort` semantics.
+  any existing panel objective. UniProt universes now bind the complete named
+  protein-isoform inventory rather than multiplying mapped transcript rows;
+  reports group every mapping beneath its protein target, retain annotation/CDS
+  discordance, and record coverage separately from distinction. Unmapped named
+  isoforms stop before Primer3 without weakening `require_all` or `best_effort`.
 
 - Replaced the PCR skill's hidden 30-minute isoform-workflow ceiling with an
   approval-bound `execution_timeout_secs` slot. Single-study design defaults to

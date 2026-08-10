@@ -8429,6 +8429,48 @@ pub struct UniprotProjectionAuditRow {
     pub peptide_compare: Option<UniprotEnsemblPeptideCompareRow>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Completeness of the protein-isoform inventory copied from UniProt.
+pub enum UniprotProteinIsoformInventoryStatus {
+    Complete,
+    CanonicalOnly,
+    Incomplete,
+    #[default]
+    LegacyUnavailable,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One authoritative protein-isoform target from a UniProt entry.
+pub struct UniprotProteinIsoformInventoryTarget {
+    pub entry_id: String,
+    pub isoform_id: String,
+    pub name: String,
+    #[serde(default)]
+    pub synonyms: Vec<String>,
+    #[serde(default)]
+    pub isoform_id_aliases: Vec<String>,
+    pub is_canonical: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_status: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Complete named UniProt isoform inventory used independently from mappings.
+pub struct UniprotProteinIsoformInventory {
+    pub entry_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub declared_named_isoform_count: Option<usize>,
+    #[serde(default)]
+    pub status: UniprotProteinIsoformInventoryStatus,
+    #[serde(default)]
+    pub targets: Vec<UniprotProteinIsoformInventoryTarget>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct UniprotProjectionAuditReport {
@@ -8448,6 +8490,10 @@ pub struct UniprotProjectionAuditReport {
     pub run_id: Option<String>,
     #[serde(default)]
     pub rows: Vec<UniprotProjectionAuditRow>,
+    /// Authoritative target inventory. Mapping rows remain separate because
+    /// UniProt, Ensembl, and GenBank coding models need not agree exactly.
+    #[serde(default)]
+    pub protein_isoform_inventory: UniprotProteinIsoformInventory,
     #[serde(default)]
     pub warnings: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -9488,6 +9534,11 @@ pub struct TranscriptAssayCoverageUniverse {
     /// caller-supplied list against that derivation.
     #[serde(default)]
     pub required_transcript_ids: Vec<String>,
+    /// Normalized authoritative targets for a UniProt-supported universe.
+    /// Callers may omit this and let GENtle derive it from content-bound audit
+    /// reports; once normalized it participates in approval/operation digests.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub required_uniprot_isoforms: Vec<TranscriptAssayUniprotIsoformTargetRef>,
     #[serde(default)]
     pub sources: Vec<TranscriptAssayCoverageSourceRef>,
 }
@@ -9496,6 +9547,18 @@ impl TranscriptAssayCoverageUniverse {
     pub fn is_default(&self) -> bool {
         self == &Self::default()
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(default)]
+/// Content-bound UniProt protein-isoform identity used as a coverage target.
+pub struct TranscriptAssayUniprotIsoformTargetRef {
+    pub entry_id: String,
+    pub isoform_id: String,
+    pub name: String,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    pub is_canonical: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -9508,6 +9571,27 @@ pub enum TranscriptAssayCoverageTargetStatus {
     Ambiguous,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Whether selected assays detect at least one mapped cDNA for a target.
+pub enum TranscriptAssayCoverageEvaluationStatus {
+    Covered,
+    Uncovered,
+    #[default]
+    NotEvaluated,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Whether the selected panel separates one protein target from every other.
+pub enum TranscriptAssayCoverageDistinctionStatus {
+    Distinguished,
+    NotDistinguished,
+    NotApplicableSingleTarget,
+    #[default]
+    NotEvaluated,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
 /// One explicit or UniProt-supported transcript target and its resolution.
@@ -9515,9 +9599,21 @@ pub struct TranscriptAssayCoverageTarget {
     pub target_id: String,
     pub requested_transcript_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uniprot_entry_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uniprot_isoform_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uniprot_isoform_name: Option<String>,
+    #[serde(default)]
+    pub is_canonical_uniprot_target: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolved_transcript_id: Option<String>,
+    #[serde(default)]
+    pub mapped_transcript_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub equivalence_group_id: Option<String>,
+    #[serde(default)]
+    pub equivalence_group_ids: Vec<String>,
     #[serde(default)]
     pub source_report_ids: Vec<String>,
     #[serde(default)]
@@ -9528,6 +9624,14 @@ pub struct TranscriptAssayCoverageTarget {
     pub audit_statuses: Vec<String>,
     #[serde(default)]
     pub status: TranscriptAssayCoverageTargetStatus,
+    #[serde(default)]
+    pub coverage_status: TranscriptAssayCoverageEvaluationStatus,
+    #[serde(default)]
+    pub distinction_status: TranscriptAssayCoverageDistinctionStatus,
+    #[serde(default)]
+    pub covering_assay_ids: Vec<String>,
+    #[serde(default)]
+    pub not_distinguished_from_target_ids: Vec<String>,
     #[serde(default)]
     pub notes: Vec<String>,
 }
@@ -9550,7 +9654,19 @@ pub struct TranscriptAssayCoverageResolution {
     #[serde(default)]
     pub targets: Vec<TranscriptAssayCoverageTarget>,
     #[serde(default)]
+    pub uncovered_target_ids: Vec<String>,
+    #[serde(default)]
+    pub unresolved_target_pairs: Vec<TranscriptAssayCoverageUnresolvedTargetPair>,
+    #[serde(default)]
     pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// A pair of mandatory protein targets not separated by the selected panel.
+pub struct TranscriptAssayCoverageUnresolvedTargetPair {
+    pub left_target_id: String,
+    pub right_target_id: String,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -9659,6 +9775,8 @@ pub struct TranscriptAssayPanelAssay {
     pub junction_matches: Vec<TranscriptAssayJunctionMatch>,
     #[serde(default)]
     pub single_product_equivalence_group_ids: Vec<String>,
+    #[serde(default)]
+    pub single_product_coverage_target_ids: Vec<String>,
     /// Redundant, communication-oriented projection of this pair plus its
     /// transcript products and provenance. Older reports deserialize with an
     /// empty summary; newly generated reports always populate it.
@@ -9783,7 +9901,11 @@ pub struct TranscriptAssayPanelReport {
     #[serde(default)]
     pub uncovered_equivalence_group_ids: Vec<String>,
     #[serde(default)]
+    pub uncovered_coverage_target_ids: Vec<String>,
+    #[serde(default)]
     pub unresolved_group_pairs: Vec<TranscriptAssayUnresolvedPair>,
+    #[serde(default)]
+    pub unresolved_coverage_target_pairs: Vec<TranscriptAssayCoverageUnresolvedTargetPair>,
     #[serde(default)]
     pub backend_runs: Vec<TranscriptAssayPanelBackendRun>,
     /// Geometry-only preflight used before endpoint Primer3 execution.

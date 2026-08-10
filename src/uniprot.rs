@@ -50,6 +50,35 @@ pub struct UniprotNucleotideXref {
     pub molecule_type: Option<String>,
 }
 
+/// One named isoform declared in UniProt's `ALTERNATIVE PRODUCTS` comment.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct UniprotAlternativeProductIsoform {
+    pub name: String,
+    #[serde(default)]
+    pub synonyms: Vec<String>,
+    /// The first id is the primary target identity; additional ids are
+    /// retained as aliases for matching database cross-references.
+    #[serde(default)]
+    pub isoform_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_status: Option<String>,
+}
+
+/// Parsed UniProt `CC   -!- ALTERNATIVE PRODUCTS` inventory.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct UniprotAlternativeProducts {
+    #[serde(default)]
+    pub events: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub declared_named_isoform_count: Option<usize>,
+    #[serde(default)]
+    pub named_isoforms: Vec<UniprotAlternativeProductIsoform>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
 /// Canonical parsed UniProt entry persisted in project metadata.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
@@ -67,6 +96,8 @@ pub struct UniprotEntry {
     pub features: Vec<UniprotFeature>,
     pub ensembl_xrefs: Vec<UniprotEnsemblXref>,
     pub nucleotide_xrefs: Vec<UniprotNucleotideXref>,
+    #[serde(default)]
+    pub alternative_products: UniprotAlternativeProducts,
     pub aliases: Vec<String>,
     pub source: String,
     pub source_query: Option<String>,
@@ -282,6 +313,140 @@ fn strip_wrapped_quotes(raw: &str) -> String {
     }
 }
 
+/// Parse UniProt's named alternative-product inventory without requiring the
+/// rest of the SWISS-PROT record to be re-imported.
+///
+/// This is public so reports generated from legacy stored entries can recover
+/// the inventory from their preserved `raw_swiss_prot_text`.
+pub fn parse_alternative_products(text: &str) -> UniprotAlternativeProducts {
+    let mut body = String::new();
+    let mut in_block = false;
+    for line in text.lines() {
+        if line.starts_with("CC   -!- ALTERNATIVE PRODUCTS:") {
+            in_block = true;
+            if let Some((_, remainder)) = line.split_once("ALTERNATIVE PRODUCTS:") {
+                body.push_str(remainder.trim());
+                body.push(' ');
+            }
+            continue;
+        }
+        if !in_block {
+            continue;
+        }
+        if line.starts_with("CC   -!- ") || !line.starts_with("CC   ") {
+            break;
+        }
+        body.push_str(line.get(5..).unwrap_or_default().trim());
+        body.push(' ');
+    }
+
+    if !in_block {
+        return UniprotAlternativeProducts::default();
+    }
+
+    let mut result = UniprotAlternativeProducts::default();
+    let mut current: Option<UniprotAlternativeProductIsoform> = None;
+    let flush = |current: &mut Option<UniprotAlternativeProductIsoform>,
+                 result: &mut UniprotAlternativeProducts| {
+        if let Some(mut isoform) = current.take() {
+            isoform.synonyms.sort();
+            isoform.synonyms.dedup();
+            let mut seen_isoform_ids = std::collections::BTreeSet::new();
+            isoform
+                .isoform_ids
+                .retain(|isoform_id| seen_isoform_ids.insert(isoform_id.clone()));
+            if isoform.name.is_empty() {
+                result
+                    .warnings
+                    .push("UniProt alternative-product row has no Name field.".to_string());
+            }
+            if isoform.isoform_ids.is_empty() {
+                result.warnings.push(format!(
+                    "UniProt named isoform '{}' has no IsoId field.",
+                    if isoform.name.is_empty() {
+                        "<unnamed>"
+                    } else {
+                        &isoform.name
+                    }
+                ));
+            }
+            result.named_isoforms.push(isoform);
+        }
+    };
+
+    for token in body
+        .split(';')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if let Some(value) = token.strip_prefix("Event=") {
+            result.events.extend(
+                value
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string),
+            );
+        } else if let Some(value) = token.strip_prefix("Named isoforms=") {
+            result.declared_named_isoform_count = value.trim().parse::<usize>().ok();
+            if result.declared_named_isoform_count.is_none() {
+                result.warnings.push(format!(
+                    "Could not parse UniProt Named isoforms count '{}'.",
+                    value.trim()
+                ));
+            }
+        } else if let Some(value) = token.strip_prefix("Name=") {
+            flush(&mut current, &mut result);
+            current = Some(UniprotAlternativeProductIsoform {
+                name: value.trim().to_string(),
+                ..UniprotAlternativeProductIsoform::default()
+            });
+        } else if let Some(value) = token.strip_prefix("Synonyms=") {
+            if let Some(isoform) = current.as_mut() {
+                isoform.synonyms.extend(
+                    value
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_string),
+                );
+            }
+        } else if let Some(value) = token.strip_prefix("IsoId=") {
+            if let Some(isoform) = current.as_mut() {
+                isoform.isoform_ids.extend(
+                    value
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_string),
+                );
+            }
+        } else if let Some(value) = token.strip_prefix("Sequence=")
+            && let Some(isoform) = current.as_mut()
+        {
+            isoform.sequence_status = Some(value.trim().to_string());
+        }
+    }
+    flush(&mut current, &mut result);
+    result.events.sort();
+    result.events.dedup();
+    result.named_isoforms.sort_by(|left, right| {
+        left.isoform_ids
+            .first()
+            .cmp(&right.isoform_ids.first())
+            .then(left.name.cmp(&right.name))
+    });
+    if let Some(declared) = result.declared_named_isoform_count
+        && declared != result.named_isoforms.len()
+    {
+        result.warnings.push(format!(
+            "UniProt declares {declared} named isoform(s), but {} complete Name rows were parsed.",
+            result.named_isoforms.len()
+        ));
+    }
+    result
+}
+
 #[derive(Debug, Default)]
 struct FeatureBuilder {
     key: String,
@@ -330,6 +495,7 @@ pub fn parse_swiss_prot_text(
     source_query: Option<&str>,
     entry_id_override: Option<&str>,
 ) -> Result<UniprotEntry, String> {
+    let alternative_products = parse_alternative_products(text);
     let mut accession: Option<String> = None;
     let mut primary_id: Option<String> = None;
     let mut reviewed: Option<bool> = None;
@@ -579,6 +745,7 @@ pub fn parse_swiss_prot_text(
         features,
         ensembl_xrefs,
         nucleotide_xrefs,
+        alternative_products,
         aliases,
         source: source.to_string(),
         source_query: source_query
@@ -684,5 +851,45 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         assert_eq!(xref.accession, "NC_000001");
         assert_eq!(xref.protein_id.as_deref(), Some("NP_000001.1"));
         assert_eq!(xref.molecule_type.as_deref(), Some("Genomic_DNA"));
+    }
+
+    #[test]
+    fn parses_complete_alternative_products_inventory() {
+        let swiss = r#"ID   ISO_HUMAN               Reviewed;         12 AA.
+AC   PISO1;
+DE   RecName: Full=Isoform inventory toy;
+GN   Name=ISO1;
+OS   Homo sapiens (Human).
+CC   -!- ALTERNATIVE PRODUCTS:
+CC       Event=Alternative splicing; Named isoforms=2;
+CC         Name=1; Synonyms=Long;
+CC           IsoId=PISO1-1; Sequence=Displayed;
+CC         Name=2; Synonyms=Short, Beta;
+CC           IsoId=PISO1-2; Sequence=VSP_000001;
+DR   Ensembl; ENST000001.2; ENSP000001.2; ENSG000001. [PISO1-1].
+DR   Ensembl; ENST000002.1; ENSP000002.1; ENSG000001. [PISO1-2].
+SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
+     MEEPQSDPSVEP
+//
+"#;
+        let entry = parse_swiss_prot_text(swiss, "unit-test", None, None).expect("parse");
+        assert_eq!(
+            entry.alternative_products.declared_named_isoform_count,
+            Some(2)
+        );
+        assert!(entry.alternative_products.warnings.is_empty());
+        assert_eq!(entry.alternative_products.named_isoforms.len(), 2);
+        assert_eq!(
+            entry.alternative_products.named_isoforms[0].isoform_ids,
+            ["PISO1-1"]
+        );
+        assert_eq!(
+            entry.alternative_products.named_isoforms[1].synonyms,
+            ["Beta", "Short"]
+        );
+        assert_eq!(
+            entry.ensembl_xrefs[1].isoform_id.as_deref(),
+            Some("PISO1-2")
+        );
     }
 }

@@ -4030,13 +4030,26 @@ Shared shell command:
         annotated cDNA classes. An explicit universe names transcript ids; a
         UniProt-supported universe names content-bound
         `gentle.uniprot_projection_audit.v1` sources from which GENtle derives
-        Ensembl transcript ids. Missing or ambiguous required mappings stop
-        before Primer3, including under `best-effort`
+        the complete `(entry id, named protein-isoform id)` inventory. All
+        mapped transcripts are retained beneath each protein target, but only
+        one audit-ranked representative per target seeds automatic searches.
+        A named isoform with no current annotation mapping stops before
+        Primer3, including under `best-effort`; an entry with no named
+        alternative products contributes one canonical protein target
       - example UniProt universe file:
         `{"kind":"uniprot_supported_isoforms","sources":[{"source_kind":"uniprot_projection_audit","path":"reports/G1.uniprot_projection_audit.json","expected_sha256":"sha256:..."}]}`.
-        Study-request normalization fills and binds the observed hash; direct
-        design execution requires it. The report states explicitly that
-        UniProt prioritization is not protein-expression evidence
+        Study-request normalization fills and binds the observed hash and the
+        exact `required_uniprot_isoforms` list; direct design execution requires
+        both. Regenerate legacy projection audits that lack
+        `protein_isoform_inventory`. The report shows target coverage and
+        distinction separately, and states explicitly that UniProt
+        prioritization is not protein-expression evidence. GenBank/Ensembl CDS
+        disagreements remain audit evidence rather than being silently merged
+      - under this universe the existing objectives use protein targets as the
+        mandatory units. Every mapped transcript/exact-cDNA class remains in
+        the detection matrix, so a complete protein-target panel may still list
+        informational uncovered transcript classes. Use an all-annotation or
+        explicit-transcript plan when those models must each be mandatory
       - preserve alternatives as separate named requests: all-annotation,
         UniProt-prioritized, and manually explicit universes can each use
         pan-transcript, one-per-class, discrimination, or endpoint objectives
