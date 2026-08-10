@@ -134,8 +134,8 @@ use crate::{
         AgentResponse, AgentSystemSpec, AgentSystemTransport, DEFAULT_AGENT_SYSTEM_CATALOG_PATH,
         MISTRAL_API_KEY_AUTH_HINT, MISTRAL_API_KEY_ENV, OPENAI_API_KEY_ENV, OPENAI_BILLING_URL,
         OPENAI_COMPAT_UNSPECIFIED_MODEL, OPENAI_USAGE_URL, agent_system_availability,
-        anthropic_api_key_kind_warning, invoke_agent_support_with_conversation_and_env_overrides,
-        load_agent_system_catalog,
+        anthropic_api_key_kind_warning, build_agent_introspection_context,
+        invoke_agent_support_with_request_context, load_agent_system_catalog,
     },
     agent_transport::{
         AgentLiveProbeStatusClass, AgentSystemPreflight, agent_system_supports_model_discovery,

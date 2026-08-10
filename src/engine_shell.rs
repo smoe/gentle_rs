@@ -21,7 +21,8 @@ use crate::{
     agent_bridge::{
         AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV,
         AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV,
-        AGENT_TIMEOUT_SECS_ENV, AgentExecutionIntent, invoke_agent_support_with_env_overrides,
+        AGENT_TIMEOUT_SECS_ENV, AgentExecutionIntent, build_agent_introspection_context,
+        invoke_agent_support_with_request_context,
     },
     agent_execution::execute_agent_plan_candidate,
     agent_planner::{load_agent_plan_from_argument, plan_from_shell_options},
@@ -45833,8 +45834,11 @@ fn execute_agents_ask_command(
                 .to_string(),
         );
     }
-    let state_summary = if include_state_summary {
-        Some(engine.summarize_state())
+    let request_context = if include_state_summary {
+        Some((
+            engine.summarize_state(),
+            build_agent_introspection_context(&engine.project_fact_graph()),
+        ))
     } else {
         None
     };
@@ -45878,11 +45882,15 @@ fn execute_agents_ask_command(
             max_response_bytes.to_string(),
         );
     }
-    let invocation = invoke_agent_support_with_env_overrides(
+    let invocation = invoke_agent_support_with_request_context(
         catalog_path,
         system_id,
         prompt,
-        state_summary.as_ref(),
+        request_context.as_ref().map(|(summary, _)| summary),
+        request_context
+            .as_ref()
+            .map(|(_, introspection)| introspection),
+        None,
         if env_overrides.is_empty() {
             None
         } else {
@@ -62681,8 +62689,11 @@ fn execute_shell_command_with_options_inner(
                         .to_string(),
                 );
             }
-            let state_summary = if *include_state_summary {
-                Some(engine.summarize_state())
+            let request_context = if *include_state_summary {
+                Some((
+                    engine.summarize_state(),
+                    build_agent_introspection_context(&engine.project_fact_graph()),
+                ))
             } else {
                 None
             };
@@ -62730,11 +62741,15 @@ fn execute_shell_command_with_options_inner(
                     max_response_bytes.to_string(),
                 );
             }
-            let invocation = invoke_agent_support_with_env_overrides(
+            let invocation = invoke_agent_support_with_request_context(
                 catalog_path.as_deref(),
                 system_id,
                 prompt,
-                state_summary.as_ref(),
+                request_context.as_ref().map(|(summary, _)| summary),
+                request_context
+                    .as_ref()
+                    .map(|(_, introspection)| introspection),
+                None,
                 if env_overrides.is_empty() {
                     None
                 } else {

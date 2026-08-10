@@ -1203,6 +1203,21 @@ GENtle now provides a shared agent-assistance bridge across GUI and CLI shell:
 - Agent request payload includes:
   - system id and prompt
   - optional project state summary context
+  - when project context is enabled, an additive `x_introspection` extension
+    built from the same engine snapshot:
+    - the complete registered fact-type count map,
+    - a deterministic bounded sample of current project facts,
+    - explicit included/omitted counts and a truncation flag,
+    - read-only command routes for complete fact projection, expression
+      evaluation, capability readiness, and effect verification
+- The system prompt embeds an engine-generated fact vocabulary and a compact
+  introspection control card. It does not rely on the provider being able to
+  open repository documentation files; remote HTTP models and the isolated
+  Codex Local bridge receive the same runtime guidance.
+- `x_introspection` is advisory model context, not an execution bypass. Missing
+  open-world facts remain unknown, parser/engine validation remains
+  authoritative, and suggested commands keep their existing confirmation
+  policy.
 - GUI provider selection is durable but credentials are not:
   - the selected catalog system id may be stored in GUI settings
   - manual API-key, endpoint, model, and runtime overrides remain session-only
@@ -1263,8 +1278,11 @@ Minimal-success rollout profile (recommended):
   rather than ad-hoc RAG/training.
 - Keep default interaction mode at `chat` + `ask`; enable `auto` only for
   tightly allowlisted low-risk commands.
-- Include compact machine context (`state_summary`) instead of large free-form
-  project dumps to keep prompts deterministic and understandable.
+- Include compact machine context (`state_summary` plus bounded
+  `x_introspection`) instead of large free-form project dumps to keep prompts
+  deterministic and understandable. Fact-type counts and truncation metadata
+  tell the model when it must ask for a read-only introspection command rather
+  than guess from an omitted fact.
 - For local/small models, provide a domain bootstrap package:
   - command glossary and operand conventions: `docs/glossary.json` plus
     `docs/cli.md`

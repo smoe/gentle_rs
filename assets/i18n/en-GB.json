@@ -47,7 +47,7 @@
   "agent.external_mcp.subscriptions": "ChatGPT/Codex subscriptions are not OpenAI API keys; MCP exposes GENtle tools over stdio instead of making GENtle call the OpenAI API.",
   "agent.external_mcp.title": "External Agent / MCP",
   "agent.include_state_summary": "Include project state summary in request",
-  "agent.include_state_summary.tooltip": "Send a compact summary of the current GENtle project, including loaded sequence IDs and recent reports, so the agent can refer to real project objects instead of guessing.",
+  "agent.include_state_summary.tooltip": "Send a compact project summary plus a bounded projection of current GENtle facts, with truncation metadata and read-only introspection routes, so the agent can use real state instead of guessing.",
   "agent.insert": "Insert",
   "agent.key.anthropic": "Anthropic API key",
   "agent.key.mistral": "Mistral API key",

@@ -47,7 +47,7 @@
   "agent.external_mcp.subscriptions": "ChatGPT/Codex のサブスクリプションは OpenAI API キーではありません。MCP は GENtle が OpenAI API を呼ぶ代わりに、stdio 経由で GENtle ツールを公開します。",
   "agent.external_mcp.title": "外部エージェント / MCP",
   "agent.include_state_summary": "リクエストにプロジェクト状態の要約を含める",
-  "agent.include_state_summary.tooltip": "現在の GENtle プロジェクトの簡潔な要約を送ります。読み込まれた配列 ID や最近のレポートを含めることで、エージェントが実在するプロジェクト対象を参照できます。",
+  "agent.include_state_summary.tooltip": "現在の GENtle プロジェクトの簡潔な要約と、切り詰め情報および読み取り専用のイントロスペクション経路を含む、現在の事実の上限付き投影を送信します。",
   "agent.insert": "挿入",
   "agent.key.anthropic": "Anthropic API キー",
   "agent.key.mistral": "Mistral API キー",

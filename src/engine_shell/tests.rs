@@ -22352,6 +22352,58 @@ fn execute_agents_ask_runs_auto_suggestion_when_enabled() {
         Some(2)
     );
     assert_eq!(out.output["summary"]["executed_count"].as_u64(), Some(1));
+    assert_eq!(
+        out.output["invocation"]["request"]["x_introspection"]["schema"].as_str(),
+        Some("gentle.agent_introspection_context.v1")
+    );
+    assert_eq!(
+        out.output["invocation"]["request"]["x_introspection"]["fact_graph_schema"].as_str(),
+        Some("gentle.project_fact_graph.v1")
+    );
+}
+
+#[test]
+fn execute_agents_ask_omits_introspection_when_state_context_is_disabled() {
+    let tmp = tempdir().expect("tempdir");
+    let catalog_path = tmp.path().join("agents.json");
+    fs::write(
+        &catalog_path,
+        r#"{
+  "schema": "gentle.agent_systems.v1",
+  "systems": [{
+    "id": "builtin_echo",
+    "label": "Builtin Echo",
+    "transport": "builtin_echo"
+  }]
+}"#,
+    )
+    .expect("write catalog");
+
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::AgentsAsk {
+            system_id: "builtin_echo".to_string(),
+            prompt: "ask: state-summary".to_string(),
+            catalog_path: Some(catalog_path.display().to_string()),
+            base_url_override: None,
+            model_override: None,
+            timeout_seconds: None,
+            connect_timeout_seconds: None,
+            read_timeout_seconds: None,
+            max_retries: None,
+            max_response_bytes: None,
+            include_state_summary: false,
+            allow_auto_exec: false,
+            execute_all: false,
+            execute_indices: vec![],
+        },
+    )
+    .expect("execute agents ask without state context");
+
+    let request = &out.output["invocation"]["request"];
+    assert!(request.get("x_introspection").is_none());
+    assert!(request["state_summary"].is_null());
 }
 
 #[test]

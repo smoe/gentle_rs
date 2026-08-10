@@ -1,14 +1,17 @@
 //! Agent-assistant bridge models, transports, and execution guardrails.
 
 use crate::{
-    engine::EngineStateSummary,
+    engine::{
+        EngineStateSummary, FACT_EXPRESSION_SCHEMA, PROJECT_FACT_GRAPH_SCHEMA, ProjectFact,
+        ProjectFactGraph, project_fact_type_specs,
+    },
     runtime_status::{RuntimeStatusFrameKind, runtime_status_registry},
 };
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fs,
     io::{ErrorKind, Write},
     path::{Path, PathBuf},
@@ -21,6 +24,8 @@ pub const DEFAULT_AGENT_SYSTEM_CATALOG_PATH: &str = "assets/agent_systems.json";
 const AGENT_SYSTEMS_SCHEMA: &str = "gentle.agent_systems.v1";
 const AGENT_REQUEST_SCHEMA: &str = "gentle.agent_request.v1";
 const AGENT_RESPONSE_SCHEMA: &str = "gentle.agent_response.v1";
+pub const AGENT_INTROSPECTION_CONTEXT_SCHEMA: &str = "gentle.agent_introspection_context.v1";
+const AGENT_INTROSPECTION_FACT_LIMIT: usize = 128;
 /// Schema identifier for project-owned Agent Assistant conversation history.
 pub const AGENT_CONVERSATION_SCHEMA: &str = "gentle.agent_conversation.v1";
 const AGENT_SYSTEMS_SCHEMA_PREFIX: &str = "gentle.agent_systems.v";
@@ -39,6 +44,7 @@ Suggested command contract:
 - Current scope declaration: GENtle does not currently implement OpenClaw-like filesystem, operating-system, or gateway commands. That may change in a future gateway layer; for now, concentrate on actions GENtle can also perform through its GUI or shared shell on the same project state.
 - Intent/precondition/outcome rule: use suggested_commands[].title for the user intent, suggested_commands[].preconditions for human-readable requirements such as "a sequence with seq_id demo_seq exists", optional suggested_commands[].precondition_expr for machine-readable fact-graph logic, suggested_commands[].expected_outcomes for postcondition-like effects expected if the command succeeds, and optional suggested_commands[].expected_effects for machine-readable fact-graph effects. Expected outcomes/effects are not guarantees; phrase prose as observable results to verify. Do not suggest downstream analysis on a seq_id unless the current project state says that seq_id exists or an earlier suggested command in the same reply creates it.
 - Fact vocabulary rule: when emitting precondition_expr or expected_effects, use the generated Known project fact vocabulary block appended to this system prompt. Unknown future fact names evaluate as "unknown"; avoid them unless your intent is to ask GENtle for a non-ready future capability.
+- Introspection context rule: fact definitions describe the allowed vocabulary, not what is currently true. When the request contains x_introspection, use its facts and fact_type_counts as the bounded current-state projection. Respect its truncated and omitted_fact_count fields. If decisive facts are missing or omitted, suggest the read-only introspection command identified for that purpose instead of guessing. A missing open-world fact is not proof of absence.
 - suggested_commands[].command must be one exact GENtle shared-shell command parseable by GENtle.
 - GENtle-local slash aliases are deliberately small and parser-validated. Allowed aliases are: /help; /list; /history; /undo; /redo; /open; /import; /open sequence-window SEQ_ID; /close sequence-window SEQ_ID; /open file PATH [--id ID]; /import file PATH [--id ID]; /paste sequence --sequence-text DNA [--id ID]; /features restriction-scan SEQ_ID [--enzyme NAME]; /fetch genbank ACCESSION [--id ID]; /fetch ncbi ACCESSION [--id ID]; /fetch uniprot QUERY [--id ID]; /fetch ensembl QUERY [--species NAME] [--id ID] [--no-open]; /fetch ensembl-gene QUERY [--species NAME] [--id ID] [--no-open]; /fetch ensembl-protein QUERY [--id ID]; /fetch ensembl-region SPECIES CHR START END [--strand +|-] [--id ID]; /fetch dbsnp RS_ID GENOME_ID [--id ID].
 - /list reports GENtle's current project state and loaded sequence/project records. It does not list operating-system files or folders.
@@ -71,6 +77,13 @@ GENtle Agent Control Card:
   {"title":"List loaded GENtle records","command":"/list","execution":"ask"}
   {"title":"Open a sequence file","preconditions":["GUI host is available"],"precondition_expr":{"all":[{"fact":"ui.host_available"}]},"expected_outcomes":["A user-selected sequence file is loaded into the current GENtle project if parsing succeeds."],"expected_effects":[{"fact":"sequence.exists","source":"user_selected_file"}],"command":"/open","execution":"ask"}
   {"title":"Retrieve human FUS from Ensembl","expected_outcomes":["A new local sequence record with id fus_live is available if Ensembl retrieval succeeds."],"expected_effects":[{"fact":"sequence.exists","id":"fus_live"}],"command":"/fetch ensembl FUS --species homo_sapiens --id fus_live","execution":"ask"}"#;
+const AGENT_INTROSPECTION_CONTROL_CARD: &str = r#"GENtle Agent Introspection Card:
+- Current fact definitions and state by domain: introspect facts [--domain project|view|host|config] [--seq-id SEQ_ID]
+- Complete current project fact graph: facts graph
+- Evaluate a fact expression: facts eval FACT_EXPR_JSON_OR_@FILE
+- Check capability readiness: introspect readiness [CAPABILITY_ID] [--arg NAME=VALUE ...] [--seq-id SEQ_ID]
+- Verify declared effects after execution: introspect verify-effects CAPABILITY_ID [--arg NAME=VALUE ...] [--seq-id SEQ_ID]
+- These commands are read-only. The request's x_introspection projection is bounded; use its truncation metadata and do not treat omission as falsehood."#;
 const AGENT_SCHEMA_SUPPORTED_MAJOR: u32 = 1;
 const AGENT_INVOKE_RETRY_BASE_DELAY_MS: u64 = 250;
 const AGENT_REQUEST_TIMEOUT_SECS_DEFAULT: u64 = 180;
@@ -96,9 +109,10 @@ pub const ANTHROPIC_API_KEY_ENV: &str = "ANTHROPIC_API_KEY";
 
 pub(crate) fn agent_bridge_system_prompt() -> String {
     format!(
-        "{}\n\n{}",
+        "{}\n\n{}\n\n{}",
         AGENT_BRIDGE_SYSTEM_PROMPT,
-        crate::engine::project_fact_registry_prompt_block()
+        crate::engine::project_fact_registry_prompt_block(),
+        AGENT_INTROSPECTION_CONTROL_CARD,
     )
 }
 
@@ -1244,6 +1258,124 @@ impl AgentSystemCatalog {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(default)]
+pub struct AgentIntrospectionRoute {
+    pub purpose: String,
+    pub command: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct AgentIntrospectionContext {
+    pub schema: String,
+    pub fact_expression_schema: String,
+    pub fact_graph_schema: String,
+    pub projection_scope: String,
+    pub fact_limit: usize,
+    pub total_fact_count: usize,
+    pub included_fact_count: usize,
+    pub omitted_fact_count: usize,
+    pub truncated: bool,
+    pub fact_type_counts: BTreeMap<String, usize>,
+    pub facts: Vec<ProjectFact>,
+    pub retrieval_routes: Vec<AgentIntrospectionRoute>,
+    pub notes: Vec<String>,
+}
+
+impl Default for AgentIntrospectionContext {
+    fn default() -> Self {
+        Self {
+            schema: AGENT_INTROSPECTION_CONTEXT_SCHEMA.to_string(),
+            fact_expression_schema: FACT_EXPRESSION_SCHEMA.to_string(),
+            fact_graph_schema: PROJECT_FACT_GRAPH_SCHEMA.to_string(),
+            projection_scope: "engine_project_graph_without_external_evidence".to_string(),
+            fact_limit: AGENT_INTROSPECTION_FACT_LIMIT,
+            total_fact_count: 0,
+            included_fact_count: 0,
+            omitted_fact_count: 0,
+            truncated: false,
+            fact_type_counts: BTreeMap::new(),
+            facts: vec![],
+            retrieval_routes: agent_introspection_routes(),
+            notes: agent_introspection_notes(),
+        }
+    }
+}
+
+fn agent_introspection_routes() -> Vec<AgentIntrospectionRoute> {
+    [
+        (
+            "fact definitions and current state grouped by domain",
+            "introspect facts [--domain project|view|host|config] [--seq-id SEQ_ID]",
+        ),
+        ("complete current project fact graph", "facts graph"),
+        (
+            "evaluate one fact expression",
+            "facts eval FACT_EXPR_JSON_OR_@FILE",
+        ),
+        (
+            "check capability readiness",
+            "introspect readiness [CAPABILITY_ID] [--arg NAME=VALUE ...] [--seq-id SEQ_ID]",
+        ),
+        (
+            "verify declared effects after execution",
+            "introspect verify-effects CAPABILITY_ID [--arg NAME=VALUE ...] [--seq-id SEQ_ID]",
+        ),
+    ]
+    .into_iter()
+    .map(|(purpose, command)| AgentIntrospectionRoute {
+        purpose: purpose.to_string(),
+        command: command.to_string(),
+    })
+    .collect()
+}
+
+fn agent_introspection_notes() -> Vec<String> {
+    vec![
+        "This is a deterministic bounded projection of current engine-owned facts, not prose inferred by the model.".to_string(),
+        "The projection covers the engine project graph without request-specific external evidence or GUI-host availability; use the listed introspection routes for those domains.".to_string(),
+        "Missing open-world facts are unknown, not false; absence requires explicit proof evidence.".to_string(),
+        "Readiness is advisory. The shared parser and engine remain authoritative for execution.".to_string(),
+    ]
+}
+
+pub fn build_agent_introspection_context(graph: &ProjectFactGraph) -> AgentIntrospectionContext {
+    let mut fact_type_counts = project_fact_type_specs()
+        .iter()
+        .map(|spec| (spec.name.to_string(), 0usize))
+        .collect::<BTreeMap<_, _>>();
+    for fact in &graph.facts {
+        *fact_type_counts.entry(fact.fact.clone()).or_default() += 1;
+    }
+
+    let total_fact_count = graph.facts.len();
+    let facts = graph
+        .facts
+        .iter()
+        .take(AGENT_INTROSPECTION_FACT_LIMIT)
+        .cloned()
+        .collect::<Vec<_>>();
+    let included_fact_count = facts.len();
+    let omitted_fact_count = total_fact_count.saturating_sub(included_fact_count);
+
+    AgentIntrospectionContext {
+        schema: AGENT_INTROSPECTION_CONTEXT_SCHEMA.to_string(),
+        fact_expression_schema: FACT_EXPRESSION_SCHEMA.to_string(),
+        fact_graph_schema: graph.schema.clone(),
+        projection_scope: "engine_project_graph_without_external_evidence".to_string(),
+        fact_limit: AGENT_INTROSPECTION_FACT_LIMIT,
+        total_fact_count,
+        included_fact_count,
+        omitted_fact_count,
+        truncated: omitted_fact_count > 0,
+        fact_type_counts,
+        facts,
+        retrieval_routes: agent_introspection_routes(),
+        notes: agent_introspection_notes(),
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 struct AgentRequestPayload {
@@ -1252,6 +1384,8 @@ struct AgentRequestPayload {
     prompt: String,
     sent_at_unix_ms: u128,
     state_summary: Option<EngineStateSummary>,
+    #[serde(rename = "x_introspection", skip_serializing_if = "Option::is_none")]
+    introspection: Option<AgentIntrospectionContext>,
     #[serde(rename = "x_conversation", skip_serializing_if = "Option::is_none")]
     conversation: Option<AgentConversation>,
 }
@@ -1264,6 +1398,7 @@ impl Default for AgentRequestPayload {
             prompt: String::new(),
             sent_at_unix_ms: 0,
             state_summary: None,
+            introspection: None,
             conversation: None,
         }
     }
@@ -1475,6 +1610,7 @@ fn build_agent_request(
     system_id: &str,
     prompt: &str,
     state_summary: Option<&EngineStateSummary>,
+    introspection: Option<&AgentIntrospectionContext>,
     conversation: Option<&AgentConversation>,
 ) -> Result<(AgentRequestPayload, Value, String), String> {
     let payload = AgentRequestPayload {
@@ -1483,6 +1619,7 @@ fn build_agent_request(
         prompt: prompt.to_string(),
         sent_at_unix_ms: now_unix_ms(),
         state_summary: state_summary.cloned(),
+        introspection: introspection.cloned(),
         conversation: conversation.and_then(AgentConversation::context_window),
     };
     let request_value = serde_json::to_value(&payload).map_err(|e| {
@@ -1579,6 +1716,16 @@ fn validate_agent_request_value(value: &Value) -> Result<(), String> {
             "agent request 'state_summary' must be object or null",
         ));
     }
+    if let Some(introspection_value) = object.get("x_introspection") {
+        let introspection: AgentIntrospectionContext =
+            serde_json::from_value(introspection_value.clone()).map_err(|err| {
+                agent_err(
+                    AgentBridgeErrorCode::SchemaValidation,
+                    format!("agent request 'x_introspection' is invalid: {err}"),
+                )
+            })?;
+        validate_agent_introspection_context(&introspection)?;
+    }
     if let Some(conversation_value) = object.get("x_conversation") {
         let conversation: AgentConversation = serde_json::from_value(conversation_value.clone())
             .map_err(|err| {
@@ -1616,6 +1763,83 @@ fn validate_agent_request_value(value: &Value) -> Result<(), String> {
                 "agent request conversation turns require non-empty user_message, a non-empty v1 response, and system_id",
             ));
         }
+    }
+    Ok(())
+}
+
+fn validate_agent_introspection_context(context: &AgentIntrospectionContext) -> Result<(), String> {
+    if context.schema != AGENT_INTROSPECTION_CONTEXT_SCHEMA {
+        return Err(agent_err(
+            AgentBridgeErrorCode::SchemaValidation,
+            format!(
+                "agent request 'x_introspection.schema' must be '{}'",
+                AGENT_INTROSPECTION_CONTEXT_SCHEMA
+            ),
+        ));
+    }
+    if context.fact_expression_schema != FACT_EXPRESSION_SCHEMA {
+        return Err(agent_err(
+            AgentBridgeErrorCode::SchemaValidation,
+            format!(
+                "agent request 'x_introspection.fact_expression_schema' must be '{}'",
+                FACT_EXPRESSION_SCHEMA
+            ),
+        ));
+    }
+    if context.fact_graph_schema != PROJECT_FACT_GRAPH_SCHEMA {
+        return Err(agent_err(
+            AgentBridgeErrorCode::SchemaValidation,
+            format!(
+                "agent request 'x_introspection.fact_graph_schema' must be '{}'",
+                PROJECT_FACT_GRAPH_SCHEMA
+            ),
+        ));
+    }
+    if context.projection_scope != "engine_project_graph_without_external_evidence" {
+        return Err(agent_err(
+            AgentBridgeErrorCode::SchemaValidation,
+            "agent request 'x_introspection.projection_scope' is unsupported",
+        ));
+    }
+    if context.fact_limit != AGENT_INTROSPECTION_FACT_LIMIT
+        || context.included_fact_count > context.fact_limit
+    {
+        return Err(agent_err(
+            AgentBridgeErrorCode::SchemaValidation,
+            format!(
+                "agent request 'x_introspection.fact_limit' must be {} and bound included facts",
+                AGENT_INTROSPECTION_FACT_LIMIT
+            ),
+        ));
+    }
+    if context.included_fact_count != context.facts.len() {
+        return Err(agent_err(
+            AgentBridgeErrorCode::SchemaValidation,
+            "agent request 'x_introspection.included_fact_count' must equal facts length",
+        ));
+    }
+    if context.total_fact_count
+        != context
+            .included_fact_count
+            .saturating_add(context.omitted_fact_count)
+    {
+        return Err(agent_err(
+            AgentBridgeErrorCode::SchemaValidation,
+            "agent request 'x_introspection' fact counts are inconsistent",
+        ));
+    }
+    if context.truncated != (context.omitted_fact_count > 0) {
+        return Err(agent_err(
+            AgentBridgeErrorCode::SchemaValidation,
+            "agent request 'x_introspection.truncated' must match omitted_fact_count",
+        ));
+    }
+    let counted_facts = context.fact_type_counts.values().copied().sum::<usize>();
+    if counted_facts != context.total_fact_count {
+        return Err(agent_err(
+            AgentBridgeErrorCode::SchemaValidation,
+            "agent request 'x_introspection.fact_type_counts' must sum to total_fact_count",
+        ));
     }
     Ok(())
 }
@@ -2831,12 +3055,13 @@ pub fn load_agent_system_catalog(
     Ok((resolved_path, catalog))
 }
 
-/// Invokes an agent with optional project-owned conversation context.
-pub fn invoke_agent_support_with_conversation_and_env_overrides(
+/// Invokes an agent with optional project, introspection, and conversation context.
+pub fn invoke_agent_support_with_request_context(
     catalog_path: Option<&str>,
     system_id: &str,
     prompt: &str,
     state_summary: Option<&EngineStateSummary>,
+    introspection: Option<&AgentIntrospectionContext>,
     conversation: Option<&AgentConversation>,
     env_overrides: Option<&HashMap<String, String>>,
 ) -> Result<AgentInvocationOutcome, String> {
@@ -2866,8 +3091,13 @@ pub fn invoke_agent_support_with_conversation_and_env_overrides(
                 .unwrap_or_else(|| "agent system is not available".to_string()),
         ));
     }
-    let (_payload, request_value, request_json) =
-        build_agent_request(&system.id, prompt, state_summary, conversation)?;
+    let (_payload, request_value, request_json) = build_agent_request(
+        &system.id,
+        prompt,
+        state_summary,
+        introspection,
+        conversation,
+    )?;
     let start = std::time::Instant::now();
     let runtime = resolve_agent_runtime_config(&system);
     let attempt_limit = effective_attempt_limit(&runtime);
@@ -3318,6 +3548,26 @@ pub fn invoke_agent_support_with_conversation_and_env_overrides(
     Ok(outcome)
 }
 
+/// Invokes an agent with optional project-owned conversation context.
+pub fn invoke_agent_support_with_conversation_and_env_overrides(
+    catalog_path: Option<&str>,
+    system_id: &str,
+    prompt: &str,
+    state_summary: Option<&EngineStateSummary>,
+    conversation: Option<&AgentConversation>,
+    env_overrides: Option<&HashMap<String, String>>,
+) -> Result<AgentInvocationOutcome, String> {
+    invoke_agent_support_with_request_context(
+        catalog_path,
+        system_id,
+        prompt,
+        state_summary,
+        None,
+        conversation,
+        env_overrides,
+    )
+}
+
 pub fn invoke_agent_support_with_env_overrides(
     catalog_path: Option<&str>,
     system_id: &str,
@@ -3388,6 +3638,7 @@ mod tests {
             "codex_local_stdio",
             "current question",
             None,
+            None,
             Some(&conversation),
         )
         .expect("request with conversation");
@@ -3406,10 +3657,99 @@ mod tests {
 
     #[test]
     fn agent_request_omits_conversation_extension_for_existing_callers() {
-        let (_, request, _) = build_agent_request("builtin_echo", "current question", None, None)
-            .expect("request without conversation");
+        let (_, request, _) =
+            build_agent_request("builtin_echo", "current question", None, None, None)
+                .expect("request without conversation");
 
         assert!(request.get("x_conversation").is_none());
+        assert!(request.get("x_introspection").is_none());
+    }
+
+    fn test_project_fact(index: usize, fact: &str) -> ProjectFact {
+        ProjectFact {
+            fact: fact.to_string(),
+            subject: crate::engine::FactSubject {
+                kind: crate::engine::FactSubjectKind::Sequence,
+                id: format!("seq-{index:03}"),
+            },
+            ..ProjectFact::default()
+        }
+    }
+
+    #[test]
+    fn agent_introspection_context_is_bounded_and_reports_complete_counts() {
+        let facts = (0..(AGENT_INTROSPECTION_FACT_LIMIT + 5))
+            .map(|index| {
+                test_project_fact(
+                    index,
+                    if index % 2 == 0 {
+                        "sequence.exists"
+                    } else {
+                        "sequence.length"
+                    },
+                )
+            })
+            .collect::<Vec<_>>();
+        let graph = ProjectFactGraph {
+            schema: PROJECT_FACT_GRAPH_SCHEMA.to_string(),
+            facts,
+        };
+
+        let context = build_agent_introspection_context(&graph);
+
+        assert_eq!(context.total_fact_count, AGENT_INTROSPECTION_FACT_LIMIT + 5);
+        assert_eq!(context.included_fact_count, AGENT_INTROSPECTION_FACT_LIMIT);
+        assert_eq!(context.omitted_fact_count, 5);
+        assert!(context.truncated);
+        assert_eq!(
+            context.fact_type_counts.get("sequence.exists").copied(),
+            Some((AGENT_INTROSPECTION_FACT_LIMIT + 6) / 2)
+        );
+        assert_eq!(
+            context
+                .fact_type_counts
+                .get("restriction_site.absent")
+                .copied(),
+            Some(0)
+        );
+        assert!(
+            context
+                .retrieval_routes
+                .iter()
+                .any(|route| { route.command.starts_with("introspect readiness") })
+        );
+        assert!(context.notes.iter().any(|note| note.contains("open-world")));
+    }
+
+    #[test]
+    fn agent_request_carries_validated_introspection_extension() {
+        let graph = ProjectFactGraph {
+            schema: PROJECT_FACT_GRAPH_SCHEMA.to_string(),
+            facts: vec![test_project_fact(1, "sequence.exists")],
+        };
+        let context = build_agent_introspection_context(&graph);
+
+        let (_, request, _) = build_agent_request(
+            "builtin_echo",
+            "current question",
+            None,
+            Some(&context),
+            None,
+        )
+        .expect("request with introspection context");
+
+        assert_eq!(
+            request["x_introspection"]["schema"].as_str(),
+            Some(AGENT_INTROSPECTION_CONTEXT_SCHEMA)
+        );
+        assert_eq!(
+            request["x_introspection"]["facts"][0]["fact"].as_str(),
+            Some("sequence.exists")
+        );
+        assert_eq!(
+            request["x_introspection"]["fact_type_counts"]["sequence.exists"].as_u64(),
+            Some(1)
+        );
     }
 
     #[test]
@@ -4091,6 +4431,14 @@ mod tests {
         assert!(prompt.contains("restriction_site.absent"));
         assert!(prompt.contains("subject_kind=sequence"));
         assert!(prompt.contains("requires_basis=true"));
+        assert!(prompt.contains("GENtle Agent Introspection Card"));
+        assert!(prompt.contains("introspect facts"));
+        assert!(prompt.contains("facts graph"));
+        assert!(prompt.contains("facts eval"));
+        assert!(prompt.contains("introspect readiness"));
+        assert!(prompt.contains("introspect verify-effects"));
+        assert!(prompt.contains("x_introspection"));
+        assert!(prompt.contains("open-world fact is not proof of absence"));
     }
 
     #[test]

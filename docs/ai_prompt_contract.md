@@ -25,6 +25,13 @@ documentation bundle:
 - `docs/examples/ai_cloning_examples.md` and optionally
   `docs/ai_glossary_extensions.json` for compact examples and terminology
 
+The in-app Agent Assistant is a special case: providers are not assumed to
+have filesystem access to this bundle. GENtle embeds the registered fact
+vocabulary and introspection command card in the system prompt. When `Include
+state summary` is enabled, the request also carries bounded current facts in
+`x_introspection`, including complete fact-type counts and explicit truncation
+metadata.
+
 Do not ask the model to infer operand meanings from uppercase placeholders
 alone. `QUERY`, `ID`, `SEQ_ID`, `GENOME_ID`, `ENTRY_ID`, `PATH`, and coordinate
 operands are conventions that need the CLI manual or route-specific docs.
@@ -67,6 +74,10 @@ The assistant should:
 - explicitly list assumptions
 - ask questions when required fields are missing
 - avoid claiming biology facts not derivable from user/project data
+- distinguish the registered fact vocabulary from current truth; use supplied
+  `x_introspection` facts when present, and propose `introspect facts`, `facts
+  graph`, `facts eval`, or `introspect readiness` when decisive state is missing
+- never infer an open-world absence from a missing or truncated fact
 - never imply wet-lab success; frame as in-silico candidate generation
 - keep risky actions in `ask` mode unless user explicitly allows auto-exec
 

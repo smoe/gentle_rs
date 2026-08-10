@@ -4876,6 +4876,44 @@ Agent request payload schema (`gentle.agent_request.v1`):
   "prompt": "User request text",
   "sent_at_unix_ms": 1768860000000,
   "state_summary": {},
+  "x_introspection": {
+    "schema": "gentle.agent_introspection_context.v1",
+    "fact_expression_schema": "gentle.fact_expression.v1",
+    "fact_graph_schema": "gentle.project_fact_graph.v1",
+    "projection_scope": "engine_project_graph_without_external_evidence",
+    "fact_limit": 128,
+    "total_fact_count": 2,
+    "included_fact_count": 2,
+    "omitted_fact_count": 0,
+    "truncated": false,
+    "fact_type_counts": {
+      "sequence.exists": 1,
+      "sequence.kind": 1
+    },
+    "facts": [
+      {
+        "fact": "sequence.exists",
+        "domain": "project",
+        "subject": { "kind": "sequence", "id": "tp73" }
+      },
+      {
+        "fact": "sequence.kind",
+        "domain": "project",
+        "subject": { "kind": "sequence", "id": "tp73" },
+        "value": "dna"
+      }
+    ],
+    "retrieval_routes": [
+      { "purpose": "fact definitions and current state grouped by domain", "command": "introspect facts [--domain project|view|host|config] [--seq-id SEQ_ID]" },
+      { "purpose": "complete current project fact graph", "command": "facts graph" },
+      { "purpose": "evaluate one fact expression", "command": "facts eval FACT_EXPR_JSON_OR_@FILE" },
+      { "purpose": "check capability readiness", "command": "introspect readiness [CAPABILITY_ID] [--arg NAME=VALUE ...] [--seq-id SEQ_ID]" },
+      { "purpose": "verify declared effects after execution", "command": "introspect verify-effects CAPABILITY_ID [--arg NAME=VALUE ...] [--seq-id SEQ_ID]" }
+    ],
+    "notes": [
+      "Missing open-world facts are unknown, not false; absence requires explicit proof evidence."
+    ]
+  },
   "x_conversation": {
     "schema": "gentle.agent_conversation.v1",
     "turns": [
@@ -4895,6 +4933,28 @@ Agent request payload schema (`gentle.agent_request.v1`):
   }
 }
 ```
+
+`x_introspection` is an optional, backward-compatible request extension. GENtle
+adds it together with `state_summary` when project-context injection is
+enabled. It is generated from the same engine snapshot and contains at most 128
+concrete facts. `fact_type_counts` is computed over the complete projection;
+`total_fact_count`, `included_fact_count`, `omitted_fact_count`, and
+`truncated` make bounded output explicit. The abbreviated example above shows
+only the non-zero count entries relevant to its two facts; current GENtle
+requests include every registered fact type, including zero counts.
+
+`projection_scope = engine_project_graph_without_external_evidence` means the
+snapshot does not claim request-specific evidence or GUI-host availability.
+Those can be projected explicitly through the listed `introspect facts` route.
+
+The extension is grounding, not authority. A model must not treat an omitted
+fact or a missing open-world fact as false. When the bounded projection is
+insufficient, `retrieval_routes` identifies the deterministic read-only command
+to propose. Suggested-command readiness remains advisory, while the shared
+parser and engine retain hard execution validation and confirmation policy.
+Providers do not need filesystem access to use this context: the same payload
+is sent to native HTTP transports and external stdio adapters such as Codex
+Local.
 
 `x_conversation` is an optional, backward-compatible extension. GENtle owns
 the transcript because transports such as Codex Local may start a fresh,

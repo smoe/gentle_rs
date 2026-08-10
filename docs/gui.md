@@ -2894,7 +2894,15 @@ Behavior:
 - the `Compact intro (no state)` prompt template is meant for live demos and
   quick "what can you do?" questions; inserting or appending it disables
   project-state summary injection for that draft request
-- optional `Include state summary` injects current project summary context
+- optional `Include state summary` injects current project summary context and
+  a bounded `x_introspection` fact projection from the same engine snapshot
+  - at most 128 concrete facts are included, together with complete fact-type
+    counts and explicit truncation metadata
+  - the agent receives read-only routes for `introspect facts`, `facts graph`,
+    `facts eval`, `introspect readiness`, and `introspect verify-effects` when
+    it needs information beyond the bounded projection
+  - missing open-world facts are unknown rather than false; this context does
+    not bypass shared parser/engine validation or confirmation requirements
 - optional `Allow auto execute` only applies to suggestions marked with `auto`
 - successful conversation turns are shown in chronological order and stored as
   `gentle.agent_conversation.v1` metadata with the current project

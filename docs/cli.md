@@ -5880,7 +5880,12 @@ Conceptual/tutorial companion:
     `GENTLE_AGENT_MAX_RESPONSE_BYTES`).
   - for `native_openai_compat`, model must resolve to a concrete value (catalog
     model or `--model`); `unspecified` is rejected.
-  - `--no-state-summary` disables project-context injection in the request.
+  - by default, project context includes both `state_summary` and a bounded
+    `x_introspection` fact projection from the same engine state; the latter
+    carries complete fact-type counts, explicit truncation metadata, and
+    read-only retrieval routes
+  - `--no-state-summary` disables both forms of project-context injection in
+    the request
   - External adapter responses must be strict `gentle.agent_response.v1` JSON.
   - Unknown canonical response fields are rejected (extensions must use `x_` or `x-` prefix).
   - Adapter calls retry transient failures with exponential backoff before returning an error.

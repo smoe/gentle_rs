@@ -105,6 +105,31 @@ def test_rendered_prompt_treats_conversation_as_prior_context():
     assert '"prompt": "Please continue."' in prompt
 
 
+def test_rendered_prompt_exposes_bounded_introspection_context():
+    bridge = load_bridge_module()
+    request = request_payload()
+    request["x_introspection"] = {
+        "schema": "gentle.agent_introspection_context.v1",
+        "fact_expression_schema": "gentle.fact_expression.v1",
+        "fact_graph_schema": "gentle.project_fact_graph.v1",
+        "total_fact_count": 2,
+        "included_fact_count": 1,
+        "omitted_fact_count": 1,
+        "truncated": True,
+        "fact_type_counts": {"sequence.exists": 2},
+        "facts": [{"fact": "sequence.exists"}],
+        "retrieval_routes": [],
+        "notes": [],
+    }
+
+    prompt = bridge.render_codex_prompt(request)
+
+    assert "x_introspection is a bounded deterministic projection" in prompt
+    assert "do not infer falsehood" in prompt
+    assert "gentle.agent_introspection_context.v1" in prompt
+    assert '"omitted_fact_count": 1' in prompt
+
+
 def test_response_schema_is_compatible_with_strict_structured_outputs():
     bridge = load_bridge_module()
     schema = bridge.response_json_schema()

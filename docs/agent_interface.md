@@ -716,6 +716,15 @@ Key properties:
 - the Agent Assistant system prompt receives its known project-fact vocabulary
   from the same registry used by the evaluator, instead of a separately
   maintained prose-only list
+- when project-context injection is enabled, Agent Assistant and `agents ask`
+  also receive `x_introspection` from the same engine snapshot as
+  `state_summary`; it contains at most 128 concrete facts, complete fact-type
+  counts, explicit truncation metadata, and the read-only routes used to obtain
+  more detail
+- the prompt's compact introspection card explains the distinction between a
+  registered fact name and a currently projected fact. This guidance is
+  embedded at runtime because native HTTP models and the isolated Codex Local
+  bridge cannot be assumed to read files from the GENtle checkout
 - use `facts graph` and `facts eval ...` in shared shell/CLI contexts when an
   external agent needs the same deterministic project-fact projection
 - open-world facts such as restriction-site absence require explicit evidence

@@ -153,12 +153,15 @@ Command boundary:
   outcomes. Omit machine-readable precondition_expr and expected_effects here;
   GENtle validates those richer fields on adapters that can represent them.
 
-Use only the state summary and x_conversation included in the request. Treat
-x_conversation.turns as the earlier dialogue and prompt as the current user
-message. Reuse explicit facts from those turns, such as species and sequence
-identifiers, unless the current prompt changes them; do not ask for the same
-fact again merely because this is a fresh Codex process. Do not infer hidden
-files from the Codex working directory.
+Use only state_summary, x_introspection, and x_conversation included in the
+request. x_introspection is a bounded deterministic projection of current
+GENtle facts; honor its truncation fields and do not infer falsehood from an
+omitted or missing open-world fact. Treat x_conversation.turns as the earlier
+dialogue and prompt as the current user message. Reuse explicit facts from
+those turns, such as species and sequence identifiers, unless the current
+prompt changes them; do not ask for the same fact again merely because this is
+a fresh Codex process. Do not infer hidden files from the Codex working
+directory.
 
 GENtle agent request:
 {request_json}

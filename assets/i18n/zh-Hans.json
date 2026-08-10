@@ -47,7 +47,7 @@
   "agent.external_mcp.subscriptions": "ChatGPT/Codex 订阅不是 OpenAI API 密钥；MCP 通过 stdio 暴露 GENtle 工具，而不是让 GENtle 调用 OpenAI API。",
   "agent.external_mcp.title": "外部智能体 / MCP",
   "agent.include_state_summary": "在请求中包含项目状态摘要",
-  "agent.include_state_summary.tooltip": "发送当前 GENtle 项目的紧凑摘要，包括已加载序列 ID 和最近报告，帮助智能体引用真实项目对象而不是猜测。",
+  "agent.include_state_summary.tooltip": "发送紧凑的项目摘要和当前 GENtle 事实的有界投影，并注明省略内容和只读内省路径，使智能体依据真实状态而不是猜测。",
   "agent.insert": "插入",
   "agent.key.anthropic": "Anthropic API 密钥",
   "agent.key.mistral": "Mistral API 密钥",

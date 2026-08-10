@@ -47,7 +47,7 @@
   "agent.external_mcp.subscriptions": "Gli abbonamenti ChatGPT/Codex non sono chiavi API OpenAI; MCP espone gli strumenti GENtle via stdio invece di far chiamare a GENtle l'API OpenAI.",
   "agent.external_mcp.title": "Agente esterno / MCP",
   "agent.include_state_summary": "Includi riepilogo del progetto nella richiesta",
-  "agent.include_state_summary.tooltip": "Invia un riepilogo compatto del progetto GENtle corrente, inclusi ID delle sequenze caricate e report recenti, così l'agente può usare oggetti reali invece di inventarli.",
+  "agent.include_state_summary.tooltip": "Invia un riepilogo compatto del progetto e una proiezione limitata dei fatti GENtle correnti, con omissioni e percorsi di introspezione in sola lettura, così l'agente usa lo stato reale senza indovinarlo.",
   "agent.insert": "Inserisci",
   "agent.key.anthropic": "Chiave API Anthropic",
   "agent.key.mistral": "Chiave API Mistral",

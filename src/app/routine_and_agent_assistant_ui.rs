@@ -1357,16 +1357,22 @@ impl GENtleApp {
             receiver: rx,
         });
         std::thread::spawn(move || {
-            let state_summary = if include_state_summary {
+            let request_context = if include_state_summary {
                 let _ = tx.send(AgentAskTaskMessage::Status {
                     job_id,
-                    message: "Building project summary for agent request".to_string(),
+                    message: "Building project summary and fact context for agent request"
+                        .to_string(),
                 });
                 engine
                     .read()
                     .map(|guard| guard.clone_without_history())
                     .ok()
-                    .map(|snapshot| snapshot.summarize_state())
+                    .map(|snapshot| {
+                        let state_summary = snapshot.summarize_state();
+                        let introspection =
+                            build_agent_introspection_context(&snapshot.project_fact_graph());
+                        (state_summary, introspection)
+                    })
             } else {
                 None
             };
@@ -1374,11 +1380,14 @@ impl GENtleApp {
                 job_id,
                 message: format!("Contacting agent system '{}'", system_id),
             });
-            let result = invoke_agent_support_with_conversation_and_env_overrides(
+            let result = invoke_agent_support_with_request_context(
                 Some(catalog_path.as_str()),
                 &system_id,
                 &prompt,
-                state_summary.as_ref(),
+                request_context.as_ref().map(|(summary, _)| summary),
+                request_context
+                    .as_ref()
+                    .map(|(_, introspection)| introspection),
                 Some(&conversation),
                 if env_overrides.is_empty() {
                     None

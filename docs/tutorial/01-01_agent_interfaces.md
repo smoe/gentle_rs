@@ -4,7 +4,7 @@
 > Status: `manual/reference`
 > Audience: users operating GENtle through the in-app Agent Assistant, CLI/shared shell, MCP, or external coding agents.
 
-Last updated: 2026-06-21
+Last updated: 2026-08-11
 
 This tutorial explains how to let an AI assistant help with GENtle without
 giving up reproducibility. The most important idea is simple:
@@ -340,9 +340,15 @@ but the live model-list probe is the final check.
 1. Click `Use Mistral API`.
 2. Paste a Mistral La Plateforme API key into `Mistral API key`, or set
    `MISTRAL_API_KEY`.
-3. Click `Test Setup`.
+3. Use `Discover Models` when you want a model other than the catalog default,
+   then select the exact returned model id.
+4. Click `Test Setup`.
 
 Le Chat or Mistral account login tokens are not Mistral API keys.
+Do not assume that a separate product name such as Vibe is also a La Plateforme
+model id. If such an agent exposes an OpenAI-compatible endpoint, configure it
+through `Use Local Model`; if it operates as an external coding agent, give it
+GENtle's CLI or MCP interface instead.
 
 ### Local model
 
@@ -412,6 +418,70 @@ cargo run --quiet --bin gentle_cli -- shell 'features restriction-scan --sequenc
 
 That replay command is the audit trail. The model prompt is only how you got
 there.
+
+### A fact-grounded exercise for Mistral or another configured model
+
+This exercise is deliberately modest but not trivial. It tests whether the
+model distinguishes a known project fact from an unsupported biological
+conclusion. It is suitable for Mistral as well as stronger reasoning models.
+
+1. Create one deterministic local sequence through the GUI Shell:
+
+```text
+/paste sequence --sequence-text GAATTCGCGGCCGCTTCTAGA --id fact_demo
+```
+
+2. Open `File -> Agent Assistant...` and enable `Include state summary`.
+   GENtle now sends both the compact state summary and a bounded
+   `x_introspection` projection from the same engine snapshot. The model also
+   receives the read-only commands through which it can ask for more fact
+   detail.
+3. Select and test your configured provider. To exercise the native Mistral
+   path, use `Mistral Large (native Mistral HTTP)` or another exact Mistral
+   model id returned by `Discover Models`.
+4. Ask:
+
+```text
+Use only the supplied GENtle state_summary and x_introspection context.
+
+1. Tell me whether sequence fact_demo currently exists and whether GENtle
+   identifies it as DNA.
+2. Tell me whether the current facts prove that fact_demo has no EcoRI site.
+   Do not infer absence from a missing fact.
+3. Suggest no more than two read-only GENtle shared-shell commands: one that
+   can show the current facts for fact_demo, and one that can establish EcoRI
+   site evidence.
+4. Use execution="ask". Include a machine-readable precondition_expr when
+   your response format supports it.
+```
+
+A reasonable response should:
+
+- recognize `sequence.exists(fact_demo)` and `sequence.kind(fact_demo) = dna`
+  from current engine context
+- say that EcoRI absence has not yet been proved; the sequence text itself is
+  intentionally not included in the compact state summary
+- suggest valid commands such as:
+
+```text
+introspect facts --seq-id fact_demo
+features restriction-scan fact_demo --enzyme EcoRI
+```
+
+- use `sequence.exists(fact_demo)` as a precondition when it emits
+  `precondition_expr`
+- avoid re-importing the sequence, inventing a fact, or claiming that a missing
+  `restriction_site.present` fact proves absence
+
+Run each suggestion only after checking it. The restriction scan will find the
+EcoRI motif at the start of this deliberately chosen sequence. That observed
+result is not needed to pass the reasoning test: the important step is that the
+agent requests complete evidence before making an open-world absence claim.
+
+If GENtle marks either suggestion as `Invalid GENtle command`, the provider did
+not pass the interface test. If the commands parse but the prose asserts EcoRI
+absence before the scan, the transport worked but the model did not pass the
+fact-reasoning test.
 
 ### Ask for cloning strategy or vector advice
 

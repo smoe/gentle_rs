@@ -1,5 +1,14 @@
 # GENtle Changelog
 
+- Grounded Agent Assistant and `agents ask` requests in engine-owned
+  introspection whenever project context is enabled. The additive
+  `gentle.agent_introspection_context.v1` extension carries a bounded current
+  fact projection, complete fact-type counts, explicit truncation metadata,
+  and read-only retrieval routes without granting providers filesystem access
+  or changing execution authority. The agent-interface tutorial now includes a
+  Mistral-compatible facts-before-action exercise that tests open-world absence
+  reasoning on a deterministic local sequence.
+
 - Replaced the sparse standard macOS About panel with one localized,
   GENtle-owned About experience shared by the native application menu and the
   in-app Help menu. The compact Finder-inspired card now presents version,

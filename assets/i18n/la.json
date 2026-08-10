@@ -47,7 +47,7 @@
   "agent.external_mcp.subscriptions": "Subscriptiones ChatGPT/Codex claves OpenAI API non sunt; MCP instrumenta GENtle per stdio aperit, non GENtle ad OpenAI API vocandum cogit.",
   "agent.external_mcp.title": "Agens externum / MCP",
   "agent.include_state_summary": "Summarium status proiecti in rogatu includere",
-  "agent.include_state_summary.tooltip": "Mittit breve summarium proiecti GENtle praesentis, cum ID sequentiarum oneratarum et relationibus recentibus, ut agens res veras proiecti referat nec fingat.",
+  "agent.include_state_summary.tooltip": "Mittit breve summarium proiecti et finitam proiectionem factorum GENtle praesentium, cum notitia omissionum et viis introspectionis solum legendis, ut agens statum verum adhibeat nec fingat.",
   "agent.insert": "Inserere",
   "agent.key.anthropic": "Clavis Anthropic API",
   "agent.key.mistral": "Clavis Mistral API",
