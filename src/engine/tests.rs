@@ -12745,6 +12745,7 @@ fn transcript_endpoint_structural_failure_operation(
         cdna_synthesis: TranscriptAssayCdnaSynthesis::OligoDt,
         objective: TranscriptAssayPanelObjective::IsoformEndMatrix,
         coverage_policy,
+        coverage_universe: TranscriptAssayCoverageUniverse::default(),
         assay_tier: TranscriptAssayUseTier::LongRangeStructureDiscovery,
         practicality: None,
         forward: side.clone(),
@@ -13015,6 +13016,7 @@ fn transcript_assay_panel_operation(
         cdna_synthesis: TranscriptAssayCdnaSynthesis::Unspecified,
         objective: TranscriptAssayPanelObjective::PanTranscript,
         coverage_policy,
+        coverage_universe: TranscriptAssayCoverageUniverse::default(),
         assay_tier: TranscriptAssayUseTier::Unspecified,
         practicality: None,
         forward: side.clone(),
@@ -13040,6 +13042,207 @@ fn transcript_assay_panel_operation(
         report_id: Some(report_id.to_string()),
         path: None,
     }
+}
+
+#[test]
+fn transcript_assay_coverage_default_preserves_legacy_operation_bytes() {
+    let operation = transcript_assay_panel_operation(
+        TranscriptAssayCoveragePolicy::BestEffort,
+        transcript_assay_panel_relaxed_side(),
+        0,
+        "coverage_default",
+    );
+    let serialized = serde_json::to_string(&operation).expect("serialize transcript assay op");
+    assert!(
+        !serialized.contains("coverage_universe"),
+        "the default universe must not perturb legacy operation digests: {serialized}"
+    );
+    let reparsed: Operation =
+        serde_json::from_str(&serialized).expect("deserialize legacy-shaped operation");
+    let Operation::DesignTranscriptAssayPanel {
+        coverage_universe, ..
+    } = reparsed
+    else {
+        panic!("expected transcript assay operation");
+    };
+    assert!(coverage_universe.is_default());
+}
+
+#[test]
+fn transcript_assay_coverage_explicit_keeps_objective_and_exact_cdna_equivalence() {
+    let mut operation = transcript_assay_panel_operation(
+        TranscriptAssayCoveragePolicy::BestEffort,
+        transcript_assay_panel_relaxed_side(),
+        0,
+        "coverage_explicit",
+    );
+    let Operation::DesignTranscriptAssayPanel {
+        objective,
+        coverage_universe,
+        ..
+    } = &mut operation
+    else {
+        panic!("expected transcript assay operation");
+    };
+    *objective = TranscriptAssayPanelObjective::OnePerClass;
+    *coverage_universe = TranscriptAssayCoverageUniverse {
+        kind: TranscriptAssayCoverageUniverseKind::ExplicitTranscripts,
+        required_transcript_ids: vec!["TX3".to_string(), "TX2".to_string()],
+        sources: vec![],
+    };
+
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let report = engine
+        .apply(operation)
+        .expect("design explicit-universe panel")
+        .transcript_assay_panel
+        .expect("transcript assay report");
+    assert_eq!(report.objective, TranscriptAssayPanelObjective::OnePerClass);
+    assert_eq!(
+        report.coverage_universe.kind,
+        TranscriptAssayCoverageUniverseKind::ExplicitTranscripts
+    );
+    assert_eq!(report.transcript_count, 2);
+    assert_eq!(report.equivalence_group_count, 1);
+    assert_eq!(
+        report.coverage_resolution.included_transcript_ids,
+        vec!["TX2".to_string(), "TX3".to_string()]
+    );
+    assert_eq!(
+        report.coverage_resolution.excluded_annotated_transcript_ids,
+        vec!["TX1".to_string()]
+    );
+    let group_ids = report
+        .coverage_resolution
+        .targets
+        .iter()
+        .filter_map(|target| target.equivalence_group_id.as_deref())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(group_ids.len(), 1, "byte-identical targets share one class");
+}
+
+#[test]
+fn transcript_assay_coverage_unresolved_target_fails_before_primer_search() {
+    let mut operation = transcript_assay_panel_operation(
+        TranscriptAssayCoveragePolicy::BestEffort,
+        transcript_assay_panel_relaxed_side(),
+        0,
+        "coverage_unresolved",
+    );
+    let Operation::DesignTranscriptAssayPanel {
+        coverage_universe, ..
+    } = &mut operation
+    else {
+        panic!("expected transcript assay operation");
+    };
+    *coverage_universe = TranscriptAssayCoverageUniverse {
+        kind: TranscriptAssayCoverageUniverseKind::ExplicitTranscripts,
+        required_transcript_ids: vec!["TX_NOT_ANNOTATED".to_string()],
+        sources: vec![],
+    };
+
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let error = engine
+        .apply(operation)
+        .expect_err("best_effort must not omit an unresolved mandatory target");
+    assert!(error.message.contains("unresolved before Primer3"));
+    assert!(error.message.contains("TX_NOT_ANNOTATED"));
+}
+
+#[test]
+fn transcript_assay_coverage_uniprot_is_content_bound_and_auditable() {
+    let temp = tempdir().expect("temporary UniProt coverage directory");
+    let audit_path = temp.path().join("uniprot_projection_audit.json");
+    let audit_bytes = serde_json::to_vec_pretty(&serde_json::json!({
+        "schema": UNIPROT_PROJECTION_AUDIT_REPORT_SCHEMA,
+        "report_id": "synthetic_uniprot_audit",
+        "projection_id": "synthetic_projection",
+        "entry_id": "PTEST1",
+        "seq_id": "panel_src",
+        "rows": [
+            {
+                "transcript_id": "TX1.1",
+                "status": "consistent",
+                "link_resolution": {
+                    "matched_xrefs": [{
+                        "transcript_id": "TX1",
+                        "isoform_id": "PTEST1-1"
+                    }]
+                }
+            },
+            {
+                "transcript_id": "TX2",
+                "status": "warning",
+                "link_resolution": {
+                    "matched_xrefs": [{
+                        "transcript_id": "TX2",
+                        "isoform_id": "PTEST1-2"
+                    }]
+                }
+            }
+        ]
+    }))
+    .expect("serialize synthetic UniProt audit");
+    fs::write(&audit_path, &audit_bytes).expect("write synthetic UniProt audit");
+    let expected_sha256 = sha256_prefixed_bytes(&audit_bytes);
+
+    let mut operation = transcript_assay_panel_operation(
+        TranscriptAssayCoveragePolicy::BestEffort,
+        transcript_assay_panel_relaxed_side(),
+        0,
+        "coverage_uniprot",
+    );
+    let Operation::DesignTranscriptAssayPanel {
+        objective,
+        coverage_universe,
+        ..
+    } = &mut operation
+    else {
+        panic!("expected transcript assay operation");
+    };
+    *objective = TranscriptAssayPanelObjective::OnePerClass;
+    *coverage_universe = TranscriptAssayCoverageUniverse {
+        kind: TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms,
+        required_transcript_ids: vec![],
+        sources: vec![TranscriptAssayCoverageSourceRef {
+            source_kind: "uniprot_projection_audit".to_string(),
+            path: audit_path.to_string_lossy().to_string(),
+            expected_sha256: Some(expected_sha256.clone()),
+            ..TranscriptAssayCoverageSourceRef::default()
+        }],
+    };
+
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let report = engine
+        .apply(operation)
+        .expect("design UniProt-prioritized panel")
+        .transcript_assay_panel
+        .expect("transcript assay report");
+    assert_eq!(
+        report.coverage_resolution.included_transcript_ids,
+        vec!["TX1".to_string(), "TX2".to_string()]
+    );
+    assert_eq!(
+        report.coverage_universe.sources[0]
+            .expected_sha256
+            .as_deref(),
+        Some(expected_sha256.as_str())
+    );
+    assert_eq!(
+        report.coverage_universe.sources[0].report_id.as_deref(),
+        Some("synthetic_uniprot_audit")
+    );
+    assert!(report.coverage_resolution.targets.iter().all(|target| {
+        target.uniprot_entry_ids == ["PTEST1"]
+            && !target.uniprot_isoform_ids.is_empty()
+            && target.status == TranscriptAssayCoverageTargetStatus::Included
+    }));
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| { warning.contains("PCR still measures mapped mature-cDNA sequences") })
+    );
 }
 
 #[cfg(unix)]
@@ -15038,6 +15241,7 @@ fn transcript_assay_panel_does_not_equate_one_base_near_matches() {
             cdna_synthesis: TranscriptAssayCdnaSynthesis::Unspecified,
             objective: TranscriptAssayPanelObjective::PanTranscript,
             coverage_policy: TranscriptAssayCoveragePolicy::BestEffort,
+            coverage_universe: TranscriptAssayCoverageUniverse::default(),
             assay_tier: TranscriptAssayUseTier::Unspecified,
             practicality: None,
             forward: impossible_side.clone(),
@@ -15101,6 +15305,8 @@ fn transcript_assay_panel_old_payload_defaults_to_taqman_mode() {
     assert_eq!(report.oligo_dt_5prime_risk_threshold_bp, None);
     assert_eq!(report.assay_tier, TranscriptAssayUseTier::Unspecified);
     assert!(report.practicality_policy.is_none());
+    assert!(report.coverage_universe.is_default());
+    assert!(report.coverage_resolution.universe.is_default());
 
     let cell: TranscriptAssayDetectionCell = serde_json::from_value(serde_json::json!({
         "assay_id": "legacy_assay",
@@ -15550,6 +15756,7 @@ fn transcript_assay_endpoint_end_matrix_is_primer_only_and_warns_for_oligo_dt() 
             cdna_synthesis: TranscriptAssayCdnaSynthesis::OligoDt,
             objective: TranscriptAssayPanelObjective::IsoformEndMatrix,
             coverage_policy: TranscriptAssayCoveragePolicy::BestEffort,
+            coverage_universe: TranscriptAssayCoverageUniverse::default(),
             assay_tier: TranscriptAssayUseTier::Unspecified,
             practicality: None,
             forward: side.clone(),
@@ -15680,6 +15887,7 @@ fn transcript_assay_sybr_evaluates_patz1_clariom_juc_without_probe() {
             cdna_synthesis: TranscriptAssayCdnaSynthesis::OligoDt,
             objective: TranscriptAssayPanelObjective::OnePerClass,
             coverage_policy: TranscriptAssayCoveragePolicy::BestEffort,
+            coverage_universe: TranscriptAssayCoverageUniverse::default(),
             assay_tier: TranscriptAssayUseTier::IsoformDiscrimination,
             practicality: None,
             forward: side.clone(),
@@ -15951,6 +16159,7 @@ fn transcript_assay_primer3_emits_native_junction_overlap_tags() {
             cdna_synthesis: TranscriptAssayCdnaSynthesis::OligoDt,
             objective: TranscriptAssayPanelObjective::OnePerClass,
             coverage_policy: TranscriptAssayCoveragePolicy::BestEffort,
+            coverage_universe: TranscriptAssayCoverageUniverse::default(),
             assay_tier: TranscriptAssayUseTier::Unspecified,
             practicality: None,
             forward: side.clone(),
@@ -16052,6 +16261,7 @@ fn transcript_assay_endpoint_long_product_respects_ten_kb_ceiling() {
             cdna_synthesis: TranscriptAssayCdnaSynthesis::OligoDt,
             objective: TranscriptAssayPanelObjective::IsoformEndMatrix,
             coverage_policy: TranscriptAssayCoveragePolicy::RequireAll,
+            coverage_universe: TranscriptAssayCoverageUniverse::default(),
             assay_tier: TranscriptAssayUseTier::LongRangeStructureDiscovery,
             practicality: Some(TranscriptAssayPracticalityPolicy {
                 preferred_amplicon_bp: Some(TranscriptAssayAmpliconRange {
@@ -16123,6 +16333,7 @@ fn transcript_assay_endpoint_long_product_respects_ten_kb_ceiling() {
             cdna_synthesis: TranscriptAssayCdnaSynthesis::OligoDt,
             objective: TranscriptAssayPanelObjective::IsoformEndMatrix,
             coverage_policy: TranscriptAssayCoveragePolicy::BestEffort,
+            coverage_universe: TranscriptAssayCoverageUniverse::default(),
             assay_tier: TranscriptAssayUseTier::LongRangeStructureDiscovery,
             practicality: Some(TranscriptAssayPracticalityPolicy {
                 preferred_amplicon_bp: Some(TranscriptAssayAmpliconRange {
@@ -58132,6 +58343,11 @@ fn gene_isoform_assay_study_planner_normalizes_inputs_and_emits_exact_operation_
             min_responsive_regions_for_comprehensive: 1,
             ..GeneIsoformAssayStudyPolicy::default()
         },
+        coverage_universe: TranscriptAssayCoverageUniverse {
+            kind: TranscriptAssayCoverageUniverseKind::ExplicitTranscripts,
+            required_transcript_ids: vec!["TX1".to_string(), "TX2".to_string()],
+            sources: vec![],
+        },
         observations: vec![GeneIsoformAssayStudyObservation {
             observation_id: "wetlab_1".to_string(),
             statement: "A preliminary band was seen.".to_string(),
@@ -58202,17 +58418,24 @@ fn gene_isoform_assay_study_planner_normalizes_inputs_and_emits_exact_operation_
         Some("panel1_isoforms")
     );
     assert_eq!(plan.planned_operations.len(), 3);
+    assert_eq!(
+        plan.coverage_resolution.included_transcript_ids,
+        vec!["TX1".to_string(), "TX2".to_string()]
+    );
     assert!(plan.operation_batch_sha256.starts_with("sha256:"));
     assert_eq!(
         plan.normalized_request.observations[0].validation_status,
         "user_supplied_unvalidated"
     );
-    assert!(
-        plan.planned_operations
-            .iter()
-            .all(|step| step.operation_sha256.starts_with("sha256:")
-                && step.operation.get("DesignTranscriptAssayPanel").is_some())
-    );
+    assert!(plan.planned_operations.iter().all(|step| {
+        step.operation_sha256.starts_with("sha256:")
+            && step
+                .operation
+                .get("DesignTranscriptAssayPanel")
+                .and_then(|operation| operation.get("coverage_universe"))
+                .and_then(|universe| universe.get("kind"))
+                == Some(&serde_json::json!("explicit_transcripts"))
+    }));
     let endpoint_step = plan
         .planned_operations
         .iter()

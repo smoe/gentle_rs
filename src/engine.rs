@@ -4495,6 +4495,14 @@ pub enum Operation {
         objective: TranscriptAssayPanelObjective,
         #[serde(default)]
         coverage_policy: TranscriptAssayCoveragePolicy,
+        /// Mandatory transcript universe, independent of objective and
+        /// strictness. Omitted/default preserves the historical all-annotation
+        /// operation bytes and behavior.
+        #[serde(
+            default,
+            skip_serializing_if = "TranscriptAssayCoverageUniverse::is_default"
+        )]
+        coverage_universe: TranscriptAssayCoverageUniverse,
         /// Experimental purpose, independent of the panel-selection objective.
         #[serde(
             default,

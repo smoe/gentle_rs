@@ -21,8 +21,9 @@ use crate::engine::{
     RepeatEnvironmentGeometryMode, TfbsScoreTrackCorrelationMetric,
     TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
     TfbsTrackSimilarityRankingMetric, TranscriptAssayCdnaSynthesis, TranscriptAssayCoveragePolicy,
-    TranscriptAssayJunctionPriority, TranscriptAssayKind, TranscriptAssayPanelObjective,
-    TranscriptAssayPracticalityPolicy, TranscriptAssaySpecificityRequest, TranscriptAssayUseTier,
+    TranscriptAssayCoverageUniverse, TranscriptAssayJunctionPriority, TranscriptAssayKind,
+    TranscriptAssayPanelObjective, TranscriptAssayPracticalityPolicy,
+    TranscriptAssaySpecificityRequest, TranscriptAssayUseTier,
 };
 
 fn parse_primer_specificity_report_detail_mode(
@@ -6508,7 +6509,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             })
         }
         "design-transcript-assay-panel" => {
-            const USAGE: &str = "primers design-transcript-assay-panel SEQ_ID FEATURE_ID [--assay-kind endpoint-rt-pcr|sybr-qpcr|taqman-qpcr] [--cdna-synthesis oligo-dt|random-hexamers|gene-specific|mixed] [--objective pan-transcript|one-per-class|minimal-discrimination-panel|isoform-end-matrix] [--assay-tier routine-common-region-screen|isoform-discrimination|long-range-structure-discovery] [--coverage-policy require-all|best-effort] [--preferred-min-amplicon-bp N --preferred-max-amplicon-bp N] [--junctions JSON_OR_@FILE] [--junction-evidence PATH ...] [--junction-evidence-priority required|preferred] [--min-3prime-junction-overlap-bp N] [--min-5prime-junction-overlap-bp N] [--annotation-release TEXT] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--oligo-dt-5prime-risk-threshold-bp N] [--specificity-check none|report-only|require-pass] [--specificity-target-genome ID] [--specificity-catalog PATH] [--specificity-cache-dir DIR] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]\n       primers design-transcript-assay-panel OPERATION_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]";
+            const USAGE: &str = "primers design-transcript-assay-panel SEQ_ID FEATURE_ID [--assay-kind endpoint-rt-pcr|sybr-qpcr|taqman-qpcr] [--cdna-synthesis oligo-dt|random-hexamers|gene-specific|mixed] [--objective pan-transcript|one-per-class|minimal-discrimination-panel|isoform-end-matrix] [--assay-tier routine-common-region-screen|isoform-discrimination|long-range-structure-discovery] [--coverage-policy require-all|best-effort] [--coverage-universe JSON_OR_@FILE] [--preferred-min-amplicon-bp N --preferred-max-amplicon-bp N] [--junctions JSON_OR_@FILE] [--junction-evidence PATH ...] [--junction-evidence-priority required|preferred] [--min-3prime-junction-overlap-bp N] [--min-5prime-junction-overlap-bp N] [--annotation-release TEXT] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--oligo-dt-5prime-risk-threshold-bp N] [--specificity-check none|report-only|require-pass] [--specificity-target-genome ID] [--specificity-catalog PATH] [--specificity-cache-dir DIR] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]\n       primers design-transcript-assay-panel OPERATION_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]";
             if tokens.len() < 3 {
                 return Err(format!(
                     "primers design-transcript-assay-panel requires either:\n       {USAGE}"
@@ -6561,6 +6562,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             let mut cdna_synthesis = TranscriptAssayCdnaSynthesis::default();
             let mut objective = TranscriptAssayPanelObjective::default();
             let mut coverage_policy = TranscriptAssayCoveragePolicy::default();
+            let mut coverage_universe = TranscriptAssayCoverageUniverse::default();
             let mut assay_tier = TranscriptAssayUseTier::default();
             let mut preferred_min_amplicon_bp = None;
             let mut preferred_max_amplicon_bp = None;
@@ -6605,6 +6607,17 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                         let raw =
                             parse_option_path(tokens, &mut idx, "--coverage-policy", context)?;
                         coverage_policy = parse_transcript_assay_coverage_policy(&raw)?;
+                    }
+                    "--coverage-universe" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--coverage-universe", context)?;
+                        let payload = parse_json_payload(&raw)?;
+                        coverage_universe = serde_json::from_str(&payload).map_err(|error| {
+                            format!(
+                                "Could not parse transcript coverage-universe JSON from '{}': {error}",
+                                raw
+                            )
+                        })?;
                     }
                     "--assay-tier" | "--use-tier" => {
                         let flag = tokens[idx].clone();
@@ -6833,6 +6846,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 cdna_synthesis,
                 objective,
                 coverage_policy,
+                coverage_universe,
                 assay_tier,
                 practicality,
                 min_amplicon_bp,

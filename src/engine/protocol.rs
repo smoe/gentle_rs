@@ -9328,6 +9328,10 @@ pub struct TranscriptAssayPanelFeasibilityReport {
     pub objective: TranscriptAssayPanelObjective,
     #[serde(default)]
     pub coverage_policy: TranscriptAssayCoveragePolicy,
+    #[serde(default)]
+    pub coverage_universe: TranscriptAssayCoverageUniverse,
+    #[serde(default)]
+    pub coverage_resolution: TranscriptAssayCoverageResolution,
     pub transcript_count: usize,
     pub equivalence_group_count: usize,
     pub first_end_class_count: usize,
@@ -9433,6 +9437,120 @@ pub struct TranscriptAssayPanelProvenance {
     #[serde(default)]
     pub junction_sources: Vec<TranscriptAssayPanelSourceProvenance>,
     pub primer_backend: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Which annotated transcript set is mandatory for one assay-panel plan.
+///
+/// This axis is independent of both the panel-selection objective and the
+/// strict/best-effort coverage policy. Existing requests default to all
+/// annotated exact-cDNA classes.
+pub enum TranscriptAssayCoverageUniverseKind {
+    #[default]
+    AllAnnotatedCdnaClasses,
+    ExplicitTranscripts,
+    UniprotSupportedIsoforms,
+}
+
+impl TranscriptAssayCoverageUniverseKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::AllAnnotatedCdnaClasses => "all_annotated_cdna_classes",
+            Self::ExplicitTranscripts => "explicit_transcripts",
+            Self::UniprotSupportedIsoforms => "uniprot_supported_isoforms",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Content-bound evidence source defining a non-default transcript universe.
+pub struct TranscriptAssayCoverageSourceRef {
+    pub source_kind: String,
+    pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_schema: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Additive target-universe request for transcript assay design.
+pub struct TranscriptAssayCoverageUniverse {
+    #[serde(default)]
+    pub kind: TranscriptAssayCoverageUniverseKind,
+    /// Required annotation transcript ids. For a UniProt universe GENtle
+    /// derives these from the content-bound audit sources and verifies any
+    /// caller-supplied list against that derivation.
+    #[serde(default)]
+    pub required_transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub sources: Vec<TranscriptAssayCoverageSourceRef>,
+}
+
+impl TranscriptAssayCoverageUniverse {
+    pub fn is_default(&self) -> bool {
+        self == &Self::default()
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Resolution of one requested coverage target against current annotation.
+pub enum TranscriptAssayCoverageTargetStatus {
+    #[default]
+    Included,
+    Unresolved,
+    Ambiguous,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One explicit or UniProt-supported transcript target and its resolution.
+pub struct TranscriptAssayCoverageTarget {
+    pub target_id: String,
+    pub requested_transcript_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub equivalence_group_id: Option<String>,
+    #[serde(default)]
+    pub source_report_ids: Vec<String>,
+    #[serde(default)]
+    pub uniprot_entry_ids: Vec<String>,
+    #[serde(default)]
+    pub uniprot_isoform_ids: Vec<String>,
+    #[serde(default)]
+    pub audit_statuses: Vec<String>,
+    #[serde(default)]
+    pub status: TranscriptAssayCoverageTargetStatus,
+    #[serde(default)]
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Auditable resolution of the requested coverage universe.
+pub struct TranscriptAssayCoverageResolution {
+    pub universe: TranscriptAssayCoverageUniverse,
+    pub annotated_transcript_count: usize,
+    pub required_target_count: usize,
+    #[serde(default)]
+    pub included_transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub excluded_annotated_transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub unresolved_target_ids: Vec<String>,
+    #[serde(default)]
+    pub ambiguous_target_ids: Vec<String>,
+    #[serde(default)]
+    pub targets: Vec<TranscriptAssayCoverageTarget>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -9629,6 +9747,10 @@ pub struct TranscriptAssayPanelReport {
     pub objective: TranscriptAssayPanelObjective,
     #[serde(default)]
     pub coverage_policy: TranscriptAssayCoveragePolicy,
+    #[serde(default)]
+    pub coverage_universe: TranscriptAssayCoverageUniverse,
+    #[serde(default)]
+    pub coverage_resolution: TranscriptAssayCoverageResolution,
     #[serde(
         default,
         skip_serializing_if = "TranscriptAssayUseTier::is_unspecified"
@@ -9942,6 +10064,10 @@ pub struct GeneIsoformAssayStudyPlanRequest {
     pub prior_priority: GeneIsoformAssayPriorPriority,
     #[serde(default)]
     pub policy: GeneIsoformAssayStudyPolicy,
+    /// Optional target universe applied independently to every objective in
+    /// this named plan. Run separate named plans to compare alternatives.
+    #[serde(default)]
+    pub coverage_universe: TranscriptAssayCoverageUniverse,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub policy_sha256: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -9968,6 +10094,7 @@ impl Default for GeneIsoformAssayStudyPlanRequest {
             contrasts: vec![],
             prior_priority: GeneIsoformAssayPriorPriority::Routine,
             policy: GeneIsoformAssayStudyPolicy::default(),
+            coverage_universe: TranscriptAssayCoverageUniverse::default(),
             policy_sha256: None,
             profile_override: None,
             prior_plan: None,
@@ -10063,6 +10190,8 @@ pub struct GeneIsoformAssayStudyPlanReport {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profile_override: Option<GeneIsoformAssayStudyOverride>,
     pub evidence_summary: GeneIsoformAssayStudyEvidenceSummary,
+    #[serde(default)]
+    pub coverage_resolution: TranscriptAssayCoverageResolution,
     #[serde(default)]
     pub decision_factors: Vec<GeneIsoformAssayStudyDecisionFactor>,
     #[serde(default)]

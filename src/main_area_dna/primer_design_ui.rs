@@ -1270,6 +1270,7 @@ impl MainAreaDna {
             cdna_synthesis: ui.cdna_synthesis,
             objective: ui.objective,
             coverage_policy: ui.coverage_policy,
+            coverage_universe: crate::engine::TranscriptAssayCoverageUniverse::default(),
             assay_tier: ui.assay_tier,
             practicality,
             forward: Self::parse_primer_side_constraint_ui(&ui.forward, "forward")?,

@@ -3181,7 +3181,7 @@ Shared shell command:
     - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME]...`
     - `primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]`
     - `primers design-transcript-assay-panel OPERATION_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
-    - `primers design-transcript-assay-panel SEQ_ID FEATURE_ID [--assay-kind endpoint-rt-pcr|sybr-qpcr|taqman-qpcr] [--cdna-synthesis oligo-dt|random-hexamers|gene-specific|mixed] [--objective pan-transcript|one-per-class|minimal-discrimination-panel|isoform-end-matrix] [--coverage-policy require-all|best-effort] [--assay-tier routine-common-region-screen|isoform-discrimination|long-range-structure-discovery] [--preferred-min-amplicon-bp N --preferred-max-amplicon-bp N] [--junctions JSON_OR_@FILE] [--junction-evidence PATH ...] [--junction-evidence-priority required|preferred] [--min-3prime-junction-overlap-bp N] [--min-5prime-junction-overlap-bp N] [--annotation-release TEXT] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--oligo-dt-5prime-risk-threshold-bp N] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]`
+    - `primers design-transcript-assay-panel SEQ_ID FEATURE_ID [--assay-kind endpoint-rt-pcr|sybr-qpcr|taqman-qpcr] [--cdna-synthesis oligo-dt|random-hexamers|gene-specific|mixed] [--objective pan-transcript|one-per-class|minimal-discrimination-panel|isoform-end-matrix] [--coverage-policy require-all|best-effort] [--coverage-universe JSON_OR_@FILE] [--assay-tier routine-common-region-screen|isoform-discrimination|long-range-structure-discovery] [--preferred-min-amplicon-bp N --preferred-max-amplicon-bp N] [--junctions JSON_OR_@FILE] [--junction-evidence PATH ...] [--junction-evidence-priority required|preferred] [--min-3prime-junction-overlap-bp N] [--min-5prime-junction-overlap-bp N] [--annotation-release TEXT] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--oligo-dt-5prime-risk-threshold-bp N] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]`
       - for oligo-dT cDNA, matrix cells always report each predicted product's
         required reach from the annotated transcript 3-prime end. Supplying
         `--oligo-dt-5prime-risk-threshold-bp` classifies that geometry against
@@ -4025,6 +4025,21 @@ Shared shell command:
         requested junction
       - defaults to `--objective pan-transcript --coverage-policy require-all`;
         an assay that omits any exact cDNA class is rejected rather than saved
+      - `--coverage-universe JSON_OR_@FILE` independently limits the mandatory
+        annotation set without removing any objective. Omission keeps all
+        annotated cDNA classes. An explicit universe names transcript ids; a
+        UniProt-supported universe names content-bound
+        `gentle.uniprot_projection_audit.v1` sources from which GENtle derives
+        Ensembl transcript ids. Missing or ambiguous required mappings stop
+        before Primer3, including under `best-effort`
+      - example UniProt universe file:
+        `{"kind":"uniprot_supported_isoforms","sources":[{"source_kind":"uniprot_projection_audit","path":"reports/G1.uniprot_projection_audit.json","expected_sha256":"sha256:..."}]}`.
+        Study-request normalization fills and binds the observed hash; direct
+        design execution requires it. The report states explicitly that
+        UniProt prioritization is not protein-expression evidence
+      - preserve alternatives as separate named requests: all-annotation,
+        UniProt-prioritized, and manually explicit universes can each use
+        pan-transcript, one-per-class, discrimination, or endpoint objectives
       - `--coverage-policy best-effort` is an explicit opt-in that saves a
         visibly partial report with uncovered class ids and warnings
       - anomalous wall-clock behavior does not silently select biological
@@ -4110,6 +4125,11 @@ Shared shell command:
         the normalized request itself and can be persisted verbatim; planning emits a transparent
         recommendation plus exact ordered assay operations for a separate
         batch approval, but does not execute design
+      - an optional request-level `coverage_universe` is resolved before the
+        first approval and copied unchanged into every emitted assay operation.
+        Keep separate named plans when comparing all annotated cDNA classes,
+        UniProt-supported isoforms, and a manual transcript set; GENtle does
+        not discard the other planning alternatives
       - the plan's `approved_workflow_sha256` binds the exact emitted workflow
         bytes. After the second approval, run
         `primers execute-gene-isoform-study-workflow PLAN.json

@@ -8967,7 +8967,7 @@ Primer-design shell command family (implemented):
   - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME ...]`
   - `primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]`
   - `primers design-transcript-assay-panel OPERATION_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
-  - `primers design-transcript-assay-panel SEQ_ID FEATURE_ID [--assay-kind endpoint-rt-pcr|sybr-qpcr|taqman-qpcr] [--cdna-synthesis oligo-dt|random-hexamers|gene-specific|mixed] [--objective pan-transcript|one-per-class|minimal-discrimination-panel|isoform-end-matrix] [--coverage-policy require-all|best-effort] [--assay-tier routine-common-region-screen|isoform-discrimination|long-range-structure-discovery] [--preferred-min-amplicon-bp N --preferred-max-amplicon-bp N] [--junctions JSON_OR_@FILE] [--junction-evidence PATH ...] [--junction-evidence-priority required|preferred] [--min-3prime-junction-overlap-bp N] [--min-5prime-junction-overlap-bp N] [--annotation-release TEXT] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--oligo-dt-5prime-risk-threshold-bp N] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]`
+  - `primers design-transcript-assay-panel SEQ_ID FEATURE_ID [--assay-kind endpoint-rt-pcr|sybr-qpcr|taqman-qpcr] [--cdna-synthesis oligo-dt|random-hexamers|gene-specific|mixed] [--objective pan-transcript|one-per-class|minimal-discrimination-panel|isoform-end-matrix] [--coverage-policy require-all|best-effort] [--coverage-universe JSON_OR_@FILE] [--assay-tier routine-common-region-screen|isoform-discrimination|long-range-structure-discovery] [--preferred-min-amplicon-bp N --preferred-max-amplicon-bp N] [--junctions JSON_OR_@FILE] [--junction-evidence PATH ...] [--junction-evidence-priority required|preferred] [--min-3prime-junction-overlap-bp N] [--min-5prime-junction-overlap-bp N] [--annotation-release TEXT] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--oligo-dt-5prime-risk-threshold-bp N] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers experimental-handoff PANEL_REPORT_ID [--policy JSON_OR_@FILE] [--variant-evidence PATH ...] [--order-form-id ID] [--path OUTPUT.json] [--order-table OUTPUT.tsv] [--gel-svg OUTPUT.svg] [--gel-ladder NAME ...]`
   - `primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]`
   - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
@@ -9150,6 +9150,26 @@ Primer-design shell command family (implemented):
     equivalence classes, generates mode-appropriate primer candidates from one
     representative per class, and confirms candidates with the mismatch-aware
     cDNA assay path.
+  - `coverage_universe` is a third, independent request axis. It does not
+    replace `objective` or `coverage_policy`: it selects which annotated
+    transcripts are mandatory, the objective chooses how to assay them, and
+    the policy decides whether incomplete coverage is accepted. Omission uses
+    `all_annotated_cdna_classes` and is not serialized, preserving historical
+    operation bytes and approval/checkpoint digests. Other kinds are
+    `explicit_transcripts` and `uniprot_supported_isoforms`.
+  - UniProt-supported coverage is derived from one or more content-bound
+    `gentle.uniprot_projection_audit.v1` sources. Normalization records each
+    source SHA-256 and derived Ensembl transcript set; design execution
+    requires those hashes and rejects changed content. Reports retain source
+    report ids, UniProt entry/isoform ids, audit statuses, resolved annotation
+    transcript ids, and exact-cDNA equivalence ids. Missing or ambiguous
+    mandatory mappings fail before Primer3 even under `best_effort`.
+    UniProt is a prioritization source: PCR measures mapped mature cDNA and
+    does not establish that a protein isoform is expressed.
+  - This additive axis deliberately preserves alternative plans. A user may
+    keep separate named all-annotation, UniProt-prioritized, and explicit
+    transcript plans, each with any existing objective, rather than replacing
+    one plan with a supposedly universal answer.
   - `assay_kind` is `endpoint_rt_pcr`, `sybr_qpcr`, or `taqman_qpcr`.
     Requests and older reports that omit it retain the original
     `taqman_qpcr` forward/reverse/probe behavior. Endpoint and SYBR records
@@ -9358,6 +9378,12 @@ Primer-design shell command family (implemented):
     evidence, transparent decision factors, the automatic recommendation, and
     any explicit override plus reason. Raw Clariom activity is descriptive and
     is not promoted to formal differential expression
+  - the request may declare one `coverage_universe`; normalization resolves
+    and content-binds it before the first approval, the plan echoes a complete
+    `coverage_resolution`, and every emitted assay operation carries the same
+    universe. This changes only the mandatory target set. It neither chooses
+    an objective nor weakens coverage. Compare alternative universes by keeping
+    separate named plans rather than silently rewriting an approved plan
   - selected profiles are `routine_common_region_screen`,
     `targeted_junction_validation`, `isoform_discrimination`,
     `comprehensive_isoform_dossier`, and `long_range_structure_discovery`.

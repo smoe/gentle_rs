@@ -37,6 +37,7 @@ use crate::engine::{
     RnaReadOriginClass, SequenceOrigin, SequenceScanTarget, TfThresholdOverride,
     TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
     TfbsTrackSimilarityRankingMetric, TranscriptAssayCdnaSynthesis, TranscriptAssayCoveragePolicy,
+    TranscriptAssayCoverageUniverse, TranscriptAssayCoverageUniverseKind,
     TranscriptAssayJunctionPriority, TranscriptAssayKind, TranscriptAssayPanelObjective,
 };
 use crate::ensembl_gene::{
@@ -7438,7 +7439,7 @@ fn parse_primers_seed_from_feature_and_splicing() {
     ));
 
     let panel_v2 = parse_shell_line(
-        "primers design-transcript-assay-panel seq_a 17 --objective minimal-discrimination-panel --coverage-policy best-effort --assay-tier isoform-discrimination --preferred-min-amplicon-bp 80 --preferred-max-amplicon-bp 160 --min-amplicon-bp 70 --max-amplicon-bp 220 --max-assays-per-class 4 --max-mismatches 1 --require-3prime-exact-bases 8 --specificity-check require-pass --specificity-target-genome GRCh38 --specificity-catalog genomes.json --specificity-cache-dir genome-cache --report-id panel_v2 --path panel_v2.json --backend internal",
+        r#"primers design-transcript-assay-panel seq_a 17 --objective minimal-discrimination-panel --coverage-policy best-effort --coverage-universe '{"kind":"explicit_transcripts","required_transcript_ids":["TX1","TX2"]}' --assay-tier isoform-discrimination --preferred-min-amplicon-bp 80 --preferred-max-amplicon-bp 160 --min-amplicon-bp 70 --max-amplicon-bp 220 --max-assays-per-class 4 --max-mismatches 1 --require-3prime-exact-bases 8 --specificity-check require-pass --specificity-target-genome GRCh38 --specificity-catalog genomes.json --specificity-cache-dir genome-cache --report-id panel_v2 --path panel_v2.json --backend internal"#,
     )
     .expect("parse transcript assay panel v2");
     assert!(matches!(
@@ -7448,6 +7449,7 @@ fn parse_primers_seed_from_feature_and_splicing() {
             feature_id,
             objective,
             coverage_policy,
+            coverage_universe,
             assay_tier,
             practicality,
             min_amplicon_bp,
@@ -7464,6 +7466,8 @@ fn parse_primers_seed_from_feature_and_splicing() {
             && feature_id == 17
             && objective == TranscriptAssayPanelObjective::MinimalDiscriminationPanel
             && coverage_policy == TranscriptAssayCoveragePolicy::BestEffort
+            && coverage_universe.kind == TranscriptAssayCoverageUniverseKind::ExplicitTranscripts
+            && coverage_universe.required_transcript_ids == vec!["TX1".to_string(), "TX2".to_string()]
             && assay_tier == TranscriptAssayUseTier::IsoformDiscrimination
             && practicality.as_ref().is_some_and(|policy|
                 policy.preferred_amplicon_bp.as_ref().is_some_and(|range|
@@ -8872,6 +8876,7 @@ fn approved_gene_isoform_study_batch_rejects_structural_endpoint_before_mutation
             cdna_synthesis: TranscriptAssayCdnaSynthesis::OligoDt,
             objective: TranscriptAssayPanelObjective::IsoformEndMatrix,
             coverage_policy: TranscriptAssayCoveragePolicy::RequireAll,
+            coverage_universe: TranscriptAssayCoverageUniverse::default(),
             assay_tier: TranscriptAssayUseTier::LongRangeStructureDiscovery,
             practicality: None,
             forward: PrimerDesignSideConstraint::default(),

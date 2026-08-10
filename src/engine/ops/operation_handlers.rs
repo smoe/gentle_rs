@@ -14452,6 +14452,439 @@ impl GentleEngine {
         Ok(input)
     }
 
+    fn transcript_assay_stable_transcript_id(raw: &str) -> String {
+        let trimmed = raw.trim();
+        trimmed
+            .rsplit_once('.')
+            .filter(|(_, suffix)| suffix.chars().all(|ch| ch.is_ascii_digit()))
+            .map(|(stable, _)| stable)
+            .unwrap_or(trimmed)
+            .to_string()
+    }
+
+    fn normalize_transcript_assay_coverage_universe(
+        mut universe: TranscriptAssayCoverageUniverse,
+        require_bound_sources: bool,
+    ) -> Result<TranscriptAssayCoverageUniverse, EngineError> {
+        universe.required_transcript_ids = universe
+            .required_transcript_ids
+            .into_iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect();
+        universe.required_transcript_ids.sort();
+        universe.required_transcript_ids.dedup();
+
+        if universe.kind == TranscriptAssayCoverageUniverseKind::AllAnnotatedCdnaClasses {
+            if !universe.required_transcript_ids.is_empty() || !universe.sources.is_empty() {
+                return Err(EngineError::invalid_input(
+                    "coverage_universe kind all_annotated_cdna_classes cannot carry required_transcript_ids or sources",
+                ));
+            }
+            return Ok(universe);
+        }
+
+        let mut normalized_sources = vec![];
+        let mut uniprot_transcript_ids = BTreeMap::<String, String>::new();
+        for mut source in universe.sources {
+            source.path = source.path.trim().to_string();
+            if source.path.is_empty() {
+                return Err(EngineError::invalid_input(
+                    "Transcript assay coverage sources require a non-empty path",
+                ));
+            }
+            source.source_kind = source.source_kind.trim().to_string();
+            if source.source_kind.is_empty() {
+                source.source_kind = match universe.kind {
+                    TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms => {
+                        "uniprot_projection_audit".to_string()
+                    }
+                    _ => "declared_coverage_source".to_string(),
+                };
+            }
+            if universe.kind == TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms
+                && source.source_kind != "uniprot_projection_audit"
+            {
+                return Err(EngineError::invalid_input(format!(
+                    "UniProt-supported coverage source '{}' has source_kind '{}'; expected uniprot_projection_audit",
+                    source.path, source.source_kind
+                )));
+            }
+            if require_bound_sources
+                && source
+                    .expected_sha256
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .is_none()
+            {
+                return Err(EngineError::invalid_input(format!(
+                    "Transcript assay coverage source '{}' must carry expected_sha256 before design execution",
+                    source.path
+                )));
+            }
+            let bytes = fs::read(&source.path).map_err(|error| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not read transcript assay coverage source '{}': {error}",
+                    source.path
+                ),
+                cause_chain: vec![],
+            })?;
+            let observed = sha256_prefixed_bytes(&bytes);
+            if let Some(expected) = source
+                .expected_sha256
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                && expected != observed
+            {
+                return Err(EngineError::invalid_input(format!(
+                    "Transcript assay coverage source '{}' has digest '{}' but '{}' was required",
+                    source.path, observed, expected
+                )));
+            }
+            source.expected_sha256 = Some(observed);
+            if universe.kind == TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms {
+                let report: UniprotProjectionAuditReport = serde_json::from_slice(&bytes)
+                    .map_err(|error| {
+                        EngineError::invalid_input(format!(
+                            "Could not parse UniProt projection audit coverage source '{}': {error}",
+                            source.path
+                        ))
+                    })?;
+                if report.schema != UNIPROT_PROJECTION_AUDIT_REPORT_SCHEMA {
+                    return Err(EngineError::invalid_input(format!(
+                        "UniProt coverage source '{}' uses schema '{}'; expected '{}'",
+                        source.path, report.schema, UNIPROT_PROJECTION_AUDIT_REPORT_SCHEMA
+                    )));
+                }
+                source.report_id = Some(report.report_id.clone());
+                source.report_schema = Some(report.schema.clone());
+                for row in report
+                    .rows
+                    .iter()
+                    .filter(|row| !row.link_resolution.matched_xrefs.is_empty())
+                {
+                    let stable = Self::transcript_assay_stable_transcript_id(&row.transcript_id);
+                    if !stable.is_empty() {
+                        let transcript_id = row.transcript_id.trim().to_string();
+                        uniprot_transcript_ids
+                            .entry(stable)
+                            .and_modify(|existing| {
+                                if transcript_id < *existing {
+                                    existing.clone_from(&transcript_id);
+                                }
+                            })
+                            .or_insert(transcript_id);
+                    }
+                }
+            }
+            normalized_sources.push(source);
+        }
+        normalized_sources.sort_by(|left, right| {
+            left.path
+                .cmp(&right.path)
+                .then(left.source_kind.cmp(&right.source_kind))
+        });
+        normalized_sources.dedup_by(|left, right| {
+            left.path == right.path && left.expected_sha256 == right.expected_sha256
+        });
+        universe.sources = normalized_sources;
+
+        match universe.kind {
+            TranscriptAssayCoverageUniverseKind::AllAnnotatedCdnaClasses => unreachable!(),
+            TranscriptAssayCoverageUniverseKind::ExplicitTranscripts => {
+                if universe.required_transcript_ids.is_empty() {
+                    return Err(EngineError::invalid_input(
+                        "coverage_universe kind explicit_transcripts requires required_transcript_ids",
+                    ));
+                }
+            }
+            TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms => {
+                if universe.sources.is_empty() {
+                    return Err(EngineError::invalid_input(
+                        "coverage_universe kind uniprot_supported_isoforms requires at least one content-bound UniProt projection-audit source",
+                    ));
+                }
+                if uniprot_transcript_ids.is_empty() {
+                    return Err(EngineError::invalid_input(
+                        "UniProt projection-audit coverage sources contain no Ensembl-linked transcript rows",
+                    ));
+                }
+                let derived_ids = uniprot_transcript_ids.values().cloned().collect::<Vec<_>>();
+                if !universe.required_transcript_ids.is_empty() {
+                    let supplied = universe
+                        .required_transcript_ids
+                        .iter()
+                        .map(|value| Self::transcript_assay_stable_transcript_id(value))
+                        .collect::<BTreeSet<_>>();
+                    let derived = derived_ids
+                        .iter()
+                        .map(|value| Self::transcript_assay_stable_transcript_id(value))
+                        .collect::<BTreeSet<_>>();
+                    if supplied != derived {
+                        return Err(EngineError::invalid_input(format!(
+                            "Caller-supplied UniProt coverage transcripts [{}] do not match the content-bound audit-derived set [{}]",
+                            universe.required_transcript_ids.join(", "),
+                            derived_ids.join(", ")
+                        )));
+                    }
+                }
+                universe.required_transcript_ids = derived_ids;
+            }
+        }
+        universe.required_transcript_ids.sort();
+        universe.required_transcript_ids.dedup();
+        Ok(universe)
+    }
+
+    fn resolve_transcript_assay_coverage_universe(
+        universe: TranscriptAssayCoverageUniverse,
+        seq_id: &str,
+        templates: &[TranscriptQpcrDesignTemplate],
+        require_bound_sources: bool,
+    ) -> Result<
+        (
+            Vec<TranscriptQpcrDesignTemplate>,
+            TranscriptAssayCoverageResolution,
+        ),
+        EngineError,
+    > {
+        let universe =
+            Self::normalize_transcript_assay_coverage_universe(universe, require_bound_sources)?;
+        let mut resolution = TranscriptAssayCoverageResolution {
+            universe: universe.clone(),
+            annotated_transcript_count: templates.len(),
+            ..TranscriptAssayCoverageResolution::default()
+        };
+        if universe.kind == TranscriptAssayCoverageUniverseKind::AllAnnotatedCdnaClasses {
+            resolution.required_target_count = templates.len();
+            resolution.included_transcript_ids = templates
+                .iter()
+                .map(|template| template.transcript_id.clone())
+                .collect();
+            resolution.included_transcript_ids.sort();
+            resolution.targets = resolution
+                .included_transcript_ids
+                .iter()
+                .map(|transcript_id| TranscriptAssayCoverageTarget {
+                    target_id: short_sha256_id(
+                        "transcript_coverage_target",
+                        &format!("all|{transcript_id}"),
+                    ),
+                    requested_transcript_id: transcript_id.clone(),
+                    resolved_transcript_id: Some(transcript_id.clone()),
+                    status: TranscriptAssayCoverageTargetStatus::Included,
+                    ..TranscriptAssayCoverageTarget::default()
+                })
+                .collect();
+            return Ok((templates.to_vec(), resolution));
+        }
+
+        let mut metadata = BTreeMap::<String, TranscriptAssayCoverageTarget>::new();
+        if universe.kind == TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms {
+            for source in &universe.sources {
+                let bytes = fs::read(&source.path).map_err(|error| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!(
+                        "Could not read transcript assay coverage source '{}': {error}",
+                        source.path
+                    ),
+                    cause_chain: vec![],
+                })?;
+                let report: UniprotProjectionAuditReport = serde_json::from_slice(&bytes)
+                    .map_err(|error| {
+                        EngineError::invalid_input(format!(
+                            "Could not parse UniProt projection audit coverage source '{}': {error}",
+                            source.path
+                        ))
+                    })?;
+                if report.seq_id != seq_id {
+                    return Err(EngineError::invalid_input(format!(
+                        "UniProt coverage report '{}' targets sequence '{}' but assay design targets '{}'",
+                        report.report_id, report.seq_id, seq_id
+                    )));
+                }
+                for row in report
+                    .rows
+                    .iter()
+                    .filter(|row| !row.link_resolution.matched_xrefs.is_empty())
+                {
+                    let stable = Self::transcript_assay_stable_transcript_id(&row.transcript_id);
+                    let target = metadata.entry(stable.clone()).or_insert_with(|| {
+                        TranscriptAssayCoverageTarget {
+                            target_id: short_sha256_id(
+                                "transcript_coverage_target",
+                                &format!("uniprot|{stable}"),
+                            ),
+                            requested_transcript_id: row.transcript_id.clone(),
+                            ..TranscriptAssayCoverageTarget::default()
+                        }
+                    });
+                    target.source_report_ids.push(report.report_id.clone());
+                    target.uniprot_entry_ids.push(report.entry_id.clone());
+                    target.audit_statuses.push(row.status.as_str().to_string());
+                    for isoform_id in row
+                        .link_resolution
+                        .matched_xrefs
+                        .iter()
+                        .filter_map(|xref| xref.isoform_id.clone())
+                    {
+                        target.uniprot_isoform_ids.push(isoform_id);
+                    }
+                    if row.status != UniprotProjectionAuditRowStatus::Consistent {
+                        target.notes.push(format!(
+                            "UniProt projection audit '{}' reports status '{}' for transcript '{}'; coverage is retained but this is not protein-expression validation.",
+                            report.report_id,
+                            row.status.as_str(),
+                            row.transcript_id
+                        ));
+                    }
+                }
+            }
+        }
+
+        let mut template_indices_by_stable = BTreeMap::<String, Vec<usize>>::new();
+        for (index, template) in templates.iter().enumerate() {
+            template_indices_by_stable
+                .entry(Self::transcript_assay_stable_transcript_id(
+                    &template.transcript_id,
+                ))
+                .or_default()
+                .push(index);
+        }
+        let mut included_indices = BTreeSet::<usize>::new();
+        for requested in &universe.required_transcript_ids {
+            let stable = Self::transcript_assay_stable_transcript_id(requested);
+            let mut target =
+                metadata
+                    .remove(&stable)
+                    .unwrap_or_else(|| TranscriptAssayCoverageTarget {
+                        target_id: short_sha256_id(
+                            "transcript_coverage_target",
+                            &format!("{}|{stable}", universe.kind.as_str()),
+                        ),
+                        requested_transcript_id: requested.clone(),
+                        ..TranscriptAssayCoverageTarget::default()
+                    });
+            let exact_matches = templates
+                .iter()
+                .enumerate()
+                .filter_map(|(index, template)| {
+                    (template.transcript_id == *requested).then_some(index)
+                })
+                .collect::<Vec<_>>();
+            let matches = if exact_matches.is_empty() {
+                template_indices_by_stable
+                    .get(&stable)
+                    .cloned()
+                    .unwrap_or_default()
+            } else {
+                exact_matches
+            };
+            match matches.as_slice() {
+                [index] => {
+                    included_indices.insert(*index);
+                    target.resolved_transcript_id = Some(templates[*index].transcript_id.clone());
+                    target.status = TranscriptAssayCoverageTargetStatus::Included;
+                }
+                [] => {
+                    target.status = TranscriptAssayCoverageTargetStatus::Unresolved;
+                    target.notes.push(
+                        "No current annotation transcript matched this required target id."
+                            .to_string(),
+                    );
+                    resolution
+                        .unresolved_target_ids
+                        .push(target.requested_transcript_id.clone());
+                }
+                _ => {
+                    target.status = TranscriptAssayCoverageTargetStatus::Ambiguous;
+                    target.notes.push(format!(
+                        "Stable transcript id '{}' matched multiple current annotation rows: {}",
+                        stable,
+                        matches
+                            .iter()
+                            .map(|index| templates[*index].transcript_id.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
+                    resolution
+                        .ambiguous_target_ids
+                        .push(target.requested_transcript_id.clone());
+                }
+            }
+            target.source_report_ids.sort();
+            target.source_report_ids.dedup();
+            target.uniprot_entry_ids.sort();
+            target.uniprot_entry_ids.dedup();
+            target.uniprot_isoform_ids.sort();
+            target.uniprot_isoform_ids.dedup();
+            target.audit_statuses.sort();
+            target.audit_statuses.dedup();
+            target.notes.sort();
+            target.notes.dedup();
+            resolution.targets.push(target);
+        }
+        resolution.required_target_count = resolution.targets.len();
+        resolution.included_transcript_ids = included_indices
+            .iter()
+            .map(|index| templates[*index].transcript_id.clone())
+            .collect();
+        resolution.excluded_annotated_transcript_ids = templates
+            .iter()
+            .enumerate()
+            .filter_map(|(index, template)| {
+                (!included_indices.contains(&index)).then_some(template.transcript_id.clone())
+            })
+            .collect();
+        resolution.included_transcript_ids.sort();
+        resolution.excluded_annotated_transcript_ids.sort();
+        resolution.unresolved_target_ids.sort();
+        resolution.ambiguous_target_ids.sort();
+        resolution.targets.sort_by(|left, right| {
+            left.requested_transcript_id
+                .cmp(&right.requested_transcript_id)
+                .then(left.target_id.cmp(&right.target_id))
+        });
+        if universe.kind == TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms {
+            resolution.warnings.push(
+                "UniProt defines the required prioritization set; PCR still measures mapped mature-cDNA sequences and does not establish protein-isoform expression."
+                    .to_string(),
+            );
+        }
+        let selected = included_indices
+            .iter()
+            .map(|index| templates[*index].clone())
+            .collect::<Vec<_>>();
+        Ok((selected, resolution))
+    }
+
+    fn attach_transcript_assay_coverage_equivalence_groups(
+        resolution: &mut TranscriptAssayCoverageResolution,
+        equivalence_groups: &[TranscriptAssayEquivalenceInternal],
+    ) {
+        let group_by_transcript = equivalence_groups
+            .iter()
+            .flat_map(|group| {
+                group.report.members.iter().map(move |member| {
+                    (
+                        member.transcript_id.as_str(),
+                        group.report.equivalence_group_id.as_str(),
+                    )
+                })
+            })
+            .collect::<HashMap<_, _>>();
+        for target in &mut resolution.targets {
+            target.equivalence_group_id = target
+                .resolved_transcript_id
+                .as_deref()
+                .and_then(|transcript_id| group_by_transcript.get(transcript_id).copied())
+                .map(str::to_string);
+        }
+    }
+
     /// Resolve all defaults and bind every file input before a planning
     /// request is submitted for approval or execution.
     pub(crate) fn normalize_gene_isoform_assay_study_request(
@@ -14604,6 +15037,9 @@ impl GentleEngine {
             .junction_evidence
             .dedup_by(|left, right| left.input_kind == right.input_kind && left.path == right.path);
 
+        request.coverage_universe =
+            Self::normalize_transcript_assay_coverage_universe(request.coverage_universe, false)?;
+
         if let Some(override_request) = &mut request.profile_override {
             override_request.reason = override_request.reason.trim().to_string();
             if override_request.reason.is_empty() {
@@ -14712,6 +15148,7 @@ impl GentleEngine {
         assay_kind: TranscriptAssayKind,
         objective: TranscriptAssayPanelObjective,
         coverage_policy: TranscriptAssayCoveragePolicy,
+        coverage_universe: TranscriptAssayCoverageUniverse,
         assay_tier: TranscriptAssayUseTier,
         min_amplicon_bp: usize,
         preferred_max_amplicon_bp: usize,
@@ -14726,6 +15163,7 @@ impl GentleEngine {
             cdna_synthesis: TranscriptAssayCdnaSynthesis::OligoDt,
             objective,
             coverage_policy,
+            coverage_universe,
             assay_tier,
             practicality: Some(TranscriptAssayPracticalityPolicy {
                 preferred_amplicon_bp: Some(TranscriptAssayAmpliconRange {
@@ -14800,8 +15238,9 @@ impl GentleEngine {
                 ),
                 cause_chain: vec![],
             })?;
-        let templates = Self::build_qpcr_transcript_design_templates(source_dna, splicing)?;
-        if templates.is_empty() {
+        let annotated_templates =
+            Self::build_qpcr_transcript_design_templates(source_dna, splicing)?;
+        if annotated_templates.is_empty() {
             return Err(EngineError {
                 code: ErrorCode::NotFound,
                 message: "Gene isoform assay planning found no mature-cDNA transcript templates"
@@ -14809,17 +15248,62 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
+        let annotated_transcript_count = annotated_templates.len();
+        let (templates, mut coverage_resolution) =
+            Self::resolve_transcript_assay_coverage_universe(
+                request.coverage_universe.clone(),
+                &isoform_report.seq_id,
+                &annotated_templates,
+                true,
+            )?;
+        if !coverage_resolution.unresolved_target_ids.is_empty()
+            || !coverage_resolution.ambiguous_target_ids.is_empty()
+        {
+            let resolution_json = serde_json::to_string(&coverage_resolution).map_err(|error| {
+                EngineError::internal(format!(
+                    "Could not serialize rejected transcript coverage resolution: {error}"
+                ))
+            })?;
+            return Err(EngineError::invalid_input(format!(
+                "Coverage universe '{}' is unresolved during study planning (unresolved targets=[{}], ambiguous targets=[{}]). Correct the mapping or create a separate explicitly revised plan. coverage_resolution={resolution_json}",
+                request.coverage_universe.kind.as_str(),
+                coverage_resolution.unresolved_target_ids.join(", "),
+                coverage_resolution.ambiguous_target_ids.join(", ")
+            )));
+        }
+        if templates.is_empty() {
+            return Err(EngineError::invalid_input(format!(
+                "Coverage universe '{}' resolved no assayable annotation transcripts (unresolved targets: {}; ambiguous targets: {})",
+                request.coverage_universe.kind.as_str(),
+                if coverage_resolution.unresolved_target_ids.is_empty() {
+                    "none".to_string()
+                } else {
+                    coverage_resolution.unresolved_target_ids.join(", ")
+                },
+                if coverage_resolution.ambiguous_target_ids.is_empty() {
+                    "none".to_string()
+                } else {
+                    coverage_resolution.ambiguous_target_ids.join(", ")
+                }
+            )));
+        }
         let equivalence_groups = Self::transcript_assay_exact_equivalence_groups(&templates);
+        Self::attach_transcript_assay_coverage_equivalence_groups(
+            &mut coverage_resolution,
+            &equivalence_groups,
+        );
         let transcript_count = templates.len();
         let mut informative_regions = BTreeSet::new();
         for exon in &isoform_report.exon_families {
-            if exon.annotation_model_count > 0 && exon.annotation_model_count < transcript_count {
+            if exon.annotation_model_count > 0
+                && exon.annotation_model_count < annotated_transcript_count
+            {
                 informative_regions.insert(exon.exon_family_id.clone());
             }
         }
         for junction in &isoform_report.junctions {
             if junction.annotation_model_count > 0
-                && junction.annotation_model_count < transcript_count
+                && junction.annotation_model_count < annotated_transcript_count
             {
                 informative_regions.insert(junction.junction_id.clone());
             }
@@ -15090,6 +15574,7 @@ impl GentleEngine {
                 TranscriptAssayKind::SybrQpcr,
                 TranscriptAssayPanelObjective::PanTranscript,
                 TranscriptAssayCoveragePolicy::RequireAll,
+                request.coverage_universe.clone(),
                 TranscriptAssayUseTier::RoutineCommonRegionScreen,
                 policy.short_min_amplicon_bp,
                 policy.short_max_amplicon_bp,
@@ -15107,6 +15592,7 @@ impl GentleEngine {
                 TranscriptAssayKind::SybrQpcr,
                 objective,
                 TranscriptAssayCoveragePolicy::RequireAll,
+                request.coverage_universe.clone(),
                 TranscriptAssayUseTier::IsoformDiscrimination,
                 policy.short_min_amplicon_bp,
                 policy.short_max_amplicon_bp,
@@ -15124,6 +15610,7 @@ impl GentleEngine {
                 TranscriptAssayKind::EndpointRtPcr,
                 TranscriptAssayPanelObjective::IsoformEndMatrix,
                 policy.endpoint_coverage_policy,
+                request.coverage_universe.clone(),
                 TranscriptAssayUseTier::LongRangeStructureDiscovery,
                 policy.endpoint_min_amplicon_bp,
                 policy.endpoint_preferred_max_amplicon_bp,
@@ -15248,7 +15735,22 @@ impl GentleEngine {
                 report_schema: request.isoform_evidence_schema.clone(),
             },
         );
+        resolved_evidence_inputs.extend(request.coverage_universe.sources.iter().map(|source| {
+            GeneIsoformAssayStudyInputRef {
+                input_kind: source.source_kind.clone(),
+                path: source.path.clone(),
+                expected_sha256: source.expected_sha256.clone(),
+                report_id: source.report_id.clone(),
+                report_schema: source.report_schema.clone(),
+            }
+        }));
+        resolved_evidence_inputs.sort_by(|left, right| {
+            left.input_kind
+                .cmp(&right.input_kind)
+                .then(left.path.cmp(&right.path))
+        });
         let mut warnings = isoform_report.warnings.clone();
+        warnings.extend(coverage_resolution.warnings.clone());
         warnings.push(
             "Regional Clariom or expression effects are hypothesis-generating evidence, not formal differential-expression or isoform-validation claims."
                 .to_string(),
@@ -15316,6 +15818,7 @@ impl GentleEngine {
             selected_profile,
             profile_override: request.profile_override.clone(),
             evidence_summary,
+            coverage_resolution,
             decision_factors,
             planned_operations,
             operation_batch_sha256,
@@ -20694,6 +21197,8 @@ impl GentleEngine {
             assay_kind: TranscriptAssayKind::EndpointRtPcr,
             objective: TranscriptAssayPanelObjective::IsoformEndMatrix,
             coverage_policy,
+            coverage_universe: TranscriptAssayCoverageUniverse::default(),
+            coverage_resolution: TranscriptAssayCoverageResolution::default(),
             transcript_count: templates.len(),
             equivalence_group_count: equivalence_groups.len(),
             first_end_class_count: end_classes
@@ -20737,6 +21242,7 @@ impl GentleEngine {
             assay_kind,
             objective,
             coverage_policy,
+            coverage_universe,
             practicality,
             forward,
             reverse,
@@ -20798,8 +21304,9 @@ impl GentleEngine {
             *source_feature_id,
             SplicingScopePreset::TargetGroupTargetStrand,
         )?;
-        let templates = Self::build_qpcr_transcript_design_templates(source_dna, &splicing)?;
-        if templates.is_empty() {
+        let annotated_templates =
+            Self::build_qpcr_transcript_design_templates(source_dna, &splicing)?;
+        if annotated_templates.is_empty() {
             return Err(EngineError {
                 code: ErrorCode::NotFound,
                 message: format!(
@@ -20810,7 +21317,24 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
+        let (templates, mut coverage_resolution) =
+            Self::resolve_transcript_assay_coverage_universe(
+                coverage_universe.clone(),
+                seq_id,
+                &annotated_templates,
+                true,
+            )?;
+        if templates.is_empty() {
+            return Err(EngineError::invalid_input(format!(
+                "Transcript coverage universe '{}' selected no annotation transcripts",
+                coverage_resolution.universe.kind.as_str()
+            )));
+        }
         let equivalence_groups = Self::transcript_assay_exact_equivalence_groups(&templates);
+        Self::attach_transcript_assay_coverage_equivalence_groups(
+            &mut coverage_resolution,
+            &equivalence_groups,
+        );
         let (end_classes, end_reactions) =
             Self::transcript_assay_end_classes_and_reactions(&templates);
         let operation_sha256 = Self::transcript_assay_operation_sha256(operation)?;
@@ -20831,6 +21355,19 @@ impl GentleEngine {
             max_amplicon_bp,
             primer3_candidate_pair_limit_per_reaction,
         );
+        report.coverage_universe = coverage_resolution.universe.clone();
+        report.coverage_resolution = coverage_resolution.clone();
+        if !coverage_resolution.unresolved_target_ids.is_empty()
+            || !coverage_resolution.ambiguous_target_ids.is_empty()
+        {
+            report.execution_recommendation = "coverage_universe_unresolved".to_string();
+            report.warnings.extend(coverage_resolution.warnings);
+            report.warnings.push(
+                "Coverage-universe resolution must be corrected before Primer3; best_effort does not omit unresolved UniProt or explicit targets."
+                    .to_string(),
+            );
+            return Ok(report);
+        }
         let feasibility_by_reaction = report
             .reactions
             .iter()
@@ -20907,7 +21444,16 @@ impl GentleEngine {
                 "reject_before_primer_search" | "return_best_effort_without_primer_search"
             )
         {
-            report.execution_recommendation = "search_space_too_broad".to_string();
+            report.execution_recommendation = match search_plan.status {
+                TranscriptAssayPrimerSearchPlanStatus::Ready => "primer_search_required",
+                TranscriptAssayPrimerSearchPlanStatus::SearchSpaceTooBroad => {
+                    "search_space_too_broad"
+                }
+                TranscriptAssayPrimerSearchPlanStatus::NoAdmissibleRegions => {
+                    "no_admissible_regions"
+                }
+            }
+            .to_string();
         }
         report.search_plan = Some(search_plan);
         Ok(report)
@@ -23174,6 +23720,7 @@ impl GentleEngine {
         cdna_synthesis: TranscriptAssayCdnaSynthesis,
         objective: TranscriptAssayPanelObjective,
         coverage_policy: TranscriptAssayCoveragePolicy,
+        coverage_universe: TranscriptAssayCoverageUniverse,
         assay_tier: TranscriptAssayUseTier,
         practicality: Option<TranscriptAssayPracticalityPolicy>,
         forward: PrimerDesignSideConstraint,
@@ -23215,8 +23762,9 @@ impl GentleEngine {
             source_feature_id,
             SplicingScopePreset::TargetGroupTargetStrand,
         )?;
-        let templates = Self::build_qpcr_transcript_design_templates(&source_dna, &splicing)?;
-        if templates.is_empty() {
+        let annotated_templates =
+            Self::build_qpcr_transcript_design_templates(&source_dna, &splicing)?;
+        if annotated_templates.is_empty() {
             return Err(EngineError {
                 code: ErrorCode::NotFound,
                 message: format!(
@@ -23227,6 +23775,34 @@ impl GentleEngine {
 
                 cause_chain: vec![],
             });
+        }
+        let (templates, mut coverage_resolution) =
+            Self::resolve_transcript_assay_coverage_universe(
+                coverage_universe,
+                &seq_id,
+                &annotated_templates,
+                true,
+            )?;
+        if !coverage_resolution.unresolved_target_ids.is_empty()
+            || !coverage_resolution.ambiguous_target_ids.is_empty()
+        {
+            let resolution_json = serde_json::to_string(&coverage_resolution).map_err(|error| {
+                EngineError::internal(format!(
+                    "Could not serialize rejected transcript coverage resolution: {error}"
+                ))
+            })?;
+            return Err(EngineError::invalid_input(format!(
+                "Transcript coverage universe '{}' is unresolved before Primer3 (unresolved targets=[{}], ambiguous targets=[{}]). coverage_resolution={resolution_json}",
+                coverage_resolution.universe.kind.as_str(),
+                coverage_resolution.unresolved_target_ids.join(", "),
+                coverage_resolution.ambiguous_target_ids.join(", ")
+            )));
+        }
+        if templates.is_empty() {
+            return Err(EngineError::invalid_input(format!(
+                "Transcript coverage universe '{}' selected no annotation transcripts",
+                coverage_resolution.universe.kind.as_str()
+            )));
         }
 
         let (min_amplicon_bp, max_amplicon_bp) = Self::transcript_assay_allowed_amplicon_range(
@@ -23379,7 +23955,11 @@ impl GentleEngine {
         let pair_constraints_normalized =
             Self::normalize_primer_pair_constraints(&pair_constraints)?;
         let equivalence_groups = Self::transcript_assay_exact_equivalence_groups(&templates);
-        let mut warnings = vec![];
+        Self::attach_transcript_assay_coverage_equivalence_groups(
+            &mut coverage_resolution,
+            &equivalence_groups,
+        );
+        let mut warnings = coverage_resolution.warnings.clone();
         if assay_kind == TranscriptAssayKind::EndpointRtPcr {
             warnings.push(
                 "Endpoint-gel band intensity is rough/semi-quantitative. Product presence and size do not provide a quantitative transcript-abundance measurement."
@@ -23464,6 +24044,10 @@ impl GentleEngine {
                     max_assays_per_class,
                 )
             });
+        if let Some(feasibility) = end_matrix_feasibility.as_mut() {
+            feasibility.coverage_universe = coverage_resolution.universe.clone();
+            feasibility.coverage_resolution = coverage_resolution.clone();
+        }
         if let Some(feasibility) = end_matrix_feasibility.as_ref() {
             if coverage_policy == TranscriptAssayCoveragePolicy::RequireAll
                 && !feasibility.structurally_impossible_reaction_ids.is_empty()
@@ -23688,14 +24272,22 @@ impl GentleEngine {
             feasibility.search_plan = Some(primer_search_plan.clone());
         }
         if primer_search_plan.status != TranscriptAssayPrimerSearchPlanStatus::Ready {
+            let disposition = match primer_search_plan.status {
+                TranscriptAssayPrimerSearchPlanStatus::Ready => "ready",
+                TranscriptAssayPrimerSearchPlanStatus::SearchSpaceTooBroad => {
+                    "search_space_too_broad"
+                }
+                TranscriptAssayPrimerSearchPlanStatus::NoAdmissibleRegions => {
+                    "no_admissible_regions"
+                }
+            };
             let plan_json = serde_json::to_string(&primer_search_plan).map_err(|error| {
                 EngineError::internal(format!(
                     "Could not serialize rejected transcript assay search plan: {error}"
                 ))
             })?;
             return Err(EngineError::invalid_input(format!(
-                "Transcript assay search_space_too_broad or no admissible bounded region before Primer3 (status={:?}, blocked targets=[{}]). Refine biological windows or explicitly increase the search policy budget without changing coverage semantics. search_plan={plan_json}",
-                primer_search_plan.status,
+                "Transcript assay search planning stopped before Primer3 (status={disposition}, blocked targets=[{}]). No-admissible-region failures require biological/window refinement; only search_space_too_broad may justify an explicitly approved budget change. Coverage semantics remain unchanged. search_plan={plan_json}",
                 primer_search_plan.blocked_target_ids.join(", ")
             )));
         }
@@ -24662,6 +25254,18 @@ impl GentleEngine {
                 max_amplicon_bp,
             ));
         }
+        if !coverage_resolution.universe.is_default() {
+            let universe_bytes =
+                serde_json::to_vec(&coverage_resolution.universe).map_err(|error| {
+                    EngineError::internal(format!(
+                        "Could not serialize transcript coverage universe: {error}"
+                    ))
+                })?;
+            default_report_material.push_str(&format!(
+                "|coverage:{}",
+                sha256_prefixed_bytes(&universe_bytes)
+            ));
+        }
         let default_report_id = short_sha256_id("transcript_assay_panel", &default_report_material);
         let report_id = Self::normalize_primer_design_report_id(
             report_id.as_deref().unwrap_or(&default_report_id),
@@ -24852,6 +25456,8 @@ impl GentleEngine {
             cdna_synthesis,
             objective,
             coverage_policy,
+            coverage_universe: coverage_resolution.universe.clone(),
+            coverage_resolution,
             assay_tier,
             practicality_policy: resolved_practicality,
             completion_status: if complete {
@@ -37859,6 +38465,7 @@ impl GentleEngine {
                     cdna_synthesis,
                     objective,
                     coverage_policy,
+                    coverage_universe,
                     assay_tier,
                     practicality,
                     forward,
@@ -37896,6 +38503,7 @@ impl GentleEngine {
                         cdna_synthesis,
                         objective,
                         coverage_policy,
+                        coverage_universe,
                         assay_tier,
                         practicality,
                         forward,

@@ -7,6 +7,13 @@
   mascot, reproducibility context, project/documentation/credit links, and a
   copyable build identity. The German native menu item is now `Über GENtle`.
 
+- Added an orthogonal transcript-assay coverage-universe contract. Existing
+  all-annotation plans remain byte-compatible, while explicit transcript sets
+  and content-bound UniProt projection audits can define mandatory targets for
+  any existing panel objective. Reports retain mapping/equivalence provenance,
+  and unresolved or ambiguous mandatory targets stop before Primer3 without
+  silently weakening `require_all` or `best_effort` semantics.
+
 - Replaced the PCR skill's hidden 30-minute isoform-workflow ceiling with an
   approval-bound `execution_timeout_secs` slot. Single-study design defaults to
   a two-hour allowance and ordered multi-study execution to eight hours, while
