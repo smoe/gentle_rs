@@ -1,5 +1,16 @@
 # GENtle Changelog
 
+- Grouped all project lifecycle commands at the top of the File menu, with
+  `Save Project...` immediately beside `Close Project` before sequence and
+  resource commands.
+
+- Made the JASPAR Expert catalog sortable by every displayed column, show
+  cached species names directly, and fetch missing metadata for only the
+  on-screen rows through its existing background operation. Always-visible
+  horizontal and vertical scroll bars keep the full controls, motif details,
+  sequence logo, matrices, and score distributions reachable at smaller
+  window sizes.
+
 - Replaced the sparse standard macOS About panel with one localized,
   GENtle-owned About experience shared by the native application menu and the
   in-app Help menu. The compact Finder-inspired card now presents version,

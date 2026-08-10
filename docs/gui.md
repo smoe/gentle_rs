@@ -5119,11 +5119,11 @@ Use the top application menu:
 - `File -> Open Project...`
 - `File -> Open Recent Project...`
 - `File -> Open Tutorial Project...`
+- `File -> Save Project...`
 - `File -> Close Project`
 - `File -> Import REBASE Data...`
 - `File -> Import JASPAR Data...`
 - `File -> JASPAR Expert...`
-- `File -> Save Project...`
 - `File -> Export DALG SVG...`
 - `File -> Quit`
 
@@ -5674,9 +5674,15 @@ Resource import behavior:
 - `JASPAR Expert...`
   - Opens an app-level motif expert for the active local JASPAR registry.
   - The left side now shows a catalog table with motif ID, optional TF name,
-    motif length, consensus IUPAC sequence, and cached species-count /
-    collection summaries when remote metadata has already been fetched for that
-    row.
+    motif length, consensus IUPAC sequence, species names, and collection
+    summaries. Every column heading is sortable; selecting the active heading
+    again reverses its order.
+  - Species metadata already present in the persistent JASPAR snapshot appears
+    immediately. Missing metadata for the catalog rows currently rendered on
+    screen is fetched automatically through the existing background operation,
+    keeping the expert responsive and avoiding an all-registry request.
+  - The complete expert surface has always-visible horizontal and vertical
+    scroll bars, while the large catalog remains independently virtualized.
   - `Reload catalog` refreshes the local registry table from the shared engine
     while reusing any persisted JASPAR remote-metadata snapshot rows already
     available locally.
