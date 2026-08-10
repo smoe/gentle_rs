@@ -11569,15 +11569,15 @@ fn primer_specificity_handoff_plans_without_running_and_imports_completed_output
     fs::set_permissions(&fake_blastn, permissions).expect("make fake blastn executable");
     let fake_blastdbcmd = root.join("fake_blastdbcmd.sh");
     write_fake_blastdbcmd(&fake_blastdbcmd, 1, 220);
-    let _makeblastdb = EnvVarGuard::set(
+    let _makeblastdb = crate::tool_overrides::ScopedToolOverrideGuard::set(
         crate::genomes::MAKEBLASTDB_ENV_BIN,
         &fake_makeblastdb.to_string_lossy(),
     );
-    let _blastn = EnvVarGuard::set(
+    let _blastn = crate::tool_overrides::ScopedToolOverrideGuard::set(
         crate::genomes::BLASTN_ENV_BIN,
         &fake_blastn.to_string_lossy(),
     );
-    let _blastdbcmd = EnvVarGuard::set(
+    let _blastdbcmd = crate::tool_overrides::ScopedToolOverrideGuard::set(
         crate::genomes::BLASTDBCMD_ENV_BIN,
         &fake_blastdbcmd.to_string_lossy(),
     );
