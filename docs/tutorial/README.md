@@ -50,6 +50,23 @@ If you want machine-checked reproducibility first:
 - Use the executable reference hub:
   [`docs/tutorial/generated/README.md`](./generated/README.md)
 
+## Why Actions Recur Across Tutorials
+
+Different biological questions can legitimately reuse the same GENtle action.
+For example, sequence retrieval, region selection, primer design, or report
+export may appear in several tutorials while serving different goals. The
+repeated action is not a new implementation: it should still resolve to one
+canonical engine capability, with the tutorial supplying the particular
+context, argument bindings, and explanation.
+
+The architecture tracks a future context-labelled tutorial-action model in
+which repeated actions can reveal reusable workflow patterns without making
+frequency a claim of biological correctness. Until that model is implemented,
+the concrete commands, workflow examples, fact-based readiness checks, and
+recorded outcomes remain authoritative. See the
+[context-labelled tutorial action graph](../architecture.md#context-labelled-tutorial-action-graph-design-direction)
+for the design and its safeguards.
+
 ## Tutorials By Content Group
 
 Tutorial numbers now describe the topic group first and the learning position second. Guided walkthroughs and executable reference chapters are shown together inside each content group, while the track marker tells you whether a link opens a hand-written guide, a generated executable chapter, or a reference hub. The review badge comes from `review_manifest.json`; `unreviewed` is an invitation to run the tutorial and submit feedback with the Help window's "Copy Feedback Context" button.

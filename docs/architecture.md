@@ -949,6 +949,83 @@ Implementation direction:
 - keep screenshot capture behind explicit runtime/feature opt-in policy gates
   even after relaunch
 
+### Context-labelled tutorial action graph (design direction)
+
+Tutorials will often reuse the same engine capability in different biological,
+experimental, and teaching contexts. The capability meaning must remain
+canonical rather than being restated independently by every tutorial. A future
+tutorial-source revision should therefore separate:
+
+- **episode context**: goal, biological setting, material, assay, constraints,
+  evidence assumptions, and audience;
+- **action identity**: a stable capability/intent reference plus argument
+  bindings and declared preconditions/effects;
+- **interface projection**: GUI instructions, CLI/shared-shell syntax, and an
+  agent-facing verbal request derived from that same action;
+- **episode outcome**: accepted success, conditional success, rejection,
+  failure, or a teaching-only explanatory step.
+
+The context should be introduced once in human prose. Individual steps should
+repeat only context deltas, exceptions, and explicit operands needed for
+execution. This keeps the generated chapter readable while preserving complete
+machine bindings.
+
+The motivating analogy is the coloured-tool account of K-lines in Minsky's
+*Society of Mind*: a hand marked before bicycle repair transfers the same colour
+to every tool used, while a tool used for several jobs accumulates several
+colours. See Marvin Minsky, *The Society of Mind* (1986), section 8.1; an
+[MIT-hosted later discussion](https://www.mit.edu/~dxh/marvin/web.media.mit.edu/~minsky/eb8.html)
+revisits the same account. For GENtle, colours are semantic labels rather than
+display colours. The tutorial is the worked episode; the derived skill or
+context-sensitive selector is closer to the K-line.
+
+Two complementary label forms are needed. A unique episode label preserves
+which tutorial contributed an observation, while structured context facets
+allow generalization across episodes. Each action occurrence belongs to an
+episode, carries its bindings/order/outcome, and references one canonical
+capability. The capability's many-colour profile is derived from those
+occurrences; it must not mutate or duplicate the capability descriptor itself.
+
+This produces a labelled, ordered tutorial-action graph with two useful query
+directions:
+
+- **forward activation**: start from a user's goal and current context, then
+  retrieve previously useful actions or action paths whose labels and
+  preconditions fit;
+- **inverse construction**: start from an action, inspect the different
+  contexts and neighboring actions in which it succeeded, and identify
+  reusable action bundles or candidate paths for a new workflow.
+
+Useful graph signals include independent episode support, context diversity per
+action, transitions reused across independent contexts, and stable action
+subsequences shared by several tutorials. These are discovery and ranking
+signals only. They do not establish biological validity or causality, and raw
+tutorial counts must be deduplicated by semantic episode/context identity so
+copied examples do not manufacture support.
+
+The graph must retain negative and conditional evidence. A failed, rejected,
+or counterproductive action is not given the same positive label as an accepted
+step. Inferred paths must preserve ordering, dependency, provenance, and
+approval requirements. Before execution, every candidate path is rebound to
+the current project and checked through capability readiness and the fact graph;
+inverse construction never bypasses confirmation or becomes an autonomous
+execution policy.
+
+This direction continues the precondition/capability model from
+[Möller et al. (1999), *EDITtoTrEMBL: a distributed approach to high-quality automated protein sequence annotation*](https://doi.org/10.1093/bioinformatics/15.3.219).
+EDITtoTrEMBL selected analysis modules according to declared capabilities,
+preconditions, dependencies, and the properties of the actual sequence. GENtle
+retains that input-bound discipline and adds tutorial episodes as contextual
+evidence about how validated capabilities have been composed.
+
+In agent terminology, a capability is a tool, a tutorial is a worked episode,
+and a skill is a curated generalization over applicable episodes. Codex,
+Claude, ClawBio, or OpenClaw may use context labels to discover the skill and
+propose a bound action path; GENtle remains authoritative for current facts,
+readiness, execution, and verified effects. No new versioned schema should be
+declared until a pilot over an existing tutorial proves the context taxonomy,
+projection rules, and graph queries.
+
 ### MCP server (implemented parity-expanded baseline)
 
 Current baseline:

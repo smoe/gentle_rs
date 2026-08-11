@@ -283,6 +283,11 @@ wet-lab conclusions or unconfirmed mutations.
 
 ## Parking Lot
 
+- Pilot the context-labelled tutorial-action graph over one existing tutorial:
+  canonical capability references, semantic context labels, outcome roles, and
+  GUI/CLI/agent projections first; forward skill activation and inverse
+  workflow-candidate discovery only after bound-readiness safeguards are
+  demonstrated.
 - Optional OS credential-store persistence for Agent Assistant API keys.
 - Optional tiny generation probe for quota verification.
 - Implement the opt-in native-Mistral inner-agent conformance routine described

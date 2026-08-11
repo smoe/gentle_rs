@@ -518,8 +518,11 @@ Consequently there are two readiness modes:
   "what *could* I do?" and is cheap to compute for the whole catalog.
 - **Bound readiness** — caller supplies argument values; the engine substitutes
   each `{"arg":...}` with the concrete subject, then runs the existing evaluator.
-  Answers "is this command ready for *these* inputs?" This is the EDITtoTrEMBL
-  discipline: the precondition binds to the actual input, not to the catalog.
+  Answers "is this command ready for *these* inputs?" This follows the
+  precondition/capability discipline of
+  [Möller et al. (1999), *EDITtoTrEMBL: a distributed approach to high-quality
+  automated protein sequence annotation*](https://doi.org/10.1093/bioinformatics/15.3.219):
+  the precondition binds to the actual input, not merely to the catalog.
 
 Instantiation is a deterministic pre-pass over `FactExpression`; the tri-state
 evaluator and `FactTruth` are reused unchanged.
