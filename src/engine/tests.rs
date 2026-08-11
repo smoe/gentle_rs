@@ -15775,6 +15775,175 @@ fn transcript_endpoint_search_budget_refuses_before_primer3_without_weakening_co
 }
 
 #[test]
+fn transcript_assay_cdna_similarity_map_is_content_bound_and_advisory() {
+    let engine = transcript_endpoint_structural_failure_engine();
+    let baseline_operation = transcript_endpoint_structural_failure_operation(
+        TranscriptAssayCoveragePolicy::RequireAll,
+        PrimerDesignSideConstraint::default(),
+    );
+    let baseline = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&baseline_operation)
+        .expect("inspect baseline bounded search");
+    let baseline_plan = baseline.search_plan.expect("baseline search plan");
+    let baseline_record = baseline_plan.records.first().expect("baseline record");
+
+    let temp = tempdir().expect("tempdir");
+    let map_path = temp.path().join("cdna_similarity_map.json");
+    let map = TranscriptAssayCdnaSimilarityMap {
+        schema: TRANSCRIPT_ASSAY_CDNA_SIMILARITY_MAP_SCHEMA.to_string(),
+        map_id: "synthetic_paralog_map".to_string(),
+        target_space: "transcriptome_cdna".to_string(),
+        target_resource_id: "synthetic_cdna_catalog".to_string(),
+        database_content_fingerprint: "sha256:synthetic_cdna_database".to_string(),
+        blast_program: "blastn".to_string(),
+        blast_task: "blastn".to_string(),
+        blast_tool_version: "synthetic 1.0".to_string(),
+        blast_options: vec!["-dust".to_string(), "no".to_string()],
+        intervals: vec![TranscriptAssayCdnaSimilarityInterval {
+            interval_id: "paralog_interval_1".to_string(),
+            transcript_id: baseline_record.representative_transcript_id.clone(),
+            template_sha256: baseline_record.template_sha256.clone(),
+            start_0based: baseline_record.left_interval.start_0based,
+            end_0based_exclusive: baseline_record.left_interval.end_0based_exclusive,
+            classification: TranscriptAssayCdnaSimilarityClassification::Paralog,
+            guidance: TranscriptAssayCdnaSimilarityGuidance::Deprioritize,
+            subject_ids: vec!["SYNTHETIC_PARALOG_TX".to_string()],
+            subject_gene_ids: vec!["SYNTHETIC_PARALOG_GENE".to_string()],
+            subject_gene_symbols: vec!["PARALOG1".to_string()],
+            best_identity_fraction: Some(0.96),
+            best_query_coverage_fraction: Some(0.85),
+            basis: "Synthetic whole-cDNA alignment evidence for planner testing.".to_string(),
+        }],
+        warnings: vec!["Synthetic evidence; not a specificity verdict.".to_string()],
+    };
+    let map_bytes = serde_json::to_vec_pretty(&map).expect("serialize similarity map");
+    fs::write(&map_path, &map_bytes).expect("write similarity map");
+    let map_sha256 = sha256_prefixed_bytes(&map_bytes);
+
+    let mut guided_operation = baseline_operation.clone();
+    let Operation::DesignTranscriptAssayPanel { search_policy, .. } = &mut guided_operation else {
+        panic!("endpoint fixture must produce transcript-assay operation");
+    };
+    *search_policy = Some(TranscriptAssayPrimerSearchPolicy {
+        cdna_similarity_map: Some(TranscriptAssayCdnaSimilarityMapRef {
+            path: map_path.to_string_lossy().to_string(),
+            expected_sha256: map_sha256.clone(),
+        }),
+        ..TranscriptAssayPrimerSearchPolicy::default()
+    });
+
+    let guided = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&guided_operation)
+        .expect("inspect similarity-guided bounded search");
+    let guided_repeat = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&guided_operation)
+        .expect("repeat similarity-guided bounded search");
+    assert_eq!(guided, guided_repeat, "guided plans must be deterministic");
+    let guided_plan = guided.search_plan.expect("guided search plan");
+    assert_eq!(
+        guided_plan.cdna_similarity_map_id.as_deref(),
+        Some("synthetic_paralog_map")
+    );
+    assert_eq!(
+        guided_plan.cdna_similarity_map_sha256.as_deref(),
+        Some(map_sha256.as_str())
+    );
+    assert_eq!(
+        guided_plan
+            .cdna_similarity_database_content_fingerprint
+            .as_deref(),
+        Some("sha256:synthetic_cdna_database")
+    );
+    assert!(guided_plan.similarity_guided_record_count > 0);
+    assert!(guided_plan.records.iter().any(|record| {
+        record
+            .similarity_risk_interval_ids
+            .iter()
+            .any(|id| id == "paralog_interval_1")
+            && record.similarity_risk_overlap_bp > 0
+    }));
+    assert!(guided_plan.warnings.iter().any(|warning| {
+        warning.contains("advisory search-order evidence")
+            && warning.contains("complete-cDNA and genomic specificity QA")
+    }));
+
+    let primer3_fields_by_geometry = |plan: &TranscriptAssayPrimerSearchPlan| {
+        plan.records
+            .iter()
+            .map(|record| {
+                (
+                    (
+                        record.target_id.clone(),
+                        record.left_interval.start_0based,
+                        record.left_interval.end_0based_exclusive,
+                        record.right_interval.start_0based,
+                        record.right_interval.end_0based_exclusive,
+                    ),
+                    record.primer3_fields.clone(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>()
+    };
+    assert_eq!(
+        primer3_fields_by_geometry(&guided_plan),
+        primer3_fields_by_geometry(&baseline_plan),
+        "advisory similarity evidence must not exclude regions or alter Primer3 constraints"
+    );
+
+    let mut bad_digest_operation = guided_operation;
+    let Operation::DesignTranscriptAssayPanel { search_policy, .. } = &mut bad_digest_operation
+    else {
+        unreachable!();
+    };
+    search_policy
+        .as_mut()
+        .and_then(|policy| policy.cdna_similarity_map.as_mut())
+        .expect("map reference")
+        .expected_sha256 = "sha256:wrong".to_string();
+    let error = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&bad_digest_operation)
+        .expect_err("changed evidence must fail closed");
+    assert!(error.message.contains("but 'sha256:wrong' was required"));
+}
+
+#[test]
+fn transcript_assay_cdna_similarity_risk_orders_lower_risk_records_first() {
+    let mut low_risk = TranscriptAssayPrimerSearchRecord {
+        search_record_id: "record_b".to_string(),
+        estimated_candidate_pair_count: 500,
+        ..TranscriptAssayPrimerSearchRecord::default()
+    };
+    let high_risk = TranscriptAssayPrimerSearchRecord {
+        search_record_id: "record_a".to_string(),
+        estimated_candidate_pair_count: 1,
+        similarity_risk_interval_ids: vec!["paralog_interval".to_string()],
+        similarity_risk_overlap_bp: 10,
+        ..TranscriptAssayPrimerSearchRecord::default()
+    };
+    assert_eq!(
+        GentleEngine::transcript_assay_search_record_ordering(&low_risk, &high_risk),
+        Ordering::Less,
+        "advisory cDNA similarity risk must take precedence over candidate-count cost"
+    );
+    low_risk.similarity_risk_overlap_bp = 10;
+    assert_eq!(
+        GentleEngine::transcript_assay_search_record_ordering(&low_risk, &high_risk),
+        Ordering::Greater,
+        "candidate-count cost remains the deterministic tie-breaker"
+    );
+
+    let legacy: TranscriptAssayPrimerSearchRecord = serde_json::from_value(serde_json::json!({
+        "search_record_id": "legacy_record"
+    }))
+    .expect("old search record remains readable");
+    assert!(legacy.similarity_risk_interval_ids.is_empty());
+    assert_eq!(legacy.similarity_risk_overlap_bp, 0);
+    let legacy_policy: TranscriptAssayPrimerSearchPolicy =
+        serde_json::from_value(serde_json::json!({})).expect("old search policy remains readable");
+    assert!(legacy_policy.cdna_similarity_map.is_none());
+}
+
+#[test]
 fn transcript_assay_panel_path_is_classified_as_external_output() {
     let mut operation = transcript_endpoint_structural_failure_operation(
         TranscriptAssayCoveragePolicy::RequireAll,

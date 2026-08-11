@@ -3993,7 +3993,15 @@ Shared shell command:
         returns `search_space_too_broad` or `no_admissible_regions` before
         launching Primer3 when a required target cannot fit the declared
         budget. The complete operation-JSON form can set the optional
-        `search_policy`; concise CLI flags retain its documented defaults
+        `search_policy`; concise CLI flags retain its documented defaults. An
+        advanced request may set
+        `search_policy.cdna_similarity_map = {"path":"...json",
+        "expected_sha256":"sha256:..."}` to bind a
+        `gentle.transcript_assay_cdna_similarity_map.v1` report. GENtle
+        validates the map against current mature-cDNA digests and uses
+        `deprioritize` overlaps only to run lower-risk bounded records first;
+        emitted Primer3 constraints and mandatory post-design complete-cDNA
+        and genomic specificity gates are unchanged
       - the command accepts either the concise `SEQ_ID FEATURE_ID` flag form or
         a complete externally tagged `DesignTranscriptAssayPanel` operation as
         inline JSON / `@FILE`. The operation form exposes every shared primer,

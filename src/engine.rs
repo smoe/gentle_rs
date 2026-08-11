@@ -858,6 +858,8 @@ pub const TRANSCRIPT_ASSAY_PANEL_FEASIBILITY_SCHEMA: &str =
     "gentle.transcript_assay_panel_feasibility.v1";
 pub const TRANSCRIPT_ASSAY_PRIMER_SEARCH_PLAN_SCHEMA: &str =
     "gentle.transcript_assay_primer_search_plan.v1";
+pub const TRANSCRIPT_ASSAY_CDNA_SIMILARITY_MAP_SCHEMA: &str =
+    "gentle.transcript_assay_cdna_similarity_map.v1";
 pub const GENE_TRANSCRIPT_ASSAY_ROUTINE_SCHEMA: &str = "gentle.gene_transcript_assay_routine.v1";
 pub const PRIMER_PAIR_SUMMARY_SCHEMA: &str = "gentle.primer_pair_summary.v2";
 const RESTRICTION_CLONING_PCR_HANDOFF_REPORT_SCHEMA: &str =

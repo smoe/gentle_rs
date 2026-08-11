@@ -9165,6 +9165,83 @@ pub struct TranscriptAssayFeasibilityBlocker {
     pub detail: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Content-bound reference to advisory whole-cDNA similarity evidence.
+pub struct TranscriptAssayCdnaSimilarityMapRef {
+    pub path: String,
+    pub expected_sha256: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Biological relationship assigned by the producer of a cDNA similarity map.
+pub enum TranscriptAssayCdnaSimilarityClassification {
+    IntendedTarget,
+    IntendedFamily,
+    SameGeneUnintended,
+    Paralog,
+    OtherUnintended,
+    #[default]
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Advisory search-order treatment for one similarity interval.
+///
+/// V1 intentionally has no exclusion disposition: complete candidate-level
+/// cDNA and genomic specificity checks remain authoritative.
+pub enum TranscriptAssayCdnaSimilarityGuidance {
+    #[default]
+    Informative,
+    Deprioritize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// One target-transcript interval supported by whole-cDNA similarity evidence.
+pub struct TranscriptAssayCdnaSimilarityInterval {
+    pub interval_id: String,
+    pub transcript_id: String,
+    pub template_sha256: String,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub classification: TranscriptAssayCdnaSimilarityClassification,
+    pub guidance: TranscriptAssayCdnaSimilarityGuidance,
+    #[serde(default)]
+    pub subject_ids: Vec<String>,
+    #[serde(default)]
+    pub subject_gene_ids: Vec<String>,
+    #[serde(default)]
+    pub subject_gene_symbols: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub best_identity_fraction: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub best_query_coverage_fraction: Option<f64>,
+    pub basis: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Content-bound advisory map from a target cDNA to similar cDNA regions.
+pub struct TranscriptAssayCdnaSimilarityMap {
+    pub schema: String,
+    pub map_id: String,
+    pub target_space: String,
+    pub target_resource_id: String,
+    pub database_content_fingerprint: String,
+    pub blast_program: String,
+    pub blast_task: String,
+    pub blast_tool_version: String,
+    #[serde(default)]
+    pub blast_options: Vec<String>,
+    #[serde(default)]
+    pub intervals: Vec<TranscriptAssayCdnaSimilarityInterval>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 /// Deterministic limits applied before and while Primer3 evaluates transcript assays.
@@ -9172,6 +9249,10 @@ pub struct TranscriptAssayFeasibilityBlocker {
 /// These limits reduce computational freedom only. They never change the
 /// requested transcript coverage policy.
 pub struct TranscriptAssayPrimerSearchPolicy {
+    /// Optional advisory regional-similarity evidence used to order bounded
+    /// records. It never excludes intervals or replaces final specificity QA.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cdna_similarity_map: Option<TranscriptAssayCdnaSimilarityMapRef>,
     /// Largest transcript-local interval offered to one primer side in one
     /// Primer3 input record.
     pub max_primer_window_bp: usize,
@@ -9201,6 +9282,7 @@ pub struct TranscriptAssayPrimerSearchPolicy {
 impl Default for TranscriptAssayPrimerSearchPolicy {
     fn default() -> Self {
         Self {
+            cdna_similarity_map: None,
             max_primer_window_bp: 96,
             max_candidate_pairs_per_record: 250_000,
             max_records_per_target: 12,
@@ -9279,6 +9361,13 @@ pub struct TranscriptAssayPrimerSearchRecord {
     /// inside the two allowed windows. This is reported separately from the
     /// quality-filtered estimate used by the declared search budget.
     pub candidate_pair_search_space_upper_bound: usize,
+    /// Advisory similarity-map intervals overlapping either primer window.
+    #[serde(default)]
+    pub similarity_risk_interval_ids: Vec<String>,
+    /// Sum of overlap with advisory `deprioritize` intervals. This ranks
+    /// records only and is not a biological or specificity verdict.
+    #[serde(default)]
+    pub similarity_risk_overlap_bp: usize,
     #[serde(default)]
     pub primer3_fields: Vec<TranscriptAssayPrimer3Field>,
 }
@@ -9300,6 +9389,14 @@ pub struct TranscriptAssayPrimerSearchPlan {
     pub schema: String,
     pub operation_sha256: String,
     pub policy: TranscriptAssayPrimerSearchPolicy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cdna_similarity_map_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cdna_similarity_map_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cdna_similarity_database_content_fingerprint: Option<String>,
+    #[serde(default)]
+    pub similarity_guided_record_count: usize,
     #[serde(default)]
     pub records: Vec<TranscriptAssayPrimerSearchRecord>,
     #[serde(default)]

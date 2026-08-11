@@ -9183,6 +9183,27 @@ Primer-design shell command family (implemented):
     endpoint/junction targets receive budget before GENtle-generated optional
     anchors; optional anchors may be omitted with a warning, but final assay
     coverage is still evaluated normally
+  - `gentle.transcript_assay_cdna_similarity_map.v1` is an optional,
+    content-bound planning input referenced by
+    `search_policy.cdna_similarity_map = {path, expected_sha256}`. It records
+    transcript-local 0-based/exclusive intervals supported by a whole-cDNA
+    similarity search, their intended-family/paralog/other-subject
+    classification, source subject ids, map and target-resource ids, database
+    content fingerprint, and exact BLAST program/task/version/options
+    provenance. Every interval also binds the SHA-256 of the mature-cDNA
+    template whose coordinates it uses. Active transcript ids with a changed
+    template digest or out-of-bounds interval fail before Primer3; unrelated
+    transcript rows may coexist in one multi-transcript map
+  - the v1 map disposition is deliberately advisory: `informative` leaves the
+    search order unchanged and `deprioritize` adds overlap evidence to bounded
+    records. Within each biological target, records with less advisory overlap
+    run first, followed by deterministic candidate-count and record-id
+    tie-breakers. The map does not emit `SEQUENCE_EXCLUDED_REGION`, suppress a
+    primer window, claim specificity, or waive complete-cDNA/genomic BLAST.
+    Search plans echo the map id, file digest, database fingerprint, affected
+    interval ids, and overlap bp. Automatic BLAST-to-map materialization is a
+    separate producer step; callers can already supply the exact map through
+    the shared operation-JSON route without introducing an adapter-only path
   - `DesignTranscriptAssayPanel.search_policy` is additive and optional. Old
     requests use the documented default. During a progress-capable Primer3
     run, progress rows retain native bounded work counters and add the GENtle
