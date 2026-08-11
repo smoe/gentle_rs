@@ -2563,9 +2563,10 @@ Controls:
   specialist so pair-PCR and qPCR setup can stay out of the crowded lower
   `Engine Ops` pane.
 - the dedicated `PCR Designer` now has an explicit
-  `Pair PCR | qPCR | Transcript panels` mode switch; ROI seeding is shared for
-  the first two modes, while transcript panels use a complete annotated
-  Splicing Expert group.
+  `Pair PCR | qPCR | Transcript panels | RT primer pool` mode switch; ROI
+  seeding is shared for the first two modes, transcript panels use a complete
+  annotated Splicing Expert group, and RT-primer pools use explicitly ordered
+  transcript targets.
    - after paint-dragging on the linear map, the post-drag chip now includes
      direct coordinate editing (`start..end`) for the painted interval, with
      explicit apply action (0-based, end-exclusive).
@@ -3145,6 +3146,13 @@ What to send the agent (recommended):
   - `docs/examples/ai_cloning_examples.md`
 - Optional compact glossary extension:
   - `docs/ai_glossary_extensions.json`
+- For a related biological workflow that may not yet be a command:
+  - choose prompt template `Adapt a biological workflow`
+  - the assistant first classifies the request as an existing parameter,
+    composition of existing capabilities, or missing engine primitive
+  - unsupported requests produce an implementation brief, not a fabricated
+    command; coding agents can continue with
+    `docs/biological_extension_guide.md`
 
 Copy/paste prompt template for users:
 
@@ -3983,10 +3991,12 @@ Defaults in the GUI form:
 Execution calls engine operation `FilterByDesignConstraints` and creates filtered
 in-silico selection outputs.
 
-## Primer and qPCR Design (Engine Ops)
+## Primer, qPCR, and Sequence-Specific RT Design
 
 The Engine Ops panel includes `Primer and qPCR design reports` for explicit
 `DesignPrimerPairs` and `DesignQpcrAssays` execution on the active sequence.
+The dedicated PCR Designer additionally exposes transcript-panel and
+terminal-exon RT-primer-pool modes without moving their biology into the GUI.
 
 Layout:
 
@@ -4151,7 +4161,7 @@ qPCR form:
   coordinate fields so large genomic positions remain easy to enter
 - in the dedicated `PCR Designer`, qPCR is now a first-class mode rather than
   an Engine-Ops-only appendix:
-  - `Pair PCR | qPCR | Transcript panels` selector switches the right-hand
+  - `Pair PCR | qPCR | Transcript panels | RT primer pool` selector switches the right-hand
     constraints/run panel between the three workflows
   - the left-hand paint/selection workflow stays shared so the same painted or
     formula-defined ROI can feed either pair-PCR or qPCR without switching
@@ -4192,6 +4202,27 @@ qPCR form:
   - primer and qPCR report previews cache the current report revision and
     invalidate that cache when a design completes, window state is restored,
     or a report is explicitly reopened.
+- `RT primer pool` is a thin GUI over the shared
+  `DesignTerminalExonRtPrimerPool` operation:
+  - enter the fixed 5-prime adapter, exact sequence-specific segment length,
+    terminal-exon search window, retained-candidate limit, and report id
+  - open a Splicing Expert group and use `Add current transcript` to append its
+    selected transcript as the next priority, or enter rows manually as
+    `SEQ_ID<TAB>FEATURE_ID<TAB>TRANSCRIPT_ID<TAB>LABEL`
+  - `n-N` accepts the 1-based feature label shown by the GUI; a bare feature id
+    is the engine's 0-based id. Row order is the explicit pool priority
+  - `Design RT primer pool` runs in the existing detached background-operation
+    path. The GUI does not infer terminal exons or calculate oligo sequences
+  - the report view shows the selected 22-mer (or requested exact length), the
+    complete adapter-bearing oligo, strand-aware terminal-exon/source geometry,
+    descriptive GC/Tm, retained alternatives, and selected-pool pairwise
+    complementarity
+  - `Copy selected oligos TSV` copies the selected sequence text plus target,
+    transcript, and source-coordinate context;
+    `Open saved report` and `Export report JSON...` use the engine-owned report
+    store and export path
+  - Tm is visible but deliberately excluded from this workflow's ranking.
+    Whole-transcriptome/genome specificity is also not implied by this report
 - `Transcript panels` is a thin GUI over the shared
   `DesignTranscriptAssayPanel` operation:
   - Splicing Expert's `Design all-transcript panel` action supplies the source
@@ -4265,8 +4296,8 @@ Beginner tutorial:
   - `Show report_id`
   - `Export report_id...`
 
-Both operations persist reports into project metadata (same report store used by
-CLI/shared-shell `primers ...` commands).
+All design modes persist reports into project metadata through the same stores
+used by CLI/shared-shell `primers ...` commands.
 
 Restriction-site cloning handoff:
 

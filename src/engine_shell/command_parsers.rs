@@ -5545,7 +5545,7 @@ fn parse_primers_primerbank_command(tokens: &[String]) -> Result<ShellCommand, S
 pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "primers requires a subcommand: primerbank, design, design-qpcr, design-transcript-assay-panel, plan-gene-isoform-study, execute-gene-isoform-study-workflow, compose-gene-isoform-study-workflow-batch, execute-gene-isoform-study-workflow-batch, publish-gene-isoform-study, compose-gene-assay-routine, experimental-handoff, import-external-pairs, screen-variants, specificity, specificity-plan, specificity-import, transcript-assay-specificity-plan, transcript-assay-specificity-finalize, test-cdna-pcr, test-cdna-qpcr, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, oligo-order"
+            "primers requires a subcommand: primerbank, design, design-terminal-exon-rt-pool, design-qpcr, design-transcript-assay-panel, plan-gene-isoform-study, execute-gene-isoform-study-workflow, compose-gene-isoform-study-workflow-batch, execute-gene-isoform-study-workflow-batch, publish-gene-isoform-study, compose-gene-assay-routine, experimental-handoff, import-external-pairs, screen-variants, specificity, specificity-plan, specificity-import, transcript-assay-specificity-plan, transcript-assay-specificity-finalize, test-cdna-pcr, test-cdna-qpcr, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, oligo-order"
                 .to_string(),
         );
     }
@@ -5588,6 +5588,17 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 request_json,
                 backend,
                 primer3_executable,
+            })
+        }
+        "design-terminal-exon-rt-pool" => {
+            if tokens.len() != 3 {
+                return Err(
+                    "primers design-terminal-exon-rt-pool requires REQUEST_JSON_OR_@FILE"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::PrimersDesignTerminalExonRtPool {
+                request_json: tokens[2].clone(),
             })
         }
         "design-qpcr" => {
@@ -7675,7 +7686,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             })
         }
         other => Err(format!(
-            "Unknown primers subcommand '{other}' (expected design, design-qpcr, design-transcript-assay-panel, plan-gene-isoform-study, execute-gene-isoform-study-workflow, compose-gene-isoform-study-workflow-batch, execute-gene-isoform-study-workflow-batch, publish-gene-isoform-study, compose-gene-assay-routine, experimental-handoff, import-external-pairs, screen-variants, specificity, specificity-plan, specificity-import, transcript-assay-specificity-plan, transcript-assay-specificity-finalize, test-cdna-pcr, test-cdna-qpcr, transcript-qpcr-panel, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, oligo-order)"
+            "Unknown primers subcommand '{other}' (expected design, design-terminal-exon-rt-pool, design-qpcr, design-transcript-assay-panel, plan-gene-isoform-study, execute-gene-isoform-study-workflow, compose-gene-isoform-study-workflow-batch, execute-gene-isoform-study-workflow-batch, publish-gene-isoform-study, compose-gene-assay-routine, experimental-handoff, import-external-pairs, screen-variants, specificity, specificity-plan, specificity-import, transcript-assay-specificity-plan, transcript-assay-specificity-finalize, test-cdna-pcr, test-cdna-qpcr, transcript-qpcr-panel, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, oligo-order)"
         )),
     }
 }

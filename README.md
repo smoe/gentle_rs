@@ -67,6 +67,7 @@ full-size view; exact generation and capture provenance is recorded in the
 | Try a short executable example | [Executable tutorial hub](docs/tutorial/generated/README.md) |
 | Automate a workflow | [CLI manual](docs/cli.md) and `cargo run --bin gentle_cli -- capabilities` |
 | Connect an AI tool | [Agent interfaces tutorial](docs/tutorial/01-01_agent_interfaces.md) and [MCP/agent architecture](docs/agent_interface.md) |
+| Adapt GENtle to a related biological request | [Biological extension guide](docs/biological_extension_guide.md) |
 | Run headlessly in a container | [Container guide](docs/container.md) |
 | Contribute code or documentation | [Contributing guide](CONTRIBUTING.md) |
 
@@ -117,6 +118,12 @@ build from source or use the documented container route. See
 - **Reproducibility by construction.** Operations and results are
   machine-readable, deterministic where inputs are fixed, and exportable for
   review.
+- **Biological adjustments by composition.** Related assay and interpretation
+  requests can reuse engine-owned transcript, coordinate, candidate, scoring,
+  evidence, history, and reporting services instead of starting again in a
+  frontend or one-off script. The
+  [extension guide](docs/biological_extension_guide.md) shows contributors and
+  coding agents how to add only the missing decision.
 
 ## What To Trust Today
 
@@ -300,6 +307,7 @@ user-facing changes.
 | GUI | [`docs/gui.md`](docs/gui.md) |
 | CLI and scripting | [`docs/cli.md`](docs/cli.md) |
 | Agent, MCP, and local LLM interfaces | [`docs/tutorial/01-01_agent_interfaces.md`](docs/tutorial/01-01_agent_interfaces.md) |
+| Extending or adapting biological workflows | [`docs/biological_extension_guide.md`](docs/biological_extension_guide.md) |
 | Architecture and protocol | [`docs/architecture.md`](docs/architecture.md), [`docs/protocol.md`](docs/protocol.md) |
 | Showcase and figure provenance | [`docs/showcase.md`](docs/showcase.md), [`docs/figures/README.md`](docs/figures/README.md) |
 | Container deployment | [`docs/container.md`](docs/container.md) |

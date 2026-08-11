@@ -258,6 +258,7 @@ pub(super) struct PrimerDesignOpsUiState {
     pub(super) specificity_pair_rank_1based: String,
     pub(super) specificity_max_target_amplicon_bp: String,
     pub(super) specificity_max_hits_per_primer: String,
+    pub(super) terminal_exon_rt_pool: TerminalExonRtPrimerPoolUiState,
     pub(super) restriction_cloning: RestrictionCloningPcrHandoffUiState,
 }
 
@@ -279,7 +280,34 @@ impl Default for PrimerDesignOpsUiState {
             specificity_pair_rank_1based: "1".to_string(),
             specificity_max_target_amplicon_bp: "4000".to_string(),
             specificity_max_hits_per_primer: "500".to_string(),
+            terminal_exon_rt_pool: TerminalExonRtPrimerPoolUiState::default(),
             restriction_cloning: RestrictionCloningPcrHandoffUiState::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub(super) struct TerminalExonRtPrimerPoolUiState {
+    pub(super) fixed_adapter_5prime: String,
+    pub(super) variable_length_bp: String,
+    pub(super) terminal_exon_search_window_bp: String,
+    pub(super) max_candidates_per_target: String,
+    pub(super) report_id: String,
+    pub(super) targets_tsv: String,
+    pub(super) splicing_transcript_id: String,
+}
+
+impl Default for TerminalExonRtPrimerPoolUiState {
+    fn default() -> Self {
+        Self {
+            fixed_adapter_5prime: "ACTTGCCTGTCGCTCTATCTTC".to_string(),
+            variable_length_bp: "22".to_string(),
+            terminal_exon_search_window_bp: "250".to_string(),
+            max_candidates_per_target: "10".to_string(),
+            report_id: "terminal_exon_rt_pool_gui".to_string(),
+            targets_tsv: String::new(),
+            splicing_transcript_id: String::new(),
         }
     }
 }
@@ -566,6 +594,7 @@ pub(super) enum PcrDesignerMode {
     PrimerPairs,
     QpcrAssays,
     TranscriptPanels,
+    TerminalExonRtPool,
 }
 
 impl PcrDesignerMode {
@@ -574,6 +603,7 @@ impl PcrDesignerMode {
             Self::PrimerPairs => "Pair PCR",
             Self::QpcrAssays => "qPCR",
             Self::TranscriptPanels => "Transcript panels",
+            Self::TerminalExonRtPool => "RT primer pool",
         }
     }
 
@@ -587,6 +617,9 @@ impl PcrDesignerMode {
             }
             Self::TranscriptPanels => {
                 "Transcript panels compare one assay set against every annotated mature-transcript class and retain the full product matrix."
+            }
+            Self::TerminalExonRtPool => {
+                "RT-primer-pool mode appends one shared fixed 5-prime adapter to ranked sequence-specific 3-prime segments near explicitly selected terminal-exon starts."
             }
         }
     }
@@ -5381,6 +5414,31 @@ impl MainAreaDna {
         }
     }
 
+    fn render_pcr_designer_mode_selector(&mut self, ui: &mut egui::Ui) {
+        ui.group(|ui| {
+            ui.label("PCR Designer mode");
+            ui.horizontal_wrapped(|ui| {
+                for mode in [
+                    PcrDesignerMode::PrimerPairs,
+                    PcrDesignerMode::QpcrAssays,
+                    PcrDesignerMode::TranscriptPanels,
+                    PcrDesignerMode::TerminalExonRtPool,
+                ] {
+                    let selected = self.pcr_designer_mode == mode;
+                    if ui
+                        .selectable_label(selected, mode.label())
+                        .on_hover_text(mode.helper_text())
+                        .clicked()
+                    {
+                        self.pcr_designer_mode = mode;
+                        self.save_engine_ops_state();
+                    }
+                }
+            });
+            ui.small(self.pcr_designer_mode.helper_text());
+        });
+    }
+
     pub(super) fn render_primer_design_ops(
         &mut self,
         ui: &mut egui::Ui,
@@ -5513,27 +5571,7 @@ impl MainAreaDna {
             }
         });
         if include_qpcr_section {
-            ui.group(|ui| {
-                ui.label("PCR Designer mode");
-                ui.horizontal(|ui| {
-                    for mode in [
-                        PcrDesignerMode::PrimerPairs,
-                        PcrDesignerMode::QpcrAssays,
-                        PcrDesignerMode::TranscriptPanels,
-                    ] {
-                        let selected = self.pcr_designer_mode == mode;
-                        if ui
-                            .selectable_label(selected, mode.label())
-                            .on_hover_text(mode.helper_text())
-                            .clicked()
-                        {
-                            self.pcr_designer_mode = mode;
-                            self.save_engine_ops_state();
-                        }
-                    }
-                });
-                ui.small(self.pcr_designer_mode.helper_text());
-            });
+            self.render_pcr_designer_mode_selector(ui);
         }
 
         if self.pcr_designer_mode == PcrDesignerMode::PrimerPairs {
@@ -6505,6 +6543,542 @@ impl MainAreaDna {
         });
     }
 
+    pub(super) fn parse_terminal_exon_rt_primer_targets(
+        targets_text: &str,
+    ) -> Result<Vec<TerminalExonRtPrimerTarget>, String> {
+        let mut targets = vec![];
+        for (line_index, raw_line) in targets_text.lines().enumerate() {
+            let line = raw_line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let columns = if line.contains('\t') {
+                line.splitn(4, '\t').map(str::trim).collect::<Vec<_>>()
+            } else {
+                line.splitn(4, ',').map(str::trim).collect::<Vec<_>>()
+            };
+            if columns.len() < 3 {
+                return Err(format!(
+                    "Invalid RT-primer target row {}: expected SEQ_ID<TAB>FEATURE_ID<TAB>TRANSCRIPT_ID[<TAB>LABEL]",
+                    line_index + 1
+                ));
+            }
+            let seq_id = columns[0];
+            let feature_text = columns[1];
+            let transcript_id = columns[2];
+            if seq_id.is_empty() || transcript_id.is_empty() {
+                return Err(format!(
+                    "Invalid RT-primer target row {}: sequence and transcript IDs are required",
+                    line_index + 1
+                ));
+            }
+            let source_feature_id = if let Some(display_id) = feature_text.strip_prefix("n-") {
+                display_id
+                    .parse::<usize>()
+                    .ok()
+                    .and_then(|value| value.checked_sub(1))
+                    .ok_or_else(|| {
+                        format!(
+                            "Invalid RT-primer target row {} feature '{}': n-N uses the 1-based GUI feature label",
+                            line_index + 1,
+                            feature_text
+                        )
+                    })?
+            } else {
+                feature_text.parse::<usize>().map_err(|_| {
+                    format!(
+                        "Invalid RT-primer target row {} feature '{}': use a zero-based feature ID or GUI label n-N",
+                        line_index + 1,
+                        feature_text
+                    )
+                })?
+            };
+            targets.push(TerminalExonRtPrimerTarget {
+                seq_id: seq_id.to_string(),
+                source_feature_id,
+                transcript_id: Some(transcript_id.to_string()),
+                label: columns
+                    .get(3)
+                    .copied()
+                    .filter(|value| !value.is_empty())
+                    .map(ToOwned::to_owned),
+            });
+        }
+        if targets.is_empty() {
+            return Err("Add at least one ordered RT-primer target row".to_string());
+        }
+        Ok(targets)
+    }
+
+    fn terminal_exon_rt_primer_pool_request(
+        &self,
+    ) -> Result<TerminalExonRtPrimerPoolRequest, String> {
+        let form = &self.primer_design_ui.terminal_exon_rt_pool;
+        let parse_positive = |raw: &str, label: &str| -> Result<usize, String> {
+            let value = raw
+                .trim()
+                .parse::<usize>()
+                .map_err(|_| format!("Invalid {label}: expected a positive integer"))?;
+            if value == 0 {
+                return Err(format!("Invalid {label}: expected at least 1"));
+            }
+            Ok(value)
+        };
+        Ok(TerminalExonRtPrimerPoolRequest {
+            schema: TERMINAL_EXON_RT_PRIMER_POOL_REQUEST_SCHEMA.to_string(),
+            fixed_adapter_5prime: form.fixed_adapter_5prime.trim().to_string(),
+            variable_length_bp: parse_positive(&form.variable_length_bp, "variable length")?,
+            terminal_exon_search_window_bp: parse_positive(
+                &form.terminal_exon_search_window_bp,
+                "terminal-exon search window",
+            )?,
+            max_candidates_per_target: parse_positive(
+                &form.max_candidates_per_target,
+                "retained candidates per target",
+            )?,
+            targets: Self::parse_terminal_exon_rt_primer_targets(&form.targets_tsv)?,
+            report_id: (!form.report_id.trim().is_empty())
+                .then(|| form.report_id.trim().to_string()),
+        })
+    }
+
+    fn load_terminal_exon_rt_primer_pool_report(
+        &mut self,
+        report_id: &str,
+    ) -> Result<Arc<TerminalExonRtPrimerPoolReport>, String> {
+        let report_id = report_id.trim();
+        if report_id.is_empty() {
+            return Err("Terminal-exon RT-primer pool report_id is empty".to_string());
+        }
+        if let Some(report) = self
+            .cached_terminal_exon_rt_primer_pool_report
+            .as_ref()
+            .filter(|report| report.report_id == report_id)
+        {
+            return Ok(Arc::clone(report));
+        }
+        let Some(engine) = self.engine.clone() else {
+            return Err("No engine attached".to_string());
+        };
+        let report = engine
+            .read()
+            .expect("Engine lock poisoned")
+            .get_terminal_exon_rt_primer_pool_report(report_id)
+            .map_err(|error| {
+                format!(
+                    "Could not load terminal-exon RT-primer pool report '{report_id}': {}",
+                    error.message
+                )
+            })?;
+        let report = Arc::new(report);
+        self.cached_terminal_exon_rt_primer_pool_report = Some(Arc::clone(&report));
+        Ok(report)
+    }
+
+    fn show_terminal_exon_rt_primer_pool_report(&mut self, report_id: &str) {
+        self.cached_terminal_exon_rt_primer_pool_report = None;
+        match self.load_terminal_exon_rt_primer_pool_report(report_id) {
+            Ok(report) => {
+                self.primer_design_ui.terminal_exon_rt_pool.report_id = report.report_id.clone();
+                self.primer_design_ui
+                    .terminal_exon_rt_pool
+                    .fixed_adapter_5prime = report.fixed_adapter_5prime.clone();
+                self.primer_design_ui
+                    .terminal_exon_rt_pool
+                    .variable_length_bp = report.variable_length_bp.to_string();
+                self.primer_design_ui
+                    .terminal_exon_rt_pool
+                    .terminal_exon_search_window_bp =
+                    report.terminal_exon_search_window_bp.to_string();
+                self.primer_design_ui
+                    .terminal_exon_rt_pool
+                    .max_candidates_per_target = report.max_candidates_per_target.to_string();
+                self.pcr_designer_mode = PcrDesignerMode::TerminalExonRtPool;
+                self.op_status = format!(
+                    "Loaded terminal-exon RT-primer pool '{}' ({} target(s))",
+                    report.report_id,
+                    report.targets.len()
+                );
+                self.save_engine_ops_state();
+            }
+            Err(message) => self.op_status = message,
+        }
+    }
+
+    fn export_terminal_exon_rt_primer_pool_report_dialog(&mut self, report_id: &str) {
+        let report_id = report_id.trim();
+        if report_id.is_empty() {
+            self.op_status = "Terminal-exon RT-primer pool report_id is empty".to_string();
+            return;
+        }
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(format!("{report_id}.terminal_exon_rt_primer_pool.json"))
+            .save_file()
+        else {
+            self.op_status = "Terminal-exon RT-primer pool export canceled".to_string();
+            return;
+        };
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let path_text = path.to_string_lossy().to_string();
+        match engine
+            .read()
+            .expect("Engine lock poisoned")
+            .export_terminal_exon_rt_primer_pool_report(report_id, &path_text)
+        {
+            Ok(report) => {
+                self.op_status = format!(
+                    "Exported terminal-exon RT-primer pool '{}' ({} target(s)) to {}",
+                    report.report_id,
+                    report.targets.len(),
+                    path_text
+                );
+            }
+            Err(error) => {
+                self.op_status = format!(
+                    "Could not export terminal-exon RT-primer pool '{report_id}': {}",
+                    error.message
+                );
+            }
+        }
+    }
+
+    fn selected_terminal_exon_rt_primer_pool_tsv(
+        report: &TerminalExonRtPrimerPoolReport,
+    ) -> String {
+        let mut lines = vec![
+            "priority\tlabel\ttranscript_id\tvariable_primer_5_to_3\tfull_oligo_5_to_3\tsource_interval_0based_half_open"
+                .to_string(),
+        ];
+        for target in &report.targets {
+            let Some(selected) = target
+                .candidates
+                .iter()
+                .find(|candidate| candidate.selected)
+            else {
+                continue;
+            };
+            let label = target
+                .requested
+                .label
+                .as_deref()
+                .unwrap_or(&target.resolved_transcript_label);
+            lines.push(format!(
+                "{}\t{}\t{}\t{}\t{}\t{}..{}",
+                target.priority_1based,
+                label,
+                target.resolved_transcript_id,
+                selected.variable_primer_5_to_3,
+                selected.full_oligo_5_to_3,
+                selected.source_start_0based,
+                selected.source_end_0based_exclusive
+            ));
+        }
+        lines.join("\n")
+    }
+
+    fn render_terminal_exon_rt_primer_pool_report(
+        &self,
+        ui: &mut egui::Ui,
+        report: &TerminalExonRtPrimerPoolReport,
+    ) {
+        ui.heading(format!("Selected pool: {}", report.report_id));
+        ui.small(&report.tm_policy);
+        for target in &report.targets {
+            let Some(selected) = target
+                .candidates
+                .iter()
+                .find(|candidate| candidate.selected)
+            else {
+                continue;
+            };
+            let label = target
+                .requested
+                .label
+                .as_deref()
+                .unwrap_or(&target.resolved_transcript_label);
+            ui.group(|ui| {
+                ui.strong(format!(
+                    "#{} {} | {} | strand {}",
+                    target.priority_1based, label, target.resolved_transcript_id, target.strand
+                ));
+                ui.small(format!(
+                    "Terminal exon source {}..{} ({} bp); selected window starts {} bp from its transcript-oriented start",
+                    target.terminal_exon_source_start_0based,
+                    target.terminal_exon_source_end_0based_exclusive,
+                    target.terminal_exon_length_bp,
+                    selected.distance_from_terminal_exon_start_bp
+                ));
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Variable 3' segment:");
+                    ui.monospace(&selected.variable_primer_5_to_3);
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Complete oligo:");
+                    ui.monospace(&selected.full_oligo_5_to_3);
+                });
+                ui.small(format!(
+                    "GC={:.1}% | descriptive Tm={:.1} C | adapter 3'-run={} bp | adapter/variable max={} bp | pool 3'-run={} bp | pool max={} bp",
+                    selected.variable_gc_fraction * 100.0,
+                    selected.variable_tm_c,
+                    selected
+                        .ranking
+                        .variable_3prime_to_adapter_complementary_run_bp,
+                    selected.ranking.adapter_variable_complementary_run_bp,
+                    selected
+                        .ranking
+                        .max_prior_pool_3prime_complementary_run_bp,
+                    selected.ranking.max_prior_pool_complementary_run_bp
+                ));
+                egui::CollapsingHeader::new(format!(
+                    "Retained alternatives ({})",
+                    target.candidates.len()
+                ))
+                .show(ui, |ui| {
+                    egui::Grid::new(("terminal_exon_rt_alternatives", target.priority_1based))
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.strong("Rank");
+                            ui.strong("Distance");
+                            ui.strong("Variable 3' segment");
+                            ui.strong("Adapter 3'");
+                            ui.strong("Pool 3'");
+                            ui.end_row();
+                            for candidate in &target.candidates {
+                                ui.label(candidate.rank.to_string());
+                                ui.label(format!(
+                                    "{} bp",
+                                    candidate.distance_from_terminal_exon_start_bp
+                                ));
+                                ui.monospace(&candidate.variable_primer_5_to_3);
+                                ui.label(
+                                    candidate
+                                        .ranking
+                                        .variable_3prime_to_adapter_complementary_run_bp
+                                        .to_string(),
+                                );
+                                ui.label(
+                                    candidate
+                                        .ranking
+                                        .max_prior_pool_3prime_complementary_run_bp
+                                        .to_string(),
+                                );
+                                ui.end_row();
+                            }
+                        });
+                });
+            });
+        }
+        if !report.selected_pool_interactions.is_empty() {
+            ui.collapsing("Selected-pool pairwise interactions", |ui| {
+                for row in &report.selected_pool_interactions {
+                    ui.small(format!(
+                        "#{} vs #{}: variable max/3'={} / {} bp; complete oligo max/3'={} / {} bp",
+                        row.left_priority_1based,
+                        row.right_priority_1based,
+                        row.variable_max_complementary_run_bp,
+                        row.variable_max_3prime_complementary_run_bp,
+                        row.full_oligo_max_complementary_run_bp,
+                        row.full_oligo_max_3prime_complementary_run_bp
+                    ));
+                }
+            });
+        }
+        for warning in &report.warnings {
+            ui.colored_label(egui::Color32::from_rgb(180, 83, 9), warning);
+        }
+    }
+
+    fn render_terminal_exon_rt_primer_pool_designer(&mut self, ui: &mut egui::Ui) {
+        self.render_pcr_designer_mode_selector(ui);
+        ui.heading("Terminal-exon sequence-specific RT primer pool");
+        ui.label(
+            "GENtle resolves mature-transcript orientation and terminal-exon geometry, then ranks fixed-adapter oligos in the explicit target priority shown below. Tm is reported but not used for ranking in this workflow.",
+        );
+
+        let active_seq_id = self.seq_id.clone().unwrap_or_default();
+        if let Some(view) = (!active_seq_id.is_empty())
+            .then(|| self.relevant_qpcr_splicing_view_for_template(&active_seq_id))
+            .flatten()
+        {
+            let available_ids = view
+                .transcripts
+                .iter()
+                .map(|transcript| transcript.transcript_id.clone())
+                .collect::<Vec<_>>();
+            if !available_ids.contains(
+                &self
+                    .primer_design_ui
+                    .terminal_exon_rt_pool
+                    .splicing_transcript_id,
+            ) {
+                self.primer_design_ui
+                    .terminal_exon_rt_pool
+                    .splicing_transcript_id = available_ids.first().cloned().unwrap_or_default();
+            }
+            ui.horizontal_wrapped(|ui| {
+                ui.label(format!(
+                    "Current Splicing Expert group: {} (feature n-{})",
+                    view.group_label,
+                    view.target_feature_id + 1
+                ));
+                egui::ComboBox::from_id_salt("terminal_exon_rt_splicing_transcript")
+                    .selected_text(
+                        &self
+                            .primer_design_ui
+                            .terminal_exon_rt_pool
+                            .splicing_transcript_id,
+                    )
+                    .show_ui(ui, |ui| {
+                        for transcript in &view.transcripts {
+                            ui.selectable_value(
+                                &mut self
+                                    .primer_design_ui
+                                    .terminal_exon_rt_pool
+                                    .splicing_transcript_id,
+                                transcript.transcript_id.clone(),
+                                format!("{} ({})", transcript.transcript_id, transcript.label),
+                            );
+                        }
+                    });
+                if ui
+                    .button("Add current transcript")
+                    .on_hover_text(
+                        "Append the selected Splicing Expert transcript as the next pool-priority row",
+                    )
+                    .clicked()
+                {
+                    let transcript_id = self
+                        .primer_design_ui
+                        .terminal_exon_rt_pool
+                        .splicing_transcript_id
+                        .clone();
+                    if let Some(transcript) = view
+                        .transcripts
+                        .iter()
+                        .find(|transcript| transcript.transcript_id == transcript_id)
+                    {
+                        let form = &mut self.primer_design_ui.terminal_exon_rt_pool;
+                        if !form.targets_tsv.is_empty() && !form.targets_tsv.ends_with('\n') {
+                            form.targets_tsv.push('\n');
+                        }
+                        form.targets_tsv.push_str(&format!(
+                            "{}\tn-{}\t{}\t{}",
+                            view.seq_id,
+                            view.target_feature_id + 1,
+                            transcript.transcript_id,
+                            transcript.label
+                        ));
+                        self.save_engine_ops_state();
+                    }
+                }
+            });
+        } else {
+            ui.small(
+                "Open a Splicing Expert group to add an annotated transcript with one click, or enter target rows manually.",
+            );
+        }
+
+        egui::Grid::new("terminal_exon_rt_pool_controls")
+            .num_columns(4)
+            .spacing([12.0, 6.0])
+            .show(ui, |ui| {
+                let form = &mut self.primer_design_ui.terminal_exon_rt_pool;
+                ui.label("Fixed 5' adapter");
+                ui.add(
+                    egui::TextEdit::singleline(&mut form.fixed_adapter_5prime)
+                        .desired_width(260.0)
+                        .font(egui::TextStyle::Monospace),
+                )
+                .on_hover_text("Shared 5-prime sequence prepended unchanged to every selected variable segment");
+                ui.label("Variable length");
+                ui.add(
+                    egui::TextEdit::singleline(&mut form.variable_length_bp).desired_width(60.0),
+                )
+                .on_hover_text("Exact length of the sequence-specific 3-prime segment in nucleotides");
+                ui.end_row();
+                ui.label("Terminal-exon window");
+                ui.add(
+                    egui::TextEdit::singleline(&mut form.terminal_exon_search_window_bp)
+                        .desired_width(80.0),
+                )
+                .on_hover_text("Search this many bases from the transcript-oriented start of the terminal exon");
+                ui.label("Retain per target");
+                ui.add(
+                    egui::TextEdit::singleline(&mut form.max_candidates_per_target)
+                        .desired_width(60.0),
+                );
+                ui.end_row();
+                ui.label("Report ID");
+                ui.add(egui::TextEdit::singleline(&mut form.report_id).desired_width(260.0));
+                ui.end_row();
+            });
+
+        ui.label("Ordered targets (one per line)");
+        ui.small(
+            "SEQ_ID<TAB>FEATURE_ID<TAB>TRANSCRIPT_ID<TAB>LABEL. Use n-N for the 1-based GUI feature label, or a bare zero-based engine feature ID. Line order is selection priority.",
+        );
+        ui.add(
+            egui::TextEdit::multiline(&mut self.primer_design_ui.terminal_exon_rt_pool.targets_tsv)
+                .desired_rows(6)
+                .desired_width(f32::INFINITY)
+                .font(egui::TextStyle::Monospace),
+        );
+
+        let task_running = self.primer_design_task.is_some();
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .add_enabled(!task_running, egui::Button::new("Design RT primer pool"))
+                .on_hover_text(
+                    "Run the canonical DesignTerminalExonRtPrimerPool engine operation in the background",
+                )
+                .clicked()
+            {
+                match self.terminal_exon_rt_primer_pool_request() {
+                    Ok(request) => {
+                        self.save_engine_ops_state();
+                        self.start_primer_design_operation(
+                            Operation::DesignTerminalExonRtPrimerPool { request },
+                            "Terminal-exon RT-primer pool design",
+                        );
+                    }
+                    Err(message) => self.op_status = message,
+                }
+            }
+            let report_id = self
+                .primer_design_ui
+                .terminal_exon_rt_pool
+                .report_id
+                .clone();
+            if ui.button("Open saved report").clicked() {
+                self.show_terminal_exon_rt_primer_pool_report(&report_id);
+            }
+            if ui.button("Export report JSON...").clicked() {
+                self.export_terminal_exon_rt_primer_pool_report_dialog(&report_id);
+            }
+            if let Some(report) = self.cached_terminal_exon_rt_primer_pool_report.as_ref()
+                && ui.button("Copy selected oligos TSV").clicked()
+            {
+                ui.ctx()
+                    .copy_text(Self::selected_terminal_exon_rt_primer_pool_tsv(report));
+                self.op_status = format!(
+                    "Copied {} selected terminal-exon RT oligo(s) as TSV",
+                    report.targets.len()
+                );
+            }
+        });
+        ui.separator();
+        if let Some(report) = self.cached_terminal_exon_rt_primer_pool_report.clone() {
+            self.render_terminal_exon_rt_primer_pool_report(ui, &report);
+        } else {
+            ui.small(
+                "No RT-primer pool report is open. A completed design remains persisted in the project and can be reopened by report ID.",
+            );
+        }
+    }
+
     fn render_pcr_designer_reference_map_panel(&mut self, ui: &mut egui::Ui) {
         let width = ui.available_width().max(320.0);
         let response = ui.add_sized(egui::Vec2::new(width, 220.0), self.map_dna.to_owned());
@@ -6514,6 +7088,10 @@ impl MainAreaDna {
     }
 
     pub fn render_pcr_designer_specialist(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        if self.pcr_designer_mode == PcrDesignerMode::TerminalExonRtPool {
+            self.render_terminal_exon_rt_primer_pool_designer(ui);
+            return;
+        }
         if self.pcr_designer_mode == PcrDesignerMode::TranscriptPanels {
             ui.label("Transcript assay-panel designer");
         } else {
@@ -6532,6 +7110,7 @@ impl MainAreaDna {
                 PcrDesignerMode::PrimerPairs => "Paint + Queue",
                 PcrDesignerMode::QpcrAssays => "Paint + ROI",
                 PcrDesignerMode::TranscriptPanels => "Transcript context",
+                PcrDesignerMode::TerminalExonRtPool => "RT-primer targets",
             });
             if self.pcr_designer_mode == PcrDesignerMode::TranscriptPanels {
                 if let Some(view) =
@@ -6648,6 +7227,7 @@ impl MainAreaDna {
                 PcrDesignerMode::PrimerPairs => "Pair-PCR Constraints + Run",
                 PcrDesignerMode::QpcrAssays => "qPCR Constraints + Run",
                 PcrDesignerMode::TranscriptPanels => "Transcript Panel + Matrix",
+                PcrDesignerMode::TerminalExonRtPool => "RT Primer Pool",
             });
             egui::ScrollArea::vertical()
                 .id_salt("pcr_designer_pair_scroll")

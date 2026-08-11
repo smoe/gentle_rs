@@ -3511,6 +3511,20 @@
       {
          "aliases": [],
          "engine_operations": [
+            "DesignTerminalExonRtPrimerPool"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers design-terminal-exon-rt-pool",
+         "summary": "Compose annotated mature-transcript geometry and shared oligo metrics into a persisted ordered fixed-adapter RT-primer pool near explicit terminal-exon starts.",
+         "usage": "primers design-terminal-exon-rt-pool REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "DesignQpcrAssays"
          ],
          "interfaces": [
@@ -4059,7 +4073,7 @@
             "cli-direct"
          ],
          "path": "primers list-reports",
-         "summary": "List persisted primer-design reports.",
+         "summary": "List persisted primer-design, terminal-exon RT-primer-pool, and primer-specificity reports.",
          "usage": "primers list-reports"
       },
       {
@@ -4071,7 +4085,7 @@
             "cli-direct"
          ],
          "path": "primers show-report",
-         "summary": "Inspect one persisted primer-design report by report ID.",
+         "summary": "Inspect one persisted primer-design, terminal-exon RT-primer-pool, or primer-specificity report by report ID.",
          "usage": "primers show-report REPORT_ID"
       },
       {
@@ -4083,7 +4097,7 @@
             "cli-direct"
          ],
          "path": "primers export-report",
-         "summary": "Write one persisted primer-design report to JSON.",
+         "summary": "Write one persisted primer-design, terminal-exon RT-primer-pool, or primer-specificity report to JSON.",
          "usage": "primers export-report REPORT_ID OUTPUT.json"
       },
       {

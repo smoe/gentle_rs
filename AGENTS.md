@@ -18,12 +18,14 @@ Before non-trivial edits, read:
    - GUI: [`docs/gui.md`](docs/gui.md)
    - CLI: [`docs/cli.md`](docs/cli.md)
    - Protocol: [`docs/protocol.md`](docs/protocol.md)
-5. [`docs/CHANGELOG.md`](docs/CHANGELOG.md) when investigating completed
+5. [`docs/biological_extension_guide.md`](docs/biological_extension_guide.md)
+   when adding or adapting biological behavior.
+6. [`docs/CHANGELOG.md`](docs/CHANGELOG.md) when investigating completed
    work, regressions, or historical status.
-6. [`docs/maintenance_chore_plan.md`](docs/maintenance_chore_plan.md) when
+7. [`docs/maintenance_chore_plan.md`](docs/maintenance_chore_plan.md) when
    running recurring hygiene, drift, parity, release-readiness, provenance, or
    decision-expiry chores.
-7. [`docs/quickstart_claude.md`](docs/quickstart_claude.md) when setting up or
+8. [`docs/quickstart_claude.md`](docs/quickstart_claude.md) when setting up or
    explaining Claude-driven internal Agent Assistant or external checkout loops.
 
 ## Core Principles

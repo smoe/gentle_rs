@@ -1,5 +1,25 @@
 # GENtle Changelog
 
+- Made biological workflow extension an explicit GENtle development path.
+  A new guide classifies related requests as parameterization, engine-service
+  composition, or a missing primitive; documents reusable private
+  transcript/window/coordinate/oligo seams; and provides parity, provenance,
+  non-claim, and edge-test checklists. Agent Assistant now offers an `Adapt a
+  biological workflow` prompt and returns an implementation brief instead of
+  inventing commands for unsupported biology. The terminal-exon RT-primer
+  handler was decomposed onto named private transcript-resolution,
+  canonical-window, and deterministic-ranking helpers without changing its
+  public request/report.
+
+- Added a first-class terminal-exon sequence-specific RT-primer-pool workflow.
+  The shared engine now composes Splicing Expert transcript resolution,
+  strand-aware mature-transcript/exon mapping, fixed-adapter and multiplex
+  complementarity ranking, persisted provenance, undo, and JSON export. PCR
+  Designer, shared shell/direct CLI, MCP introspection, JavaScript, Lua, and
+  Python operation adapters consume the same
+  `gentle.terminal_exon_rt_primer_pool.v1` report; Tm remains descriptive and
+  global specificity is explicitly not inferred.
+
 - Added a content-bound `gentle.transcript_assay_cdna_similarity_map.v1`
   planning seam for transcript-assay design. Whole-cDNA similarity intervals
   can now rank bounded Primer3 records toward lower-risk regions while exact

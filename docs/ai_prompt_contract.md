@@ -20,6 +20,8 @@ documentation bundle:
 - `docs/glossary.json` for command paths and usage skeletons
 - `docs/cli.md` for operand metavariable conventions and shell examples
 - `docs/protocol.md` for request/response schemas and execution semantics
+- `docs/biological_extension_guide.md` when the request may require adapting
+  GENtle rather than invoking an existing route
 - `docs/ai_cloning_primer.md` and `docs/ai_task_playbooks.md` for biology-first
   context
 - `docs/examples/ai_cloning_examples.md` and optionally
@@ -80,6 +82,10 @@ The assistant should:
 - never infer an open-world absence from a missing or truncated fact
 - never imply wet-lab success; frame as in-silico candidate generation
 - keep risky actions in `ask` mode unless user explicitly allows auto-exec
+- classify a requested biological variation as an existing parameter,
+  composition of existing capabilities, or missing engine primitive
+- when no parser-valid capability exists, provide an implementation brief and
+  do not invent a command or imply that the inner assistant edits source
 
 The assistant should not:
 
@@ -173,6 +179,34 @@ Output wanted:
 
 Execution policy:
 ask-before-run
+```
+
+### D) Classify a biological adjustment
+
+```text
+Objective:
+Adapt an existing GENtle workflow for <BIOLOGICAL REQUEST>.
+
+Context:
+- current workflow/operation: ...
+- relevant sequence, feature, transcript, report, or genome IDs: ...
+
+Fixed requirements:
+- orientation/coordinate basis: ...
+- exact lengths, motifs, adapters, roles, or evidence: ...
+
+Adjustable policy:
+- search scope, scores, thresholds, ranking, and tie breaks: ...
+
+Output wanted:
+- classify as existing parameter, composition, or missing primitive
+- cite current capability/readiness evidence
+- if supported, exact parser-valid commands
+- if unsupported, no invented command; provide a concise implementation brief
+  with provenance, non-claims, interface parity, and edge tests
+
+Execution policy:
+chat-only until classification is reviewed
 ```
 
 ## Small-model optimization tips

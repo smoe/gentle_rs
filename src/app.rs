@@ -11862,6 +11862,7 @@ Error: `{err}`"
                 gene_transcript_assay_routine: None,
                 primerbank_search_report: None,
                 external_primer_pair_import_report: None,
+                terminal_exon_rt_primer_pool: None,
                 primer_variant_screen: None,
                 primer_specificity_handoff: None,
                 primer_specificity_report: None,

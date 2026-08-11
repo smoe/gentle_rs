@@ -4715,6 +4715,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub external_primer_pair_import_report: Option<Box<ExternalPrimerPairImportReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal_exon_rt_primer_pool: Option<Box<TerminalExonRtPrimerPoolReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub primer_variant_screen: Option<Box<PrimerVariantScreenReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_qpcr_panel: Option<Box<TranscriptQpcrPanelReport>>,
@@ -7806,6 +7808,173 @@ pub struct PrimerDesignReportSummary {
     pub pair_count: usize,
     #[serde(default)]
     pub backend_used: String,
+}
+
+pub const TERMINAL_EXON_RT_PRIMER_POOL_REQUEST_SCHEMA: &str =
+    "gentle.terminal_exon_rt_primer_pool_request.v1";
+pub const TERMINAL_EXON_RT_PRIMER_POOL_REPORT_SCHEMA: &str =
+    "gentle.terminal_exon_rt_primer_pool.v1";
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// One transcript target in an ordered, multiplexed reverse-transcription
+/// primer request. Array order is the explicit biological selection priority.
+pub struct TerminalExonRtPrimerTarget {
+    pub seq_id: String,
+    pub source_feature_id: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Request for one fixed-adapter pool whose variable 3' segments bind near the
+/// transcript-oriented starts of explicitly resolved terminal exons.
+pub struct TerminalExonRtPrimerPoolRequest {
+    pub schema: String,
+    pub fixed_adapter_5prime: String,
+    pub variable_length_bp: usize,
+    pub terminal_exon_search_window_bp: usize,
+    pub max_candidates_per_target: usize,
+    pub targets: Vec<TerminalExonRtPrimerTarget>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_id: Option<String>,
+}
+
+impl Default for TerminalExonRtPrimerPoolRequest {
+    fn default() -> Self {
+        Self {
+            schema: TERMINAL_EXON_RT_PRIMER_POOL_REQUEST_SCHEMA.to_string(),
+            fixed_adapter_5prime: String::new(),
+            variable_length_bp: 22,
+            terminal_exon_search_window_bp: 250,
+            max_candidates_per_target: 10,
+            targets: vec![],
+            report_id: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Deterministic lexicographic ranking terms for one variable RT-primer
+/// candidate. Lower values are preferred in the field order shown here.
+pub struct TerminalExonRtPrimerCandidateRanking {
+    pub variable_3prime_to_adapter_complementary_run_bp: usize,
+    pub adapter_variable_complementary_run_bp: usize,
+    pub full_oligo_self_3prime_complementary_run_bp: usize,
+    pub max_prior_pool_3prime_complementary_run_bp: usize,
+    pub full_oligo_self_complementary_run_bp: usize,
+    pub max_prior_pool_complementary_run_bp: usize,
+    pub distance_from_terminal_exon_start_bp: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// One evaluated sequence-specific 3' segment and its complete adapter-bearing
+/// oligo. Coordinates refer to the transcript cDNA and source DNA sequence.
+pub struct TerminalExonRtPrimerCandidate {
+    pub candidate_id: String,
+    pub rank: usize,
+    pub selected: bool,
+    pub transcript_local_start_0based: usize,
+    pub transcript_local_end_0based_exclusive: usize,
+    pub source_start_0based: usize,
+    pub source_end_0based_exclusive: usize,
+    pub distance_from_terminal_exon_start_bp: usize,
+    pub target_segment_5_to_3: String,
+    pub variable_primer_5_to_3: String,
+    pub full_oligo_5_to_3: String,
+    pub variable_length_bp: usize,
+    pub variable_gc_fraction: f64,
+    pub variable_tm_c: f64,
+    pub variable_three_prime_base: String,
+    pub variable_three_prime_gc_clamp: bool,
+    pub variable_longest_homopolymer_run_bp: usize,
+    pub variable_self_complementary_run_bp: usize,
+    pub variable_self_3prime_complementary_run_bp: usize,
+    #[serde(default)]
+    pub ranking: TerminalExonRtPrimerCandidateRanking,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Resolution and bounded candidate list for one requested transcript target.
+pub struct TerminalExonRtPrimerTargetResult {
+    pub priority_1based: usize,
+    pub requested: TerminalExonRtPrimerTarget,
+    pub resolved_transcript_feature_id: usize,
+    pub resolved_transcript_id: String,
+    pub resolved_transcript_label: String,
+    pub strand: String,
+    pub terminal_exon_source_start_0based: usize,
+    pub terminal_exon_source_end_0based_exclusive: usize,
+    pub terminal_exon_transcript_start_0based: usize,
+    pub terminal_exon_transcript_end_0based_exclusive: usize,
+    pub terminal_exon_length_bp: usize,
+    pub evaluated_candidate_count: usize,
+    pub ambiguous_candidate_count: usize,
+    #[serde(default)]
+    pub candidates: Vec<TerminalExonRtPrimerCandidate>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Pairwise complementarity between two selected pool members. Variable-only
+/// and complete-oligo values are both retained because every oligo shares the
+/// same fixed 5' adapter.
+pub struct TerminalExonRtPrimerPoolInteraction {
+    pub left_priority_1based: usize,
+    pub right_priority_1based: usize,
+    pub left_candidate_id: String,
+    pub right_candidate_id: String,
+    pub variable_max_complementary_run_bp: usize,
+    pub variable_max_3prime_complementary_run_bp: usize,
+    pub full_oligo_max_complementary_run_bp: usize,
+    pub full_oligo_max_3prime_complementary_run_bp: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Persisted, provenance-bearing outcome for terminal-exon RT-primer pool
+/// design. Tm is descriptive only; the exact ranking policy is recorded.
+pub struct TerminalExonRtPrimerPoolReport {
+    pub schema: String,
+    pub report_id: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub request_sha256: String,
+    pub fixed_adapter_5prime: String,
+    pub variable_length_bp: usize,
+    pub terminal_exon_search_window_bp: usize,
+    pub max_candidates_per_target: usize,
+    pub ranking_policy: String,
+    pub tm_policy: String,
+    #[serde(default)]
+    pub targets: Vec<TerminalExonRtPrimerTargetResult>,
+    #[serde(default)]
+    pub selected_pool_interactions: Vec<TerminalExonRtPrimerPoolInteraction>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct TerminalExonRtPrimerPoolReportSummary {
+    pub report_id: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub target_count: usize,
+    pub selected_oligo_count: usize,
+    pub fixed_adapter_5prime: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

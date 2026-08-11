@@ -2786,6 +2786,9 @@ Current draft operations:
 - `PcrMutagenesis { template, forward_primer, reverse_primer, mutations, output_id?, unique?, require_all_mutations? }`
 - `DesignPrimerPairs { ... }` (implemented baseline)
 - `ExportPrimerDesignReport { report_id, path }`
+- `DesignTerminalExonRtPrimerPool { request }` (implemented; ordered,
+  transcript-aware fixed-adapter RT-primer-pool design)
+- `ExportTerminalExonRtPrimerPoolReport { report_id, path }`
 - `PcrOverlapExtensionMutagenesis { ... }` (implemented baseline; insertion/deletion/replacement overlap-extension flow)
 - `DesignQpcrAssays { ... }` (implemented baseline; forward/reverse/probe)
 - `TestCdnaPcr { seq_id, source_feature_id, forward_primer, reverse_primer, transcript_id?, transcript_order?, transcript_map_coordinate_mode?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path?, svg_path?, materialize_products?, product_output_prefix?, product_gel_svg_path?, product_gel_ladders? }` (implemented baseline; transcript-derived cDNA assay test with opt-in product materialization/gel)
@@ -7926,6 +7929,94 @@ Operation progress/cancellation semantics:
 - `require_all_mutations` (default `true`) controls whether all or at least one
   mutation must be introduced.
 
+`DesignTerminalExonRtPrimerPool` contract (implemented baseline):
+
+- Purpose:
+  - design one ordered pool of sequence-specific reverse-transcription oligos
+    that share a fixed 5-prime adapter
+  - resolve each target through GENtle's annotated Splicing Expert and mature-
+    transcript model rather than through adapter-local sequence slicing
+  - search exact-length candidate windows near the transcript-oriented start
+    of each selected terminal exon
+  - persist sufficient geometry, sequence, ranking, interaction, and operation
+    provenance for GUI, CLI, MCP, JavaScript, Lua, and Python consumers
+- Operation payload:
+
+```json
+{
+  "DesignTerminalExonRtPrimerPool": {
+    "request": {
+      "schema": "gentle.terminal_exon_rt_primer_pool_request.v1",
+      "fixed_adapter_5prime": "ACTTGCCTGTCGCTCTATCTTC",
+      "variable_length_bp": 22,
+      "terminal_exon_search_window_bp": 250,
+      "max_candidates_per_target": 10,
+      "targets": [
+        {
+          "seq_id": "tp73_locus",
+          "source_feature_id": 0,
+          "transcript_id": "NM_005427.4",
+          "label": "TP73"
+        },
+        {
+          "seq_id": "patz1_locus",
+          "source_feature_id": 0,
+          "transcript_id": "NM_032052.4",
+          "label": "PATZ1"
+        }
+      ],
+      "report_id": "tp73_patz1_terminal_exon_rt_pool"
+    }
+  }
+}
+```
+
+The example identifiers illustrate the shape of the request. Callers must use
+the exact sequence, feature, and transcript identifiers present in the loaded
+GENtle project.
+
+- Request semantics:
+  - `targets[]` order is biological selection priority. The first selected
+    oligo is fixed before the second target is ranked against it, and so on
+  - `source_feature_id` identifies a member of the intended Splicing Expert
+    group. When that group contains more than one transcript,
+    `transcript_id` is required; GENtle does not guess an isoform
+  - `variable_length_bp` is exact. Each candidate must fit wholly inside the
+    terminal exon
+  - `terminal_exon_search_window_bp` is measured from the terminal exon's
+    transcript-oriented start, not from the numerically lower genomic
+    coordinate. Reverse-strand transcripts therefore use the same biological
+    convention without special adapter behavior
+  - `fixed_adapter_5prime` is normalized and must contain only `A`, `C`, `G`,
+    and `T`. The full oligo is exactly `fixed_adapter_5prime` followed by the
+    selected sequence-specific segment
+- Candidate/report semantics:
+  - `target_segment_5_to_3` is the selected mature-transcript segment;
+    `variable_primer_5_to_3` is its reverse complement; and
+    `full_oligo_5_to_3` is the fixed adapter plus that variable primer
+  - transcript and source intervals are 0-based, half-open. Source intervals
+    remain increasing coordinates even when the transcript is on strand `-`
+  - selection uses a deterministic lower-is-better lexicographic rank over:
+    variable 3-prime complementarity to the adapter, adapter/variable maximum
+    complementarity, complete-oligo self 3-prime complementarity, maximum
+    prior-pool 3-prime complementarity, complete-oligo self complementarity,
+    maximum prior-pool complementarity, distance from the terminal-exon start,
+    and finally the variable sequence
+  - `variable_tm_c` is descriptive only. Tm does not participate in this
+    ranking and the report states that policy explicitly
+  - `selected_pool_interactions[]` records variable-only and complete-oligo
+    pairwise complementarity for every selected pair
+  - schemas are `gentle.terminal_exon_rt_primer_pool_request.v1` and
+    `gentle.terminal_exon_rt_primer_pool.v1`; reports are persisted in the
+    existing primer-design report store and participate in normal operation
+    undo/history
+  - no whole-transcriptome or whole-genome off-target screen is implied by this
+    report. Terminal-exon placement and pool compatibility are design evidence,
+    not experimental validation or global specificity evidence
+
+`ExportTerminalExonRtPrimerPoolReport` writes one persisted
+`gentle.terminal_exon_rt_primer_pool.v1` record to the requested JSON path.
+
 `DesignPrimerPairs` contract (implemented baseline):
 
 - Purpose:
@@ -9798,6 +9889,8 @@ Primer-design shell command family (implemented):
   - `gentle.qpcr_seed_request.v1`
   - `gentle.primer_design_report.v1`
   - `gentle.primer_design_report_list.v1`
+  - `gentle.terminal_exon_rt_primer_pool_request.v1`
+  - `gentle.terminal_exon_rt_primer_pool.v1`
   - `gentle.qpcr_design_report.v1`
   - `gentle.qpcr_design_report_list.v1`
   - `gentle.oligo_order_form.v1`

@@ -269,6 +269,7 @@ pub(super) fn agent_prompt_template_options() -> &'static [(&'static str, &'stat
         ("candidate_anchors", "Candidate between anchors"),
         ("blast_specificity", "BLAST specificity check"),
         ("track_intersection", "Track import + prioritization"),
+        ("biological_adjustment", "Adapt a biological workflow"),
         ("macro_template", "Macro/template authoring"),
     ]
 }
@@ -402,6 +403,40 @@ Output wanted:
 
 Execution policy:
 ask-before-run"#
+        }
+        "biological_adjustment" => {
+            r#"Objective:
+Determine how GENtle should support this biological adjustment or related workflow request:
+<DESCRIBE THE REQUEST>
+
+Context:
+- existing GENtle workflow or operation, if known: <WORKFLOW_OR_UNKNOWN>
+- project sequence/report IDs, if relevant: <IDS_OR_UNKNOWN>
+- biological purpose: <WHY_THIS_ADJUSTMENT_IS_NEEDED>
+
+Fixed requirements:
+- sequence orientation and coordinate interpretation: <DETAILS>
+- values or motifs that must remain exact: <DETAILS>
+- evidence inputs that are authoritative: <DETAILS>
+
+Adjustable policy:
+- candidate window or search scope: <DETAILS>
+- scoring/ranking preferences: <DETAILS>
+- acceptable ambiguity and required user choices: <DETAILS>
+
+Classify the request first:
+1. parameter-only use of an existing capability;
+2. composition of existing GENtle operations or reports;
+3. a missing engine capability that needs implementation.
+
+Output wanted:
+- cite capability/readiness evidence before proposing execution;
+- if already supported, provide exact parser-valid GENtle commands and validation;
+- if unsupported, do not invent a command. Produce a concise implementation brief covering the biological invariant, reusable GENtle engine services, versioned request/report, provenance, explicit non-claims, adapter reachability, and deterministic edge-case tests;
+- distinguish what GENtle can execute now from what a coding agent or contributor must add.
+
+Execution policy:
+chat-only until the classification and biological contract have been reviewed"#
         }
         "macro_template" => {
             r#"Objective:
@@ -573,6 +608,18 @@ mod tests {
         );
         assert!(agent_prompt_template_text("compact_intro").contains("docs/glossary.json"));
         assert!(agent_prompt_template_text("candidate_anchors").contains("candidates"));
+        assert!(
+            agent_prompt_template_text("biological_adjustment")
+                .contains("parameter-only use of an existing capability")
+        );
+        assert!(
+            agent_prompt_template_text("biological_adjustment")
+                .contains("if unsupported, do not invent a command")
+        );
+        assert!(
+            agent_prompt_template_text("biological_adjustment")
+                .contains("versioned request/report")
+        );
         assert!(agent_prompt_template_text("unknown").contains("Objective:"));
         assert!(agent_prompt_template_text("unknown").contains("operand conventions"));
     }

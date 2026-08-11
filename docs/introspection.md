@@ -87,6 +87,13 @@ without forking any execution path: it composes the existing `capabilities`,
 `ui ...` discovery, `facts graph`, and the fact evaluator. **Composition, not
 duplication** — it must not become a parallel command surface.
 
+Runtime introspection describes stable executable capabilities, not private
+Rust helper functions. When a biological adjustment is not yet executable, the
+inner agent should report that gap and prepare an implementation brief. Coding
+agents use `docs/biological_extension_guide.md` and private-item Rust
+documentation to find reusable source-level seams without turning those names
+into a protocol compatibility promise.
+
 ## 3. Routes and payload
 
 **Reconciliation (review pt 6):** one root with several subroutes, not a single

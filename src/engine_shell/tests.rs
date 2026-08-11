@@ -34,7 +34,8 @@ use crate::engine::{
     RackPlacementEntry, RackProfileKind, RackProfileSnapshot, ReadAcquisitionAnalysisFormat,
     ReadAcquisitionReadLayout, RepeatEnvironmentGeometryMode, RestrictionCloningPcrHandoffMode,
     RnaReadAlignConfig, RnaReadInterpretationHit, RnaReadInterpretationReport, RnaReadMappingHit,
-    RnaReadOriginClass, SequenceOrigin, SequenceScanTarget, TfThresholdOverride,
+    RnaReadOriginClass, SequenceOrigin, SequenceScanTarget,
+    TERMINAL_EXON_RT_PRIMER_POOL_REPORT_SCHEMA, TerminalExonRtPrimerTarget, TfThresholdOverride,
     TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
     TfbsTrackSimilarityRankingMetric, TranscriptAssayCdnaSynthesis, TranscriptAssayCoveragePolicy,
     TranscriptAssayCoverageUniverse, TranscriptAssayCoverageUniverseKind,
@@ -6461,6 +6462,17 @@ fn parse_primers_design_qpcr_with_backend_overrides() {
         }
         other => panic!("unexpected command: {other:?}"),
     }
+}
+
+#[test]
+fn parse_primers_design_terminal_exon_rt_pool_request() {
+    let cmd = parse_shell_line("primers design-terminal-exon-rt-pool @rt_pool.json")
+        .expect("parse terminal-exon RT-primer pool command");
+    assert!(matches!(
+        cmd,
+        ShellCommand::PrimersDesignTerminalExonRtPool { request_json }
+            if request_json == "@rt_pool.json"
+    ));
 }
 
 #[test]
@@ -16507,6 +16519,99 @@ fn execute_primers_design_list_show_export() {
     );
     let text = fs::read_to_string(&export_path).expect("read export");
     assert!(text.contains("gentle.primer_design_report.v1"));
+}
+
+#[test]
+fn execute_primers_design_terminal_exon_rt_pool_list_show_export() {
+    let first_exon = "ATGCCGTAGCTTACGATCCGTTAGCGTACCTGATCGGATCCGATTAAC";
+    let terminal_exon = "GCTAGTCGATCGTACCGTACGATCGTACGAGGCTAACGATCCGATGCTAACGTCGATCGTAGCTAAC";
+    let spacer = "N".repeat(20);
+    let terminal_start = first_exon.len() + spacer.len();
+    let terminal_end = terminal_start + terminal_exon.len();
+    let mut dna = DNAsequence::from_sequence(&format!("{first_exon}{spacer}{terminal_exon}"))
+        .expect("annotated terminal-exon template");
+    dna.features_mut().push(Feature {
+        kind: "mRNA".into(),
+        location: Location::Join(vec![
+            Location::simple_range(0, first_exon.len() as i64),
+            Location::simple_range(terminal_start as i64, terminal_end as i64),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("RTP1".to_string())),
+            ("transcript_id".into(), Some("RTP1-201".to_string())),
+            ("label".into(), Some("RTP1-201".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("rt_template".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let request = serde_json::to_string(&TerminalExonRtPrimerPoolRequest {
+        schema: TERMINAL_EXON_RT_PRIMER_POOL_REQUEST_SCHEMA.to_string(),
+        fixed_adapter_5prime: "ACTTGCCTGTCGCTCTATCTTC".to_string(),
+        variable_length_bp: 22,
+        terminal_exon_search_window_bp: 60,
+        max_candidates_per_target: 4,
+        targets: vec![TerminalExonRtPrimerTarget {
+            seq_id: "rt_template".to_string(),
+            source_feature_id: 0,
+            transcript_id: Some("RTP1-201".to_string()),
+            label: Some("RTP1".to_string()),
+        }],
+        report_id: Some("rt_pool_shell".to_string()),
+    })
+    .expect("serialize terminal-exon RT-primer pool request");
+
+    let designed = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersDesignTerminalExonRtPool {
+            request_json: request,
+        },
+    )
+    .expect("execute terminal-exon RT-primer pool design");
+    assert!(designed.state_changed);
+    assert_eq!(
+        designed.output["report"]["schema"].as_str(),
+        Some(TERMINAL_EXON_RT_PRIMER_POOL_REPORT_SCHEMA)
+    );
+    assert_eq!(
+        designed.output["report"]["targets"][0]["candidates"][0]["variable_length_bp"].as_u64(),
+        Some(22)
+    );
+
+    let listed = execute_shell_command(&mut engine, &ShellCommand::PrimersListReports)
+        .expect("list terminal-exon RT-primer pool reports");
+    assert_eq!(
+        listed.output["terminal_exon_rt_primer_pool_count"].as_u64(),
+        Some(1)
+    );
+    let shown = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersShowReport {
+            report_id: "rt_pool_shell".to_string(),
+        },
+    )
+    .expect("show terminal-exon RT-primer pool report");
+    assert_eq!(
+        shown.output["report_kind"].as_str(),
+        Some("terminal_exon_rt_primer_pool")
+    );
+
+    let dir = tempdir().expect("temporary RT-primer pool export directory");
+    let path = dir.path().join("rt_pool_shell.json");
+    let exported = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersExportReport {
+            report_id: "rt_pool_shell".to_string(),
+            path: path.to_string_lossy().to_string(),
+        },
+    )
+    .expect("export terminal-exon RT-primer pool report");
+    assert_eq!(
+        exported.output["schema"].as_str(),
+        Some("gentle.terminal_exon_rt_primer_pool_export.v1")
+    );
+    let text = fs::read_to_string(path).expect("read terminal-exon RT-primer pool export");
+    assert!(text.contains(TERMINAL_EXON_RT_PRIMER_POOL_REPORT_SCHEMA));
 }
 
 #[test]
@@ -28239,6 +28344,19 @@ fn execute_introspect_capabilities_projects_full_registry_with_fact_annotations(
             .expect("registry aliases")
             .len(),
         0
+    );
+    let terminal_rt_pool = capabilities
+        .iter()
+        .find(|descriptor| descriptor["id"].as_str() == Some("DesignTerminalExonRtPrimerPool"))
+        .expect("terminal-exon RT-primer-pool operation descriptor");
+    assert!(
+        terminal_rt_pool["description"]
+            .as_str()
+            .is_some_and(|description| {
+                description.contains("Compose existing engine-owned transcript")
+                    && description.contains("oligo-scoring services")
+            }),
+        "biological extension capabilities should name the engine services they compose"
     );
     assert!(capabilities.iter().any(|descriptor| {
         descriptor["id"].as_str() == Some("help")

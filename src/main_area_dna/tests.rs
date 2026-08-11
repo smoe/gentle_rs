@@ -1098,6 +1098,7 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
         primer_specificity_handoff: None,
         primer_specificity_report: None,
         external_primer_pair_import_report: None,
+        terminal_exon_rt_primer_pool: None,
         primer_variant_screen: None,
         construct_reasoning_graph: None,
         sequencing_confirmation_report: None,
@@ -4938,6 +4939,7 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
             primer_specificity_handoff: None,
             primer_specificity_report: None,
             external_primer_pair_import_report: None,
+            terminal_exon_rt_primer_pool: None,
             primer_variant_screen: None,
             construct_reasoning_graph: None,
             sequencing_confirmation_report: None,
@@ -9268,6 +9270,58 @@ fn current_engine_ops_state_records_pcr_designer_mode() {
     area.pcr_designer_mode = PcrDesignerMode::QpcrAssays;
     let state = area.current_engine_ops_state();
     assert_eq!(state.pcr_designer_mode, PcrDesignerMode::QpcrAssays);
+}
+
+#[test]
+fn terminal_exon_rt_primer_pool_gui_state_round_trips() {
+    let dna = DNAsequence::from_sequence("ACGT").unwrap();
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    area.pcr_designer_mode = PcrDesignerMode::TerminalExonRtPool;
+    area.primer_design_ui.terminal_exon_rt_pool.targets_tsv =
+        "seq1\tn-3\tNM_TEST.1\tTEST".to_string();
+    area.primer_design_ui
+        .terminal_exon_rt_pool
+        .splicing_transcript_id = "NM_TEST.1".to_string();
+
+    let encoded = serde_json::to_value(area.current_engine_ops_state()).unwrap();
+    let decoded: super::EngineOpsUiState = serde_json::from_value(encoded).unwrap();
+
+    assert_eq!(
+        decoded.pcr_designer_mode,
+        PcrDesignerMode::TerminalExonRtPool
+    );
+    assert_eq!(
+        decoded.primer_design_ui.terminal_exon_rt_pool.targets_tsv,
+        "seq1\tn-3\tNM_TEST.1\tTEST"
+    );
+    assert_eq!(
+        decoded
+            .primer_design_ui
+            .terminal_exon_rt_pool
+            .splicing_transcript_id,
+        "NM_TEST.1"
+    );
+}
+
+#[test]
+fn terminal_exon_rt_primer_pool_gui_preserves_target_priority_and_feature_id_conventions() {
+    let targets = MainAreaDna::parse_terminal_exon_rt_primer_targets(
+        "seq_tp73\tn-7\tTP73-201\tTP73\nseq_patz1\t12\tPATZ1-201\tPATZ1",
+    )
+    .expect("parse ordered terminal-exon RT-primer targets");
+
+    assert_eq!(targets.len(), 2);
+    assert_eq!(targets[0].seq_id, "seq_tp73");
+    assert_eq!(targets[0].source_feature_id, 6);
+    assert_eq!(targets[0].transcript_id.as_deref(), Some("TP73-201"));
+    assert_eq!(targets[0].label.as_deref(), Some("TP73"));
+    assert_eq!(targets[1].seq_id, "seq_patz1");
+    assert_eq!(targets[1].source_feature_id, 12);
+    assert_eq!(targets[1].transcript_id.as_deref(), Some("PATZ1-201"));
+
+    let error = MainAreaDna::parse_terminal_exon_rt_primer_targets("seq\tn-0\tTX")
+        .expect_err("GUI feature label n-0 must be rejected");
+    assert!(error.contains("1-based GUI feature label"));
 }
 
 #[test]

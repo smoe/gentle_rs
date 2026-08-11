@@ -191,6 +191,8 @@ documentation before it proposes commands. The minimum bundle is:
 - `docs/cli.md` for operand conventions and shell examples
 - `docs/protocol.md` for request/response schemas and execution rules
 - `docs/ai_prompt_contract.md` for agent behavior expectations
+- `docs/biological_extension_guide.md` for coding agents/contributors adapting
+  a biological workflow rather than merely invoking it
 - `docs/ai_cloning_primer.md`, `docs/ai_task_playbooks.md`, and
   `docs/examples/ai_cloning_examples.md` for biology-first context
 - optional compact terminology: `docs/ai_glossary_extensions.json`
@@ -200,6 +202,14 @@ This matters most for small local models: glossary placeholders such as
 If the model has not been given the relevant documentation, or if the operand
 semantics remain unclear, it should ask for the missing identifier or exact path
 instead of inventing a GENtle command.
+
+When a request is biologically clear but no registered route implements it,
+the inner assistant must distinguish that capability gap from missing project
+input. It should classify the request as parameterization, composition, or a
+missing primitive and return a concise implementation brief rather than a
+fictional command. A coding-capable outer agent can then follow
+`docs/biological_extension_guide.md`; the inner assistant itself remains an
+execution/planning client and does not edit GENtle source.
 
 ### 3) MCP (`gentle_mcp`)
 
@@ -469,6 +479,9 @@ an agent has selected a deterministic operation.
 - `planning sync push`
 - `planning sync status`
 - `primers design`
+- `primers design-terminal-exon-rt-pool` (the typed
+  `DesignTerminalExonRtPrimerPool` operation remains available through the
+  generic MCP `op` tool)
 - `primers design-transcript-assay-panel`
 - `primers compose-gene-isoform-study-workflow-batch`
 - `primers inspect-gene-isoform-study-reuse`

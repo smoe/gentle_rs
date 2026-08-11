@@ -266,6 +266,24 @@ Strategic aims:
    - promoting an inline/stateless inspection result into project state
      remains an explicit second step, not an automatic side effect
 
+Biological-extension composition rule:
+
+- A request for a related assay, adjusted search policy, or new evidence
+  interpretation must first be classified as an existing parameter, a
+  composition of existing engine services, or a missing biological primitive.
+- Reusable transcript, coordinate, candidate, scoring, and evidence helpers may
+  remain non-exported source-level seams. Document their biological invariant
+  for `cargo doc --document-private-items`, but do not expose private Rust names
+  through runtime introspection as an accidental wire contract.
+- Promote only the stable biological decision to a versioned request/report
+  and shared `Operation`. Adapters collect inputs and present the report; they
+  do not reproduce the constituent biology.
+- Capability descriptions, readiness, protocol docs, explicit non-claims, and
+  deterministic edge tests must make the extension understandable without
+  reverse-engineering a frontend callback.
+- The implementation workflow and current source seam inventory are documented
+  in `docs/biological_extension_guide.md`.
+
 Test-data provenance rule:
 
 - Every committed test fixture (for example under `test_files/` or `tests/`)
@@ -1823,13 +1841,15 @@ This enables reusable query composition:
 4. filter by absolute threshold and/or quantile
 5. intersect/union/subtract with other candidate sets
 
-### Primer/qPCR design report command contract (baseline)
+### Primer/qPCR and sequence-specific RT-primer report command contract (baseline)
 
-Primer-pair and qPCR design are first-class engine operations plus shared-shell
-inspection/export paths:
+Primer-pair, qPCR, and terminal-exon sequence-specific RT-primer-pool design are
+first-class engine operations plus shared-shell inspection/export paths:
 
 - Engine operation:
   - `DesignPrimerPairs { template, roi_start_0based, roi_end_0based, forward, reverse, pair_constraints?, min_amplicon_bp, max_amplicon_bp, max_tm_delta_c?, max_pairs?, report_id? }`
+  - `DesignTerminalExonRtPrimerPool { request }`
+  - `ExportTerminalExonRtPrimerPoolReport { report_id, path }`
   - `PcrOverlapExtensionMutagenesis { template, edit_start_0based, edit_end_0based_exclusive, insert_sequence?, constraints?, output_prefix? }`
   - `DesignQpcrAssays { template, roi_start_0based, roi_end_0based, forward, reverse, probe, pair_constraints?, min_amplicon_bp, max_amplicon_bp, max_tm_delta_c?, max_probe_tm_delta_c?, max_assays?, report_id? }`
   - `TestCdnaPcr { seq_id, source_feature_id, forward_primer, reverse_primer, transcript_id?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path?, svg_path?, materialize_products?, product_output_prefix?, product_gel_svg_path?, product_gel_ladders? }`
@@ -1846,6 +1866,27 @@ inspection/export paths:
     the same primer/probe/product scanner for broad Ensembl cDNA/ncRNA screens;
     adapters may choose how to present reports, but must not construct
     competing cDNA products or transcript hit geometry locally.
+  - terminal-exon RT-primer-pool design composes the same engine-owned
+    Splicing Expert grouping, mature-transcript construction, strand-aware
+    exon mapping, primer heuristics, operation history, and report persistence.
+    The GUI and command adapters supply ordered target identities and display
+    the resulting report; they must not independently infer a terminal exon,
+    reverse-complement a target window, or rerank pool members.
+  - each terminal-exon target resolves one explicit transcript. Candidate
+    windows are wholly within its terminal exon and are measured from that
+    exon's transcript-oriented start, including for reverse-strand genes. The
+    sequence-specific 3-prime segment is the reverse complement of the selected
+    mature-transcript window and the complete oligo is the fixed 5-prime
+    adapter followed by that segment.
+  - terminal-exon RT-primer-pool selection is deliberately priority ordered:
+    earlier request targets are fixed before later targets are ranked against
+    the existing pool. Fixed-adapter, self-, and prior-pool complementarity are
+    ranked before distance from the terminal-exon start. Tm is retained as a
+    descriptive metric but is not a ranking input in this workflow.
+  - this initial RT-primer-pool operation does not claim whole-transcriptome or
+    whole-genome specificity. Such evidence must remain a separate explicit
+    screen rather than being inferred from terminal-exon geometry or low local
+    complementarity scores.
   - multi-transcript assay panels group transcripts as fundamentally
     indistinguishable only when their normalized mature cDNA bytes are
     identical. Near matches remain separate design classes.
@@ -1899,10 +1940,15 @@ inspection/export paths:
   - `primer_design_reports` (`gentle.primer_design_reports.v1`)
   - `qpcr_design_reports` (`gentle.qpcr_design_reports.v1`)
   - report payload schema: `gentle.primer_design_report.v1`
+  - terminal-exon RT-primer request schema:
+    `gentle.terminal_exon_rt_primer_pool_request.v1`
+  - terminal-exon RT-primer report schema:
+    `gentle.terminal_exon_rt_primer_pool.v1`
   - report payload schema: `gentle.qpcr_design_report.v1`
   - transcript assay panel payload schema: `gentle.transcript_assay_panel.v2`
 - Shared-shell commands:
   - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
+  - `primers design-terminal-exon-rt-pool REQUEST_JSON_OR_@FILE`
   - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [...] [--svg OUTPUT.svg] [--materialize-products] [--product-gel-svg OUTPUT.svg]`
   - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [...] [--svg OUTPUT.svg] [--materialize-products] [--product-gel-svg OUTPUT.svg]`
@@ -1920,8 +1966,11 @@ Adapter contract:
 
 - `gentle_cli` exposes this surface directly (`gentle_cli primers ...`) by
   forwarding into the same shared-shell parser/executor path.
-- JS/Lua adapters consume the same operation contract via `apply_operation`
-  and can use the same shared-shell routes for report inspection/export.
+- JS/Lua adapters consume the same operation contract via `apply_operation`;
+  Python uses `GentleClient.op(...)`; and MCP/agent callers use the published
+  typed operation through the generic MCP `op` tool. All can use the same
+  report inspection/export routes; the specialized shell spelling need not be
+  duplicated as a dedicated MCP tool.
 - No adapter-specific primer-design business logic is permitted.
 - ROI seed helpers are intentionally non-mutating and return seed payload
   schema `gentle.primer_seed_request.v1` with ready-to-run operation JSON for

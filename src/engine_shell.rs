@@ -113,7 +113,8 @@ use crate::{
         SequenceFeatureQualifierFilter, SequenceFeatureQuery, SequenceFeatureRangeRelation,
         SequenceFeatureSortBy, SequenceFeatureStrandFilter, SequenceScanTarget,
         SequencingConfirmationTargetKind, SequencingConfirmationTargetSpec, SplicingRange,
-        SplicingScopePreset, TfThresholdOverride, TfbsHitScanCollectionMemberBinding,
+        SplicingScopePreset, TERMINAL_EXON_RT_PRIMER_POOL_REQUEST_SCHEMA,
+        TerminalExonRtPrimerPoolRequest, TfThresholdOverride, TfbsHitScanCollectionMemberBinding,
         TfbsRegionSummaryRequest, TfbsScoreTrackCorrelationMetric,
         TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
         TfbsTrackSimilarityRankingMetric, TranscriptAssayAmpliconRange,
@@ -2459,6 +2460,9 @@ pub enum ShellCommand {
         request_json: String,
         backend: Option<PrimerDesignBackend>,
         primer3_executable: Option<String>,
+    },
+    PrimersDesignTerminalExonRtPool {
+        request_json: String,
     },
     PrimersPrimerBankSearch {
         request: PrimerBankSearchRequest,
@@ -11216,6 +11220,10 @@ impl ShellCommand {
                     .filter(|v| !v.is_empty())
                     .unwrap_or("default"),
             ),
+            Self::PrimersDesignTerminalExonRtPool { request_json } => format!(
+                "design an ordered terminal-exon RT-primer pool from JSON request payload (len={})",
+                request_json.len()
+            ),
             Self::PrimersPrimerBankSearch {
                 request,
                 source_html_path,
@@ -16231,6 +16239,12 @@ fn push_introspection_report_facts(graph: &mut ProjectFactGraph, engine: &Gentle
             .list_primer_design_reports()
             .into_iter()
             .map(|row| introspection_report_fact(row.report_id, "primer_design")),
+    );
+    graph.facts.extend(
+        engine
+            .list_terminal_exon_rt_primer_pool_reports()
+            .into_iter()
+            .map(|row| introspection_report_fact(row.report_id, "terminal_exon_rt_primer_pool")),
     );
     graph.facts.extend(
         engine
@@ -23176,6 +23190,67 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "Generate and persist a ranked insertion-primer design report through the shared engine operation.",
         ),
         json!({
+            "id": "primers design-terminal-exon-rt-pool",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST_JSON", "required": true, "detail": "gentle.terminal_exon_rt_primer_pool_request.v1 payload or @file"},
+                {"name": "TARGET_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "one loaded annotated sequence id from targets[]; repeat readiness checks for every ordered target"},
+                {"name": "REPORT_ID", "required": false, "subject_kind": "report", "detail": "explicit terminal-exon RT-primer pool report id carried by the request; required for deterministic effect verification"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "report.exists",
+                    "subject": {"arg": "REPORT_ID"},
+                    "report_kind": "terminal_exon_rt_primer_pool",
+                    "equals": "terminal_exon_rt_primer_pool",
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}
+                ]
+            },
+            "description": "Compose Splicing Expert transcript resolution, mature-transcript geometry, fixed-adapter oligo construction, and shared complementarity metrics into a persisted ordered RT-primer pool near explicit terminal-exon starts.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers design-terminal-exon-rt-pool")
+        }),
+        json!({
+            "id": "DesignTerminalExonRtPrimerPool",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "TARGET_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "one loaded annotated sequence id from request.targets; repeat readiness checks for every ordered target"},
+                {"name": "REPORT_ID", "required": false, "subject_kind": "report", "detail": "explicit report id carried by the operation payload; required for deterministic effect verification"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "report.exists",
+                    "subject": {"arg": "REPORT_ID"},
+                    "report_kind": "terminal_exon_rt_primer_pool",
+                    "equals": "terminal_exon_rt_primer_pool",
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}
+                ]
+            },
+            "description": "Compose existing engine-owned transcript, exon-coordinate, and oligo-scoring services into one persisted ordered terminal-exon RT-primer-pool report.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("DesignTerminalExonRtPrimerPool")
+        }),
+        json!({
             "id": "primers list-reports",
             "kind": "operation",
             "mutating": "false",
@@ -23184,7 +23259,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "reads": [],
             "effects": [],
             "precondition_expr": {"all": []},
-            "description": "List persisted primer-pair design reports and primer-specificity artifacts.",
+            "description": "List persisted primer-pair design, terminal-exon RT-primer-pool, and primer-specificity reports.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("primers list-reports")
         }),
@@ -23194,7 +23269,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "mutating": "false",
             "requires_confirmation": false,
             "args": [
-                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted primer-design or primer-specificity report id"}
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted primer-design, terminal-exon RT-primer-pool, or primer-specificity report id"}
             ],
             "reads": [
                 {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}}
@@ -23203,10 +23278,11 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "precondition_expr": {
                 "any": [
                     {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_design"},
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "terminal_exon_rt_primer_pool"},
                     {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_specificity"}
                 ]
             },
-            "description": "Inspect one persisted primer-pair design or primer-specificity report.",
+            "description": "Inspect one persisted primer-pair design, terminal-exon RT-primer-pool, or primer-specificity report.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("primers show-report")
         }),
@@ -23216,7 +23292,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "mutating": "false",
             "requires_confirmation": false,
             "args": [
-                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted primer-design or primer-specificity report id"},
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted primer-design, terminal-exon RT-primer-pool, or primer-specificity report id"},
                 {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external JSON output path"}
             ],
             "reads": [
@@ -23232,10 +23308,11 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "precondition_expr": {
                 "any": [
                     {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_design"},
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "terminal_exon_rt_primer_pool"},
                     {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_specificity"}
                 ]
             },
-            "description": "Export one persisted primer-pair design or primer-specificity report to an external JSON file.",
+            "description": "Export one persisted primer-pair design, terminal-exon RT-primer-pool, or primer-specificity report to an external JSON file.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("primers export-report")
         }),
@@ -23824,6 +23901,12 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             &["primer_design", "qpcr_design"],
             "external JSON output path carried by the operation payload",
             "Export one persisted primer or qPCR design report to an external JSON file through the shared engine operation.",
+        ),
+        report_export_any_kind_operation_descriptor(
+            "ExportTerminalExonRtPrimerPoolReport",
+            &["terminal_exon_rt_primer_pool"],
+            "external JSON output path carried by the operation payload",
+            "Export one persisted terminal-exon RT-primer pool report to an external JSON file through the shared engine operation.",
         ),
         json!({
             "id": "primers prepare-restriction-cloning",
@@ -28370,6 +28453,9 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         }
         "primers design" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_ID"}}),
+        ]),
+        "primers design-terminal-exon-rt-pool" | "DesignTerminalExonRtPrimerPool" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}),
         ]),
         "primers list-reports" => Some(vec![]),
         "primers show-report" => Some(vec![
@@ -53495,6 +53581,44 @@ fn execute_primers_command(
                 }),
             })
         }
+        ShellCommand::PrimersDesignTerminalExonRtPool { request_json } => {
+            let json_text = parse_json_payload(request_json)?;
+            let request: TerminalExonRtPrimerPoolRequest = serde_json::from_str(&json_text)
+                .map_err(|error| {
+                    format!(
+                        "Invalid primers design-terminal-exon-rt-pool request JSON: {error} (expected {})",
+                        TERMINAL_EXON_RT_PRIMER_POOL_REQUEST_SCHEMA
+                    )
+                })?;
+            let before = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            let result = engine
+                .apply(Operation::DesignTerminalExonRtPrimerPool { request })
+                .map_err(|error| error.to_string())?;
+            let report = result
+                .terminal_exon_rt_primer_pool
+                .as_deref()
+                .cloned()
+                .ok_or_else(|| {
+                    "Terminal-exon RT-primer pool operation returned no report".to_string()
+                })?;
+            let after = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "schema": "gentle.terminal_exon_rt_primer_pool_command.v1",
+                    "result": result,
+                    "report": report,
+                }),
+            })
+        }
         ShellCommand::PrimersDesignQpcr {
             request_json,
             backend,
@@ -54866,6 +54990,7 @@ fn execute_primers_command(
         }
         ShellCommand::PrimersListReports => {
             let reports = engine.list_primer_design_reports();
+            let terminal_exon_rt_primer_pools = engine.list_terminal_exon_rt_primer_pool_reports();
             let specificity_reports = engine.list_primer_specificity_reports();
             Ok(ShellRunResult {
                 state_changed: false,
@@ -54873,6 +54998,8 @@ fn execute_primers_command(
                     "schema": "gentle.primer_design_report_list.v1",
                     "report_count": reports.len(),
                     "reports": reports,
+                    "terminal_exon_rt_primer_pool_count": terminal_exon_rt_primer_pools.len(),
+                    "terminal_exon_rt_primer_pools": terminal_exon_rt_primer_pools,
                     "specificity_report_count": specificity_reports.len(),
                     "specificity_reports": specificity_reports,
                 }),
@@ -54887,6 +55014,15 @@ fn execute_primers_command(
                         "report_kind": "primer_design",
                         "report": report,
                         "simple_pcr_pairs": simple_pcr_pairs,
+                    }),
+                })
+            } else if let Ok(report) = engine.get_terminal_exon_rt_primer_pool_report(report_id) {
+                Ok(ShellRunResult {
+                    state_changed: false,
+                    output: json!({
+                        "report_kind": "terminal_exon_rt_primer_pool",
+                        "report": report,
+                        "simple_pcr_pairs": [],
                     }),
                 })
             } else {
@@ -54916,6 +55052,20 @@ fn execute_primers_command(
                         "report_id": report.report_id,
                         "path": path,
                         "pair_count": report.pair_count,
+                    }),
+                })
+            } else if let Ok(report) = engine.get_terminal_exon_rt_primer_pool_report(report_id) {
+                engine
+                    .export_terminal_exon_rt_primer_pool_report(report_id, path)
+                    .map_err(|error| error.to_string())?;
+                Ok(ShellRunResult {
+                    state_changed: false,
+                    output: json!({
+                        "schema": "gentle.terminal_exon_rt_primer_pool_export.v1",
+                        "report_kind": "terminal_exon_rt_primer_pool",
+                        "report_id": report.report_id,
+                        "path": path,
+                        "target_count": report.targets.len(),
                     }),
                 })
             } else {
@@ -61964,6 +62114,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::PrimersPrimerBankSearch { .. }
             | ShellCommand::PrimersPrimerBankTestCdna { .. }
             | ShellCommand::PrimersDesign { .. }
+            | ShellCommand::PrimersDesignTerminalExonRtPool { .. }
             | ShellCommand::PrimersDesignQpcr { .. }
             | ShellCommand::PrimersSpecificity { .. }
             | ShellCommand::CollectionsRunPrimerSpecificity { .. }
@@ -63744,6 +63895,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersPrimerBankSearch { .. }
         | ShellCommand::PrimersPrimerBankTestCdna { .. }
         | ShellCommand::PrimersDesign { .. }
+        | ShellCommand::PrimersDesignTerminalExonRtPool { .. }
         | ShellCommand::PrimersDesignQpcr { .. }
         | ShellCommand::PrimersSpecificity { .. }
         | ShellCommand::CollectionsRunPrimerSpecificity { .. }

@@ -8,6 +8,12 @@
 //! - which helper actually executes a given `Operation` variant
 //! - state mutations, `OpResult` messages, and journal side effects
 //! - cross-cutting operation glue that does not belong in adapter code
+//! - reusable private biological seams before adding a related operation
+//!
+//! For a new biological adjustment, classify and document the request using
+//! `docs/biological_extension_guide.md`. Reuse private interpretation helpers
+//! here when their biological invariant matches, but promote only stable
+//! request/report meaning into the public protocol.
 
 use std::{cmp::Ordering, fs};
 
@@ -60,6 +66,8 @@ struct GenomeExtractionProvenanceOverrides {
 }
 
 #[derive(Debug, Clone)]
+/// One exon projected onto a mature transcript's local 5'-to-3' coordinate
+/// system while retaining its source-sequence interval.
 struct TranscriptQpcrLocalExonSegment {
     source_start_0based: usize,
     source_end_0based_exclusive: usize,
@@ -68,6 +76,12 @@ struct TranscriptQpcrLocalExonSegment {
 }
 
 #[derive(Debug, Clone)]
+/// Internal mature-transcript design substrate shared by qPCR, cDNA-assay,
+/// and sequence-specific RT-primer workflows.
+///
+/// Despite the historical `Qpcr` name, this is the preferred composition seam
+/// whenever an operation needs transcript-oriented sequence plus reversible
+/// exon/source coordinates. Adapters must not rebuild this record themselves.
 struct TranscriptQpcrDesignTemplate {
     transcript_feature_id: usize,
     transcript_id: String,
@@ -77,6 +91,18 @@ struct TranscriptQpcrDesignTemplate {
     sequence: String,
     local_exon_segments: Vec<TranscriptQpcrLocalExonSegment>,
     exon_chain: Vec<(usize, usize)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+/// One canonical, fixed-length window in mature-transcript coordinates.
+///
+/// The helper that creates these windows is deliberately private: it is a
+/// source-level extension seam, not a stable wire contract. New biological
+/// operations can reuse it before promoting their own versioned request/report.
+struct CanonicalTranscriptWindow {
+    local_start_0based: usize,
+    local_end_0based_exclusive: usize,
+    sequence_5_to_3: String,
 }
 
 const TRANSCRIPT_ASSAY_DEFAULT_MAX_ASSAYS_PER_CLASS: usize = 12;
@@ -111,6 +137,8 @@ struct PrimerSpecificityResolvedInput {
 }
 
 #[derive(Debug, Clone, Default)]
+/// Strand-aware projection of a mature-transcript interval back to one or
+/// more source-sequence ranges.
 struct TranscriptMappedInterval {
     source_ranges_0based: Vec<SequenceRange0Based>,
     exon_chain: Vec<(usize, usize)>,
@@ -7745,6 +7773,11 @@ impl GentleEngine {
         error.message.starts_with("Primer design cancelled during")
     }
 
+    /// Materialize transcript-oriented sequence and exon geometry from the
+    /// engine-owned Splicing Expert interpretation.
+    ///
+    /// Keep transcript assembly here so new assay variants inherit the same
+    /// strand handling and exon ordering as existing qPCR/cDNA operations.
     fn build_qpcr_transcript_design_templates(
         dna: &DNAsequence,
         splicing: &SplicingExpertView,
@@ -7803,6 +7836,150 @@ impl GentleEngine {
         Ok(templates)
     }
 
+    /// Resolve exactly one mature-transcript design substrate for an annotated
+    /// source feature.
+    ///
+    /// This is the internal entry point for biological adjustments that name a
+    /// gene/transcript feature but need mature-transcript coordinates. It
+    /// deliberately rejects ambiguous transcript groups instead of silently
+    /// choosing an isoform. Callers provide a short context label so errors
+    /// remain specific to the operation exposed to the user.
+    fn resolve_single_transcript_design_template(
+        &self,
+        seq_id: &str,
+        source_feature_id: usize,
+        transcript_id: Option<&str>,
+        context_label: &str,
+    ) -> Result<TranscriptQpcrDesignTemplate, EngineError> {
+        let source_dna = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{seq_id}' was not found for {context_label}"),
+                cause_chain: vec![],
+            })?;
+        let splicing = self.build_splicing_expert_view(
+            seq_id,
+            source_feature_id,
+            SplicingScopePreset::TargetGroupTargetStrand,
+        )?;
+        let mut templates = Self::build_qpcr_transcript_design_templates(source_dna, &splicing)?;
+        if let Some(transcript_id) = transcript_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            templates.retain(|template| template.transcript_id == transcript_id);
+            if templates.is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!(
+                        "Transcript '{transcript_id}' was not found in splicing group '{}' for {context_label}",
+                        splicing.group_label
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+        } else if templates.len() != 1 {
+            let mut transcript_ids = templates
+                .iter()
+                .map(|template| template.transcript_id.clone())
+                .collect::<Vec<_>>();
+            transcript_ids.sort();
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "{context_label} resolves to {} transcripts ({}); specify transcript_id explicitly",
+                    transcript_ids.len(),
+                    transcript_ids.join(", ")
+                ),
+                cause_chain: vec![],
+            });
+        }
+        templates.into_iter().next().ok_or_else(|| EngineError {
+            code: ErrorCode::NotFound,
+            message: format!("No transcript template was found for {context_label}"),
+            cause_chain: vec![],
+        })
+    }
+
+    /// Enumerate canonical fixed-length windows from the transcript-oriented
+    /// start of one local segment.
+    ///
+    /// This helper contains no primer policy. It is reusable for related
+    /// biological requests such as adapter-bearing RT primers, capture oligos,
+    /// or bounded sequence probes; the owning operation remains responsible
+    /// for complementing, scoring, ranking, reporting, and explicit non-claims.
+    fn enumerate_canonical_transcript_segment_windows(
+        template: &TranscriptQpcrDesignTemplate,
+        segment: &TranscriptQpcrLocalExonSegment,
+        search_window_bp: usize,
+        window_length_bp: usize,
+    ) -> Result<(Vec<CanonicalTranscriptWindow>, usize), EngineError> {
+        if segment.local_start_0based > segment.local_end_0based_exclusive
+            || segment.local_end_0based_exclusive > template.sequence.len()
+        {
+            return Err(EngineError {
+                code: ErrorCode::Internal,
+                message: format!(
+                    "Transcript '{}' contains invalid local exon geometry {}..{} for a {} bp mature sequence",
+                    template.transcript_id,
+                    segment.local_start_0based,
+                    segment.local_end_0based_exclusive,
+                    template.sequence.len()
+                ),
+                cause_chain: vec![],
+            });
+        }
+        let available_bp = segment
+            .local_end_0based_exclusive
+            .saturating_sub(segment.local_start_0based);
+        if window_length_bp == 0
+            || search_window_bp < window_length_bp
+            || available_bp < window_length_bp
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Cannot enumerate {} bp transcript windows in a {} bp segment with a {} bp search window",
+                    window_length_bp, available_bp, search_window_bp
+                ),
+                cause_chain: vec![],
+            });
+        }
+
+        let search_end = segment
+            .local_start_0based
+            .saturating_add(search_window_bp)
+            .min(segment.local_end_0based_exclusive);
+        let final_start = search_end.saturating_sub(window_length_bp);
+        let sequence = template.sequence.as_bytes();
+        let mut windows = Vec::with_capacity(
+            final_start
+                .saturating_sub(segment.local_start_0based)
+                .saturating_add(1),
+        );
+        let mut ambiguous_window_count = 0usize;
+        for local_start_0based in segment.local_start_0based..=final_start {
+            let local_end_0based_exclusive = local_start_0based.saturating_add(window_length_bp);
+            let window = &sequence[local_start_0based..local_end_0based_exclusive];
+            if !window
+                .iter()
+                .all(|base| matches!(base.to_ascii_uppercase(), b'A' | b'C' | b'G' | b'T'))
+            {
+                ambiguous_window_count = ambiguous_window_count.saturating_add(1);
+                continue;
+            }
+            windows.push(CanonicalTranscriptWindow {
+                local_start_0based,
+                local_end_0based_exclusive,
+                sequence_5_to_3: String::from_utf8_lossy(window).to_ascii_uppercase(),
+            });
+        }
+        Ok((windows, ambiguous_window_count))
+    }
+
     fn map_exon_chain_to_local_window(
         segments: &[TranscriptQpcrLocalExonSegment],
         exon_chain: &[(usize, usize)],
@@ -7834,6 +8011,9 @@ impl GentleEngine {
         })
     }
 
+    /// Map a transcript-local interval back to source DNA while preserving
+    /// exon-chain order. Reverse-strand subtraction lives here, not in
+    /// individual assay handlers or adapters.
     fn map_transcript_local_interval(
         segments: &[TranscriptQpcrLocalExonSegment],
         is_reverse: bool,
@@ -7897,6 +8077,392 @@ impl GentleEngine {
             exon_chain,
             covered_junction_labels,
         }
+    }
+
+    /// Compare terminal-exon RT-primer candidates by the documented,
+    /// lower-is-better policy.
+    ///
+    /// Keeping this policy in one named pure helper makes deliberate variants
+    /// easy to review. In particular, descriptive Tm is intentionally absent
+    /// from this comparator and therefore cannot become a hidden selector.
+    fn compare_terminal_exon_rt_primer_candidates(
+        left: &TerminalExonRtPrimerCandidate,
+        right: &TerminalExonRtPrimerCandidate,
+    ) -> Ordering {
+        let left_rank = &left.ranking;
+        let right_rank = &right.ranking;
+        left_rank
+            .variable_3prime_to_adapter_complementary_run_bp
+            .cmp(&right_rank.variable_3prime_to_adapter_complementary_run_bp)
+            .then_with(|| {
+                left_rank
+                    .adapter_variable_complementary_run_bp
+                    .cmp(&right_rank.adapter_variable_complementary_run_bp)
+            })
+            .then_with(|| {
+                left_rank
+                    .full_oligo_self_3prime_complementary_run_bp
+                    .cmp(&right_rank.full_oligo_self_3prime_complementary_run_bp)
+            })
+            .then_with(|| {
+                left_rank
+                    .max_prior_pool_3prime_complementary_run_bp
+                    .cmp(&right_rank.max_prior_pool_3prime_complementary_run_bp)
+            })
+            .then_with(|| {
+                left_rank
+                    .full_oligo_self_complementary_run_bp
+                    .cmp(&right_rank.full_oligo_self_complementary_run_bp)
+            })
+            .then_with(|| {
+                left_rank
+                    .max_prior_pool_complementary_run_bp
+                    .cmp(&right_rank.max_prior_pool_complementary_run_bp)
+            })
+            .then_with(|| {
+                left_rank
+                    .distance_from_terminal_exon_start_bp
+                    .cmp(&right_rank.distance_from_terminal_exon_start_bp)
+            })
+            .then_with(|| {
+                left.variable_primer_5_to_3
+                    .cmp(&right.variable_primer_5_to_3)
+            })
+    }
+
+    fn design_terminal_exon_rt_primer_pool(
+        &mut self,
+        mut request: TerminalExonRtPrimerPoolRequest,
+        op_id: &str,
+        run_id: &str,
+    ) -> Result<TerminalExonRtPrimerPoolReport, EngineError> {
+        if request.schema.trim().is_empty() {
+            request.schema = TERMINAL_EXON_RT_PRIMER_POOL_REQUEST_SCHEMA.to_string();
+        } else if request.schema != TERMINAL_EXON_RT_PRIMER_POOL_REQUEST_SCHEMA {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Unsupported terminal-exon RT-primer pool request schema '{}'; expected '{}'",
+                    request.schema, TERMINAL_EXON_RT_PRIMER_POOL_REQUEST_SCHEMA
+                ),
+                cause_chain: vec![],
+            });
+        }
+        let fixed_adapter = Self::normalize_iupac_text(&request.fixed_adapter_5prime)?;
+        if fixed_adapter.is_empty()
+            || !fixed_adapter
+                .as_bytes()
+                .iter()
+                .all(|base| matches!(base, b'A' | b'C' | b'G' | b'T'))
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Terminal-exon RT-primer design requires a non-empty fixed_adapter_5prime containing only A, C, G, and T"
+                    .to_string(),
+                cause_chain: vec![],
+            });
+        }
+        request.fixed_adapter_5prime = fixed_adapter.clone();
+        if request.variable_length_bp == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Terminal-exon RT-primer variable_length_bp must be at least 1"
+                    .to_string(),
+                cause_chain: vec![],
+            });
+        }
+        if request.terminal_exon_search_window_bp < request.variable_length_bp {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Terminal-exon RT-primer search window ({} bp) must be at least the variable segment length ({} bp)",
+                    request.terminal_exon_search_window_bp, request.variable_length_bp
+                ),
+                cause_chain: vec![],
+            });
+        }
+        if request.max_candidates_per_target == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Terminal-exon RT-primer max_candidates_per_target must be at least 1"
+                    .to_string(),
+                cause_chain: vec![],
+            });
+        }
+        if request.targets.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Terminal-exon RT-primer design requires at least one ordered target"
+                    .to_string(),
+                cause_chain: vec![],
+            });
+        }
+
+        let request_bytes = serde_json::to_vec(&request).map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not fingerprint terminal-exon RT-primer request: {error}"),
+            cause_chain: vec![],
+        })?;
+        let request_sha256 = sha256_prefixed_bytes(&request_bytes);
+        let report_id = match request
+            .report_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            Some(value) => Self::normalize_primer_design_report_id(value)?,
+            None => short_sha256_id("terminal_exon_rt_pool", &request_sha256),
+        };
+        let adapter_reverse_complement = Self::reverse_complement(&fixed_adapter);
+        let mut selected_pool = Vec::<TerminalExonRtPrimerCandidate>::new();
+        let mut target_results = Vec::with_capacity(request.targets.len());
+        let mut warnings = vec![];
+
+        for (target_index, requested) in request.targets.iter().enumerate() {
+            let priority_1based = target_index.saturating_add(1);
+            let seq_id = requested.seq_id.trim();
+            if seq_id.is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Terminal-exon RT-primer target {priority_1based} has an empty seq_id"
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            let context_label = format!("Terminal-exon RT-primer target {priority_1based}");
+            let template = self.resolve_single_transcript_design_template(
+                seq_id,
+                requested.source_feature_id,
+                requested.transcript_id.as_deref(),
+                &context_label,
+            )?;
+            let terminal_exon = template
+                .local_exon_segments
+                .last()
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Transcript '{}' has no exon geometry for terminal-exon RT-primer design",
+                        template.transcript_id
+                    ),
+                    cause_chain: vec![],
+                })?;
+            let terminal_exon_length_bp = terminal_exon
+                .local_end_0based_exclusive
+                .saturating_sub(terminal_exon.local_start_0based);
+            if terminal_exon_length_bp < request.variable_length_bp {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Terminal exon of transcript '{}' is {} bp, shorter than the requested {} bp variable primer segment",
+                        template.transcript_id, terminal_exon_length_bp, request.variable_length_bp
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            let (candidate_windows, ambiguous_candidate_count) =
+                Self::enumerate_canonical_transcript_segment_windows(
+                    &template,
+                    terminal_exon,
+                    request.terminal_exon_search_window_bp,
+                    request.variable_length_bp,
+                )?;
+            let mut candidates = vec![];
+            for window in candidate_windows {
+                let local_start = window.local_start_0based;
+                let local_end = window.local_end_0based_exclusive;
+                let target_segment_5_to_3 = window.sequence_5_to_3;
+                let variable_primer_5_to_3 = Self::reverse_complement(&target_segment_5_to_3);
+                let full_oligo_5_to_3 = format!("{fixed_adapter}{variable_primer_5_to_3}");
+                let variable_metrics =
+                    Self::compute_primer_heuristic_metrics(variable_primer_5_to_3.as_bytes());
+                let full_metrics =
+                    Self::compute_primer_heuristic_metrics(full_oligo_5_to_3.as_bytes());
+                let full_oligo_self_3prime_complementary_run_bp =
+                    Self::compute_primer_self_3prime_complementary_run(
+                        full_oligo_5_to_3.as_bytes(),
+                    );
+                let adapter_variable = Self::compute_primer_pair_dimer_metrics(
+                    fixed_adapter.as_bytes(),
+                    variable_primer_5_to_3.as_bytes(),
+                );
+                let mut max_prior_pool_3prime = 0usize;
+                let mut max_prior_pool = 0usize;
+                for selected in &selected_pool {
+                    let interaction = Self::compute_primer_pair_dimer_metrics(
+                        full_oligo_5_to_3.as_bytes(),
+                        selected.full_oligo_5_to_3.as_bytes(),
+                    );
+                    max_prior_pool_3prime =
+                        max_prior_pool_3prime.max(interaction.max_3prime_complementary_run_bp);
+                    max_prior_pool = max_prior_pool.max(interaction.max_complementary_run_bp);
+                }
+                let mapped = Self::map_transcript_local_interval(
+                    &template.local_exon_segments,
+                    template.strand.trim() == "-",
+                    local_start,
+                    local_end,
+                );
+                let source_range = mapped.source_ranges_0based.first().ok_or_else(|| EngineError {
+                    code: ErrorCode::Internal,
+                    message: format!(
+                        "Could not map terminal-exon RT-primer candidate on transcript '{}' back to source coordinates",
+                        template.transcript_id
+                    ),
+                    cause_chain: vec![],
+                })?;
+                let candidate_identity = format!(
+                    "{}:{}:{}:{}:{}",
+                    seq_id, template.transcript_id, local_start, local_end, variable_primer_5_to_3
+                );
+                candidates.push(TerminalExonRtPrimerCandidate {
+                    candidate_id: short_sha256_id("rt_primer", &candidate_identity),
+                    rank: 0,
+                    selected: false,
+                    transcript_local_start_0based: local_start,
+                    transcript_local_end_0based_exclusive: local_end,
+                    source_start_0based: source_range.start_0based,
+                    source_end_0based_exclusive: source_range.end_0based_exclusive,
+                    distance_from_terminal_exon_start_bp: local_start
+                        .saturating_sub(terminal_exon.local_start_0based),
+                    target_segment_5_to_3,
+                    variable_primer_5_to_3: variable_primer_5_to_3.clone(),
+                    full_oligo_5_to_3,
+                    variable_length_bp: variable_metrics.length_bp,
+                    variable_gc_fraction: Self::sequence_gc_fraction(
+                        variable_primer_5_to_3.as_bytes(),
+                    )
+                    .unwrap_or(0.0),
+                    variable_tm_c: Self::estimate_primer_tm_c(variable_primer_5_to_3.as_bytes()),
+                    variable_three_prime_base: char::from(variable_metrics.three_prime_base)
+                        .to_string(),
+                    variable_three_prime_gc_clamp: variable_metrics.three_prime_gc_clamp,
+                    variable_longest_homopolymer_run_bp: variable_metrics
+                        .longest_homopolymer_run_bp,
+                    variable_self_complementary_run_bp: variable_metrics.self_complementary_run_bp,
+                    variable_self_3prime_complementary_run_bp:
+                        Self::compute_primer_self_3prime_complementary_run(
+                            variable_primer_5_to_3.as_bytes(),
+                        ),
+                    ranking: TerminalExonRtPrimerCandidateRanking {
+                        variable_3prime_to_adapter_complementary_run_bp:
+                            Self::longest_suffix_match_in_target(
+                                variable_primer_5_to_3.as_bytes(),
+                                adapter_reverse_complement.as_bytes(),
+                            ),
+                        adapter_variable_complementary_run_bp: adapter_variable
+                            .max_complementary_run_bp,
+                        full_oligo_self_3prime_complementary_run_bp:
+                            full_oligo_self_3prime_complementary_run_bp,
+                        max_prior_pool_3prime_complementary_run_bp: max_prior_pool_3prime,
+                        full_oligo_self_complementary_run_bp: full_metrics
+                            .self_complementary_run_bp,
+                        max_prior_pool_complementary_run_bp: max_prior_pool,
+                        distance_from_terminal_exon_start_bp: local_start
+                            .saturating_sub(terminal_exon.local_start_0based),
+                    },
+                });
+            }
+            if candidates.is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Terminal-exon RT-primer target {} ('{}') produced no canonical {} bp candidates in the first {} bp of its terminal exon",
+                        priority_1based,
+                        template.transcript_id,
+                        request.variable_length_bp,
+                        request.terminal_exon_search_window_bp
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            candidates.sort_by(Self::compare_terminal_exon_rt_primer_candidates);
+            for (rank, candidate) in candidates.iter_mut().enumerate() {
+                candidate.rank = rank.saturating_add(1);
+                candidate.selected = rank == 0;
+            }
+            let evaluated_candidate_count = candidates.len();
+            let selected = candidates[0].clone();
+            selected_pool.push(selected);
+            candidates.truncate(request.max_candidates_per_target);
+            if ambiguous_candidate_count > 0 {
+                warnings.push(format!(
+                    "Skipped {} ambiguous terminal-exon window(s) for target {} ('{}').",
+                    ambiguous_candidate_count, priority_1based, template.transcript_id
+                ));
+            }
+            target_results.push(TerminalExonRtPrimerTargetResult {
+                priority_1based,
+                requested: requested.clone(),
+                resolved_transcript_feature_id: template.transcript_feature_id,
+                resolved_transcript_id: template.transcript_id,
+                resolved_transcript_label: template.transcript_label,
+                strand: template.strand,
+                terminal_exon_source_start_0based: terminal_exon.source_start_0based,
+                terminal_exon_source_end_0based_exclusive: terminal_exon
+                    .source_end_0based_exclusive,
+                terminal_exon_transcript_start_0based: terminal_exon.local_start_0based,
+                terminal_exon_transcript_end_0based_exclusive: terminal_exon
+                    .local_end_0based_exclusive,
+                terminal_exon_length_bp,
+                evaluated_candidate_count,
+                ambiguous_candidate_count,
+                candidates,
+            });
+        }
+
+        let mut selected_pool_interactions = vec![];
+        for left_index in 0..selected_pool.len() {
+            for right_index in left_index.saturating_add(1)..selected_pool.len() {
+                let left = &selected_pool[left_index];
+                let right = &selected_pool[right_index];
+                let variable = Self::compute_primer_pair_dimer_metrics(
+                    left.variable_primer_5_to_3.as_bytes(),
+                    right.variable_primer_5_to_3.as_bytes(),
+                );
+                let full = Self::compute_primer_pair_dimer_metrics(
+                    left.full_oligo_5_to_3.as_bytes(),
+                    right.full_oligo_5_to_3.as_bytes(),
+                );
+                selected_pool_interactions.push(TerminalExonRtPrimerPoolInteraction {
+                    left_priority_1based: left_index.saturating_add(1),
+                    right_priority_1based: right_index.saturating_add(1),
+                    left_candidate_id: left.candidate_id.clone(),
+                    right_candidate_id: right.candidate_id.clone(),
+                    variable_max_complementary_run_bp: variable.max_complementary_run_bp,
+                    variable_max_3prime_complementary_run_bp: variable
+                        .max_3prime_complementary_run_bp,
+                    full_oligo_max_complementary_run_bp: full.max_complementary_run_bp,
+                    full_oligo_max_3prime_complementary_run_bp: full
+                        .max_3prime_complementary_run_bp,
+                });
+            }
+        }
+
+        let report = TerminalExonRtPrimerPoolReport {
+            schema: TERMINAL_EXON_RT_PRIMER_POOL_REPORT_SCHEMA.to_string(),
+            report_id,
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: Some(op_id.to_string()),
+            run_id: Some(run_id.to_string()),
+            request_sha256,
+            fixed_adapter_5prime: fixed_adapter,
+            variable_length_bp: request.variable_length_bp,
+            terminal_exon_search_window_bp: request.terminal_exon_search_window_bp,
+            max_candidates_per_target: request.max_candidates_per_target,
+            ranking_policy: "lexicographic_min(variable_3prime_to_adapter_complementary_run_bp, adapter_variable_complementary_run_bp, full_oligo_self_3prime_complementary_run_bp, max_prior_pool_3prime_complementary_run_bp, full_oligo_self_complementary_run_bp, max_prior_pool_complementary_run_bp, distance_from_terminal_exon_start_bp, variable_primer_5_to_3); targets are selected in caller order"
+                .to_string(),
+            tm_policy: format!(
+                "Tm is descriptive and excluded from ranking. {}",
+                Self::primer_tm_model_description()
+            ),
+            targets: target_results,
+            selected_pool_interactions,
+            warnings,
+        };
+        self.upsert_terminal_exon_rt_primer_pool_report(report.clone())?;
+        Ok(report)
     }
 
     fn cdna_assay_genomic_equivalent_span(
@@ -32623,6 +33189,7 @@ impl GentleEngine {
             cdna_assay_product_materialization: None,
             primerbank_search_report: None,
             external_primer_pair_import_report: None,
+            terminal_exon_rt_primer_pool: None,
             primer_variant_screen: None,
             transcript_qpcr_panel: None,
             transcript_assay_panel: None,
@@ -38383,6 +38950,21 @@ impl GentleEngine {
                         None,
                     )?;
                 }
+                Operation::DesignTerminalExonRtPrimerPool { request } => {
+                    parent_seq_ids
+                        .extend(request.targets.iter().map(|target| target.seq_id.clone()));
+                    parent_seq_ids.sort();
+                    parent_seq_ids.dedup();
+                    let report =
+                        self.design_terminal_exon_rt_primer_pool(request, &result.op_id, run_id)?;
+                    result.warnings.extend(report.warnings.iter().cloned());
+                    result.messages.push(format!(
+                        "Designed and persisted terminal-exon RT-primer pool '{}' with {} selected oligo(s)",
+                        report.report_id,
+                        report.targets.len()
+                    ));
+                    result.terminal_exon_rt_primer_pool = Some(Box::new(report));
+                }
                 Operation::DesignInsertionPrimerPairs {
                     template,
                     insertion,
@@ -38447,6 +39029,16 @@ impl GentleEngine {
                     result.messages.push(format!(
                         "Exported primer-design report '{}' with {} pair(s) to '{}'",
                         report.report_id, report.pair_count, path
+                    ));
+                }
+                Operation::ExportTerminalExonRtPrimerPoolReport { report_id, path } => {
+                    let report =
+                        self.export_terminal_exon_rt_primer_pool_report(&report_id, &path)?;
+                    result.messages.push(format!(
+                        "Exported terminal-exon RT-primer pool report '{}' with {} target(s) to '{}'",
+                        report.report_id,
+                        report.targets.len(),
+                        path
                     ));
                 }
                 Operation::AssessPrimerPairSpecificity {

@@ -149,7 +149,9 @@ use crate::{
         SequencingPrimerOverlayReport, SequencingPrimerOverlaySuggestion,
         SequencingPrimerProblemKind, SequencingPrimerProposalRow, SequencingReadOrientation,
         SequencingTraceRecord, SequencingTraceSummary, SnpMutationSpec, SplicingRange,
-        SplicingScopePreset, TfThresholdOverride, TfbsHitScanReport, TfbsProgress,
+        SplicingScopePreset, TERMINAL_EXON_RT_PRIMER_POOL_REQUEST_SCHEMA,
+        TerminalExonRtPrimerPoolReport, TerminalExonRtPrimerPoolRequest,
+        TerminalExonRtPrimerTarget, TfThresholdOverride, TfbsHitScanReport, TfbsProgress,
         TfbsScoreTrackCorrelationMetric, TfbsScoreTrackCorrelationSignalSource,
         TfbsScoreTrackReport, TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
         TfbsTrackSimilarityReport, TfbsTrackSimilarityRow, TranscriptAssayAmpliconRange,
@@ -1404,6 +1406,7 @@ pub struct MainAreaDna {
     qpcr_design_ui: QpcrDesignOpsUiState,
     cached_primer_design_report: Option<Arc<PrimerDesignReport>>,
     cached_qpcr_design_report: Option<Arc<QpcrDesignReport>>,
+    cached_terminal_exon_rt_primer_pool_report: Option<Arc<TerminalExonRtPrimerPoolReport>>,
     transcript_assay_panel_ui: TranscriptAssayPanelUiState,
     cached_transcript_assay_panel_report: Option<Arc<TranscriptAssayPanelReport>>,
     cached_experimental_assay_handoff: Option<Arc<ExperimentalAssayHandoffReport>>,
@@ -2194,6 +2197,7 @@ impl MainAreaDna {
             qpcr_design_ui: QpcrDesignOpsUiState::default(),
             cached_primer_design_report: None,
             cached_qpcr_design_report: None,
+            cached_terminal_exon_rt_primer_pool_report: None,
             transcript_assay_panel_ui: TranscriptAssayPanelUiState::default(),
             cached_transcript_assay_panel_report: None,
             cached_experimental_assay_handoff: None,
@@ -19965,6 +19969,10 @@ impl MainAreaDna {
             Operation::DesignTranscriptAssayPanel {
                 seq_id, report_id, ..
             } => (Some(seq_id.clone()), report_id.clone()),
+            Operation::DesignTerminalExonRtPrimerPool { request } => (
+                request.targets.first().map(|target| target.seq_id.clone()),
+                request.report_id.clone(),
+            ),
             _ => (None, None),
         };
         let started = Instant::now();
@@ -20149,12 +20157,23 @@ impl MainAreaDna {
             self.primer_design_task = None;
             self.cached_primer_design_report = None;
             self.cached_qpcr_design_report = None;
+            self.cached_terminal_exon_rt_primer_pool_report = None;
             match done {
                 Ok(PrimerDesignTaskCompletion::Single(result)) => {
+                    let terminal_exon_rt_pool =
+                        result.terminal_exon_rt_primer_pool.as_deref().cloned();
                     let transcript_panel_report = result.transcript_assay_panel.as_deref().cloned();
                     let experimental_handoff =
                         result.experimental_assay_handoff.as_deref().cloned();
                     self.handle_operation_success(result, started);
+                    if let Some(report) = terminal_exon_rt_pool {
+                        self.primer_design_ui.terminal_exon_rt_pool.report_id =
+                            report.report_id.clone();
+                        self.cached_terminal_exon_rt_primer_pool_report = Some(Arc::new(report));
+                        self.pcr_designer_mode = PcrDesignerMode::TerminalExonRtPool;
+                        self.save_engine_ops_state();
+                        return;
+                    }
                     if let Some(report) = experimental_handoff {
                         self.cached_experimental_assay_handoff = Some(Arc::new(report));
                         self.pcr_designer_mode = PcrDesignerMode::TranscriptPanels;
@@ -23992,6 +24011,7 @@ impl MainAreaDna {
         self.qpcr_design_ui = s.qpcr_design_ui;
         self.cached_primer_design_report = None;
         self.cached_qpcr_design_report = None;
+        self.cached_terminal_exon_rt_primer_pool_report = None;
         self.transcript_assay_panel_ui = s.transcript_assay_panel_ui;
         self.cached_transcript_assay_panel_report = None;
         self.cached_experimental_assay_handoff = None;

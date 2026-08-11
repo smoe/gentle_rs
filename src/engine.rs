@@ -2764,6 +2764,7 @@ struct PrimerDesignStore {
     updated_at_unix_ms: u128,
     reports: HashMap<String, PrimerDesignReport>,
     qpcr_reports: HashMap<String, QpcrDesignReport>,
+    terminal_exon_rt_primer_pools: HashMap<String, TerminalExonRtPrimerPoolReport>,
     primer_specificity_reports: HashMap<String, PrimerSpecificityReport>,
     transcript_assay_panels: HashMap<String, TranscriptAssayPanelReport>,
     external_primer_pair_imports: HashMap<String, ExternalPrimerPairImportReport>,
@@ -4265,6 +4266,9 @@ pub enum Operation {
         max_pairs: Option<usize>,
         report_id: Option<String>,
     },
+    DesignTerminalExonRtPrimerPool {
+        request: TerminalExonRtPrimerPoolRequest,
+    },
     DesignInsertionPrimerPairs {
         template: SeqId,
         insertion: PrimerInsertionIntent,
@@ -4281,6 +4285,10 @@ pub enum Operation {
         report_id: Option<String>,
     },
     ExportPrimerDesignReport {
+        report_id: String,
+        path: String,
+    },
+    ExportTerminalExonRtPrimerPoolReport {
         report_id: String,
         path: String,
     },
@@ -9459,6 +9467,7 @@ impl GentleEngine {
                 | Operation::RenderProteaseDigestGelSvg { .. }
                 | Operation::RenderProtein2dGelSvg { .. }
                 | Operation::ExportPrimerDesignReport { .. }
+                | Operation::ExportTerminalExonRtPrimerPoolReport { .. }
                 | Operation::PreparePrimerPairSpecificityHandoff { .. }
                 | Operation::RenderProtocolCartoonSvg { .. }
                 | Operation::RenderProtocolCartoonTemplateSvg { .. }
@@ -11982,6 +11991,7 @@ impl GentleEngine {
     ) -> Result<(), EngineError> {
         if store.reports.is_empty()
             && store.qpcr_reports.is_empty()
+            && store.terminal_exon_rt_primer_pools.is_empty()
             && store.primer_specificity_reports.is_empty()
             && store.transcript_assay_panels.is_empty()
             && store.external_primer_pair_imports.is_empty()
@@ -12601,6 +12611,90 @@ impl GentleEngine {
             code: ErrorCode::Io,
             message: format!("Could not write primer-design report to '{path}': {e}"),
 
+            cause_chain: vec![],
+        })?;
+        Ok(report)
+    }
+
+    fn upsert_terminal_exon_rt_primer_pool_report(
+        &mut self,
+        report: TerminalExonRtPrimerPoolReport,
+    ) -> Result<bool, EngineError> {
+        let mut store = self.read_primer_design_store();
+        let replaced = store
+            .terminal_exon_rt_primer_pools
+            .insert(report.report_id.clone(), report)
+            .is_some();
+        self.write_primer_design_store(store)?;
+        Ok(replaced)
+    }
+
+    pub fn list_terminal_exon_rt_primer_pool_reports(
+        &self,
+    ) -> Vec<TerminalExonRtPrimerPoolReportSummary> {
+        let store = self.read_primer_design_store();
+        let mut ids = store
+            .terminal_exon_rt_primer_pools
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+        ids.sort();
+        ids.into_iter()
+            .filter_map(|id| store.terminal_exon_rt_primer_pools.get(&id))
+            .map(|report| TerminalExonRtPrimerPoolReportSummary {
+                report_id: report.report_id.clone(),
+                generated_at_unix_ms: report.generated_at_unix_ms,
+                op_id: report.op_id.clone(),
+                run_id: report.run_id.clone(),
+                target_count: report.targets.len(),
+                selected_oligo_count: report
+                    .targets
+                    .iter()
+                    .filter(|target| target.candidates.iter().any(|candidate| candidate.selected))
+                    .count(),
+                fixed_adapter_5prime: report.fixed_adapter_5prime.clone(),
+            })
+            .collect()
+    }
+
+    pub fn get_terminal_exon_rt_primer_pool_report(
+        &self,
+        report_id: &str,
+    ) -> Result<TerminalExonRtPrimerPoolReport, EngineError> {
+        let report_id = Self::normalize_primer_design_report_id(report_id)?;
+        self.read_primer_design_store()
+            .terminal_exon_rt_primer_pools
+            .get(&report_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Terminal-exon RT-primer pool report '{}' not found",
+                    report_id
+                ),
+                cause_chain: vec![],
+            })
+    }
+
+    pub fn export_terminal_exon_rt_primer_pool_report(
+        &self,
+        report_id: &str,
+        path: &str,
+    ) -> Result<TerminalExonRtPrimerPoolReport, EngineError> {
+        let report = self.get_terminal_exon_rt_primer_pool_report(report_id)?;
+        let text = serde_json::to_string_pretty(&report).map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not serialize terminal-exon RT-primer pool report '{}': {error}",
+                report.report_id
+            ),
+            cause_chain: vec![],
+        })?;
+        std::fs::write(path, text).map_err(|error| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not write terminal-exon RT-primer pool report to '{path}': {error}"
+            ),
             cause_chain: vec![],
         })?;
         Ok(report)

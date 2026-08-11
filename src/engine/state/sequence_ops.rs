@@ -5192,6 +5192,11 @@ impl GentleEngine {
         1.9872
     }
 
+    /// Return the longest exact run over every relative alignment shift.
+    ///
+    /// This compares bytes as supplied. Complementarity callers must pass the
+    /// reverse complement explicitly, which keeps strand policy visible at the
+    /// biological call site.
     pub(super) fn max_contiguous_match_run_with_shift(left: &[u8], right: &[u8]) -> usize {
         if left.is_empty() || right.is_empty() {
             return 0;
@@ -5219,6 +5224,11 @@ impl GentleEngine {
         best
     }
 
+    /// Return the longest 3'-terminal suffix of `source` found in `target`.
+    ///
+    /// Primer-dimer callers normally provide the other oligo's reverse
+    /// complement as `target`; this helper itself makes no complement or
+    /// thermodynamic claim.
     pub(super) fn longest_suffix_match_in_target(source: &[u8], target: &[u8]) -> usize {
         if source.is_empty() || target.is_empty() {
             return 0;
@@ -5232,6 +5242,8 @@ impl GentleEngine {
         0
     }
 
+    /// Compute the shared inexpensive sequence heuristics used to describe and
+    /// rank primer/oligo candidates before any optional external backend.
     pub(super) fn compute_primer_heuristic_metrics(sequence: &[u8]) -> PrimerHeuristicMetrics {
         let three_prime_base = sequence
             .last()
@@ -5254,6 +5266,11 @@ impl GentleEngine {
         }
     }
 
+    /// Compute symmetric pairwise complementarity diagnostics for two oligos.
+    ///
+    /// The result is a deterministic sequence heuristic, not a predicted
+    /// reaction yield or replacement for a later specificity/thermodynamic
+    /// screen.
     pub(super) fn compute_primer_pair_dimer_metrics(
         forward_sequence: &[u8],
         reverse_sequence: &[u8],
@@ -5275,6 +5292,8 @@ impl GentleEngine {
         }
     }
 
+    /// Measure the longest exact 3'-terminal run found in the oligo's reverse
+    /// complement as a deterministic self-extension-risk heuristic.
     pub(super) fn compute_primer_self_3prime_complementary_run(sequence: &[u8]) -> usize {
         if sequence.is_empty() {
             return 0;

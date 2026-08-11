@@ -3088,6 +3088,49 @@ Shared shell command:
         promoter-luciferase bridge
     - `variant materialize-allele SEQ_ID --allele reference|alternate [--variant ID] [--output-id ID]`
     - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
+    - `primers design-terminal-exon-rt-pool REQUEST_JSON_OR_@FILE`
+      - accepts `gentle.terminal_exon_rt_primer_pool_request.v1`
+      - resolves each ordered target through the annotated Splicing Expert
+        transcript model and searches exact-length sequence-specific segments
+        near the transcript-oriented start of its terminal exon
+      - the complete oligo is the fixed 5-prime adapter followed by the reverse
+        complement of the selected mature-transcript segment
+      - caller order is target priority. Adapter, self-, and prior-pool
+        complementarity are ranked before distance; Tm is reported but does not
+        affect ranking
+      - example request file:
+        ```json
+        {
+          "schema": "gentle.terminal_exon_rt_primer_pool_request.v1",
+          "fixed_adapter_5prime": "ACTTGCCTGTCGCTCTATCTTC",
+          "variable_length_bp": 22,
+          "terminal_exon_search_window_bp": 250,
+          "max_candidates_per_target": 10,
+          "targets": [
+            {
+              "seq_id": "tp73_locus",
+              "source_feature_id": 0,
+              "transcript_id": "NM_005427.4",
+              "label": "TP73"
+            },
+            {
+              "seq_id": "patz1_locus",
+              "source_feature_id": 0,
+              "transcript_id": "NM_032052.4",
+              "label": "PATZ1"
+            }
+          ],
+          "report_id": "tp73_patz1_terminal_exon_rt_pool"
+        }
+        ```
+        The sequence, feature, and transcript identifiers are illustrative;
+        use the exact identifiers shown for the loaded annotations in GENtle's
+        Splicing Expert or introspection output.
+      - run with
+        `gentle_cli primers design-terminal-exon-rt-pool @terminal_exon_rt_pool.json`
+      - this report evaluates terminal-exon geometry and within-request pool
+        compatibility; it does not claim a whole-transcriptome or whole-genome
+        specificity screen
     - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers specificity REPORT_ID --pair-rank N --target-genome GENOME_ID [--max-target-amplicon-bp N | --readiness-max-amplicon-bp N --exploratory-max-amplicon-bp N] [--report-detail compact|full] [--min-primer-coverage-fraction F] [--max-3prime-mismatches N] [--three-prime-window-bp N] [--min-total-mismatches-to-unintended-target N] [--max-hits-per-primer N] [--path OUTPUT.json]`
     - `primers specificity --forward SEQ --reverse SEQ --target-genome GENOME_ID [--max-target-amplicon-bp N | --readiness-max-amplicon-bp N --exploratory-max-amplicon-bp N] [--report-detail compact|full] [--min-primer-coverage-fraction F] [--max-3prime-mismatches N] [--three-prime-window-bp N] [--min-total-mismatches-to-unintended-target N] [--max-hits-per-primer N] [--path OUTPUT.json]`
@@ -3227,17 +3270,17 @@ Shared shell command:
     - `primers seed-qpcr-from-feature SEQ_ID FEATURE_ID`
     - `primers seed-qpcr-from-splicing SEQ_ID FEATURE_ID [--mode shared_gene|distinguish_transcript] [--transcript-id ID] [--specificity-evidence junction_only|unique_exon_or_chain|either_prefer_junction]`
     - `primers list-reports`
-      - lists both persisted primer-design reports and persisted
-        primer-specificity artifacts in separate arrays
+      - lists persisted primer-design reports, terminal-exon RT-primer-pool
+        reports, and primer-specificity artifacts in separate arrays
     - `primers show-report REPORT_ID`
-      - accepts either kind; design reports include `simple_pcr_pairs` with
+      - accepts all three kinds; design reports include `simple_pcr_pairs` with
         per-pair left/right distance from the core ROI, overlap flags, and
         flanking labels for quick CLI inspection. The full design report also
         exposes additive score terms, bounded evaluated rejection rows,
         capture completeness/accounting, and its construct-reasoning graph id.
     - `primers export-report REPORT_ID OUTPUT.json`
-      - exports either a primer-design report or a persisted
-        primer-specificity artifact without rerunning BLAST
+      - exports a primer-design report, terminal-exon RT-primer-pool report, or
+        persisted primer-specificity artifact without rerunning analysis
     - `primers list-qpcr-reports`
     - `primers show-qpcr-report REPORT_ID`
       - persisted qPCR report output now includes `best_assay_summary` plus

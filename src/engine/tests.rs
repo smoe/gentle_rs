@@ -12892,6 +12892,264 @@ fn transcript_assay_near_match_engine() -> GentleEngine {
     engine
 }
 
+fn terminal_exon_rt_primer_pool_request() -> TerminalExonRtPrimerPoolRequest {
+    TerminalExonRtPrimerPoolRequest {
+        schema: TERMINAL_EXON_RT_PRIMER_POOL_REQUEST_SCHEMA.to_string(),
+        fixed_adapter_5prime: "ACTTGCCTGTCGCTCTATCTTC".to_string(),
+        variable_length_bp: 22,
+        terminal_exon_search_window_bp: 80,
+        max_candidates_per_target: 5,
+        targets: vec![
+            TerminalExonRtPrimerTarget {
+                seq_id: "panel_src".to_string(),
+                source_feature_id: 0,
+                transcript_id: Some("TX1".to_string()),
+                label: Some("first priority".to_string()),
+            },
+            TerminalExonRtPrimerTarget {
+                seq_id: "panel_src".to_string(),
+                source_feature_id: 1,
+                transcript_id: Some("TX2".to_string()),
+                label: Some("second priority".to_string()),
+            },
+        ],
+        report_id: Some("terminal_rt_pool_test".to_string()),
+    }
+}
+
+#[test]
+fn terminal_exon_rt_primer_pool_is_deterministic_persisted_exportable_and_undoable() {
+    let request = terminal_exon_rt_primer_pool_request();
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let report = engine
+        .apply(Operation::DesignTerminalExonRtPrimerPool {
+            request: request.clone(),
+        })
+        .expect("design terminal-exon RT-primer pool")
+        .terminal_exon_rt_primer_pool
+        .expect("terminal-exon RT-primer pool report");
+
+    assert_eq!(report.schema, TERMINAL_EXON_RT_PRIMER_POOL_REPORT_SCHEMA);
+    assert_eq!(report.report_id, "terminal_rt_pool_test");
+    assert_eq!(report.targets.len(), 2);
+    assert_eq!(report.selected_pool_interactions.len(), 1);
+    assert!(report.tm_policy.contains("excluded from ranking"));
+    assert_eq!(report.targets[0].priority_1based, 1);
+    assert_eq!(report.targets[0].resolved_transcript_id, "TX1");
+    assert_eq!(report.targets[1].priority_1based, 2);
+    assert_eq!(report.targets[1].resolved_transcript_id, "TX2");
+    for target in &report.targets {
+        assert_eq!(target.candidates.len(), 5);
+        assert!(target.evaluated_candidate_count >= target.candidates.len());
+        let selected = target
+            .candidates
+            .iter()
+            .find(|candidate| candidate.selected)
+            .expect("selected candidate");
+        assert_eq!(selected.rank, 1);
+        assert_eq!(selected.variable_length_bp, 22);
+        assert_eq!(selected.variable_primer_5_to_3.len(), 22);
+        assert_eq!(
+            selected.full_oligo_5_to_3,
+            format!(
+                "{}{}",
+                request.fixed_adapter_5prime, selected.variable_primer_5_to_3
+            )
+        );
+        assert_eq!(
+            GentleEngine::reverse_complement(&selected.target_segment_5_to_3),
+            selected.variable_primer_5_to_3
+        );
+        assert!(
+            selected.transcript_local_start_0based >= target.terminal_exon_transcript_start_0based
+        );
+        assert!(
+            selected.transcript_local_end_0based_exclusive
+                <= target.terminal_exon_transcript_end_0based_exclusive
+        );
+        assert_eq!(
+            selected.distance_from_terminal_exon_start_bp,
+            selected
+                .transcript_local_start_0based
+                .saturating_sub(target.terminal_exon_transcript_start_0based)
+        );
+    }
+
+    let stored = engine
+        .get_terminal_exon_rt_primer_pool_report("terminal_rt_pool_test")
+        .expect("stored terminal-exon RT-primer pool");
+    assert_eq!(stored.request_sha256, report.request_sha256);
+    assert_eq!(
+        engine.list_terminal_exon_rt_primer_pool_reports()[0].selected_oligo_count,
+        2
+    );
+    let dir = tempfile::tempdir().expect("temporary export directory");
+    let path = dir.path().join("terminal_rt_pool.json");
+    let history_before_export = engine.history_summary();
+    engine
+        .apply(Operation::ExportTerminalExonRtPrimerPoolReport {
+            report_id: "terminal_rt_pool_test".to_string(),
+            path: path.to_string_lossy().to_string(),
+        })
+        .expect("export terminal-exon RT-primer pool through operation");
+    assert_eq!(
+        engine.history_summary().undo_count,
+        history_before_export.undo_count,
+        "report export must not add an undo checkpoint"
+    );
+    let exported: TerminalExonRtPrimerPoolReport = serde_json::from_slice(
+        &std::fs::read(&path).expect("read exported terminal-exon RT-primer pool"),
+    )
+    .expect("parse exported terminal-exon RT-primer pool");
+    assert_eq!(exported.request_sha256, report.request_sha256);
+
+    let selected_sequences = |report: &TerminalExonRtPrimerPoolReport| {
+        report
+            .targets
+            .iter()
+            .map(|target| {
+                target
+                    .candidates
+                    .iter()
+                    .find(|candidate| candidate.selected)
+                    .expect("selected candidate")
+                    .full_oligo_5_to_3
+                    .clone()
+            })
+            .collect::<Vec<_>>()
+    };
+    let mut repeated_engine = transcript_qpcr_panel_test_engine();
+    let repeated = repeated_engine
+        .apply(Operation::DesignTerminalExonRtPrimerPool { request })
+        .expect("repeat deterministic terminal-exon RT-primer pool design")
+        .terminal_exon_rt_primer_pool
+        .expect("repeated terminal-exon RT-primer pool report");
+    assert_eq!(selected_sequences(&report), selected_sequences(&repeated));
+    assert_eq!(
+        report.selected_pool_interactions,
+        repeated.selected_pool_interactions
+    );
+
+    engine
+        .undo_last_operation()
+        .expect("undo terminal-exon RT-primer pool design");
+    assert!(
+        engine
+            .get_terminal_exon_rt_primer_pool_report("terminal_rt_pool_test")
+            .is_err()
+    );
+}
+
+#[test]
+fn terminal_exon_rt_primer_pool_requires_explicit_transcript_for_ambiguous_group() {
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let mut request = terminal_exon_rt_primer_pool_request();
+    request.targets.truncate(1);
+    request.targets[0].transcript_id = None;
+    let error = engine
+        .apply(Operation::DesignTerminalExonRtPrimerPool { request })
+        .expect_err("ambiguous transcript group must be rejected");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("TX1"));
+    assert!(error.message.contains("TX2"));
+    assert!(error.message.contains("specify transcript_id explicitly"));
+}
+
+#[test]
+fn terminal_exon_rt_primer_pool_maps_reverse_strand_terminal_exon_coordinates() {
+    let mut dna = seq(&"ACGT".repeat(40));
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(0, 30),
+            gb_io::seq::Location::simple_range(60, 100),
+        ]))),
+        qualifiers: vec![
+            ("gene".into(), Some("REVRT".to_string())),
+            ("transcript_id".into(), Some("REVRT-201".to_string())),
+            ("label".into(), Some("REVRT-201".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("reverse_rt".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let report = engine
+        .apply(Operation::DesignTerminalExonRtPrimerPool {
+            request: TerminalExonRtPrimerPoolRequest {
+                schema: TERMINAL_EXON_RT_PRIMER_POOL_REQUEST_SCHEMA.to_string(),
+                fixed_adapter_5prime: "ACTTGCCTGTCGCTCTATCTTC".to_string(),
+                variable_length_bp: 22,
+                terminal_exon_search_window_bp: 30,
+                max_candidates_per_target: 3,
+                targets: vec![TerminalExonRtPrimerTarget {
+                    seq_id: "reverse_rt".to_string(),
+                    source_feature_id: 0,
+                    transcript_id: Some("REVRT-201".to_string()),
+                    label: None,
+                }],
+                report_id: Some("reverse_rt_pool".to_string()),
+            },
+        })
+        .expect("design reverse-strand terminal-exon RT primer")
+        .terminal_exon_rt_primer_pool
+        .expect("reverse-strand terminal-exon RT-primer pool report");
+    let target = &report.targets[0];
+    assert_eq!(target.strand, "-");
+    assert_eq!(target.terminal_exon_source_start_0based, 0);
+    assert_eq!(target.terminal_exon_source_end_0based_exclusive, 30);
+    let selected = target
+        .candidates
+        .iter()
+        .find(|candidate| candidate.selected)
+        .expect("selected reverse-strand candidate");
+    assert_eq!(
+        selected.source_start_0based,
+        target
+            .terminal_exon_source_end_0based_exclusive
+            .saturating_sub(selected.distance_from_terminal_exon_start_bp + 22)
+    );
+    assert_eq!(
+        selected.source_end_0based_exclusive,
+        target
+            .terminal_exon_source_end_0based_exclusive
+            .saturating_sub(selected.distance_from_terminal_exon_start_bp)
+    );
+}
+
+#[test]
+fn terminal_exon_rt_primer_candidate_policy_is_named_deterministic_and_tm_independent() {
+    let mut preferred = TerminalExonRtPrimerCandidate {
+        variable_primer_5_to_3: "AAAAAAAAAAAAAAAAAAAAAA".to_string(),
+        variable_tm_c: 5.0,
+        ranking: TerminalExonRtPrimerCandidateRanking {
+            distance_from_terminal_exon_start_bp: 0,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let mut later = TerminalExonRtPrimerCandidate {
+        variable_primer_5_to_3: "CCCCCCCCCCCCCCCCCCCCCC".to_string(),
+        variable_tm_c: 95.0,
+        ranking: TerminalExonRtPrimerCandidateRanking {
+            distance_from_terminal_exon_start_bp: 1,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    assert_eq!(
+        GentleEngine::compare_terminal_exon_rt_primer_candidates(&preferred, &later),
+        std::cmp::Ordering::Less
+    );
+
+    preferred.variable_tm_c = 99.0;
+    later.variable_tm_c = 1.0;
+    assert_eq!(
+        GentleEngine::compare_terminal_exon_rt_primer_candidates(&preferred, &later),
+        std::cmp::Ordering::Less,
+        "descriptive Tm must not affect the selection policy"
+    );
+}
+
 #[test]
 fn transcript_qpcr_panel_reports_shared_components_and_characteristic_forward_rows() {
     let mut engine = transcript_qpcr_panel_test_engine();
