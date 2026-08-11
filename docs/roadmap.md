@@ -285,6 +285,8 @@ wet-lab conclusions or unconfirmed mutations.
 
 - Optional OS credential-store persistence for Agent Assistant API keys.
 - Optional tiny generation probe for quota verification.
+- Implement the opt-in native-Mistral inner-agent conformance routine described
+  in `docs/testing.md`; self-skip unless `MISTRAL_API_KEY` is supplied.
 - Supplemental restriction-enzyme usage annotations beyond REBASE.
 - Floating restriction-site detail popover/window if the Description panel is
   too easy to miss.

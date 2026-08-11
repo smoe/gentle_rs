@@ -1,5 +1,11 @@
 # GENtle Changelog
 
+- Expanded the inner Agent Assistant tutorial with two introspection-complete,
+  offline exercises and documented the precise determinism boundary between
+  variable model proposals and GENtle's fixed parser, readiness, execution,
+  and effect-verification contracts. The testing guide now specifies an
+  opt-in, self-skipping native-Mistral conformance routine.
+
 - Grouped all project lifecycle commands at the top of the File menu, with
   `Save Project...` immediately beside `Close Project` before sequence and
   resource commands.

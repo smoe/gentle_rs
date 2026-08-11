@@ -105,6 +105,56 @@ CI additionally runs a CLI smoke path for core tutorial chapters via:
 
 - `cargo run --bin gentle_cli -- workflow @docs/examples/workflows/<core>.json`
 
+### 3.3 Planned opt-in Mistral inner-agent conformance test
+
+Add one live-provider integration test for the native Mistral Agent Assistant
+transport. This is a provider conformance test, not a deterministic-output
+snapshot and not part of default offline CI.
+
+Activation and isolation:
+
+- If `MISTRAL_API_KEY` is missing or blank, print one explicit skip line and
+  return before model discovery or generation. Do not use `#[ignore]`, because
+  that would also suppress the test when the key is deliberately supplied.
+- When the key is present, use the existing `mistral_large_native` transport
+  with `--model mistral-small-latest` by default. Allow
+  `GENTLE_TEST_MISTRAL_MODEL` to override the model without changing the
+  checked-in agent catalog.
+- Use a temporary project state and report directory. Never print the API key,
+  persist it in project state, or include it in failure snapshots.
+- Disable retries and use a bounded request timeout so a provider outage cannot
+  stall the suite indefinitely.
+
+Test routine:
+
+1. Run native-Mistral preflight and require successful authentication, model
+   discovery, and selected-model resolution.
+2. Submit the fixed, offline restriction-map prompt from the Agent Interfaces
+   tutorial. Request one `execution=ask` suggestion and no network-backed
+   biological operation.
+3. Validate `gentle.agent_response.v1`, require exactly one non-recursive
+   command, and parse it through `parse_shell_line`.
+4. Resolve the suggested command's canonical capability descriptor and require
+   `annotation_status=fact_annotated`; reject a command not represented by
+   introspection.
+5. Bind its arguments and require `introspect readiness` to report `ready`
+   against the temporary state before execution.
+6. Execute through the shared shell path with auto-execution disabled, then
+   verify declared hard effects through `introspect verify-effects`.
+7. For the restriction scan, compare normalized scientific rows with a direct
+   shared-shell run: enzyme, recognition interval, recognition sequence, cut
+   geometry, and matched-site count. Ignore prose, provider token usage,
+   elapsed time, generated timestamps, and option ordering.
+8. Run a second state-aware prompt that refers to the now-loaded `agent_toy`
+   sequence. Require the suggestion to use that real sequence id rather than
+   inventing another project object, then repeat parse/readiness checks.
+
+The pass condition is deterministic containment: a variable model proposal is
+accepted only when it lands inside GENtle's fixed schema, parser, capability,
+readiness, execution, and effect-verification contracts. Repeating the provider
+call and demanding byte-identical prose or JSON would test provider sampling,
+not GENtle determinism.
+
 ## 4. Rendering tests (required)
 
 Graphics are part of functionality. Visibility toggles and biology overlays must
