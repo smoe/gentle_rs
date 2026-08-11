@@ -7782,6 +7782,284 @@ fn test_design_primer_pairs_persists_report() {
     assert_eq!(summary.backend_used, "internal");
 }
 
+fn primer_group_target_test_request(
+    coverage_policy: TranscriptAssayCoveragePolicy,
+) -> PrimerGroupTargetDesignRequest {
+    PrimerGroupTargetDesignRequest {
+        template_seq_ids: vec!["group_a".to_string(), "group_b".to_string()],
+        representative_seq_id: Some("group_a".to_string()),
+        target_start_0based: Some(50),
+        target_end_0based_exclusive: Some(80),
+        forward: PrimerDesignSideConstraint {
+            min_length: 18,
+            max_length: 20,
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 1_000,
+            ..PrimerDesignSideConstraint::default()
+        },
+        reverse: PrimerDesignSideConstraint {
+            min_length: 18,
+            max_length: 20,
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 1_000,
+            ..PrimerDesignSideConstraint::default()
+        },
+        min_amplicon_bp: 60,
+        max_amplicon_bp: 140,
+        max_tm_delta_c: Some(100.0),
+        max_pairs: Some(8),
+        max_search_records: Some(16),
+        coverage_policy,
+        search_policy: Some(TranscriptAssayPrimerSearchPolicy {
+            max_primer_window_bp: 64,
+            max_candidate_pairs_per_record: 50_000,
+            max_candidate_pairs_total: 100_000,
+            ..TranscriptAssayPrimerSearchPolicy::default()
+        }),
+        report_id: Some("related_group_test".to_string()),
+        ..PrimerGroupTargetDesignRequest::default()
+    }
+}
+
+fn primer_group_target_test_sequence() -> &'static str {
+    "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG"
+}
+
+#[test]
+fn primer_group_target_design_uses_exact_common_regions_and_tests_every_member() {
+    let reference = primer_group_target_test_sequence();
+    let mut altered = reference.as_bytes().to_vec();
+    altered[65] = if altered[65] == b'A' { b'C' } else { b'A' };
+    altered.push(b'G');
+    let altered = String::from_utf8(altered).expect("DNA test sequence");
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("group_a".to_string(), seq(reference));
+    state.sequences.insert("group_b".to_string(), seq(&altered));
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+
+    let mut request = primer_group_target_test_request(TranscriptAssayCoveragePolicy::RequireAll);
+    request.representative_seq_id = None;
+    let report = engine
+        .apply(Operation::DesignPrimerGroupTarget {
+            request,
+            path: None,
+        })
+        .expect("design one common primer pair")
+        .primer_group_target_design
+        .map(|report| *report)
+        .expect("group-target report");
+
+    assert_eq!(report.schema, PRIMER_GROUP_TARGET_DESIGN_SCHEMA);
+    assert_eq!(report.representative_seq_id, "group_b");
+    assert_eq!(report.members.len(), 2);
+    assert_eq!(report.alignments.len(), 1);
+    assert!(report.request_sha256.starts_with("sha256:"));
+    assert!(report.common_intervals_0based.len() >= 2);
+    assert!(!report.search_records.is_empty());
+    assert!(!report.pairs.is_empty());
+    assert!(report.complete_group_pair_count > 0);
+    assert_eq!(
+        report.completion_status,
+        PrimerGroupTargetCompletionStatus::Complete
+    );
+    let retained = report
+        .pair_evaluations
+        .iter()
+        .find(|row| row.retained_pair_rank == Some(1))
+        .expect("rank-one evaluation");
+    assert!(retained.complete_group_pair);
+    assert_eq!(retained.member_products.len(), 2);
+    assert!(retained.member_products.iter().all(|row| {
+        row.status == TranscriptAssayDetectionStatus::SingleProduct && row.product_count == 1
+    }));
+    assert!(
+        report
+            .backend_runs
+            .iter()
+            .all(|backend| backend.used == "internal")
+    );
+    assert!(report.pareto_frontier.non_dominated_candidate_count > 0);
+}
+
+#[test]
+fn primer_group_target_insertion_boundary_is_not_a_contiguous_common_interval() {
+    let reference = "AACCGGTTAACCGGTTAACCGGTT";
+    let member = "AACCGGTTAACCGGTTGGGGAACCGGTT";
+    let (_alignment, mask) =
+        GentleEngine::primer_group_target_common_mask("reference", reference, "member", member)
+            .expect("global related-sequence alignment");
+    let intervals = GentleEngine::primer_group_target_common_intervals(&mask, 2);
+    assert!(intervals.len() >= 2);
+    assert!(
+        intervals
+            .windows(2)
+            .all(|rows| rows[0].end_0based_exclusive < rows[1].start_0based),
+        "a member insertion must split exact common primer intervals"
+    );
+}
+
+#[test]
+fn primer_group_target_require_all_refuses_and_best_effort_keeps_uncovered_members() {
+    let reference = primer_group_target_test_sequence();
+    let member = format!(
+        "{}{}{}",
+        &reference[..65],
+        "GATTACA".repeat(15),
+        &reference[65..]
+    );
+    let make_engine = || {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("group_a".to_string(), seq(reference));
+        state.sequences.insert("group_b".to_string(), seq(&member));
+        let mut engine = GentleEngine::from_state(state);
+        engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+        engine
+    };
+
+    let strict_error = make_engine()
+        .apply(Operation::DesignPrimerGroupTarget {
+            request: primer_group_target_test_request(TranscriptAssayCoveragePolicy::RequireAll),
+            path: None,
+        })
+        .expect_err("require_all must not silently weaken group coverage");
+    assert!(strict_error.message.contains("require_all group target"));
+    assert!(strict_error.message.contains("group_b"));
+
+    let report = make_engine()
+        .apply(Operation::DesignPrimerGroupTarget {
+            request: primer_group_target_test_request(TranscriptAssayCoveragePolicy::BestEffort),
+            path: None,
+        })
+        .expect("explicit best effort may retain partial group coverage")
+        .primer_group_target_design
+        .map(|report| *report)
+        .expect("best-effort group-target report");
+    assert_eq!(
+        report.completion_status,
+        PrimerGroupTargetCompletionStatus::Partial
+    );
+    assert_eq!(report.complete_group_pair_count, 0);
+    assert!(report.maximum_single_pair_coverage_count < report.members.len());
+    assert!(report.pair_evaluations.iter().any(|row| {
+        row.uncovered_template_seq_ids
+            .iter()
+            .any(|seq_id| seq_id == "group_b")
+    }));
+}
+
+#[test]
+fn primer_group_target_search_budget_fails_before_backend_execution() {
+    let reference = primer_group_target_test_sequence();
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("group_a".to_string(), seq(reference));
+    state
+        .sequences
+        .insert("group_b".to_string(), seq(reference));
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+    let mut request = primer_group_target_test_request(TranscriptAssayCoveragePolicy::RequireAll);
+    request.search_policy = Some(TranscriptAssayPrimerSearchPolicy {
+        max_primer_window_bp: 64,
+        max_candidate_pairs_per_record: 1,
+        max_candidate_pairs_total: 1,
+        ..TranscriptAssayPrimerSearchPolicy::default()
+    });
+    let error = engine
+        .apply(Operation::DesignPrimerGroupTarget {
+            request,
+            path: None,
+        })
+        .expect_err("over-budget group search must stop before pair generation");
+    assert!(error.message.contains("search_space_too_broad"));
+}
+
+#[test]
+fn primer_pair_pareto_frontier_keeps_tradeoffs_and_old_reports_default_it() {
+    let strong_score = PrimerPairParetoMetrics {
+        existing_candidate_score: 10.0,
+        tm_delta_c: 2.0,
+        primer_pair_complementary_run_bp: 4,
+        primer_pair_3prime_complementary_run_bp: 2,
+        ..PrimerPairParetoMetrics::default()
+    };
+    let balanced_tm = PrimerPairParetoMetrics {
+        existing_candidate_score: 8.0,
+        tm_delta_c: 0.2,
+        primer_pair_complementary_run_bp: 4,
+        primer_pair_3prime_complementary_run_bp: 2,
+        ..PrimerPairParetoMetrics::default()
+    };
+    let dominated = PrimerPairParetoMetrics {
+        existing_candidate_score: 7.0,
+        tm_delta_c: 3.0,
+        primer_pair_complementary_run_bp: 5,
+        primer_pair_3prime_complementary_run_bp: 3,
+        ..PrimerPairParetoMetrics::default()
+    };
+    assert!(GentleEngine::primer_pair_pareto_dominates(
+        &strong_score,
+        &dominated
+    ));
+    assert!(!GentleEngine::primer_pair_pareto_dominates(
+        &strong_score,
+        &balanced_tm
+    ));
+    let frontier = GentleEngine::primer_pair_pareto_frontier(vec![
+        PrimerPairParetoAlternative {
+            pair_id: "score".to_string(),
+            metrics: strong_score,
+            ..PrimerPairParetoAlternative::default()
+        },
+        PrimerPairParetoAlternative {
+            pair_id: "tm".to_string(),
+            metrics: balanced_tm,
+            ..PrimerPairParetoAlternative::default()
+        },
+        PrimerPairParetoAlternative {
+            pair_id: "dominated".to_string(),
+            metrics: dominated,
+            ..PrimerPairParetoAlternative::default()
+        },
+    ]);
+    assert_eq!(frontier.accepted_candidate_count, 3);
+    assert_eq!(frontier.evaluated_candidate_count, 3);
+    assert_eq!(frontier.non_dominated_candidate_count, 2);
+    assert_eq!(
+        frontier
+            .alternatives
+            .iter()
+            .map(|row| row.pair_id.as_str())
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["score", "tm"])
+    );
+
+    let old_primer: PrimerDesignReport = serde_json::from_value(json!({
+        "schema": "gentle.primer_design_report.v1",
+        "report_id": "old"
+    }))
+    .expect("old primer report without frontier remains readable");
+    assert!(old_primer.pareto_frontier.alternatives.is_empty());
+    let old_panel: TranscriptAssayPanelReport = serde_json::from_value(json!({
+        "schema": "gentle.transcript_assay_panel.v2",
+        "report_id": "old_panel"
+    }))
+    .expect("old transcript panel without frontier remains readable");
+    assert!(old_panel.pareto_frontier.alternatives.is_empty());
+}
+
 fn primer_selection_provenance_operation(
     report_id: &str,
     rejected_near_miss_limit: usize,
@@ -9736,6 +10014,9 @@ fn primer_specificity_test_hit(
         query_coverage_fraction: 1.0,
         three_prime_window_bp: 5,
         three_prime_mismatches: 0,
+        binding_start_1based: Some(start_1based),
+        binding_end_1based: Some(end_1based),
+        full_alignment: None,
         accepted_by_policy: true,
         rejection_reasons: vec![],
     }
@@ -11750,6 +12031,35 @@ fn primer_specificity_handoff_plans_without_running_and_imports_completed_output
     assert!(report.search_completeness.complete);
     assert_eq!(report.forward_hits.len(), 1);
     assert_eq!(report.reverse_hits.len(), 1);
+    let forward_alignment = report.forward_hits[0]
+        .full_alignment
+        .as_ref()
+        .expect("forward hit carries complete-primer alignment evidence");
+    assert_eq!(forward_alignment.status, "complete");
+    assert_eq!(forward_alignment.query_alignment, "ACGTACGTACGTACGTACGT");
+    assert_eq!(
+        forward_alignment.subject_alignment,
+        forward_alignment.query_alignment
+    );
+    assert_eq!(forward_alignment.matches, 20);
+    assert_eq!(forward_alignment.effective_mismatches, 0);
+    assert_eq!(forward_alignment.aligned_subject_start_1based, 10);
+    assert_eq!(forward_alignment.aligned_subject_end_1based, 29);
+    let reverse_alignment = report.reverse_hits[0]
+        .full_alignment
+        .as_ref()
+        .expect("reverse hit carries complete-primer alignment evidence");
+    assert_eq!(reverse_alignment.status, "complete");
+    assert_eq!(reverse_alignment.strand, "-");
+    assert_eq!(reverse_alignment.query_alignment, "CCCCCCCCCCCCCCCCCCCC");
+    assert_eq!(
+        reverse_alignment.subject_alignment,
+        reverse_alignment.query_alignment
+    );
+    assert_eq!(reverse_alignment.matches, 20);
+    assert_eq!(reverse_alignment.effective_mismatches, 0);
+    assert_eq!(reverse_alignment.aligned_subject_start_1based, 119);
+    assert_eq!(reverse_alignment.aligned_subject_end_1based, 100);
     assert!(
         report
             .warnings
@@ -16073,6 +16383,7 @@ fn transcript_assay_cdna_similarity_map_is_content_bound_and_advisory() {
             basis: "Synthetic whole-cDNA alignment evidence for planner testing.".to_string(),
         }],
         warnings: vec!["Synthetic evidence; not a specificity verdict.".to_string()],
+        ..TranscriptAssayCdnaSimilarityMap::default()
     };
     let map_bytes = serde_json::to_vec_pretty(&map).expect("serialize similarity map");
     fs::write(&map_path, &map_bytes).expect("write similarity map");
@@ -16199,6 +16510,567 @@ fn transcript_assay_cdna_similarity_risk_orders_lower_risk_records_first() {
     let legacy_policy: TranscriptAssayPrimerSearchPolicy =
         serde_json::from_value(serde_json::json!({})).expect("old search policy remains readable");
     assert!(legacy_policy.cdna_similarity_map.is_none());
+    assert!(legacy_policy.build_cdna_similarity_map.is_none());
+    assert!(legacy_policy.interval_evidence.is_empty());
+    assert!(legacy_policy.project_interval_evidence.is_none());
+    assert_eq!(
+        legacy_policy.primer3_chemistry,
+        Primer3ChemistryProfile::default()
+    );
+    assert!(legacy_policy.max_junction_single_side_match_bp.is_none());
+    assert!(legacy_policy.min_intervening_intron_bp.is_none());
+
+    let legacy_specificity_policy: PrimerSpecificityPolicy =
+        serde_json::from_value(serde_json::json!({}))
+            .expect("old specificity policy remains readable");
+    assert_eq!(
+        legacy_specificity_policy.full_alignment.mode,
+        PrimerSpecificityFullAlignmentMode::Disabled
+    );
+    assert!(
+        legacy_specificity_policy
+            .reviewed_off_target_allowlist
+            .is_empty()
+    );
+    let current_specificity_policy = PrimerSpecificityPolicy::default();
+    let current_specificity_json =
+        serde_json::to_value(&current_specificity_policy).expect("serialize current policy");
+    assert_eq!(
+        current_specificity_json["full_alignment"]["mode"],
+        "best_effort"
+    );
+    assert_eq!(
+        serde_json::from_value::<PrimerSpecificityPolicy>(current_specificity_json)
+            .expect("round-trip current specificity policy")
+            .full_alignment,
+        current_specificity_policy.full_alignment
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn transcript_assay_cdna_similarity_map_producer_binds_resource_and_classification() {
+    let _env_lock = crate::genomes::genbank_env_lock()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let temp = tempdir().expect("temporary cDNA similarity resource");
+    let root = temp.path();
+    let source_fasta = root.join("synthetic.cdna.fa");
+    let cache_dir = root.join("cache");
+    let catalog_path = root.join("catalog.json");
+    fs::write(
+        &source_fasta,
+        ">ENST00000000001.1 cdna gene:ENSG00000000001.1 gene_symbol:PANEL1\nACGTACGTACGTACGTACGTACGTACGTACGT\n>ENST00000000002.1 cdna gene:ENSG00000000001.1 gene_symbol:PANEL1\nTTTTCCCCAAAAGGGGTTTTCCCCAAAAGGGG\n>ENST00000000003.1 cdna gene:ENSG00000000001.1 gene_symbol:PANEL1\nTTTTCCCCAAAAGGGGTTTTCCCCAAAAGGGG\n>ENST99999999999.1 cdna gene:ENSG99999999999.1 gene_symbol:PAR1\nACGTACGTACGTACGTGGGGAAAACCCCTTTT\n",
+    )
+    .expect("write synthetic cDNA FASTA");
+    fs::write(
+        &catalog_path,
+        format!(
+            r#"{{
+  "Synthetic cDNA": {{
+    "description": "synthetic transcript-assay similarity fixture",
+    "sequence_local": "{}",
+    "cache_dir": "{}",
+    "blast_index_kind": "transcriptome_cdna",
+    "reference_name": "synthetic.cdna",
+    "reference_release": "synthetic-v1",
+    "blast_masking": "unmasked"
+  }}
+}}"#,
+            source_fasta.display(),
+            cache_dir.display()
+        ),
+    )
+    .expect("write synthetic cDNA catalog");
+
+    let fake_makeblastdb = root.join("makeblastdb.sh");
+    fs::write(
+        &fake_makeblastdb,
+        "#!/bin/sh\nout=''\nwhile [ \"$#\" -gt 0 ]; do\n  if [ \"$1\" = '-out' ]; then shift; out=\"$1\"; fi\n  shift\ndone\nmkdir -p \"$(dirname \"$out\")\"\nprintf nhr > \"${out}.nhr\"\nprintf nin > \"${out}.nin\"\nprintf nsq > \"${out}.nsq\"\n",
+    )
+    .expect("write fake makeblastdb");
+    let fake_blastdbcmd = root.join("blastdbcmd.sh");
+    write_fake_blastdbcmd(&fake_blastdbcmd, 4, 128);
+    let fake_blastn = root.join("blastn.sh");
+    fs::write(
+        &fake_blastn,
+        "#!/bin/sh\nif [ \"$1\" = '-version' ]; then echo 'blastn: fake 1.0'; exit 0; fi\nprintf 'query\\tENST00000000001.1\\t100\\t20\\t0\\t0\\t1\\t20\\t1\\t20\\t1e-20\\t80\\t100\\n'\nprintf 'query\\tENST99999999999.1\\t95\\t20\\t1\\t0\\t7\\t26\\t1\\t20\\t1e-12\\t60\\t100\\n'\n",
+    )
+    .expect("write fake blastn");
+    for executable in [&fake_makeblastdb, &fake_blastn] {
+        let mut permissions = fs::metadata(executable)
+            .expect("fake executable metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(executable, permissions).expect("enable fake executable");
+    }
+    let _makeblastdb = crate::tool_overrides::ScopedToolOverrideGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        fake_makeblastdb.to_string_lossy().as_ref(),
+    );
+    let _blastdbcmd = crate::tool_overrides::ScopedToolOverrideGuard::set(
+        crate::genomes::BLASTDBCMD_ENV_BIN,
+        fake_blastdbcmd.to_string_lossy().as_ref(),
+    );
+    let _blastn = crate::tool_overrides::ScopedToolOverrideGuard::set(
+        crate::genomes::BLASTN_ENV_BIN,
+        fake_blastn.to_string_lossy().as_ref(),
+    );
+    let catalog =
+        crate::genomes::GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref())
+            .expect("open synthetic cDNA catalog");
+    catalog
+        .prepare_blast_sequence_resource("Synthetic cDNA", None)
+        .expect("prepare synthetic cDNA resource");
+    let annotations = catalog
+        .blast_subject_annotation_lookup("Synthetic cDNA", None)
+        .expect("load synthetic subject annotations");
+    assert!(
+        annotations
+            .values()
+            .any(|row| row.gene_symbol.as_deref() == Some("PAR1"))
+    );
+
+    let mut engine = transcript_qpcr_panel_test_engine();
+    for (index, feature) in engine
+        .state_mut()
+        .sequences
+        .get_mut("panel_src")
+        .expect("panel source")
+        .features_mut()
+        .iter_mut()
+        .filter(|feature| feature.kind == "mRNA")
+        .enumerate()
+    {
+        let transcript_id = format!("ENST{:011}.1", index + 1);
+        for (key, value) in &mut feature.qualifiers {
+            if key == "transcript_id" {
+                *value = Some(transcript_id.clone());
+            }
+        }
+    }
+    let request = TranscriptAssayCdnaSimilarityMapBuildRequest {
+        seq_id: "panel_src".to_string(),
+        source_feature_id: 0,
+        target_resource_id: "Synthetic cDNA".to_string(),
+        paralog_gene_symbols: vec!["PAR1".to_string()],
+        min_alignment_bp: 18,
+        min_identity_fraction: 0.9,
+        catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+        cache_dir: None,
+        ..TranscriptAssayCdnaSimilarityMapBuildRequest::default()
+    };
+    let mut progress = vec![];
+    let first = engine
+        .apply_with_progress(
+            Operation::BuildTranscriptAssayCdnaSimilarityMap {
+                request: request.clone(),
+                path: None,
+            },
+            |event| {
+                progress.push(event);
+                true
+            },
+        )
+        .expect("build cDNA similarity map");
+    let first = first
+        .transcript_assay_cdna_similarity_map
+        .map(|report| *report)
+        .expect("cDNA similarity map result");
+    let second = engine
+        .apply(Operation::BuildTranscriptAssayCdnaSimilarityMap {
+            request,
+            path: None,
+        })
+        .expect("repeat deterministic cDNA similarity map")
+        .transcript_assay_cdna_similarity_map
+        .map(|report| *report)
+        .expect("repeated cDNA similarity map result");
+    assert_eq!(first.schema, TRANSCRIPT_ASSAY_CDNA_SIMILARITY_MAP_SCHEMA);
+    assert_eq!(first.map_id, second.map_id);
+    assert_eq!(
+        first.database_content_fingerprint,
+        second.database_content_fingerprint
+    );
+    assert!(first.database_content_fingerprint.starts_with("sha256:"));
+    assert_eq!(first.source_seq_id.as_deref(), Some("panel_src"));
+    assert_eq!(first.source_feature_id, Some(0));
+    assert!(!first.blast_runs.is_empty());
+    assert!(first.intervals.iter().any(|row| {
+        row.classification == TranscriptAssayCdnaSimilarityClassification::Paralog
+            && row
+                .subject_gene_symbols
+                .iter()
+                .any(|symbol| symbol == "PAR1")
+            && row.guidance == TranscriptAssayCdnaSimilarityGuidance::Deprioritize
+    }));
+    assert!(first.intervals.iter().any(|row| {
+        matches!(
+            row.classification,
+            TranscriptAssayCdnaSimilarityClassification::IntendedTarget
+                | TranscriptAssayCdnaSimilarityClassification::IntendedFamily
+        ) && row
+            .subject_gene_symbols
+            .iter()
+            .any(|symbol| symbol == "PANEL1")
+    }));
+    assert!(!progress.is_empty());
+}
+
+#[test]
+fn transcript_assay_interval_evidence_and_primer3_chemistry_are_explicit() {
+    let engine = transcript_endpoint_structural_failure_engine();
+    let baseline_operation = transcript_endpoint_structural_failure_operation(
+        TranscriptAssayCoveragePolicy::RequireAll,
+        PrimerDesignSideConstraint::default(),
+    );
+    let baseline = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&baseline_operation)
+        .expect("inspect baseline search plan");
+    let baseline_record = baseline
+        .search_plan
+        .as_ref()
+        .and_then(|plan| plan.records.first())
+        .expect("one baseline search record")
+        .clone();
+    let soft_start = baseline_record.left_interval.start_0based;
+    let hard_start = baseline_record.right_interval.start_0based;
+    let mut operation = baseline_operation;
+    let Operation::DesignTranscriptAssayPanel { search_policy, .. } = &mut operation else {
+        unreachable!();
+    };
+    *search_policy = Some(TranscriptAssayPrimerSearchPolicy {
+        primer3_chemistry: Primer3ChemistryProfile {
+            name: Primer3ChemistryProfileName::StandardPcr,
+            overrides: BTreeMap::from([("PRIMER_DNA_CONC".to_string(), "75.0".to_string())]),
+        },
+        interval_evidence: vec![
+            TranscriptAssayPrimerIntervalEvidence {
+                evidence_id: "soft_paralog_region".to_string(),
+                transcript_id: baseline_record.representative_transcript_id.clone(),
+                template_sha256: baseline_record.template_sha256.clone(),
+                start_0based: soft_start,
+                end_0based_exclusive: soft_start + 1,
+                kind: TranscriptAssayPrimerIntervalEvidenceKind::ParalogOrCdnaSimilarity,
+                disposition: TranscriptAssayPrimerIntervalDisposition::Deprioritize,
+                reason: "synthetic soft risk".to_string(),
+                ..TranscriptAssayPrimerIntervalEvidence::default()
+            },
+            TranscriptAssayPrimerIntervalEvidence {
+                evidence_id: "hard_common_variant".to_string(),
+                transcript_id: baseline_record.representative_transcript_id.clone(),
+                template_sha256: baseline_record.template_sha256.clone(),
+                start_0based: hard_start,
+                end_0based_exclusive: hard_start + 1,
+                kind: TranscriptAssayPrimerIntervalEvidenceKind::KnownVariant,
+                disposition: TranscriptAssayPrimerIntervalDisposition::Exclude,
+                reason: "synthetic hard exclusion".to_string(),
+                ..TranscriptAssayPrimerIntervalEvidence::default()
+            },
+        ],
+        ..TranscriptAssayPrimerSearchPolicy::default()
+    });
+    let report = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&operation)
+        .expect("inspect evidence-aware search plan");
+    let plan = report.search_plan.expect("evidence-aware search plan");
+    assert_eq!(plan.hard_exclusion_interval_count, 1);
+    assert_eq!(plan.soft_deprioritization_interval_count, 1);
+    assert!(plan.records.iter().any(|record| {
+        record
+            .design_risk_interval_ids
+            .iter()
+            .any(|id| id == "soft_paralog_region")
+    }));
+    assert!(plan.records.iter().any(|record| {
+        let fields = record
+            .primer3_fields
+            .iter()
+            .map(|field| (field.name.as_str(), field.value.as_str()))
+            .collect::<BTreeMap<_, _>>();
+        fields.contains_key("SEQUENCE_EXCLUDED_REGION")
+            && fields.get("PRIMER_SALT_MONOVALENT") == Some(&"50.0")
+            && fields.get("PRIMER_SALT_DIVALENT") == Some(&"1.5")
+            && fields.get("PRIMER_DNTP_CONC") == Some(&"0.6")
+            && fields.get("PRIMER_DNA_CONC") == Some(&"75.0")
+    }));
+
+    let mut invalid_operation = operation;
+    let Operation::DesignTranscriptAssayPanel { search_policy, .. } = &mut invalid_operation else {
+        unreachable!();
+    };
+    search_policy
+        .as_mut()
+        .expect("search policy")
+        .primer3_chemistry
+        .overrides
+        .insert("PRIMER_NUM_RETURN".to_string(), "999".to_string());
+    let error = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&invalid_operation)
+        .expect_err("non-chemistry Primer3 override must fail closed");
+    assert!(
+        error
+            .message
+            .contains("Unsupported Primer3 chemistry override")
+    );
+}
+
+#[test]
+fn transcript_assay_intron_and_junction_side_limits_are_preflight_gates() {
+    let engine = transcript_endpoint_structural_failure_engine();
+    let mut operation = transcript_endpoint_structural_failure_operation(
+        TranscriptAssayCoveragePolicy::RequireAll,
+        PrimerDesignSideConstraint::default(),
+    );
+    let Operation::DesignTranscriptAssayPanel { search_policy, .. } = &mut operation else {
+        unreachable!();
+    };
+    *search_policy = Some(TranscriptAssayPrimerSearchPolicy {
+        min_intervening_intron_bp: Some(1_000_000),
+        ..TranscriptAssayPrimerSearchPolicy::default()
+    });
+    let report = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&operation)
+        .expect("inspect impossible minimum intron gate");
+    let plan = report.search_plan.expect("search plan");
+    assert_eq!(
+        plan.status,
+        TranscriptAssayPrimerSearchPlanStatus::NoAdmissibleRegions
+    );
+    assert!(!plan.blocked_target_ids.is_empty());
+
+    let Operation::DesignTranscriptAssayPanel { search_policy, .. } = &mut operation else {
+        unreachable!();
+    };
+    let policy = search_policy.as_mut().expect("search policy");
+    policy.min_intervening_intron_bp = None;
+    policy.max_junction_single_side_match_bp = Some(3);
+    let error = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&operation)
+        .expect_err("junction maximum below required overlap must fail");
+    assert!(
+        error
+            .message
+            .contains("must be >= the largest required junction overlap")
+    );
+}
+
+#[test]
+fn reviewed_specificity_allowance_is_visible_and_does_not_override_other_products() {
+    let mut amplicons = vec![
+        PrimerSpecificityAmplicon {
+            kind: PrimerSpecificityAmpliconKind::ForwardReverse,
+            subject_id: "TX_ALLOWED".to_string(),
+            start_1based: 10,
+            end_1based: 110,
+            length_bp: 101,
+            terminal_policy_pass: true,
+            within_readiness_amplicon_range: true,
+            ..PrimerSpecificityAmplicon::default()
+        },
+        PrimerSpecificityAmplicon {
+            kind: PrimerSpecificityAmpliconKind::ForwardReverse,
+            subject_id: "TX_UNREVIEWED".to_string(),
+            start_1based: 20,
+            end_1based: 120,
+            length_bp: 101,
+            terminal_policy_pass: true,
+            within_readiness_amplicon_range: true,
+            ..PrimerSpecificityAmplicon::default()
+        },
+    ];
+    let policy = PrimerSpecificityPolicy {
+        min_total_mismatches_to_unintended_target: 2,
+        reviewed_off_target_allowlist: vec![PrimerSpecificityReviewedOffTargetAllowance {
+            allowance_id: "reviewed_tx_allowed".to_string(),
+            target_space: "transcriptome_cdna".to_string(),
+            subject_id: "TX_ALLOWED".to_string(),
+            start_1based: Some(10),
+            end_1based: Some(110),
+            reviewer: "test reviewer".to_string(),
+            reason: "Synthetic accepted family member".to_string(),
+            evidence_sha256: "sha256:synthetic-review-evidence".to_string(),
+        }],
+        ..PrimerSpecificityPolicy::default()
+    };
+    GentleEngine::primer_specificity_finalize_amplicons(
+        &mut amplicons,
+        &PrimerSpecificityIntendedTarget::default(),
+        &policy,
+        BlastDatabaseIndexKind::TranscriptomeCdna,
+    );
+    assert!(amplicons[0].reviewed_allowlisted);
+    assert_eq!(
+        amplicons[0].reviewed_allowance_id.as_deref(),
+        Some("reviewed_tx_allowed")
+    );
+    assert!(!amplicons[0].specificity_failure);
+    assert!(amplicons[1].specificity_failure);
+}
+
+#[test]
+fn primer_specificity_full_alignment_html_projects_persisted_json_only() {
+    let mut engine = GentleEngine::new();
+    let report = PrimerSpecificityReport {
+        schema: PRIMER_SPECIFICITY_REPORT_SCHEMA.to_string(),
+        report_id: "alignment_html_report".to_string(),
+        target_kind: "transcriptome_cdna".to_string(),
+        target_genome_id: "synthetic_cdna".to_string(),
+        forward_hits: vec![PrimerSpecificityPrimerHit {
+            hit_index: 0,
+            role: PrimerSpecificityPrimerRole::Forward,
+            subject_id: "TX<1>".to_string(),
+            full_alignment: Some(PrimerSpecificityFullAlignment {
+                status: "complete".to_string(),
+                algorithm: "full_query_semiglobal_subject_window_v1".to_string(),
+                score: 37,
+                aligned_subject_start_1based: 10,
+                aligned_subject_end_1based: 29,
+                strand: "+".to_string(),
+                query_alignment: "ACGTACGTACGTACGTACGT".to_string(),
+                relation_alignment: "||||||||||||||||||||".to_string(),
+                subject_alignment: "ACGTACGTACGTACGTACGT".to_string(),
+                cigar: "20=".to_string(),
+                matches: 20,
+                three_prime_window_bp: 5,
+                subject_window_sha256: "sha256:synthetic-window".to_string(),
+                ..PrimerSpecificityFullAlignment::default()
+            }),
+            ..PrimerSpecificityPrimerHit::default()
+        }],
+        ..PrimerSpecificityReport::default()
+    };
+    let mut store = PrimerDesignStore {
+        schema: PRIMER_DESIGN_REPORTS_SCHEMA.to_string(),
+        ..PrimerDesignStore::default()
+    };
+    store
+        .primer_specificity_reports
+        .insert(report.report_id.clone(), report);
+    engine
+        .write_primer_design_store(store)
+        .expect("persist synthetic specificity report");
+    let temp = tempdir().expect("tempdir");
+    let html_path = temp.path().join("alignments.html");
+    let digest = engine
+        .render_primer_specificity_alignment_html(
+            "alignment_html_report",
+            &html_path.to_string_lossy(),
+        )
+        .expect("render alignment HTML");
+    let html = fs::read_to_string(&html_path).expect("read alignment HTML");
+    assert!(digest.starts_with("sha256:"));
+    assert!(html.contains("data-role=\"forward\""));
+    assert!(html.contains("20="));
+    assert!(html.contains("TX&lt;1&gt;"));
+    assert!(html.contains("BLAST and alignment were not rerun"));
+}
+
+#[test]
+fn transcript_assay_specificity_redesign_is_content_bound_and_read_only() {
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let mut operation = transcript_assay_panel_operation(
+        TranscriptAssayCoveragePolicy::BestEffort,
+        transcript_assay_panel_relaxed_side(),
+        8,
+        "specificity_redesign_source",
+    );
+    let Operation::DesignTranscriptAssayPanel { objective, .. } = &mut operation else {
+        unreachable!();
+    };
+    *objective = TranscriptAssayPanelObjective::OnePerClass;
+    let panel = engine
+        .apply(operation.clone())
+        .expect("design source panel")
+        .transcript_assay_panel
+        .expect("source panel report");
+    let rejected = panel.selected_assays.first().expect("selected assay");
+    let panel_digest =
+        GentleEngine::transcript_assay_panel_specificity_digest(&panel).expect("panel digest");
+    let acceptance = TranscriptAssayPanelSpecificityAcceptance {
+        schema: TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_ACCEPTANCE_SCHEMA.to_string(),
+        acceptance_id: "synthetic_specificity_failure".to_string(),
+        panel_report_id: panel.report_id.clone(),
+        panel_digest: panel_digest.clone(),
+        status: TranscriptAssayPanelSpecificityAcceptanceStatus::SpecificityFail,
+        failing_assay_ids: vec![rejected.assay_id.clone()],
+        passing_assay_ids: panel
+            .selected_assays
+            .iter()
+            .skip(1)
+            .map(|assay| assay.assay_id.clone())
+            .collect(),
+        assessments: vec![TranscriptAssayGenomicSpecificityAssessment {
+            assay_id: rejected.assay_id.clone(),
+            assay_rank: rejected.rank,
+            status: "external_blast_specificity_fail".to_string(),
+            report: PrimerSpecificityReport {
+                report_id: "synthetic_cdna_failure_report".to_string(),
+                target_kind: "transcriptome_cdna".to_string(),
+                amplicons: vec![PrimerSpecificityAmplicon {
+                    subject_id: "PARALOG_TX".to_string(),
+                    start_1based: 100,
+                    end_1based: 220,
+                    specificity_failure: true,
+                    failure_reasons: vec!["perfect unintended cDNA product".to_string()],
+                    ..PrimerSpecificityAmplicon::default()
+                }],
+                ..PrimerSpecificityReport::default()
+            },
+        }],
+        ..TranscriptAssayPanelSpecificityAcceptance::default()
+    };
+    let temp = tempdir().expect("tempdir");
+    let acceptance_path = temp.path().join("acceptance.json");
+    let acceptance_bytes = serde_json::to_vec_pretty(&acceptance).expect("acceptance JSON");
+    fs::write(&acceptance_path, &acceptance_bytes).expect("write acceptance");
+    let operation_sha256 =
+        GentleEngine::transcript_assay_operation_sha256(&operation).expect("operation digest");
+    let request = TranscriptAssaySpecificityRedesignRequest {
+        panel_report_id: panel.report_id.clone(),
+        expected_panel_digest: panel_digest,
+        acceptance_path: acceptance_path.to_string_lossy().to_string(),
+        expected_acceptance_sha256: sha256_prefixed_bytes(&acceptance_bytes),
+        design_operation: serde_json::to_value(&operation).expect("operation JSON"),
+        expected_design_operation_sha256: operation_sha256.clone(),
+        attempt_number: 1,
+        max_replacements_per_failed_assay: 2,
+        backend: Some(PrimerDesignBackend::Internal),
+        primer3_executable: None,
+    };
+    let before = serde_json::to_value(engine.state()).expect("state before redesign");
+    let report = engine
+        .redesign_transcript_assay_specificity_failures(request, |_| true)
+        .expect("redesign disposition");
+    assert_eq!(report.schema, TRANSCRIPT_ASSAY_SPECIFICITY_REDESIGN_SCHEMA);
+    assert_eq!(report.original_design_operation_sha256, operation_sha256);
+    assert_eq!(report.dispositions.len(), 1);
+    assert_eq!(report.dispositions[0].replaces_assay_id, rejected.assay_id);
+    assert!(
+        report.dispositions[0]
+            .off_target_causes
+            .iter()
+            .any(|cause| cause.contains("perfect unintended cDNA product"))
+    );
+    assert!(matches!(
+        report.dispositions[0].status,
+        TranscriptAssaySpecificityRedesignDispositionStatus::SubstituteProposed
+            | TranscriptAssaySpecificityRedesignDispositionStatus::InfeasibleUnderApprovedConstraints
+    ));
+    for candidate in &report.dispositions[0].substitutes {
+        assert_eq!(candidate.replaces_assay_id, rejected.assay_id);
+        assert!(
+            candidate
+                .required_next_gates
+                .iter()
+                .any(|gate| gate == "complete_cdna_specificity")
+        );
+    }
+    assert_eq!(
+        serde_json::to_value(engine.state()).expect("state after redesign"),
+        before,
+        "specificity redesign must not mutate the approved source state"
+    );
 }
 
 #[test]
@@ -17614,6 +18486,14 @@ fn test_design_primer_pairs_primer3_zero_pairs_persists_request_and_explain() {
     let tmp = tempdir().expect("tempdir");
     let (fake_primer3, request_capture) = install_fake_primer3_zero_pairs(tmp.path());
     engine.state_mut().parameters.primer3_executable = fake_primer3.clone();
+    let mut forward = PrimerDesignSideConstraint::default();
+    forward.min_length = 20;
+    forward.max_length = 20;
+    forward.fixed_5prime = Some("ATGCGTACGATCGTAGCTAG".to_string());
+    let mut reverse = PrimerDesignSideConstraint::default();
+    reverse.min_length = 20;
+    reverse.max_length = 20;
+    reverse.fixed_5prime = Some("CGATCGATGCTAGCTAGCTA".to_string());
 
     let mut progress_events = Vec::new();
     engine
@@ -17622,8 +18502,8 @@ fn test_design_primer_pairs_primer3_zero_pairs_persists_request_and_explain() {
                 template: "tpl".to_string(),
                 roi_start_0based: 10,
                 roi_end_0based: 30,
-                forward: PrimerDesignSideConstraint::default(),
-                reverse: PrimerDesignSideConstraint::default(),
+                forward,
+                reverse,
                 pair_constraints: PrimerDesignPairConstraint::default(),
                 min_amplicon_bp: 20,
                 max_amplicon_bp: 80,
@@ -17692,6 +18572,8 @@ fn test_design_primer_pairs_primer3_zero_pairs_persists_request_and_explain() {
         .as_deref()
         .expect("request payload should be captured");
     assert!(request_payload.contains("SEQUENCE_TEMPLATE="));
+    assert!(request_payload.contains("SEQUENCE_PRIMER=ATGCGTACGATCGTAGCTAG"));
+    assert!(request_payload.contains("SEQUENCE_PRIMER_REVCOMP=CGATCGATGCTAGCTAGCTA"));
     assert!(request_payload.contains("PRIMER_EXPLAIN_FLAG=1"));
 
     let captured = std::fs::read_to_string(&request_capture).expect("captured stdin payload");

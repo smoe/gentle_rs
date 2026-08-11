@@ -27,6 +27,23 @@
   Primer3 constraints, and final complete-cDNA/genomic specificity gates stay
   explicit and unchanged.
 
+- Added deterministic related-sequence group-target primer design and explicit
+  primer-pair Pareto alternatives. `DesignPrimerGroupTarget` aligns loaded
+  members, derives exact conserved binding intervals, bounds work before
+  Primer3, and reports a complete pair-by-member product matrix under strict or
+  explicit best-effort coverage. Existing primer and transcript-panel reports
+  now expose bounded non-dominated tradeoffs without changing their selection
+  or specificity gates.
+
+- Extended Primer-BLAST-style primer planning without surrendering GENtle's
+  transcript-aware contracts. GENtle can now build content-bound whole-cDNA
+  similarity maps, combine variant/repeat/similarity intervals as explicit
+  hard or soft pre-Primer3 evidence, emit reviewed chemistry settings, cap
+  junction-side matches, realign complete primers after BLAST, retain narrowly
+  reviewed off-target products, render stored alignments as HTML, and propose
+  content-bound replacements after panel specificity failure. Advisory design
+  evidence never substitutes for the final complete-cDNA/genomic gates.
+
 - Grounded Agent Assistant and `agents ask` requests in engine-owned
   introspection whenever project context is enabled. The additive
   `gentle.agent_introspection_context.v1` extension carries a bounded current

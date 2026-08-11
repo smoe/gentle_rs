@@ -11839,6 +11839,7 @@ Error: `{err}`"
                 }
             })
             .map(|report| OpResult {
+                primer_group_target_design: None,
                 op_id: "background-prepare-genome".to_string(),
                 created_seq_ids: vec![],
                 changed_seq_ids: vec![],
@@ -11864,6 +11865,8 @@ Error: `{err}`"
                 external_primer_pair_import_report: None,
                 terminal_exon_rt_primer_pool: None,
                 primer_variant_screen: None,
+                transcript_assay_cdna_similarity_map: None,
+                transcript_assay_specificity_redesign: None,
                 primer_specificity_handoff: None,
                 primer_specificity_report: None,
                 transcript_qpcr_panel: None,

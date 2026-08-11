@@ -1073,6 +1073,7 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
     area.sequencing_confirmation_ui.trace_import_add_to_run = true;
 
     area.handle_imported_sequencing_trace_result(&OpResult {
+        primer_group_target_design: None,
         experimental_assay_handoff: None,
         op_id: "op-import-trace".to_string(),
         created_seq_ids: vec![],
@@ -1093,6 +1094,8 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
         primerbank_search_report: None,
         transcript_qpcr_panel: None,
         transcript_assay_panel: None,
+        transcript_assay_cdna_similarity_map: None,
+        transcript_assay_specificity_redesign: None,
         gene_isoform_assay_study_plan: None,
         gene_transcript_assay_routine: None,
         primer_specificity_handoff: None,
@@ -4914,6 +4917,7 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
     };
     area.handle_operation_success(
         super::OpResult {
+            primer_group_target_design: None,
             experimental_assay_handoff: None,
             op_id: "op-preview".to_string(),
             created_seq_ids: vec![],
@@ -4934,6 +4938,8 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
             primerbank_search_report: None,
             transcript_qpcr_panel: None,
             transcript_assay_panel: None,
+            transcript_assay_cdna_similarity_map: None,
+            transcript_assay_specificity_redesign: None,
             gene_isoform_assay_study_plan: None,
             gene_transcript_assay_routine: None,
             primer_specificity_handoff: None,

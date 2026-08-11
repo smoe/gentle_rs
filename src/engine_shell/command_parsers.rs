@@ -15,10 +15,11 @@ use super::*;
 use crate::engine::{
     CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder, CutRunAlignConfig,
     CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig,
-    PrimerSpecificityAmpliconCeilingSource, PrimerSpecificityCheckMode, PrimerSpecificityPolicy,
-    PrimerSpecificityReportDetailMode, QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting,
-    QpcrTranscriptTargetingMode, ReadAcquisitionAnalysisFormat, ReadAcquisitionReadLayout,
-    RepeatEnvironmentGeometryMode, TfbsScoreTrackCorrelationMetric,
+    PrimerSpecificityAmpliconCeilingSource, PrimerSpecificityCheckMode,
+    PrimerSpecificityFullAlignmentMode, PrimerSpecificityPolicy, PrimerSpecificityReportDetailMode,
+    PrimerSpecificityReviewedOffTargetAllowance, QpcrTranscriptSpecificityEvidence,
+    QpcrTranscriptTargeting, QpcrTranscriptTargetingMode, ReadAcquisitionAnalysisFormat,
+    ReadAcquisitionReadLayout, RepeatEnvironmentGeometryMode, TfbsScoreTrackCorrelationMetric,
     TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
     TfbsTrackSimilarityRankingMetric, TranscriptAssayCdnaSynthesis, TranscriptAssayCoveragePolicy,
     TranscriptAssayCoverageUniverse, TranscriptAssayJunctionPriority, TranscriptAssayKind,
@@ -34,6 +35,21 @@ fn parse_primer_specificity_report_detail_mode(
         "full" | "lossless" | "audit" => Ok(PrimerSpecificityReportDetailMode::Full),
         other => Err(format!(
             "Unknown primer-specificity report detail '{other}' (expected compact|full)"
+        )),
+    }
+}
+
+fn parse_primer_specificity_full_alignment_mode(
+    raw: &str,
+) -> Result<PrimerSpecificityFullAlignmentMode, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "disabled" | "none" => Ok(PrimerSpecificityFullAlignmentMode::Disabled),
+        "best_effort" | "best-effort" | "auto" => {
+            Ok(PrimerSpecificityFullAlignmentMode::BestEffort)
+        }
+        "required" | "require" => Ok(PrimerSpecificityFullAlignmentMode::Required),
+        other => Err(format!(
+            "Unknown full-primer alignment mode '{other}' (expected disabled|best-effort|required)"
         )),
     }
 }
@@ -5545,7 +5561,7 @@ fn parse_primers_primerbank_command(tokens: &[String]) -> Result<ShellCommand, S
 pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "primers requires a subcommand: primerbank, design, design-terminal-exon-rt-pool, design-qpcr, design-transcript-assay-panel, plan-gene-isoform-study, execute-gene-isoform-study-workflow, compose-gene-isoform-study-workflow-batch, execute-gene-isoform-study-workflow-batch, publish-gene-isoform-study, compose-gene-assay-routine, experimental-handoff, import-external-pairs, screen-variants, specificity, specificity-plan, specificity-import, transcript-assay-specificity-plan, transcript-assay-specificity-finalize, test-cdna-pcr, test-cdna-qpcr, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, oligo-order"
+            "primers requires a subcommand: primerbank, design, design-terminal-exon-rt-pool, design-qpcr, design-group-target, build-transcript-assay-cdna-similarity-map, design-transcript-assay-panel, plan-gene-isoform-study, execute-gene-isoform-study-workflow, compose-gene-isoform-study-workflow-batch, execute-gene-isoform-study-workflow-batch, publish-gene-isoform-study, compose-gene-assay-routine, experimental-handoff, import-external-pairs, screen-variants, specificity, specificity-plan, specificity-import, specificity-alignment-html, transcript-assay-specificity-plan, transcript-assay-specificity-finalize, transcript-assay-specificity-redesign, test-cdna-pcr, test-cdna-qpcr, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, oligo-order"
                 .to_string(),
         );
     }
@@ -5741,6 +5757,29 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                         policy.report_detail_mode =
                             parse_primer_specificity_report_detail_mode(&raw)?;
                     }
+                    "--full-alignment" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--full-alignment", command_name)?;
+                        policy.full_alignment.mode =
+                            parse_primer_specificity_full_alignment_mode(&raw)?;
+                    }
+                    "--reviewed-off-target-allowlist" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--reviewed-off-target-allowlist",
+                            command_name,
+                        )?;
+                        let payload = parse_json_payload(&raw)?;
+                        policy.reviewed_off_target_allowlist = serde_json::from_str::<
+                            Vec<PrimerSpecificityReviewedOffTargetAllowance>,
+                        >(&payload)
+                        .map_err(|error| {
+                            format!(
+                                "Could not parse reviewed off-target allowlist JSON from '{raw}': {error}"
+                            )
+                        })?;
+                    }
                     "--min-primer-coverage-fraction" => {
                         let raw = parse_option_path(
                             tokens,
@@ -5921,8 +5960,17 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             }
             Ok(ShellCommand::PrimersSpecificityImport { handoff_path, path })
         }
+        "specificity-alignment-html" => {
+            if tokens.len() != 4 {
+                return Err("primers specificity-alignment-html REPORT_ID OUTPUT.html".to_string());
+            }
+            Ok(ShellCommand::PrimersSpecificityAlignmentHtml {
+                report_id: tokens[2].clone(),
+                path: tokens[3].clone(),
+            })
+        }
         "transcript-assay-specificity-plan" => {
-            const USAGE: &str = "primers transcript-assay-specificity-plan PANEL_REPORT_ID --target-genome GENOME_ID --output-dir DIR [--max-target-amplicon-bp N | --readiness-max-amplicon-bp N --exploratory-max-amplicon-bp N] [--report-detail compact|full] [--min-primer-coverage-fraction F] [--max-3prime-mismatches N] [--three-prime-window-bp N] [--min-total-mismatches-to-unintended-target N] [--allow-same-gene-splice-variants] [--max-hits-per-primer N] [--avoid-known-variants] [--avoid-rmsk-repeats] [--avoid-low-complexity] [--catalog PATH] [--cache-dir DIR]";
+            const USAGE: &str = "primers transcript-assay-specificity-plan PANEL_REPORT_ID --target-genome GENOME_ID --output-dir DIR [--max-target-amplicon-bp N | --readiness-max-amplicon-bp N --exploratory-max-amplicon-bp N] [--report-detail compact|full] [--full-alignment disabled|best-effort|required] [--reviewed-off-target-allowlist JSON_ARRAY_OR_@FILE] [--min-primer-coverage-fraction F] [--max-3prime-mismatches N] [--three-prime-window-bp N] [--min-total-mismatches-to-unintended-target N] [--allow-same-gene-splice-variants] [--max-hits-per-primer N] [--avoid-known-variants] [--avoid-rmsk-repeats] [--avoid-low-complexity] [--catalog PATH] [--cache-dir DIR]";
             if tokens.len() < 3 {
                 return Err(USAGE.to_string());
             }
@@ -6000,6 +6048,33 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                         )?;
                         policy.report_detail_mode =
                             parse_primer_specificity_report_detail_mode(&raw)?;
+                    }
+                    "--full-alignment" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--full-alignment",
+                            "primers transcript-assay-specificity-plan",
+                        )?;
+                        policy.full_alignment.mode =
+                            parse_primer_specificity_full_alignment_mode(&raw)?;
+                    }
+                    "--reviewed-off-target-allowlist" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--reviewed-off-target-allowlist",
+                            "primers transcript-assay-specificity-plan",
+                        )?;
+                        let payload = parse_json_payload(&raw)?;
+                        policy.reviewed_off_target_allowlist = serde_json::from_str::<
+                            Vec<PrimerSpecificityReviewedOffTargetAllowance>,
+                        >(&payload)
+                        .map_err(|error| {
+                            format!(
+                                "Could not parse reviewed off-target allowlist JSON from '{raw}': {error}"
+                            )
+                        })?;
                     }
                     "--min-primer-coverage-fraction" => {
                         let raw = parse_option_path(
@@ -6144,6 +6219,34 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 execution_manifest_json,
                 path,
             })
+        }
+        "transcript-assay-specificity-redesign" => {
+            const USAGE: &str = "primers transcript-assay-specificity-redesign REQUEST_JSON_OR_@FILE [--path OUTPUT.json]";
+            if tokens.len() < 3 {
+                return Err(USAGE.to_string());
+            }
+            let request_json = tokens[2].clone();
+            let mut path = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--path" | "--output" => {
+                        let flag = tokens[idx].clone();
+                        path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers transcript-assay-specificity-redesign",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for primers transcript-assay-specificity-redesign"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PrimersTranscriptAssaySpecificityRedesign { request_json, path })
         }
         "import-external-pairs" => {
             const USAGE: &str = "primers import-external-pairs INPUT.json|tsv SEQ_ID FEATURE_ID [--format auto|json|tsv] [--report-id ID] [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--specificity-target-genome GENOME_ID] [--specificity-catalog PATH] [--specificity-cache-dir DIR] [--artifact-output-dir DIR] [--materialize-products] [--product-gel-ladder NAME] [--path OUTPUT.json]";
@@ -6517,6 +6620,75 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 feature_id,
                 shared_qpcr_report_id,
                 path,
+            })
+        }
+        "build-transcript-assay-cdna-similarity-map" => {
+            const USAGE: &str = "primers build-transcript-assay-cdna-similarity-map REQUEST_JSON_OR_@FILE [--path OUTPUT.json]";
+            if tokens.len() < 3 {
+                return Err(USAGE.to_string());
+            }
+            let request_json = tokens[2].clone();
+            let mut path = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--path" | "--output" => {
+                        let flag = tokens[idx].clone();
+                        path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers build-transcript-assay-cdna-similarity-map",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for primers build-transcript-assay-cdna-similarity-map\n       {USAGE}"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PrimersBuildTranscriptAssayCdnaSimilarityMap { request_json, path })
+        }
+        "design-group-target" => {
+            const USAGE: &str = "primers design-group-target REQUEST_JSON_OR_@FILE [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]";
+            if tokens.len() < 3 {
+                return Err(format!(
+                    "primers design-group-target requires a request payload:\n       {USAGE}"
+                ));
+            }
+            let request_json = tokens[2].clone();
+            let context = "primers design-group-target";
+            let mut path = None;
+            let mut backend = None;
+            let mut primer3_executable = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--path" => {
+                        path = Some(parse_option_path(tokens, &mut idx, "--path", context)?);
+                    }
+                    "--backend" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--backend", context)?;
+                        backend = Some(parse_primer_design_backend(&raw)?);
+                    }
+                    "--primer3-exec" | "--primer3-executable" => {
+                        let flag = tokens[idx].clone();
+                        primer3_executable =
+                            Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {context}\n       {USAGE}"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PrimersDesignGroupTarget {
+                request_json,
+                path,
+                backend,
+                primer3_executable,
             })
         }
         "design-transcript-assay-panel" => {
@@ -7686,7 +7858,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             })
         }
         other => Err(format!(
-            "Unknown primers subcommand '{other}' (expected design, design-terminal-exon-rt-pool, design-qpcr, design-transcript-assay-panel, plan-gene-isoform-study, execute-gene-isoform-study-workflow, compose-gene-isoform-study-workflow-batch, execute-gene-isoform-study-workflow-batch, publish-gene-isoform-study, compose-gene-assay-routine, experimental-handoff, import-external-pairs, screen-variants, specificity, specificity-plan, specificity-import, transcript-assay-specificity-plan, transcript-assay-specificity-finalize, test-cdna-pcr, test-cdna-qpcr, transcript-qpcr-panel, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, oligo-order)"
+            "Unknown primers subcommand '{other}' (expected design, design-terminal-exon-rt-pool, design-qpcr, design-group-target, build-transcript-assay-cdna-similarity-map, design-transcript-assay-panel, plan-gene-isoform-study, execute-gene-isoform-study-workflow, compose-gene-isoform-study-workflow-batch, execute-gene-isoform-study-workflow-batch, publish-gene-isoform-study, compose-gene-assay-routine, experimental-handoff, import-external-pairs, screen-variants, specificity, specificity-plan, specificity-import, specificity-alignment-html, transcript-assay-specificity-plan, transcript-assay-specificity-finalize, transcript-assay-specificity-redesign, test-cdna-pcr, test-cdna-qpcr, transcript-qpcr-panel, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, oligo-order)"
         )),
     }
 }

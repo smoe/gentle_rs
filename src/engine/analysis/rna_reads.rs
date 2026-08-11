@@ -14340,6 +14340,7 @@ impl GentleEngine {
         let run_id = "interactive".to_string();
         let checkpoint = self.maybe_capture_checkpoint(&op);
         let mut result = OpResult {
+            primer_group_target_design: None,
             op_id: self.next_op_id(),
             created_seq_ids: vec![],
             changed_seq_ids: vec![],
@@ -14363,6 +14364,8 @@ impl GentleEngine {
             primer_variant_screen: None,
             transcript_qpcr_panel: None,
             transcript_assay_panel: None,
+            transcript_assay_cdna_similarity_map: None,
+            transcript_assay_specificity_redesign: None,
             gene_isoform_assay_study_plan: None,
             experimental_assay_handoff: None,
             primer_specificity_handoff: None,
@@ -14468,6 +14471,7 @@ impl GentleEngine {
         let run_id = "interactive".to_string();
         let checkpoint = self.maybe_capture_checkpoint(&op);
         let mut result = OpResult {
+            primer_group_target_design: None,
             op_id: self.next_op_id(),
             created_seq_ids: vec![],
             changed_seq_ids: vec![],
@@ -14491,6 +14495,8 @@ impl GentleEngine {
             primer_variant_screen: None,
             transcript_qpcr_panel: None,
             transcript_assay_panel: None,
+            transcript_assay_cdna_similarity_map: None,
+            transcript_assay_specificity_redesign: None,
             gene_isoform_assay_study_plan: None,
             experimental_assay_handoff: None,
             primer_specificity_handoff: None,

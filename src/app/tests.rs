@@ -12465,6 +12465,7 @@ fn poll_prepare_success_after_cancel_request_reports_completion_prefix() {
     tx.send(GenomePrepareTaskMessage::Done {
         job_id: 54,
         result: Ok(OpResult {
+            primer_group_target_design: None,
             experimental_assay_handoff: None,
             op_id: "background-prepare-genome".to_string(),
             created_seq_ids: vec![],
@@ -12485,6 +12486,8 @@ fn poll_prepare_success_after_cancel_request_reports_completion_prefix() {
             primerbank_search_report: None,
             transcript_qpcr_panel: None,
             transcript_assay_panel: None,
+            transcript_assay_cdna_similarity_map: None,
+            transcript_assay_specificity_redesign: None,
             gene_isoform_assay_study_plan: None,
             gene_transcript_assay_routine: None,
             primer_specificity_handoff: None,
@@ -12702,6 +12705,7 @@ fn poll_track_import_refreshes_only_changed_sequence_windows() {
     tx.send(GenomeTrackImportTaskMessage::Done {
         job_id: 91,
         result: Ok(GenomeTrackTaskResult::Operation(OpResult {
+            primer_group_target_design: None,
             experimental_assay_handoff: None,
             op_id: "op_track_refresh_changed".to_string(),
             created_seq_ids: vec![],
@@ -12722,6 +12726,8 @@ fn poll_track_import_refreshes_only_changed_sequence_windows() {
             primerbank_search_report: None,
             transcript_qpcr_panel: None,
             transcript_assay_panel: None,
+            transcript_assay_cdna_similarity_map: None,
+            transcript_assay_specificity_redesign: None,
             gene_isoform_assay_study_plan: None,
             gene_transcript_assay_routine: None,
             primer_specificity_handoff: None,
@@ -12829,6 +12835,7 @@ fn poll_track_import_refreshes_all_open_windows_when_changed_ids_missing() {
     tx.send(GenomeTrackImportTaskMessage::Done {
         job_id: 92,
         result: Ok(GenomeTrackTaskResult::Operation(OpResult {
+            primer_group_target_design: None,
             experimental_assay_handoff: None,
             op_id: "op_track_refresh_fallback".to_string(),
             created_seq_ids: vec![],
@@ -12849,6 +12856,8 @@ fn poll_track_import_refreshes_all_open_windows_when_changed_ids_missing() {
             primerbank_search_report: None,
             transcript_qpcr_panel: None,
             transcript_assay_panel: None,
+            transcript_assay_cdna_similarity_map: None,
+            transcript_assay_specificity_redesign: None,
             gene_isoform_assay_study_plan: None,
             gene_transcript_assay_routine: None,
             primer_specificity_handoff: None,
@@ -13178,6 +13187,7 @@ fn poll_track_autosync_marks_stale_result_and_allows_new_key_retry() {
 #[test]
 fn format_extract_region_status_includes_annotation_fallback_reason() {
     let status = GENtleApp::format_extract_region_status(&OpResult {
+        primer_group_target_design: None,
         experimental_assay_handoff: None,
         op_id: "op_extract".to_string(),
         created_seq_ids: vec!["grch38_tp73".to_string()],
@@ -13213,6 +13223,8 @@ fn format_extract_region_status_includes_annotation_fallback_reason() {
         primerbank_search_report: None,
         transcript_qpcr_panel: None,
         transcript_assay_panel: None,
+        transcript_assay_cdna_similarity_map: None,
+        transcript_assay_specificity_redesign: None,
         gene_isoform_assay_study_plan: None,
         gene_transcript_assay_routine: None,
         primer_specificity_handoff: None,

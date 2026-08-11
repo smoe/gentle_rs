@@ -3224,7 +3224,17 @@ Shared shell command:
     - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME]...`
     - `primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]`
     - `primers design-transcript-assay-panel OPERATION_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
+    - `primers design-group-target REQUEST_JSON_OR_@FILE [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers design-transcript-assay-panel SEQ_ID FEATURE_ID [--assay-kind endpoint-rt-pcr|sybr-qpcr|taqman-qpcr] [--cdna-synthesis oligo-dt|random-hexamers|gene-specific|mixed] [--objective pan-transcript|one-per-class|minimal-discrimination-panel|isoform-end-matrix] [--coverage-policy require-all|best-effort] [--coverage-universe JSON_OR_@FILE] [--assay-tier routine-common-region-screen|isoform-discrimination|long-range-structure-discovery] [--preferred-min-amplicon-bp N --preferred-max-amplicon-bp N] [--junctions JSON_OR_@FILE] [--junction-evidence PATH ...] [--junction-evidence-priority required|preferred] [--min-3prime-junction-overlap-bp N] [--min-5prime-junction-overlap-bp N] [--annotation-release TEXT] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--oligo-dt-5prime-risk-threshold-bp N] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]`
+      - The group-target route accepts `gentle.primer_group_target_design.v1`
+        request fields as JSON. It aligns two or more loaded related sequences,
+        derives exact shared primer intervals, refuses excessive search before
+        Primer3, and reports every retained pair against every member.
+        `require_all` is strict; incomplete coverage is returned only when
+        `coverage_policy` is explicitly `best_effort`.
+      - The same `DesignPrimerGroupTarget` operation is reachable through
+        generic `op`/workflow, MCP, JavaScript, and Lua adapters. The dedicated
+        command is the discoverable shell projection, not a second algorithm.
       - for oligo-dT cDNA, matrix cells always report each predicted product's
         required reach from the annotated transcript 3-prime end. Supplying
         `--oligo-dt-5prime-risk-threshold-bp` classifies that geometry against
@@ -3668,6 +3678,11 @@ Shared shell command:
       - `non_annealing_5prime_tail` is added to the oligo sequence while
         anneal `tm_c`/`gc_fraction`/`anneal_hits` remain computed on the
         template-binding segment only.
+      - to design a partner around one complete supplied canonical primer,
+        set that side's `min_length == max_length == fixed_5prime.len()` and
+        put the full 5'-to-3' sequence in `fixed_5prime`. GENtle passes this to
+        Primer3 as `SEQUENCE_PRIMER` or `SEQUENCE_PRIMER_REVCOMP`; a shorter
+        `fixed_5prime` remains only a prefix filter.
       - `pair_constraints` is optional and supports:
         `require_roi_flanking`, amplicon motif filters, and fixed amplicon
         start/end coordinates.
@@ -3738,6 +3753,16 @@ Shared shell command:
       - returns and persists `gentle.primer_specificity_report.v4`; repeated
         assessment of the same biological inputs and policy reuses one stable
         content-derived `report_id`
+      - `--full-alignment disabled|best-effort|required` controls end-to-end
+        realignment of complete primers after BLAST locates candidate loci.
+        `best-effort` is the default; `required` makes unavailable alignment
+        evidence incomplete rather than falling back to a partial local HSP
+      - `--reviewed-off-target-allowlist JSON_ARRAY_OR_@FILE` accepts exact reviewed
+        products bound to target space, subject, optional coordinates,
+        reviewer, reason, and evidence hash. An allowance remains visibly
+        off-target and cannot repair an incomplete search
+      - `primers specificity-alignment-html REPORT_ID OUTPUT.html` projects
+        the stored complete alignments without rerunning BLAST
       - `collections run primer-specificity` is the engine-owned `map`
         continuation for a persisted gene-set resolution or a set of project
         sequences. It calls this same assessment once per resolved primer
@@ -3924,6 +3949,19 @@ Shared shell command:
         biologically failing, not-assessed, incomplete, and execution-failed
         assay ids, so those states and `not_run` remain distinguishable while
         genomic plus transcriptome evidence can coexist
+      - after a complete `specificity_fail`, use `primers
+        transcript-assay-specificity-redesign REQUEST_JSON_OR_@FILE [--path
+        OUTPUT.json]`. The request binds the panel, acceptance bytes, and exact
+        original design operation. The read-only report retains passing assays
+        and gives each failed required assay either content-bound substitute
+        candidates or an explicit constrained-infeasibility disposition;
+        substitutes must traverse the same cDNA and genomic gates
+      - `primers build-transcript-assay-cdna-similarity-map
+        REQUEST_JSON_OR_@FILE [--path OUTPUT.json]` produces the advisory map
+        independently when a caller wants to review it before design
+      - `primers specificity-alignment-html REPORT_ID OUTPUT.html` renders the
+        full-primer alignments already stored in a specificity report and does
+        not rerun BLAST
     - cDNA PCR/qPCR assay test notes
       (`primers test-cdna-pcr` / `primers test-cdna-qpcr` /
       `primers test-cdna-qpcr-fasta`):
@@ -4045,6 +4083,25 @@ Shared shell command:
         `deprioritize` overlaps only to run lower-risk bounded records first;
         emitted Primer3 constraints and mandatory post-design complete-cDNA
         and genomic specificity gates are unchanged
+      - `search_policy.build_cdna_similarity_map` instead asks GENtle to build
+        and content-bind that advisory map from a prepared transcriptome/cDNA
+        resource before Primer3. It is mutually exclusive with a map file;
+        read-only feasibility never launches this external BLAST step
+      - `search_policy.interval_evidence` accepts explicit hard exclusions,
+        soft deprioritization, and informative intervals. Optional project
+        projection can add known-variant and RepeatMasker evidence. The same
+        plan records every exact `SEQUENCE_EXCLUDED_REGION` emitted to Primer3
+      - `search_policy.primer3_chemistry` selects executable defaults, an
+        explicitly emitted standard-PCR computational baseline, or restricted
+        custom Primer3 solution/Tm overrides. It records calculation inputs and
+        does not claim the wet-lab master mix uses them
+      - `search_policy.max_junction_single_side_match_bp` can cap either
+        contiguous side of a junction-spanning primer in addition to the
+        existing minimum 3-prime and 5-prime overlaps
+      - `search_policy.min_intervening_intron_bp` can require either a
+        junction-spanning primer or an annotated intervening intron of at least
+        the requested size. This reduces genomic-carryover risk by design but
+        does not replace the genomic specificity gate
       - the command accepts either the concise `SEQ_ID FEATURE_ID` flag form or
         a complete externally tagged `DesignTranscriptAssayPanel` operation as
         inline JSON / `@FILE`. The operation form exposes every shared primer,

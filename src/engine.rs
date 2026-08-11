@@ -815,6 +815,7 @@ const GUIDE_DESIGN_SCHEMA: &str = "gentle.guide_design.v1";
 pub const PRIMER_DESIGN_REPORTS_METADATA_KEY: &str = "primer_design_reports";
 const PRIMER_DESIGN_REPORTS_SCHEMA: &str = "gentle.primer_design_reports.v1";
 const PRIMER_DESIGN_REPORT_SCHEMA: &str = "gentle.primer_design_report.v1";
+pub const PRIMER_GROUP_TARGET_DESIGN_SCHEMA: &str = "gentle.primer_group_target_design.v1";
 const QPCR_DESIGN_REPORT_SCHEMA: &str = "gentle.qpcr_design_report.v1";
 const OLIGO_ORDER_FORM_SCHEMA: &str = "gentle.oligo_order_form.v1";
 const CDNA_ASSAY_TEST_REPORT_SCHEMA: &str = "gentle.cdna_assay_test_report.v1";
@@ -852,6 +853,8 @@ const TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_EXECUTION_MANIFEST_SCHEMA: &str =
     "gentle.transcript_assay_panel_specificity_execution_manifest.v1";
 const TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_ACCEPTANCE_SCHEMA: &str =
     "gentle.transcript_assay_panel_specificity_acceptance.v2";
+pub const TRANSCRIPT_ASSAY_SPECIFICITY_REDESIGN_SCHEMA: &str =
+    "gentle.transcript_assay_specificity_redesign.v1";
 pub const TRANSCRIPT_QPCR_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_qpcr_panel.v1";
 pub const TRANSCRIPT_ASSAY_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_assay_panel.v2";
 pub const TRANSCRIPT_ASSAY_PANEL_FEASIBILITY_SCHEMA: &str =
@@ -4269,6 +4272,13 @@ pub enum Operation {
     DesignTerminalExonRtPrimerPool {
         request: TerminalExonRtPrimerPoolRequest,
     },
+    /// Design one exact-binding primer pair shared by related loaded
+    /// sequences after deterministic common-interval planning.
+    DesignPrimerGroupTarget {
+        request: PrimerGroupTargetDesignRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     DesignInsertionPrimerPairs {
         template: SeqId,
         insertion: PrimerInsertionIntent,
@@ -4289,6 +4299,12 @@ pub enum Operation {
         path: String,
     },
     ExportTerminalExonRtPrimerPoolReport {
+        report_id: String,
+        path: String,
+    },
+    /// Render stored full-primer specificity alignments without rerunning
+    /// BLAST or sequence alignment.
+    ExportPrimerSpecificityAlignmentHtml {
         report_id: String,
         path: String,
     },
@@ -4489,6 +4505,20 @@ pub enum Operation {
         /// Zero-based feature index into the source sequence feature table.
         source_feature_id: usize,
         shared_qpcr_report_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    /// Materialize advisory, content-bound whole-cDNA similarity intervals for
+    /// subsequent bounded transcript-assay planning.
+    BuildTranscriptAssayCdnaSimilarityMap {
+        request: TranscriptAssayCdnaSimilarityMapBuildRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    /// Propose content-bound replacements for specificity-failed transcript
+    /// assays without mutating the approved source panel.
+    RedesignTranscriptAssaySpecificityFailures {
+        request: TranscriptAssaySpecificityRedesignRequest,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
@@ -9560,6 +9590,7 @@ impl GentleEngine {
                 | Operation::ShowSequencingConfirmationReport { .. }
                 | Operation::ExportSequencingConfirmationReport { .. }
                 | Operation::ExportSequencingConfirmationSupportTsv { .. }
+                | Operation::ExportPrimerSpecificityAlignmentHtml { .. }
                 | Operation::SuggestSequencingPrimers { .. }
                 | Operation::AlignSequences { .. }
                 | Operation::SearchPrimerBank { .. }
@@ -9567,6 +9598,8 @@ impl GentleEngine {
                 | Operation::TestCdnaPcr { .. }
                 | Operation::TestCdnaQpcr { .. }
                 | Operation::BuildTranscriptQpcrPanel { .. }
+                | Operation::BuildTranscriptAssayCdnaSimilarityMap { .. }
+                | Operation::RedesignTranscriptAssaySpecificityFailures { .. }
                 | Operation::TestCdnaQpcrFasta { .. }
         ) {
             None
