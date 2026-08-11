@@ -239,10 +239,10 @@ broad crate surgery that is not tied to the selected release story.
 
 ### Reserved For Anze: Repeat/Similarity Inspection Follow-Up
 
-Later phases stay intentionally separate: richer action-specific evidence panes
-and broader mapping of single-sequence operations across sequence sets. The
-portable inspection-action, cross-adapter parity, curated repeat-family, and
-objective-aware severity foundations are recorded in `docs/CHANGELOG.md`.
+A later phase stays intentionally separate: broader mapping of single-sequence
+operations across sequence sets. Portable inspection actions, structured GUI
+evidence panes, cross-adapter parity, curated repeat-family provenance, and
+objective-aware severity presentation are recorded in `docs/CHANGELOG.md`.
 
 ## Phase D: Visualization And Workflow UX
 

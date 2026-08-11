@@ -101,7 +101,7 @@ use crate::{
         CandidateFeatureStrandRelation, CandidateRecord, CandidateSetOperator,
         ConstructReasoningActionDotplotRequest, ConstructReasoningGraph,
         ConstructReasoningGraphFreshness, ConstructReasoningGraphSnapshotStatus,
-        ConstructReasoningInspectionAction, ConstructRole,
+        ConstructReasoningInspectionAction, ConstructReasoningTaskSeverity, ConstructRole,
         CutRunMotifAbsentOccupancyInterpretation, CutRunMotifContextScope,
         CutRunRegulatoryEvidenceSourceKind, CutRunRegulatorySupportReport,
         CutRunRegulatoryTfbsConfirmationStatus, CutRunSupportStrength, DecisionMethod,
@@ -1739,6 +1739,7 @@ struct ConstructReasoningInspectorEntry {
     editable_status: Option<EditableStatus>,
     source_kind: Option<String>,
     dotplot_actions: Vec<ConstructReasoningDotplotAction>,
+    task_severities: Vec<ConstructReasoningTaskSeverity>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -14297,11 +14298,11 @@ impl MainAreaDna {
         if actions.is_empty() {
             return;
         }
-        ui.horizontal_wrapped(|ui| {
-            for action in actions {
-                ui.push_id(
-                    ("construct_reasoning_dotplot_action", &action.action_id),
-                    |ui| {
+        for action in actions {
+            ui.push_id(
+                ("construct_reasoning_dotplot_action", &action.action_id),
+                |ui| {
+                    ui.horizontal_top(|ui| {
                         let hover_text = if actions_enabled {
                             action.hover_text.as_str()
                         } else {
@@ -14320,10 +14321,18 @@ impl MainAreaDna {
                                 Err(err) => self.op_status = err,
                             }
                         }
-                    },
-                );
-            }
-        });
+                        egui::CollapsingHeader::new("Evidence")
+                            .id_salt("structured_evidence")
+                            .default_open(false)
+                            .show(ui, |ui| {
+                                Self::render_construct_reasoning_dotplot_action_evidence_pane(
+                                    ui, action,
+                                );
+                            });
+                    });
+                },
+            );
+        }
     }
 
     fn construct_reasoning_dotplot_mode_label(mode: DotplotMode) -> &'static str {
@@ -14332,6 +14341,133 @@ impl MainAreaDna {
             DotplotMode::SelfReverseComplement => "self_reverse_complement",
             DotplotMode::PairForward => "pair_forward",
             DotplotMode::PairReverseComplement => "pair_reverse_complement",
+        }
+    }
+
+    fn construct_reasoning_dotplot_mode_readable_label(mode: DotplotMode) -> String {
+        let orientation = match mode {
+            DotplotMode::SelfForward | DotplotMode::PairForward => "direct",
+            DotplotMode::SelfReverseComplement | DotplotMode::PairReverseComplement => {
+                "reverse-complement"
+            }
+        };
+        format!(
+            "{orientation} ({})",
+            Self::construct_reasoning_dotplot_mode_label(mode)
+        )
+    }
+
+    fn construct_reasoning_repeat_family_provenances(
+        action: &ConstructReasoningDotplotAction,
+    ) -> Vec<&crate::engine::ConstructReasoningRepeatFamilyProvenance> {
+        if action.repeat_family_provenances.is_empty() {
+            action.repeat_family_provenance.iter().collect()
+        } else {
+            action.repeat_family_provenances.iter().collect()
+        }
+    }
+
+    fn construct_reasoning_repeat_family_label(
+        provenance: &crate::engine::ConstructReasoningRepeatFamilyProvenance,
+    ) -> String {
+        let name = provenance
+            .family_name
+            .as_deref()
+            .or(provenance.repeat_family.as_deref())
+            .or(provenance.repeat_name.as_deref())
+            .unwrap_or("-")
+            .trim();
+        match provenance
+            .family_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            Some(id) if name != "-" && id != name => format!("{name} ({id})"),
+            Some(id) => id.to_string(),
+            None => name.to_string(),
+        }
+    }
+
+    fn render_construct_reasoning_dotplot_action_evidence_pane(
+        ui: &mut egui::Ui,
+        action: &ConstructReasoningDotplotAction,
+    ) {
+        let start_1based = action.focus_start_0based.saturating_add(1);
+        let end_1based = action.focus_end_0based_exclusive.max(start_1based);
+        let focus_len = action
+            .focus_end_0based_exclusive
+            .saturating_sub(action.focus_start_0based)
+            .max(1);
+        egui::Grid::new("action_geometry")
+            .num_columns(2)
+            .striped(true)
+            .show(ui, |ui| {
+                ui.small(egui::RichText::new("Focus").strong());
+                ui.small(format!("{start_1based}..{end_1based} ({focus_len} bp)"));
+                ui.end_row();
+                ui.small(egui::RichText::new("Dotplot mode").strong());
+                ui.small(Self::construct_reasoning_dotplot_mode_readable_label(
+                    action.mode,
+                ));
+                ui.end_row();
+            });
+        if !action.rationale.trim().is_empty() {
+            ui.add_space(3.0);
+            ui.small(egui::RichText::new("Rationale").strong());
+            ui.add(egui::Label::new(action.rationale.trim()).wrap());
+        }
+        if !action.driving_evidence_ids.is_empty() {
+            ui.add_space(3.0);
+            ui.small(egui::RichText::new("Driving evidence").strong());
+            for evidence_id in &action.driving_evidence_ids {
+                ui.monospace(evidence_id);
+            }
+        }
+        if !action.context_tags.is_empty() {
+            ui.add_space(3.0);
+            ui.small(egui::RichText::new("Context").strong());
+            for tag in &action.context_tags {
+                ui.small(tag);
+            }
+        }
+        let provenances = Self::construct_reasoning_repeat_family_provenances(action);
+        if !provenances.is_empty() {
+            ui.add_space(3.0);
+            ui.small(egui::RichText::new("Repeat-family provenance").strong());
+            egui::Grid::new("repeat_family_provenance")
+                .num_columns(5)
+                .striped(true)
+                .show(ui, |ui| {
+                    for heading in ["source", "family", "class", "agreement", "confidence"] {
+                        ui.small(egui::RichText::new(heading).strong());
+                    }
+                    ui.end_row();
+                    for provenance in provenances {
+                        ui.small(if provenance.source_kind.trim().is_empty() {
+                            "-"
+                        } else {
+                            provenance.source_kind.trim()
+                        });
+                        ui.small(Self::construct_reasoning_repeat_family_label(provenance));
+                        ui.small(
+                            provenance
+                                .repeat_class
+                                .as_deref()
+                                .map(str::trim)
+                                .filter(|value| !value.is_empty())
+                                .unwrap_or("-"),
+                        );
+                        ui.small(provenance.agreement.as_str());
+                        ui.small(
+                            provenance
+                                .confidence
+                                .map(|value| format!("{value:.2}"))
+                                .unwrap_or_else(|| "-".to_string()),
+                        );
+                        ui.end_row();
+                    }
+                });
         }
     }
 
@@ -14377,11 +14513,7 @@ impl MainAreaDna {
                     action.context_tags.join(", ")
                 ));
             }
-            let provenances = if action.repeat_family_provenances.is_empty() {
-                action.repeat_family_provenance.iter().collect::<Vec<_>>()
-            } else {
-                action.repeat_family_provenances.iter().collect::<Vec<_>>()
-            };
+            let provenances = Self::construct_reasoning_repeat_family_provenances(action);
             for provenance in provenances {
                 let mut bits = vec![];
                 if !provenance.source_kind.trim().is_empty() {
@@ -14477,6 +14609,82 @@ impl MainAreaDna {
                 }
             })
             .collect()
+    }
+
+    fn construct_reasoning_task_severity_pane_fields(
+        severity: &ConstructReasoningTaskSeverity,
+    ) -> Vec<(&'static str, String)> {
+        let mut fields = vec![
+            ("Task", severity.task.as_str().to_string()),
+            ("Severity", severity.severity.as_str().to_string()),
+        ];
+        if let Some(score) = severity.score {
+            fields.push(("Effective score", format!("{score:.2}")));
+        }
+        if let Some(score) = severity.base_score {
+            fields.push(("Base score", format!("{score:.2}")));
+        }
+        if let Some(adjustment) = severity.objective_adjustment {
+            fields.push(("Objective adjustment", format!("{adjustment:+.2}")));
+        }
+        if let Some(base_severity) = severity.base_severity {
+            fields.push(("Base severity", base_severity.as_str().to_string()));
+        }
+        fields.extend([
+            ("Applicability", severity.applicability.as_str().to_string()),
+            (
+                "Applicability basis",
+                severity.applicability_basis.as_str().to_string(),
+            ),
+            (
+                "Evidence count",
+                severity.supporting_evidence_ids.len().to_string(),
+            ),
+        ]);
+        if !severity.rationale.trim().is_empty() {
+            fields.push(("Rationale", severity.rationale.trim().to_string()));
+        }
+        fields
+    }
+
+    fn render_construct_reasoning_task_severity_pane(
+        ui: &mut egui::Ui,
+        severities: &[ConstructReasoningTaskSeverity],
+    ) {
+        if severities.is_empty() {
+            return;
+        }
+        ui.small(egui::RichText::new("Task severity").strong());
+        for (index, severity) in severities.iter().enumerate() {
+            ui.push_id(
+                (
+                    "construct_reasoning_task_severity",
+                    index,
+                    severity.task.as_str(),
+                ),
+                |ui| {
+                    egui::Grid::new("fields")
+                        .num_columns(2)
+                        .striped(true)
+                        .show(ui, |ui| {
+                            for (label, value) in
+                                Self::construct_reasoning_task_severity_pane_fields(severity)
+                            {
+                                ui.small(egui::RichText::new(label).strong());
+                                ui.add(egui::Label::new(value).wrap());
+                                ui.end_row();
+                            }
+                        });
+                },
+            );
+            if index + 1 < severities.len() {
+                ui.add_space(3.0);
+            }
+        }
+    }
+
+    fn construct_reasoning_actions_enabled(freshness: ConstructReasoningGraphFreshness) -> bool {
+        freshness != ConstructReasoningGraphFreshness::Stale
     }
 
     fn construct_reasoning_decision_method_label(method: DecisionMethod) -> &'static str {
@@ -15220,6 +15428,7 @@ impl MainAreaDna {
             editable_status: None,
             source_kind: None,
             dotplot_actions,
+            task_severities: fact.task_severities.clone(),
         }
     }
 
@@ -15252,6 +15461,7 @@ impl MainAreaDna {
             editable_status: None,
             source_kind: None,
             dotplot_actions: vec![],
+            task_severities: vec![],
         }
     }
 
@@ -15331,6 +15541,7 @@ impl MainAreaDna {
             editable_status: None,
             source_kind: None,
             dotplot_actions,
+            task_severities: vec![],
         }
     }
 
@@ -15404,6 +15615,7 @@ impl MainAreaDna {
             editable_status: Some(candidate.editable_status),
             source_kind: Some(candidate.source_kind.clone()),
             dotplot_actions,
+            task_severities: vec![],
         }
     }
 
@@ -25424,8 +25636,9 @@ impl MainAreaDna {
                                 })
                                 .flat_map(|entry| entry.dotplot_actions.iter().cloned())
                                 .collect::<Vec<_>>(),
-                            reasoning.snapshot_freshness
-                                != ConstructReasoningGraphFreshness::Stale,
+                            Self::construct_reasoning_actions_enabled(
+                                reasoning.snapshot_freshness,
+                            ),
                         )
                     })
                     .unwrap_or_else(|| (vec![], true));
@@ -25469,8 +25682,8 @@ impl MainAreaDna {
                             .size(detail_font_size),
                     );
                 }
-                let reasoning_actions_enabled = reasoning.snapshot_freshness
-                    != ConstructReasoningGraphFreshness::Stale;
+                let reasoning_actions_enabled =
+                    Self::construct_reasoning_actions_enabled(reasoning.snapshot_freshness);
                 ui.label(
                     egui::RichText::new(format!(
                         "snapshot: {}",
@@ -25604,7 +25817,15 @@ impl MainAreaDna {
                                     &entry.dotplot_actions,
                                     reasoning_actions_enabled,
                                 );
-                                for line in &entry.detail_lines {
+                                Self::render_construct_reasoning_task_severity_pane(
+                                    ui,
+                                    &entry.task_severities,
+                                );
+                                for line in entry
+                                    .detail_lines
+                                    .iter()
+                                    .filter(|line| !line.starts_with("task_severity:"))
+                                {
                                     ui.label(
                                         egui::RichText::new(line)
                                             .monospace()

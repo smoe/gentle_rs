@@ -2337,12 +2337,12 @@ Controls:
          - `Nanopore/direct-sequencing review suggested`
          - `Repeat-driven mapping review suggested`
          - `Cloning stability review suggested`
-       - task-aware repeat/similarity severity is shown as compact
-         `task_severity: ...` detail lines under the same fact rows. Each line
-         distinguishes intrinsic evidence (`base_severity`/`base_score`) from
-         objective-adjusted effective priority and names task applicability
-         plus its explicit/legacy/unspecified basis; this does not create extra
-         map overlays
+       - task-aware repeat/similarity severity is shown as a compact structured
+         grid under the same fact rows. Optional intrinsic evidence
+         (`base_severity`/`base_score`) and objective-adjusted effective
+         priority appear only when present; task applicability and its
+         explicit/legacy/unspecified basis remain separate. This does not
+         create extra map overlays
      - repeat/similarity summaries, candidates, and repeat-driven fact rows
        can now open the shared dotplot workspace directly:
        - `Dotplot` opens a self-forward dotplot centered on the implicated
@@ -2355,12 +2355,14 @@ Controls:
          `inspection_actions[]` with deterministic action ids and
          `rationale`, `driving_evidence_ids[]`, mode, context tags, and focus
          ranges, not by GUI-local label matching
-       - the existing inspector rows surface the same action details before
-         any richer action-specific evidence pane is added, so the button and
-         explanation stay tied to the protocol record
-       - repeat-family action details enumerate every typed overlapping family
-         with class/family agreement and confidence rather than showing only a
-         single parsed provenance string
+       - a collapsed `Evidence` pane beside each button presents the action's
+         1-based focus range and length, readable dotplot mode, wrapped
+         rationale, discrete evidence ids and context tags, and typed
+         repeat-family provenance; the button and explanation therefore stay
+         tied to the same protocol record
+       - repeat-family rows enumerate every typed overlapping family with
+         source, class/family agreement, and confidence; the plural provenance
+         field is preferred while older singular provenance remains readable
        - the inspector reports graph snapshot freshness. Dotplot buttons are
          disabled, and the execution path independently rejects the action,
          when sequence/features, objective intent, or reasoning rules changed
