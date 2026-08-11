@@ -199,6 +199,12 @@ struct TranscriptAssayDesignTarget {
     excluded_regions_0based: Vec<(usize, usize)>,
 }
 
+#[derive(Debug, Clone)]
+struct ResolvedTranscriptAssayCdnaSimilarityMap {
+    report: TranscriptAssayCdnaSimilarityMap,
+    sha256: String,
+}
+
 impl GentleEngine {
     fn gibson_arrangement_insert_seq_ids(plan: &GibsonAssemblyPlan) -> Vec<String> {
         let fragments_by_id = plan
@@ -20552,6 +20558,189 @@ impl GentleEngine {
         Ok(policy)
     }
 
+    fn resolve_transcript_assay_cdna_similarity_map(
+        source: &TranscriptAssayCdnaSimilarityMapRef,
+        templates: &[TranscriptQpcrDesignTemplate],
+    ) -> Result<ResolvedTranscriptAssayCdnaSimilarityMap, EngineError> {
+        let path = source.path.trim();
+        let expected_sha256 = source.expected_sha256.trim();
+        if path.is_empty() || expected_sha256.is_empty() {
+            return Err(EngineError::invalid_input(
+                "Transcript-assay cDNA similarity-map references require path and expected_sha256",
+            ));
+        }
+        let bytes = fs::read(path).map_err(|error| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not read cDNA similarity map '{path}': {error}"),
+            cause_chain: vec![],
+        })?;
+        let observed_sha256 = sha256_prefixed_bytes(&bytes);
+        if observed_sha256 != expected_sha256 {
+            return Err(EngineError::invalid_input(format!(
+                "cDNA similarity map '{path}' has digest '{observed_sha256}' but '{expected_sha256}' was required"
+            )));
+        }
+        let report: TranscriptAssayCdnaSimilarityMap =
+            serde_json::from_slice(&bytes).map_err(|error| {
+                EngineError::invalid_input(format!(
+                    "Could not parse cDNA similarity map '{path}': {error}"
+                ))
+            })?;
+        if report.schema != TRANSCRIPT_ASSAY_CDNA_SIMILARITY_MAP_SCHEMA {
+            return Err(EngineError::invalid_input(format!(
+                "cDNA similarity map '{path}' uses schema '{}'; expected '{}'",
+                report.schema, TRANSCRIPT_ASSAY_CDNA_SIMILARITY_MAP_SCHEMA
+            )));
+        }
+        if report.map_id.trim().is_empty()
+            || report.target_resource_id.trim().is_empty()
+            || report.database_content_fingerprint.trim().is_empty()
+            || report.blast_program.trim().is_empty()
+            || report.blast_task.trim().is_empty()
+            || report.blast_tool_version.trim().is_empty()
+        {
+            return Err(EngineError::invalid_input(format!(
+                "cDNA similarity map '{path}' requires map/resource identity, database fingerprint, and BLAST program/task/version provenance"
+            )));
+        }
+        if report.target_space != "transcriptome_cdna" {
+            return Err(EngineError::invalid_input(format!(
+                "cDNA similarity map '{path}' targets '{}'; expected transcriptome_cdna",
+                report.target_space
+            )));
+        }
+
+        let template_by_id = templates
+            .iter()
+            .map(|template| {
+                (
+                    template.transcript_id.as_str(),
+                    (
+                        template.sequence.len(),
+                        sha256_prefixed_bytes(template.sequence.as_bytes()),
+                    ),
+                )
+            })
+            .collect::<HashMap<_, _>>();
+        let mut interval_ids = HashSet::new();
+        for interval in &report.intervals {
+            if interval.interval_id.trim().is_empty()
+                || interval.transcript_id.trim().is_empty()
+                || interval.template_sha256.trim().is_empty()
+                || interval.basis.trim().is_empty()
+                || interval.subject_ids.is_empty()
+                || interval.start_0based >= interval.end_0based_exclusive
+            {
+                return Err(EngineError::invalid_input(format!(
+                    "cDNA similarity map '{path}' contains an interval with missing identity or invalid 0-based/exclusive bounds"
+                )));
+            }
+            if !interval_ids.insert(interval.interval_id.as_str()) {
+                return Err(EngineError::invalid_input(format!(
+                    "cDNA similarity map '{path}' repeats interval_id '{}'",
+                    interval.interval_id
+                )));
+            }
+            for (field, value) in [
+                ("best_identity_fraction", interval.best_identity_fraction),
+                (
+                    "best_query_coverage_fraction",
+                    interval.best_query_coverage_fraction,
+                ),
+            ] {
+                if value.is_some_and(|value| !value.is_finite() || !(0.0..=1.0).contains(&value)) {
+                    return Err(EngineError::invalid_input(format!(
+                        "cDNA similarity map '{path}' interval '{}' has invalid {field}",
+                        interval.interval_id
+                    )));
+                }
+            }
+            let Some((template_len, template_sha256)) =
+                template_by_id.get(interval.transcript_id.as_str())
+            else {
+                continue;
+            };
+            if interval.template_sha256.as_str() != template_sha256.as_str() {
+                return Err(EngineError::invalid_input(format!(
+                    "cDNA similarity map '{path}' interval '{}' binds transcript '{}' digest '{}' but the active mature cDNA is '{}'",
+                    interval.interval_id,
+                    interval.transcript_id,
+                    interval.template_sha256,
+                    template_sha256
+                )));
+            }
+            if interval.end_0based_exclusive > *template_len {
+                return Err(EngineError::invalid_input(format!(
+                    "cDNA similarity map '{path}' interval '{}' ends at {} beyond transcript '{}' length {}",
+                    interval.interval_id,
+                    interval.end_0based_exclusive,
+                    interval.transcript_id,
+                    template_len
+                )));
+            }
+        }
+        Ok(ResolvedTranscriptAssayCdnaSimilarityMap {
+            report,
+            sha256: observed_sha256,
+        })
+    }
+
+    fn transcript_assay_interval_overlap_bp(left: (usize, usize), right: (usize, usize)) -> usize {
+        left.1.min(right.1).saturating_sub(left.0.max(right.0))
+    }
+
+    fn transcript_assay_cdna_similarity_risk(
+        map: Option<&ResolvedTranscriptAssayCdnaSimilarityMap>,
+        transcript_id: &str,
+        left_interval: (usize, usize),
+        right_interval: (usize, usize),
+    ) -> (Vec<String>, usize) {
+        let Some(map) = map else {
+            return (vec![], 0);
+        };
+        let merged_windows =
+            if left_interval.1 >= right_interval.0 && right_interval.1 >= left_interval.0 {
+                vec![(
+                    left_interval.0.min(right_interval.0),
+                    left_interval.1.max(right_interval.1),
+                )]
+            } else {
+                vec![left_interval, right_interval]
+            };
+        let mut interval_ids = vec![];
+        let mut overlap_bp = 0usize;
+        for interval in map.report.intervals.iter().filter(|interval| {
+            interval.transcript_id == transcript_id
+                && interval.guidance == TranscriptAssayCdnaSimilarityGuidance::Deprioritize
+        }) {
+            let interval_range = (interval.start_0based, interval.end_0based_exclusive);
+            let interval_overlap = merged_windows
+                .iter()
+                .map(|window| Self::transcript_assay_interval_overlap_bp(*window, interval_range))
+                .sum::<usize>();
+            if interval_overlap > 0 {
+                interval_ids.push(interval.interval_id.clone());
+                overlap_bp = overlap_bp.saturating_add(interval_overlap);
+            }
+        }
+        interval_ids.sort();
+        interval_ids.dedup();
+        (interval_ids, overlap_bp)
+    }
+
+    pub(super) fn transcript_assay_search_record_ordering(
+        left: &TranscriptAssayPrimerSearchRecord,
+        right: &TranscriptAssayPrimerSearchRecord,
+    ) -> Ordering {
+        left.similarity_risk_overlap_bp
+            .cmp(&right.similarity_risk_overlap_bp)
+            .then(
+                left.estimated_candidate_pair_count
+                    .cmp(&right.estimated_candidate_pair_count),
+            )
+            .then(left.search_record_id.cmp(&right.search_record_id))
+    }
+
     fn transcript_assay_search_exon_ordinals(
         template: &TranscriptQpcrDesignTemplate,
         start: usize,
@@ -20872,10 +21061,24 @@ impl GentleEngine {
         EngineError,
     > {
         Self::validate_transcript_assay_search_policy(policy, forward, reverse)?;
+        let cdna_similarity_map = policy
+            .cdna_similarity_map
+            .as_ref()
+            .map(|source| Self::resolve_transcript_assay_cdna_similarity_map(source, templates))
+            .transpose()?;
         let mut plan = TranscriptAssayPrimerSearchPlan {
             schema: TRANSCRIPT_ASSAY_PRIMER_SEARCH_PLAN_SCHEMA.to_string(),
             operation_sha256: operation_sha256.to_string(),
             policy: policy.clone(),
+            cdna_similarity_map_id: cdna_similarity_map
+                .as_ref()
+                .map(|resolved| resolved.report.map_id.clone()),
+            cdna_similarity_map_sha256: cdna_similarity_map
+                .as_ref()
+                .map(|resolved| resolved.sha256.clone()),
+            cdna_similarity_database_content_fingerprint: cdna_similarity_map
+                .as_ref()
+                .map(|resolved| resolved.report.database_content_fingerprint.clone()),
             target_count: targets.len(),
             warnings: vec![
                 "Local exact-repeat and low-complexity screening is planning evidence only; cross-transcript cDNA and genomic specificity remain separate QA gates after candidate generation."
@@ -20883,6 +21086,19 @@ impl GentleEngine {
             ],
             ..TranscriptAssayPrimerSearchPlan::default()
         };
+        if let Some(resolved) = cdna_similarity_map.as_ref() {
+            plan.warnings.push(
+                "Whole-cDNA regional similarity is advisory search-order evidence only: GENtle does not exclude these intervals, and every selected pair still requires complete-cDNA and genomic specificity QA."
+                    .to_string(),
+            );
+            plan.warnings.extend(
+                resolved
+                    .report
+                    .warnings
+                    .iter()
+                    .map(|warning| format!("cDNA similarity map: {warning}")),
+            );
+        }
         let mut planned_targets = vec![];
         let max_primer_bp = forward.max_length.max(reverse.max_length);
         let mut ordered_targets = targets.to_vec();
@@ -21126,6 +21342,13 @@ impl GentleEngine {
                     .as_ref()
                     .map(|_| vec![target_id.clone()])
                     .unwrap_or_default();
+                let (similarity_risk_interval_ids, similarity_risk_overlap_bp) =
+                    Self::transcript_assay_cdna_similarity_risk(
+                        cdna_similarity_map.as_ref(),
+                        &template.transcript_id,
+                        left_interval,
+                        right_interval,
+                    );
                 let record = TranscriptAssayPrimerSearchRecord {
                     search_record_id: search_record_id.clone(),
                     target_id: target_id.clone(),
@@ -21181,6 +21404,8 @@ impl GentleEngine {
                     estimated_right_candidate_count: right_candidates.len(),
                     estimated_candidate_pair_count: pair_count,
                     candidate_pair_search_space_upper_bound: search_space_upper_bound,
+                    similarity_risk_interval_ids,
+                    similarity_risk_overlap_bp,
                     primer3_fields,
                 };
                 let mut planned = target.clone();
@@ -21194,9 +21419,7 @@ impl GentleEngine {
                 target_records.push((record, planned));
             }
             target_records.sort_by(|(left, _), (right, _)| {
-                left.estimated_candidate_pair_count
-                    .cmp(&right.estimated_candidate_pair_count)
-                    .then(left.search_record_id.cmp(&right.search_record_id))
+                Self::transcript_assay_search_record_ordering(left, right)
             });
             if target_records.is_empty() && target.search_required {
                 plan.blocked_target_ids.push(target_id.clone());
@@ -21238,11 +21461,7 @@ impl GentleEngine {
         plan.records.sort_by(|left, right| {
             left.target_id
                 .cmp(&right.target_id)
-                .then(
-                    left.estimated_candidate_pair_count
-                        .cmp(&right.estimated_candidate_pair_count),
-                )
-                .then(left.search_record_id.cmp(&right.search_record_id))
+                .then_with(|| Self::transcript_assay_search_record_ordering(left, right))
         });
         plan.rejected_intervals.sort_by(|left, right| {
             left.target_id
@@ -21256,9 +21475,29 @@ impl GentleEngine {
                 .then(left.end_0based_exclusive.cmp(&right.end_0based_exclusive))
                 .then(left.reason_code.cmp(&right.reason_code))
         });
+        plan.similarity_guided_record_count = plan
+            .records
+            .iter()
+            .filter(|record| !record.similarity_risk_interval_ids.is_empty())
+            .count();
+        let record_ordinal_by_id = plan
+            .records
+            .iter()
+            .enumerate()
+            .map(|(ordinal, record)| (record.search_record_id.as_str(), ordinal))
+            .collect::<HashMap<_, _>>();
         planned_targets.sort_by(|left, right| {
-            left.search_target_id
-                .cmp(&right.search_target_id)
+            left.search_record_id
+                .as_deref()
+                .and_then(|id| record_ordinal_by_id.get(id).copied())
+                .unwrap_or(usize::MAX)
+                .cmp(
+                    &right
+                        .search_record_id
+                        .as_deref()
+                        .and_then(|id| record_ordinal_by_id.get(id).copied())
+                        .unwrap_or(usize::MAX),
+                )
                 .then(left.search_record_id.cmp(&right.search_record_id))
         });
         plan.warnings.push(

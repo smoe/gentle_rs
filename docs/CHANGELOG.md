@@ -1,5 +1,12 @@
 # GENtle Changelog
 
+- Added a content-bound `gentle.transcript_assay_cdna_similarity_map.v1`
+  planning seam for transcript-assay design. Whole-cDNA similarity intervals
+  can now rank bounded Primer3 records toward lower-risk regions while exact
+  operation digests, template coordinates, BLAST/database provenance, emitted
+  Primer3 constraints, and final complete-cDNA/genomic specificity gates stay
+  explicit and unchanged.
+
 - Grounded Agent Assistant and `agents ask` requests in engine-owned
   introspection whenever project context is enabled. The additive
   `gentle.agent_introspection_context.v1` extension carries a bounded current
