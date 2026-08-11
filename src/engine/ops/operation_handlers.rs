@@ -205,6 +205,16 @@ struct ResolvedTranscriptAssayCdnaSimilarityMap {
     sha256: String,
 }
 
+#[derive(Debug, Clone)]
+struct PrimerGroupTargetCandidateInternal {
+    pair_id: String,
+    pair: PrimerDesignPairRecord,
+    member_products: Vec<PrimerGroupTargetMemberProduct>,
+    single_product_template_count: usize,
+    multiple_product_template_count: usize,
+    no_product_template_count: usize,
+}
+
 impl GentleEngine {
     fn gibson_arrangement_insert_seq_ids(plan: &GibsonAssemblyPlan) -> Vec<String> {
         let fragments_by_id = plan
@@ -24350,6 +24360,248 @@ impl GentleEngine {
         }
     }
 
+    pub(super) fn primer_pair_pareto_dominates(
+        left: &PrimerPairParetoMetrics,
+        right: &PrimerPairParetoMetrics,
+    ) -> bool {
+        let mut strictly_better = false;
+        macro_rules! maximize {
+            ($left:expr, $right:expr) => {
+                if $left < $right {
+                    return false;
+                }
+                strictly_better |= $left > $right;
+            };
+        }
+        macro_rules! minimize {
+            ($left:expr, $right:expr) => {
+                if $left > $right {
+                    return false;
+                }
+                strictly_better |= $left < $right;
+            };
+        }
+        if let (Some(left), Some(right)) = (
+            left.single_product_target_count,
+            right.single_product_target_count,
+        ) {
+            maximize!(left, right);
+        }
+        if let (Some(left), Some(right)) = (
+            left.multiple_product_target_count,
+            right.multiple_product_target_count,
+        ) {
+            minimize!(left, right);
+        }
+        if let (Some(left), Some(right)) =
+            (left.no_product_target_count, right.no_product_target_count)
+        {
+            minimize!(left, right);
+        }
+        if let (Some(left), Some(right)) =
+            (left.common_region_confirmed, right.common_region_confirmed)
+        {
+            maximize!(left, right);
+        }
+        if let (Some(left), Some(right)) = (left.practicality_rank, right.practicality_rank) {
+            maximize!(left, right);
+        }
+        maximize!(
+            left.existing_candidate_score,
+            right.existing_candidate_score
+        );
+        minimize!(left.tm_delta_c, right.tm_delta_c);
+        minimize!(
+            left.primer_pair_complementary_run_bp,
+            right.primer_pair_complementary_run_bp
+        );
+        minimize!(
+            left.primer_pair_3prime_complementary_run_bp,
+            right.primer_pair_3prime_complementary_run_bp
+        );
+        strictly_better
+    }
+
+    pub(super) fn primer_pair_pareto_frontier(
+        mut candidates: Vec<PrimerPairParetoAlternative>,
+    ) -> PrimerPairParetoFrontier {
+        const MAX_RETAINED: usize = 25;
+        const MAX_EVALUATED: usize = 2_000;
+        if candidates.is_empty() {
+            return PrimerPairParetoFrontier {
+                status: "not_available_no_accepted_candidates".to_string(),
+                objective_directions: vec![
+                    "existing_candidate_score:maximize".to_string(),
+                    "tm_delta_c:minimize".to_string(),
+                    "primer_pair_complementary_run_bp:minimize".to_string(),
+                    "primer_pair_3prime_complementary_run_bp:minimize".to_string(),
+                ],
+                ..PrimerPairParetoFrontier::default()
+            };
+        }
+        let accepted_candidate_count = candidates.len();
+        candidates.sort_by(|left, right| {
+            right
+                .selected
+                .cmp(&left.selected)
+                .then(
+                    right
+                        .metrics
+                        .existing_candidate_score
+                        .total_cmp(&left.metrics.existing_candidate_score),
+                )
+                .then(left.pair_id.cmp(&right.pair_id))
+        });
+        let source_truncated = candidates.len() > MAX_EVALUATED;
+        candidates.truncate(MAX_EVALUATED);
+        let evaluated_candidate_count = candidates.len();
+        let has_target_counts = candidates
+            .iter()
+            .any(|candidate| candidate.metrics.single_product_target_count.is_some());
+        let has_common = candidates
+            .iter()
+            .any(|candidate| candidate.metrics.common_region_confirmed.is_some());
+        let has_practicality = candidates
+            .iter()
+            .any(|candidate| candidate.metrics.practicality_rank.is_some());
+        let mut objective_directions = vec![];
+        if has_target_counts {
+            objective_directions.extend([
+                "single_product_target_count:maximize".to_string(),
+                "multiple_product_target_count:minimize".to_string(),
+                "no_product_target_count:minimize".to_string(),
+            ]);
+        }
+        if has_common {
+            objective_directions.push("common_region_confirmed:maximize".to_string());
+        }
+        if has_practicality {
+            objective_directions.push("practicality_rank:maximize".to_string());
+        }
+        objective_directions.extend([
+            "existing_candidate_score:maximize".to_string(),
+            "tm_delta_c:minimize".to_string(),
+            "primer_pair_complementary_run_bp:minimize".to_string(),
+            "primer_pair_3prime_complementary_run_bp:minimize".to_string(),
+        ]);
+        let dominated = (0..candidates.len())
+            .map(|right| {
+                (0..candidates.len()).any(|left| {
+                    left != right
+                        && Self::primer_pair_pareto_dominates(
+                            &candidates[left].metrics,
+                            &candidates[right].metrics,
+                        )
+                })
+            })
+            .collect::<Vec<_>>();
+        candidates = candidates
+            .into_iter()
+            .enumerate()
+            .filter_map(|(index, candidate)| (!dominated[index]).then_some(candidate))
+            .collect();
+        candidates.sort_by(|left, right| {
+            right
+                .selected
+                .cmp(&left.selected)
+                .then(
+                    right
+                        .metrics
+                        .single_product_target_count
+                        .cmp(&left.metrics.single_product_target_count),
+                )
+                .then(
+                    left.metrics
+                        .multiple_product_target_count
+                        .cmp(&right.metrics.multiple_product_target_count),
+                )
+                .then(
+                    right
+                        .metrics
+                        .existing_candidate_score
+                        .total_cmp(&left.metrics.existing_candidate_score),
+                )
+                .then(left.pair_id.cmp(&right.pair_id))
+        });
+        let non_dominated_candidate_count = candidates.len();
+        let truncated = source_truncated || candidates.len() > MAX_RETAINED;
+        candidates.truncate(MAX_RETAINED);
+        PrimerPairParetoFrontier {
+            status: if source_truncated {
+                "bounded_non_dominated_accepted_candidate_projection"
+            } else {
+                "complete_non_dominated_accepted_candidates"
+            }
+            .to_string(),
+            objective_directions,
+            accepted_candidate_count,
+            evaluated_candidate_count,
+            non_dominated_candidate_count,
+            retained_candidate_count: candidates.len(),
+            truncated,
+            alternatives: candidates,
+        }
+    }
+
+    fn primer_pair_pareto_tradeoff_summary(metrics: &PrimerPairParetoMetrics) -> String {
+        let mut parts = vec![format!(
+            "score={:.3}; delta_tm={:.3} C; pair_complementarity={}/{} bp",
+            metrics.existing_candidate_score,
+            metrics.tm_delta_c,
+            metrics.primer_pair_complementary_run_bp,
+            metrics.primer_pair_3prime_complementary_run_bp
+        )];
+        if let Some(single) = metrics.single_product_target_count {
+            parts.push(format!(
+                "single_product_targets={single}; multiple_product_targets={}; no_product_targets={}",
+                metrics.multiple_product_target_count.unwrap_or(0),
+                metrics.no_product_target_count.unwrap_or(0)
+            ));
+        }
+        if let Some(common) = metrics.common_region_confirmed {
+            parts.push(format!("annotation_common_region_confirmed={common}"));
+        }
+        parts.join("; ")
+    }
+
+    fn primer_pair_pareto_metrics_from_record(
+        pair: &PrimerDesignPairRecord,
+    ) -> PrimerPairParetoMetrics {
+        PrimerPairParetoMetrics {
+            existing_candidate_score: pair.score,
+            tm_delta_c: pair.tm_delta_c,
+            primer_pair_complementary_run_bp: pair.primer_pair_complementary_run_bp,
+            primer_pair_3prime_complementary_run_bp: pair.primer_pair_3prime_complementary_run_bp,
+            amplicon_length_bp: pair.amplicon_length_bp,
+            ..PrimerPairParetoMetrics::default()
+        }
+    }
+
+    fn primer_design_pair_pareto_frontier(
+        template_id: &str,
+        pairs: &[PrimerDesignPairRecord],
+    ) -> PrimerPairParetoFrontier {
+        let alternatives = pairs
+            .iter()
+            .map(|pair| {
+                let pair_id = short_sha256_id(
+                    "primer_pair",
+                    &format!("{}|{}", pair.forward.sequence, pair.reverse.sequence),
+                );
+                let metrics = Self::primer_pair_pareto_metrics_from_record(pair);
+                PrimerPairParetoAlternative {
+                    pair_id: pair_id.clone(),
+                    source_candidate_id: pair_id,
+                    design_template_id: template_id.to_string(),
+                    selected: pair.rank == 1,
+                    tradeoff_summary: Self::primer_pair_pareto_tradeoff_summary(&metrics),
+                    metrics,
+                }
+            })
+            .collect();
+        Self::primer_pair_pareto_frontier(alternatives)
+    }
+
     /// Compare candidates after an objective-specific biological filter or
     /// gain metric. Required annotation commonality is considered first for a
     /// routine-common-region screen, then product-length practicality, then
@@ -24404,6 +24656,102 @@ impl GentleEngine {
             )
             .then(left.2.total_cmp(&right.2))
             .then_with(|| right.3.cmp(left.3))
+    }
+
+    fn transcript_assay_candidate_pareto_metrics(
+        candidate: &TranscriptAssayEvaluatedCandidate,
+        assay_tier: TranscriptAssayUseTier,
+    ) -> PrimerPairParetoMetrics {
+        let single_product_target_count = candidate
+            .group_evaluations
+            .iter()
+            .filter(|evaluation| evaluation.status == TranscriptAssayDetectionStatus::SingleProduct)
+            .count();
+        let multiple_product_target_count = candidate
+            .group_evaluations
+            .iter()
+            .filter(|evaluation| {
+                evaluation.status == TranscriptAssayDetectionStatus::MultipleProducts
+            })
+            .count();
+        let no_product_target_count = candidate
+            .group_evaluations
+            .len()
+            .saturating_sub(single_product_target_count)
+            .saturating_sub(multiple_product_target_count);
+        PrimerPairParetoMetrics {
+            single_product_target_count: Some(single_product_target_count),
+            multiple_product_target_count: Some(multiple_product_target_count),
+            no_product_target_count: Some(no_product_target_count),
+            common_region_confirmed: (assay_tier
+                == TranscriptAssayUseTier::RoutineCommonRegionScreen)
+                .then_some(
+                    candidate.common_region_evidence.status
+                        == TranscriptAssayCommonRegionStatus::Confirmed,
+                ),
+            practicality_rank: Some(Self::transcript_assay_practicality_rank(
+                candidate.practicality_classification,
+            )),
+            existing_candidate_score: candidate.score,
+            tm_delta_c: candidate.primer_pair.tm_delta_c,
+            primer_pair_complementary_run_bp: candidate
+                .primer_pair
+                .primer_pair_complementary_run_bp,
+            primer_pair_3prime_complementary_run_bp: candidate
+                .primer_pair
+                .primer_pair_3prime_complementary_run_bp,
+            amplicon_length_bp: candidate.primer_pair.amplicon_length_bp,
+        }
+    }
+
+    fn transcript_assay_candidate_is_on_pareto_frontier(
+        index: usize,
+        candidates: &[TranscriptAssayEvaluatedCandidate],
+        assay_tier: TranscriptAssayUseTier,
+    ) -> bool {
+        let metrics =
+            Self::transcript_assay_candidate_pareto_metrics(&candidates[index], assay_tier);
+        !candidates.iter().enumerate().any(|(other_index, other)| {
+            other_index != index
+                && Self::primer_pair_pareto_dominates(
+                    &Self::transcript_assay_candidate_pareto_metrics(other, assay_tier),
+                    &metrics,
+                )
+        })
+    }
+
+    fn transcript_assay_candidate_pareto_frontier(
+        candidates: &[TranscriptAssayEvaluatedCandidate],
+        selected_indices: &[usize],
+        assay_tier: TranscriptAssayUseTier,
+    ) -> PrimerPairParetoFrontier {
+        let selected_ids = selected_indices
+            .iter()
+            .map(|index| candidates[*index].assay_id.as_str())
+            .collect::<BTreeSet<_>>();
+        let alternatives = candidates
+            .iter()
+            .map(|candidate| {
+                let metrics =
+                    Self::transcript_assay_candidate_pareto_metrics(candidate, assay_tier);
+                PrimerPairParetoAlternative {
+                    pair_id: short_sha256_id(
+                        "primer_pair",
+                        &format!(
+                            "{}|{}",
+                            candidate.primer_pair.forward.sequence,
+                            candidate.primer_pair.reverse.sequence
+                        ),
+                    ),
+                    source_candidate_id: candidate.assay_id.clone(),
+                    design_template_id: candidate.design_transcript_id.clone(),
+                    selected: selected_ids.contains(candidate.assay_id.as_str()),
+                    tradeoff_summary: Self::primer_pair_pareto_tradeoff_summary(&metrics),
+                    metrics,
+                }
+            })
+            .collect();
+        Self::primer_pair_pareto_frontier(alternatives)
     }
 
     fn transcript_assay_considered_alternatives(
@@ -24483,6 +24831,16 @@ impl GentleEngine {
                     practicality_classification: candidate.practicality_classification,
                     common_region_status: candidate.common_region_evidence.status,
                     existing_candidate_score: candidate.score,
+                    on_pareto_frontier:
+                        Self::transcript_assay_candidate_is_on_pareto_frontier(
+                            index,
+                            candidates,
+                            assay_tier,
+                        ),
+                    pareto_metrics: Self::transcript_assay_candidate_pareto_metrics(
+                        candidate,
+                        assay_tier,
+                    ),
                     disposition: "not_selected".to_string(),
                     explanation,
                 }
@@ -28241,6 +28599,11 @@ impl GentleEngine {
         } else {
             vec![]
         };
+        let pareto_frontier = Self::transcript_assay_candidate_pareto_frontier(
+            &evaluated_candidates,
+            &selected_indices,
+            assay_tier,
+        );
         let mut report = TranscriptAssayPanelReport {
             schema: TRANSCRIPT_ASSAY_PANEL_REPORT_SCHEMA.to_string(),
             report_id: report_id.clone(),
@@ -28281,6 +28644,7 @@ impl GentleEngine {
                 .map(|group| group.report.clone())
                 .collect(),
             selected_assays,
+            pareto_frontier,
             detection_matrix,
             transcript_rows,
             uncovered_equivalence_group_ids,
@@ -30616,6 +30980,929 @@ impl GentleEngine {
         })
     }
 
+    pub(super) fn primer_group_target_common_mask(
+        representative_seq_id: &str,
+        representative: &str,
+        member_seq_id: &str,
+        member: &str,
+    ) -> Result<(SequenceAlignmentReport, Vec<bool>), EngineError> {
+        let computed = Self::compute_pairwise_alignment_report(
+            representative_seq_id,
+            representative,
+            None,
+            None,
+            member_seq_id,
+            member,
+            None,
+            None,
+            PairwiseAlignmentMode::Global,
+            2,
+            -3,
+            -5,
+            -1,
+        )?;
+        let representative_bytes = representative.as_bytes();
+        let member_bytes = member.as_bytes();
+        let mut mask = vec![false; representative_bytes.len()];
+        let mut query_index = 0usize;
+        let mut target_index = 0usize;
+        for operation in &computed.operations {
+            match operation {
+                bio::alignment::AlignmentOperation::Match => {
+                    if query_index < representative_bytes.len()
+                        && target_index < member_bytes.len()
+                        && representative_bytes[query_index]
+                            .eq_ignore_ascii_case(&member_bytes[target_index])
+                    {
+                        mask[query_index] = true;
+                    }
+                    query_index = query_index.saturating_add(1);
+                    target_index = target_index.saturating_add(1);
+                }
+                bio::alignment::AlignmentOperation::Subst => {
+                    query_index = query_index.saturating_add(1);
+                    target_index = target_index.saturating_add(1);
+                }
+                bio::alignment::AlignmentOperation::Ins => {
+                    query_index = query_index.saturating_add(1);
+                }
+                bio::alignment::AlignmentOperation::Del => {
+                    // The member has an inserted base between two reference
+                    // positions. Neither adjacent reference base may remain
+                    // connected into one exact primer interval across that
+                    // gap, even though both can match individually.
+                    if query_index > 0 {
+                        mask[query_index - 1] = false;
+                    }
+                    if query_index < mask.len() {
+                        mask[query_index] = false;
+                    }
+                    target_index = target_index.saturating_add(1);
+                }
+                bio::alignment::AlignmentOperation::Xclip(length) => {
+                    query_index = query_index.saturating_add(*length);
+                }
+                bio::alignment::AlignmentOperation::Yclip(length) => {
+                    target_index = target_index.saturating_add(*length);
+                }
+            }
+        }
+        Ok((computed.report, mask))
+    }
+
+    pub(super) fn primer_group_target_common_intervals(
+        mask: &[bool],
+        min_length_bp: usize,
+    ) -> Vec<PrimerGroupTargetCommonInterval> {
+        let mut intervals = vec![];
+        let mut start = None;
+        for (index, common) in mask
+            .iter()
+            .copied()
+            .chain(std::iter::once(false))
+            .enumerate()
+        {
+            if common {
+                start.get_or_insert(index);
+            } else if let Some(interval_start) = start.take() {
+                if index.saturating_sub(interval_start) >= min_length_bp {
+                    intervals.push(PrimerGroupTargetCommonInterval {
+                        start_0based: interval_start,
+                        end_0based_exclusive: index,
+                        length_bp: index.saturating_sub(interval_start),
+                    });
+                }
+            }
+        }
+        intervals
+    }
+
+    fn primer_group_target_split_interval(
+        interval: (usize, usize),
+        max_window_bp: usize,
+        max_primer_bp: usize,
+    ) -> Vec<(usize, usize)> {
+        let length = interval.1.saturating_sub(interval.0);
+        if length <= max_window_bp {
+            return vec![interval];
+        }
+        let overlap = max_primer_bp
+            .saturating_sub(1)
+            .min(max_window_bp.saturating_sub(1));
+        let step = max_window_bp.saturating_sub(overlap).max(1);
+        let mut windows = vec![];
+        let mut start = interval.0;
+        loop {
+            let end = start.saturating_add(max_window_bp).min(interval.1);
+            windows.push((start, end));
+            if end >= interval.1 {
+                break;
+            }
+            start = start.saturating_add(step);
+        }
+        windows
+    }
+
+    fn primer_group_target_clip_side_window(
+        interval: (usize, usize),
+        side: &PrimerDesignSideConstraint,
+        template_len: usize,
+    ) -> Option<(usize, usize)> {
+        let start = interval
+            .0
+            .max(side.start_0based.unwrap_or(0))
+            .min(template_len);
+        let end = interval
+            .1
+            .min(side.end_0based.unwrap_or(template_len))
+            .min(template_len);
+        if end.saturating_sub(start) < side.min_length {
+            return None;
+        }
+        if let Some(location) = side.location_0based
+            && (location < start || location.saturating_add(side.min_length) > end)
+        {
+            return None;
+        }
+        Some((start, end))
+    }
+
+    fn primer_group_target_pair_id(pair: &PrimerDesignPairRecord) -> String {
+        short_sha256_id(
+            "primer_group_pair",
+            &format!("{}|{}", pair.forward.sequence, pair.reverse.sequence),
+        )
+    }
+
+    fn primer_group_target_member_template(
+        seq_id: &str,
+        sequence: String,
+        feature_id: usize,
+    ) -> TranscriptQpcrDesignTemplate {
+        let length = sequence.len();
+        TranscriptQpcrDesignTemplate {
+            transcript_feature_id: feature_id,
+            transcript_id: seq_id.to_string(),
+            transcript_label: seq_id.to_string(),
+            source_path: None,
+            strand: "+".to_string(),
+            sequence,
+            local_exon_segments: vec![TranscriptQpcrLocalExonSegment {
+                source_start_0based: 0,
+                source_end_0based_exclusive: length,
+                local_start_0based: 0,
+                local_end_0based_exclusive: length,
+            }],
+            exon_chain: vec![(0, length)],
+        }
+    }
+
+    fn primer_group_target_candidate_evaluation(
+        pair: PrimerDesignPairRecord,
+        templates: &[TranscriptQpcrDesignTemplate],
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        max_mismatches: usize,
+        require_3prime_exact_bases: usize,
+    ) -> Result<PrimerGroupTargetCandidateInternal, EngineError> {
+        let forward = Self::primer_specificity_input_from_record(
+            PrimerSpecificityPrimerRole::Forward,
+            &pair.forward,
+        )?;
+        let reverse = Self::primer_specificity_input_from_record(
+            PrimerSpecificityPrimerRole::Reverse,
+            &pair.reverse,
+        )?;
+        let request = NormalizedCdnaAssayTestRequest {
+            forward_primer: forward.annealing_sequence,
+            reverse_binding: Self::reverse_complement(&reverse.annealing_sequence),
+            reverse_primer: reverse.annealing_sequence,
+            probe: None,
+            probe_reverse_binding: None,
+            max_mismatches,
+            require_3prime_exact_bases,
+            min_amplicon_bp,
+            max_amplicon_bp,
+        };
+        let pair_id = Self::primer_group_target_pair_id(&pair);
+        let mut single_product_template_count = 0usize;
+        let mut multiple_product_template_count = 0usize;
+        let mut no_product_template_count = 0usize;
+        let member_products = templates
+            .iter()
+            .map(|template| {
+                let evaluation = Self::transcript_assay_group_evaluation(
+                    template,
+                    &request,
+                    TranscriptAssayCdnaSynthesis::Unspecified,
+                    None,
+                );
+                match evaluation.status {
+                    TranscriptAssayDetectionStatus::SingleProduct => {
+                        single_product_template_count =
+                            single_product_template_count.saturating_add(1);
+                    }
+                    TranscriptAssayDetectionStatus::MultipleProducts => {
+                        multiple_product_template_count =
+                            multiple_product_template_count.saturating_add(1);
+                    }
+                    TranscriptAssayDetectionStatus::NoProduct => {
+                        no_product_template_count = no_product_template_count.saturating_add(1);
+                    }
+                }
+                PrimerGroupTargetMemberProduct {
+                    pair_id: pair_id.clone(),
+                    template_seq_id: template.transcript_id.clone(),
+                    status: evaluation.status,
+                    detail_status: evaluation.detail_status,
+                    product_count: evaluation.product_count,
+                    amplicon_lengths_bp: evaluation.amplicon_lengths_bp,
+                    exact_negative_prefiltered: evaluation.exact_negative_prefiltered,
+                }
+            })
+            .collect();
+        Ok(PrimerGroupTargetCandidateInternal {
+            pair_id,
+            pair,
+            member_products,
+            single_product_template_count,
+            multiple_product_template_count,
+            no_product_template_count,
+        })
+    }
+
+    fn primer_group_target_pareto_metrics(
+        candidate: &PrimerGroupTargetCandidateInternal,
+    ) -> PrimerPairParetoMetrics {
+        let mut metrics = Self::primer_pair_pareto_metrics_from_record(&candidate.pair);
+        metrics.single_product_target_count = Some(candidate.single_product_template_count);
+        metrics.multiple_product_target_count = Some(candidate.multiple_product_template_count);
+        metrics.no_product_target_count = Some(candidate.no_product_template_count);
+        metrics
+    }
+
+    fn execute_design_primer_group_target(
+        &mut self,
+        result: &mut OpResult,
+        run_id: &str,
+        request: PrimerGroupTargetDesignRequest,
+        path: Option<String>,
+        on_progress: &mut dyn FnMut(OperationProgress) -> bool,
+    ) -> Result<(), EngineError> {
+        const DEFAULT_MAX_PAIRS: usize = 20;
+        const DEFAULT_MAX_SEARCH_RECORDS: usize = 64;
+        const DEFAULT_MAX_ALIGNMENT_CELLS: u64 = 50_000_000;
+        const DEFAULT_MAX_MISMATCHES: usize = 0;
+        const DEFAULT_REQUIRE_3PRIME_EXACT_BASES: usize = 3;
+
+        let mut template_seq_ids = request
+            .template_seq_ids
+            .iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+        template_seq_ids.sort();
+        template_seq_ids.dedup();
+        if template_seq_ids.len() < 2 {
+            return Err(EngineError::invalid_input(
+                "DesignPrimerGroupTarget requires at least two distinct loaded template sequence ids",
+            ));
+        }
+        if request.min_amplicon_bp == 0 || request.min_amplicon_bp > request.max_amplicon_bp {
+            return Err(EngineError::invalid_input(format!(
+                "DesignPrimerGroupTarget requires 1 <= min_amplicon_bp <= max_amplicon_bp (received {}..{})",
+                request.min_amplicon_bp, request.max_amplicon_bp
+            )));
+        }
+        Self::validate_primer_design_side_constraints("forward", &request.forward)?;
+        Self::validate_primer_design_side_constraints("reverse", &request.reverse)?;
+        let forward_sequence_constraints =
+            Self::normalize_primer_side_sequence_constraints(&request.forward)?;
+        let reverse_sequence_constraints =
+            Self::normalize_primer_side_sequence_constraints(&request.reverse)?;
+        let pair_constraints = Self::normalize_primer_pair_constraints(&request.pair_constraints)?;
+        let max_tm_delta_c = request.max_tm_delta_c.unwrap_or(2.0);
+        if max_tm_delta_c < 0.0 {
+            return Err(EngineError::invalid_input(
+                "DesignPrimerGroupTarget max_tm_delta_c must be >= 0",
+            ));
+        }
+        let max_pairs = request.max_pairs.unwrap_or(DEFAULT_MAX_PAIRS);
+        let max_search_records = request
+            .max_search_records
+            .unwrap_or(DEFAULT_MAX_SEARCH_RECORDS);
+        if max_pairs == 0 || max_search_records == 0 {
+            return Err(EngineError::invalid_input(
+                "DesignPrimerGroupTarget max_pairs and max_search_records must be >= 1",
+            ));
+        }
+        let max_alignment_cells = request
+            .max_alignment_cells
+            .unwrap_or(DEFAULT_MAX_ALIGNMENT_CELLS);
+        let max_mismatches = request.max_mismatches.unwrap_or(DEFAULT_MAX_MISMATCHES);
+        let require_3prime_exact_bases = request
+            .require_3prime_exact_bases
+            .unwrap_or(DEFAULT_REQUIRE_3PRIME_EXACT_BASES);
+        let search_policy = request.search_policy.clone().unwrap_or_default();
+        if search_policy.max_primer_window_bp
+            < request.forward.max_length.max(request.reverse.max_length)
+        {
+            return Err(EngineError::invalid_input(format!(
+                "DesignPrimerGroupTarget max_primer_window_bp={} is shorter than the configured maximum primer length {}",
+                search_policy.max_primer_window_bp,
+                request.forward.max_length.max(request.reverse.max_length)
+            )));
+        }
+
+        let mut loaded = vec![];
+        for seq_id in &template_seq_ids {
+            let dna = self.state.sequences.get(seq_id).ok_or_else(|| {
+                EngineError::new(
+                    ErrorCode::NotFound,
+                    format!("Group-target sequence '{seq_id}' not found"),
+                )
+            })?;
+            if dna.is_circular() {
+                return Err(EngineError::new(
+                    ErrorCode::Unsupported,
+                    format!(
+                        "DesignPrimerGroupTarget currently requires linear templates; '{seq_id}' is circular"
+                    ),
+                ));
+            }
+            let sequence = dna.get_forward_string().to_ascii_uppercase();
+            if sequence.is_empty() {
+                return Err(EngineError::invalid_input(format!(
+                    "Group-target sequence '{seq_id}' is empty"
+                )));
+            }
+            loaded.push((seq_id.clone(), sequence));
+        }
+        let representative_seq_id = if let Some(explicit) = request
+            .representative_seq_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            if !template_seq_ids.iter().any(|seq_id| seq_id == explicit) {
+                return Err(EngineError::invalid_input(format!(
+                    "Representative sequence '{explicit}' is not listed in template_seq_ids"
+                )));
+            }
+            explicit.to_string()
+        } else {
+            loaded
+                .iter()
+                .max_by(|left, right| {
+                    left.1
+                        .len()
+                        .cmp(&right.1.len())
+                        .then_with(|| right.0.cmp(&left.0))
+                })
+                .map(|row| row.0.clone())
+                .unwrap_or_default()
+        };
+        let representative = loaded
+            .iter()
+            .find(|row| row.0 == representative_seq_id)
+            .map(|row| row.1.clone())
+            .ok_or_else(|| EngineError::internal("Group-target representative disappeared"))?;
+        let target = match (
+            request.target_start_0based,
+            request.target_end_0based_exclusive,
+        ) {
+            (None, None) => None,
+            (Some(start), Some(end)) if start < end && end <= representative.len() => {
+                Some((start, end))
+            }
+            (Some(start), Some(end)) => {
+                return Err(EngineError::invalid_input(format!(
+                    "Group-target interval {start}..{end} is invalid for representative length {}",
+                    representative.len()
+                )));
+            }
+            _ => {
+                return Err(EngineError::invalid_input(
+                    "Group-target target_start_0based and target_end_0based_exclusive must be supplied together",
+                ));
+            }
+        };
+
+        let estimated_alignment_cells = loaded
+            .iter()
+            .filter(|row| row.0 != representative_seq_id)
+            .try_fold(0u64, |total, row| {
+                let cells = u64::try_from(representative.len())
+                    .unwrap_or(u64::MAX)
+                    .saturating_mul(u64::try_from(row.1.len()).unwrap_or(u64::MAX));
+                total.checked_add(cells).ok_or_else(|| {
+                    EngineError::invalid_input("Group-target alignment-cell estimate overflowed")
+                })
+            })?;
+        if estimated_alignment_cells > max_alignment_cells {
+            return Err(EngineError::invalid_input(format!(
+                "group_target_alignment_space_too_broad: estimated {estimated_alignment_cells} cells exceeds max_alignment_cells={max_alignment_cells}; provide a narrower related-sequence group or raise the explicit content-bound budget"
+            )));
+        }
+        let mut common_mask = vec![true; representative.len()];
+        let mut alignments = vec![];
+        for (member_seq_id, member) in &loaded {
+            if member_seq_id == &representative_seq_id {
+                continue;
+            }
+            let (alignment, member_mask) = Self::primer_group_target_common_mask(
+                &representative_seq_id,
+                &representative,
+                member_seq_id,
+                member,
+            )?;
+            for (common, member_common) in common_mask.iter_mut().zip(member_mask) {
+                *common &= member_common;
+            }
+            alignments.push(PrimerGroupTargetAlignment {
+                member_seq_id: member_seq_id.to_string(),
+                alignment,
+            });
+        }
+        let min_binding_bp = request.forward.min_length.min(request.reverse.min_length);
+        let common_intervals =
+            Self::primer_group_target_common_intervals(&common_mask, min_binding_bp);
+        if common_intervals.is_empty() {
+            return Err(EngineError::invalid_input(format!(
+                "No exact group-common representative interval is at least {min_binding_bp} bp; ordinary exact-binding common primers are unavailable under this request"
+            )));
+        }
+
+        let max_primer_bp = request.forward.max_length.max(request.reverse.max_length);
+        let mut left_windows = vec![];
+        let mut right_windows = vec![];
+        for interval in &common_intervals {
+            let base = (interval.start_0based, interval.end_0based_exclusive);
+            let left_base = target
+                .map(|(start, _)| (base.0, base.1.min(start)))
+                .unwrap_or(base);
+            if left_base.1.saturating_sub(left_base.0) >= request.forward.min_length {
+                for window in Self::primer_group_target_split_interval(
+                    left_base,
+                    search_policy.max_primer_window_bp,
+                    max_primer_bp,
+                ) {
+                    if let Some(window) = Self::primer_group_target_clip_side_window(
+                        window,
+                        &request.forward,
+                        representative.len(),
+                    ) {
+                        left_windows.push(window);
+                    }
+                }
+            }
+            let right_base = target
+                .map(|(_, end)| (base.0.max(end), base.1))
+                .unwrap_or(base);
+            if right_base.1.saturating_sub(right_base.0) >= request.reverse.min_length {
+                for window in Self::primer_group_target_split_interval(
+                    right_base,
+                    search_policy.max_primer_window_bp,
+                    max_primer_bp,
+                ) {
+                    if let Some(window) = Self::primer_group_target_clip_side_window(
+                        window,
+                        &request.reverse,
+                        representative.len(),
+                    ) {
+                        right_windows.push(window);
+                    }
+                }
+            }
+        }
+        left_windows.sort_unstable();
+        left_windows.dedup();
+        right_windows.sort_unstable();
+        right_windows.dedup();
+
+        let representative_template = Self::primer_group_target_member_template(
+            &representative_seq_id,
+            representative.clone(),
+            0,
+        );
+        let mut planned = vec![];
+        let mut total_candidate_upper_bound = 0usize;
+        for left in &left_windows {
+            for right in &right_windows {
+                if left.1 >= right.0 {
+                    continue;
+                }
+                let (roi_start, roi_end) = target.unwrap_or((left.1, right.0));
+                if left.1 > roi_start || right.0 < roi_end || roi_start >= roi_end {
+                    continue;
+                }
+                let mut forward = request.forward.clone();
+                forward.start_0based = Some(left.0);
+                forward.end_0based = Some(left.1);
+                let mut reverse = request.reverse.clone();
+                reverse.start_0based = Some(right.0);
+                reverse.end_0based = Some(right.1);
+                let left_estimate = Self::estimate_primer_side_search_candidates(
+                    representative.as_bytes(),
+                    &forward,
+                    &forward_sequence_constraints,
+                    false,
+                    search_policy.max_homopolymer_run_bp,
+                );
+                let right_estimate = Self::estimate_primer_side_search_candidates(
+                    representative.as_bytes(),
+                    &reverse,
+                    &reverse_sequence_constraints,
+                    true,
+                    search_policy.max_homopolymer_run_bp,
+                );
+                let target_plan = TranscriptAssayDesignTarget {
+                    template_index: 0,
+                    roi_start_0based: roi_start,
+                    roi_end_0based: roi_end,
+                    junction: None,
+                    end_reaction_id: None,
+                    forward_window_0based: Some(*left),
+                    reverse_window_0based: Some(*right),
+                    search_target_id: None,
+                    search_record_id: None,
+                    search_required: true,
+                    excluded_regions_0based: vec![],
+                };
+                let left_refs = left_estimate.candidates.iter().collect::<Vec<_>>();
+                let right_refs = right_estimate.candidates.iter().collect::<Vec<_>>();
+                let pair_count = Self::transcript_assay_search_pair_count(
+                    &representative_template,
+                    &left_refs,
+                    &right_refs,
+                    &target_plan,
+                    request.min_amplicon_bp,
+                    request.max_amplicon_bp,
+                    0,
+                    0,
+                    None,
+                    None,
+                );
+                if pair_count == 0 {
+                    continue;
+                }
+                if pair_count > search_policy.max_candidate_pairs_per_record {
+                    return Err(EngineError::invalid_input(format!(
+                        "search_space_too_broad: conserved windows {}..{} and {}..{} admit {pair_count} candidate pairs, above max_candidate_pairs_per_record={}",
+                        left.0,
+                        left.1,
+                        right.0,
+                        right.1,
+                        search_policy.max_candidate_pairs_per_record
+                    )));
+                }
+                total_candidate_upper_bound =
+                    total_candidate_upper_bound.saturating_add(pair_count);
+                let search_record_id = short_sha256_id(
+                    "primer_group_search",
+                    &format!(
+                        "{}|{}|{}|{}|{}",
+                        representative_seq_id, left.0, left.1, right.0, right.1
+                    ),
+                );
+                planned.push((
+                    PrimerGroupTargetSearchRecord {
+                        search_record_id,
+                        left_interval_0based: SequenceRange0Based {
+                            start_0based: left.0,
+                            end_0based_exclusive: left.1,
+                        },
+                        right_interval_0based: SequenceRange0Based {
+                            start_0based: right.0,
+                            end_0based_exclusive: right.1,
+                        },
+                        roi_start_0based: roi_start,
+                        roi_end_0based_exclusive: roi_end,
+                        candidate_pair_upper_bound: pair_count,
+                    },
+                    forward,
+                    reverse,
+                ));
+            }
+        }
+        planned.sort_by(|left, right| {
+            left.0
+                .left_interval_0based
+                .start_0based
+                .cmp(&right.0.left_interval_0based.start_0based)
+                .then(
+                    left.0
+                        .right_interval_0based
+                        .start_0based
+                        .cmp(&right.0.right_interval_0based.start_0based),
+                )
+                .then(left.0.search_record_id.cmp(&right.0.search_record_id))
+        });
+        if planned.is_empty() {
+            return Err(EngineError::invalid_input(
+                "No bounded pair of exact group-common primer windows satisfies the target and amplicon constraints",
+            ));
+        }
+        if planned.len() > max_search_records
+            || total_candidate_upper_bound > search_policy.max_candidate_pairs_total
+        {
+            return Err(EngineError::invalid_input(format!(
+                "search_space_too_broad: {} bounded records / {} candidate pairs exceed max_search_records={} or max_candidate_pairs_total={}; narrow the target or raise an explicit content-bound budget",
+                planned.len(),
+                total_candidate_upper_bound,
+                max_search_records,
+                search_policy.max_candidate_pairs_total
+            )));
+        }
+
+        let bounded_record_count = planned.len();
+        let mut candidate_by_id = BTreeMap::<String, PrimerDesignPairRecord>::new();
+        let mut backend_runs = vec![];
+        let mut warnings = vec![
+            "Group-common intervals require exact aligned bases on every supplied member; mismatch-tolerant product evaluation does not widen the Primer3 placement intervals."
+                .to_string(),
+        ];
+        let mut generated_candidate_count = 0usize;
+        for (ordinal, (record, forward, reverse)) in planned.iter().enumerate() {
+            let options = Primer3PairDesignOptions {
+                left_window_0based: Some((
+                    record.left_interval_0based.start_0based,
+                    record.left_interval_0based.end_0based_exclusive,
+                )),
+                right_window_0based: Some((
+                    record.right_interval_0based.start_0based,
+                    record.right_interval_0based.end_0based_exclusive,
+                )),
+                max_poly_x: Some(search_policy.max_homopolymer_run_bp),
+                chemistry_fields: Self::transcript_assay_primer3_chemistry_fields(
+                    &search_policy.primer3_chemistry,
+                )?,
+                runtime_policy: search_policy.clone(),
+                search_target_id: Some("related_sequence_group".to_string()),
+                search_record_id: Some(record.search_record_id.clone()),
+                bounded_record_ordinal: Some(ordinal + 1),
+                bounded_record_count: Some(bounded_record_count),
+                bounded_candidate_pair_upper_bound: Some(record.candidate_pair_upper_bound),
+                bounded_candidate_pair_total_upper_bound: Some(total_candidate_upper_bound),
+                ..Primer3PairDesignOptions::default()
+            };
+            let generation_limit = max_pairs.saturating_mul(5).clamp(max_pairs, 500);
+            let generated = self.run_transcript_assay_pair_generation_with_backend(
+                &representative_seq_id,
+                "primer_group_target",
+                &representative_template,
+                record.roi_start_0based,
+                record.roi_end_0based_exclusive,
+                forward,
+                &forward_sequence_constraints,
+                reverse,
+                &reverse_sequence_constraints,
+                &pair_constraints,
+                request.min_amplicon_bp,
+                request.max_amplicon_bp,
+                max_tm_delta_c,
+                generation_limit,
+                &options,
+                on_progress,
+            );
+            let (pairs, _rejections, backend, backend_warnings) = match generated {
+                Ok(value) => value,
+                Err(error) if Self::is_primer3_runtime_reduction_error(&error) => {
+                    warnings.push(format!(
+                        "Bounded group-target record '{}' stopped after a runtime anomaly: {}",
+                        record.search_record_id, error.message
+                    ));
+                    if search_policy.continue_after_runtime_reduction {
+                        continue;
+                    }
+                    return Err(error);
+                }
+                Err(error) => return Err(error),
+            };
+            generated_candidate_count = generated_candidate_count.saturating_add(pairs.len());
+            backend_runs.push(backend);
+            warnings.extend(backend_warnings);
+            for pair in pairs {
+                let pair_id = Self::primer_group_target_pair_id(&pair);
+                candidate_by_id
+                    .entry(pair_id)
+                    .and_modify(|existing| {
+                        if pair.score > existing.score {
+                            *existing = pair.clone();
+                        }
+                    })
+                    .or_insert(pair);
+            }
+        }
+        if candidate_by_id.is_empty() {
+            return Err(EngineError::invalid_input(
+                "No primer pair satisfied the bounded exact group-common search records",
+            ));
+        }
+        let templates = loaded
+            .iter()
+            .enumerate()
+            .map(|(index, (seq_id, sequence))| {
+                Self::primer_group_target_member_template(seq_id, sequence.clone(), index)
+            })
+            .collect::<Vec<_>>();
+        let mut candidates = candidate_by_id
+            .into_values()
+            .map(|pair| {
+                Self::primer_group_target_candidate_evaluation(
+                    pair,
+                    &templates,
+                    request.min_amplicon_bp,
+                    request.max_amplicon_bp,
+                    max_mismatches,
+                    require_3prime_exact_bases,
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        candidates.sort_by(|left, right| {
+            right
+                .single_product_template_count
+                .cmp(&left.single_product_template_count)
+                .then(
+                    left.multiple_product_template_count
+                        .cmp(&right.multiple_product_template_count),
+                )
+                .then(right.pair.score.total_cmp(&left.pair.score))
+                .then(left.pair_id.cmp(&right.pair_id))
+        });
+        let complete_group_pair_count = candidates
+            .iter()
+            .filter(|candidate| candidate.single_product_template_count == templates.len())
+            .count();
+        let maximum_single_pair_coverage_count = candidates
+            .first()
+            .map(|candidate| candidate.single_product_template_count)
+            .unwrap_or(0);
+        if request.coverage_policy == TranscriptAssayCoveragePolicy::RequireAll
+            && complete_group_pair_count == 0
+        {
+            let uncovered = candidates
+                .first()
+                .into_iter()
+                .flat_map(|candidate| candidate.member_products.iter())
+                .filter(|row| row.status != TranscriptAssayDetectionStatus::SingleProduct)
+                .map(|row| row.template_seq_id.clone())
+                .collect::<Vec<_>>();
+            return Err(EngineError::invalid_input(format!(
+                "require_all group target has no single primer pair with one product on every member; best candidate covers {maximum_single_pair_coverage_count}/{} and leaves [{}]",
+                templates.len(),
+                uncovered.join(",")
+            )));
+        }
+        let retained_indices = candidates
+            .iter()
+            .enumerate()
+            .filter(|(_, candidate)| {
+                request.coverage_policy == TranscriptAssayCoveragePolicy::BestEffort
+                    || candidate.single_product_template_count == templates.len()
+            })
+            .take(max_pairs)
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        let selected_ids = retained_indices
+            .iter()
+            .map(|index| candidates[*index].pair_id.as_str())
+            .collect::<BTreeSet<_>>();
+        let mut retained_rank_by_id = BTreeMap::new();
+        let pairs = retained_indices
+            .iter()
+            .enumerate()
+            .map(|(rank_index, candidate_index)| {
+                let mut pair = candidates[*candidate_index].pair.clone();
+                pair.rank = rank_index + 1;
+                retained_rank_by_id.insert(candidates[*candidate_index].pair_id.clone(), pair.rank);
+                pair
+            })
+            .collect::<Vec<_>>();
+        let frontier = Self::primer_pair_pareto_frontier(
+            candidates
+                .iter()
+                .map(|candidate| {
+                    let metrics = Self::primer_group_target_pareto_metrics(candidate);
+                    PrimerPairParetoAlternative {
+                        pair_id: candidate.pair_id.clone(),
+                        source_candidate_id: candidate.pair_id.clone(),
+                        design_template_id: representative_seq_id.clone(),
+                        selected: selected_ids.contains(candidate.pair_id.as_str()),
+                        tradeoff_summary: Self::primer_pair_pareto_tradeoff_summary(&metrics),
+                        metrics,
+                    }
+                })
+                .collect(),
+        );
+        let pair_evaluations = candidates
+            .iter()
+            .map(|candidate| {
+                let uncovered_template_seq_ids = candidate
+                    .member_products
+                    .iter()
+                    .filter(|row| row.status != TranscriptAssayDetectionStatus::SingleProduct)
+                    .map(|row| row.template_seq_id.clone())
+                    .collect();
+                PrimerGroupTargetPairEvaluation {
+                    pair_id: candidate.pair_id.clone(),
+                    source_pair_rank: candidate.pair.rank,
+                    retained_pair_rank: retained_rank_by_id.get(&candidate.pair_id).copied(),
+                    complete_group_pair: candidate.single_product_template_count == templates.len(),
+                    single_product_template_count: candidate.single_product_template_count,
+                    multiple_product_template_count: candidate.multiple_product_template_count,
+                    no_product_template_count: candidate.no_product_template_count,
+                    uncovered_template_seq_ids,
+                    member_products: candidate.member_products.clone(),
+                    pareto_metrics: Self::primer_group_target_pareto_metrics(candidate),
+                }
+            })
+            .collect::<Vec<_>>();
+        let members = loaded
+            .iter()
+            .map(|(seq_id, sequence)| PrimerGroupTargetMember {
+                seq_id: seq_id.clone(),
+                length_bp: sequence.len(),
+                sequence_sha256: sha256_prefixed_bytes(sequence.as_bytes()),
+                representative: seq_id == &representative_seq_id,
+            })
+            .collect::<Vec<_>>();
+        let request_json = serde_json::to_vec(&request).map_err(|error| {
+            EngineError::internal(format!(
+                "Could not serialize the normalized group-target primer request: {error}"
+            ))
+        })?;
+        let request_sha256 = sha256_prefixed_bytes(&request_json);
+        let report_id = request.report_id.clone().unwrap_or_else(|| {
+            short_sha256_id(
+                "primer_group_target",
+                &format!(
+                    "{}|{}|{}",
+                    representative_seq_id,
+                    members
+                        .iter()
+                        .map(|member| member.sequence_sha256.as_str())
+                        .collect::<Vec<_>>()
+                        .join("|"),
+                    request_sha256
+                ),
+            )
+        });
+        let report = PrimerGroupTargetDesignReport {
+            schema: PRIMER_GROUP_TARGET_DESIGN_SCHEMA.to_string(),
+            report_id,
+            request_sha256,
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: Some(result.op_id.clone()),
+            run_id: Some(run_id.to_string()),
+            representative_seq_id: representative_seq_id.clone(),
+            representative_sequence_sha256: sha256_prefixed_bytes(representative.as_bytes()),
+            members,
+            alignments,
+            common_intervals_0based: common_intervals,
+            search_records: planned.into_iter().map(|row| row.0).collect(),
+            max_alignment_cells,
+            estimated_alignment_cells,
+            max_search_records,
+            generated_candidate_count,
+            deduplicated_candidate_count: candidates.len(),
+            retained_pair_count: pairs.len(),
+            complete_group_pair_count,
+            maximum_single_pair_coverage_count,
+            completion_status: if complete_group_pair_count > 0 {
+                PrimerGroupTargetCompletionStatus::Complete
+            } else {
+                PrimerGroupTargetCompletionStatus::Partial
+            },
+            coverage_policy: request.coverage_policy,
+            max_mismatches,
+            require_3prime_exact_bases,
+            pairs,
+            pair_evaluations,
+            pareto_frontier: frontier,
+            backend_runs,
+            warnings: warnings.clone(),
+        };
+        if let Some(path) = path.as_deref() {
+            self.write_pretty_json_file(&report, path, "primer group-target design report")?;
+            result
+                .messages
+                .push(format!("Wrote primer group-target report to '{path}'"));
+        }
+        result.messages.push(format!(
+            "Designed related-sequence group '{}' from representative '{}' (members={}, common_intervals={}, retained_pairs={}, complete_pairs={})",
+            report.report_id,
+            report.representative_seq_id,
+            report.members.len(),
+            report.common_intervals_0based.len(),
+            report.retained_pair_count,
+            report.complete_group_pair_count
+        ));
+        result.warnings.extend(warnings);
+        result.primer_group_target_design = Some(Box::new(report));
+        Ok(())
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn execute_design_primer_pairs(
         &mut self,
@@ -31116,6 +32403,7 @@ impl GentleEngine {
                     .to_string(),
             )
         };
+        let pareto_frontier = Self::primer_design_pair_pareto_frontier(&template, &pairs);
         let report = PrimerDesignReport {
             schema: PRIMER_DESIGN_REPORT_SCHEMA.to_string(),
             report_id: report_id.clone(),
@@ -31148,6 +32436,7 @@ impl GentleEngine {
             backend,
             construct_reasoning_graph_id: Some(construct_reasoning_graph_id),
             insertion_context,
+            pareto_frontier,
         };
         if report.rejection_summary.pair_evaluation_limit_skipped > 0 {
             result.warnings.push(format!(
@@ -34709,6 +35998,7 @@ impl GentleEngine {
             primerbank_search_report: None,
             external_primer_pair_import_report: None,
             primer_variant_screen: None,
+            primer_group_target_design: None,
             transcript_qpcr_panel: None,
             transcript_assay_panel: None,
             transcript_assay_cdna_similarity_map: None,
@@ -40468,6 +41758,15 @@ impl GentleEngine {
                         max_pairs,
                         report_id,
                         None,
+                    )?;
+                }
+                Operation::DesignPrimerGroupTarget { request, path } => {
+                    self.execute_design_primer_group_target(
+                        &mut result,
+                        run_id,
+                        request,
+                        path,
+                        on_progress,
                     )?;
                 }
                 Operation::DesignInsertionPrimerPairs {

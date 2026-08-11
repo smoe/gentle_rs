@@ -5392,6 +5392,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "PcrAdvanced",
     "PcrMutagenesis",
     "DesignPrimerPairs",
+    "DesignPrimerGroupTarget",
     "ExportPrimerSpecificityAlignmentHtml",
     "DesignInsertionPrimerPairs",
     "ExportPrimerDesignReport",
@@ -5765,6 +5766,7 @@ const MCP_PROMINENT_GLOSSARY_COMMAND_PATHS: &[&str] = &[
     "primers specificity-import",
     "primers specificity-alignment-html",
     "primers build-transcript-assay-cdna-similarity-map",
+    "primers design-group-target",
     "primers transcript-assay-specificity-redesign",
     "workflow",
     "help",
@@ -7036,6 +7038,7 @@ fn infer_engine_operation_mutation(operation: &str) -> CapabilityMutation {
         || operation == "SuggestPromoterReporterFragments"
         || operation == "BuildRepeatEnvironmentCohort"
         || operation == "BuildProteinToDnaHandoffReasoning"
+        || operation == "DesignPrimerGroupTarget"
     {
         CapabilityMutation::ReadOnly
     } else {

@@ -9060,6 +9060,7 @@ Primer-design shell command family (implemented):
 - Shared-shell family:
   - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
+  - `primers design-group-target REQUEST_JSON_OR_@FILE [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers primerbank search QUERY [--by gene-symbol|gene-id|genbank|protein|primerbank-id|keyword] [--species human|mouse|all] [--html SAVED.html] [--path OUTPUT.json]`
   - `primers primerbank show PRIMERBANK_ID [--species human|mouse|all] [--html SAVED.html] [--path OUTPUT.json]`
   - `primers primerbank test-cdna SEQ_ID FEATURE_ID PRIMERBANK_ID --species human|mouse [--html SAVED.html] [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--path OUTPUT.json] [--svg OUTPUT.svg]`
@@ -9107,6 +9108,65 @@ Primer-design shell command family (implemented):
   - an operation payload whose root variant is `{"DesignQpcrAssays": {...}}`
   - a full `gentle.qpcr_seed_request.v1` payload carrying one runnable
     `operation.DesignQpcrAssays`
+
+Related-sequence group-target primer design:
+
+- `DesignPrimerGroupTarget` and `primers design-group-target` implement the
+  local, deterministic counterpart of Primer-BLAST's related-sequence group
+  target mode. The request supplies at least two loaded linear sequence ids,
+  side/pair constraints, product limits, a strict `require_all` or explicit
+  `best_effort` coverage policy, and bounded alignment/search budgets.
+- Unless explicitly selected, the longest member is the representative with a
+  stable sequence-id tie break. GENtle globally aligns every other member to
+  that representative, records the alignments and member sequence SHA-256s,
+  and derives exact conserved representative intervals. A member insertion
+  splits an interval: individually matching bases on either side are never
+  treated as one contiguous primer footprint.
+- Optional `target_start_0based` and
+  `target_end_0based_exclusive` constrain a core that the pair must flank.
+  Without a target, GENtle evaluates bounded left/right combinations of the
+  conserved intervals. Long intervals are split into overlapping records so
+  every possible primer footprint remains represented.
+- Candidate counts use the same local side filters and pair geometry as the
+  internal designer. Alignment cells, record count, per-record pair work, and
+  total pair work are checked before Primer3. An over-budget request fails as
+  `group_target_alignment_space_too_broad` or `search_space_too_broad`; raising
+  a limit is an explicit request change.
+- Each retained candidate is tested against every supplied member through the
+  shared cDNA product scanner. `require_all` fails unless one pair yields
+  exactly one in-range product on every member. `best_effort` never hides
+  uncovered or multi-product members; it returns `completion_status = partial`
+  and the complete pair-by-member matrix.
+- Output schema `gentle.primer_group_target_design.v1` binds the normalized
+  request digest, representative and member sequence digests, alignments,
+  exact common intervals, bounded search records, exact Primer3 Boulder input
+  when Primer3 is used, accepted pairs, member products, backend provenance,
+  and warnings. It is returned in
+  `OpResult.primer_group_target_design`; `--path` writes the same report.
+- Placement intervals remain exact across the supplied group even when
+  mismatch-tolerant product evaluation is explicitly requested. This avoids
+  implying that a tolerated post-design mismatch was a conserved primer site.
+- The operation consumes caller-provided sequences only. It does not retrieve
+  related records, infer orthology/paralogy, or replace final genomic and
+  whole-cDNA specificity assessment.
+
+Primer-pair alternative frontier:
+
+- New `PrimerDesignReport` and `TranscriptAssayPanelReport` projections carry
+  an additive `pareto_frontier`. It compares only candidates that already pass
+  hard design constraints and retains non-dominated tradeoffs across the
+  dimensions available to that design: product coverage/ambiguity,
+  annotation-common-region evidence, practicality tier, existing candidate
+  score, Tm delta, and pair/3-prime complementarity.
+- The existing score and declared panel objective still select the primary
+  assay. The frontier explains credible alternatives; it does not rescue a
+  failed pair or replace specificity, variant, repeat, or wet-lab review.
+- Frontier comparison is deterministically capped at 2,000 accepted
+  candidates and output at 25 alternatives. A capped report uses
+  `status = bounded_non_dominated_accepted_candidate_projection`, records both
+  accepted and evaluated counts, and sets `truncated = true`.
+- Older report JSON without these additive fields remains readable and yields
+  an empty frontier.
 - External primer-pair import contracts:
   - JSON input schema: `gentle.external_primer_pair_batch.v1`. TSV uses the
     columns `source_kind`, `provider`, `catalogue_id`, `source_url`,

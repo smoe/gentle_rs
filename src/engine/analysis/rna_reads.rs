@@ -14340,6 +14340,7 @@ impl GentleEngine {
         let run_id = "interactive".to_string();
         let checkpoint = self.maybe_capture_checkpoint(&op);
         let mut result = OpResult {
+            primer_group_target_design: None,
             op_id: self.next_op_id(),
             created_seq_ids: vec![],
             changed_seq_ids: vec![],
@@ -14469,6 +14470,7 @@ impl GentleEngine {
         let run_id = "interactive".to_string();
         let checkpoint = self.maybe_capture_checkpoint(&op);
         let mut result = OpResult {
+            primer_group_target_design: None,
             op_id: self.next_op_id(),
             created_seq_ids: vec![],
             changed_seq_ids: vec![],

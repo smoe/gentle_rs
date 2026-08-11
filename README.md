@@ -194,6 +194,8 @@ Reports preserve sequence constraints, candidate diagnostics, products, and
 links to later oligo-order planning.
 
 [See the PCR, qPCR, and TP73 isoform-selector examples.](docs/showcase.md#pcr-primer-and-qpcr-design)
+For a feature-by-feature boundary with NCBI's hosted service, see
+[GENtle and NCBI Primer-BLAST](docs/primer_blast_comparison.md).
 
 ### Curated agent handoff
 

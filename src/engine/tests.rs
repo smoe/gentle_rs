@@ -7782,6 +7782,284 @@ fn test_design_primer_pairs_persists_report() {
     assert_eq!(summary.backend_used, "internal");
 }
 
+fn primer_group_target_test_request(
+    coverage_policy: TranscriptAssayCoveragePolicy,
+) -> PrimerGroupTargetDesignRequest {
+    PrimerGroupTargetDesignRequest {
+        template_seq_ids: vec!["group_a".to_string(), "group_b".to_string()],
+        representative_seq_id: Some("group_a".to_string()),
+        target_start_0based: Some(50),
+        target_end_0based_exclusive: Some(80),
+        forward: PrimerDesignSideConstraint {
+            min_length: 18,
+            max_length: 20,
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 1_000,
+            ..PrimerDesignSideConstraint::default()
+        },
+        reverse: PrimerDesignSideConstraint {
+            min_length: 18,
+            max_length: 20,
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 1_000,
+            ..PrimerDesignSideConstraint::default()
+        },
+        min_amplicon_bp: 60,
+        max_amplicon_bp: 140,
+        max_tm_delta_c: Some(100.0),
+        max_pairs: Some(8),
+        max_search_records: Some(16),
+        coverage_policy,
+        search_policy: Some(TranscriptAssayPrimerSearchPolicy {
+            max_primer_window_bp: 64,
+            max_candidate_pairs_per_record: 50_000,
+            max_candidate_pairs_total: 100_000,
+            ..TranscriptAssayPrimerSearchPolicy::default()
+        }),
+        report_id: Some("related_group_test".to_string()),
+        ..PrimerGroupTargetDesignRequest::default()
+    }
+}
+
+fn primer_group_target_test_sequence() -> &'static str {
+    "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG"
+}
+
+#[test]
+fn primer_group_target_design_uses_exact_common_regions_and_tests_every_member() {
+    let reference = primer_group_target_test_sequence();
+    let mut altered = reference.as_bytes().to_vec();
+    altered[65] = if altered[65] == b'A' { b'C' } else { b'A' };
+    altered.push(b'G');
+    let altered = String::from_utf8(altered).expect("DNA test sequence");
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("group_a".to_string(), seq(reference));
+    state.sequences.insert("group_b".to_string(), seq(&altered));
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+
+    let mut request = primer_group_target_test_request(TranscriptAssayCoveragePolicy::RequireAll);
+    request.representative_seq_id = None;
+    let report = engine
+        .apply(Operation::DesignPrimerGroupTarget {
+            request,
+            path: None,
+        })
+        .expect("design one common primer pair")
+        .primer_group_target_design
+        .map(|report| *report)
+        .expect("group-target report");
+
+    assert_eq!(report.schema, PRIMER_GROUP_TARGET_DESIGN_SCHEMA);
+    assert_eq!(report.representative_seq_id, "group_b");
+    assert_eq!(report.members.len(), 2);
+    assert_eq!(report.alignments.len(), 1);
+    assert!(report.request_sha256.starts_with("sha256:"));
+    assert!(report.common_intervals_0based.len() >= 2);
+    assert!(!report.search_records.is_empty());
+    assert!(!report.pairs.is_empty());
+    assert!(report.complete_group_pair_count > 0);
+    assert_eq!(
+        report.completion_status,
+        PrimerGroupTargetCompletionStatus::Complete
+    );
+    let retained = report
+        .pair_evaluations
+        .iter()
+        .find(|row| row.retained_pair_rank == Some(1))
+        .expect("rank-one evaluation");
+    assert!(retained.complete_group_pair);
+    assert_eq!(retained.member_products.len(), 2);
+    assert!(retained.member_products.iter().all(|row| {
+        row.status == TranscriptAssayDetectionStatus::SingleProduct && row.product_count == 1
+    }));
+    assert!(
+        report
+            .backend_runs
+            .iter()
+            .all(|backend| backend.used == "internal")
+    );
+    assert!(report.pareto_frontier.non_dominated_candidate_count > 0);
+}
+
+#[test]
+fn primer_group_target_insertion_boundary_is_not_a_contiguous_common_interval() {
+    let reference = "AACCGGTTAACCGGTTAACCGGTT";
+    let member = "AACCGGTTAACCGGTTGGGGAACCGGTT";
+    let (_alignment, mask) =
+        GentleEngine::primer_group_target_common_mask("reference", reference, "member", member)
+            .expect("global related-sequence alignment");
+    let intervals = GentleEngine::primer_group_target_common_intervals(&mask, 2);
+    assert!(intervals.len() >= 2);
+    assert!(
+        intervals
+            .windows(2)
+            .all(|rows| rows[0].end_0based_exclusive < rows[1].start_0based),
+        "a member insertion must split exact common primer intervals"
+    );
+}
+
+#[test]
+fn primer_group_target_require_all_refuses_and_best_effort_keeps_uncovered_members() {
+    let reference = primer_group_target_test_sequence();
+    let member = format!(
+        "{}{}{}",
+        &reference[..65],
+        "GATTACA".repeat(15),
+        &reference[65..]
+    );
+    let make_engine = || {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("group_a".to_string(), seq(reference));
+        state.sequences.insert("group_b".to_string(), seq(&member));
+        let mut engine = GentleEngine::from_state(state);
+        engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+        engine
+    };
+
+    let strict_error = make_engine()
+        .apply(Operation::DesignPrimerGroupTarget {
+            request: primer_group_target_test_request(TranscriptAssayCoveragePolicy::RequireAll),
+            path: None,
+        })
+        .expect_err("require_all must not silently weaken group coverage");
+    assert!(strict_error.message.contains("require_all group target"));
+    assert!(strict_error.message.contains("group_b"));
+
+    let report = make_engine()
+        .apply(Operation::DesignPrimerGroupTarget {
+            request: primer_group_target_test_request(TranscriptAssayCoveragePolicy::BestEffort),
+            path: None,
+        })
+        .expect("explicit best effort may retain partial group coverage")
+        .primer_group_target_design
+        .map(|report| *report)
+        .expect("best-effort group-target report");
+    assert_eq!(
+        report.completion_status,
+        PrimerGroupTargetCompletionStatus::Partial
+    );
+    assert_eq!(report.complete_group_pair_count, 0);
+    assert!(report.maximum_single_pair_coverage_count < report.members.len());
+    assert!(report.pair_evaluations.iter().any(|row| {
+        row.uncovered_template_seq_ids
+            .iter()
+            .any(|seq_id| seq_id == "group_b")
+    }));
+}
+
+#[test]
+fn primer_group_target_search_budget_fails_before_backend_execution() {
+    let reference = primer_group_target_test_sequence();
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("group_a".to_string(), seq(reference));
+    state
+        .sequences
+        .insert("group_b".to_string(), seq(reference));
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+    let mut request = primer_group_target_test_request(TranscriptAssayCoveragePolicy::RequireAll);
+    request.search_policy = Some(TranscriptAssayPrimerSearchPolicy {
+        max_primer_window_bp: 64,
+        max_candidate_pairs_per_record: 1,
+        max_candidate_pairs_total: 1,
+        ..TranscriptAssayPrimerSearchPolicy::default()
+    });
+    let error = engine
+        .apply(Operation::DesignPrimerGroupTarget {
+            request,
+            path: None,
+        })
+        .expect_err("over-budget group search must stop before pair generation");
+    assert!(error.message.contains("search_space_too_broad"));
+}
+
+#[test]
+fn primer_pair_pareto_frontier_keeps_tradeoffs_and_old_reports_default_it() {
+    let strong_score = PrimerPairParetoMetrics {
+        existing_candidate_score: 10.0,
+        tm_delta_c: 2.0,
+        primer_pair_complementary_run_bp: 4,
+        primer_pair_3prime_complementary_run_bp: 2,
+        ..PrimerPairParetoMetrics::default()
+    };
+    let balanced_tm = PrimerPairParetoMetrics {
+        existing_candidate_score: 8.0,
+        tm_delta_c: 0.2,
+        primer_pair_complementary_run_bp: 4,
+        primer_pair_3prime_complementary_run_bp: 2,
+        ..PrimerPairParetoMetrics::default()
+    };
+    let dominated = PrimerPairParetoMetrics {
+        existing_candidate_score: 7.0,
+        tm_delta_c: 3.0,
+        primer_pair_complementary_run_bp: 5,
+        primer_pair_3prime_complementary_run_bp: 3,
+        ..PrimerPairParetoMetrics::default()
+    };
+    assert!(GentleEngine::primer_pair_pareto_dominates(
+        &strong_score,
+        &dominated
+    ));
+    assert!(!GentleEngine::primer_pair_pareto_dominates(
+        &strong_score,
+        &balanced_tm
+    ));
+    let frontier = GentleEngine::primer_pair_pareto_frontier(vec![
+        PrimerPairParetoAlternative {
+            pair_id: "score".to_string(),
+            metrics: strong_score,
+            ..PrimerPairParetoAlternative::default()
+        },
+        PrimerPairParetoAlternative {
+            pair_id: "tm".to_string(),
+            metrics: balanced_tm,
+            ..PrimerPairParetoAlternative::default()
+        },
+        PrimerPairParetoAlternative {
+            pair_id: "dominated".to_string(),
+            metrics: dominated,
+            ..PrimerPairParetoAlternative::default()
+        },
+    ]);
+    assert_eq!(frontier.accepted_candidate_count, 3);
+    assert_eq!(frontier.evaluated_candidate_count, 3);
+    assert_eq!(frontier.non_dominated_candidate_count, 2);
+    assert_eq!(
+        frontier
+            .alternatives
+            .iter()
+            .map(|row| row.pair_id.as_str())
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["score", "tm"])
+    );
+
+    let old_primer: PrimerDesignReport = serde_json::from_value(json!({
+        "schema": "gentle.primer_design_report.v1",
+        "report_id": "old"
+    }))
+    .expect("old primer report without frontier remains readable");
+    assert!(old_primer.pareto_frontier.alternatives.is_empty());
+    let old_panel: TranscriptAssayPanelReport = serde_json::from_value(json!({
+        "schema": "gentle.transcript_assay_panel.v2",
+        "report_id": "old_panel"
+    }))
+    .expect("old transcript panel without frontier remains readable");
+    assert!(old_panel.pareto_frontier.alternatives.is_empty());
+}
+
 fn primer_selection_provenance_operation(
     report_id: &str,
     rejected_near_miss_limit: usize,

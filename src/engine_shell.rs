@@ -84,11 +84,12 @@ use crate::{
         PlanningCloningVectorCandidate, PlanningEstimate, PlanningObjective, PlanningProfile,
         PlanningProfileScope, PlanningSuggestionStatus, PrimerDesignBackend,
         PrimerDesignPairConstraint, PrimerDesignReport, PrimerDesignSideConstraint,
-        PrimerSpecificityCheckMode, PrimerSpecificityCollectionMemberBinding,
-        PrimerSpecificityPolicy, PrimerVariantScreenRequest, ProbeRegionRequest, ProjectFact,
-        ProjectFactDomain, ProjectFactGraph, ProjectFactTypeSpec, ProjectState,
-        PromoterArtifactManifestEntry, PromoterCohortKind, PromoterExpressionEvidenceInput,
-        PromoterTfbsGeneQuery, PromoterWindowCollapseMode, ProteinExpressionCdsAssessment,
+        PrimerGroupTargetDesignRequest, PrimerSpecificityCheckMode,
+        PrimerSpecificityCollectionMemberBinding, PrimerSpecificityPolicy,
+        PrimerVariantScreenRequest, ProbeRegionRequest, ProjectFact, ProjectFactDomain,
+        ProjectFactGraph, ProjectFactTypeSpec, ProjectState, PromoterArtifactManifestEntry,
+        PromoterCohortKind, PromoterExpressionEvidenceInput, PromoterTfbsGeneQuery,
+        PromoterWindowCollapseMode, ProteinExpressionCdsAssessment,
         ProteinExpressionFeatureSummary, ProteinExpressionHandoffReport,
         ProteinExpressionHostChassisCandidate, ProteinExpressionProductDefinition,
         ProteinExpressionProductReadiness, ProteinExpressionRequirements,
@@ -2691,6 +2692,12 @@ pub enum ShellCommand {
     PrimersBuildTranscriptAssayCdnaSimilarityMap {
         request_json: String,
         path: Option<String>,
+    },
+    PrimersDesignGroupTarget {
+        request_json: String,
+        path: Option<String>,
+        backend: Option<PrimerDesignBackend>,
+        primer3_executable: Option<String>,
     },
     PrimersDesignTranscriptAssayPanel {
         seq_id: String,
@@ -11755,6 +11762,31 @@ impl ShellCommand {
                     .filter(|value| !value.is_empty())
                     .unwrap_or("none"),
             ),
+            Self::PrimersDesignGroupTarget {
+                request_json,
+                path,
+                backend,
+                primer3_executable,
+            } => format!(
+                "design one common primer pair across related loaded sequences (request={}, path={}, backend={}, primer3_executable={})",
+                if request_json.trim_start().starts_with('@') {
+                    request_json.trim()
+                } else {
+                    "inline-json"
+                },
+                path.as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("none"),
+                backend
+                    .map(PrimerDesignBackend::as_str)
+                    .unwrap_or("default"),
+                primer3_executable
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("default"),
+            ),
             Self::PrimersDesignTranscriptAssayPanel {
                 seq_id,
                 feature_id,
@@ -18192,6 +18224,41 @@ fn primer_design_operation_descriptor(id: &str, report_kind: &str, description: 
     })
 }
 
+fn primer_group_target_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            {
+                "name": "TEMPLATE_SEQ_IDS",
+                "required": true,
+                "subject_kind": "sequence",
+                "detail": "two or more loaded related sequence ids; readiness is checked for every member"
+            },
+            {
+                "name": "OUTPUT_PATH",
+                "required": false,
+                "subject_kind": "other",
+                "detail": "optional external JSON report path"
+            }
+        ],
+        "reads": [
+            {"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_IDS"}}
+        ],
+        "effects": [],
+        "precondition_expr": {
+            "all": [
+                {"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_IDS"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn candidate_set_arg(name: &str, detail: &str) -> Value {
     json!({
         "name": name,
@@ -23408,6 +23475,14 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "primers build-transcript-assay-cdna-similarity-map",
             "Build the same advisory, content-bound cDNA-similarity intervals through the shared shell route.",
         ),
+        primer_group_target_descriptor(
+            "DesignPrimerGroupTarget",
+            "Align related loaded sequences, derive exact common primer intervals, run bounded primer design, and test every accepted pair against every member.",
+        ),
+        primer_group_target_descriptor(
+            "primers design-group-target",
+            "Run the same bounded related-sequence common-primer design from a complete JSON request.",
+        ),
         primer_specificity_alignment_html_descriptor(
             "ExportPrimerSpecificityAlignmentHtml",
             "Render persisted full-primer alignments through the shared engine operation without rerunning BLAST or alignment.",
@@ -28544,6 +28619,9 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "primers inspect-transcript-assay-feasibility"
         | "DesignTranscriptAssayPanel" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
+        "primers design-group-target" | "DesignPrimerGroupTarget" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_IDS"}}),
         ]),
         "primers plan-gene-isoform-study" | "PlanGeneIsoformAssayStudy" => Some(vec![]),
         "primers execute-gene-isoform-study-workflow" => Some(vec![]),
@@ -53004,6 +53082,68 @@ fn execute_primers_command(
         }
     }
 
+    fn run_design_primer_group_target_request(
+        engine: &mut GentleEngine,
+        request: PrimerGroupTargetDesignRequest,
+        path: Option<String>,
+        backend: Option<PrimerDesignBackend>,
+        primer3_executable: Option<&str>,
+        options: &ShellExecutionOptions,
+    ) -> Result<ShellRunResult, String> {
+        if let Some(path) = path
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            ensure_shell_output_parent_dir(path)?;
+        }
+        let previous_backend = engine.state().parameters.primer_design_backend;
+        let previous_executable = engine.state().parameters.primer3_executable.clone();
+        if let Some(override_backend) = backend {
+            engine.state_mut().parameters.primer_design_backend = override_backend;
+        }
+        if let Some(override_exec) = primer3_executable
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            engine.state_mut().parameters.primer3_executable = override_exec.to_string();
+        }
+        let operation = Operation::DesignPrimerGroupTarget {
+            request,
+            path: path.clone(),
+        };
+        let op_result = if options.progress_callback.is_some() {
+            engine
+                .apply_with_progress(operation, |progress| {
+                    forward_shell_progress(options, progress).unwrap_or(false)
+                })
+                .map_err(|error| error.to_string())
+        } else {
+            engine.apply(operation).map_err(|error| error.to_string())
+        };
+        engine.state_mut().parameters.primer_design_backend = previous_backend;
+        engine.state_mut().parameters.primer3_executable = previous_executable;
+        let op_result = op_result?;
+        let report = op_result
+            .primer_group_target_design
+            .as_ref()
+            .map(|report| (**report).clone())
+            .ok_or_else(|| "Group-target primer operation did not return its report".to_string())?;
+        Ok(ShellRunResult {
+            state_changed: false,
+            output: json!({
+                "schema": "gentle.primer_group_target_design_command.v1",
+                "report": report,
+                "path": path,
+                "preferred_artifacts": path.as_ref().map(|path| vec![json!({
+                    "path": path,
+                    "kind": "related-sequence group-target primer report"
+                })]).unwrap_or_default(),
+                "result": op_result,
+            }),
+        })
+    }
+
     fn parse_design_transcript_assay_panel_operation_request(
         json_text: &str,
     ) -> Result<Operation, String> {
@@ -54590,6 +54730,25 @@ fn execute_primers_command(
                     "result": op_result,
                 }),
             })
+        }
+        ShellCommand::PrimersDesignGroupTarget {
+            request_json,
+            path,
+            backend,
+            primer3_executable,
+        } => {
+            let request = parse_required_json_payload::<PrimerGroupTargetDesignRequest>(
+                request_json,
+                "related-sequence group-target primer request",
+            )?;
+            run_design_primer_group_target_request(
+                engine,
+                request,
+                path.clone(),
+                *backend,
+                primer3_executable.as_deref(),
+                options,
+            )
         }
         ShellCommand::PrimersDesignTranscriptAssayPanel {
             seq_id,
@@ -62225,6 +62384,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::PrimersTestCdnaQpcr { .. }
             | ShellCommand::PrimersTranscriptQpcrPanel { .. }
             | ShellCommand::PrimersBuildTranscriptAssayCdnaSimilarityMap { .. }
+            | ShellCommand::PrimersDesignGroupTarget { .. }
             | ShellCommand::PrimersDesignTranscriptAssayPanel { .. }
             | ShellCommand::PrimersDesignTranscriptAssayPanelRequest { .. }
             | ShellCommand::PrimersInspectTranscriptAssayFeasibility { .. }
@@ -64008,6 +64168,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersTestCdnaQpcr { .. }
         | ShellCommand::PrimersTranscriptQpcrPanel { .. }
         | ShellCommand::PrimersBuildTranscriptAssayCdnaSimilarityMap { .. }
+        | ShellCommand::PrimersDesignGroupTarget { .. }
         | ShellCommand::PrimersDesignTranscriptAssayPanel { .. }
         | ShellCommand::PrimersDesignTranscriptAssayPanelRequest { .. }
         | ShellCommand::PrimersInspectTranscriptAssayFeasibility { .. }

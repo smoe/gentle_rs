@@ -815,6 +815,7 @@ const GUIDE_DESIGN_SCHEMA: &str = "gentle.guide_design.v1";
 pub const PRIMER_DESIGN_REPORTS_METADATA_KEY: &str = "primer_design_reports";
 const PRIMER_DESIGN_REPORTS_SCHEMA: &str = "gentle.primer_design_reports.v1";
 const PRIMER_DESIGN_REPORT_SCHEMA: &str = "gentle.primer_design_report.v1";
+pub const PRIMER_GROUP_TARGET_DESIGN_SCHEMA: &str = "gentle.primer_group_target_design.v1";
 const QPCR_DESIGN_REPORT_SCHEMA: &str = "gentle.qpcr_design_report.v1";
 const OLIGO_ORDER_FORM_SCHEMA: &str = "gentle.oligo_order_form.v1";
 const CDNA_ASSAY_TEST_REPORT_SCHEMA: &str = "gentle.cdna_assay_test_report.v1";
@@ -4266,6 +4267,13 @@ pub enum Operation {
         max_tm_delta_c: Option<f64>,
         max_pairs: Option<usize>,
         report_id: Option<String>,
+    },
+    /// Design one exact-binding primer pair shared by related loaded
+    /// sequences after deterministic common-interval planning.
+    DesignPrimerGroupTarget {
+        request: PrimerGroupTargetDesignRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
     },
     DesignInsertionPrimerPairs {
         template: SeqId,

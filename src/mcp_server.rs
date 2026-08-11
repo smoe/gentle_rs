@@ -1291,6 +1291,7 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
             "primers specificity-import",
             "primers specificity-alignment-html",
             "primers build-transcript-assay-cdna-similarity-map",
+            "primers design-group-target",
             "primers transcript-assay-specificity-redesign",
             "primers compose-gene-assay-routine",
             "primers plan-gene-isoform-study",

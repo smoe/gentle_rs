@@ -6466,6 +6466,96 @@ fn parse_primers_design_qpcr_with_backend_overrides() {
 }
 
 #[test]
+fn parse_primers_design_group_target_with_backend_overrides() {
+    let cmd = parse_shell_line(
+        "primers design-group-target @group.json --path group-report.json --backend primer3 --primer3-exec /opt/primer3/primer3_core",
+    )
+    .expect("parse group-target command");
+    match cmd {
+        ShellCommand::PrimersDesignGroupTarget {
+            request_json,
+            path,
+            backend,
+            primer3_executable,
+        } => {
+            assert_eq!(request_json, "@group.json");
+            assert_eq!(path.as_deref(), Some("group-report.json"));
+            assert_eq!(backend, Some(PrimerDesignBackend::Primer3));
+            assert_eq!(
+                primer3_executable.as_deref(),
+                Some("/opt/primer3/primer3_core")
+            );
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn execute_primers_design_group_target_returns_shared_engine_report() {
+    let template = "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG";
+    let mut alternate = template.as_bytes().to_vec();
+    alternate[65] = if alternate[65] == b'A' { b'C' } else { b'A' };
+    let alternate = String::from_utf8(alternate).expect("DNA fixture");
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "group_a".to_string(),
+        DNAsequence::from_sequence(template).expect("reference fixture"),
+    );
+    state.sequences.insert(
+        "group_b".to_string(),
+        DNAsequence::from_sequence(&alternate).expect("alternate fixture"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let side = PrimerDesignSideConstraint {
+        min_length: 18,
+        max_length: 20,
+        min_tm_c: 0.0,
+        max_tm_c: 100.0,
+        min_gc_fraction: 0.0,
+        max_gc_fraction: 1.0,
+        max_anneal_hits: 1_000,
+        ..PrimerDesignSideConstraint::default()
+    };
+    let request = PrimerGroupTargetDesignRequest {
+        template_seq_ids: vec!["group_a".to_string(), "group_b".to_string()],
+        representative_seq_id: Some("group_a".to_string()),
+        target_start_0based: Some(50),
+        target_end_0based_exclusive: Some(80),
+        forward: side.clone(),
+        reverse: side,
+        min_amplicon_bp: 60,
+        max_amplicon_bp: 140,
+        max_tm_delta_c: Some(100.0),
+        max_pairs: Some(4),
+        report_id: Some("shell_group".to_string()),
+        ..PrimerGroupTargetDesignRequest::default()
+    };
+    let output = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersDesignGroupTarget {
+            request_json: serde_json::to_string(&request).expect("serialize request"),
+            path: None,
+            backend: Some(PrimerDesignBackend::Internal),
+            primer3_executable: None,
+        },
+    )
+    .expect("execute group-target shell route");
+    assert!(!output.state_changed);
+    assert_eq!(
+        output.output["schema"],
+        "gentle.primer_group_target_design_command.v1"
+    );
+    assert_eq!(
+        output.output["report"]["schema"],
+        "gentle.primer_group_target_design.v1"
+    );
+    assert_eq!(
+        output.output["report"]["members"].as_array().map(Vec::len),
+        Some(2)
+    );
+}
+
+#[test]
 fn parse_primers_oligo_order_commands() {
     let create = parse_shell_line("primers oligo-order create @oligos.json")
         .expect("parse oligo-order create");

@@ -1,5 +1,13 @@
 # GENtle Changelog
 
+- Added deterministic related-sequence group-target primer design and explicit
+  primer-pair Pareto alternatives. `DesignPrimerGroupTarget` aligns loaded
+  members, derives exact conserved binding intervals, bounds work before
+  Primer3, and reports a complete pair-by-member product matrix under strict or
+  explicit best-effort coverage. Existing primer and transcript-panel reports
+  now expose bounded non-dominated tradeoffs without changing their selection
+  or specificity gates.
+
 - Extended Primer-BLAST-style primer planning without surrendering GENtle's
   transcript-aware contracts. GENtle can now build content-bound whole-cDNA
   similarity maps, combine variant/repeat/similarity intervals as explicit

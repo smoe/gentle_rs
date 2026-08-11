@@ -2565,6 +2565,14 @@ impl GentleEngine {
             | Operation::Branch { input, .. } => {
                 Self::push_unique_token(&mut summary.sequence_ids, input);
             }
+            Operation::DesignPrimerGroupTarget { request, path } => {
+                for seq_id in &request.template_seq_ids {
+                    Self::push_unique_token(&mut summary.sequence_ids, seq_id);
+                }
+                if let Some(path) = path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+            }
             Operation::DeleteCandidateSet { set_name }
             | Operation::ScoreCandidateSetExpression { set_name, .. }
             | Operation::ScoreCandidateSetDistance { set_name, .. }
@@ -2737,6 +2745,9 @@ impl GentleEngine {
             | Operation::ExportGuideProtocolText { path, .. }
             | Operation::ExportPrimerDesignReport { path, .. }
             | Operation::DesignTranscriptAssayPanel {
+                path: Some(path), ..
+            }
+            | Operation::DesignPrimerGroupTarget {
                 path: Some(path), ..
             }
             | Operation::AssessPrimerPairSpecificity {

@@ -4718,6 +4718,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub primer_variant_screen: Option<Box<PrimerVariantScreenReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primer_group_target_design: Option<Box<PrimerGroupTargetDesignReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_qpcr_panel: Option<Box<TranscriptQpcrPanelReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_assay_panel: Option<Box<TranscriptAssayPanelReport>>,
@@ -6447,6 +6449,62 @@ pub struct PrimerPairSelectionEvidence {
     pub notes: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Comparable dimensions retained for one accepted primer-pair alternative.
+///
+/// Optional dimensions are absent when the enclosing design did not evaluate
+/// a group/transcript objective. Hard constraints are applied before this
+/// projection; the frontier is an explanation surface, not a way to rescue a
+/// rejected pair.
+pub struct PrimerPairParetoMetrics {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub single_product_target_count: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub multiple_product_target_count: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub no_product_target_count: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub common_region_confirmed: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub practicality_rank: Option<u8>,
+    pub existing_candidate_score: f64,
+    pub tm_delta_c: f64,
+    pub primer_pair_complementary_run_bp: usize,
+    pub primer_pair_3prime_complementary_run_bp: usize,
+    pub amplicon_length_bp: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// One non-dominated accepted primer-pair alternative.
+pub struct PrimerPairParetoAlternative {
+    pub pair_id: String,
+    pub source_candidate_id: String,
+    pub design_template_id: String,
+    pub selected: bool,
+    pub metrics: PrimerPairParetoMetrics,
+    pub tradeoff_summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Deterministic bounded projection of accepted non-dominated primer pairs.
+pub struct PrimerPairParetoFrontier {
+    pub status: String,
+    #[serde(default)]
+    pub objective_directions: Vec<String>,
+    pub accepted_candidate_count: usize,
+    /// Candidates compared pairwise after a deterministic resource cap. This
+    /// equals `accepted_candidate_count` unless `truncated` is true.
+    pub evaluated_candidate_count: usize,
+    pub non_dominated_candidate_count: usize,
+    pub retained_candidate_count: usize,
+    pub truncated: bool,
+    #[serde(default)]
+    pub alternatives: Vec<PrimerPairParetoAlternative>,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 /// Experimental purpose recorded independently of the panel-selection objective.
@@ -6545,6 +6603,10 @@ pub struct TranscriptAssayConsideredAlternative {
     #[serde(default)]
     pub common_region_status: TranscriptAssayCommonRegionStatus,
     pub existing_candidate_score: f64,
+    #[serde(default)]
+    pub on_pareto_frontier: bool,
+    #[serde(default)]
+    pub pareto_metrics: PrimerPairParetoMetrics,
     pub disposition: String,
     pub explanation: String,
 }
@@ -7819,6 +7881,184 @@ pub struct PrimerDesignNearMissCapture {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Request to design one primer pair shared by a group of related loaded
+/// sequences.
+///
+/// GENtle chooses the longest member as representative unless
+/// `representative_seq_id` is supplied. Exact conserved intervals are derived
+/// by global alignment before Primer3 is invoked. `target_*` remains optional:
+/// without it, every bounded conserved left/right interval combination is a
+/// possible assay location.
+pub struct PrimerGroupTargetDesignRequest {
+    #[serde(default)]
+    pub template_seq_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub representative_seq_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_start_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_end_0based_exclusive: Option<usize>,
+    #[serde(default)]
+    pub forward: PrimerDesignSideConstraint,
+    #[serde(default)]
+    pub reverse: PrimerDesignSideConstraint,
+    #[serde(default)]
+    pub pair_constraints: PrimerDesignPairConstraint,
+    pub min_amplicon_bp: usize,
+    pub max_amplicon_bp: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tm_delta_c: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_pairs: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_search_records: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_alignment_cells: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_mismatches: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub require_3prime_exact_bases: Option<usize>,
+    #[serde(default)]
+    pub coverage_policy: TranscriptAssayCoveragePolicy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_policy: Option<TranscriptAssayPrimerSearchPolicy>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Content identity for one member of a group-target design.
+pub struct PrimerGroupTargetMember {
+    pub seq_id: String,
+    pub length_bp: usize,
+    pub sequence_sha256: String,
+    pub representative: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Exact conserved reference interval eligible to contain a primer binding
+/// sequence. Coordinates are zero-based half-open on the representative.
+pub struct PrimerGroupTargetCommonInterval {
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub length_bp: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Pairwise alignment used to derive group-common reference intervals.
+pub struct PrimerGroupTargetAlignment {
+    pub member_seq_id: String,
+    pub alignment: SequenceAlignmentReport,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One bounded representative-template Primer3/internal-backend record.
+pub struct PrimerGroupTargetSearchRecord {
+    pub search_record_id: String,
+    pub left_interval_0based: SequenceRange0Based,
+    pub right_interval_0based: SequenceRange0Based,
+    pub roi_start_0based: usize,
+    pub roi_end_0based_exclusive: usize,
+    pub candidate_pair_upper_bound: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One template result for one proposed group-common primer pair.
+pub struct PrimerGroupTargetMemberProduct {
+    pub pair_id: String,
+    pub template_seq_id: String,
+    #[serde(default)]
+    pub status: TranscriptAssayDetectionStatus,
+    pub detail_status: String,
+    pub product_count: usize,
+    #[serde(default)]
+    pub amplicon_lengths_bp: Vec<usize>,
+    pub exact_negative_prefiltered: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Group-level evaluation of one accepted representative-template candidate.
+pub struct PrimerGroupTargetPairEvaluation {
+    pub pair_id: String,
+    pub source_pair_rank: usize,
+    pub retained_pair_rank: Option<usize>,
+    pub complete_group_pair: bool,
+    pub single_product_template_count: usize,
+    pub multiple_product_template_count: usize,
+    pub no_product_template_count: usize,
+    #[serde(default)]
+    pub uncovered_template_seq_ids: Vec<String>,
+    #[serde(default)]
+    pub member_products: Vec<PrimerGroupTargetMemberProduct>,
+    #[serde(default)]
+    pub pareto_metrics: PrimerPairParetoMetrics,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Whether one related-sequence group has a single shared retained pair.
+pub enum PrimerGroupTargetCompletionStatus {
+    Complete,
+    #[default]
+    Partial,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Machine-readable result of a bounded related-sequence common-primer design.
+pub struct PrimerGroupTargetDesignReport {
+    pub schema: String,
+    pub report_id: String,
+    pub request_sha256: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub representative_seq_id: String,
+    pub representative_sequence_sha256: String,
+    #[serde(default)]
+    pub members: Vec<PrimerGroupTargetMember>,
+    #[serde(default)]
+    pub alignments: Vec<PrimerGroupTargetAlignment>,
+    #[serde(default)]
+    pub common_intervals_0based: Vec<PrimerGroupTargetCommonInterval>,
+    #[serde(default)]
+    pub search_records: Vec<PrimerGroupTargetSearchRecord>,
+    pub max_alignment_cells: u64,
+    pub estimated_alignment_cells: u64,
+    pub max_search_records: usize,
+    pub generated_candidate_count: usize,
+    pub deduplicated_candidate_count: usize,
+    pub retained_pair_count: usize,
+    pub complete_group_pair_count: usize,
+    pub maximum_single_pair_coverage_count: usize,
+    #[serde(default)]
+    pub completion_status: PrimerGroupTargetCompletionStatus,
+    #[serde(default)]
+    pub coverage_policy: TranscriptAssayCoveragePolicy,
+    pub max_mismatches: usize,
+    pub require_3prime_exact_bases: usize,
+    #[serde(default)]
+    pub pairs: Vec<PrimerDesignPairRecord>,
+    #[serde(default)]
+    pub pair_evaluations: Vec<PrimerGroupTargetPairEvaluation>,
+    #[serde(default)]
+    pub pareto_frontier: PrimerPairParetoFrontier,
+    #[serde(default)]
+    pub backend_runs: Vec<PrimerDesignBackendInfo>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct PrimerDesignReport {
     pub schema: String,
     pub report_id: String,
@@ -7868,6 +8108,8 @@ pub struct PrimerDesignReport {
     pub construct_reasoning_graph_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub insertion_context: Option<PrimerInsertionContextReport>,
+    #[serde(default)]
+    pub pareto_frontier: PrimerPairParetoFrontier,
 }
 
 impl PrimerDesignReport {
@@ -10379,6 +10621,11 @@ pub struct TranscriptAssayPanelReport {
     pub equivalence_groups: Vec<TranscriptAssayEquivalenceGroup>,
     #[serde(default)]
     pub selected_assays: Vec<TranscriptAssayPanelAssay>,
+    /// Accepted candidate-level alternatives that are non-dominated across
+    /// coverage, ambiguity, practicality, ranking, Tm balance, and pair
+    /// complementarity. Selection still follows the declared panel objective.
+    #[serde(default)]
+    pub pareto_frontier: PrimerPairParetoFrontier,
     #[serde(default)]
     pub detection_matrix: Vec<TranscriptAssayDetectionCell>,
     #[serde(default)]
