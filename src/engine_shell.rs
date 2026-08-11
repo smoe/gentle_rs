@@ -117,11 +117,12 @@ use crate::{
         TfbsRegionSummaryRequest, TfbsScoreTrackCorrelationMetric,
         TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
         TfbsTrackSimilarityRankingMetric, TranscriptAssayAmpliconRange,
-        TranscriptAssayCdnaSynthesis, TranscriptAssayCoveragePolicy,
-        TranscriptAssayCoverageUniverse, TranscriptAssayJunctionPriority,
-        TranscriptAssayJunctionRequest, TranscriptAssayKind, TranscriptAssayPanelFeasibilityReport,
-        TranscriptAssayPanelObjective, TranscriptAssayPanelSpecificityExecutionManifest,
-        TranscriptAssayPracticalityPolicy, TranscriptAssaySpecificityRequest,
+        TranscriptAssayCdnaSimilarityMapBuildRequest, TranscriptAssayCdnaSynthesis,
+        TranscriptAssayCoveragePolicy, TranscriptAssayCoverageUniverse,
+        TranscriptAssayJunctionPriority, TranscriptAssayJunctionRequest, TranscriptAssayKind,
+        TranscriptAssayPanelFeasibilityReport, TranscriptAssayPanelObjective,
+        TranscriptAssayPanelSpecificityExecutionManifest, TranscriptAssayPracticalityPolicy,
+        TranscriptAssaySpecificityRedesignRequest, TranscriptAssaySpecificityRequest,
         TranscriptAssayUseTier, TranslationSpeedMark, TranslationSpeedProfile,
         UniprotFeatureCodingDnaQueryMode, VariantAlleleChoice,
         WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
@@ -2595,6 +2596,10 @@ pub enum ShellCommand {
         handoff_path: String,
         path: Option<String>,
     },
+    PrimersSpecificityAlignmentHtml {
+        report_id: String,
+        path: String,
+    },
     PrimersTranscriptAssaySpecificityPlan {
         panel_report_id: String,
         target_genome_id: String,
@@ -2606,6 +2611,10 @@ pub enum ShellCommand {
     PrimersTranscriptAssaySpecificityFinalize {
         handoff_path: String,
         execution_manifest_json: String,
+        path: Option<String>,
+    },
+    PrimersTranscriptAssaySpecificityRedesign {
+        request_json: String,
         path: Option<String>,
     },
     PrimersImportExternalPairs {
@@ -2677,6 +2686,10 @@ pub enum ShellCommand {
         seq_id: String,
         feature_id: usize,
         shared_qpcr_report_id: String,
+        path: Option<String>,
+    },
+    PrimersBuildTranscriptAssayCdnaSimilarityMap {
+        request_json: String,
         path: Option<String>,
     },
     PrimersDesignTranscriptAssayPanel {
@@ -11610,6 +11623,10 @@ impl ShellCommand {
                     .filter(|v| !v.trim().is_empty())
                     .unwrap_or("none"),
             ),
+            Self::PrimersSpecificityAlignmentHtml { report_id, path } => format!(
+                "render persisted full-primer alignments from specificity report '{}' to '{}'",
+                report_id, path,
+            ),
             Self::PrimersTranscriptAssaySpecificityPlan {
                 panel_report_id,
                 target_genome_id,
@@ -11629,6 +11646,13 @@ impl ShellCommand {
                 execution_manifest_json.len(),
                 path.as_deref()
                     .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("none"),
+            ),
+            Self::PrimersTranscriptAssaySpecificityRedesign { request_json, path } => format!(
+                "propose content-bound replacements for specificity-failed transcript assays (request_len={}, path={})",
+                request_json.len(),
+                path.as_deref()
+                    .filter(|value| !value.trim().is_empty())
                     .unwrap_or("none"),
             ),
             Self::PrimersImportExternalPairs {
@@ -11714,6 +11738,18 @@ impl ShellCommand {
                 seq_id,
                 feature_id + 1,
                 shared_qpcr_report_id,
+                path.as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("none"),
+            ),
+            Self::PrimersBuildTranscriptAssayCdnaSimilarityMap { request_json, path } => format!(
+                "build transcript-assay cDNA similarity map (request={}, path={})",
+                if request_json.trim_start().starts_with('@') {
+                    request_json.trim()
+                } else {
+                    "inline-json"
+                },
                 path.as_deref()
                     .map(str::trim)
                     .filter(|value| !value.is_empty())
@@ -13313,8 +13349,10 @@ impl ShellCommand {
                 | Self::CollectionsRunPrimerSpecificity { .. }
                 | Self::PrimersSpecificityPlan { .. }
                 | Self::PrimersSpecificityImport { .. }
+                | Self::PrimersSpecificityAlignmentHtml { .. }
                 | Self::PrimersTranscriptAssaySpecificityPlan { .. }
                 | Self::PrimersTranscriptAssaySpecificityFinalize { .. }
+                | Self::PrimersTranscriptAssaySpecificityRedesign { .. }
                 | Self::PrimersExecuteGeneIsoformAssayStudyWorkflow { .. }
                 | Self::PrimersExecuteGeneIsoformAssayStudyWorkflowBatch { .. }
                 | Self::PrimersPrepareRestrictionCloning { .. }
@@ -18825,6 +18863,57 @@ fn primer_specificity_report_descriptor(id: &str, description: &str, args: Vec<V
     })
 }
 
+fn primer_specificity_alignment_html_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted primer-specificity report id"},
+            {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "HTML path for the deterministic full-alignment projection"}
+        ],
+        "reads": [
+            {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_specificity"}
+        ],
+        "effects": [
+            {"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "must_on_success"}
+        ],
+        "precondition_expr": {"all": [
+            {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_specificity"}
+        ]},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn transcript_assay_cdna_similarity_map_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "external",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence carrying the target gene and transcript annotations"},
+            {"name": "TARGET_RESOURCE_ID", "required": true, "subject_kind": "other", "detail": "prepared transcriptome/cDNA BLAST resource with content fingerprint and subject annotations"},
+            {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional content-bound similarity-map JSON path"}
+        ],
+        "reads": [
+            {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+        ],
+        "effects": [],
+        "precondition_expr": {
+            "all": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn transcript_assay_specificity_plan_descriptor(id: &str, description: &str) -> Value {
     pool_artifact_descriptor_with_readiness(
         id,
@@ -18868,6 +18957,34 @@ fn transcript_assay_specificity_finalize_descriptor(id: &str, description: &str)
                 "subject": {"arg": "OUTPUT_PATH"},
                 "effect_kind": "may_on_success",
                 "description": "Writes the optional external acceptance JSON when OUTPUT_PATH is supplied."
+            }
+        ],
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn transcript_assay_specificity_redesign_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "content-bound gentle transcript-assay specificity redesign request JSON or @file"},
+            {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external redesign report JSON path"}
+        ],
+        "reads": [
+            {"fact": "report.exists", "equals": "transcript_assay_panel"}
+        ],
+        "effects": [
+            {
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "may_on_success",
+                "description": "Writes a pure-read replacement/infeasibility report; proposed replacements remain subject to the original specificity gates."
             }
         ],
         "precondition_expr": {"all": []},
@@ -19910,6 +20027,10 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external primer-specificity JSON output path"}),
             ],
         ),
+        primer_specificity_alignment_html_descriptor(
+            "primers specificity-alignment-html",
+            "Render persisted full-primer alignments as deterministic HTML without rerunning BLAST or alignment.",
+        ),
         transcript_assay_specificity_plan_descriptor(
             "primers transcript-assay-specificity-plan",
             "Prepare one aggregate external BLAST handoff covering every selected assay in a persisted transcript panel.",
@@ -19917,6 +20038,10 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         transcript_assay_specificity_finalize_descriptor(
             "primers transcript-assay-specificity-finalize",
             "Validate one aggregate execution manifest, classify each assay, and atomically attach only a complete panel verdict.",
+        ),
+        transcript_assay_specificity_redesign_descriptor(
+            "primers transcript-assay-specificity-redesign",
+            "Retain passing assays and propose content-bound replacements, or a bounded infeasibility disposition, for specificity-failed assays without mutating project state.",
         ),
         arrangement_create_descriptor(
             "arrange-serial",
@@ -23274,6 +23399,22 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "DesignQpcrAssays",
             "qpcr_design",
             "Generate and persist a ranked qPCR assay design report through the shared engine operation.",
+        ),
+        transcript_assay_cdna_similarity_map_descriptor(
+            "BuildTranscriptAssayCdnaSimilarityMap",
+            "Search a prepared whole-cDNA resource once per distinct mature-cDNA class and materialize advisory, content-bound similarity intervals for bounded primer planning.",
+        ),
+        transcript_assay_cdna_similarity_map_descriptor(
+            "primers build-transcript-assay-cdna-similarity-map",
+            "Build the same advisory, content-bound cDNA-similarity intervals through the shared shell route.",
+        ),
+        primer_specificity_alignment_html_descriptor(
+            "ExportPrimerSpecificityAlignmentHtml",
+            "Render persisted full-primer alignments through the shared engine operation without rerunning BLAST or alignment.",
+        ),
+        transcript_assay_specificity_redesign_descriptor(
+            "RedesignTranscriptAssaySpecificityFailures",
+            "Retain passing assays and propose content-bound replacements, or a bounded infeasibility disposition, through the shared engine operation.",
         ),
         json!({
             "id": "DesignTranscriptAssayPanel",
@@ -53835,6 +53976,32 @@ fn execute_primers_command(
                 }),
             })
         }
+        ShellCommand::PrimersSpecificityAlignmentHtml { report_id, path } => {
+            ensure_shell_output_parent_dir(path)?;
+            let report = engine
+                .get_primer_specificity_report(report_id)
+                .map_err(|error| error.to_string())?;
+            let report_sha256 = serde_json::to_vec(&report)
+                .map(|bytes| crate::digest_utils::sha256_prefixed_bytes(&bytes))
+                .map_err(|error| {
+                    format!("Could not fingerprint primer-specificity report: {error}")
+                })?;
+            engine
+                .apply(Operation::ExportPrimerSpecificityAlignmentHtml {
+                    report_id: report_id.clone(),
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.primer_specificity_alignment_html.v1",
+                    "report_id": report_id,
+                    "report_sha256": report_sha256,
+                    "path": path,
+                }),
+            })
+        }
         ShellCommand::PrimersTranscriptAssaySpecificityPlan {
             panel_report_id,
             target_genome_id,
@@ -53897,6 +54064,49 @@ fn execute_primers_command(
                     "schema": "gentle.transcript_assay_panel_specificity_finalize_command.v1",
                     "acceptance": acceptance,
                     "path": path,
+                }),
+            })
+        }
+        ShellCommand::PrimersTranscriptAssaySpecificityRedesign { request_json, path } => {
+            let payload = parse_json_payload(request_json)?;
+            let request =
+                serde_json::from_str::<TranscriptAssaySpecificityRedesignRequest>(&payload)
+                    .map_err(|error| {
+                        format!("Invalid transcript-assay specificity redesign request: {error}")
+                    })?;
+            if let Some(path) = path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                ensure_shell_output_parent_dir(path)?;
+            }
+            let operation = Operation::RedesignTranscriptAssaySpecificityFailures {
+                request,
+                path: path.clone(),
+            };
+            let op_result = if options.progress_callback.is_some() {
+                engine.apply_with_progress(operation, |progress| {
+                    forward_shell_progress(options, progress).unwrap_or(false)
+                })
+            } else {
+                engine.apply(operation)
+            }
+            .map_err(|error| error.to_string())?;
+            let report = op_result
+                .transcript_assay_specificity_redesign
+                .as_ref()
+                .map(|report| (**report).clone())
+                .ok_or_else(|| {
+                    "Transcript-assay specificity redesign operation returned no report".to_string()
+                })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.transcript_assay_specificity_redesign_command.v1",
+                    "report": report,
+                    "path": path,
+                    "result": op_result,
                 }),
             })
         }
@@ -54345,6 +54555,39 @@ fn execute_primers_command(
                 output: json!({
                     "report": report,
                     "path": path,
+                }),
+            })
+        }
+        ShellCommand::PrimersBuildTranscriptAssayCdnaSimilarityMap { request_json, path } => {
+            let request = parse_required_json_payload::<
+                TranscriptAssayCdnaSimilarityMapBuildRequest,
+            >(
+                request_json, "transcript-assay cDNA similarity-map request"
+            )?;
+            let op_result = engine
+                .apply(Operation::BuildTranscriptAssayCdnaSimilarityMap {
+                    request,
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result
+                .transcript_assay_cdna_similarity_map
+                .as_ref()
+                .map(|report| (**report).clone())
+                .ok_or_else(|| {
+                    "Transcript-assay cDNA similarity-map operation returned no report".to_string()
+                })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.transcript_assay_cdna_similarity_map_command.v1",
+                    "report": report,
+                    "path": path,
+                    "preferred_artifacts": path.as_ref().map(|path| vec![json!({
+                        "path": path,
+                        "kind": "transcript-assay cDNA similarity map"
+                    })]).unwrap_or_default(),
+                    "result": op_result,
                 }),
             })
         }
@@ -61972,13 +62215,16 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::CollectionsRunDigest { .. }
             | ShellCommand::PrimersSpecificityPlan { .. }
             | ShellCommand::PrimersSpecificityImport { .. }
+            | ShellCommand::PrimersSpecificityAlignmentHtml { .. }
             | ShellCommand::PrimersTranscriptAssaySpecificityPlan { .. }
             | ShellCommand::PrimersTranscriptAssaySpecificityFinalize { .. }
+            | ShellCommand::PrimersTranscriptAssaySpecificityRedesign { .. }
             | ShellCommand::PrimersImportExternalPairs { .. }
             | ShellCommand::PrimersScreenVariants { .. }
             | ShellCommand::PrimersTestCdnaPcr { .. }
             | ShellCommand::PrimersTestCdnaQpcr { .. }
             | ShellCommand::PrimersTranscriptQpcrPanel { .. }
+            | ShellCommand::PrimersBuildTranscriptAssayCdnaSimilarityMap { .. }
             | ShellCommand::PrimersDesignTranscriptAssayPanel { .. }
             | ShellCommand::PrimersDesignTranscriptAssayPanelRequest { .. }
             | ShellCommand::PrimersInspectTranscriptAssayFeasibility { .. }
@@ -63752,13 +63998,16 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::CollectionsRunDigest { .. }
         | ShellCommand::PrimersSpecificityPlan { .. }
         | ShellCommand::PrimersSpecificityImport { .. }
+        | ShellCommand::PrimersSpecificityAlignmentHtml { .. }
         | ShellCommand::PrimersTranscriptAssaySpecificityPlan { .. }
         | ShellCommand::PrimersTranscriptAssaySpecificityFinalize { .. }
+        | ShellCommand::PrimersTranscriptAssaySpecificityRedesign { .. }
         | ShellCommand::PrimersImportExternalPairs { .. }
         | ShellCommand::PrimersScreenVariants { .. }
         | ShellCommand::PrimersTestCdnaPcr { .. }
         | ShellCommand::PrimersTestCdnaQpcr { .. }
         | ShellCommand::PrimersTranscriptQpcrPanel { .. }
+        | ShellCommand::PrimersBuildTranscriptAssayCdnaSimilarityMap { .. }
         | ShellCommand::PrimersDesignTranscriptAssayPanel { .. }
         | ShellCommand::PrimersDesignTranscriptAssayPanelRequest { .. }
         | ShellCommand::PrimersInspectTranscriptAssayFeasibility { .. }

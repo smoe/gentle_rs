@@ -12,7 +12,7 @@
 //! - state-summary structs that should remain slower-changing than
 //!   `src/engine.rs`
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::genomes::{BlastDatabaseInspectionReport, BlastSubjectAnnotation};
 use crate::primerbank::PrimerBankSearchReport;
@@ -93,7 +93,9 @@ pub use gentle_protocol::{
     OrthologTfbsSummaryRow, OrthologUnresolvedRow, OrthologyCardinality, OrthologyType,
     PairwiseAlignmentMode, PortBindingStatus, PreparedCacheCleanupMode,
     PreparedCacheCleanupRequest, PrimerDesignBackend, PrimerSpecificityAmpliconCeilingSource,
-    PrimerSpecificityCheckMode, PrimerSpecificityPolicy, PrimerSpecificityReportDetailMode,
+    PrimerSpecificityCheckMode, PrimerSpecificityFullAlignmentMode,
+    PrimerSpecificityFullAlignmentPolicy, PrimerSpecificityPolicy,
+    PrimerSpecificityReportDetailMode, PrimerSpecificityReviewedOffTargetAllowance,
     ProteinResidueGenomicCoordinateBase, ProteinResidueGenomicCoordinateMatch,
     ProteinResidueGenomicCoordinateReport, ProteinToDnaHandoffCandidate,
     ProteinToDnaHandoffCoverage, ProteinToDnaHandoffRankingGoal, ProteinToDnaHandoffStrategy,
@@ -158,7 +160,6 @@ pub use gentle_protocol::{
 };
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
-use std::collections::BTreeMap;
 
 use crate::enzymes::default_preferred_restriction_enzyme_names;
 use crate::genomes::BlastExternalBinaryPreflightReport;
@@ -4721,6 +4722,11 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_assay_panel: Option<Box<TranscriptAssayPanelReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_assay_cdna_similarity_map: Option<Box<TranscriptAssayCdnaSimilarityMap>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_assay_specificity_redesign:
+        Option<Box<TranscriptAssaySpecificityRedesignReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gene_isoform_assay_study_plan: Option<Box<GeneIsoformAssayStudyPlanReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gene_transcript_assay_routine: Option<Box<GeneTranscriptAssayRoutineReport>>,
@@ -6745,6 +6751,43 @@ pub struct PrimerSpecificityInputPrimer {
     pub non_annealing_5prime_tail_bp: usize,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// End-to-end primer alignment against a BLAST-seeded subject window.
+///
+/// BLAST remains the exhaustive locus finder. This record captures the
+/// subsequent full-query semiglobal alignment used to count terminal and
+/// internal differences without treating a partial local HSP as a complete
+/// primer binding site.
+pub struct PrimerSpecificityFullAlignment {
+    pub status: String,
+    pub algorithm: String,
+    pub match_score: i32,
+    pub mismatch_score: i32,
+    pub gap_open_score: i32,
+    pub gap_extend_score: i32,
+    pub score: i32,
+    pub subject_window_start_1based: usize,
+    pub subject_window_end_1based: usize,
+    pub aligned_subject_start_1based: usize,
+    pub aligned_subject_end_1based: usize,
+    pub strand: String,
+    pub query_alignment: String,
+    pub relation_alignment: String,
+    pub subject_alignment: String,
+    pub cigar: String,
+    pub matches: usize,
+    pub mismatches: usize,
+    pub insertions: usize,
+    pub deletions: usize,
+    pub effective_mismatches: usize,
+    pub three_prime_window_bp: usize,
+    pub three_prime_mismatches: usize,
+    pub subject_window_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub warning: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 /// One primer BLAST hit normalized into genomic coordinates and primer-end
@@ -6782,6 +6825,14 @@ pub struct PrimerSpecificityPrimerHit {
     pub query_coverage_fraction: f64,
     pub three_prime_window_bp: usize,
     pub three_prime_mismatches: usize,
+    /// Full-query binding interval derived from `full_alignment`. Older
+    /// reports omit these fields and retain the local-HSP interval above.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binding_start_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binding_end_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub full_alignment: Option<PrimerSpecificityFullAlignment>,
     pub accepted_by_policy: bool,
     #[serde(default)]
     pub rejection_reasons: Vec<String>,
@@ -6897,6 +6948,10 @@ pub struct PrimerSpecificityAmplicon {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub intended_reason: Option<String>,
     pub specificity_failure: bool,
+    #[serde(default)]
+    pub reviewed_allowlisted: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reviewed_allowance_id: Option<String>,
     #[serde(default)]
     pub failure_reasons: Vec<String>,
 }
@@ -7407,6 +7462,109 @@ pub struct TranscriptAssayPanelSpecificityAcceptance {
     pub issues: Vec<TranscriptAssayPanelSpecificityAcceptanceIssue>,
     #[serde(default)]
     pub execution_manifest: TranscriptAssayPanelSpecificityExecutionManifest,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+/// Content-bound request to replace assays rejected by complete specificity QA.
+///
+/// The original design operation remains authoritative for biological scope.
+/// GENtle only adds hard exclusions for the rejected pair footprints and does
+/// not weaken coverage, objective, junction, or product-length constraints.
+pub struct TranscriptAssaySpecificityRedesignRequest {
+    pub panel_report_id: String,
+    pub expected_panel_digest: String,
+    pub acceptance_path: String,
+    pub expected_acceptance_sha256: String,
+    /// Exact serialized `Operation::DesignTranscriptAssayPanel` payload that
+    /// produced the panel. A `Value` avoids recursively embedding `Operation`
+    /// in the operation enum while retaining exact request bytes semantically.
+    pub design_operation: Value,
+    pub expected_design_operation_sha256: String,
+    pub attempt_number: usize,
+    pub max_replacements_per_failed_assay: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backend: Option<PrimerDesignBackend>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primer3_executable: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TranscriptAssaySpecificityRedesignDispositionStatus {
+    SubstituteProposed,
+    InfeasibleUnderApprovedConstraints,
+    #[default]
+    NotEvaluated,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One proposed replacement that must pass the same specificity gates before
+/// it can supersede the rejected assay.
+pub struct TranscriptAssaySpecificityReplacementCandidate {
+    pub replaces_assay_id: String,
+    pub replacement_assay_id: String,
+    pub rejected_primer_pair_digest: String,
+    pub replacement_primer_pair_digest: String,
+    pub failure_acceptance_id: String,
+    pub failure_report_id: String,
+    #[serde(default)]
+    pub off_target_causes: Vec<String>,
+    #[serde(default)]
+    pub changed_design_decisions: Vec<String>,
+    pub backend: String,
+    pub attempt_number: usize,
+    #[serde(default)]
+    pub required_next_gates: Vec<String>,
+    pub assay: TranscriptAssayPanelAssay,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Replacement or constrained-infeasibility decision for one rejected assay.
+pub struct TranscriptAssaySpecificityRedesignDisposition {
+    pub replaces_assay_id: String,
+    pub rejected_primer_pair_digest: String,
+    pub failure_acceptance_id: String,
+    pub failure_report_id: String,
+    #[serde(default)]
+    pub off_target_causes: Vec<String>,
+    pub biological_target_binding: String,
+    #[serde(default)]
+    pub status: TranscriptAssaySpecificityRedesignDispositionStatus,
+    #[serde(default)]
+    pub substitutes: Vec<TranscriptAssaySpecificityReplacementCandidate>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub infeasibility_statement: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Pure-read report retaining passing assays and proposing content-bound
+/// replacements for failed assays without mutating the approved project state.
+pub struct TranscriptAssaySpecificityRedesignReport {
+    pub schema: String,
+    pub redesign_id: String,
+    pub request_sha256: String,
+    pub panel_report_id: String,
+    pub panel_digest: String,
+    pub acceptance_id: String,
+    pub acceptance_sha256: String,
+    pub original_design_operation_sha256: String,
+    pub redesigned_operation_sha256: String,
+    pub attempt_number: usize,
+    #[serde(default)]
+    pub retained_passing_assay_ids: Vec<String>,
+    #[serde(default)]
+    pub dispositions: Vec<TranscriptAssaySpecificityRedesignDisposition>,
+    pub replacement_candidate_count: usize,
+    pub unresolved_failure_count: usize,
+    pub redesigned_panel_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub redesigned_panel: Option<Box<TranscriptAssayPanelReport>>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -9173,7 +9331,167 @@ pub struct TranscriptAssayCdnaSimilarityMapRef {
     pub expected_sha256: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Opt-in producer configuration for a design-time cDNA similarity map.
+///
+/// The enclosing design operation supplies the active sequence, gene feature,
+/// and resolved transcript universe. The resource must already be a prepared,
+/// content-fingerprinted transcriptome/cDNA BLAST database.
+pub struct TranscriptAssayCdnaSimilarityMapBuildSource {
+    pub target_resource_id: String,
+    #[serde(default)]
+    pub paralog_gene_ids: Vec<String>,
+    #[serde(default)]
+    pub paralog_gene_symbols: Vec<String>,
+    /// Minimum retained local alignment length. Zero selects the producer
+    /// default (18 bp).
+    pub min_alignment_bp: usize,
+    /// Minimum retained identity percentage. Zero selects the producer
+    /// default (80%).
+    pub min_identity_percent: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catalog_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_dir: Option<String>,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Named Primer3 solution-chemistry baseline.
+pub enum Primer3ChemistryProfileName {
+    /// Use the selected Primer3 executable's own defaults.
+    #[default]
+    Primer3Default,
+    /// Emit Primer3 2.x documented defaults explicitly for reproducibility.
+    /// This is a computational baseline, not a wet-lab master-mix claim.
+    StandardPcr,
+    /// Emit only caller-reviewed overrides.
+    Custom,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Named chemistry baseline plus exact Primer3 tag overrides.
+pub struct Primer3ChemistryProfile {
+    pub name: Primer3ChemistryProfileName,
+    /// Restricted to documented solution/Tm parameters. Values are retained as
+    /// strings so the emitted Boulder record is byte-auditable.
+    #[serde(default)]
+    pub overrides: BTreeMap<String, String>,
+}
+
+impl Primer3ChemistryProfile {
+    pub fn is_default(&self) -> bool {
+        self == &Self::default()
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+/// Origin of one transcript-local primer-search interval.
+pub enum TranscriptAssayPrimerIntervalEvidenceKind {
+    KnownVariant,
+    RepeatMasker,
+    LowComplexity,
+    ParalogOrCdnaSimilarity,
+    #[default]
+    CallerSupplied,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+/// Search-planning effect of one evidence interval.
+pub enum TranscriptAssayPrimerIntervalDisposition {
+    Exclude,
+    Deprioritize,
+    #[default]
+    Informative,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// One content-bound transcript-local interval considered before Primer3.
+pub struct TranscriptAssayPrimerIntervalEvidence {
+    pub evidence_id: String,
+    pub transcript_id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub template_sha256: String,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub kind: TranscriptAssayPrimerIntervalEvidenceKind,
+    pub disposition: TranscriptAssayPrimerIntervalDisposition,
+    pub reason: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_feature_id: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_sha256: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Opt-in projection of current sequence annotations into primer-search space.
+pub struct TranscriptAssayProjectIntervalEvidencePolicy {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub known_variants: Option<TranscriptAssayPrimerIntervalDisposition>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repeatmasker: Option<TranscriptAssayPrimerIntervalDisposition>,
+}
+
+pub(crate) fn default_cdna_similarity_min_alignment_bp() -> usize {
+    18
+}
+
+pub(crate) fn default_cdna_similarity_min_identity_fraction() -> f64 {
+    0.80
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Request for an engine-owned whole-cDNA similarity map producer.
+pub struct TranscriptAssayCdnaSimilarityMapBuildRequest {
+    pub seq_id: SeqId,
+    pub source_feature_id: usize,
+    pub target_resource_id: String,
+    /// Empty means every transcript resolved by the selected gene feature.
+    #[serde(default)]
+    pub transcript_ids: Vec<String>,
+    /// Optional explicit paralog identities. GENtle never infers paralogy from
+    /// sequence similarity alone.
+    #[serde(default)]
+    pub paralog_gene_ids: Vec<String>,
+    #[serde(default)]
+    pub paralog_gene_symbols: Vec<String>,
+    #[serde(default = "default_cdna_similarity_min_alignment_bp")]
+    pub min_alignment_bp: usize,
+    #[serde(default = "default_cdna_similarity_min_identity_fraction")]
+    pub min_identity_fraction: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catalog_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_dir: Option<String>,
+}
+
+impl Default for TranscriptAssayCdnaSimilarityMapBuildRequest {
+    fn default() -> Self {
+        Self {
+            seq_id: String::new(),
+            source_feature_id: 0,
+            target_resource_id: String::new(),
+            transcript_ids: vec![],
+            paralog_gene_ids: vec![],
+            paralog_gene_symbols: vec![],
+            min_alignment_bp: default_cdna_similarity_min_alignment_bp(),
+            min_identity_fraction: default_cdna_similarity_min_identity_fraction(),
+            catalog_path: None,
+            cache_dir: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 /// Biological relationship assigned by the producer of a cDNA similarity map.
 pub enum TranscriptAssayCdnaSimilarityClassification {
@@ -9186,7 +9504,7 @@ pub enum TranscriptAssayCdnaSimilarityClassification {
     Unknown,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 /// Advisory search-order treatment for one similarity interval.
 ///
@@ -9224,6 +9542,22 @@ pub struct TranscriptAssayCdnaSimilarityInterval {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default)]
+/// Deterministic summary of one transcript query used to build a similarity map.
+pub struct TranscriptAssayCdnaSimilarityBlastRun {
+    pub transcript_id: String,
+    #[serde(default)]
+    pub equivalent_transcript_ids: Vec<String>,
+    pub template_sha256: String,
+    pub query_length_bp: usize,
+    pub hit_count: usize,
+    #[serde(default)]
+    pub effective_options: serde_json::Value,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
 /// Content-bound advisory map from a target cDNA to similar cDNA regions.
 pub struct TranscriptAssayCdnaSimilarityMap {
     pub schema: String,
@@ -9236,6 +9570,18 @@ pub struct TranscriptAssayCdnaSimilarityMap {
     pub blast_tool_version: String,
     #[serde(default)]
     pub blast_options: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_seq_id: Option<SeqId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_feature_id: Option<usize>,
+    #[serde(default)]
+    pub target_transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub target_gene_ids: Vec<String>,
+    #[serde(default)]
+    pub target_gene_symbols: Vec<String>,
+    #[serde(default)]
+    pub blast_runs: Vec<TranscriptAssayCdnaSimilarityBlastRun>,
     #[serde(default)]
     pub intervals: Vec<TranscriptAssayCdnaSimilarityInterval>,
     #[serde(default)]
@@ -9253,6 +9599,31 @@ pub struct TranscriptAssayPrimerSearchPolicy {
     /// records. It never excludes intervals or replaces final specificity QA.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cdna_similarity_map: Option<TranscriptAssayCdnaSimilarityMapRef>,
+    /// Optional one-step producer. This and `cdna_similarity_map` are mutually
+    /// exclusive: callers either bind an existing artifact or ask GENtle to
+    /// produce one from a prepared resource during this design operation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build_cdna_similarity_map: Option<TranscriptAssayCdnaSimilarityMapBuildSource>,
+    #[serde(default, skip_serializing_if = "Primer3ChemistryProfile::is_default")]
+    pub primer3_chemistry: Primer3ChemistryProfile,
+    /// Explicit transcript-local evidence, already bound by the operation
+    /// digest. Hard exclusions become Primer3 excluded regions; soft evidence
+    /// changes deterministic record ordering only.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub interval_evidence: Vec<TranscriptAssayPrimerIntervalEvidence>,
+    /// Optional projection of current variation and RepeatMasker features.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_interval_evidence: Option<TranscriptAssayProjectIntervalEvidencePolicy>,
+    /// Optional upper bound on either contiguous side of a junction-spanning
+    /// primer. This complements the existing minimum 3'/5' overlaps and is
+    /// evaluated on each realized primer, not inferred from a label.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_junction_single_side_match_bp: Option<usize>,
+    /// Optional genomic-carryover design gate. A retained pair must either
+    /// contain a junction-spanning primer or flank an annotated intron at
+    /// least this long between its two cDNA binding sites.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_intervening_intron_bp: Option<usize>,
     /// Largest transcript-local interval offered to one primer side in one
     /// Primer3 input record.
     pub max_primer_window_bp: usize,
@@ -9283,6 +9654,12 @@ impl Default for TranscriptAssayPrimerSearchPolicy {
     fn default() -> Self {
         Self {
             cdna_similarity_map: None,
+            build_cdna_similarity_map: None,
+            primer3_chemistry: Primer3ChemistryProfile::default(),
+            interval_evidence: vec![],
+            project_interval_evidence: None,
+            max_junction_single_side_match_bp: None,
+            min_intervening_intron_bp: None,
             max_primer_window_bp: 96,
             max_candidate_pairs_per_record: 250_000,
             max_records_per_target: 12,
@@ -9368,6 +9745,11 @@ pub struct TranscriptAssayPrimerSearchRecord {
     /// records only and is not a biological or specificity verdict.
     #[serde(default)]
     pub similarity_risk_overlap_bp: usize,
+    /// Unified soft-risk projection across all pre-Primer3 evidence sources.
+    #[serde(default)]
+    pub design_risk_interval_ids: Vec<String>,
+    #[serde(default)]
+    pub design_risk_overlap_bp: usize,
     #[serde(default)]
     pub primer3_fields: Vec<TranscriptAssayPrimer3Field>,
 }
@@ -9397,6 +9779,12 @@ pub struct TranscriptAssayPrimerSearchPlan {
     pub cdna_similarity_database_content_fingerprint: Option<String>,
     #[serde(default)]
     pub similarity_guided_record_count: usize,
+    #[serde(default)]
+    pub interval_evidence: Vec<TranscriptAssayPrimerIntervalEvidence>,
+    #[serde(default)]
+    pub hard_exclusion_interval_count: usize,
+    #[serde(default)]
+    pub soft_deprioritization_interval_count: usize,
     #[serde(default)]
     pub records: Vec<TranscriptAssayPrimerSearchRecord>,
     #[serde(default)]
@@ -10011,6 +10399,11 @@ pub struct TranscriptAssayPanelReport {
     /// Sequence-aware bounded Primer3 records used for this run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub search_plan: Option<TranscriptAssayPrimerSearchPlan>,
+    /// Embedded only when this design operation produced the advisory map.
+    /// File-referenced maps remain external content-bound artifacts identified
+    /// by the search plan.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generated_cdna_similarity_map: Option<Box<TranscriptAssayCdnaSimilarityMap>>,
     #[serde(default)]
     pub end_classes: Vec<TranscriptAssayEndClass>,
     #[serde(default)]

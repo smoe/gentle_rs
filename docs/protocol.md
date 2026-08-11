@@ -8033,6 +8033,13 @@ Operation progress/cancellation semantics:
   - `fixed_5prime`, `fixed_3prime`
   - `required_motifs[]`, `forbidden_motifs[]`
   - `locked_positions[]` entries (`offset_0based`, single IUPAC `base`)
+  - an ordinary primer can be fixed exactly while GENtle designs its partner
+    by setting that side's `min_length` and `max_length` to the complete
+    canonical primer length and `fixed_5prime` to the complete 5'-to-3'
+    sequence. The internal backend enumerates only that sequence; the Primer3
+    backend additionally emits `SEQUENCE_PRIMER` or
+    `SEQUENCE_PRIMER_REVCOMP`. Shorter `fixed_5prime` values remain prefix
+    constraints and are not misrepresented as exact supplied primers.
 - Built-in primer-ranking heuristics (internal and Primer3 pair-ranking stage):
   - preferred primer length window: `20..30 bp` (outside window is penalized)
   - 3' GC clamp preference (`G/C` at terminal 3' base)
@@ -8236,6 +8243,16 @@ Operation progress/cancellation semantics:
     subject coordinates; wrapped BLAST identifiers such as
     `gb|KI270750.1|` are normalized against the prepared FASTA index while the
     raw identifier remains available
+  - BLAST remains the exhaustive locus finder, while
+    `policy.full_alignment.mode = disabled|best_effort|required` controls a
+    second full-query semiglobal alignment against a fetched subject window.
+    Newly constructed requests default to `best_effort`; legacy serialized
+    policies lacking this additive field retain the former `disabled` behavior.
+    The stored alignment records the
+    complete query/subject strings, relation line, CIGAR, indels, internal and
+    3-prime mismatches, binding coordinates, scoring parameters, and subject
+    window hash. `required` makes a missing full alignment an incomplete
+    search; no local HSP may stand in for unavailable end-to-end evidence
   - prepared transcriptome resources add optional `subject_annotation` to
     primer hits and candidate amplicons. It includes the full and normalized
     transcript stable id, full and normalized gene stable id, `gene_symbol`,
@@ -8282,6 +8299,11 @@ Operation progress/cancellation semantics:
     as carryover/off-target evidence rather than forced into an invented target
   - unintended compatible products fail when their combined effective
     mismatches remain below `min_total_mismatches_to_unintended_target`
+  - `reviewed_off_target_allowlist[]` can retain an exact, human-reviewed
+    product without relabelling it as intended. Each allowance binds target
+    space, subject, optional exact coordinates, reviewer, reason, and an
+    evidence SHA-256. It never converts an incomplete search into a pass and
+    is deliberately narrower than same-gene or same-family blanket waivers
   - `intended_target`, `genomic_specificity`, and
     `transcriptome_specificity` keep genomic-DNA carryover/off-target evidence
     separate from whole-transcriptome/cDNA cross-amplification. Only the
@@ -8331,6 +8353,9 @@ Operation progress/cancellation semantics:
     `report.exists = "primer_specificity"`. Reports linked to a project
     sequence are also projected as GUI lineage analysis nodes; PCR Designer
     reopens the specificity summary and its design citation
+  - `primers specificity-alignment-html REPORT_ID OUTPUT.html` is a pure
+    projection of the stored v4 JSON. It renders every retained full-primer
+    alignment and its provenance without rerunning BLAST or changing state
 - Additive policy vocabulary reserved for design-time parity:
   - `specificity_check = none|report_only|require_pass`
   - `specificity_target_genome_id`
@@ -8427,6 +8452,16 @@ Whole-panel external specificity acceptance:
   distinct from `not_run` without making a half-validated panel look current.
   An optional `--path` writes the same acceptance object returned by the shell
   command.
+- `primers transcript-assay-specificity-redesign REQUEST_JSON_OR_@FILE`
+  consumes a content-bound `specificity_fail` acceptance plus the exact
+  original `DesignTranscriptAssayPanel` operation. It retains passing assays,
+  excludes rejected primer footprints, and either proposes replacement pairs
+  preserving the same biological target binding or emits a narrowly scoped
+  infeasibility statement. Every substitute records the rejected pair,
+  failure report/acceptance, causes, changed decision, backend, attempt, and
+  `replaces_assay_id`; it remains a candidate until it passes the same cDNA
+  and genomic gates. The route works on a detached clone and does not mutate
+  the approved source state.
 - NCBI e-PCR is not part of this contract. A future provider-neutral
   Primer-BLAST evidence importer may supplement, but must not weaken, the
   reproducible prepared-genome local-BLAST gate.
@@ -9194,6 +9229,16 @@ Primer-design shell command family (implemented):
     template whose coordinates it uses. Active transcript ids with a changed
     template digest or out-of-bounds interval fail before Primer3; unrelated
     transcript rows may coexist in one multi-transcript map
+  - `BuildTranscriptAssayCdnaSimilarityMap` and
+    `primers build-transcript-assay-cdna-similarity-map` are the engine-owned
+    producer. They query each byte-distinct mature-cDNA class against an
+    already prepared, fingerprinted transcriptome/cDNA BLAST resource, retain
+    exact BLAST invocation provenance, and classify only identities established
+    by annotation or caller-supplied paralog ids. Similarity alone never creates
+    a paralog claim. A design may request the producer with
+    `search_policy.build_cdna_similarity_map`; the generated report is embedded
+    and bound before Primer3. The read-only feasibility route does not execute
+    BLAST and says so explicitly
   - the v1 map disposition is deliberately advisory: `informative` leaves the
     search order unchanged and `deprioritize` adds overlap evidence to bounded
     records. Within each biological target, records with less advisory overlap
@@ -9201,9 +9246,30 @@ Primer-design shell command family (implemented):
     tie-breakers. The map does not emit `SEQUENCE_EXCLUDED_REGION`, suppress a
     primer window, claim specificity, or waive complete-cDNA/genomic BLAST.
     Search plans echo the map id, file digest, database fingerprint, affected
-    interval ids, and overlap bp. Automatic BLAST-to-map materialization is a
-    separate producer step; callers can already supply the exact map through
-    the shared operation-JSON route without introducing an adapter-only path
+    interval ids, and overlap bp. Callers may bind a prebuilt map or request
+    the engine-owned producer; these are mutually exclusive
+  - `search_policy.interval_evidence[]` unifies caller-supplied variation,
+    repeat/low-complexity, and similarity intervals. `exclude` rows become
+    deterministic Primer3 `SEQUENCE_EXCLUDED_REGION` fields;
+    `deprioritize` rows affect bounded-record ordering only; `informative`
+    rows remain visible without changing selection. The optional project
+    projection maps current known-variant and RepeatMasker features into each
+    mature-cDNA template with strand-aware, content-checked coordinates
+  - `search_policy.primer3_chemistry` records either executable defaults, an
+    explicit Primer3-2.x computational baseline, or reviewed custom overrides.
+    Overrides are restricted to documented salt, dNTP, DNA, DMSO, formamide,
+    and Tm-model tags and are copied into every emitted Boulder record. A
+    profile is calculation provenance, not a claim about the laboratory mix
+  - `search_policy.max_junction_single_side_match_bp` optionally caps either
+    contiguous side of a realized junction-spanning primer. It complements
+    the existing 3-prime/5-prime minimum overlaps and is enforced identically
+    by preflight candidate counting, internal design, and Primer3 post-filtering
+  - `search_policy.min_intervening_intron_bp` optionally requires a retained
+    pair to flank an annotated intron of at least that length. A genuinely
+    junction-spanning primer also satisfies the anti-genomic-carryover design
+    intent because it has no contiguous genomic binding site. The rule is a
+    design constraint, not a genomic specificity pass, and is enforced in the
+    same preflight/internal/Primer3-post-filter paths
   - `DesignTranscriptAssayPanel.search_policy` is additive and optional. Old
     requests use the documented default. During a progress-capable Primer3
     run, progress rows retain native bounded work counters and add the GENtle

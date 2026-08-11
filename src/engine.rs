@@ -852,6 +852,8 @@ const TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_EXECUTION_MANIFEST_SCHEMA: &str =
     "gentle.transcript_assay_panel_specificity_execution_manifest.v1";
 const TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_ACCEPTANCE_SCHEMA: &str =
     "gentle.transcript_assay_panel_specificity_acceptance.v2";
+pub const TRANSCRIPT_ASSAY_SPECIFICITY_REDESIGN_SCHEMA: &str =
+    "gentle.transcript_assay_specificity_redesign.v1";
 pub const TRANSCRIPT_QPCR_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_qpcr_panel.v1";
 pub const TRANSCRIPT_ASSAY_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_assay_panel.v2";
 pub const TRANSCRIPT_ASSAY_PANEL_FEASIBILITY_SCHEMA: &str =
@@ -4284,6 +4286,12 @@ pub enum Operation {
         report_id: String,
         path: String,
     },
+    /// Render stored full-primer specificity alignments without rerunning
+    /// BLAST or sequence alignment.
+    ExportPrimerSpecificityAlignmentHtml {
+        report_id: String,
+        path: String,
+    },
     AssessPrimerPairSpecificity {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         primer_report_id: Option<String>,
@@ -4481,6 +4489,20 @@ pub enum Operation {
         /// Zero-based feature index into the source sequence feature table.
         source_feature_id: usize,
         shared_qpcr_report_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    /// Materialize advisory, content-bound whole-cDNA similarity intervals for
+    /// subsequent bounded transcript-assay planning.
+    BuildTranscriptAssayCdnaSimilarityMap {
+        request: TranscriptAssayCdnaSimilarityMapBuildRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    /// Propose content-bound replacements for specificity-failed transcript
+    /// assays without mutating the approved source panel.
+    RedesignTranscriptAssaySpecificityFailures {
+        request: TranscriptAssaySpecificityRedesignRequest,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
@@ -9551,6 +9573,7 @@ impl GentleEngine {
                 | Operation::ShowSequencingConfirmationReport { .. }
                 | Operation::ExportSequencingConfirmationReport { .. }
                 | Operation::ExportSequencingConfirmationSupportTsv { .. }
+                | Operation::ExportPrimerSpecificityAlignmentHtml { .. }
                 | Operation::SuggestSequencingPrimers { .. }
                 | Operation::AlignSequences { .. }
                 | Operation::SearchPrimerBank { .. }
@@ -9558,6 +9581,8 @@ impl GentleEngine {
                 | Operation::TestCdnaPcr { .. }
                 | Operation::TestCdnaQpcr { .. }
                 | Operation::BuildTranscriptQpcrPanel { .. }
+                | Operation::BuildTranscriptAssayCdnaSimilarityMap { .. }
+                | Operation::RedesignTranscriptAssaySpecificityFailures { .. }
                 | Operation::TestCdnaQpcrFasta { .. }
         ) {
             None

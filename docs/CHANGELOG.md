@@ -1,11 +1,13 @@
 # GENtle Changelog
 
-- Added a content-bound `gentle.transcript_assay_cdna_similarity_map.v1`
-  planning seam for transcript-assay design. Whole-cDNA similarity intervals
-  can now rank bounded Primer3 records toward lower-risk regions while exact
-  operation digests, template coordinates, BLAST/database provenance, emitted
-  Primer3 constraints, and final complete-cDNA/genomic specificity gates stay
-  explicit and unchanged.
+- Extended Primer-BLAST-style primer planning without surrendering GENtle's
+  transcript-aware contracts. GENtle can now build content-bound whole-cDNA
+  similarity maps, combine variant/repeat/similarity intervals as explicit
+  hard or soft pre-Primer3 evidence, emit reviewed chemistry settings, cap
+  junction-side matches, realign complete primers after BLAST, retain narrowly
+  reviewed off-target products, render stored alignments as HTML, and propose
+  content-bound replacements after panel specificity failure. Advisory design
+  evidence never substitutes for the final complete-cDNA/genomic gates.
 
 - Grounded Agent Assistant and `agents ask` requests in engine-owned
   introspection whenever project context is enabled. The additive

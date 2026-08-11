@@ -60,11 +60,13 @@ pub(crate) struct Primer3PairDesignOptions {
     pub(crate) overlap_junction_positions_1based: Vec<usize>,
     pub(crate) min_3prime_overlap_bp: usize,
     pub(crate) min_5prime_overlap_bp: usize,
+    pub(crate) max_junction_single_side_match_bp: Option<usize>,
     /// Zero-based half-open allowed windows for left and right primers.
     pub(crate) left_window_0based: Option<(usize, usize)>,
     pub(crate) right_window_0based: Option<(usize, usize)>,
     pub(crate) excluded_regions_0based: Vec<(usize, usize)>,
     pub(crate) max_poly_x: Option<usize>,
+    pub(crate) chemistry_fields: Vec<TranscriptAssayPrimer3Field>,
     pub(crate) runtime_policy: TranscriptAssayPrimerSearchPolicy,
     pub(crate) search_target_id: Option<String>,
     pub(crate) search_record_id: Option<String>,
@@ -6159,6 +6161,20 @@ impl GentleEngine {
         true
     }
 
+    fn primer3_exact_input_primer<'a>(
+        side: &PrimerDesignSideConstraint,
+        constraints: &'a NormalizedPrimerSideSequenceConstraints,
+    ) -> Option<&'a str> {
+        let sequence = constraints.fixed_5prime.as_deref()?;
+        (constraints.non_annealing_5prime_tail.is_none()
+            && side.min_length == side.max_length
+            && sequence.len() == side.min_length
+            && sequence
+                .bytes()
+                .all(|base| matches!(base, b'A' | b'C' | b'G' | b'T')))
+        .then_some(sequence)
+    }
+
     pub(super) fn render_primer_design_report_id(raw: Option<String>, template: &str) -> String {
         let candidate = raw
             .as_deref()
@@ -9155,6 +9171,19 @@ impl GentleEngine {
             sequence_tags.push_str(&format!(
                 "PRIMER_MAX_POLY_X={max_poly_x}\nPRIMER_MAX_NS_ACCEPTED=0\n"
             ));
+        }
+        for field in &options.chemistry_fields {
+            sequence_tags.push_str(&format!("{}={}\n", field.name, field.value));
+        }
+        if let Some(sequence) =
+            Self::primer3_exact_input_primer(forward, forward_sequence_constraints)
+        {
+            sequence_tags.push_str(&format!("SEQUENCE_PRIMER={sequence}\n"));
+        }
+        if let Some(sequence) =
+            Self::primer3_exact_input_primer(reverse, reverse_sequence_constraints)
+        {
+            sequence_tags.push_str(&format!("SEQUENCE_PRIMER_REVCOMP={sequence}\n"));
         }
         // A Primer3 target must be flanked by the pair, which conflicts with
         // requiring either primer to overlap a splice junction at that target.

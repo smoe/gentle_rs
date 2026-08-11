@@ -11863,6 +11863,8 @@ Error: `{err}`"
                 primerbank_search_report: None,
                 external_primer_pair_import_report: None,
                 primer_variant_screen: None,
+                transcript_assay_cdna_similarity_map: None,
+                transcript_assay_specificity_redesign: None,
                 primer_specificity_handoff: None,
                 primer_specificity_report: None,
                 transcript_qpcr_panel: None,

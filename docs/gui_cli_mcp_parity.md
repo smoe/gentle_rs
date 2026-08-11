@@ -17,11 +17,11 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 35 | 637 | 0 |
-| gentle_cli | 407 | 289 | 0 |
-| MCP | 93 | 451 | 53 |
-| JS | 78 | 448 | 58 |
-| Lua | 77 | 449 | 58 |
+| GUI | 35 | 643 | 0 |
+| gentle_cli | 410 | 292 | 0 |
+| MCP | 96 | 454 | 53 |
+| JS | 78 | 454 | 58 |
+| Lua | 77 | 455 | 58 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -293,6 +293,9 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | primers design | glossary-command | prominent | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers design-qpcr | glossary-command | prominent | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers design-transcript-assay-panel | glossary-command | prominent | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| primers build-transcript-assay-cdna-similarity-map | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| primers specificity-alignment-html | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| primers transcript-assay-specificity-redesign | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers inspect-transcript-assay-feasibility | glossary-command | shell-only | prominent | prominent | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers plan-gene-isoform-study | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers execute-gene-isoform-study-workflow | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Exact plan/workflow byte verification is a file-bound approval route; generic operation or workflow adapters would bypass that binding, so only the reviewed CLI/GUI shell path is exposed.<br>JS: Exact plan/workflow byte verification is a file-bound approval route; generic operation or workflow adapters would bypass that binding, so only the reviewed CLI/GUI shell path is exposed.<br>Lua: Exact plan/workflow byte verification is a file-bound approval route; generic operation or workflow adapters would bypass that binding, so only the reviewed CLI/GUI shell path is exposed.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -653,6 +656,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | PcrAdvanced | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | PcrMutagenesis | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | DesignPrimerPairs | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| ExportPrimerSpecificityAlignmentHtml | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | DesignInsertionPrimerPairs | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ExportPrimerDesignReport | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | AssessPrimerPairSpecificity | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
@@ -662,6 +666,8 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | PrepareRestrictionCloningPcrHandoff | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | PcrOverlapExtensionMutagenesis | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | DesignQpcrAssays | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| BuildTranscriptAssayCdnaSimilarityMap | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| RedesignTranscriptAssaySpecificityFailures | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | DesignTranscriptAssayPanel | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | PlanGeneIsoformAssayStudy | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ComposeGeneTranscriptAssayRoutine | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |

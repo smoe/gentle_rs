@@ -10162,6 +10162,324 @@ impl GentleEngine {
         Ok(mismatches)
     }
 
+    fn primer_specificity_full_alignment(
+        catalog: &GenomeCatalog,
+        target_genome_id: &str,
+        cache_dir: Option<&str>,
+        hit: &BlastHit,
+        query_sequence: &str,
+        three_prime_window_bp: usize,
+        alignment_policy: &PrimerSpecificityFullAlignmentPolicy,
+    ) -> Result<PrimerSpecificityFullAlignment, String> {
+        let query = query_sequence.trim().to_ascii_uppercase();
+        if query.is_empty() {
+            return Err("Cannot align an empty primer sequence".to_string());
+        }
+        let query_bytes = query.as_bytes();
+        let query_start = hit.query_start.min(hit.query_end).saturating_sub(1);
+        let query_end = hit.query_start.max(hit.query_end).min(query_bytes.len());
+        let missing_prefix = query_start;
+        let missing_suffix = query_bytes.len().saturating_sub(query_end);
+        let subject_min = hit.subject_start.min(hit.subject_end);
+        let subject_max = hit.subject_start.max(hit.subject_end);
+        let reverse = hit.subject_start > hit.subject_end;
+        let flank = if alignment_policy.subject_flank_bp == 0 {
+            query_bytes.len()
+        } else {
+            alignment_policy.subject_flank_bp
+        };
+        let (expanded_start, expanded_end) = if reverse {
+            (
+                subject_min
+                    .saturating_sub(missing_suffix.saturating_add(flank))
+                    .max(1),
+                subject_max
+                    .saturating_add(missing_prefix)
+                    .saturating_add(flank),
+            )
+        } else {
+            (
+                subject_min
+                    .saturating_sub(missing_prefix.saturating_add(flank))
+                    .max(1),
+                subject_max
+                    .saturating_add(missing_suffix)
+                    .saturating_add(flank),
+            )
+        };
+        let cache_dir = cache_dir.map(str::trim).filter(|value| !value.is_empty());
+        let (window_start, window_end, mut subject_sequence, warning) = match catalog
+            .get_sequence_region_with_cache(
+                target_genome_id,
+                &hit.subject_id,
+                expanded_start,
+                expanded_end,
+                cache_dir,
+            ) {
+            Ok(sequence) => (expanded_start, expanded_end, sequence, None),
+            Err(expanded_error) => {
+                let sequence = catalog.get_sequence_region_with_cache(
+                    target_genome_id,
+                    &hit.subject_id,
+                    subject_min,
+                    subject_max,
+                    cache_dir,
+                )?;
+                (
+                    subject_min,
+                    subject_max,
+                    sequence,
+                    Some(format!(
+                        "Could not fetch the expanded alignment window; used the BLAST HSP span instead: {expanded_error}"
+                    )),
+                )
+            }
+        };
+        subject_sequence = subject_sequence.to_ascii_uppercase();
+        if reverse {
+            subject_sequence = Self::reverse_complement(&subject_sequence);
+        }
+        let subject_bytes = subject_sequence.as_bytes();
+        if subject_bytes.is_empty() {
+            return Err("Fetched subject alignment window is empty".to_string());
+        }
+
+        let score = |left: u8, right: u8| {
+            if Self::primer_specificity_iupac_bases_match(left, right) {
+                alignment_policy.match_score
+            } else {
+                alignment_policy.mismatch_score
+            }
+        };
+        let mut aligner = bio::alignment::pairwise::Aligner::new(
+            alignment_policy.gap_open_score,
+            alignment_policy.gap_extend_score,
+            &score,
+        );
+        // The complete primer is global; only the fetched subject window may
+        // be clipped. BLAST supplies the locus, while this alignment supplies
+        // authoritative end-to-end mismatch and binding geometry evidence.
+        let alignment = aligner.semiglobal(query_bytes, subject_bytes);
+
+        let three_prime_window_bp = three_prime_window_bp.min(query_bytes.len());
+        let three_prime_start = query_bytes.len().saturating_sub(three_prime_window_bp);
+        let mut query_pos = alignment.xstart;
+        let mut subject_pos = alignment.ystart;
+        let mut query_alignment = String::new();
+        let mut relation_alignment = String::new();
+        let mut subject_alignment = String::new();
+        let mut cigar = String::new();
+        let mut cigar_code = '\0';
+        let mut cigar_len = 0usize;
+        let mut matches = 0usize;
+        let mut mismatches = 0usize;
+        let mut insertions = 0usize;
+        let mut deletions = 0usize;
+        let mut three_prime_mismatches = 0usize;
+        let mut push_cigar = |code: char| {
+            if cigar_len == 0 {
+                cigar_code = code;
+                cigar_len = 1;
+            } else if cigar_code == code {
+                cigar_len += 1;
+            } else {
+                cigar.push_str(&format!("{cigar_len}{cigar_code}"));
+                cigar_code = code;
+                cigar_len = 1;
+            }
+        };
+        for operation in &alignment.operations {
+            match operation {
+                bio::alignment::AlignmentOperation::Match
+                | bio::alignment::AlignmentOperation::Subst => {
+                    let query_base = query_bytes.get(query_pos).copied().unwrap_or(b'N');
+                    let subject_base = subject_bytes.get(subject_pos).copied().unwrap_or(b'N');
+                    let base_matches =
+                        Self::primer_specificity_iupac_bases_match(query_base, subject_base);
+                    query_alignment.push(query_base as char);
+                    subject_alignment.push(subject_base as char);
+                    if base_matches {
+                        relation_alignment.push('|');
+                        matches += 1;
+                        push_cigar('=');
+                    } else {
+                        relation_alignment.push('X');
+                        mismatches += 1;
+                        if query_pos >= three_prime_start {
+                            three_prime_mismatches += 1;
+                        }
+                        push_cigar('X');
+                    }
+                    query_pos += 1;
+                    subject_pos += 1;
+                }
+                bio::alignment::AlignmentOperation::Ins => {
+                    let query_base = query_bytes.get(query_pos).copied().unwrap_or(b'N');
+                    query_alignment.push(query_base as char);
+                    relation_alignment.push(' ');
+                    subject_alignment.push('-');
+                    insertions += 1;
+                    if query_pos >= three_prime_start {
+                        three_prime_mismatches += 1;
+                    }
+                    query_pos += 1;
+                    push_cigar('I');
+                }
+                bio::alignment::AlignmentOperation::Del => {
+                    let subject_base = subject_bytes.get(subject_pos).copied().unwrap_or(b'N');
+                    query_alignment.push('-');
+                    relation_alignment.push(' ');
+                    subject_alignment.push(subject_base as char);
+                    deletions += 1;
+                    if query_pos >= three_prime_start {
+                        three_prime_mismatches += 1;
+                    }
+                    subject_pos += 1;
+                    push_cigar('D');
+                }
+                bio::alignment::AlignmentOperation::Xclip(_)
+                | bio::alignment::AlignmentOperation::Yclip(_) => {}
+            }
+        }
+        if cigar_len > 0 {
+            cigar.push_str(&format!("{cigar_len}{cigar_code}"));
+        }
+
+        let (aligned_subject_start_1based, aligned_subject_end_1based) = if reverse {
+            (
+                window_end.saturating_sub(alignment.ystart),
+                window_end.saturating_sub(alignment.yend).saturating_add(1),
+            )
+        } else {
+            (
+                window_start.saturating_add(alignment.ystart),
+                window_start
+                    .saturating_add(alignment.yend)
+                    .saturating_sub(1),
+            )
+        };
+        Ok(PrimerSpecificityFullAlignment {
+            status: "complete".to_string(),
+            algorithm: "full_query_semiglobal_subject_window_v1".to_string(),
+            match_score: alignment_policy.match_score,
+            mismatch_score: alignment_policy.mismatch_score,
+            gap_open_score: alignment_policy.gap_open_score,
+            gap_extend_score: alignment_policy.gap_extend_score,
+            score: alignment.score,
+            subject_window_start_1based: window_start,
+            subject_window_end_1based: window_end,
+            aligned_subject_start_1based,
+            aligned_subject_end_1based,
+            strand: if reverse { "-" } else { "+" }.to_string(),
+            query_alignment,
+            relation_alignment,
+            subject_alignment,
+            cigar,
+            matches,
+            mismatches,
+            insertions,
+            deletions,
+            effective_mismatches: mismatches
+                .saturating_add(insertions)
+                .saturating_add(deletions),
+            three_prime_window_bp,
+            three_prime_mismatches,
+            subject_window_sha256: sha256_prefixed_bytes(subject_bytes),
+            warning,
+        })
+    }
+
+    fn primer_specificity_html_escape(value: &str) -> String {
+        value
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+            .replace('\'', "&#39;")
+    }
+
+    /// Render the persisted machine-readable full-alignment records without
+    /// rerunning BLAST or alignment. The JSON report remains authoritative.
+    pub fn render_primer_specificity_alignment_html(
+        &self,
+        report_id: &str,
+        path: &str,
+    ) -> Result<String, EngineError> {
+        let report = self.get_primer_specificity_report(report_id)?;
+        let report_digest = serde_json::to_vec(&report)
+            .map(|bytes| sha256_prefixed_bytes(&bytes))
+            .map_err(|error| EngineError {
+                code: ErrorCode::Internal,
+                message: format!("Could not fingerprint primer-specificity report: {error}"),
+                cause_chain: vec![],
+            })?;
+        let mut html = String::from(
+            "<!doctype html><html><head><meta charset=\"utf-8\"><title>GENtle primer specificity alignments</title><style>body{font-family:system-ui,sans-serif;margin:2rem;color:#202124}h1{font-size:1.4rem}h2{font-size:1.1rem;margin-top:2rem}.meta{display:grid;grid-template-columns:max-content 1fr;gap:.25rem 1rem}.hit{border-top:1px solid #ccd2d8;padding:1rem 0}pre{overflow:auto;background:#f5f7f9;padding:.75rem;border:1px solid #d9dee3}.warn{color:#9b3d00}.status{font-weight:600}</style></head><body>",
+        );
+        html.push_str(&format!(
+            "<h1>Primer specificity alignments</h1><div class=\"meta\"><span>Report</span><code>{}</code><span>Report SHA-256</span><code>{}</code><span>Target</span><span>{} ({})</span><span>Policy</span><code>{}</code></div>",
+            Self::primer_specificity_html_escape(&report.report_id),
+            Self::primer_specificity_html_escape(&report_digest),
+            Self::primer_specificity_html_escape(&report.target_genome_id),
+            Self::primer_specificity_html_escape(&report.target_kind),
+            Self::primer_specificity_html_escape(PRIMER_SPECIFICITY_POLICY_SCHEMA),
+        ));
+        let mut alignment_count = 0usize;
+        for (role, hits) in [
+            ("forward", report.forward_hits.as_slice()),
+            ("reverse", report.reverse_hits.as_slice()),
+        ] {
+            html.push_str(&format!("<h2>{role} primer</h2>"));
+            for hit in hits {
+                let Some(alignment) = hit.full_alignment.as_ref() else {
+                    continue;
+                };
+                alignment_count += 1;
+                html.push_str(&format!(
+                    "<section class=\"hit\" data-role=\"{}\" data-subject=\"{}\" data-hit-index=\"{}\"><div><span class=\"status\">{}</span> &middot; {}:{}-{} ({}) &middot; effective mismatches {} &middot; 3&prime; mismatches {}</div>",
+                    role,
+                    Self::primer_specificity_html_escape(&hit.subject_id),
+                    hit.hit_index,
+                    Self::primer_specificity_html_escape(&alignment.status),
+                    Self::primer_specificity_html_escape(&hit.subject_id),
+                    alignment.aligned_subject_start_1based,
+                    alignment.aligned_subject_end_1based,
+                    Self::primer_specificity_html_escape(&alignment.strand),
+                    alignment.effective_mismatches,
+                    alignment.three_prime_mismatches,
+                ));
+                if alignment.status == "complete" {
+                    html.push_str(&format!(
+                        "<pre>{}\n{}\n{}</pre><div><code>{}</code> &middot; score {} &middot; subject window <code>{}</code></div>",
+                        Self::primer_specificity_html_escape(&alignment.query_alignment),
+                        Self::primer_specificity_html_escape(&alignment.relation_alignment),
+                        Self::primer_specificity_html_escape(&alignment.subject_alignment),
+                        Self::primer_specificity_html_escape(&alignment.cigar),
+                        alignment.score,
+                        Self::primer_specificity_html_escape(&alignment.subject_window_sha256),
+                    ));
+                }
+                if let Some(warning) = alignment.warning.as_ref() {
+                    html.push_str(&format!(
+                        "<p class=\"warn\">{}</p>",
+                        Self::primer_specificity_html_escape(warning)
+                    ));
+                }
+                html.push_str("</section>");
+            }
+        }
+        if alignment_count == 0 {
+            html.push_str("<p class=\"warn\">This persisted report contains no full-primer alignment records. Re-run specificity with full_alignment.mode best_effort or required and retain appropriate report detail.</p>");
+        }
+        html.push_str("<p>This page is a deterministic projection of GENtle's persisted JSON report; BLAST and alignment were not rerun while rendering.</p></body></html>");
+        fs::write(path, &html).map_err(|error| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write primer-specificity alignment HTML '{path}': {error}"),
+            cause_chain: vec![],
+        })?;
+        Ok(report_digest)
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn primer_specificity_hit_from_blast(
         catalog: &GenomeCatalog,
@@ -10180,9 +10498,9 @@ impl GentleEngine {
         let mut canonical_hit = hit.clone();
         canonical_hit.subject_id = canonical_subject_id.clone();
         let query_length = query_sequence.len().max(1);
-        let (query_coverage_fraction, unaligned_query_bases, effective_mismatches) =
+        let (mut query_coverage_fraction, mut unaligned_query_bases, mut effective_mismatches) =
             Self::primer_specificity_hsp_query_alignment_evidence(query_length, hit);
-        let three_prime_mismatches = match Self::primer_specificity_three_prime_mismatches(
+        let legacy_three_prime_mismatches = match Self::primer_specificity_three_prime_mismatches(
             catalog,
             target_genome_id,
             cache_dir,
@@ -10206,6 +10524,65 @@ impl GentleEngine {
                 }
             }
         };
+        let full_alignment =
+            if policy.full_alignment.mode == PrimerSpecificityFullAlignmentMode::Disabled {
+                None
+            } else {
+                match Self::primer_specificity_full_alignment(
+                    catalog,
+                    target_genome_id,
+                    cache_dir,
+                    &canonical_hit,
+                    query_sequence,
+                    policy.three_prime_window_bp,
+                    &policy.full_alignment,
+                ) {
+                    Ok(alignment) => {
+                        if let Some(warning) = alignment.warning.as_ref() {
+                            warnings.push(format!(
+                                "{} primer full alignment on {}: {}",
+                                role.as_str(),
+                                canonical_hit.subject_id,
+                                warning
+                            ));
+                        }
+                        query_coverage_fraction = 1.0;
+                        unaligned_query_bases = 0;
+                        effective_mismatches = alignment.effective_mismatches;
+                        Some(alignment)
+                    }
+                    Err(error) => {
+                        warnings.push(format!(
+                            "Could not globally realign the complete {} primer on {}: {}",
+                            role.as_str(),
+                            canonical_hit.subject_id,
+                            error
+                        ));
+                        Some(PrimerSpecificityFullAlignment {
+                            status: "unavailable".to_string(),
+                            algorithm: "full_query_semiglobal_subject_window_v1".to_string(),
+                            match_score: policy.full_alignment.match_score,
+                            mismatch_score: policy.full_alignment.mismatch_score,
+                            gap_open_score: policy.full_alignment.gap_open_score,
+                            gap_extend_score: policy.full_alignment.gap_extend_score,
+                            strand: if canonical_hit.subject_start <= canonical_hit.subject_end {
+                                "+".to_string()
+                            } else {
+                                "-".to_string()
+                            },
+                            three_prime_window_bp: policy.three_prime_window_bp,
+                            warning: Some(error),
+                            ..PrimerSpecificityFullAlignment::default()
+                        })
+                    }
+                }
+            };
+        let three_prime_mismatches = full_alignment
+            .as_ref()
+            .filter(|alignment| alignment.status == "complete")
+            .map_or(legacy_three_prime_mismatches, |alignment| {
+                alignment.three_prime_mismatches
+            });
         let mut rejection_reasons = vec![];
         if query_coverage_fraction + f64::EPSILON < policy.min_primer_coverage_fraction {
             rejection_reasons.push(format!(
@@ -10219,8 +10596,25 @@ impl GentleEngine {
                 three_prime_mismatches, policy.max_3prime_mismatches
             ));
         }
+        if policy.full_alignment.mode == PrimerSpecificityFullAlignmentMode::Required
+            && full_alignment
+                .as_ref()
+                .is_none_or(|alignment| alignment.status != "complete")
+        {
+            rejection_reasons.push("full_primer_alignment_unavailable".to_string());
+        }
         let subject_min_1based = hit.subject_start.min(hit.subject_end);
         let subject_max_1based = hit.subject_start.max(hit.subject_end);
+        let (binding_start_1based, binding_end_1based) = full_alignment
+            .as_ref()
+            .filter(|alignment| alignment.status == "complete")
+            .map(|alignment| {
+                (
+                    Some(alignment.aligned_subject_start_1based),
+                    Some(alignment.aligned_subject_end_1based),
+                )
+            })
+            .unwrap_or((None, None));
         PrimerSpecificityPrimerHit {
             hit_index,
             role,
@@ -10250,6 +10644,9 @@ impl GentleEngine {
             query_coverage_fraction,
             three_prime_window_bp: policy.three_prime_window_bp.min(query_sequence.len()),
             three_prime_mismatches,
+            binding_start_1based,
+            binding_end_1based,
+            full_alignment,
             accepted_by_policy: rejection_reasons.is_empty(),
             rejection_reasons,
         }
@@ -10324,6 +10721,13 @@ impl GentleEngine {
         ))
     }
 
+    fn primer_specificity_hit_binding_bounds(hit: &PrimerSpecificityPrimerHit) -> (usize, usize) {
+        hit.binding_start_1based
+            .zip(hit.binding_end_1based)
+            .map(|(start, end)| (start.min(end), start.max(end)))
+            .unwrap_or((hit.subject_min_1based, hit.subject_max_1based))
+    }
+
     fn primer_specificity_inward_amplicon_hits<'a>(
         first: &'a PrimerSpecificityPrimerHit,
         second: &'a PrimerSpecificityPrimerHit,
@@ -10339,7 +10743,9 @@ impl GentleEngine {
             ("-", "+") => (second, first),
             _ => return None,
         };
-        if left.subject_min_1based > right.subject_min_1based {
+        if Self::primer_specificity_hit_binding_bounds(left).0
+            > Self::primer_specificity_hit_binding_bounds(right).0
+        {
             return None;
         }
         Some((left, right))
@@ -10365,8 +10771,10 @@ impl GentleEngine {
         policy: &PrimerSpecificityPolicy,
     ) -> Option<PrimerSpecificityAmplicon> {
         let (left, right) = Self::primer_specificity_inward_amplicon_hits(first, second)?;
-        let start_1based = left.subject_min_1based;
-        let end_1based = left.subject_max_1based.max(right.subject_max_1based);
+        let (left_min, left_max) = Self::primer_specificity_hit_binding_bounds(left);
+        let (_right_min, right_max) = Self::primer_specificity_hit_binding_bounds(right);
+        let start_1based = left_min;
+        let end_1based = left_max.max(right_max);
         let length_bp = end_1based.saturating_sub(start_1based).saturating_add(1);
         if length_bp > policy.max_target_amplicon_bp {
             return None;
@@ -10401,6 +10809,8 @@ impl GentleEngine {
             intended: false,
             intended_reason: None,
             specificity_failure: false,
+            reviewed_allowlisted: false,
+            reviewed_allowance_id: None,
             failure_reasons: vec![],
         })
     }
@@ -10453,17 +10863,29 @@ impl GentleEngine {
                 let Some(minus_rows) = minus_by_subject.get_mut(subject_id) else {
                     continue;
                 };
-                plus_rows.sort_by_key(|hit| (hit.subject_min_1based, hit.hit_index));
-                minus_rows.sort_by_key(|hit| (hit.subject_min_1based, hit.hit_index));
+                plus_rows.sort_by_key(|hit| {
+                    (
+                        GentleEngine::primer_specificity_hit_binding_bounds(hit).0,
+                        hit.hit_index,
+                    )
+                });
+                minus_rows.sort_by_key(|hit| {
+                    (
+                        GentleEngine::primer_specificity_hit_binding_bounds(hit).0,
+                        hit.hit_index,
+                    )
+                });
                 for plus in plus_rows {
+                    let plus_start = GentleEngine::primer_specificity_hit_binding_bounds(plus).0;
                     let first = minus_rows.partition_point(|minus| {
-                        minus.subject_min_1based < plus.subject_min_1based
+                        GentleEngine::primer_specificity_hit_binding_bounds(minus).0 < plus_start
                     });
-                    let last_subject_start = plus
-                        .subject_min_1based
-                        .saturating_add(policy.max_target_amplicon_bp.saturating_sub(1));
-                    let last = minus_rows
-                        .partition_point(|minus| minus.subject_min_1based <= last_subject_start);
+                    let last_subject_start =
+                        plus_start.saturating_add(policy.max_target_amplicon_bp.saturating_sub(1));
+                    let last = minus_rows.partition_point(|minus| {
+                        GentleEngine::primer_specificity_hit_binding_bounds(minus).0
+                            <= last_subject_start
+                    });
                     for minus in &minus_rows[first..last] {
                         *comparisons = comparisons.saturating_add(1);
                         if let Some(amplicon) = GentleEngine::primer_specificity_amplicon_from_hits(
@@ -10701,6 +11123,25 @@ impl GentleEngine {
                 continue;
             }
             if amplicon.intended {
+                continue;
+            }
+            if let Some(allowance) = policy.reviewed_off_target_allowlist.iter().find(|row| {
+                row.target_space == index_kind.as_str()
+                    && Self::primer_specificity_subject_ids_match(
+                        &row.subject_id,
+                        &amplicon.subject_id,
+                    )
+                    && row
+                        .start_1based
+                        .is_none_or(|start| start == amplicon.start_1based)
+                    && row.end_1based.is_none_or(|end| end == amplicon.end_1based)
+            }) {
+                amplicon.reviewed_allowlisted = true;
+                amplicon.reviewed_allowance_id = Some(allowance.allowance_id.clone());
+                amplicon.failure_reasons.push(format!(
+                    "reviewed acceptable off-target '{}' ({})",
+                    allowance.allowance_id, allowance.reason
+                ));
                 continue;
             }
             if amplicon.long_product_warning {
@@ -13592,6 +14033,56 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
+        if policy.full_alignment.match_score <= 0
+            || policy.full_alignment.mismatch_score > 0
+            || policy.full_alignment.gap_open_score > 0
+            || policy.full_alignment.gap_extend_score > 0
+        {
+            return Err(EngineError::invalid_input(
+                "Primer specificity full-alignment scoring requires a positive match score and non-positive mismatch/gap scores",
+            ));
+        }
+        let mut allowance_ids = HashSet::new();
+        for allowance in &policy.reviewed_off_target_allowlist {
+            if allowance.allowance_id.trim().is_empty()
+                || allowance.subject_id.trim().is_empty()
+                || allowance.reviewer.trim().is_empty()
+                || allowance.reason.trim().is_empty()
+                || !allowance.evidence_sha256.starts_with("sha256:")
+            {
+                return Err(EngineError::invalid_input(
+                    "Reviewed off-target allowances require id, subject, reviewer, reason, and sha256 evidence",
+                ));
+            }
+            if !matches!(
+                allowance.target_space.as_str(),
+                "genomic_dna" | "transcriptome_cdna"
+            ) {
+                return Err(EngineError::invalid_input(format!(
+                    "Reviewed off-target allowance '{}' has unsupported target_space '{}'",
+                    allowance.allowance_id, allowance.target_space
+                )));
+            }
+            match (allowance.start_1based, allowance.end_1based) {
+                (None, None) => {}
+                (Some(start), Some(end)) if start > 0 && start <= end => {}
+                _ => {
+                    return Err(EngineError::invalid_input(format!(
+                        "Reviewed off-target allowance '{}' must provide neither coordinate or a valid 1-based inclusive pair",
+                        allowance.allowance_id
+                    )));
+                }
+            }
+            if !allowance_ids.insert(allowance.allowance_id.as_str()) {
+                return Err(EngineError::invalid_input(format!(
+                    "Reviewed off-target allowance id '{}' is duplicated",
+                    allowance.allowance_id
+                )));
+            }
+        }
+        policy
+            .reviewed_off_target_allowlist
+            .sort_by(|left, right| left.allowance_id.cmp(&right.allowance_id));
         if policy.specificity_target_genome_id.is_none() {
             policy.specificity_target_genome_id = Some(target_genome_id.clone());
         }
@@ -14306,7 +14797,7 @@ impl GentleEngine {
         Ok(report)
     }
 
-    fn transcript_assay_panel_specificity_digest(
+    pub(super) fn transcript_assay_panel_specificity_digest(
         report: &TranscriptAssayPanelReport,
     ) -> Result<String, EngineError> {
         let binding = json!({
@@ -17579,6 +18070,415 @@ impl GentleEngine {
         Ok(acceptance)
     }
 
+    fn transcript_assay_specificity_redesign_target_binding(
+        assay: &TranscriptAssayPanelAssay,
+    ) -> String {
+        let mut end_reaction_ids = assay.end_reaction_ids.clone();
+        if let Some(end_reaction_id) = assay.end_reaction_id.as_ref() {
+            end_reaction_ids.push(end_reaction_id.clone());
+        }
+        end_reaction_ids.sort();
+        end_reaction_ids.dedup();
+        let mut junction_ids = assay
+            .junction_matches
+            .iter()
+            .map(|row| row.junction_id.clone())
+            .collect::<Vec<_>>();
+        junction_ids.sort();
+        junction_ids.dedup();
+        serde_json::to_string(&json!({
+            "design_equivalence_group_id": assay.design_equivalence_group_id,
+            "end_reaction_ids": end_reaction_ids,
+            "junction_ids": junction_ids,
+        }))
+        .unwrap_or_else(|_| assay.design_equivalence_group_id.clone())
+    }
+
+    fn transcript_assay_specificity_redesign_same_target(
+        rejected: &TranscriptAssayPanelAssay,
+        candidate: &TranscriptAssayPanelAssay,
+    ) -> bool {
+        Self::transcript_assay_specificity_redesign_target_binding(rejected)
+            == Self::transcript_assay_specificity_redesign_target_binding(candidate)
+    }
+
+    /// Re-run an exact transcript-assay request in a detached engine after
+    /// excluding rejected primer footprints. Passing assays remain references
+    /// to the original accepted panel; replacement candidates are proposals
+    /// and must pass the same complete specificity gates before use.
+    pub fn redesign_transcript_assay_specificity_failures<F>(
+        &self,
+        request: TranscriptAssaySpecificityRedesignRequest,
+        mut on_progress: F,
+    ) -> Result<TranscriptAssaySpecificityRedesignReport, EngineError>
+    where
+        F: FnMut(OperationProgress) -> bool,
+    {
+        let request_bytes = serde_json::to_vec(&request).map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize transcript-assay redesign request: {error}"),
+            cause_chain: vec![],
+        })?;
+        let request_sha256 = sha256_prefixed_bytes(&request_bytes);
+        if request.attempt_number == 0 || request.max_replacements_per_failed_assay == 0 {
+            return Err(EngineError::invalid_input(
+                "Transcript-assay specificity redesign requires attempt_number >= 1 and max_replacements_per_failed_assay >= 1",
+            ));
+        }
+        for (field, value) in [
+            (
+                "expected_panel_digest",
+                request.expected_panel_digest.as_str(),
+            ),
+            (
+                "expected_acceptance_sha256",
+                request.expected_acceptance_sha256.as_str(),
+            ),
+            (
+                "expected_design_operation_sha256",
+                request.expected_design_operation_sha256.as_str(),
+            ),
+        ] {
+            if !value.starts_with("sha256:") {
+                return Err(EngineError::invalid_input(format!(
+                    "Transcript-assay specificity redesign {field} must use a sha256: digest"
+                )));
+            }
+        }
+
+        let panel = self.get_transcript_assay_panel_report(&request.panel_report_id)?;
+        let panel_digest = Self::transcript_assay_panel_specificity_digest(&panel)?;
+        if panel_digest != request.expected_panel_digest {
+            return Err(EngineError::invalid_input(format!(
+                "Transcript-assay panel digest mismatch: expected '{}', observed '{}'",
+                request.expected_panel_digest, panel_digest
+            )));
+        }
+        let acceptance_bytes = fs::read(&request.acceptance_path).map_err(|error| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not read panel specificity acceptance '{}': {error}",
+                request.acceptance_path
+            ),
+            cause_chain: vec![],
+        })?;
+        let acceptance_sha256 = sha256_prefixed_bytes(&acceptance_bytes);
+        if acceptance_sha256 != request.expected_acceptance_sha256 {
+            return Err(EngineError::invalid_input(format!(
+                "Panel specificity acceptance digest mismatch: expected '{}', observed '{}'",
+                request.expected_acceptance_sha256, acceptance_sha256
+            )));
+        }
+        let acceptance =
+            serde_json::from_slice::<TranscriptAssayPanelSpecificityAcceptance>(&acceptance_bytes)
+                .map_err(|error| {
+                    EngineError::invalid_input(format!(
+                        "Could not parse panel specificity acceptance '{}': {error}",
+                        request.acceptance_path
+                    ))
+                })?;
+        if acceptance.panel_report_id != panel.report_id
+            || acceptance.panel_digest != panel_digest
+            || acceptance.status != TranscriptAssayPanelSpecificityAcceptanceStatus::SpecificityFail
+            || acceptance.failing_assay_ids.is_empty()
+        {
+            return Err(EngineError::invalid_input(
+                "Specificity redesign requires a content-matching specificity_fail acceptance with at least one failing assay",
+            ));
+        }
+
+        let mut design_operation = serde_json::from_value::<Operation>(
+            request.design_operation.clone(),
+        )
+        .map_err(|error| {
+            EngineError::invalid_input(format!(
+                "Could not parse exact DesignTranscriptAssayPanel operation: {error}"
+            ))
+        })?;
+        let observed_operation_sha256 = Self::transcript_assay_operation_sha256(&design_operation)?;
+        if observed_operation_sha256 != request.expected_design_operation_sha256 {
+            return Err(EngineError::invalid_input(format!(
+                "Transcript-assay design operation digest mismatch: expected '{}', observed '{}'",
+                request.expected_design_operation_sha256, observed_operation_sha256
+            )));
+        }
+        let Operation::DesignTranscriptAssayPanel {
+            seq_id,
+            source_feature_id,
+            search_policy,
+            specificity,
+            report_id,
+            path,
+            ..
+        } = &mut design_operation
+        else {
+            return Err(EngineError::invalid_input(
+                "Specificity redesign expects Operation::DesignTranscriptAssayPanel",
+            ));
+        };
+        if *seq_id != panel.source_seq_id || *source_feature_id != panel.source_feature_id {
+            return Err(EngineError::invalid_input(
+                "Specificity redesign operation source does not match the persisted panel source",
+            ));
+        }
+        let effective_policy = search_policy.get_or_insert_with(Default::default);
+        let failed_assay_ids = acceptance
+            .failing_assay_ids
+            .iter()
+            .cloned()
+            .collect::<HashSet<_>>();
+        let rejected_assays = panel
+            .selected_assays
+            .iter()
+            .filter(|assay| failed_assay_ids.contains(&assay.assay_id))
+            .cloned()
+            .collect::<Vec<_>>();
+        if rejected_assays.len() != failed_assay_ids.len() {
+            return Err(EngineError::invalid_input(
+                "Specificity acceptance references a failing assay absent from the current panel",
+            ));
+        }
+        for assay in &rejected_assays {
+            for (role, primer) in [
+                ("forward", &assay.primer_pair.forward),
+                ("reverse", &assay.primer_pair.reverse),
+            ] {
+                effective_policy
+                    .interval_evidence
+                    .push(TranscriptAssayPrimerIntervalEvidence {
+                        evidence_id: short_sha256_id(
+                            "specificity_rejected_binding",
+                            &format!(
+                                "{}|{}|{}|{}|{}",
+                                acceptance.acceptance_id,
+                                assay.assay_id,
+                                role,
+                                primer.start_0based,
+                                primer.end_0based_exclusive
+                            ),
+                        ),
+                        transcript_id: assay.design_transcript_id.clone(),
+                        template_sha256: String::new(),
+                        start_0based: primer.start_0based,
+                        end_0based_exclusive: primer.end_0based_exclusive,
+                        kind: TranscriptAssayPrimerIntervalEvidenceKind::CallerSupplied,
+                        disposition: TranscriptAssayPrimerIntervalDisposition::Exclude,
+                        reason: format!(
+                            "Exclude the rejected {} binding footprint from specificity redesign attempt {} for assay '{}'",
+                            role, request.attempt_number, assay.assay_id
+                        ),
+                        source_feature_id: None,
+                        source_path: Some(request.acceptance_path.clone()),
+                        source_sha256: Some(acceptance_sha256.clone()),
+                    });
+            }
+        }
+        // Specificity is deliberately a subsequent gate. Running it inside the
+        // detached redesign would obscure which candidate replaced which
+        // rejected pair and would duplicate the content-bound handoff route.
+        *specificity = None;
+        *path = None;
+        *report_id = Some(short_sha256_id(
+            "specificity_redesign_panel",
+            &format!("{}|{}", request_sha256, request.attempt_number),
+        ));
+        let redesigned_operation_sha256 =
+            Self::transcript_assay_operation_sha256(&design_operation)?;
+
+        let mut detached = self.clone();
+        if let Some(backend) = request.backend {
+            detached.state_mut().parameters.primer_design_backend = backend;
+        }
+        if let Some(executable) = request
+            .primer3_executable
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            detached.state_mut().parameters.primer3_executable = executable.to_string();
+        }
+        let redesigned_result =
+            detached.apply_with_progress(design_operation, |progress| on_progress(progress));
+        let mut warnings = vec![
+            "Replacement candidates are not accepted assays: each candidate must pass the same complete cDNA/genomic specificity policy before it can supersede a rejected pair."
+                .to_string(),
+        ];
+        let redesigned_panel = match redesigned_result {
+            Ok(result) => result.transcript_assay_panel.map(|report| *report),
+            Err(error) => {
+                warnings.push(format!(
+                    "The unchanged approved design constraints produced no complete replacement panel after excluding rejected footprints: {}",
+                    error
+                ));
+                None
+            }
+        };
+        let redesigned_panel_digest = redesigned_panel
+            .as_ref()
+            .map(Self::transcript_assay_panel_specificity_digest)
+            .transpose()?
+            .unwrap_or_default();
+        let mut dispositions = vec![];
+        for rejected in &rejected_assays {
+            let assessment = acceptance
+                .assessments
+                .iter()
+                .find(|row| row.assay_id == rejected.assay_id);
+            let failure_report_id = assessment
+                .map(|row| row.report.report_id.clone())
+                .unwrap_or_default();
+            let mut off_target_causes = assessment
+                .into_iter()
+                .flat_map(|row| row.report.amplicons.iter())
+                .filter(|amplicon| amplicon.specificity_failure)
+                .flat_map(|amplicon| {
+                    if amplicon.failure_reasons.is_empty() {
+                        vec![format!(
+                            "unintended product {}:{}-{}",
+                            amplicon.subject_id, amplicon.start_1based, amplicon.end_1based
+                        )]
+                    } else {
+                        amplicon
+                            .failure_reasons
+                            .iter()
+                            .map(|reason| {
+                                format!(
+                                    "{}:{}-{}: {}",
+                                    amplicon.subject_id,
+                                    amplicon.start_1based,
+                                    amplicon.end_1based,
+                                    reason
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                    }
+                })
+                .collect::<Vec<_>>();
+            off_target_causes.sort();
+            off_target_causes.dedup();
+            let rejected_pair_digest = Self::primer_specificity_pair_content_sha256(
+                &rejected.primer_pair.forward.sequence,
+                &rejected.primer_pair.reverse.sequence,
+            )?;
+            let mut substitutes = redesigned_panel
+                .as_ref()
+                .into_iter()
+                .flat_map(|report| report.selected_assays.iter())
+                .filter(|candidate| {
+                    Self::transcript_assay_specificity_redesign_same_target(rejected, candidate)
+                })
+                .filter_map(|candidate| {
+                    let replacement_pair_digest = Self::primer_specificity_pair_content_sha256(
+                        &candidate.primer_pair.forward.sequence,
+                        &candidate.primer_pair.reverse.sequence,
+                    )
+                    .ok()?;
+                    (replacement_pair_digest != rejected_pair_digest).then(|| {
+                        TranscriptAssaySpecificityReplacementCandidate {
+                            replaces_assay_id: rejected.assay_id.clone(),
+                            replacement_assay_id: candidate.assay_id.clone(),
+                            rejected_primer_pair_digest: rejected_pair_digest.clone(),
+                            replacement_primer_pair_digest: replacement_pair_digest,
+                            failure_acceptance_id: acceptance.acceptance_id.clone(),
+                            failure_report_id: failure_report_id.clone(),
+                            off_target_causes: off_target_causes.clone(),
+                            changed_design_decisions: vec![
+                                "excluded_rejected_forward_binding_interval".to_string(),
+                                "excluded_rejected_reverse_binding_interval".to_string(),
+                            ],
+                            backend: candidate
+                                .primer_pair_summary
+                                .provenance
+                                .primer_backend_used
+                                .clone(),
+                            attempt_number: request.attempt_number,
+                            required_next_gates: vec![
+                                "complete_cdna_specificity".to_string(),
+                                "genomic_dna_specificity".to_string(),
+                            ],
+                            assay: candidate.clone(),
+                        }
+                    })
+                })
+                .take(request.max_replacements_per_failed_assay)
+                .collect::<Vec<_>>();
+            substitutes.sort_by(|left, right| {
+                left.assay
+                    .rank
+                    .cmp(&right.assay.rank)
+                    .then(left.replacement_assay_id.cmp(&right.replacement_assay_id))
+            });
+            let (status, infeasibility_statement) = if substitutes.is_empty() {
+                (
+                    TranscriptAssaySpecificityRedesignDispositionStatus::InfeasibleUnderApprovedConstraints,
+                    Some(format!(
+                        "GENtle found no ordinary-PCR substitute for assay '{}' after excluding its rejected primer footprints while preserving the exact approved biological target and constraints. This is evidence of infeasibility for this bounded attempt, not proof that no PCR assay can exist.",
+                        rejected.assay_id
+                    )),
+                )
+            } else {
+                (
+                    TranscriptAssaySpecificityRedesignDispositionStatus::SubstituteProposed,
+                    None,
+                )
+            };
+            dispositions.push(TranscriptAssaySpecificityRedesignDisposition {
+                replaces_assay_id: rejected.assay_id.clone(),
+                rejected_primer_pair_digest: rejected_pair_digest,
+                failure_acceptance_id: acceptance.acceptance_id.clone(),
+                failure_report_id,
+                off_target_causes,
+                biological_target_binding:
+                    Self::transcript_assay_specificity_redesign_target_binding(rejected),
+                status,
+                substitutes,
+                infeasibility_statement,
+            });
+        }
+        dispositions.sort_by(|left, right| left.replaces_assay_id.cmp(&right.replaces_assay_id));
+        let replacement_candidate_count =
+            dispositions.iter().map(|row| row.substitutes.len()).sum();
+        let unresolved_failure_count = dispositions
+            .iter()
+            .filter(|row| {
+                row.status
+                    == TranscriptAssaySpecificityRedesignDispositionStatus::InfeasibleUnderApprovedConstraints
+            })
+            .count();
+        let redesign_identity = serde_json::to_string(&json!({
+            "request_sha256": &request_sha256,
+            "acceptance_id": &acceptance.acceptance_id,
+            "redesigned_operation_sha256": &redesigned_operation_sha256,
+        }))
+        .map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not identify specificity redesign report: {error}"),
+            cause_chain: vec![],
+        })?;
+        Ok(TranscriptAssaySpecificityRedesignReport {
+            schema: TRANSCRIPT_ASSAY_SPECIFICITY_REDESIGN_SCHEMA.to_string(),
+            redesign_id: short_sha256_id(
+                "transcript_assay_specificity_redesign",
+                &redesign_identity,
+            ),
+            request_sha256,
+            panel_report_id: panel.report_id,
+            panel_digest,
+            acceptance_id: acceptance.acceptance_id,
+            acceptance_sha256,
+            original_design_operation_sha256: observed_operation_sha256,
+            redesigned_operation_sha256,
+            attempt_number: request.attempt_number,
+            retained_passing_assay_ids: acceptance.passing_assay_ids,
+            dispositions,
+            replacement_candidate_count,
+            unresolved_failure_count,
+            redesigned_panel_digest,
+            redesigned_panel: redesigned_panel.map(Box::new),
+            warnings,
+        })
+    }
+
     fn assess_primer_pair_specificity_resolved(
         &self,
         resolved_input: PrimerSpecificityResolvedInput,
@@ -17688,7 +18588,7 @@ impl GentleEngine {
             }
         }
         let search_commands = vec![forward_blast.command.clone(), reverse_blast.command.clone()];
-        let search_completeness = Self::primer_specificity_search_completeness_for_commands(
+        let mut search_completeness = Self::primer_specificity_search_completeness_for_commands(
             blast_database.as_ref(),
             &search_commands,
         );
@@ -17780,6 +18680,26 @@ impl GentleEngine {
             .collect::<Vec<_>>();
         Self::primer_specificity_apply_subject_annotations(&mut forward_hits, &subject_annotations);
         Self::primer_specificity_apply_subject_annotations(&mut reverse_hits, &subject_annotations);
+        if policy.full_alignment.mode == PrimerSpecificityFullAlignmentMode::Required {
+            let unavailable_alignment_count = forward_hits
+                .iter()
+                .chain(&reverse_hits)
+                .filter(|hit| {
+                    hit.full_alignment
+                        .as_ref()
+                        .is_none_or(|alignment| alignment.status != "complete")
+                })
+                .count();
+            if unavailable_alignment_count > 0 {
+                search_completeness.complete = false;
+                search_completeness.status = "incomplete".to_string();
+                search_completeness.reason = format!(
+                    "{} BLAST-seeded primer hit(s) lacked required full-primer realignment evidence; {}",
+                    unavailable_alignment_count, search_completeness.reason
+                );
+                warnings.push(search_completeness.reason.clone());
+            }
+        }
         let (mut amplicons, pairing_candidate_comparison_count) =
             Self::primer_specificity_collect_amplicons_for_hits_with_stats(
                 &forward_hits,
@@ -20208,23 +21128,6 @@ impl GentleEngine {
         (resolved, evaluations)
     }
 
-    fn transcript_assay_primer_spans_junction(
-        primer: &PrimerDesignPrimerRecord,
-        reverse: bool,
-        position_0based: usize,
-        min_3prime_overlap_bp: usize,
-        min_5prime_overlap_bp: usize,
-    ) -> bool {
-        Self::transcript_assay_interval_spans_junction(
-            primer.start_0based,
-            primer.end_0based_exclusive,
-            reverse,
-            position_0based,
-            min_3prime_overlap_bp,
-            min_5prime_overlap_bp,
-        )
-    }
-
     fn transcript_assay_interval_spans_junction(
         start_0based: usize,
         end_0based_exclusive: usize,
@@ -20245,6 +21148,32 @@ impl GentleEngine {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn transcript_assay_interval_spans_junction_with_max_side(
+        start_0based: usize,
+        end_0based_exclusive: usize,
+        reverse: bool,
+        position_0based: usize,
+        min_3prime_overlap_bp: usize,
+        min_5prime_overlap_bp: usize,
+        max_single_side_match_bp: Option<usize>,
+    ) -> bool {
+        if !Self::transcript_assay_interval_spans_junction(
+            start_0based,
+            end_0based_exclusive,
+            reverse,
+            position_0based,
+            min_3prime_overlap_bp,
+            min_5prime_overlap_bp,
+        ) {
+            return false;
+        }
+        max_single_side_match_bp.is_none_or(|maximum| {
+            position_0based.saturating_sub(start_0based) <= maximum
+                && end_0based_exclusive.saturating_sub(position_0based) <= maximum
+        })
+    }
+
     fn transcript_assay_junction_match(
         request: &TranscriptAssayJunctionRequest,
         template: &TranscriptQpcrDesignTemplate,
@@ -20252,20 +21181,25 @@ impl GentleEngine {
         pair: &PrimerDesignPairRecord,
         min_3prime_overlap_bp: usize,
         min_5prime_overlap_bp: usize,
+        max_single_side_match_bp: Option<usize>,
     ) -> TranscriptAssayJunctionMatch {
-        let forward_spans = Self::transcript_assay_primer_spans_junction(
-            &pair.forward,
+        let forward_spans = Self::transcript_assay_interval_spans_junction_with_max_side(
+            pair.forward.start_0based,
+            pair.forward.end_0based_exclusive,
             false,
             local_position_0based,
             min_3prime_overlap_bp,
             min_5prime_overlap_bp,
+            max_single_side_match_bp,
         );
-        let reverse_spans = Self::transcript_assay_primer_spans_junction(
-            &pair.reverse,
+        let reverse_spans = Self::transcript_assay_interval_spans_junction_with_max_side(
+            pair.reverse.start_0based,
+            pair.reverse.end_0based_exclusive,
             true,
             local_position_0based,
             min_3prime_overlap_bp,
             min_5prime_overlap_bp,
+            max_single_side_match_bp,
         );
         TranscriptAssayJunctionMatch {
             junction_id: request.junction_id.clone(),
@@ -20281,6 +21215,74 @@ impl GentleEngine {
             }
             .to_string(),
         }
+    }
+
+    fn transcript_assay_pair_satisfies_intron_separation(
+        template: &TranscriptQpcrDesignTemplate,
+        forward: &PrimerDesignCandidate,
+        reverse: &PrimerDesignCandidate,
+        minimum_intron_bp: Option<usize>,
+    ) -> bool {
+        let Some(minimum_intron_bp) = minimum_intron_bp else {
+            return true;
+        };
+        let mut segments = template.local_exon_segments.iter().collect::<Vec<_>>();
+        segments.sort_by_key(|segment| segment.local_start_0based);
+        segments.windows(2).any(|pair| {
+            let left = pair[0];
+            let right = pair[1];
+            let junction = left.local_end_0based_exclusive;
+            if junction != right.local_start_0based {
+                return false;
+            }
+            let primer_spans_junction = (forward.start_0based < junction
+                && junction < forward.end_0based_exclusive)
+                || (reverse.start_0based < junction && junction < reverse.end_0based_exclusive);
+            if primer_spans_junction {
+                return true;
+            }
+            if forward.end_0based_exclusive > junction || reverse.start_0based < junction {
+                return false;
+            }
+            let intron_bp = if left.source_end_0based_exclusive <= right.source_start_0based {
+                right
+                    .source_start_0based
+                    .saturating_sub(left.source_end_0based_exclusive)
+            } else if right.source_end_0based_exclusive <= left.source_start_0based {
+                left.source_start_0based
+                    .saturating_sub(right.source_end_0based_exclusive)
+            } else {
+                0
+            };
+            intron_bp >= minimum_intron_bp
+        })
+    }
+
+    fn transcript_assay_pair_record_satisfies_intron_separation(
+        template: &TranscriptQpcrDesignTemplate,
+        pair: &PrimerDesignPairRecord,
+        minimum_intron_bp: Option<usize>,
+    ) -> bool {
+        Self::transcript_assay_pair_satisfies_intron_separation(
+            template,
+            &PrimerDesignCandidate {
+                sequence: pair.forward.sequence.clone(),
+                start_0based: pair.forward.start_0based,
+                end_0based_exclusive: pair.forward.end_0based_exclusive,
+                tm_c: pair.forward.tm_c,
+                gc_fraction: pair.forward.gc_fraction,
+                anneal_hits: pair.forward.anneal_hits,
+            },
+            &PrimerDesignCandidate {
+                sequence: pair.reverse.sequence.clone(),
+                start_0based: pair.reverse.start_0based,
+                end_0based_exclusive: pair.reverse.end_0based_exclusive,
+                tm_c: pair.reverse.tm_c,
+                gc_fraction: pair.reverse.gc_fraction,
+                anneal_hits: pair.reverse.anneal_hits,
+            },
+            minimum_intron_bp,
+        )
     }
 
     fn transcript_assay_end_classes_and_reactions(
@@ -20474,7 +21476,9 @@ impl GentleEngine {
         Ok((min, max))
     }
 
-    fn transcript_assay_operation_sha256(operation: &Operation) -> Result<String, EngineError> {
+    pub(super) fn transcript_assay_operation_sha256(
+        operation: &Operation,
+    ) -> Result<String, EngineError> {
         let mut operation_value = serde_json::to_value(operation).map_err(|error| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize transcript assay operation: {error}"),
@@ -20525,6 +21529,34 @@ impl GentleEngine {
                 "Transcript assay search policy max_homopolymer_run_bp must be >= 1",
             ));
         }
+        if policy.max_junction_single_side_match_bp == Some(0) {
+            return Err(EngineError::invalid_input(
+                "Transcript assay max_junction_single_side_match_bp must be >= 1 when supplied",
+            ));
+        }
+        if policy.min_intervening_intron_bp == Some(0) {
+            return Err(EngineError::invalid_input(
+                "Transcript assay min_intervening_intron_bp must be >= 1 when supplied",
+            ));
+        }
+        if policy.cdna_similarity_map.is_some() && policy.build_cdna_similarity_map.is_some() {
+            return Err(EngineError::invalid_input(
+                "Transcript assay search policy must choose either cdna_similarity_map or build_cdna_similarity_map, not both",
+            ));
+        }
+        if let Some(source) = policy.build_cdna_similarity_map.as_ref() {
+            if source.target_resource_id.trim().is_empty() {
+                return Err(EngineError::invalid_input(
+                    "build_cdna_similarity_map requires target_resource_id",
+                ));
+            }
+            if source.min_identity_percent > 100 {
+                return Err(EngineError::invalid_input(
+                    "build_cdna_similarity_map min_identity_percent must be between 0 and 100",
+                ));
+            }
+        }
+        Self::transcript_assay_primer3_chemistry_fields(&policy.primer3_chemistry)?;
         if policy.runtime_warning_after_secs > policy.runtime_reduce_after_secs
             || policy.runtime_warning_projected_total_secs
                 > policy.runtime_reduce_projected_total_secs
@@ -20537,6 +21569,59 @@ impl GentleEngine {
             ));
         }
         Ok(())
+    }
+
+    fn transcript_assay_primer3_chemistry_fields(
+        profile: &Primer3ChemistryProfile,
+    ) -> Result<Vec<TranscriptAssayPrimer3Field>, EngineError> {
+        const ALLOWED: &[&str] = &[
+            "PRIMER_SALT_MONOVALENT",
+            "PRIMER_SALT_DIVALENT",
+            "PRIMER_DNTP_CONC",
+            "PRIMER_DNA_CONC",
+            "PRIMER_DMSO_CONC",
+            "PRIMER_FORMAMIDE_CONC",
+            "PRIMER_TM_FORMULA",
+            "PRIMER_SALT_CORRECTIONS",
+        ];
+        let mut values = match profile.name {
+            Primer3ChemistryProfileName::Primer3Default | Primer3ChemistryProfileName::Custom => {
+                BTreeMap::new()
+            }
+            Primer3ChemistryProfileName::StandardPcr => BTreeMap::from([
+                ("PRIMER_SALT_MONOVALENT".to_string(), "50.0".to_string()),
+                ("PRIMER_SALT_DIVALENT".to_string(), "1.5".to_string()),
+                ("PRIMER_DNTP_CONC".to_string(), "0.6".to_string()),
+                ("PRIMER_DNA_CONC".to_string(), "50.0".to_string()),
+            ]),
+        };
+        for (raw_name, raw_value) in &profile.overrides {
+            let name = raw_name.trim().to_ascii_uppercase();
+            let value = raw_value.trim();
+            if !ALLOWED.contains(&name.as_str()) {
+                return Err(EngineError::invalid_input(format!(
+                    "Unsupported Primer3 chemistry override '{raw_name}'; allowed tags are {}",
+                    ALLOWED.join(", ")
+                )));
+            }
+            if value.is_empty()
+                || value
+                    .bytes()
+                    .any(|byte| matches!(byte, b'\n' | b'\r' | b'='))
+                || !value
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || b".+-eE".contains(&byte))
+            {
+                return Err(EngineError::invalid_input(format!(
+                    "Primer3 chemistry override '{name}' has an invalid Boulder value"
+                )));
+            }
+            values.insert(name, value.to_string());
+        }
+        Ok(values
+            .into_iter()
+            .map(|(name, value)| TranscriptAssayPrimer3Field { name, value })
+            .collect())
     }
 
     fn effective_transcript_assay_search_policy(
@@ -20556,6 +21641,651 @@ impl GentleEngine {
         }
         Self::validate_transcript_assay_search_policy(&policy, forward, reverse)?;
         Ok(policy)
+    }
+
+    fn transcript_assay_project_source_range_to_local(
+        template: &TranscriptQpcrDesignTemplate,
+        source_range: (usize, usize),
+    ) -> Vec<(usize, usize)> {
+        let mut projected = vec![];
+        for segment in &template.local_exon_segments {
+            let overlap_start = source_range.0.max(segment.source_start_0based);
+            let overlap_end = source_range.1.min(segment.source_end_0based_exclusive);
+            if overlap_start >= overlap_end {
+                continue;
+            }
+            let local = if template.strand == "-" {
+                (
+                    segment.local_start_0based.saturating_add(
+                        segment
+                            .source_end_0based_exclusive
+                            .saturating_sub(overlap_end),
+                    ),
+                    segment.local_start_0based.saturating_add(
+                        segment
+                            .source_end_0based_exclusive
+                            .saturating_sub(overlap_start),
+                    ),
+                )
+            } else {
+                (
+                    segment
+                        .local_start_0based
+                        .saturating_add(overlap_start.saturating_sub(segment.source_start_0based)),
+                    segment
+                        .local_start_0based
+                        .saturating_add(overlap_end.saturating_sub(segment.source_start_0based)),
+                )
+            };
+            if local.0 < local.1 {
+                projected.push(local);
+            }
+        }
+        projected.sort_unstable();
+        projected.dedup();
+        projected
+    }
+
+    fn transcript_assay_project_feature_interval_evidence(
+        source_dna: &DNAsequence,
+        templates: &[TranscriptQpcrDesignTemplate],
+        policy: &TranscriptAssayProjectIntervalEvidencePolicy,
+    ) -> Result<Vec<TranscriptAssayPrimerIntervalEvidence>, EngineError> {
+        let mut evidence = vec![];
+        for (feature_id, feature) in source_dna.features().iter().enumerate() {
+            let kind_token = feature.kind.to_string().trim().to_ascii_lowercase();
+            let (kind, disposition) =
+                if matches!(kind_token.as_str(), "variation" | "snp" | "misc_difference") {
+                    (
+                        TranscriptAssayPrimerIntervalEvidenceKind::KnownVariant,
+                        policy.known_variants,
+                    )
+                } else if matches!(kind_token.as_str(), "repeat_region" | "mobile_element")
+                    || kind_token.contains("repeat")
+                {
+                    (
+                        TranscriptAssayPrimerIntervalEvidenceKind::RepeatMasker,
+                        policy.repeatmasker,
+                    )
+                } else {
+                    continue;
+                };
+            let Some(disposition) = disposition else {
+                continue;
+            };
+            let mut source_ranges = vec![];
+            collect_location_ranges_usize(&feature.location, &mut source_ranges);
+            if source_ranges.is_empty() {
+                continue;
+            }
+            source_ranges.sort_unstable();
+            source_ranges.dedup();
+            let feature_identity = serde_json::to_vec(feature).map_err(|error| {
+                EngineError::internal(format!(
+                    "Could not content-bind primer interval feature n-{}: {error}",
+                    feature_id + 1
+                ))
+            })?;
+            let feature_sha256 = sha256_prefixed_bytes(&feature_identity);
+            for template in templates {
+                let template_sha256 = sha256_prefixed_bytes(template.sequence.as_bytes());
+                for source_range in &source_ranges {
+                    for (start_0based, end_0based_exclusive) in
+                        Self::transcript_assay_project_source_range_to_local(
+                            template,
+                            *source_range,
+                        )
+                    {
+                        let identity = format!(
+                            "{}|{}|{}|{}|{}|{:?}|{:?}",
+                            feature_sha256,
+                            template.transcript_id,
+                            template_sha256,
+                            start_0based,
+                            end_0based_exclusive,
+                            kind,
+                            disposition
+                        );
+                        evidence.push(TranscriptAssayPrimerIntervalEvidence {
+                            evidence_id: short_sha256_id("primer_interval_evidence", &identity),
+                            transcript_id: template.transcript_id.clone(),
+                            template_sha256: template_sha256.clone(),
+                            start_0based,
+                            end_0based_exclusive,
+                            kind,
+                            disposition,
+                            reason: format!(
+                                "Projected source feature n-{} ({}) into mature-cDNA coordinates.",
+                                feature_id + 1,
+                                feature.kind
+                            ),
+                            source_feature_id: Some(feature_id),
+                            source_path: None,
+                            source_sha256: Some(feature_sha256.clone()),
+                        });
+                    }
+                }
+            }
+        }
+        evidence.sort_by(|left, right| {
+            left.transcript_id
+                .cmp(&right.transcript_id)
+                .then(left.start_0based.cmp(&right.start_0based))
+                .then(left.end_0based_exclusive.cmp(&right.end_0based_exclusive))
+                .then(left.kind.cmp(&right.kind))
+                .then(left.evidence_id.cmp(&right.evidence_id))
+        });
+        evidence.dedup_by(|left, right| left.evidence_id == right.evidence_id);
+        Ok(evidence)
+    }
+
+    fn build_transcript_assay_cdna_similarity_map(
+        &self,
+        request: &TranscriptAssayCdnaSimilarityMapBuildRequest,
+        on_progress: &mut dyn FnMut(OperationProgress) -> bool,
+    ) -> Result<TranscriptAssayCdnaSimilarityMap, EngineError> {
+        if request.seq_id.trim().is_empty() || request.target_resource_id.trim().is_empty() {
+            return Err(EngineError::invalid_input(
+                "cDNA similarity-map production requires seq_id and target_resource_id",
+            ));
+        }
+        if request.min_alignment_bp == 0 {
+            return Err(EngineError::invalid_input(
+                "cDNA similarity-map min_alignment_bp must be >= 1",
+            ));
+        }
+        if !request.min_identity_fraction.is_finite()
+            || !(0.0..=1.0).contains(&request.min_identity_fraction)
+        {
+            return Err(EngineError::invalid_input(
+                "cDNA similarity-map min_identity_fraction must be finite and between 0 and 1",
+            ));
+        }
+
+        let source_dna = self
+            .state
+            .sequences
+            .get(request.seq_id.trim())
+            .ok_or_else(|| {
+                EngineError::new(
+                    ErrorCode::NotFound,
+                    format!("Sequence '{}' not found", request.seq_id.trim()),
+                )
+            })?;
+        let source_feature = source_dna
+            .features()
+            .get(request.source_feature_id)
+            .ok_or_else(|| {
+                EngineError::new(
+                    ErrorCode::NotFound,
+                    format!(
+                        "Feature n-{} not found on sequence '{}'",
+                        request.source_feature_id + 1,
+                        request.seq_id.trim()
+                    ),
+                )
+            })?;
+        let splicing = self.build_splicing_expert_view(
+            request.seq_id.trim(),
+            request.source_feature_id,
+            SplicingScopePreset::TargetGroupTargetStrand,
+        )?;
+        let all_templates = Self::build_qpcr_transcript_design_templates(source_dna, &splicing)?;
+        if all_templates.is_empty() {
+            return Err(EngineError::new(
+                ErrorCode::NotFound,
+                format!(
+                    "No mature-cDNA templates were resolved for feature n-{} on '{}'",
+                    request.source_feature_id + 1,
+                    request.seq_id.trim()
+                ),
+            ));
+        }
+
+        let requested_ids = request
+            .transcript_ids
+            .iter()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .collect::<BTreeSet<_>>();
+        let mut templates = all_templates
+            .iter()
+            .filter(|template| {
+                requested_ids.is_empty()
+                    || requested_ids.contains(template.transcript_id.as_str())
+                    || Self::primer_specificity_ensembl_transcript_stable_id(
+                        &template.transcript_id,
+                    )
+                    .is_some_and(|stable| requested_ids.contains(stable))
+            })
+            .collect::<Vec<_>>();
+        templates.sort_by(|left, right| left.transcript_id.cmp(&right.transcript_id));
+        if templates.is_empty() {
+            return Err(EngineError::invalid_input(
+                "The requested cDNA similarity-map transcript filter resolved no templates",
+            ));
+        }
+        if !requested_ids.is_empty() {
+            let resolved = templates
+                .iter()
+                .flat_map(|template| {
+                    [
+                        Some(template.transcript_id.as_str()),
+                        Self::primer_specificity_ensembl_transcript_stable_id(
+                            &template.transcript_id,
+                        ),
+                    ]
+                })
+                .flatten()
+                .collect::<BTreeSet<_>>();
+            let unresolved = requested_ids
+                .iter()
+                .filter(|requested| !resolved.contains(**requested))
+                .copied()
+                .collect::<Vec<_>>();
+            if !unresolved.is_empty() {
+                return Err(EngineError::invalid_input(format!(
+                    "cDNA similarity-map transcript filter contains unresolved ids: {}",
+                    unresolved.join(", ")
+                )));
+            }
+        }
+
+        let (catalog, _) = Self::open_reference_genome_catalog(request.catalog_path.as_deref())?;
+        let cache_dir = request
+            .cache_dir
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let database = catalog
+            .inspect_blast_database(request.target_resource_id.trim(), cache_dir)
+            .map_err(EngineError::invalid_input)?
+            .ok_or_else(|| {
+                EngineError::invalid_input(format!(
+                    "Prepared BLAST resource '{}' has no inspectable database",
+                    request.target_resource_id.trim()
+                ))
+            })?;
+        if database.index_kind != BlastDatabaseIndexKind::TranscriptomeCdna {
+            return Err(EngineError::invalid_input(format!(
+                "cDNA similarity-map resource '{}' has index kind '{}'; expected transcriptome_cdna",
+                request.target_resource_id.trim(),
+                database.index_kind.as_str()
+            )));
+        }
+        if database.validation_status != "valid" {
+            return Err(EngineError::invalid_input(format!(
+                "cDNA similarity-map resource '{}' is not valid ({})",
+                request.target_resource_id.trim(),
+                database.validation_status
+            )));
+        }
+        let database_content_fingerprint = database
+            .content_fingerprint
+            .clone()
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| {
+                EngineError::invalid_input(format!(
+                    "cDNA similarity-map resource '{}' has no content fingerprint",
+                    request.target_resource_id.trim()
+                ))
+            })?;
+        if database.subject_annotation_status != "ready" {
+            return Err(EngineError::invalid_input(format!(
+                "cDNA similarity-map resource '{}' requires a ready subject-annotation index; status is '{}'",
+                request.target_resource_id.trim(),
+                database.subject_annotation_status
+            )));
+        }
+        let subject_annotations = catalog
+            .blast_subject_annotation_lookup(request.target_resource_id.trim(), cache_dir)
+            .map_err(EngineError::invalid_input)?;
+        let subject_aliases = Self::primer_specificity_subject_aliases(
+            &catalog,
+            request.target_resource_id.trim(),
+            cache_dir,
+        );
+
+        let mut target_gene_ids = source_feature
+            .qualifier_values("gene_id")
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .collect::<BTreeSet<_>>();
+        let mut target_gene_symbols = source_feature
+            .qualifier_values("gene")
+            .chain(source_feature.qualifier_values("gene_name"))
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .collect::<BTreeSet<_>>();
+        if target_gene_symbols.is_empty()
+            && let Some(label) = Self::qualifier_text_for_derivation(source_feature, "label")
+        {
+            target_gene_symbols.insert(label);
+        }
+        let target_transcript_ids = templates
+            .iter()
+            .flat_map(|template| {
+                [
+                    template.transcript_id.as_str(),
+                    Self::primer_specificity_ensembl_transcript_stable_id(&template.transcript_id)
+                        .unwrap_or(template.transcript_id.as_str()),
+                ]
+            })
+            .map(str::to_string)
+            .collect::<BTreeSet<_>>();
+        for annotation in subject_annotations.values().filter(|annotation| {
+            annotation
+                .transcript_stable_id
+                .as_ref()
+                .or(annotation.transcript_id.as_ref())
+                .is_some_and(|id| target_transcript_ids.contains(id))
+        }) {
+            if let Some(gene_id) = annotation
+                .gene_stable_id
+                .as_ref()
+                .or(annotation.gene_id.as_ref())
+                .filter(|value| !value.trim().is_empty())
+            {
+                target_gene_ids.insert(gene_id.clone());
+            }
+            if let Some(symbol) = annotation
+                .gene_symbol
+                .as_ref()
+                .filter(|value| !value.trim().is_empty())
+            {
+                target_gene_symbols.insert(symbol.clone());
+            }
+        }
+        let paralog_gene_ids = request
+            .paralog_gene_ids
+            .iter()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .collect::<BTreeSet<_>>();
+        let paralog_gene_symbols = request
+            .paralog_gene_symbols
+            .iter()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .collect::<BTreeSet<_>>();
+
+        let mut template_groups = BTreeMap::<String, Vec<&TranscriptQpcrDesignTemplate>>::new();
+        for template in &templates {
+            template_groups
+                .entry(sha256_prefixed_bytes(template.sequence.as_bytes()))
+                .or_default()
+                .push(*template);
+        }
+        let preflight = self.blast_external_binary_preflight_report();
+        let blast_tool_version = preflight
+            .blastn
+            .version
+            .clone()
+            .or(database.tool_version.clone())
+            .unwrap_or_else(|| "unknown".to_string());
+        let mut intervals = vec![];
+        let mut blast_runs = vec![];
+        let mut warnings = database.warnings.clone();
+        let mut blast_options = BTreeSet::new();
+        let group_count = template_groups.len();
+        for (group_index, (template_sha256, equivalent_templates)) in
+            template_groups.into_iter().enumerate()
+        {
+            let representative = equivalent_templates[0];
+            Self::emit_operation_primer_design_progress(
+                on_progress,
+                PrimerDesignProgress {
+                    seq_id: request.seq_id.clone(),
+                    design_kind: "transcript_assay_cdna_similarity_map".to_string(),
+                    backend_requested: "blastn".to_string(),
+                    backend_used: "blastn".to_string(),
+                    stage: "whole_cdna_similarity_search".to_string(),
+                    detail: format!(
+                        "Searching mature-cDNA class {}/{} represented by '{}'",
+                        group_index + 1,
+                        group_count,
+                        representative.transcript_id
+                    ),
+                    roi_start_0based: 0,
+                    roi_end_0based_exclusive: representative.sequence.len(),
+                    forward_candidate_count: None,
+                    reverse_candidate_count: None,
+                    probe_candidate_count: None,
+                    pair_candidate_combinations: None,
+                    pair_evaluated: None,
+                    pair_evaluation_limit: None,
+                    pair_evaluation_limited: None,
+                    accepted_pair_count: None,
+                    assay_candidate_combinations: None,
+                    assays_evaluated: None,
+                    accepted_assay_count: None,
+                    primer3_progress: None,
+                    max_output: group_count,
+                    done: false,
+                },
+            )?;
+            let blast = self.blast_reference_genome_complete_with_project_and_request_options(
+                request.catalog_path.as_deref(),
+                request.target_resource_id.trim(),
+                &representative.sequence,
+                None,
+                Some("blastn"),
+                None,
+                cache_dir,
+            )?;
+            if let Some(options) = blast.effective_options_json.as_ref() {
+                blast_options.insert(options.to_string());
+            }
+            warnings.extend(blast.warnings.clone());
+            if !blast.stderr.trim().is_empty() {
+                warnings.push(format!(
+                    "whole-cDNA similarity BLAST for '{}': {}",
+                    representative.transcript_id,
+                    blast.stderr.trim()
+                ));
+            }
+            let mut equivalent_transcript_ids = equivalent_templates
+                .iter()
+                .map(|template| template.transcript_id.clone())
+                .collect::<Vec<_>>();
+            equivalent_transcript_ids.sort();
+            blast_runs.push(TranscriptAssayCdnaSimilarityBlastRun {
+                transcript_id: representative.transcript_id.clone(),
+                equivalent_transcript_ids: equivalent_transcript_ids.clone(),
+                template_sha256: template_sha256.clone(),
+                query_length_bp: representative.sequence.len(),
+                hit_count: blast.hits.len(),
+                effective_options: blast.effective_options_json.clone().unwrap_or_default(),
+                warnings: Self::primer_specificity_aggregate_warnings(blast.warnings.clone()),
+            });
+
+            for hit in blast.hits.iter().filter(|hit| {
+                hit.alignment_length >= request.min_alignment_bp
+                    && hit.identity_percent / 100.0 + f64::EPSILON >= request.min_identity_fraction
+            }) {
+                let subject_id = Self::primer_specificity_normalize_subject_id(
+                    &hit.subject_id,
+                    &subject_aliases,
+                );
+                let annotation = subject_annotations.get(&subject_id).or_else(|| {
+                    Self::primer_specificity_ensembl_transcript_stable_id(&subject_id)
+                        .and_then(|stable_id| subject_annotations.get(stable_id))
+                });
+                let subject_transcript_id = annotation
+                    .and_then(|row| {
+                        row.transcript_stable_id
+                            .as_ref()
+                            .or(row.transcript_id.as_ref())
+                    })
+                    .map(String::as_str)
+                    .or_else(|| Self::primer_specificity_ensembl_transcript_stable_id(&subject_id));
+                let subject_gene_id =
+                    annotation.and_then(|row| row.gene_stable_id.as_ref().or(row.gene_id.as_ref()));
+                let subject_gene_symbol = annotation.and_then(|row| row.gene_symbol.as_ref());
+                let classification = if subject_transcript_id
+                    .is_some_and(|id| id == representative.transcript_id)
+                    || Self::primer_specificity_ensembl_transcript_stable_id(
+                        &representative.transcript_id,
+                    )
+                    .zip(subject_transcript_id)
+                    .is_some_and(|(expected, observed)| expected == observed)
+                {
+                    TranscriptAssayCdnaSimilarityClassification::IntendedTarget
+                } else if subject_transcript_id.is_some_and(|id| target_transcript_ids.contains(id))
+                {
+                    TranscriptAssayCdnaSimilarityClassification::IntendedFamily
+                } else if subject_gene_id.is_some_and(|id| target_gene_ids.contains(id))
+                    || subject_gene_symbol
+                        .is_some_and(|symbol| target_gene_symbols.contains(symbol))
+                {
+                    TranscriptAssayCdnaSimilarityClassification::SameGeneUnintended
+                } else if subject_gene_id.is_some_and(|id| paralog_gene_ids.contains(id.as_str()))
+                    || subject_gene_symbol
+                        .is_some_and(|symbol| paralog_gene_symbols.contains(symbol.as_str()))
+                {
+                    TranscriptAssayCdnaSimilarityClassification::Paralog
+                } else if annotation.is_some() {
+                    TranscriptAssayCdnaSimilarityClassification::OtherUnintended
+                } else {
+                    TranscriptAssayCdnaSimilarityClassification::Unknown
+                };
+                let guidance = if matches!(
+                    classification,
+                    TranscriptAssayCdnaSimilarityClassification::IntendedTarget
+                        | TranscriptAssayCdnaSimilarityClassification::IntendedFamily
+                ) {
+                    TranscriptAssayCdnaSimilarityGuidance::Informative
+                } else {
+                    TranscriptAssayCdnaSimilarityGuidance::Deprioritize
+                };
+                let start_0based = hit.query_start.min(hit.query_end).saturating_sub(1);
+                let end_0based_exclusive = hit
+                    .query_start
+                    .max(hit.query_end)
+                    .min(representative.sequence.len());
+                if start_0based >= end_0based_exclusive {
+                    continue;
+                }
+                for template in &equivalent_templates {
+                    let identity = format!(
+                        "{}|{}|{}|{}|{}|{:?}|{}",
+                        template.transcript_id,
+                        template_sha256,
+                        start_0based,
+                        end_0based_exclusive,
+                        subject_id,
+                        classification,
+                        request.target_resource_id.trim()
+                    );
+                    intervals.push(TranscriptAssayCdnaSimilarityInterval {
+                        interval_id: short_sha256_id("cdna_similarity_interval", &identity),
+                        transcript_id: template.transcript_id.clone(),
+                        template_sha256: template_sha256.clone(),
+                        start_0based,
+                        end_0based_exclusive,
+                        classification,
+                        guidance,
+                        subject_ids: vec![subject_id.clone()],
+                        subject_gene_ids: subject_gene_id.cloned().into_iter().collect(),
+                        subject_gene_symbols: subject_gene_symbol.cloned().into_iter().collect(),
+                        best_identity_fraction: Some(hit.identity_percent / 100.0),
+                        best_query_coverage_fraction: Some(
+                            hit.query_coverage_percent
+                                .map(|value| value / 100.0)
+                                .unwrap_or_else(|| {
+                                    hit.alignment_length as f64
+                                        / representative.sequence.len().max(1) as f64
+                                })
+                                .clamp(0.0, 1.0),
+                        ),
+                        basis: "complete_whole_cdna_blast_hsp_with_prepared_subject_annotations"
+                            .to_string(),
+                    });
+                }
+            }
+        }
+        intervals.sort_by(|left, right| {
+            left.transcript_id
+                .cmp(&right.transcript_id)
+                .then(left.start_0based.cmp(&right.start_0based))
+                .then(left.end_0based_exclusive.cmp(&right.end_0based_exclusive))
+                .then(left.classification.cmp(&right.classification))
+                .then(left.subject_ids.cmp(&right.subject_ids))
+        });
+        intervals.dedup_by(|left, right| left.interval_id == right.interval_id);
+        blast_runs.sort_by(|left, right| left.transcript_id.cmp(&right.transcript_id));
+        let identity = serde_json::to_string(&json!({
+            "schema": TRANSCRIPT_ASSAY_CDNA_SIMILARITY_MAP_SCHEMA,
+            "source_seq_id": request.seq_id,
+            "source_feature_id": request.source_feature_id,
+            "target_resource_id": request.target_resource_id.trim(),
+            "database_content_fingerprint": database_content_fingerprint,
+            "blast_tool_version": blast_tool_version,
+            "min_alignment_bp": request.min_alignment_bp,
+            "min_identity_fraction": request.min_identity_fraction,
+            "target_transcript_ids": target_transcript_ids,
+            "target_gene_ids": target_gene_ids,
+            "target_gene_symbols": target_gene_symbols,
+            "intervals": intervals,
+        }))
+        .map_err(|error| {
+            EngineError::internal(format!(
+                "Could not identify cDNA similarity-map content: {error}"
+            ))
+        })?;
+        let report = TranscriptAssayCdnaSimilarityMap {
+            schema: TRANSCRIPT_ASSAY_CDNA_SIMILARITY_MAP_SCHEMA.to_string(),
+            map_id: short_sha256_id("cdna_similarity_map", &identity),
+            target_space: "transcriptome_cdna".to_string(),
+            target_resource_id: request.target_resource_id.trim().to_string(),
+            database_content_fingerprint,
+            blast_program: "blastn".to_string(),
+            blast_task: "blastn".to_string(),
+            blast_tool_version,
+            blast_options: blast_options.into_iter().collect(),
+            source_seq_id: Some(request.seq_id.clone()),
+            source_feature_id: Some(request.source_feature_id),
+            target_transcript_ids: target_transcript_ids.into_iter().collect(),
+            target_gene_ids: target_gene_ids.into_iter().collect(),
+            target_gene_symbols: target_gene_symbols.into_iter().collect(),
+            blast_runs,
+            intervals,
+            warnings: Self::primer_specificity_aggregate_warnings(warnings),
+        };
+        Self::emit_operation_primer_design_progress(
+            on_progress,
+            PrimerDesignProgress {
+                seq_id: request.seq_id.clone(),
+                design_kind: "transcript_assay_cdna_similarity_map".to_string(),
+                backend_requested: "blastn".to_string(),
+                backend_used: "blastn".to_string(),
+                stage: "complete".to_string(),
+                detail: format!(
+                    "Materialized {} similarity interval(s) across {} transcript(s)",
+                    report.intervals.len(),
+                    report.target_transcript_ids.len()
+                ),
+                roi_start_0based: 0,
+                roi_end_0based_exclusive: source_dna.len(),
+                forward_candidate_count: None,
+                reverse_candidate_count: None,
+                probe_candidate_count: None,
+                pair_candidate_combinations: None,
+                pair_evaluated: None,
+                pair_evaluation_limit: None,
+                pair_evaluation_limited: None,
+                accepted_pair_count: None,
+                assay_candidate_combinations: None,
+                assays_evaluated: None,
+                accepted_assay_count: None,
+                primer3_progress: None,
+                max_output: report.intervals.len(),
+                done: true,
+            },
+        )?;
+        Ok(report)
     }
 
     fn resolve_transcript_assay_cdna_similarity_map(
@@ -20685,10 +22415,6 @@ impl GentleEngine {
         })
     }
 
-    fn transcript_assay_interval_overlap_bp(left: (usize, usize), right: (usize, usize)) -> usize {
-        left.1.min(right.1).saturating_sub(left.0.max(right.0))
-    }
-
     fn transcript_assay_cdna_similarity_risk(
         map: Option<&ResolvedTranscriptAssayCdnaSimilarityMap>,
         transcript_id: &str,
@@ -20708,32 +22434,104 @@ impl GentleEngine {
                 vec![left_interval, right_interval]
             };
         let mut interval_ids = vec![];
-        let mut overlap_bp = 0usize;
+        let mut overlap_ranges = vec![];
         for interval in map.report.intervals.iter().filter(|interval| {
             interval.transcript_id == transcript_id
                 && interval.guidance == TranscriptAssayCdnaSimilarityGuidance::Deprioritize
         }) {
             let interval_range = (interval.start_0based, interval.end_0based_exclusive);
-            let interval_overlap = merged_windows
-                .iter()
-                .map(|window| Self::transcript_assay_interval_overlap_bp(*window, interval_range))
-                .sum::<usize>();
-            if interval_overlap > 0 {
+            let mut has_overlap = false;
+            for window in &merged_windows {
+                let start = window.0.max(interval_range.0);
+                let end = window.1.min(interval_range.1);
+                if start < end {
+                    has_overlap = true;
+                    overlap_ranges.push((start, end));
+                }
+            }
+            if has_overlap {
                 interval_ids.push(interval.interval_id.clone());
-                overlap_bp = overlap_bp.saturating_add(interval_overlap);
             }
         }
         interval_ids.sort();
         interval_ids.dedup();
+        overlap_ranges.sort_unstable();
+        let mut overlap_bp = 0usize;
+        let mut current: Option<(usize, usize)> = None;
+        for (start, end) in overlap_ranges {
+            match current {
+                Some((current_start, current_end)) if start <= current_end => {
+                    current = Some((current_start, current_end.max(end)));
+                }
+                Some((current_start, current_end)) => {
+                    overlap_bp =
+                        overlap_bp.saturating_add(current_end.saturating_sub(current_start));
+                    current = Some((start, end));
+                }
+                None => current = Some((start, end)),
+            }
+        }
+        if let Some((start, end)) = current {
+            overlap_bp = overlap_bp.saturating_add(end.saturating_sub(start));
+        }
         (interval_ids, overlap_bp)
+    }
+
+    fn transcript_assay_interval_evidence_risk(
+        evidence: &[TranscriptAssayPrimerIntervalEvidence],
+        transcript_id: &str,
+        left_interval: (usize, usize),
+        right_interval: (usize, usize),
+    ) -> (Vec<String>, usize) {
+        let windows = [left_interval, right_interval];
+        let mut ids = vec![];
+        let mut overlaps = vec![];
+        for row in evidence.iter().filter(|row| {
+            row.transcript_id == transcript_id
+                && row.disposition == TranscriptAssayPrimerIntervalDisposition::Deprioritize
+        }) {
+            for window in windows {
+                let start = row.start_0based.max(window.0);
+                let end = row.end_0based_exclusive.min(window.1);
+                if start < end {
+                    ids.push(row.evidence_id.clone());
+                    overlaps.push((start, end));
+                }
+            }
+        }
+        ids.sort();
+        ids.dedup();
+        overlaps.sort_unstable();
+        let mut total = 0usize;
+        let mut current: Option<(usize, usize)> = None;
+        for (start, end) in overlaps {
+            match current {
+                Some((current_start, current_end)) if start <= current_end => {
+                    current = Some((current_start, current_end.max(end)));
+                }
+                Some((current_start, current_end)) => {
+                    total = total.saturating_add(current_end.saturating_sub(current_start));
+                    current = Some((start, end));
+                }
+                None => current = Some((start, end)),
+            }
+        }
+        if let Some((start, end)) = current {
+            total = total.saturating_add(end.saturating_sub(start));
+        }
+        (ids, total)
     }
 
     pub(super) fn transcript_assay_search_record_ordering(
         left: &TranscriptAssayPrimerSearchRecord,
         right: &TranscriptAssayPrimerSearchRecord,
     ) -> Ordering {
-        left.similarity_risk_overlap_bp
-            .cmp(&right.similarity_risk_overlap_bp)
+        left.design_risk_overlap_bp
+            .cmp(&right.design_risk_overlap_bp)
+            .then(
+                left.similarity_risk_overlap_bp
+                    .cmp(&right.similarity_risk_overlap_bp),
+            )
             .then(
                 left.estimated_candidate_pair_count
                     .cmp(&right.estimated_candidate_pair_count),
@@ -20989,6 +22787,7 @@ impl GentleEngine {
     }
 
     fn transcript_assay_search_pair_count(
+        template: &TranscriptQpcrDesignTemplate,
         forward_candidates: &[&PrimerDesignCandidate],
         reverse_candidates: &[&PrimerDesignCandidate],
         target: &TranscriptAssayDesignTarget,
@@ -20996,6 +22795,8 @@ impl GentleEngine {
         max_amplicon_bp: usize,
         min_3prime_junction_overlap_bp: usize,
         min_5prime_junction_overlap_bp: usize,
+        max_junction_single_side_match_bp: Option<usize>,
+        min_intervening_intron_bp: Option<usize>,
     ) -> usize {
         let mut count = 0usize;
         for forward in forward_candidates {
@@ -21009,21 +22810,31 @@ impl GentleEngine {
                 if amplicon_len < min_amplicon_bp || amplicon_len > max_amplicon_bp {
                     continue;
                 }
+                if !Self::transcript_assay_pair_satisfies_intron_separation(
+                    template,
+                    forward,
+                    reverse,
+                    min_intervening_intron_bp,
+                ) {
+                    continue;
+                }
                 if let Some(junction) = target.junction.as_ref() {
-                    let spans = Self::transcript_assay_interval_spans_junction(
+                    let spans = Self::transcript_assay_interval_spans_junction_with_max_side(
                         forward.start_0based,
                         forward.end_0based_exclusive,
                         false,
                         junction.local_position_0based,
                         min_3prime_junction_overlap_bp,
                         min_5prime_junction_overlap_bp,
-                    ) || Self::transcript_assay_interval_spans_junction(
+                        max_junction_single_side_match_bp,
+                    ) || Self::transcript_assay_interval_spans_junction_with_max_side(
                         reverse.start_0based,
                         reverse.end_0based_exclusive,
                         true,
                         junction.local_position_0based,
                         min_3prime_junction_overlap_bp,
                         min_5prime_junction_overlap_bp,
+                        max_junction_single_side_match_bp,
                     );
                     if !spans {
                         continue;
@@ -21053,6 +22864,7 @@ impl GentleEngine {
         min_3prime_junction_overlap_bp: usize,
         min_5prime_junction_overlap_bp: usize,
         policy: &TranscriptAssayPrimerSearchPolicy,
+        generated_cdna_similarity_map: Option<&ResolvedTranscriptAssayCdnaSimilarityMap>,
     ) -> Result<
         (
             TranscriptAssayPrimerSearchPlan,
@@ -21061,11 +22873,113 @@ impl GentleEngine {
         EngineError,
     > {
         Self::validate_transcript_assay_search_policy(policy, forward, reverse)?;
-        let cdna_similarity_map = policy
-            .cdna_similarity_map
-            .as_ref()
-            .map(|source| Self::resolve_transcript_assay_cdna_similarity_map(source, templates))
-            .transpose()?;
+        if let Some(maximum) = policy.max_junction_single_side_match_bp {
+            let required_minimum =
+                min_3prime_junction_overlap_bp.max(min_5prime_junction_overlap_bp);
+            if maximum < required_minimum {
+                return Err(EngineError::invalid_input(format!(
+                    "Transcript assay max_junction_single_side_match_bp ({maximum}) must be >= the largest required junction overlap ({required_minimum})"
+                )));
+            }
+        }
+        let primer3_chemistry_fields =
+            Self::transcript_assay_primer3_chemistry_fields(&policy.primer3_chemistry)?;
+        let cdna_similarity_map = if let Some(generated) = generated_cdna_similarity_map {
+            Some(generated.clone())
+        } else {
+            policy
+                .cdna_similarity_map
+                .as_ref()
+                .map(|source| Self::resolve_transcript_assay_cdna_similarity_map(source, templates))
+                .transpose()?
+        };
+        let template_by_id = templates
+            .iter()
+            .map(|template| {
+                (
+                    template.transcript_id.as_str(),
+                    (
+                        template.sequence.len(),
+                        sha256_prefixed_bytes(template.sequence.as_bytes()),
+                    ),
+                )
+            })
+            .collect::<HashMap<_, _>>();
+        let mut interval_evidence = policy.interval_evidence.clone();
+        for row in &mut interval_evidence {
+            if row.evidence_id.trim().is_empty()
+                || row.transcript_id.trim().is_empty()
+                || row.start_0based >= row.end_0based_exclusive
+                || row.reason.trim().is_empty()
+            {
+                return Err(EngineError::invalid_input(
+                    "Primer interval evidence requires an id, transcript, non-empty 0-based/exclusive interval, and reason",
+                ));
+            }
+            let Some((template_len, template_sha256)) =
+                template_by_id.get(row.transcript_id.as_str())
+            else {
+                return Err(EngineError::invalid_input(format!(
+                    "Primer interval evidence '{}' references transcript '{}' outside the active coverage universe",
+                    row.evidence_id, row.transcript_id
+                )));
+            };
+            if row.end_0based_exclusive > *template_len {
+                return Err(EngineError::invalid_input(format!(
+                    "Primer interval evidence '{}' ends at {} beyond transcript '{}' length {}",
+                    row.evidence_id, row.end_0based_exclusive, row.transcript_id, template_len
+                )));
+            }
+            if row.template_sha256.is_empty() {
+                row.template_sha256 = template_sha256.clone();
+            } else if row.template_sha256 != *template_sha256 {
+                return Err(EngineError::invalid_input(format!(
+                    "Primer interval evidence '{}' binds template digest '{}' but active transcript '{}' has '{}'",
+                    row.evidence_id, row.template_sha256, row.transcript_id, template_sha256
+                )));
+            }
+        }
+        if let Some(resolved) = cdna_similarity_map.as_ref() {
+            interval_evidence.extend(resolved.report.intervals.iter().map(|row| {
+                TranscriptAssayPrimerIntervalEvidence {
+                    evidence_id: row.interval_id.clone(),
+                    transcript_id: row.transcript_id.clone(),
+                    template_sha256: row.template_sha256.clone(),
+                    start_0based: row.start_0based,
+                    end_0based_exclusive: row.end_0based_exclusive,
+                    kind: TranscriptAssayPrimerIntervalEvidenceKind::ParalogOrCdnaSimilarity,
+                    disposition: match row.guidance {
+                        TranscriptAssayCdnaSimilarityGuidance::Deprioritize => {
+                            TranscriptAssayPrimerIntervalDisposition::Deprioritize
+                        }
+                        TranscriptAssayCdnaSimilarityGuidance::Informative => {
+                            TranscriptAssayPrimerIntervalDisposition::Informative
+                        }
+                    },
+                    reason: row.basis.clone(),
+                    source_feature_id: None,
+                    source_path: None,
+                    source_sha256: Some(resolved.sha256.clone()),
+                }
+            }));
+        }
+        interval_evidence.sort_by(|left, right| {
+            left.transcript_id
+                .cmp(&right.transcript_id)
+                .then(left.start_0based.cmp(&right.start_0based))
+                .then(left.end_0based_exclusive.cmp(&right.end_0based_exclusive))
+                .then(left.kind.cmp(&right.kind))
+                .then(left.evidence_id.cmp(&right.evidence_id))
+        });
+        let mut evidence_ids = HashSet::new();
+        for row in &interval_evidence {
+            if !evidence_ids.insert(row.evidence_id.as_str()) {
+                return Err(EngineError::invalid_input(format!(
+                    "Primer interval evidence id '{}' is duplicated",
+                    row.evidence_id
+                )));
+            }
+        }
         let mut plan = TranscriptAssayPrimerSearchPlan {
             schema: TRANSCRIPT_ASSAY_PRIMER_SEARCH_PLAN_SCHEMA.to_string(),
             operation_sha256: operation_sha256.to_string(),
@@ -21080,6 +22994,19 @@ impl GentleEngine {
                 .as_ref()
                 .map(|resolved| resolved.report.database_content_fingerprint.clone()),
             target_count: targets.len(),
+            hard_exclusion_interval_count: interval_evidence
+                .iter()
+                .filter(|row| {
+                    row.disposition == TranscriptAssayPrimerIntervalDisposition::Exclude
+                })
+                .count(),
+            soft_deprioritization_interval_count: interval_evidence
+                .iter()
+                .filter(|row| {
+                    row.disposition == TranscriptAssayPrimerIntervalDisposition::Deprioritize
+                })
+                .count(),
+            interval_evidence: interval_evidence.clone(),
             warnings: vec![
                 "Local exact-repeat and low-complexity screening is planning evidence only; cross-transcript cDNA and genomic specificity remain separate QA gates after candidate generation."
                     .to_string(),
@@ -21097,6 +23024,11 @@ impl GentleEngine {
                     .warnings
                     .iter()
                     .map(|warning| format!("cDNA similarity map: {warning}")),
+            );
+        } else if policy.build_cdna_similarity_map.is_some() {
+            plan.warnings.push(
+                "The read-only feasibility pass did not execute the requested cDNA similarity-map BLAST. The design operation will produce and bind that map before Primer3."
+                    .to_string(),
             );
         }
         let mut planned_targets = vec![];
@@ -21123,26 +23055,63 @@ impl GentleEngine {
                 max_primer_bp,
                 policy.max_primer_window_bp,
             );
+            let hard_evidence = interval_evidence
+                .iter()
+                .filter(|row| {
+                    row.transcript_id == template.transcript_id
+                        && row.disposition == TranscriptAssayPrimerIntervalDisposition::Exclude
+                })
+                .collect::<Vec<_>>();
+            let mut hard_excluded_regions = hard_evidence
+                .iter()
+                .map(|row| (row.start_0based, row.end_0based_exclusive))
+                .collect::<Vec<_>>();
+            hard_excluded_regions.extend(target.excluded_regions_0based.iter().copied());
+            hard_excluded_regions.sort_unstable();
+            hard_excluded_regions.dedup();
             let mut left_side = forward.clone();
             left_side.start_0based = Some(left_broad.0);
             left_side.end_0based = Some(left_broad.1);
             let mut right_side = reverse.clone();
             right_side.start_0based = Some(right_broad.0);
             right_side.end_0based = Some(right_broad.1);
-            let left_estimate = Self::estimate_primer_side_search_candidates(
+            let mut left_estimate = Self::estimate_primer_side_search_candidates(
                 template.sequence.as_bytes(),
                 &left_side,
                 forward_sequence_constraints,
                 false,
                 policy.max_homopolymer_run_bp,
             );
-            let right_estimate = Self::estimate_primer_side_search_candidates(
+            let mut right_estimate = Self::estimate_primer_side_search_candidates(
                 template.sequence.as_bytes(),
                 &right_side,
                 reverse_sequence_constraints,
                 true,
                 policy.max_homopolymer_run_bp,
             );
+            for estimate in [&mut left_estimate, &mut right_estimate] {
+                let mut interval_rejections = vec![];
+                estimate.candidates.retain(|candidate| {
+                    let blockers = hard_evidence
+                        .iter()
+                        .filter(|row| {
+                            candidate.start_0based < row.end_0based_exclusive
+                                && candidate.end_0based_exclusive > row.start_0based
+                        })
+                        .map(|row| row.evidence_id.as_str())
+                        .collect::<Vec<_>>();
+                    if blockers.is_empty() {
+                        true
+                    } else {
+                        interval_rejections.push((
+                            candidate.start_0based,
+                            format!("interval_evidence_excluded:{}", blockers.join("+")),
+                        ));
+                        false
+                    }
+                });
+                estimate.rejected_starts.extend(interval_rejections);
+            }
             plan.rejected_intervals
                 .extend(Self::transcript_assay_search_rejected_intervals(
                     "left",
@@ -21176,6 +23145,7 @@ impl GentleEngine {
                     right_interval,
                 );
                 let pair_count = Self::transcript_assay_search_pair_count(
+                    template,
                     &left_candidates,
                     &right_candidates,
                     target,
@@ -21183,6 +23153,8 @@ impl GentleEngine {
                     max_amplicon_bp,
                     min_3prime_junction_overlap_bp,
                     min_5prime_junction_overlap_bp,
+                    policy.max_junction_single_side_match_bp,
+                    policy.min_intervening_intron_bp,
                 );
                 if pair_count == 0 {
                     continue;
@@ -21271,6 +23243,7 @@ impl GentleEngine {
                     template.sequence.as_bytes(),
                     right_interval,
                 ));
+                excluded_regions.extend(hard_excluded_regions.iter().copied());
                 excluded_regions.sort_unstable();
                 excluded_regions.dedup();
                 let mut primer3_fields = vec![TranscriptAssayPrimer3Field {
@@ -21297,6 +23270,7 @@ impl GentleEngine {
                         value: "0".to_string(),
                     },
                 ]);
+                primer3_fields.extend(primer3_chemistry_fields.clone());
                 if let Some(junction) = target.junction.as_ref() {
                     primer3_fields.extend([
                         TranscriptAssayPrimer3Field {
@@ -21345,6 +23319,13 @@ impl GentleEngine {
                 let (similarity_risk_interval_ids, similarity_risk_overlap_bp) =
                     Self::transcript_assay_cdna_similarity_risk(
                         cdna_similarity_map.as_ref(),
+                        &template.transcript_id,
+                        left_interval,
+                        right_interval,
+                    );
+                let (design_risk_interval_ids, design_risk_overlap_bp) =
+                    Self::transcript_assay_interval_evidence_risk(
+                        &interval_evidence,
                         &template.transcript_id,
                         left_interval,
                         right_interval,
@@ -21406,6 +23387,8 @@ impl GentleEngine {
                     candidate_pair_search_space_upper_bound: search_space_upper_bound,
                     similarity_risk_interval_ids,
                     similarity_risk_overlap_bp,
+                    design_risk_interval_ids,
+                    design_risk_overlap_bp,
                     primer3_fields,
                 };
                 let mut planned = target.clone();
@@ -21947,11 +23930,20 @@ impl GentleEngine {
             Self::normalize_primer_side_sequence_constraints(forward)?;
         let reverse_sequence_constraints =
             Self::normalize_primer_side_sequence_constraints(reverse)?;
-        let effective_search_policy = Self::effective_transcript_assay_search_policy(
+        let mut effective_search_policy = Self::effective_transcript_assay_search_policy(
             search_policy.as_ref(),
             forward,
             reverse,
         )?;
+        if let Some(project_policy) = effective_search_policy.project_interval_evidence.clone() {
+            effective_search_policy.interval_evidence.extend(
+                Self::transcript_assay_project_feature_interval_evidence(
+                    source_dna,
+                    &templates,
+                    &project_policy,
+                )?,
+            );
+        }
         let (search_plan, _) = Self::transcript_assay_build_primer_search_plan(
             &report.operation_sha256,
             &templates,
@@ -21965,6 +23957,7 @@ impl GentleEngine {
             min_3prime_junction_overlap_bp.unwrap_or(4),
             min_5prime_junction_overlap_bp.unwrap_or(7),
             &effective_search_policy,
+            None,
         )?;
         if search_plan.status != TranscriptAssayPrimerSearchPlanStatus::Ready
             && !matches!(
@@ -23006,7 +24999,12 @@ impl GentleEngine {
             let mut emit = |progress: PrimerDesignProgress| {
                 on_progress(OperationProgress::PrimerDesign(progress))
             };
-            if primer3_options.overlap_junction_positions_1based.is_empty() {
+            if primer3_options.overlap_junction_positions_1based.is_empty()
+                && primer3_options
+                    .runtime_policy
+                    .min_intervening_intron_bp
+                    .is_none()
+            {
                 Self::design_primer_pairs_internal_core(
                     template.sequence.as_bytes(),
                     roi_start_0based,
@@ -23024,29 +25022,41 @@ impl GentleEngine {
                     &mut emit,
                 )
             } else {
-                let pair_spans_requested_junction =
+                let pair_satisfies_transcript_geometry =
                     |forward_candidate: &PrimerDesignCandidate,
                      reverse_candidate: &PrimerDesignCandidate| {
-                        primer3_options
+                        let junction_ok = primer3_options
                             .overlap_junction_positions_1based
-                            .iter()
-                            .any(|position| {
-                                Self::transcript_assay_interval_spans_junction(
+                            .is_empty()
+                            || primer3_options
+                                .overlap_junction_positions_1based
+                                .iter()
+                                .any(|position| {
+                                    Self::transcript_assay_interval_spans_junction_with_max_side(
                                     forward_candidate.start_0based,
                                     forward_candidate.end_0based_exclusive,
                                     false,
                                     *position,
                                     primer3_options.min_3prime_overlap_bp,
                                     primer3_options.min_5prime_overlap_bp,
-                                ) || Self::transcript_assay_interval_spans_junction(
+                                    primer3_options.max_junction_single_side_match_bp,
+                                ) || Self::transcript_assay_interval_spans_junction_with_max_side(
                                     reverse_candidate.start_0based,
                                     reverse_candidate.end_0based_exclusive,
                                     true,
                                     *position,
                                     primer3_options.min_3prime_overlap_bp,
                                     primer3_options.min_5prime_overlap_bp,
+                                    primer3_options.max_junction_single_side_match_bp,
                                 )
-                            })
+                                });
+                        junction_ok
+                            && Self::transcript_assay_pair_satisfies_intron_separation(
+                                template,
+                                forward_candidate,
+                                reverse_candidate,
+                                primer3_options.runtime_policy.min_intervening_intron_bp,
+                            )
                     };
                 Self::design_primer_pairs_internal_core_with_filter(
                     template.sequence.as_bytes(),
@@ -23061,7 +25071,7 @@ impl GentleEngine {
                     max_amplicon_bp,
                     max_tm_delta_c,
                     max_pairs,
-                    Some(&pair_spans_requested_junction),
+                    Some(&pair_satisfies_transcript_geometry),
                     Some(&progress_context),
                     &mut emit,
                 )
@@ -23153,26 +25163,42 @@ impl GentleEngine {
                 }
             },
         };
-        if !primer3_options.overlap_junction_positions_1based.is_empty() {
+        if !primer3_options.overlap_junction_positions_1based.is_empty()
+            || primer3_options
+                .runtime_policy
+                .min_intervening_intron_bp
+                .is_some()
+        {
             pairs.retain(|pair| {
-                primer3_options
-                    .overlap_junction_positions_1based
-                    .iter()
-                    .any(|position| {
-                        Self::transcript_assay_primer_spans_junction(
-                            &pair.forward,
-                            false,
-                            *position,
-                            primer3_options.min_3prime_overlap_bp,
-                            primer3_options.min_5prime_overlap_bp,
-                        ) || Self::transcript_assay_primer_spans_junction(
-                            &pair.reverse,
-                            true,
-                            *position,
-                            primer3_options.min_3prime_overlap_bp,
-                            primer3_options.min_5prime_overlap_bp,
-                        )
-                    })
+                let junction_ok = primer3_options.overlap_junction_positions_1based.is_empty()
+                    || primer3_options
+                        .overlap_junction_positions_1based
+                        .iter()
+                        .any(|position| {
+                            Self::transcript_assay_interval_spans_junction_with_max_side(
+                                pair.forward.start_0based,
+                                pair.forward.end_0based_exclusive,
+                                false,
+                                *position,
+                                primer3_options.min_3prime_overlap_bp,
+                                primer3_options.min_5prime_overlap_bp,
+                                primer3_options.max_junction_single_side_match_bp,
+                            ) || Self::transcript_assay_interval_spans_junction_with_max_side(
+                                pair.reverse.start_0based,
+                                pair.reverse.end_0based_exclusive,
+                                true,
+                                *position,
+                                primer3_options.min_3prime_overlap_bp,
+                                primer3_options.min_5prime_overlap_bp,
+                                primer3_options.max_junction_single_side_match_bp,
+                            )
+                        });
+                junction_ok
+                    && Self::transcript_assay_pair_record_satisfies_intron_separation(
+                        template,
+                        pair,
+                        primer3_options.runtime_policy.min_intervening_intron_bp,
+                    )
             });
             Self::sort_and_rank_primer_design_pairs(&mut pairs, max_pairs);
         }
@@ -24802,15 +26828,64 @@ impl GentleEngine {
             }
         }
 
-        let effective_search_policy = Self::effective_transcript_assay_search_policy(
+        let mut effective_search_policy = Self::effective_transcript_assay_search_policy(
             search_policy.as_ref(),
             &forward,
             &reverse,
         )?;
+        if let Some(project_policy) = effective_search_policy.project_interval_evidence.clone() {
+            effective_search_policy.interval_evidence.extend(
+                Self::transcript_assay_project_feature_interval_evidence(
+                    &source_dna,
+                    &templates,
+                    &project_policy,
+                )?,
+            );
+        }
         let base_forward_sequence_constraints =
             Self::normalize_primer_side_sequence_constraints(&forward)?;
         let base_reverse_sequence_constraints =
             Self::normalize_primer_side_sequence_constraints(&reverse)?;
+        let generated_cdna_similarity_map =
+            if let Some(source) = effective_search_policy.build_cdna_similarity_map.as_ref() {
+                let map = self.build_transcript_assay_cdna_similarity_map(
+                    &TranscriptAssayCdnaSimilarityMapBuildRequest {
+                        seq_id: seq_id.clone(),
+                        source_feature_id,
+                        target_resource_id: source.target_resource_id.clone(),
+                        transcript_ids: templates
+                            .iter()
+                            .map(|template| template.transcript_id.clone())
+                            .collect(),
+                        paralog_gene_ids: source.paralog_gene_ids.clone(),
+                        paralog_gene_symbols: source.paralog_gene_symbols.clone(),
+                        min_alignment_bp: if source.min_alignment_bp == 0 {
+                            default_cdna_similarity_min_alignment_bp()
+                        } else {
+                            source.min_alignment_bp
+                        },
+                        min_identity_fraction: if source.min_identity_percent == 0 {
+                            default_cdna_similarity_min_identity_fraction()
+                        } else {
+                            f64::from(source.min_identity_percent) / 100.0
+                        },
+                        catalog_path: source.catalog_path.clone(),
+                        cache_dir: source.cache_dir.clone(),
+                    },
+                    on_progress,
+                )?;
+                let bytes = serde_json::to_vec(&map).map_err(|error| {
+                    EngineError::internal(format!(
+                        "Could not content-bind generated cDNA similarity map: {error}"
+                    ))
+                })?;
+                Some(ResolvedTranscriptAssayCdnaSimilarityMap {
+                    report: map,
+                    sha256: sha256_prefixed_bytes(&bytes),
+                })
+            } else {
+                None
+            };
         let (mut primer_search_plan, targets) = Self::transcript_assay_build_primer_search_plan(
             &operation_sha256,
             &templates,
@@ -24824,6 +26899,7 @@ impl GentleEngine {
             min_3prime_junction_overlap_bp,
             min_5prime_junction_overlap_bp,
             &effective_search_policy,
+            generated_cdna_similarity_map.as_ref(),
         )?;
         if let Some(feasibility) = end_matrix_feasibility.as_mut() {
             feasibility.search_plan = Some(primer_search_plan.clone());
@@ -24903,10 +26979,15 @@ impl GentleEngine {
                     .unwrap_or_default(),
                 min_3prime_overlap_bp: min_3prime_junction_overlap_bp,
                 min_5prime_overlap_bp: min_5prime_junction_overlap_bp,
+                max_junction_single_side_match_bp: effective_search_policy
+                    .max_junction_single_side_match_bp,
                 left_window_0based: target.forward_window_0based,
                 right_window_0based: target.reverse_window_0based,
                 excluded_regions_0based: target.excluded_regions_0based.clone(),
                 max_poly_x: Some(effective_search_policy.max_homopolymer_run_bp),
+                chemistry_fields: Self::transcript_assay_primer3_chemistry_fields(
+                    &effective_search_policy.primer3_chemistry,
+                )?,
                 runtime_policy: effective_search_policy.clone(),
                 search_target_id: target.search_target_id.clone(),
                 search_record_id: target.search_record_id.clone(),
@@ -25073,6 +27154,7 @@ impl GentleEngine {
                             &pair,
                             min_3prime_junction_overlap_bp,
                             min_5prime_junction_overlap_bp,
+                            effective_search_policy.max_junction_single_side_match_bp,
                         )]
                     })
                     .unwrap_or_default();
@@ -26208,6 +28290,9 @@ impl GentleEngine {
             backend_runs,
             feasibility: end_matrix_feasibility,
             search_plan: Some(primer_search_plan),
+            generated_cdna_similarity_map: generated_cdna_similarity_map
+                .as_ref()
+                .map(|resolved| Box::new(resolved.report.clone())),
             end_classes: end_classes_internal
                 .iter()
                 .map(|class| class.report.clone())
@@ -32626,6 +34711,8 @@ impl GentleEngine {
             primer_variant_screen: None,
             transcript_qpcr_panel: None,
             transcript_assay_panel: None,
+            transcript_assay_cdna_similarity_map: None,
+            transcript_assay_specificity_redesign: None,
             gene_isoform_assay_study_plan: None,
             gene_transcript_assay_routine: None,
             experimental_assay_handoff: None,
@@ -38449,6 +40536,14 @@ impl GentleEngine {
                         report.report_id, report.pair_count, path
                     ));
                 }
+                Operation::ExportPrimerSpecificityAlignmentHtml { report_id, path } => {
+                    let report_sha256 =
+                        self.render_primer_specificity_alignment_html(&report_id, &path)?;
+                    result.messages.push(format!(
+                        "Rendered stored full-primer alignments for report '{}' (content {}) to '{}'",
+                        report_id, report_sha256, path
+                    ));
+                }
                 Operation::AssessPrimerPairSpecificity {
                     primer_report_id,
                     pair_rank,
@@ -39177,6 +41272,81 @@ impl GentleEngine {
                             .push(format!("Wrote transcript qPCR panel report to '{path}'"));
                     }
                     result.transcript_qpcr_panel = Some(Box::new(report));
+                }
+                Operation::BuildTranscriptAssayCdnaSimilarityMap { request, path } => {
+                    parent_seq_ids.push(request.seq_id.clone());
+                    let report =
+                        self.build_transcript_assay_cdna_similarity_map(&request, on_progress)?;
+                    result.warnings.extend(report.warnings.clone());
+                    result.messages.push(format!(
+                        "Built cDNA similarity map '{}' with {} interval(s) across {} transcript(s).",
+                        report.map_id,
+                        report.intervals.len(),
+                        report.target_transcript_ids.len()
+                    ));
+                    if let Some(path) = path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        let file = File::create(path).map_err(|error| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not create cDNA similarity map '{path}': {error}"
+                            ),
+                            cause_chain: vec![],
+                        })?;
+                        serde_json::to_writer_pretty(BufWriter::new(file), &report).map_err(
+                            |error| EngineError {
+                                code: ErrorCode::Io,
+                                message: format!(
+                                    "Could not serialize cDNA similarity map '{path}': {error}"
+                                ),
+                                cause_chain: vec![],
+                            },
+                        )?;
+                        result
+                            .messages
+                            .push(format!("Wrote cDNA similarity map to '{path}'"));
+                    }
+                    result.transcript_assay_cdna_similarity_map = Some(Box::new(report));
+                }
+                Operation::RedesignTranscriptAssaySpecificityFailures { request, path } => {
+                    let report = self
+                        .redesign_transcript_assay_specificity_failures(request, |progress| {
+                            on_progress(progress)
+                        })?;
+                    result.warnings.extend(report.warnings.clone());
+                    if let Some(path) = path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        let file = File::create(path).map_err(|error| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not create transcript-assay specificity redesign report '{path}': {error}"
+                            ),
+                            cause_chain: vec![],
+                        })?;
+                        serde_json::to_writer_pretty(BufWriter::new(file), &report).map_err(
+                            |error| EngineError {
+                                code: ErrorCode::Io,
+                                message: format!(
+                                    "Could not serialize transcript-assay specificity redesign report '{path}': {error}"
+                                ),
+                                cause_chain: vec![],
+                            },
+                        )?;
+                    }
+                    result.messages.push(format!(
+                        "Specificity redesign '{}' retained {} passing assay(s), proposed {} replacement candidate(s), and left {} failure(s) unresolved.",
+                        report.redesign_id,
+                        report.retained_passing_assay_ids.len(),
+                        report.replacement_candidate_count,
+                        report.unresolved_failure_count
+                    ));
+                    result.transcript_assay_specificity_redesign = Some(Box::new(report));
                 }
                 Operation::DesignTranscriptAssayPanel {
                     seq_id,

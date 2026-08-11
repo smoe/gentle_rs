@@ -3540,6 +3540,48 @@
       },
       {
          "aliases": [],
+         "engine_operations": [
+            "BuildTranscriptAssayCdnaSimilarityMap"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers build-transcript-assay-cdna-similarity-map",
+         "summary": "Build a content-bound advisory cDNA-similarity interval map from a prepared transcriptome BLAST resource.",
+         "usage": "primers build-transcript-assay-cdna-similarity-map REQUEST_JSON_OR_@FILE [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportPrimerSpecificityAlignmentHtml"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers specificity-alignment-html",
+         "summary": "Render complete primer alignments already stored in a specificity report without rerunning BLAST.",
+         "usage": "primers specificity-alignment-html REPORT_ID OUTPUT.html"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "RedesignTranscriptAssaySpecificityFailures"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers transcript-assay-specificity-redesign",
+         "summary": "Propose content-bound replacements or constrained infeasibility dispositions for assays rejected by complete specificity QA.",
+         "usage": "primers transcript-assay-specificity-redesign REQUEST_JSON_OR_@FILE [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
          "engine_operations": [],
          "interfaces": [
             "cli-shell",
@@ -3697,7 +3739,7 @@
          ],
          "path": "primers specificity",
          "summary": "Run local BLAST specificity interpretation for one persisted or explicit primer pair against a prepared genomic-DNA or transcriptome-cDNA resource.",
-         "usage": "primers specificity REPORT_ID --pair-rank N --target-genome GENOME_ID [--readiness-max-amplicon-bp N] [--exploratory-max-amplicon-bp N] [--report-detail compact|full] [--catalog PATH] [--cache-dir DIR] [--path OUTPUT.json]"
+         "usage": "primers specificity REPORT_ID --pair-rank N --target-genome GENOME_ID [--readiness-max-amplicon-bp N] [--exploratory-max-amplicon-bp N] [--report-detail compact|full] [--full-alignment disabled|best-effort|required] [--reviewed-off-target-allowlist JSON_ARRAY_OR_@FILE] [--catalog PATH] [--cache-dir DIR] [--path OUTPUT.json]"
       },
       {
          "aliases": [],
@@ -3786,7 +3828,7 @@
          ],
          "path": "primers specificity-plan",
          "summary": "Prepare a non-executing, provenance-bound two-command BLAST handoff for one primer pair so an outer scheduler can run the declared searches.",
-         "usage": "primers specificity-plan REPORT_ID --pair-rank N --target-genome GENOME_ID --output-dir DIR [--readiness-max-amplicon-bp N] [--exploratory-max-amplicon-bp N] [--report-detail compact|full] [--catalog PATH] [--cache-dir DIR]"
+         "usage": "primers specificity-plan REPORT_ID --pair-rank N --target-genome GENOME_ID --output-dir DIR [--readiness-max-amplicon-bp N] [--exploratory-max-amplicon-bp N] [--report-detail compact|full] [--full-alignment disabled|best-effort|required] [--reviewed-off-target-allowlist JSON_ARRAY_OR_@FILE] [--catalog PATH] [--cache-dir DIR]"
       },
       {
          "aliases": [],
@@ -3812,7 +3854,7 @@
          ],
          "path": "primers transcript-assay-specificity-plan",
          "summary": "Prepare one atomic external BLAST handoff for every selected assay in a persisted transcript panel, inheriting its ordinary amplicon ceiling unless explicitly overridden.",
-         "usage": "primers transcript-assay-specificity-plan PANEL_REPORT_ID --target-genome GENOME_ID --output-dir DIR [--readiness-max-amplicon-bp N] [--exploratory-max-amplicon-bp N] [--report-detail compact|full] [--catalog PATH] [--cache-dir DIR]"
+         "usage": "primers transcript-assay-specificity-plan PANEL_REPORT_ID --target-genome GENOME_ID --output-dir DIR [--readiness-max-amplicon-bp N] [--exploratory-max-amplicon-bp N] [--report-detail compact|full] [--full-alignment disabled|best-effort|required] [--reviewed-off-target-allowlist JSON_ARRAY_OR_@FILE] [--catalog PATH] [--cache-dir DIR]"
       },
       {
          "aliases": [],

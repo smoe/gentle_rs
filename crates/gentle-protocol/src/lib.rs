@@ -841,6 +841,71 @@ fn primer_specificity_legacy_full_detail_mode() -> PrimerSpecificityReportDetail
     PrimerSpecificityReportDetailMode::Full
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Whether BLAST-seeded hits receive an end-to-end primer realignment.
+pub enum PrimerSpecificityFullAlignmentMode {
+    Disabled,
+    #[default]
+    BestEffort,
+    Required,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Scoring and completeness policy for full-primer realignment after BLAST.
+pub struct PrimerSpecificityFullAlignmentPolicy {
+    pub mode: PrimerSpecificityFullAlignmentMode,
+    pub match_score: i32,
+    pub mismatch_score: i32,
+    pub gap_open_score: i32,
+    pub gap_extend_score: i32,
+    /// Additional subject-window flank. Zero means one complete primer length.
+    pub subject_flank_bp: usize,
+}
+
+impl Default for PrimerSpecificityFullAlignmentPolicy {
+    fn default() -> Self {
+        Self {
+            mode: PrimerSpecificityFullAlignmentMode::BestEffort,
+            match_score: 2,
+            mismatch_score: -3,
+            gap_open_score: -5,
+            gap_extend_score: -2,
+            subject_flank_bp: 0,
+        }
+    }
+}
+
+impl PrimerSpecificityFullAlignmentPolicy {
+    pub fn is_default(&self) -> bool {
+        self == &Self::default()
+    }
+}
+
+fn primer_specificity_legacy_full_alignment_policy() -> PrimerSpecificityFullAlignmentPolicy {
+    PrimerSpecificityFullAlignmentPolicy {
+        mode: PrimerSpecificityFullAlignmentMode::Disabled,
+        ..PrimerSpecificityFullAlignmentPolicy::default()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Human-reviewed acceptable product retained separately from intended targets.
+pub struct PrimerSpecificityReviewedOffTargetAllowance {
+    pub allowance_id: String,
+    pub target_space: String,
+    pub subject_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_1based: Option<usize>,
+    pub reviewer: String,
+    pub reason: String,
+    pub evidence_sha256: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 /// Local BLAST specificity policy shared by standalone confirmation and future
@@ -866,6 +931,13 @@ pub struct PrimerSpecificityPolicy {
     pub max_3prime_mismatches: usize,
     pub three_prime_window_bp: usize,
     pub min_total_mismatches_to_unintended_target: usize,
+    /// Missing on pre-extension payloads, which retain the historical
+    /// HSP-only interpretation. Newly constructed policies use `best_effort`
+    /// and serialize this field explicitly.
+    #[serde(default = "primer_specificity_legacy_full_alignment_policy")]
+    pub full_alignment: PrimerSpecificityFullAlignmentPolicy,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reviewed_off_target_allowlist: Vec<PrimerSpecificityReviewedOffTargetAllowance>,
     pub allow_same_gene_splice_variants: bool,
     pub max_hits_per_primer: usize,
     pub avoid_known_variants: bool,
@@ -888,6 +960,8 @@ impl Default for PrimerSpecificityPolicy {
             max_3prime_mismatches: 0,
             three_prime_window_bp: 5,
             min_total_mismatches_to_unintended_target: 2,
+            full_alignment: PrimerSpecificityFullAlignmentPolicy::default(),
+            reviewed_off_target_allowlist: vec![],
             allow_same_gene_splice_variants: false,
             max_hits_per_primer: 500,
             avoid_known_variants: false,
@@ -5318,6 +5392,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "PcrAdvanced",
     "PcrMutagenesis",
     "DesignPrimerPairs",
+    "ExportPrimerSpecificityAlignmentHtml",
     "DesignInsertionPrimerPairs",
     "ExportPrimerDesignReport",
     "AssessPrimerPairSpecificity",
@@ -5327,6 +5402,8 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "PrepareRestrictionCloningPcrHandoff",
     "PcrOverlapExtensionMutagenesis",
     "DesignQpcrAssays",
+    "BuildTranscriptAssayCdnaSimilarityMap",
+    "RedesignTranscriptAssaySpecificityFailures",
     "DesignTranscriptAssayPanel",
     "PlanGeneIsoformAssayStudy",
     "ComposeGeneTranscriptAssayRoutine",
@@ -5686,6 +5763,9 @@ const MCP_PROMINENT_GLOSSARY_COMMAND_PATHS: &[&str] = &[
     "collections run digest",
     "primers specificity-plan",
     "primers specificity-import",
+    "primers specificity-alignment-html",
+    "primers build-transcript-assay-cdna-similarity-map",
+    "primers transcript-assay-specificity-redesign",
     "workflow",
     "help",
     "genomes list",

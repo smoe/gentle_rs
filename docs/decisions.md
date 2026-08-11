@@ -644,3 +644,25 @@ honestly instead of rendering a gene without results as finished. A declared
 status is validated against those contents for the same reason: the label is
 only worth having if a reader can rely on it, which is why `resolved` without
 any assay handoff is an error rather than a silently empty section.
+
+## DEC-038: Primer Similarity Guides Search But Does Not Replace Specificity
+
+Status: active
+
+Background: Ye et al., *Primer-BLAST: A tool to design target-specific primers
+for polymerase chain reaction* (BMC Bioinformatics 2012),
+https://doi.org/10.1186/1471-2105-13-134.
+
+A broad cDNA or genomic BLAST search may identify loci and intervals where a
+primer is likely to cross-amplify, and GENtle may use that evidence to exclude
+or deprioritize Primer3 search windows. The planning artifact must bind the
+database content, query templates, coordinates, and exact treatment of each
+interval. Similarity alone never proves paralogy, target identity, or assay
+specificity.
+
+Final specificity remains a separate complete target-space gate. BLAST finds
+candidate loci; an explicit full-primer alignment may adjudicate their complete
+binding geometry and terminal differences. A reviewed off-target allowance is
+exact and evidence-bound, never a family-wide shortcut and never a way to turn
+an incomplete search into a pass. Replacement primers proposed after failure
+must re-enter the same cDNA and genomic gates.

@@ -27,18 +27,19 @@ use crate::engine::{
     EditableStatus, ExonSkipReturnKind, GeneIsoformAssayStudyWorkflowBatchRequestEntry,
     GeneSetCohortRelationship, GeneSetResolutionReviewStatus, InlineSequenceTopology,
     OrthologAmbiguityPolicy, PrimerDesignProgress, PrimerSpecificityAmpliconCeilingSource,
-    PrimerSpecificityReportDetailMode, PromoterCohortKind, PromoterTfbsGeneQuery,
-    ProteinExternalOpinionSource, ProteinFeatureFilter, QpcrTranscriptSpecificityEvidence,
-    QpcrTranscriptTargetingMode, Rack, RackAuthoringTemplate, RackCarrierLabelPreset,
-    RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
-    RackPlacementEntry, RackProfileKind, RackProfileSnapshot, ReadAcquisitionAnalysisFormat,
-    ReadAcquisitionReadLayout, RepeatEnvironmentGeometryMode, RestrictionCloningPcrHandoffMode,
-    RnaReadAlignConfig, RnaReadInterpretationHit, RnaReadInterpretationReport, RnaReadMappingHit,
-    RnaReadOriginClass, SequenceOrigin, SequenceScanTarget, TfThresholdOverride,
-    TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
-    TfbsTrackSimilarityRankingMetric, TranscriptAssayCdnaSynthesis, TranscriptAssayCoveragePolicy,
-    TranscriptAssayCoverageUniverse, TranscriptAssayCoverageUniverseKind,
-    TranscriptAssayJunctionPriority, TranscriptAssayKind, TranscriptAssayPanelObjective,
+    PrimerSpecificityFullAlignmentMode, PrimerSpecificityReportDetailMode, PromoterCohortKind,
+    PromoterTfbsGeneQuery, ProteinExternalOpinionSource, ProteinFeatureFilter,
+    QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargetingMode, Rack, RackAuthoringTemplate,
+    RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
+    RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
+    ReadAcquisitionAnalysisFormat, ReadAcquisitionReadLayout, RepeatEnvironmentGeometryMode,
+    RestrictionCloningPcrHandoffMode, RnaReadAlignConfig, RnaReadInterpretationHit,
+    RnaReadInterpretationReport, RnaReadMappingHit, RnaReadOriginClass, SequenceOrigin,
+    SequenceScanTarget, TfThresholdOverride, TfbsScoreTrackCorrelationSignalSource,
+    TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric, TranscriptAssayCdnaSynthesis,
+    TranscriptAssayCoveragePolicy, TranscriptAssayCoverageUniverse,
+    TranscriptAssayCoverageUniverseKind, TranscriptAssayJunctionPriority, TranscriptAssayKind,
+    TranscriptAssayPanelObjective,
 };
 use crate::ensembl_gene::{
     EnsemblGeneEntry, EnsemblGeneExonSummary, EnsemblGeneTranscriptSummary,
@@ -318,6 +319,7 @@ fn sample_value_for_usage_token(flag: &str, token: &str) -> String {
             | "WORKFLOW.json"
             | "<workflow-json-or-@file>"
             | "<operation-json-or-@file>" => "{}".to_string(),
+            "JSON_ARRAY_OR_@FILE" => "[]".to_string(),
             "FILE.json" | "GROUP.json" | "OUTPUT.json" | "TEMPLATE.json" => "out.json".to_string(),
             "ID" | "REPORT_ID" | "RUN_ID" | "TRACE_ID" => "id".to_string(),
             "i,j,k" => "1,2".to_string(),
@@ -7066,7 +7068,7 @@ fn parse_and_execute_collection_pool_export_uses_the_container_combine_contract(
 #[test]
 fn parse_primers_specificity_plan_and_import() {
     let plan = parse_shell_line(
-        "primers specificity-plan --forward ACGTACGTACGTACGTAC --reverse TTTTCCCCAAAAGGGGTT --target-genome GRCh38.p14 --output-dir specificity_run --max-hits-per-primer 75",
+        r#"primers specificity-plan --forward ACGTACGTACGTACGTAC --reverse TTTTCCCCAAAAGGGGTT --target-genome GRCh38.p14 --output-dir specificity_run --max-hits-per-primer 75 --full-alignment required --reviewed-off-target-allowlist '[{"allowance_id":"allow_1","target_space":"transcriptome_cdna","subject_id":"TX_ALLOWED","reviewer":"reviewer","reason":"reviewed expected family product","evidence_sha256":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]'"#,
     )
     .expect("parse specificity plan command");
     match plan {
@@ -7083,6 +7085,15 @@ fn parse_primers_specificity_plan_and_import() {
             assert_eq!(target_genome_id, "GRCh38.p14");
             assert_eq!(output_dir, "specificity_run");
             assert_eq!(policy.max_hits_per_primer, 75);
+            assert_eq!(
+                policy.full_alignment.mode,
+                PrimerSpecificityFullAlignmentMode::Required
+            );
+            assert_eq!(policy.reviewed_off_target_allowlist.len(), 1);
+            assert_eq!(
+                policy.reviewed_off_target_allowlist[0].allowance_id,
+                "allow_1"
+            );
         }
         other => panic!("unexpected command: {other:?}"),
     }
@@ -7102,7 +7113,7 @@ fn parse_primers_specificity_plan_and_import() {
 #[test]
 fn parse_primers_transcript_assay_specificity_plan_and_finalize() {
     let plan = parse_shell_line(
-        "primers transcript-assay-specificity-plan panel_1 --target-genome GRCh38.p14 --output-dir panel_specificity --readiness-max-amplicon-bp 1000 --exploratory-max-amplicon-bp 4000 --report-detail full --max-hits-per-primer 125 --avoid-rmsk-repeats",
+        "primers transcript-assay-specificity-plan panel_1 --target-genome GRCh38.p14 --output-dir panel_specificity --readiness-max-amplicon-bp 1000 --exploratory-max-amplicon-bp 4000 --report-detail full --full-alignment required --max-hits-per-primer 125 --avoid-rmsk-repeats",
     )
     .expect("parse transcript-assay specificity plan");
     match plan {
@@ -7129,6 +7140,10 @@ fn parse_primers_transcript_assay_specificity_plan_and_finalize() {
             );
             assert!(policy.avoid_rmsk_repeats);
             assert_eq!(
+                policy.full_alignment.mode,
+                PrimerSpecificityFullAlignmentMode::Required
+            );
+            assert_eq!(
                 policy.specificity_check,
                 PrimerSpecificityCheckMode::RequirePass
             );
@@ -7149,6 +7164,41 @@ fn parse_primers_transcript_assay_specificity_plan_and_finalize() {
         } if handoff_path == "panel_specificity/handoff.json"
             && execution_manifest_json == "@execution-manifest.json"
             && path.as_deref() == Some("acceptance.json")
+    ));
+}
+
+#[test]
+fn parse_primers_similarity_alignment_and_specificity_redesign_routes() {
+    let map = parse_shell_line(
+        "primers build-transcript-assay-cdna-similarity-map @map-request.json --path cdna-map.json",
+    )
+    .expect("parse cDNA similarity-map producer");
+    assert!(matches!(
+        map,
+        ShellCommand::PrimersBuildTranscriptAssayCdnaSimilarityMap { request_json, path }
+            if request_json == "@map-request.json"
+                && path.as_deref() == Some("cdna-map.json")
+    ));
+
+    let html = parse_shell_line(
+        "primers specificity-alignment-html specificity_1 specificity-alignments.html",
+    )
+    .expect("parse specificity full-alignment projection");
+    assert!(matches!(
+        html,
+        ShellCommand::PrimersSpecificityAlignmentHtml { report_id, path }
+            if report_id == "specificity_1" && path == "specificity-alignments.html"
+    ));
+
+    let redesign = parse_shell_line(
+        "primers transcript-assay-specificity-redesign @redesign.json --path redesign-report.json",
+    )
+    .expect("parse transcript-assay specificity redesign");
+    assert!(matches!(
+        redesign,
+        ShellCommand::PrimersTranscriptAssaySpecificityRedesign { request_json, path }
+            if request_json == "@redesign.json"
+                && path.as_deref() == Some("redesign-report.json")
     ));
 }
 
