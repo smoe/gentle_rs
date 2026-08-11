@@ -6874,9 +6874,10 @@ pub struct PrimerSpecificityInputPrimer {
 /// End-to-end primer alignment against a BLAST-seeded subject window.
 ///
 /// BLAST remains the exhaustive locus finder. This record captures the
-/// subsequent full-query semiglobal alignment used to count terminal and
-/// internal differences without treating a partial local HSP as a complete
-/// primer binding site.
+/// subsequent full-query evidence used to count terminal and internal
+/// differences without treating a partial local HSP as a complete primer
+/// binding site. New handoffs can supply a complete BLAST qseq/sseq alignment;
+/// partial and legacy HSPs retain semiglobal subject-window realignment.
 pub struct PrimerSpecificityFullAlignment {
     pub status: String,
     pub algorithm: String,

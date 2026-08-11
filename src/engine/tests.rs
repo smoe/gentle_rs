@@ -2913,6 +2913,9 @@ fn demo_blast_report() -> GenomeBlastReport {
                 evalue: 1e-9,
                 bit_score: 42.0,
                 query_coverage_percent: Some(100.0),
+                query_length: None,
+                aligned_query: None,
+                aligned_subject: None,
             },
             BlastHit {
                 subject_id: "chr2".to_string(),
@@ -2927,6 +2930,9 @@ fn demo_blast_report() -> GenomeBlastReport {
                 evalue: 1e-4,
                 bit_score: 27.0,
                 query_coverage_percent: Some(83.3),
+                query_length: None,
+                aligned_query: None,
+                aligned_subject: None,
             },
         ],
         warnings: vec![],
@@ -10665,6 +10671,9 @@ fn primer_specificity_uses_per_hsp_query_coordinates_not_aggregated_qcovs() {
         evalue: 1e-8,
         bit_score: 20.0,
         query_coverage_percent: Some(100.0),
+        query_length: None,
+        aligned_query: None,
+        aligned_subject: None,
     };
     assert_eq!(
         GentleEngine::primer_specificity_hsp_query_coverage_fraction(20, &hit),
@@ -10689,6 +10698,63 @@ fn primer_specificity_uses_per_hsp_query_coordinates_not_aggregated_qcovs() {
     assert_eq!(
         GentleEngine::primer_specificity_effective_mismatch_count(20, &reverse_query_coordinates),
         13
+    );
+}
+
+#[test]
+fn primer_specificity_uses_complete_blast_aligned_strings_without_subject_refetch() {
+    let query = "ACGTACGTACGT";
+    let hit = BlastHit {
+        subject_id: "ENST_DEMO.1".to_string(),
+        identity_percent: 91.7,
+        alignment_length: 12,
+        mismatches: 1,
+        gap_opens: 0,
+        query_start: 1,
+        query_end: 12,
+        subject_start: 240,
+        subject_end: 229,
+        evalue: 1e-8,
+        bit_score: 20.0,
+        query_coverage_percent: Some(100.0),
+        query_length: Some(12),
+        aligned_query: Some(query.to_string()),
+        aligned_subject: Some("ACGTACGTACGA".to_string()),
+    };
+    let alignment = GentleEngine::primer_specificity_full_alignment_from_blast_strings(
+        &hit,
+        query,
+        5,
+        &PrimerSpecificityFullAlignmentPolicy::default(),
+    )
+    .expect("valid aligned strings")
+    .expect("complete query HSP should provide native evidence");
+    assert_eq!(alignment.algorithm, "blast_full_query_aligned_strings_v1");
+    assert_eq!(alignment.status, "complete");
+    assert_eq!(alignment.strand, "-");
+    assert_eq!(alignment.aligned_subject_start_1based, 240);
+    assert_eq!(alignment.aligned_subject_end_1based, 229);
+    assert_eq!(alignment.effective_mismatches, 1);
+    assert_eq!(alignment.three_prime_mismatches, 1);
+    assert_eq!(alignment.relation_alignment, "|||||||||||X");
+
+    let partial = BlastHit {
+        query_start: 2,
+        query_end: 12,
+        aligned_query: Some(query[1..].to_string()),
+        aligned_subject: Some(query[1..].to_string()),
+        ..hit
+    };
+    assert!(
+        GentleEngine::primer_specificity_full_alignment_from_blast_strings(
+            &partial,
+            query,
+            5,
+            &PrimerSpecificityFullAlignmentPolicy::default(),
+        )
+        .expect("partial HSP is valid but not complete")
+        .is_none(),
+        "partial HSPs must retain the established subject-window realignment"
     );
 }
 
@@ -11929,6 +11995,12 @@ fn primer_specificity_handoff_plans_without_running_and_imports_completed_output
             command
                 .args
                 .windows(2)
+                .any(|row| { row[0] == "-outfmt" && row[1].ends_with("qcovs qlen qseq sseq") })
+        );
+        assert!(
+            command
+                .args
+                .windows(2)
                 .any(|row| row == ["-soft_masking", "false"])
         );
         fs::write(&command.output_tsv_path, "stale\n").expect("seed stale BLAST output");
@@ -11977,12 +12049,12 @@ fn primer_specificity_handoff_plans_without_running_and_imports_completed_output
         .expect("reverse command");
     fs::write(
         &forward.output_tsv_path,
-        "forward_annealing_segment\tchr1\t100\t20\t0\t0\t1\t20\t10\t29\t1e-20\t80\t100\n",
+        "forward_annealing_segment\tchr1\t100\t20\t0\t0\t1\t20\t10\t29\t1e-20\t80\t100\t20\tACGTACGTACGTACGTACGT\tACGTACGTACGTACGTACGT\n",
     )
     .expect("write forward BLAST output");
     fs::write(
         &reverse.output_tsv_path,
-        "reverse_annealing_segment\tchr1\t100\t20\t0\t0\t1\t20\t119\t100\t1e-20\t80\t100\n",
+        "reverse_annealing_segment\tchr1\t100\t20\t0\t0\t1\t20\t119\t100\t1e-20\t80\t100\t20\tCCCCCCCCCCCCCCCCCCCC\tCCCCCCCCCCCCCCCCCCCC\n",
     )
     .expect("write reverse BLAST output");
     let report_path = root.join("specificity_report.json");
@@ -12036,6 +12108,10 @@ fn primer_specificity_handoff_plans_without_running_and_imports_completed_output
         .as_ref()
         .expect("forward hit carries complete-primer alignment evidence");
     assert_eq!(forward_alignment.status, "complete");
+    assert_eq!(
+        forward_alignment.algorithm,
+        "blast_full_query_aligned_strings_v1"
+    );
     assert_eq!(forward_alignment.query_alignment, "ACGTACGTACGTACGTACGT");
     assert_eq!(
         forward_alignment.subject_alignment,

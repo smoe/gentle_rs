@@ -28,9 +28,8 @@ use crate::{
         intron_length_between_exons_0based, phase_entry_kind, transcript_entry_phase,
     },
     genomes::{
-        BLASTN_OUTFMT_FIELDS, BlastHit, BlastSubjectAnnotation, GenomeBlastReport,
-        default_catalog_discovery_label, default_catalog_discovery_token,
-        ensembl_transcript_stable_id, parse_blastn_tabular_hits,
+        BlastHit, BlastSubjectAnnotation, GenomeBlastReport, default_catalog_discovery_label,
+        default_catalog_discovery_token, ensembl_transcript_stable_id, parse_blastn_tabular_hits,
     },
     gibson_planning::{GibsonAssemblyPlan, derive_gibson_execution_plan},
     protein_gel::{
@@ -107,6 +106,7 @@ struct CanonicalTranscriptWindow {
 
 const TRANSCRIPT_ASSAY_DEFAULT_MAX_ASSAYS_PER_CLASS: usize = 12;
 const TRANSCRIPT_ASSAY_DEFAULT_ENDPOINT_PAIRS_PER_REACTION: usize = 4;
+const PRIMER_SPECIFICITY_BLASTN_OUTFMT_FIELDS: &str = "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs qlen qseq sseq";
 
 #[derive(Debug, Clone)]
 struct NormalizedCdnaAssayTestRequest {
@@ -10965,6 +10965,190 @@ impl GentleEngine {
         })
     }
 
+    /// Convert a BLAST HSP that covers the complete query into the same
+    /// persisted evidence shape as the subject-window realigner. Partial HSPs
+    /// deliberately return `None`: adjacent subject bases could improve their
+    /// alignment, so those retain the established semiglobal fallback.
+    pub(crate) fn primer_specificity_full_alignment_from_blast_strings(
+        hit: &BlastHit,
+        query_sequence: &str,
+        three_prime_window_bp: usize,
+        alignment_policy: &PrimerSpecificityFullAlignmentPolicy,
+    ) -> Result<Option<PrimerSpecificityFullAlignment>, String> {
+        let query = query_sequence.trim().to_ascii_uppercase();
+        let Some(query_length) = hit.query_length else {
+            return Ok(None);
+        };
+        let (Some(aligned_query), Some(aligned_subject)) =
+            (hit.aligned_query.as_deref(), hit.aligned_subject.as_deref())
+        else {
+            return Ok(None);
+        };
+        if query_length != query.len()
+            || hit.query_start.min(hit.query_end) != 1
+            || hit.query_start.max(hit.query_end) != query_length
+        {
+            return Ok(None);
+        }
+        if aligned_query.len() != aligned_subject.len() {
+            return Err(format!(
+                "BLAST aligned qseq/sseq lengths differ ({} versus {})",
+                aligned_query.len(),
+                aligned_subject.len()
+            ));
+        }
+        let aligned_query_bases = aligned_query.bytes().filter(|base| *base != b'-').count();
+        if aligned_query_bases != query_length {
+            return Err(format!(
+                "BLAST qseq represents {aligned_query_bases} query bases, expected {query_length}"
+            ));
+        }
+
+        let query_bytes = query.as_bytes();
+        let three_prime_window_bp = three_prime_window_bp.min(query_length);
+        let three_prime_start = query_length.saturating_sub(three_prime_window_bp);
+        let mut query_pos = 0usize;
+        let mut query_alignment = String::with_capacity(aligned_query.len());
+        let mut relation_alignment = String::with_capacity(aligned_query.len());
+        let mut subject_alignment = String::with_capacity(aligned_query.len());
+        let mut cigar = String::new();
+        let mut cigar_code = '\0';
+        let mut cigar_len = 0usize;
+        let mut matches = 0usize;
+        let mut mismatches = 0usize;
+        let mut insertions = 0usize;
+        let mut deletions = 0usize;
+        let mut three_prime_mismatches = 0usize;
+        let mut score = 0i32;
+        let mut previous_gap_code = None;
+        let mut push_cigar = |code: char| {
+            if cigar_len == 0 {
+                cigar_code = code;
+                cigar_len = 1;
+            } else if cigar_code == code {
+                cigar_len += 1;
+            } else {
+                cigar.push_str(&format!("{cigar_len}{cigar_code}"));
+                cigar_code = code;
+                cigar_len = 1;
+            }
+        };
+        for (query_base, subject_base) in aligned_query.bytes().zip(aligned_subject.bytes()) {
+            query_alignment.push(query_base as char);
+            subject_alignment.push(subject_base as char);
+            match (query_base, subject_base) {
+                (b'-', b'-') => {
+                    return Err("BLAST alignment contains a double-gap column".to_string());
+                }
+                (b'-', _) => {
+                    relation_alignment.push(' ');
+                    deletions += 1;
+                    if query_pos >= three_prime_start {
+                        three_prime_mismatches += 1;
+                    }
+                    score += if previous_gap_code == Some('D') {
+                        alignment_policy.gap_extend_score
+                    } else {
+                        alignment_policy.gap_open_score + alignment_policy.gap_extend_score
+                    };
+                    previous_gap_code = Some('D');
+                    push_cigar('D');
+                }
+                (_, b'-') => {
+                    relation_alignment.push(' ');
+                    insertions += 1;
+                    if query_pos >= three_prime_start {
+                        three_prime_mismatches += 1;
+                    }
+                    score += if previous_gap_code == Some('I') {
+                        alignment_policy.gap_extend_score
+                    } else {
+                        alignment_policy.gap_open_score + alignment_policy.gap_extend_score
+                    };
+                    previous_gap_code = Some('I');
+                    query_pos += 1;
+                    push_cigar('I');
+                }
+                (_, _) => {
+                    let expected_query_base = query_bytes.get(query_pos).copied().unwrap_or(b'N');
+                    if !Self::primer_specificity_iupac_bases_match(expected_query_base, query_base)
+                    {
+                        return Err(format!(
+                            "BLAST qseq disagrees with the submitted primer at query position {}",
+                            query_pos + 1
+                        ));
+                    }
+                    if Self::primer_specificity_iupac_bases_match(query_base, subject_base) {
+                        previous_gap_code = None;
+                        relation_alignment.push('|');
+                        matches += 1;
+                        score += alignment_policy.match_score;
+                        push_cigar('=');
+                    } else {
+                        previous_gap_code = None;
+                        relation_alignment.push('X');
+                        mismatches += 1;
+                        score += alignment_policy.mismatch_score;
+                        if query_pos >= three_prime_start {
+                            three_prime_mismatches += 1;
+                        }
+                        push_cigar('X');
+                    }
+                    query_pos += 1;
+                }
+            }
+        }
+        if query_pos != query_length {
+            return Err(format!(
+                "BLAST qseq consumed {query_pos} query bases, expected {query_length}"
+            ));
+        }
+        if cigar_len > 0 {
+            cigar.push_str(&format!("{cigar_len}{cigar_code}"));
+        }
+        let subject_min = hit.subject_start.min(hit.subject_end);
+        let subject_max = hit.subject_start.max(hit.subject_end);
+        let effective_mismatches = mismatches
+            .saturating_add(insertions)
+            .saturating_add(deletions);
+        let ungapped_subject = aligned_subject
+            .bytes()
+            .filter(|base| *base != b'-')
+            .collect::<Vec<_>>();
+        Ok(Some(PrimerSpecificityFullAlignment {
+            status: "complete".to_string(),
+            algorithm: "blast_full_query_aligned_strings_v1".to_string(),
+            match_score: alignment_policy.match_score,
+            mismatch_score: alignment_policy.mismatch_score,
+            gap_open_score: alignment_policy.gap_open_score,
+            gap_extend_score: alignment_policy.gap_extend_score,
+            score,
+            subject_window_start_1based: subject_min,
+            subject_window_end_1based: subject_max,
+            aligned_subject_start_1based: hit.subject_start,
+            aligned_subject_end_1based: hit.subject_end,
+            strand: if hit.subject_start <= hit.subject_end {
+                "+"
+            } else {
+                "-"
+            }
+            .to_string(),
+            query_alignment,
+            relation_alignment,
+            subject_alignment,
+            cigar,
+            matches,
+            mismatches,
+            insertions,
+            deletions,
+            effective_mismatches,
+            three_prime_window_bp,
+            three_prime_mismatches,
+            subject_window_sha256: sha256_prefixed_bytes(&ungapped_subject),
+            warning: None,
+        }))
+    }
+
     fn primer_specificity_html_escape(value: &str) -> String {
         value
             .replace('&', "&amp;")
@@ -11100,11 +11284,53 @@ impl GentleEngine {
                 }
             }
         };
-        let full_alignment =
-            if policy.full_alignment.mode == PrimerSpecificityFullAlignmentMode::Disabled {
-                None
-            } else {
-                match Self::primer_specificity_full_alignment(
+        let full_alignment = if policy.full_alignment.mode
+            == PrimerSpecificityFullAlignmentMode::Disabled
+        {
+            None
+        } else {
+            let aligned_string_result = Self::primer_specificity_full_alignment_from_blast_strings(
+                &canonical_hit,
+                query_sequence,
+                policy.three_prime_window_bp,
+                &policy.full_alignment,
+            );
+            match aligned_string_result {
+                Ok(Some(alignment)) => Some(alignment),
+                Err(error) => {
+                    warnings.push(format!(
+                        "Could not use aligned BLAST strings for the {} primer on {}: {}; falling back to subject-window realignment",
+                        role.as_str(), canonical_hit.subject_id, error
+                    ));
+                    match Self::primer_specificity_full_alignment(
+                        catalog,
+                        target_genome_id,
+                        cache_dir,
+                        &canonical_hit,
+                        query_sequence,
+                        policy.three_prime_window_bp,
+                        &policy.full_alignment,
+                    ) {
+                        Ok(alignment) => Some(alignment),
+                        Err(error) => Some(PrimerSpecificityFullAlignment {
+                            status: "unavailable".to_string(),
+                            algorithm: "full_query_semiglobal_subject_window_v1".to_string(),
+                            match_score: policy.full_alignment.match_score,
+                            mismatch_score: policy.full_alignment.mismatch_score,
+                            gap_open_score: policy.full_alignment.gap_open_score,
+                            gap_extend_score: policy.full_alignment.gap_extend_score,
+                            strand: if canonical_hit.subject_start <= canonical_hit.subject_end {
+                                "+".to_string()
+                            } else {
+                                "-".to_string()
+                            },
+                            three_prime_window_bp: policy.three_prime_window_bp,
+                            warning: Some(error),
+                            ..PrimerSpecificityFullAlignment::default()
+                        }),
+                    }
+                }
+                Ok(None) => match Self::primer_specificity_full_alignment(
                     catalog,
                     target_genome_id,
                     cache_dir,
@@ -11151,8 +11377,9 @@ impl GentleEngine {
                             ..PrimerSpecificityFullAlignment::default()
                         })
                     }
-                }
-            };
+                },
+            }
+        };
         let three_prime_mismatches = full_alignment
             .as_ref()
             .filter(|alignment| alignment.status == "complete")
@@ -15173,7 +15400,7 @@ impl GentleEngine {
                 "-task".to_string(),
                 effective_options.task.clone(),
                 "-outfmt".to_string(),
-                BLASTN_OUTFMT_FIELDS.to_string(),
+                PRIMER_SPECIFICITY_BLASTN_OUTFMT_FIELDS.to_string(),
                 "-evalue".to_string(),
                 "1000".to_string(),
                 "-dust".to_string(),

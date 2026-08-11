@@ -1,5 +1,14 @@
 # GENtle Changelog
 
+- Made exhaustive cDNA primer-specificity handoff import scale with complete
+  BLAST HSP count. New handoffs retain validated `qlen`/`qseq`/`sseq` fields
+  and convert complete-query HSPs directly into persisted full-primer
+  evidence; legacy and partial HSPs keep the established subject-window
+  semiglobal fallback. Existing subject-grouped bounded product pairing and
+  all native completeness, intended-target, allowlist, and provenance gates
+  remain authoritative. Independent linear-fallback reports are not promoted
+  into native GENtle passes.
+
 - Made biological workflow extension an explicit GENtle development path.
   A new guide classifies related requests as parameterization, engine-service
   composition, or a missing primitive; documents reusable private

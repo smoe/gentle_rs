@@ -8356,6 +8356,13 @@ GENtle project.
     3-prime mismatches, binding coordinates, scoring parameters, and subject
     window hash. `required` makes a missing full alignment an incomplete
     search; no local HSP may stand in for unavailable end-to-end evidence
+  - new primer-specificity handoffs request BLAST `qlen`, `qseq`, and `sseq`.
+    A validated HSP spanning the complete primer is converted directly into
+    the same persisted full-alignment evidence, avoiding one reference lookup
+    and dynamic-programming alignment per HSP. Partial or legacy 13-column
+    HSPs retain the subject-window semiglobal path. The stored `algorithm`
+    distinguishes these methods; only GENtle's normal completeness, intended
+    product, allowlist, and finalization gates can produce a native pass
   - prepared transcriptome resources add optional `subject_annotation` to
     primer hits and candidate amplicons. It includes the full and normalized
     transcript stable id, full and normalized gene stable id, `gene_symbol`,

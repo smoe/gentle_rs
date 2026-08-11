@@ -2942,6 +2942,15 @@ pub struct BlastHit {
     pub evalue: f64,
     pub bit_score: f64,
     pub query_coverage_percent: Option<f64>,
+    /// Query length and aligned strings are requested for new searches so
+    /// primer specificity can assess complete HSPs without refetching each
+    /// subject window. Legacy 13-column outputs leave these fields absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query_length: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aligned_query: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aligned_subject: Option<String>,
 }
 
 /// Complete BLAST run report, including invocation context and warnings.
@@ -12257,10 +12266,10 @@ pub(crate) fn parse_blastn_tabular_hits(stdout: &str) -> (Vec<BlastHit>, Vec<Str
             continue;
         }
         let cols: Vec<&str> = trimmed.split('\t').collect();
-        if cols.len() < 13 {
+        if cols.len() < 13 || (cols.len() > 13 && cols.len() < 16) {
             if warnings.len() < 20 {
                 warnings.push(format!(
-                    "BLAST output line {} skipped: expected 13 tab-separated fields, got {}",
+                    "BLAST output line {} skipped: expected either 13 legacy or at least 16 aligned tab-separated fields, got {}",
                     idx + 1,
                     cols.len()
                 ));
@@ -12276,6 +12285,26 @@ pub(crate) fn parse_blastn_tabular_hits(stdout: &str) -> (Vec<BlastHit>, Vec<Str
                 .map_err(|e| format!("could not parse {name}='{raw}': {e}"))
         };
         let parsed: Result<BlastHit, String> = (|| {
+            let (query_length, aligned_query, aligned_subject) = if cols.len() >= 16 {
+                let query_length = parse_usize(cols[13], "qlen")?;
+                if cols[14].is_empty() || cols[15].is_empty() {
+                    return Err("aligned qseq/sseq must not be empty".to_string());
+                }
+                if cols[14].len() != cols[15].len() {
+                    return Err(format!(
+                        "aligned qseq/sseq lengths differ ({} versus {})",
+                        cols[14].len(),
+                        cols[15].len()
+                    ));
+                }
+                (
+                    Some(query_length),
+                    Some(cols[14].to_ascii_uppercase()),
+                    Some(cols[15].to_ascii_uppercase()),
+                )
+            } else {
+                (None, None, None)
+            };
             Ok(BlastHit {
                 subject_id: cols[1].to_string(),
                 identity_percent: parse_f64(cols[2], "pident")?,
@@ -12289,6 +12318,9 @@ pub(crate) fn parse_blastn_tabular_hits(stdout: &str) -> (Vec<BlastHit>, Vec<Str
                 evalue: parse_f64(cols[10], "evalue")?,
                 bit_score: parse_f64(cols[11], "bitscore")?,
                 query_coverage_percent: cols[12].parse::<f64>().ok(),
+                query_length,
+                aligned_query,
+                aligned_subject,
             })
         })();
         match parsed {
@@ -19266,5 +19298,32 @@ mod tests {
         assert_eq!(hit.evalue, 1e-10);
         assert_eq!(hit.bit_score, 50.2);
         assert_eq!(hit.query_coverage_percent, Some(100.0));
+        assert_eq!(hit.query_length, None);
+        assert_eq!(hit.aligned_query, None);
+        assert_eq!(hit.aligned_subject, None);
+    }
+
+    #[test]
+    fn test_parse_blastn_tabular_hits_reads_optional_aligned_strings() {
+        let stdout = "query\tsubject1\t95.0\t21\t1\t1\t1\t20\t100\t119\t1e-8\t42\t100\t20\tACGTACGTACGTACGTACGT\tACGTACGTACGTACGTAC-T\n";
+        let (hits, warnings) = parse_blastn_tabular_hits(stdout);
+        assert!(warnings.is_empty());
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].query_length, Some(20));
+        assert_eq!(
+            hits[0].aligned_query.as_deref(),
+            Some("ACGTACGTACGTACGTACGT")
+        );
+        assert_eq!(
+            hits[0].aligned_subject.as_deref(),
+            Some("ACGTACGTACGTACGTAC-T")
+        );
+
+        let (hits, warnings) = parse_blastn_tabular_hits(
+            "query\tsubject1\t100\t20\t0\t0\t1\t20\t100\t119\t1e-8\t42\t100\t20\tACGT\n",
+        );
+        assert!(hits.is_empty());
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("either 13 legacy or at least 16 aligned"));
     }
 }
