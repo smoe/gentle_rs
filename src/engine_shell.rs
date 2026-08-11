@@ -53193,6 +53193,76 @@ fn primerbank_target_sequence_species(dna: &DNAsequence, feature_id: usize) -> O
         .map(str::to_string)
 }
 
+#[inline(never)]
+fn execute_non_materializing_cdna_pcr(
+    engine: &GentleEngine,
+    seq_id: &str,
+    feature_id: usize,
+    forward_primer: &str,
+    reverse_primer: &str,
+    transcript_id: Option<&str>,
+    min_amplicon_bp: Option<usize>,
+    max_amplicon_bp: Option<usize>,
+    max_mismatches: Option<usize>,
+    require_3prime_exact_bases: Option<usize>,
+    transcript_order: Option<CdnaAssayTranscriptOrder>,
+    transcript_map_coordinate_mode: Option<CdnaAssayTranscriptMapCoordinateMode>,
+    path: Option<&str>,
+    svg_path: Option<&str>,
+) -> Result<ShellRunResult, String> {
+    let report = engine
+        .test_cdna_pcr_assay_with_map_options(
+            seq_id,
+            feature_id,
+            forward_primer,
+            reverse_primer,
+            transcript_id,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_mismatches,
+            require_3prime_exact_bases,
+            transcript_order.unwrap_or_default(),
+            transcript_map_coordinate_mode.unwrap_or_default(),
+        )
+        .map_err(|e| e.to_string())?;
+    if let Some(path) = path.map(str::trim).filter(|value| !value.is_empty()) {
+        let json_text = serde_json::to_string_pretty(&report)
+            .map_err(|e| format!("Could not serialize cDNA PCR assay-test report: {e}"))?;
+        ensure_shell_output_parent_dir(path)?;
+        fs::write(path, json_text)
+            .map_err(|e| format!("Could not write cDNA PCR assay-test report to '{path}': {e}"))?;
+    }
+    if let Some(svg_path) = svg_path.map(str::trim).filter(|value| !value.is_empty()) {
+        let svg = report
+            .transcript_map
+            .as_ref()
+            .map(|map| map.svg.as_str())
+            .unwrap_or_default();
+        ensure_shell_output_parent_dir(svg_path)?;
+        fs::write(svg_path, svg).map_err(|e| {
+            format!("Could not write cDNA PCR transcript-map SVG to '{svg_path}': {e}")
+        })?;
+    }
+    let preferred_artifacts = cdna_assay_preferred_artifacts(
+        svg_path,
+        "cDNA PCR transcript map",
+        None,
+        "cDNA PCR product gel",
+    );
+    Ok(ShellRunResult {
+        state_changed: false,
+        output: json!({
+            "schema": "gentle.cdna_assay_test_command.v1",
+            "report": report.clone(),
+            "cdna_assay_test_report": report,
+            "materialization": null,
+            "path": path,
+            "svg_path": svg_path,
+            "preferred_artifacts": preferred_artifacts,
+        }),
+    })
+}
+
 fn execute_primers_command(
     engine: &mut GentleEngine,
     command: &ShellCommand,
@@ -53512,28 +53582,21 @@ fn execute_primers_command(
                     expected_species.as_str()
                 ));
             }
-            let cdna_run = execute_primers_command(
+            let cdna_run = execute_non_materializing_cdna_pcr(
                 engine,
-                &ShellCommand::PrimersTestCdnaPcr {
-                    seq_id: seq_id.clone(),
-                    feature_id: *feature_id,
-                    forward_primer: pair.forward.sequence_5_to_3.clone(),
-                    reverse_primer: pair.reverse.sequence_5_to_3.clone(),
-                    transcript_id: transcript_id.clone(),
-                    min_amplicon_bp: *min_amplicon_bp,
-                    max_amplicon_bp: *max_amplicon_bp,
-                    max_mismatches: *max_mismatches,
-                    require_3prime_exact_bases: *require_3prime_exact_bases,
-                    transcript_order: *transcript_order,
-                    transcript_map_coordinate_mode: *transcript_map_coordinate_mode,
-                    path: None,
-                    svg_path: svg_path.clone(),
-                    materialize_products: false,
-                    product_output_prefix: None,
-                    product_gel_svg_path: None,
-                    product_gel_ladders: None,
-                },
-                options,
+                seq_id,
+                *feature_id,
+                &pair.forward.sequence_5_to_3,
+                &pair.reverse.sequence_5_to_3,
+                transcript_id.as_deref(),
+                *min_amplicon_bp,
+                *max_amplicon_bp,
+                *max_mismatches,
+                *require_3prime_exact_bases,
+                *transcript_order,
+                *transcript_map_coordinate_mode,
+                None,
+                svg_path.as_deref(),
             )?;
             let report = PrimerBankCdnaTestReport {
                 schema: PRIMERBANK_CDNA_TEST_REPORT_SCHEMA.to_string(),
@@ -54676,66 +54739,22 @@ fn execute_primers_command(
                     }),
                 });
             }
-            let report = engine
-                .test_cdna_pcr_assay_with_map_options(
-                    seq_id,
-                    *feature_id,
-                    forward_primer,
-                    reverse_primer,
-                    transcript_id.as_deref(),
-                    *min_amplicon_bp,
-                    *max_amplicon_bp,
-                    *max_mismatches,
-                    *require_3prime_exact_bases,
-                    transcript_order.unwrap_or_default(),
-                    transcript_map_coordinate_mode.unwrap_or_default(),
-                )
-                .map_err(|e| e.to_string())?;
-            if let Some(path) = path
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-            {
-                let json_text = serde_json::to_string_pretty(&report)
-                    .map_err(|e| format!("Could not serialize cDNA PCR assay-test report: {e}"))?;
-                ensure_shell_output_parent_dir(path)?;
-                fs::write(path, json_text).map_err(|e| {
-                    format!("Could not write cDNA PCR assay-test report to '{path}': {e}")
-                })?;
-            }
-            if let Some(svg_path) = svg_path
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-            {
-                let svg = report
-                    .transcript_map
-                    .as_ref()
-                    .map(|map| map.svg.as_str())
-                    .unwrap_or_default();
-                ensure_shell_output_parent_dir(svg_path)?;
-                fs::write(svg_path, svg).map_err(|e| {
-                    format!("Could not write cDNA PCR transcript-map SVG to '{svg_path}': {e}")
-                })?;
-            }
-            let preferred_artifacts = cdna_assay_preferred_artifacts(
+            execute_non_materializing_cdna_pcr(
+                engine,
+                seq_id,
+                *feature_id,
+                forward_primer,
+                reverse_primer,
+                transcript_id.as_deref(),
+                *min_amplicon_bp,
+                *max_amplicon_bp,
+                *max_mismatches,
+                *require_3prime_exact_bases,
+                *transcript_order,
+                *transcript_map_coordinate_mode,
+                path.as_deref(),
                 svg_path.as_deref(),
-                "cDNA PCR transcript map",
-                None,
-                "cDNA PCR product gel",
-            );
-            Ok(ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.cdna_assay_test_command.v1",
-                    "report": report.clone(),
-                    "cdna_assay_test_report": report,
-                    "materialization": null,
-                    "path": path,
-                    "svg_path": svg_path,
-                    "preferred_artifacts": preferred_artifacts,
-                }),
-            })
+            )
         }
         ShellCommand::PrimersTestCdnaQpcr {
             seq_id,
