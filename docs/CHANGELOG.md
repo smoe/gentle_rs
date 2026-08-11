@@ -1,5 +1,11 @@
 # GENtle Changelog
 
+- Added collapsed structured evidence panes beside construct-reasoning
+  inspection buttons. The GUI now presents action geometry, readable dotplot
+  mode, rationale, discrete evidence/context rows, repeat-family provenance,
+  and task-severity fields without flattening optional values into prose;
+  legacy provenance fallback and stale-action refusal remain unchanged.
+
 - Added deterministic related-sequence group-target primer design and explicit
   primer-pair Pareto alternatives. `DesignPrimerGroupTarget` aligns loaded
   members, derives exact conserved binding intervals, bounds work before

@@ -14454,6 +14454,63 @@ fn construct_reasoning_action_details_show_all_repeat_family_provenance() {
 }
 
 #[test]
+fn construct_reasoning_action_provenance_prefers_plural_and_falls_back_to_legacy() {
+    let legacy = crate::engine::ConstructReasoningRepeatFamilyProvenance {
+        source_kind: "legacy".to_string(),
+        family_name: Some("Legacy family".to_string()),
+        ..crate::engine::ConstructReasoningRepeatFamilyProvenance::default()
+    };
+    let plural = crate::engine::ConstructReasoningRepeatFamilyProvenance {
+        source_kind: "plural".to_string(),
+        family_name: Some("Current family".to_string()),
+        ..crate::engine::ConstructReasoningRepeatFamilyProvenance::default()
+    };
+    let action = ConstructReasoningInspectionAction {
+        repeat_family_provenance: Some(legacy.clone()),
+        repeat_family_provenances: vec![plural.clone()],
+        ..ConstructReasoningInspectionAction::default()
+    };
+
+    let preferred = MainAreaDna::construct_reasoning_repeat_family_provenances(&action);
+    assert_eq!(preferred, vec![&plural]);
+
+    let legacy_only = ConstructReasoningInspectionAction {
+        repeat_family_provenance: Some(legacy.clone()),
+        ..ConstructReasoningInspectionAction::default()
+    };
+    let fallback = MainAreaDna::construct_reasoning_repeat_family_provenances(&legacy_only);
+    assert_eq!(fallback, vec![&legacy]);
+}
+
+#[test]
+fn construct_reasoning_task_severity_pane_omits_absent_optional_fields() {
+    let severity = crate::engine::ConstructReasoningTaskSeverity::default();
+
+    let fields = MainAreaDna::construct_reasoning_task_severity_pane_fields(&severity);
+    let labels = fields.iter().map(|(label, _)| *label).collect::<Vec<_>>();
+
+    assert!(!labels.contains(&"Effective score"));
+    assert!(!labels.contains(&"Base score"));
+    assert!(!labels.contains(&"Objective adjustment"));
+    assert!(!labels.contains(&"Base severity"));
+    assert!(!labels.contains(&"Rationale"));
+    assert!(fields.iter().all(|(_, value)| !value.contains("None")));
+}
+
+#[test]
+fn construct_reasoning_stale_snapshot_disables_inspection_actions() {
+    assert!(!MainAreaDna::construct_reasoning_actions_enabled(
+        crate::engine::ConstructReasoningGraphFreshness::Stale
+    ));
+    assert!(MainAreaDna::construct_reasoning_actions_enabled(
+        crate::engine::ConstructReasoningGraphFreshness::Current
+    ));
+    assert!(MainAreaDna::construct_reasoning_actions_enabled(
+        crate::engine::ConstructReasoningGraphFreshness::Unknown
+    ));
+}
+
+#[test]
 fn focus_construct_reasoning_graph_prefers_requested_graph() {
     let dna = DNAsequence::from_sequence("ATGCGTATGCGTATGCGTATGCGT").expect("sequence");
     let mut state = ProjectState::default();
