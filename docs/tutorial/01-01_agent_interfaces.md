@@ -419,9 +419,120 @@ cargo run --quiet --bin gentle_cli -- shell 'features restriction-scan --sequenc
 That replay command is the audit trail. The model prompt is only how you got
 there.
 
-### A fact-grounded exercise for Mistral or another configured model
+### What is deterministic here?
 
-This exercise is deliberately modest but not trivial. It tests whether the
+It is accurate to call GENtle's **reviewed inner-agent execution boundary**
+deterministic. It is not accurate to promise that a generative provider will
+return byte-identical prose or choose the same command on every request.
+
+The boundary works as follows:
+
+- the provider response is parsed against `gentle.agent_response.v1`;
+- every suggested command must parse through GENtle's shared shell;
+- every current capability has a `fact_annotated` introspection descriptor;
+- bound readiness evaluates the declared preconditions against current facts;
+- the selected command runs through the same engine path as GUI Shell and CLI;
+- `introspect verify-effects` can check declared hard effects afterward.
+
+Thus, the model's suggestion is a proposal. Once the user selects one exact
+validated command, GENtle does not ask the model to reinterpret it during
+execution. External databases, network services, external binaries, timestamps,
+and provider sampling remain explicit sources of variability.
+
+### Exercise A: create and inspect a tiny restriction map
+
+This exercise is offline, quick, and covered end to end by introspection. Start
+with an empty project and ask the inner agent:
+
+```text
+Create one persistent linear DNA sequence named agent_toy from this exact
+sequence. Return one valid GENtle shared-shell command, use execution "ask",
+and do not use the network.
+
+ATGGAATTCAACCCGGGTTGAGCTCAAGGATCCTAA
+```
+
+The expected command path is `sequence create`. Before running the suggested
+row, its bound readiness can be checked in GUI Shell:
+
+```text
+introspect readiness sequence create --arg OUTPUT_ID=agent_toy
+```
+
+After review, run the suggestion. A conforming command is:
+
+```text
+sequence create --sequence-text ATGGAATTCAACCCGGGTTGAGCTCAAGGATCCTAA --output-id agent_toy --name "Agent toy restriction map" --topology linear
+```
+
+Verify the declared effect and the next operation's readiness:
+
+```text
+introspect verify-effects sequence create --arg OUTPUT_ID=agent_toy
+introspect readiness features restriction-scan --arg SEQ_ID=agent_toy
+```
+
+Now ask the agent:
+
+```text
+Inspect loaded sequence agent_toy for EcoRI and SmaI sites. Write the
+machine-readable scan to agent_toy.restriction_scan.json. Return one valid
+GENtle shared-shell command and use execution "ask".
+```
+
+A conforming suggestion is:
+
+```text
+features restriction-scan agent_toy --enzyme EcoRI --enzyme SmaI --path agent_toy.restriction_scan.json
+```
+
+The fixed sequence yields one EcoRI site and one blunt SmaI site. The report is
+also evidence that can satisfy the operation's declared `report.exists` effect:
+
+```text
+introspect verify-effects features restriction-scan --seq-id agent_toy --evidence agent_toy.restriction_scan.json
+```
+
+The important test is not whether the assistant uses identical wording. It is
+whether the proposed command parses, is ready for the bound sequence, produces
+the expected deterministic site rows, and verifies against its declared effect.
+
+### Exercise B: ask the agent to arrange the visible evidence
+
+This second exercise uses the same `agent_toy` record and stays inside the GUI.
+It checks that an agent can compose project facts with UI-host facts without
+inventing a new display mechanism:
+
+```text
+Open agent_toy in the DNA sequence viewer, show restriction-enzyme sites, and
+select the interval 3..17 using GENtle's 0-based, end-exclusive convention.
+Return the three GENtle commands in that order and mark each execution "ask".
+```
+
+The expected command paths are:
+
+```text
+ui open sequence-window agent_toy
+display show restriction-enzymes
+ui selection sequence-window agent_toy --range 3..17
+```
+
+Their readiness can be inspected before execution:
+
+```text
+introspect readiness ui open --arg TARGET=sequence-window --arg SEQ_ID=agent_toy --ui-host true
+introspect readiness display --arg TARGET=restriction-enzymes --arg VISIBLE=true --ui-host true
+introspect readiness ui selection --arg SEQ_ID=agent_toy --ui-host true
+```
+
+All three capabilities are `fact_annotated`. `ui open` and `ui selection`
+require an attached GUI host; `ui selection` additionally requires
+`sequence.exists(agent_toy)`. This makes a headless rejection just as
+explainable as a successful in-app run.
+
+### Exercise C: test open-world reasoning with Mistral or another provider
+
+This third exercise is deliberately modest but not trivial. It tests whether the
 model distinguishes a known project fact from an unsupported biological
 conclusion. It is suitable for Mistral as well as stronger reasoning models.
 

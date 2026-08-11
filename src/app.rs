@@ -968,7 +968,10 @@ pub struct GENtleApp {
     jaspar_background_task: Option<JasparBackgroundTask>,
     jaspar_catalog_report: Option<JasparCatalogReport>,
     jaspar_catalog_generation: u64,
-    jaspar_filtered_cache_key: Option<(u64, String)>,
+    jaspar_catalog_sort_column: JasparCatalogSortColumn,
+    jaspar_catalog_sort_ascending: bool,
+    jaspar_auto_species_attempted_ids: BTreeSet<String>,
+    jaspar_filtered_cache_key: Option<(u64, String, JasparCatalogSortColumn, bool)>,
     jaspar_filtered_cache_rows: Arc<Vec<JasparCatalogRow>>,
     jaspar_filtered_cache_hits: u64,
     jaspar_filtered_cache_misses: u64,
@@ -1881,6 +1884,16 @@ enum SequenceIngressTaskMessage {
         job_id: u64,
         result: Result<OpResult, EngineError>,
     },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum JasparCatalogSortColumn {
+    MotifId,
+    Name,
+    Length,
+    Consensus,
+    Species,
+    Collection,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -2804,6 +2817,9 @@ impl Default for GENtleApp {
             jaspar_background_task: None,
             jaspar_catalog_report: None,
             jaspar_catalog_generation: 0,
+            jaspar_catalog_sort_column: JasparCatalogSortColumn::MotifId,
+            jaspar_catalog_sort_ascending: true,
+            jaspar_auto_species_attempted_ids: BTreeSet::new(),
             jaspar_filtered_cache_key: None,
             jaspar_filtered_cache_rows: Arc::new(vec![]),
             jaspar_filtered_cache_hits: 0,
@@ -16153,6 +16169,14 @@ Error: `{err}`"
                     }
                 });
                 if ui
+                    .button(self.tr("menu.file.save_project"))
+                    .on_hover_text(self.tr("menu.file.save_project.hover"))
+                    .clicked()
+                {
+                    self.prompt_save_project();
+                    ui.close();
+                }
+                if ui
                     .add_enabled(
                         self.can_close_project(),
                         egui::Button::new(self.tr("menu.file.close_project")),
@@ -16244,14 +16268,6 @@ Error: `{err}`"
                     .clicked()
                 {
                     self.open_jaspar_expert_dialog();
-                    ui.close();
-                }
-                if ui
-                    .button(self.tr("menu.file.save_project"))
-                    .on_hover_text(self.tr("menu.file.save_project.hover"))
-                    .clicked()
-                {
-                    self.prompt_save_project();
                     ui.close();
                 }
                 if ui

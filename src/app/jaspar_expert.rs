@@ -13,6 +13,152 @@ use super::*;
 use crate::engine::{JasparCatalogRow, JasparScoreDistributionPanel};
 
 impl GENtleApp {
+    fn jaspar_catalog_text_cmp(left: &str, right: &str) -> std::cmp::Ordering {
+        left.to_ascii_uppercase()
+            .cmp(&right.to_ascii_uppercase())
+            .then_with(|| left.cmp(right))
+    }
+
+    fn jaspar_catalog_optional_text_cmp(
+        left: Option<&str>,
+        right: Option<&str>,
+    ) -> std::cmp::Ordering {
+        match (
+            left.map(str::trim).filter(|value| !value.is_empty()),
+            right.map(str::trim).filter(|value| !value.is_empty()),
+        ) {
+            (Some(left), Some(right)) => Self::jaspar_catalog_text_cmp(left, right),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
+        }
+    }
+
+    fn jaspar_catalog_species_label(row: &JasparCatalogRow) -> String {
+        let Some(summary) = row.remote_summary.as_ref() else {
+            return "—".to_string();
+        };
+        if summary.species_preview.is_empty() {
+            return if summary.species_count == 0 {
+                "None listed".to_string()
+            } else {
+                format!("{} species", summary.species_count)
+            };
+        }
+        let mut label = summary.species_preview.join(", ");
+        let additional = summary
+            .species_count
+            .saturating_sub(summary.species_preview.len());
+        if additional > 0 {
+            label.push_str(&format!(" (+{additional})"));
+        }
+        label
+    }
+
+    fn jaspar_catalog_row_cmp(
+        column: JasparCatalogSortColumn,
+        left: &JasparCatalogRow,
+        right: &JasparCatalogRow,
+    ) -> std::cmp::Ordering {
+        match column {
+            JasparCatalogSortColumn::MotifId => {
+                Self::jaspar_catalog_text_cmp(&left.motif_id, &right.motif_id)
+            }
+            JasparCatalogSortColumn::Name => Self::jaspar_catalog_optional_text_cmp(
+                left.motif_name.as_deref(),
+                right.motif_name.as_deref(),
+            ),
+            JasparCatalogSortColumn::Length => left.motif_length_bp.cmp(&right.motif_length_bp),
+            JasparCatalogSortColumn::Consensus => {
+                Self::jaspar_catalog_text_cmp(&left.consensus_iupac, &right.consensus_iupac)
+            }
+            JasparCatalogSortColumn::Species => Self::jaspar_catalog_text_cmp(
+                &Self::jaspar_catalog_species_label(left),
+                &Self::jaspar_catalog_species_label(right),
+            ),
+            JasparCatalogSortColumn::Collection => Self::jaspar_catalog_optional_text_cmp(
+                left.remote_summary
+                    .as_ref()
+                    .and_then(|summary| summary.collection.as_deref()),
+                right
+                    .remote_summary
+                    .as_ref()
+                    .and_then(|summary| summary.collection.as_deref()),
+            ),
+        }
+    }
+
+    fn set_jaspar_catalog_sort(&mut self, column: JasparCatalogSortColumn) {
+        if self.jaspar_catalog_sort_column == column {
+            self.jaspar_catalog_sort_ascending = !self.jaspar_catalog_sort_ascending;
+        } else {
+            self.jaspar_catalog_sort_column = column;
+            self.jaspar_catalog_sort_ascending = true;
+        }
+        self.jaspar_filtered_cache_key = None;
+    }
+
+    fn jaspar_catalog_sort_header_label(
+        active_column: JasparCatalogSortColumn,
+        ascending: bool,
+        column: JasparCatalogSortColumn,
+        label: &str,
+    ) -> String {
+        if active_column != column {
+            label.to_string()
+        } else if ascending {
+            format!("{label} ↑")
+        } else {
+            format!("{label} ↓")
+        }
+    }
+
+    fn jaspar_missing_visible_species_ids(
+        entries: &[JasparCatalogRow],
+        visible_ids: &[String],
+        attempted_ids: &BTreeSet<String>,
+    ) -> Vec<String> {
+        visible_ids
+            .iter()
+            .filter(|motif_id| !attempted_ids.contains(motif_id.as_str()))
+            .filter_map(|motif_id| {
+                entries
+                    .iter()
+                    .find(|row| row.motif_id == motif_id.as_str() && row.remote_summary.is_none())
+                    .map(|row| row.motif_id.clone())
+            })
+            .collect()
+    }
+
+    fn maybe_fetch_visible_jaspar_species(
+        &mut self,
+        entries: &[JasparCatalogRow],
+        visible_ids: &[String],
+    ) {
+        if self.jaspar_background_task.is_some() {
+            return;
+        }
+        let motifs = Self::jaspar_missing_visible_species_ids(
+            entries,
+            visible_ids,
+            &self.jaspar_auto_species_attempted_ids,
+        );
+        if motifs.is_empty() {
+            return;
+        }
+        self.jaspar_auto_species_attempted_ids
+            .extend(motifs.iter().cloned());
+        self.start_jaspar_background_task(
+            JasparBackgroundTaskKind::SyncVisibleMetadata,
+            Operation::SyncJasparRemoteMetadata {
+                motifs,
+                filter: None,
+                limit: None,
+                path: None,
+            },
+        );
+    }
+
     fn jaspar_catalog_rows_local_fallback(&self) -> Vec<JasparCatalogRow> {
         tf_motifs::list_motif_summaries()
             .into_iter()
@@ -29,12 +175,17 @@ impl GENtleApp {
     fn filtered_jaspar_catalog_rows(&mut self) -> Arc<Vec<JasparCatalogRow>> {
         crate::gentle_gui_profile_scope!("GENtleApp::filtered_jaspar_catalog_rows");
         let filter = self.jaspar_expert_filter.trim().to_ascii_uppercase();
-        let cache_key = (self.jaspar_catalog_generation, filter.clone());
+        let cache_key = (
+            self.jaspar_catalog_generation,
+            filter.clone(),
+            self.jaspar_catalog_sort_column,
+            self.jaspar_catalog_sort_ascending,
+        );
         if self.jaspar_filtered_cache_key.as_ref() == Some(&cache_key) {
             self.jaspar_filtered_cache_hits = self.jaspar_filtered_cache_hits.saturating_add(1);
             return Arc::clone(&self.jaspar_filtered_cache_rows);
         }
-        let rows: Vec<JasparCatalogRow> = self
+        let mut rows: Vec<JasparCatalogRow> = self
             .jaspar_catalog_report
             .as_ref()
             .map(|report| report.rows.clone())
@@ -54,6 +205,17 @@ impl GENtleApp {
                     || row.consensus_iupac.to_ascii_uppercase().contains(&filter)
             })
             .collect();
+        let sort_column = self.jaspar_catalog_sort_column;
+        let ascending = self.jaspar_catalog_sort_ascending;
+        rows.sort_by(|left, right| {
+            let primary = Self::jaspar_catalog_row_cmp(sort_column, left, right);
+            let primary = if ascending {
+                primary
+            } else {
+                primary.reverse()
+            };
+            primary.then_with(|| Self::jaspar_catalog_text_cmp(&left.motif_id, &right.motif_id))
+        });
         self.jaspar_filtered_cache_key = Some(cache_key);
         self.jaspar_filtered_cache_rows = Arc::new(rows);
         self.jaspar_filtered_cache_misses = self.jaspar_filtered_cache_misses.saturating_add(1);
@@ -715,7 +877,11 @@ impl GENtleApp {
                 .map(|row| row.motif_id.clone())
                 .unwrap_or_default();
         }
-        if self.jaspar_expert_view.is_none()
+        let expert_view_matches_selection = self
+            .jaspar_expert_view
+            .as_ref()
+            .is_some_and(|view| view.motif_id == self.jaspar_expert_selected_motif_id);
+        if !expert_view_matches_selection
             && !self.jaspar_expert_selected_motif_id.is_empty()
             && self.jaspar_background_task.is_none()
             && !self.jaspar_expert_fetch_remote_metadata
@@ -734,8 +900,16 @@ impl GENtleApp {
         );
         crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
             let jaspar_task_running = self.jaspar_background_task.is_some();
-            ui.label("Inspect local JASPAR entries through GENtle’s own matrix/scoring path, with optional remote species metadata from the JASPAR REST API.");
-            ui.horizontal(|ui| {
+            egui::ScrollArea::both()
+                .id_salt("jaspar_expert_window_scroll")
+                .scroll_bar_visibility(
+                    egui::scroll_area::ScrollBarVisibility::AlwaysVisible,
+                )
+                .auto_shrink([false, false])
+                .scroll_source(egui::scroll_area::ScrollSource::ALL)
+                .show(ui, |ui| {
+                    ui.label("Inspect local JASPAR entries through GENtle’s own matrix/scoring path, with optional remote species metadata from the JASPAR REST API.");
+                    ui.horizontal(|ui| {
                     ui.label("Filter");
                     ui.text_edit_singleline(&mut self.jaspar_expert_filter);
                     ui.separator();
@@ -816,6 +990,10 @@ impl GENtleApp {
                         ));
                         let selected_id = self.jaspar_expert_selected_motif_id.clone();
                         let mut next_selected_id = None;
+                        let mut next_sort_column = None;
+                        let mut visible_catalog_motif_ids = vec![];
+                        let sort_column = self.jaspar_catalog_sort_column;
+                        let sort_ascending = self.jaspar_catalog_sort_ascending;
                         let row_height = 24.0;
                         egui_extras::TableBuilder::new(ui)
                             .id_salt("jaspar_catalog_table")
@@ -827,25 +1005,40 @@ impl GENtleApp {
                             .column(egui_extras::Column::remainder().at_least(120.0))
                             .column(egui_extras::Column::exact(42.0))
                             .column(egui_extras::Column::exact(112.0))
-                            .column(egui_extras::Column::exact(56.0))
+                            .column(egui_extras::Column::exact(210.0))
                             .column(egui_extras::Column::exact(96.0))
                             .header(row_height, |mut header| {
-                                for label in [
-                                    "ID",
-                                    "Name",
-                                    "Len",
-                                    "Consensus",
-                                    "Species",
-                                    "Collection",
+                                for (column, label) in [
+                                    (JasparCatalogSortColumn::MotifId, "ID"),
+                                    (JasparCatalogSortColumn::Name, "Name"),
+                                    (JasparCatalogSortColumn::Length, "Len"),
+                                    (JasparCatalogSortColumn::Consensus, "Consensus"),
+                                    (JasparCatalogSortColumn::Species, "Species"),
+                                    (JasparCatalogSortColumn::Collection, "Collection"),
                                 ] {
                                     header.col(|ui| {
-                                        ui.strong(label);
+                                        let label = Self::jaspar_catalog_sort_header_label(
+                                            sort_column,
+                                            sort_ascending,
+                                            column,
+                                            label,
+                                        );
+                                        if ui
+                                            .selectable_label(sort_column == column, label)
+                                            .on_hover_text(
+                                                "Sort by this column; select again to reverse the order.",
+                                            )
+                                            .clicked()
+                                        {
+                                            next_sort_column = Some(column);
+                                        }
                                     });
                                 }
                             })
                             .body(|body| {
                                 body.rows(row_height, entries.len(), |mut table_row| {
                                     let row = &entries[table_row.index()];
+                                    visible_catalog_motif_ids.push(row.motif_id.clone());
                                     table_row.col(|ui| {
                                         if ui
                                             .selectable_label(
@@ -872,12 +1065,8 @@ impl GENtleApp {
                                         ui.monospace(&row.consensus_iupac);
                                     });
                                     table_row.col(|ui| {
-                                        ui.label(
-                                            row.remote_summary
-                                                .as_ref()
-                                                .map(|remote| remote.species_count.to_string())
-                                                .unwrap_or_else(|| "—".to_string()),
-                                        );
+                                        let species = Self::jaspar_catalog_species_label(row);
+                                        ui.label(&species).on_hover_text(species);
                                     });
                                     table_row.col(|ui| {
                                         ui.label(
@@ -889,6 +1078,9 @@ impl GENtleApp {
                                     });
                                 });
                             });
+                        if let Some(column) = next_sort_column {
+                            self.set_jaspar_catalog_sort(column);
+                        }
                         if let Some(motif_id) = next_selected_id {
                             self.jaspar_expert_selected_motif_id = motif_id;
                             if self.jaspar_background_task.is_none() {
@@ -903,6 +1095,14 @@ impl GENtleApp {
                                 "Catalog warnings: {}",
                                 report.warnings.join(" | ")
                             ));
+                        }
+                        self.maybe_fetch_visible_jaspar_species(
+                            entries.as_slice(),
+                            &visible_catalog_motif_ids,
+                        );
+                        if self.jaspar_background_task.is_some() {
+                            ui.ctx()
+                                .request_repaint_after(std::time::Duration::from_millis(100));
                         }
                     });
                     columns[1].vertical(|ui| {
@@ -1094,6 +1294,7 @@ impl GENtleApp {
                                     });
                                 });
                         }
+                    });
                     });
                 });
         });
@@ -1328,5 +1529,97 @@ mod tests {
         app.jaspar_expert_filter = "SP1".to_string();
         let _ = app.filtered_jaspar_catalog_rows();
         assert_eq!(app.jaspar_filtered_cache_misses, 2);
+    }
+
+    fn jaspar_test_catalog_row(
+        motif_id: &str,
+        motif_name: Option<&str>,
+        motif_length_bp: usize,
+    ) -> JasparCatalogRow {
+        JasparCatalogRow {
+            motif_id: motif_id.to_string(),
+            motif_name: motif_name.map(str::to_string),
+            consensus_iupac: motif_id.chars().rev().collect(),
+            motif_length_bp,
+            remote_summary: None,
+        }
+    }
+
+    #[test]
+    fn jaspar_catalog_sorting_handles_name_and_length_in_both_directions() {
+        let mut app = GENtleApp::default();
+        app.jaspar_catalog_report = Some(JasparCatalogReport {
+            rows: vec![
+                jaspar_test_catalog_row("M3", Some("zeta"), 8),
+                jaspar_test_catalog_row("M1", Some("Alpha"), 12),
+                jaspar_test_catalog_row("M2", Some("beta"), 6),
+            ],
+            registry_entry_count: 3,
+            returned_entry_count: 3,
+            ..JasparCatalogReport::default()
+        });
+        app.jaspar_catalog_generation = 1;
+
+        app.set_jaspar_catalog_sort(JasparCatalogSortColumn::Name);
+        let rows = app.filtered_jaspar_catalog_rows();
+        assert_eq!(
+            rows.iter()
+                .map(|row| row.motif_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["M1", "M2", "M3"]
+        );
+
+        app.set_jaspar_catalog_sort(JasparCatalogSortColumn::Name);
+        let rows = app.filtered_jaspar_catalog_rows();
+        assert_eq!(
+            rows.iter()
+                .map(|row| row.motif_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["M3", "M2", "M1"]
+        );
+
+        app.set_jaspar_catalog_sort(JasparCatalogSortColumn::Length);
+        let rows = app.filtered_jaspar_catalog_rows();
+        assert_eq!(
+            rows.iter()
+                .map(|row| row.motif_length_bp)
+                .collect::<Vec<_>>(),
+            vec![6, 8, 12]
+        );
+    }
+
+    #[test]
+    fn jaspar_catalog_species_label_shows_names_and_additional_count() {
+        let mut row = jaspar_test_catalog_row("M1", Some("Alpha"), 12);
+        row.remote_summary = Some(crate::engine::JasparCatalogRemoteSummary {
+            species_count: 4,
+            species_preview: vec!["Homo sapiens".to_string(), "Mus musculus".to_string()],
+            ..crate::engine::JasparCatalogRemoteSummary::default()
+        });
+
+        assert_eq!(
+            GENtleApp::jaspar_catalog_species_label(&row),
+            "Homo sapiens, Mus musculus (+2)"
+        );
+    }
+
+    #[test]
+    fn jaspar_catalog_auto_species_fetch_selects_only_visible_unattempted_rows() {
+        let missing = jaspar_test_catalog_row("M1", Some("Alpha"), 12);
+        let mut cached = jaspar_test_catalog_row("M2", Some("Beta"), 10);
+        cached.remote_summary = Some(crate::engine::JasparCatalogRemoteSummary {
+            species_count: 1,
+            species_preview: vec!["Homo sapiens".to_string()],
+            ..crate::engine::JasparCatalogRemoteSummary::default()
+        });
+        let attempted = jaspar_test_catalog_row("M3", Some("Gamma"), 8);
+        let entries = vec![missing, cached, attempted];
+        let visible_ids = vec!["M1".to_string(), "M2".to_string(), "M3".to_string()];
+        let attempted_ids = BTreeSet::from(["M3".to_string()]);
+
+        assert_eq!(
+            GENtleApp::jaspar_missing_visible_species_ids(&entries, &visible_ids, &attempted_ids,),
+            vec!["M1"]
+        );
     }
 }
