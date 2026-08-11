@@ -252,7 +252,7 @@
         "mcp_users",
         "contributors"
       ],
-      "notes": "Practical guide for the in-app Agent Assistant, provider quick starts, reviewed shared-shell suggestions, CLI/shared shell, MCP, and external coding agents.",
+      "notes": "Practical guide for the in-app Agent Assistant, provider quick starts including Mistral, bounded fact context, a fact-grounded agent exercise, reviewed shared-shell suggestions, CLI/shared shell, MCP, and external coding agents.",
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"

@@ -3152,6 +3152,7 @@ Shared shell command:
     - `primers specificity-import HANDOFF.json [--path OUTPUT.json]`
     - `primers transcript-assay-specificity-plan PANEL_REPORT_ID --target-genome GENOME_ID --output-dir DIR [same policy/catalog/cache options as specificity]`
     - `primers transcript-assay-specificity-finalize HANDOFF.json EXECUTION_MANIFEST_JSON_OR_@FILE [--path ACCEPTANCE.json]`
+    - `primers transcript-assay-specificity-redesign REQUEST_JSON_OR_@FILE [--path OUTPUT.json]`
     - PrimerBank lookup and transcript checks:
       - `primers primerbank search QUERY [--by gene-symbol|gene-id|genbank|protein|primerbank-id|keyword] [--species human|mouse|all] [--html SAVED.html] [--path OUTPUT.json]`
       - `primers primerbank show PRIMERBANK_ID [--species human|mouse|all] [--html SAVED.html] [--path OUTPUT.json]`

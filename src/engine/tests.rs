@@ -14301,10 +14301,13 @@ fn transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_o
             timeout_seconds: None,
         })
         .expect("prepare aggregate specificity genome");
-    let specificity_policy = PrimerSpecificityPolicy {
+    let mut specificity_policy = PrimerSpecificityPolicy {
         max_3prime_mismatches: 5,
         ..PrimerSpecificityPolicy::default()
     };
+    // This atomicity fixture supplies synthetic BLAST rows that are not
+    // sequence-consistent with its all-A reference; full alignment has its own tests.
+    specificity_policy.full_alignment.mode = PrimerSpecificityFullAlignmentMode::Disabled;
 
     for report_id in [
         "panel_external_pass",

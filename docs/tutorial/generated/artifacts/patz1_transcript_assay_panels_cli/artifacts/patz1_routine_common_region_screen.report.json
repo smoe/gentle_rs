@@ -365,6 +365,19 @@
             "practicality_classification": "allowed_nonpreferred",
             "common_region_status": "confirmed",
             "existing_candidate_score": 947.0215985703193,
+            "on_pareto_frontier": false,
+            "pareto_metrics": {
+              "single_product_target_count": 3,
+              "multiple_product_target_count": 0,
+              "no_product_target_count": 0,
+              "common_region_confirmed": true,
+              "practicality_rank": 2,
+              "existing_candidate_score": 947.0215985703193,
+              "tm_delta_c": 0.36892007148403394,
+              "primer_pair_complementary_run_bp": 4,
+              "primer_pair_3prime_complementary_run_bp": 3,
+              "amplicon_length_bp": 39
+            },
             "disposition": "not_selected",
             "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
           },
@@ -375,6 +388,19 @@
             "practicality_classification": "allowed_nonpreferred",
             "common_region_status": "confirmed",
             "existing_candidate_score": 936.7924161328128,
+            "on_pareto_frontier": false,
+            "pareto_metrics": {
+              "single_product_target_count": 3,
+              "multiple_product_target_count": 0,
+              "no_product_target_count": 0,
+              "common_region_confirmed": true,
+              "practicality_rank": 2,
+              "existing_candidate_score": 936.7924161328128,
+              "tm_delta_c": 0.2753791933593561,
+              "primer_pair_complementary_run_bp": 4,
+              "primer_pair_3prime_complementary_run_bp": 3,
+              "amplicon_length_bp": 38
+            },
             "disposition": "not_selected",
             "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
           },
@@ -385,6 +411,19 @@
             "practicality_classification": "allowed_nonpreferred",
             "common_region_status": "confirmed",
             "existing_candidate_score": 934.7997249899697,
+            "on_pareto_frontier": true,
+            "pareto_metrics": {
+              "single_product_target_count": 3,
+              "multiple_product_target_count": 0,
+              "no_product_target_count": 0,
+              "common_region_confirmed": true,
+              "practicality_rank": 2,
+              "existing_candidate_score": 934.7997249899697,
+              "tm_delta_c": 0.08001375050151438,
+              "primer_pair_complementary_run_bp": 4,
+              "primer_pair_3prime_complementary_run_bp": 2,
+              "amplicon_length_bp": 39
+            },
             "disposition": "not_selected",
             "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
           }
@@ -557,6 +596,122 @@
       }
     }
   ],
+  "pareto_frontier": {
+    "status": "complete_non_dominated_accepted_candidates",
+    "objective_directions": [
+      "single_product_target_count:maximize",
+      "multiple_product_target_count:minimize",
+      "no_product_target_count:minimize",
+      "common_region_confirmed:maximize",
+      "practicality_rank:maximize",
+      "existing_candidate_score:maximize",
+      "tm_delta_c:minimize",
+      "primer_pair_complementary_run_bp:minimize",
+      "primer_pair_3prime_complementary_run_bp:minimize"
+    ],
+    "accepted_candidate_count": 12,
+    "evaluated_candidate_count": 12,
+    "non_dominated_candidate_count": 5,
+    "retained_candidate_count": 5,
+    "truncated": false,
+    "alternatives": [
+      {
+        "pair_id": "primer_pair_409ac53f90485d3a",
+        "source_candidate_id": "transcript_assay_8b1abcb77b679385",
+        "design_template_id": "PATZ1-201",
+        "selected": true,
+        "metrics": {
+          "single_product_target_count": 3,
+          "multiple_product_target_count": 0,
+          "no_product_target_count": 0,
+          "common_region_confirmed": true,
+          "practicality_rank": 2,
+          "existing_candidate_score": 951.6945804098265,
+          "tm_delta_c": 0.14027097950867784,
+          "primer_pair_complementary_run_bp": 4,
+          "primer_pair_3prime_complementary_run_bp": 3,
+          "amplicon_length_bp": 40
+        },
+        "tradeoff_summary": "score=951.695; delta_tm=0.140 C; pair_complementarity=4/3 bp; single_product_targets=3; multiple_product_targets=0; no_product_targets=0; annotation_common_region_confirmed=true"
+      },
+      {
+        "pair_id": "primer_pair_887adcc6255dc96f",
+        "source_candidate_id": "transcript_assay_122e15a5fb80cf9b",
+        "design_template_id": "PATZ1-203",
+        "selected": false,
+        "metrics": {
+          "single_product_target_count": 3,
+          "multiple_product_target_count": 0,
+          "no_product_target_count": 0,
+          "common_region_confirmed": false,
+          "practicality_rank": 3,
+          "existing_candidate_score": 1014.5551098276085,
+          "tm_delta_c": 0.012244508619573935,
+          "primer_pair_complementary_run_bp": 6,
+          "primer_pair_3prime_complementary_run_bp": 2,
+          "amplicon_length_bp": 87
+        },
+        "tradeoff_summary": "score=1014.555; delta_tm=0.012 C; pair_complementarity=6/2 bp; single_product_targets=3; multiple_product_targets=0; no_product_targets=0; annotation_common_region_confirmed=false"
+      },
+      {
+        "pair_id": "primer_pair_6c8025862e9131f2",
+        "source_candidate_id": "transcript_assay_e37e210e13057c3b",
+        "design_template_id": "PATZ1-201",
+        "selected": false,
+        "metrics": {
+          "single_product_target_count": 3,
+          "multiple_product_target_count": 0,
+          "no_product_target_count": 0,
+          "common_region_confirmed": true,
+          "practicality_rank": 2,
+          "existing_candidate_score": 934.7997249899697,
+          "tm_delta_c": 0.08001375050151438,
+          "primer_pair_complementary_run_bp": 4,
+          "primer_pair_3prime_complementary_run_bp": 2,
+          "amplicon_length_bp": 39
+        },
+        "tradeoff_summary": "score=934.800; delta_tm=0.080 C; pair_complementarity=4/2 bp; single_product_targets=3; multiple_product_targets=0; no_product_targets=0; annotation_common_region_confirmed=true"
+      },
+      {
+        "pair_id": "primer_pair_db0886344e23cf1c",
+        "source_candidate_id": "transcript_assay_e9e8cd8b25a1adb7",
+        "design_template_id": "PATZ1-202",
+        "selected": false,
+        "metrics": {
+          "single_product_target_count": 1,
+          "multiple_product_target_count": 0,
+          "no_product_target_count": 2,
+          "common_region_confirmed": false,
+          "practicality_rank": 2,
+          "existing_candidate_score": 1012.1244154683359,
+          "tm_delta_c": 0.03377922658320642,
+          "primer_pair_complementary_run_bp": 5,
+          "primer_pair_3prime_complementary_run_bp": 2,
+          "amplicon_length_bp": 43
+        },
+        "tradeoff_summary": "score=1012.124; delta_tm=0.034 C; pair_complementarity=5/2 bp; single_product_targets=1; multiple_product_targets=0; no_product_targets=2; annotation_common_region_confirmed=false"
+      },
+      {
+        "pair_id": "primer_pair_ed3264560f3947d3",
+        "source_candidate_id": "transcript_assay_4bfca8feaf7962e9",
+        "design_template_id": "PATZ1-202",
+        "selected": false,
+        "metrics": {
+          "single_product_target_count": 1,
+          "multiple_product_target_count": 0,
+          "no_product_target_count": 2,
+          "common_region_confirmed": false,
+          "practicality_rank": 3,
+          "existing_candidate_score": 1010.2149849402733,
+          "tm_delta_c": 0.16425075298633374,
+          "primer_pair_complementary_run_bp": 5,
+          "primer_pair_3prime_complementary_run_bp": 3,
+          "amplicon_length_bp": 50
+        },
+        "tradeoff_summary": "score=1010.215; delta_tm=0.164 C; pair_complementarity=5/3 bp; single_product_targets=1; multiple_product_targets=0; no_product_targets=2; annotation_common_region_confirmed=false"
+      }
+    ]
+  },
   "detection_matrix": [
     {
       "assay_id": "transcript_assay_8b1abcb77b679385",
@@ -736,6 +891,10 @@
       "runtime_no_progress_reduce_after_secs": 18000,
       "continue_after_runtime_reduction": true
     },
+    "similarity_guided_record_count": 0,
+    "interval_evidence": [],
+    "hard_exclusion_interval_count": 0,
+    "soft_deprioritization_interval_count": 0,
     "records": [
       {
         "search_record_id": "primer_search_record_091aa7856643f74e",
@@ -781,6 +940,10 @@
         "estimated_right_candidate_count": 215,
         "estimated_candidate_pair_count": 11100,
         "candidate_pair_search_space_upper_bound": 46225,
+        "similarity_risk_interval_ids": [],
+        "similarity_risk_overlap_bp": 0,
+        "design_risk_interval_ids": [],
+        "design_risk_overlap_bp": 0,
         "primer3_fields": [
           {
             "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
@@ -851,6 +1014,10 @@
         "estimated_right_candidate_count": 275,
         "estimated_candidate_pair_count": 6875,
         "candidate_pair_search_space_upper_bound": 6875,
+        "similarity_risk_interval_ids": [],
+        "similarity_risk_overlap_bp": 0,
+        "design_risk_interval_ids": [],
+        "design_risk_overlap_bp": 0,
         "primer3_fields": [
           {
             "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
@@ -913,6 +1080,10 @@
         "estimated_right_candidate_count": 150,
         "estimated_candidate_pair_count": 22500,
         "candidate_pair_search_space_upper_bound": 22500,
+        "similarity_risk_interval_ids": [],
+        "similarity_risk_overlap_bp": 0,
+        "design_risk_interval_ids": [],
+        "design_risk_overlap_bp": 0,
         "primer3_fields": [
           {
             "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
@@ -975,6 +1146,10 @@
         "estimated_right_candidate_count": 25,
         "estimated_candidate_pair_count": 6875,
         "candidate_pair_search_space_upper_bound": 6875,
+        "similarity_risk_interval_ids": [],
+        "similarity_risk_overlap_bp": 0,
+        "design_risk_interval_ids": [],
+        "design_risk_overlap_bp": 0,
         "primer3_fields": [
           {
             "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
@@ -1035,6 +1210,10 @@
         "estimated_right_candidate_count": 100,
         "estimated_candidate_pair_count": 10000,
         "candidate_pair_search_space_upper_bound": 10000,
+        "similarity_risk_interval_ids": [],
+        "similarity_risk_overlap_bp": 0,
+        "design_risk_interval_ids": [],
+        "design_risk_overlap_bp": 0,
         "primer3_fields": [
           {
             "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
@@ -1095,6 +1274,10 @@
         "estimated_right_candidate_count": 105,
         "estimated_candidate_pair_count": 1650,
         "candidate_pair_search_space_upper_bound": 11025,
+        "similarity_risk_interval_ids": [],
+        "similarity_risk_overlap_bp": 0,
+        "design_risk_interval_ids": [],
+        "design_risk_overlap_bp": 0,
         "primer3_fields": [
           {
             "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
@@ -1155,6 +1338,10 @@
         "estimated_right_candidate_count": 105,
         "estimated_candidate_pair_count": 1650,
         "candidate_pair_search_space_upper_bound": 11025,
+        "similarity_risk_interval_ids": [],
+        "similarity_risk_overlap_bp": 0,
+        "design_risk_interval_ids": [],
+        "design_risk_overlap_bp": 0,
         "primer3_fields": [
           {
             "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
@@ -1216,6 +1403,10 @@
         "estimated_right_candidate_count": 3,
         "estimated_candidate_pair_count": 600,
         "candidate_pair_search_space_upper_bound": 600,
+        "similarity_risk_interval_ids": [],
+        "similarity_risk_overlap_bp": 0,
+        "design_risk_interval_ids": [],
+        "design_risk_overlap_bp": 0,
         "primer3_fields": [
           {
             "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
@@ -1278,6 +1469,10 @@
         "estimated_right_candidate_count": 350,
         "estimated_candidate_pair_count": 17500,
         "candidate_pair_search_space_upper_bound": 17500,
+        "similarity_risk_interval_ids": [],
+        "similarity_risk_overlap_bp": 0,
+        "design_risk_interval_ids": [],
+        "design_risk_overlap_bp": 0,
         "primer3_fields": [
           {
             "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
@@ -1338,6 +1533,10 @@
         "estimated_right_candidate_count": 105,
         "estimated_candidate_pair_count": 1650,
         "candidate_pair_search_space_upper_bound": 11025,
+        "similarity_risk_interval_ids": [],
+        "similarity_risk_overlap_bp": 0,
+        "design_risk_interval_ids": [],
+        "design_risk_overlap_bp": 0,
         "primer3_fields": [
           {
             "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
@@ -1398,6 +1597,10 @@
         "estimated_right_candidate_count": 105,
         "estimated_candidate_pair_count": 1650,
         "candidate_pair_search_space_upper_bound": 11025,
+        "similarity_risk_interval_ids": [],
+        "similarity_risk_overlap_bp": 0,
+        "design_risk_interval_ids": [],
+        "design_risk_overlap_bp": 0,
         "primer3_fields": [
           {
             "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
@@ -1459,6 +1662,10 @@
         "estimated_right_candidate_count": 200,
         "estimated_candidate_pair_count": 600,
         "candidate_pair_search_space_upper_bound": 600,
+        "similarity_risk_interval_ids": [],
+        "similarity_risk_overlap_bp": 0,
+        "design_risk_interval_ids": [],
+        "design_risk_overlap_bp": 0,
         "primer3_fields": [
           {
             "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
@@ -1520,6 +1727,10 @@
         "estimated_right_candidate_count": 200,
         "estimated_candidate_pair_count": 20000,
         "candidate_pair_search_space_upper_bound": 20000,
+        "similarity_risk_interval_ids": [],
+        "similarity_risk_overlap_bp": 0,
+        "design_risk_interval_ids": [],
+        "design_risk_overlap_bp": 0,
         "primer3_fields": [
           {
             "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
@@ -1581,6 +1792,10 @@
         "estimated_right_candidate_count": 300,
         "estimated_candidate_pair_count": 30000,
         "candidate_pair_search_space_upper_bound": 30000,
+        "similarity_risk_interval_ids": [],
+        "similarity_risk_overlap_bp": 0,
+        "design_risk_interval_ids": [],
+        "design_risk_overlap_bp": 0,
         "primer3_fields": [
           {
             "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
@@ -1642,6 +1857,10 @@
         "estimated_right_candidate_count": 100,
         "estimated_candidate_pair_count": 30000,
         "candidate_pair_search_space_upper_bound": 30000,
+        "similarity_risk_interval_ids": [],
+        "similarity_risk_overlap_bp": 0,
+        "design_risk_interval_ids": [],
+        "design_risk_overlap_bp": 0,
         "primer3_fields": [
           {
             "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
@@ -1704,6 +1923,10 @@
         "estimated_right_candidate_count": 200,
         "estimated_candidate_pair_count": 40000,
         "candidate_pair_search_space_upper_bound": 40000,
+        "similarity_risk_interval_ids": [],
+        "similarity_risk_overlap_bp": 0,
+        "design_risk_interval_ids": [],
+        "design_risk_overlap_bp": 0,
         "primer3_fields": [
           {
             "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
@@ -1766,6 +1989,10 @@
         "estimated_right_candidate_count": 50,
         "estimated_candidate_pair_count": 17500,
         "candidate_pair_search_space_upper_bound": 17500,
+        "similarity_risk_interval_ids": [],
+        "similarity_risk_overlap_bp": 0,
+        "design_risk_interval_ids": [],
+        "design_risk_overlap_bp": 0,
         "primer3_fields": [
           {
             "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
@@ -1827,6 +2054,10 @@
         "estimated_right_candidate_count": 100,
         "estimated_candidate_pair_count": 20000,
         "candidate_pair_search_space_upper_bound": 20000,
+        "similarity_risk_interval_ids": [],
+        "similarity_risk_overlap_bp": 0,
+        "design_risk_interval_ids": [],
+        "design_risk_overlap_bp": 0,
         "primer3_fields": [
           {
             "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
@@ -1887,6 +2118,10 @@
         "estimated_right_candidate_count": 105,
         "estimated_candidate_pair_count": 1650,
         "candidate_pair_search_space_upper_bound": 11025,
+        "similarity_risk_interval_ids": [],
+        "similarity_risk_overlap_bp": 0,
+        "design_risk_interval_ids": [],
+        "design_risk_overlap_bp": 0,
         "primer3_fields": [
           {
             "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
@@ -1947,6 +2182,10 @@
         "estimated_right_candidate_count": 105,
         "estimated_candidate_pair_count": 1650,
         "candidate_pair_search_space_upper_bound": 11025,
+        "similarity_risk_interval_ids": [],
+        "similarity_risk_overlap_bp": 0,
+        "design_risk_interval_ids": [],
+        "design_risk_overlap_bp": 0,
         "primer3_fields": [
           {
             "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",

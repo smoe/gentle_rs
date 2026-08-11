@@ -376,6 +376,18 @@
             "practicality_classification": "routine",
             "common_region_status": "not_common",
             "existing_candidate_score": 516.9601895927703,
+            "on_pareto_frontier": true,
+            "pareto_metrics": {
+              "single_product_target_count": 2,
+              "multiple_product_target_count": 0,
+              "no_product_target_count": 1,
+              "practicality_rank": 3,
+              "existing_candidate_score": 516.9601895927703,
+              "tm_delta_c": 0.16199052036148487,
+              "primer_pair_complementary_run_bp": 5,
+              "primer_pair_3prime_complementary_run_bp": 3,
+              "amplicon_length_bp": 77
+            },
             "disposition": "not_selected",
             "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
           },
@@ -386,6 +398,18 @@
             "practicality_classification": "routine",
             "common_region_status": "not_common",
             "existing_candidate_score": 515.7304106244142,
+            "on_pareto_frontier": false,
+            "pareto_metrics": {
+              "single_product_target_count": 2,
+              "multiple_product_target_count": 0,
+              "no_product_target_count": 1,
+              "practicality_rank": 3,
+              "existing_candidate_score": 515.7304106244142,
+              "tm_delta_c": 0.26347946877929473,
+              "primer_pair_complementary_run_bp": 6,
+              "primer_pair_3prime_complementary_run_bp": 3,
+              "amplicon_length_bp": 85
+            },
             "disposition": "not_selected",
             "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
           },
@@ -396,6 +420,18 @@
             "practicality_classification": "routine",
             "common_region_status": "not_common",
             "existing_candidate_score": 512.873241330826,
+            "on_pareto_frontier": false,
+            "pareto_metrics": {
+              "single_product_target_count": 2,
+              "multiple_product_target_count": 0,
+              "no_product_target_count": 1,
+              "practicality_rank": 3,
+              "existing_candidate_score": 512.873241330826,
+              "tm_delta_c": 0.4113379334586966,
+              "primer_pair_complementary_run_bp": 6,
+              "primer_pair_3prime_complementary_run_bp": 3,
+              "amplicon_length_bp": 86
+            },
             "disposition": "not_selected",
             "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
           }
@@ -750,6 +786,18 @@
             "practicality_classification": "routine",
             "common_region_status": "not_common",
             "existing_candidate_score": 499.853952133053,
+            "on_pareto_frontier": true,
+            "pareto_metrics": {
+              "single_product_target_count": 3,
+              "multiple_product_target_count": 0,
+              "no_product_target_count": 0,
+              "practicality_rank": 3,
+              "existing_candidate_score": 499.853952133053,
+              "tm_delta_c": 0.002302393347349607,
+              "primer_pair_complementary_run_bp": 7,
+              "primer_pair_3prime_complementary_run_bp": 3,
+              "amplicon_length_bp": 74
+            },
             "disposition": "not_selected",
             "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
           },
@@ -760,6 +808,18 @@
             "practicality_classification": "routine",
             "common_region_status": "not_common",
             "existing_candidate_score": 499.3728631293537,
+            "on_pareto_frontier": false,
+            "pareto_metrics": {
+              "single_product_target_count": 3,
+              "multiple_product_target_count": 0,
+              "no_product_target_count": 0,
+              "practicality_rank": 3,
+              "existing_candidate_score": 499.3728631293537,
+              "tm_delta_c": 0.0113568435323117,
+              "primer_pair_complementary_run_bp": 7,
+              "primer_pair_3prime_complementary_run_bp": 3,
+              "amplicon_length_bp": 71
+            },
             "disposition": "not_selected",
             "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
           },
@@ -770,6 +830,18 @@
             "practicality_classification": "routine",
             "common_region_status": "not_common",
             "existing_candidate_score": 492.00113173350564,
+            "on_pareto_frontier": false,
+            "pareto_metrics": {
+              "single_product_target_count": 3,
+              "multiple_product_target_count": 0,
+              "no_product_target_count": 0,
+              "practicality_rank": 3,
+              "existing_candidate_score": 492.00113173350564,
+              "tm_delta_c": 0.41994341332471663,
+              "primer_pair_complementary_run_bp": 7,
+              "primer_pair_3prime_complementary_run_bp": 3,
+              "amplicon_length_bp": 79
+            },
             "disposition": "not_selected",
             "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
           }
@@ -941,6 +1013,98 @@
       }
     }
   ],
+  "pareto_frontier": {
+    "status": "complete_non_dominated_accepted_candidates",
+    "objective_directions": [
+      "single_product_target_count:maximize",
+      "multiple_product_target_count:minimize",
+      "no_product_target_count:minimize",
+      "practicality_rank:maximize",
+      "existing_candidate_score:maximize",
+      "tm_delta_c:minimize",
+      "primer_pair_complementary_run_bp:minimize",
+      "primer_pair_3prime_complementary_run_bp:minimize"
+    ],
+    "accepted_candidate_count": 8,
+    "evaluated_candidate_count": 8,
+    "non_dominated_candidate_count": 4,
+    "retained_candidate_count": 4,
+    "truncated": false,
+    "alternatives": [
+      {
+        "pair_id": "primer_pair_8d0fc701aea29e50",
+        "source_candidate_id": "transcript_assay_46b04036f2ccda49",
+        "design_template_id": "PATZ1-202",
+        "selected": true,
+        "metrics": {
+          "single_product_target_count": 3,
+          "multiple_product_target_count": 0,
+          "no_product_target_count": 0,
+          "practicality_rank": 3,
+          "existing_candidate_score": 500.2272194249289,
+          "tm_delta_c": 0.00363902875355393,
+          "primer_pair_complementary_run_bp": 7,
+          "primer_pair_3prime_complementary_run_bp": 3,
+          "amplicon_length_bp": 78
+        },
+        "tradeoff_summary": "score=500.227; delta_tm=0.004 C; pair_complementarity=7/3 bp; single_product_targets=3; multiple_product_targets=0; no_product_targets=0"
+      },
+      {
+        "pair_id": "primer_pair_887adcc6255dc96f",
+        "source_candidate_id": "transcript_assay_27362fde0b95ba9d",
+        "design_template_id": "PATZ1-203",
+        "selected": true,
+        "metrics": {
+          "single_product_target_count": 2,
+          "multiple_product_target_count": 0,
+          "no_product_target_count": 1,
+          "practicality_rank": 3,
+          "existing_candidate_score": 520.9551098276086,
+          "tm_delta_c": 0.012244508619573935,
+          "primer_pair_complementary_run_bp": 6,
+          "primer_pair_3prime_complementary_run_bp": 2,
+          "amplicon_length_bp": 87
+        },
+        "tradeoff_summary": "score=520.955; delta_tm=0.012 C; pair_complementarity=6/2 bp; single_product_targets=2; multiple_product_targets=0; no_product_targets=1"
+      },
+      {
+        "pair_id": "primer_pair_9f7fe78097af4aac",
+        "source_candidate_id": "transcript_assay_9e4a56dc524f39f7",
+        "design_template_id": "PATZ1-202",
+        "selected": false,
+        "metrics": {
+          "single_product_target_count": 3,
+          "multiple_product_target_count": 0,
+          "no_product_target_count": 0,
+          "practicality_rank": 3,
+          "existing_candidate_score": 499.853952133053,
+          "tm_delta_c": 0.002302393347349607,
+          "primer_pair_complementary_run_bp": 7,
+          "primer_pair_3prime_complementary_run_bp": 3,
+          "amplicon_length_bp": 74
+        },
+        "tradeoff_summary": "score=499.854; delta_tm=0.002 C; pair_complementarity=7/3 bp; single_product_targets=3; multiple_product_targets=0; no_product_targets=0"
+      },
+      {
+        "pair_id": "primer_pair_f5474c0d5f52b49a",
+        "source_candidate_id": "transcript_assay_3e4c67551569075a",
+        "design_template_id": "PATZ1-203",
+        "selected": false,
+        "metrics": {
+          "single_product_target_count": 2,
+          "multiple_product_target_count": 0,
+          "no_product_target_count": 1,
+          "practicality_rank": 3,
+          "existing_candidate_score": 516.9601895927703,
+          "tm_delta_c": 0.16199052036148487,
+          "primer_pair_complementary_run_bp": 5,
+          "primer_pair_3prime_complementary_run_bp": 3,
+          "amplicon_length_bp": 77
+        },
+        "tradeoff_summary": "score=516.960; delta_tm=0.162 C; pair_complementarity=5/3 bp; single_product_targets=2; multiple_product_targets=0; no_product_targets=1"
+      }
+    ]
+  },
   "detection_matrix": [
     {
       "assay_id": "transcript_assay_27362fde0b95ba9d",
@@ -1454,6 +1618,10 @@
         "runtime_no_progress_reduce_after_secs": 18000,
         "continue_after_runtime_reduction": true
       },
+      "similarity_guided_record_count": 0,
+      "interval_evidence": [],
+      "hard_exclusion_interval_count": 0,
+      "soft_deprioritization_interval_count": 0,
       "records": [
         {
           "search_record_id": "primer_search_record_13030571c1ab006a",
@@ -1493,6 +1661,10 @@
           "estimated_right_candidate_count": 105,
           "estimated_candidate_pair_count": 9600,
           "candidate_pair_search_space_upper_bound": 11025,
+          "similarity_risk_interval_ids": [],
+          "similarity_risk_overlap_bp": 0,
+          "design_risk_interval_ids": [],
+          "design_risk_overlap_bp": 0,
           "primer3_fields": [
             {
               "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
@@ -1554,6 +1726,10 @@
           "estimated_right_candidate_count": 105,
           "estimated_candidate_pair_count": 11025,
           "candidate_pair_search_space_upper_bound": 11025,
+          "similarity_risk_interval_ids": [],
+          "similarity_risk_overlap_bp": 0,
+          "design_risk_interval_ids": [],
+          "design_risk_overlap_bp": 0,
           "primer3_fields": [
             {
               "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
@@ -1615,6 +1791,10 @@
           "estimated_right_candidate_count": 105,
           "estimated_candidate_pair_count": 1650,
           "candidate_pair_search_space_upper_bound": 11025,
+          "similarity_risk_interval_ids": [],
+          "similarity_risk_overlap_bp": 0,
+          "design_risk_interval_ids": [],
+          "design_risk_overlap_bp": 0,
           "primer3_fields": [
             {
               "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
@@ -1761,6 +1941,10 @@
       "runtime_no_progress_reduce_after_secs": 18000,
       "continue_after_runtime_reduction": true
     },
+    "similarity_guided_record_count": 0,
+    "interval_evidence": [],
+    "hard_exclusion_interval_count": 0,
+    "soft_deprioritization_interval_count": 0,
     "records": [
       {
         "search_record_id": "primer_search_record_13030571c1ab006a",
@@ -1800,6 +1984,10 @@
         "estimated_right_candidate_count": 105,
         "estimated_candidate_pair_count": 9600,
         "candidate_pair_search_space_upper_bound": 11025,
+        "similarity_risk_interval_ids": [],
+        "similarity_risk_overlap_bp": 0,
+        "design_risk_interval_ids": [],
+        "design_risk_overlap_bp": 0,
         "primer3_fields": [
           {
             "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
@@ -1861,6 +2049,10 @@
         "estimated_right_candidate_count": 105,
         "estimated_candidate_pair_count": 11025,
         "candidate_pair_search_space_upper_bound": 11025,
+        "similarity_risk_interval_ids": [],
+        "similarity_risk_overlap_bp": 0,
+        "design_risk_interval_ids": [],
+        "design_risk_overlap_bp": 0,
         "primer3_fields": [
           {
             "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",
@@ -1922,6 +2114,10 @@
         "estimated_right_candidate_count": 105,
         "estimated_candidate_pair_count": 1650,
         "candidate_pair_search_space_upper_bound": 11025,
+        "similarity_risk_interval_ids": [],
+        "similarity_risk_overlap_bp": 0,
+        "design_risk_interval_ids": [],
+        "design_risk_overlap_bp": 0,
         "primer3_fields": [
           {
             "name": "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST",

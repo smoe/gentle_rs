@@ -1544,5 +1544,63 @@
     "primer3_explain": null,
     "primer3_request_boulder_io": null
   },
-  "construct_reasoning_graph_id": "primer_design_reasoning_tp73_as2_promoter_batch_r02"
+  "construct_reasoning_graph_id": "primer_design_reasoning_tp73_as2_promoter_batch_r02",
+  "pareto_frontier": {
+    "status": "complete_non_dominated_accepted_candidates",
+    "objective_directions": [
+      "existing_candidate_score:maximize",
+      "tm_delta_c:minimize",
+      "primer_pair_complementary_run_bp:minimize",
+      "primer_pair_3prime_complementary_run_bp:minimize"
+    ],
+    "accepted_candidate_count": 5,
+    "evaluated_candidate_count": 5,
+    "non_dominated_candidate_count": 3,
+    "retained_candidate_count": 3,
+    "truncated": false,
+    "alternatives": [
+      {
+        "pair_id": "primer_pair_2fa8ade76aa64ba3",
+        "source_candidate_id": "primer_pair_2fa8ade76aa64ba3",
+        "design_template_id": "tp73_locus",
+        "selected": true,
+        "metrics": {
+          "existing_candidate_score": 1004.085443123424,
+          "tm_delta_c": 0.020727843828794335,
+          "primer_pair_complementary_run_bp": 5,
+          "primer_pair_3prime_complementary_run_bp": 3,
+          "amplicon_length_bp": 235
+        },
+        "tradeoff_summary": "score=1004.085; delta_tm=0.021 C; pair_complementarity=5/3 bp"
+      },
+      {
+        "pair_id": "primer_pair_d256d67cac17dde6",
+        "source_candidate_id": "primer_pair_d256d67cac17dde6",
+        "design_template_id": "tp73_locus",
+        "selected": false,
+        "metrics": {
+          "existing_candidate_score": 1003.6051931552014,
+          "tm_delta_c": 0.029740342239932716,
+          "primer_pair_complementary_run_bp": 4,
+          "primer_pair_3prime_complementary_run_bp": 3,
+          "amplicon_length_bp": 238
+        },
+        "tradeoff_summary": "score=1003.605; delta_tm=0.030 C; pair_complementarity=4/3 bp"
+      },
+      {
+        "pair_id": "primer_pair_d761489fa92db162",
+        "source_candidate_id": "primer_pair_d761489fa92db162",
+        "design_template_id": "tp73_locus",
+        "selected": false,
+        "metrics": {
+          "existing_candidate_score": 1003.4296520450112,
+          "tm_delta_c": 0.02851739774943951,
+          "primer_pair_complementary_run_bp": 4,
+          "primer_pair_3prime_complementary_run_bp": 3,
+          "amplicon_length_bp": 240
+        },
+        "tradeoff_summary": "score=1003.430; delta_tm=0.029 C; pair_complementarity=4/3 bp"
+      }
+    ]
+  }
 }
