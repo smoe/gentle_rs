@@ -239,10 +239,13 @@ broad crate surgery that is not tied to the selected release story.
 
 ### Reserved For Anze: Repeat/Similarity Inspection Follow-Up
 
-A later phase stays intentionally separate: broader mapping of single-sequence
-operations across sequence sets. Portable inspection actions, structured GUI
-evidence panes, cross-adapter parity, curated repeat-family provenance, and
-objective-aware severity presentation are recorded in `docs/CHANGELOG.md`.
+The first collection mapping now exposes construct-reasoning inspection actions
+across project sequences and homogeneous gene-set resolutions without persisting
+batch-built graphs. Structured GUI evidence panes have also landed. A later
+phase stays intentionally separate: broader mapping of additional
+single-sequence operations across sequence sets. Portable inspection actions,
+cross-adapter parity, curated repeat-family provenance, and objective-aware
+severity presentation are recorded in `docs/CHANGELOG.md`.
 
 ## Phase D: Visualization And Workflow UX
 
@@ -336,7 +339,8 @@ wet-lab conclusions or unconfirmed mutations.
   [`maintenance_chore_plan.md`](maintenance_chore_plan.md).
 - Browser/WebAssembly frontend portability after core/headless contracts settle.
 - Expand the landed policy-driven collection surface beyond promoter
-  derivation, primer specificity, restriction-site and TFBS hit scanning,
+  derivation, primer specificity, construct-reasoning inspection,
+  restriction-site and TFBS hit scanning,
   fingerprint-locked restriction digestion, and atomic physical-container
   pool export plus explicit gene-set-to-pool aliquoting and registry-declared
   serial-arrangement gel rendering to later shared BLAST, generic arrangement,

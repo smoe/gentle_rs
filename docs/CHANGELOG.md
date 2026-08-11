@@ -20,6 +20,12 @@
   `gentle.terminal_exon_rt_primer_pool.v1` report; Tm remains descriptive and
   global specificity is explicitly not inferred.
 
+- Added non-mutating construct-reasoning inspection across project-sequence
+  selections and homogeneous gene-set resolutions. The shared
+  `collections run construct-reasoning-inspection` route returns per-member
+  actions, fingerprints, successes, and failures without persisting temporary
+  graph snapshots or publishing dangling graph report IDs.
+
 - Added a content-bound `gentle.transcript_assay_cdna_similarity_map.v1`
   planning seam for transcript-assay design. Whole-cDNA similarity intervals
   can now rank bounded Primer3 records toward lower-risk regions while exact

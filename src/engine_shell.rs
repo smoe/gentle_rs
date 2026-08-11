@@ -41,9 +41,10 @@ use crate::{
         CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
         CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm,
         CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder, CollectionSubjectRef,
-        ConstructReasoningInspectionActionKind, CutRunAlignConfig, CutRunCoverageKind,
-        CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig,
-        DEFAULT_HOST_PROFILE_CATALOG_PATH, DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
+        ConstructReasoningCollectionMemberBinding, ConstructReasoningInspectionActionKind,
+        CutRunAlignConfig, CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout,
+        CutRunSeedFilterConfig, DEFAULT_HOST_PROFILE_CATALOG_PATH,
+        DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
         DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP,
         DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP, DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
         DOTPLOT_ANALYSIS_METADATA_KEY, DigestCollectionMemberBinding, DisplayTarget,
@@ -2564,6 +2565,11 @@ pub enum ShellCommand {
         enzymes: Vec<String>,
         max_sites_per_enzyme: Option<usize>,
         include_cut_geometry: bool,
+        path: Option<String>,
+    },
+    CollectionsRunConstructReasoningInspection {
+        collection_subject: CollectionSubjectRef,
+        member_bindings: Vec<ConstructReasoningCollectionMemberBinding>,
         path: Option<String>,
     },
     CollectionsRunTfbsScan {
@@ -11572,6 +11578,18 @@ impl ShellCommand {
                 } else {
                     enzymes.join(",")
                 },
+                path.as_deref()
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or("none"),
+            ),
+            Self::CollectionsRunConstructReasoningInspection {
+                collection_subject,
+                member_bindings,
+                path,
+            } => format!(
+                "map non-mutating construct-reasoning inspection over {:?} collection members (explicit_bindings={}, path={})",
+                collection_subject.kind(),
+                member_bindings.len(),
                 path.as_deref()
                     .filter(|value| !value.trim().is_empty())
                     .unwrap_or("none"),
@@ -21508,6 +21526,51 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "description": "Map restriction-site scanning over loaded project sequences or explicitly sequence-bound gene-set members.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("collections run restriction-scan")
+        }),
+        json!({
+            "id": "InspectConstructReasoningCollection",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "COLLECTION_SUBJECT", "required": true, "subject_kind": "other", "detail": "typed project_sequences or gene_set_resolution collection subject"},
+                {"name": "MEMBER_BINDINGS", "required": false, "subject_kind": "sequence", "detail": "member-id to loaded-sequence bindings; required for logical gene-set members"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external aggregate report JSON path"}
+            ],
+            "reads": [],
+            "effects": [{
+                "fact": "report.exists",
+                "report_kind": "collection_construct_reasoning_inspection",
+                "equals": "collection_construct_reasoning_inspection",
+                "effect_kind": "must_on_success"
+            }],
+            "precondition_expr": {"all": []},
+            "description": "Assemble non-persisted construct-reasoning inspection snapshots over a project-sequence or explicitly sequence-bound homogeneous gene-set collection.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("InspectConstructReasoningCollection")
+        }),
+        json!({
+            "id": "collections run construct-reasoning-inspection",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "GENE_SET_REPORT_ID", "required": false, "subject_kind": "report", "detail": "persisted gene-set resolution artifact id; alternative to SEQ_IDS"},
+                {"name": "SEQ_IDS", "required": false, "subject_kind": "sequence", "detail": "loaded project sequence ids; alternative to GENE_SET_REPORT_ID"},
+                {"name": "MEMBER_BINDINGS", "required": false, "subject_kind": "sequence", "detail": "repeated MEMBER_ID=SEQ_ID bindings required for logical gene-set members"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external aggregate report JSON path"}
+            ],
+            "reads": [],
+            "effects": [{
+                "fact": "report.exists",
+                "report_kind": "collection_construct_reasoning_inspection",
+                "equals": "collection_construct_reasoning_inspection",
+                "effect_kind": "must_on_success"
+            }],
+            "precondition_expr": {"all": []},
+            "description": "Map non-mutating construct-reasoning inspection over loaded project sequences or explicitly sequence-bound homogeneous gene-set members.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("collections run construct-reasoning-inspection")
         }),
         json!({
             "id": "ScanTfbsHitsCollection",
@@ -54102,6 +54165,34 @@ fn execute_primers_command(
                 }),
             })
         }
+        ShellCommand::CollectionsRunConstructReasoningInspection {
+            collection_subject,
+            member_bindings,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::InspectConstructReasoningCollection {
+                    collection_subject: collection_subject.clone(),
+                    member_bindings: member_bindings.clone(),
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result
+                .collection_construct_reasoning_inspection
+                .clone()
+                .ok_or_else(|| {
+                    "Collection construct-reasoning inspection operation returned no domain report"
+                        .to_string()
+                })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.collection_construct_reasoning_inspection_command.v1",
+                    "report": report,
+                    "result": op_result,
+                }),
+            })
+        }
         ShellCommand::CollectionsRunTfbsScan {
             collection_subject,
             member_bindings,
@@ -62521,6 +62612,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::PrimersSpecificity { .. }
             | ShellCommand::CollectionsRunPrimerSpecificity { .. }
             | ShellCommand::CollectionsRunRestrictionScan { .. }
+            | ShellCommand::CollectionsRunConstructReasoningInspection { .. }
             | ShellCommand::CollectionsRunTfbsScan { .. }
             | ShellCommand::CollectionsRunDigest { .. }
             | ShellCommand::PrimersSpecificityPlan { .. }
@@ -64306,6 +64398,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersSpecificity { .. }
         | ShellCommand::CollectionsRunPrimerSpecificity { .. }
         | ShellCommand::CollectionsRunRestrictionScan { .. }
+        | ShellCommand::CollectionsRunConstructReasoningInspection { .. }
         | ShellCommand::CollectionsRunTfbsScan { .. }
         | ShellCommand::CollectionsRunDigest { .. }
         | ShellCommand::PrimersSpecificityPlan { .. }

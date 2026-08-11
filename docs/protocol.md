@@ -1139,6 +1139,18 @@ Implemented collection-lifting baseline:
   enzyme disclosure. Its `gentle.collection_restriction_site_scan.v1` wrapper
   owns successful child reports because restriction scans have no persisted
   report store; generic `produced_report_ids` therefore remains empty.
+- `InspectConstructReasoningCollection` maps fresh construct-reasoning
+  inspection over project sequences or explicitly sequence-bound gene-set
+  members. Its additive
+  `gentle.collection_construct_reasoning_inspection.v1` wrapper owns each
+  successful member's graph identity, input fingerprint, and recommended
+  inspection actions. Graphs are assembled on a cloned engine and are not
+  inserted into project metadata, so member rows declare
+  `graph_persisted=false` and generic `produced_report_ids` remains empty.
+  Project-sequence selections are context-agnostic; gene-set resolutions must
+  have homogeneous biological context. Containers and arrangements are
+  explicitly unsupported because physical occupancy and order do not alter
+  independent per-sequence construct reasoning.
 - Collection domain-result wrappers are additive wire contracts: A5
   restriction-scan, A6 TFBS-scan, and A7 digest reports default missing fields
   and ignore unknown future output fields. Their member-binding request

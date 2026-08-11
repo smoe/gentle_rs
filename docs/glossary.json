@@ -3802,6 +3802,20 @@
       {
          "aliases": [],
          "engine_operations": [
+            "InspectConstructReasoningCollection"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "collections run construct-reasoning-inspection",
+         "summary": "Build fresh non-persisted construct-reasoning snapshots for project sequences or explicitly sequence-bound gene-set members and list each member's recommended inspection actions.",
+         "usage": "collections run construct-reasoning-inspection [GENE_SET_REPORT_ID | --seq-ids SEQ_ID,...] [--member-sequence MEMBER_ID=SEQ_ID]... [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "ScanTfbsHitsCollection"
          ],
          "interfaces": [

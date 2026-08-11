@@ -57180,6 +57180,93 @@ fn collection_restriction_scan_keeps_missing_gene_set_bindings_as_member_failure
 }
 
 #[test]
+fn collection_construct_reasoning_inspection_maps_actions_and_keeps_failures_per_member() {
+    let repeat_sequence = format!(
+        "{}{}{}{}{}",
+        "ACGT".repeat(12),
+        "AAAAAAAAAAAAAA",
+        "ATATATATATATATATATAT",
+        "GATTACAGATTACCCGGGGATTACAGATTA",
+        "GCGTACGCTATTTTTAGCGTACGC"
+    );
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "repeat_risk".to_string(),
+        DNAsequence::from_sequence(&repeat_sequence).expect("repeat-risk sequence"),
+    );
+    state.sequences.insert(
+        "short_clean".to_string(),
+        DNAsequence::from_sequence("ACGT").expect("short sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    assert!(
+        !engine
+            .state()
+            .metadata
+            .contains_key(CONSTRUCT_REASONING_METADATA_KEY)
+    );
+
+    let report = engine
+        .apply(Operation::InspectConstructReasoningCollection {
+            collection_subject: CollectionSubjectRef::ProjectSequences {
+                seq_ids: vec![
+                    "repeat_risk".to_string(),
+                    "short_clean".to_string(),
+                    "missing_sequence".to_string(),
+                ],
+            },
+            member_bindings: vec![],
+            path: None,
+        })
+        .expect("inspect construct reasoning over project sequences")
+        .collection_construct_reasoning_inspection
+        .expect("collection construct-reasoning report");
+
+    assert_eq!(
+        report.schema,
+        COLLECTION_CONSTRUCT_REASONING_INSPECTION_REPORT_SCHEMA
+    );
+    assert_eq!(report.collection_operation.per_member_status.len(), 3);
+    assert_eq!(report.member_reports.len(), 2);
+    assert!(report.total_inspection_action_count > 0);
+    assert_eq!(report.member_count_with_actions, 1);
+    assert_eq!(report.member_ids_without_actions, ["short_clean"]);
+    assert!(report.member_reports.iter().all(|row| {
+        !row.graph_persisted && !row.graph_id.is_empty() && row.input_fingerprint.is_some()
+    }));
+    let failed = report
+        .collection_operation
+        .per_member_status
+        .iter()
+        .find(|row| row.member.stable_member_id == "missing_sequence")
+        .expect("missing sequence status");
+    assert_eq!(failed.outcome, CollectionMemberOutcome::Failed);
+    assert!(failed.error.is_some());
+    assert!(
+        report
+            .collection_operation
+            .per_member_status
+            .iter()
+            .all(|row| row.produced_report_ids.is_empty())
+    );
+    assert!(
+        !engine
+            .state()
+            .metadata
+            .contains_key(CONSTRUCT_REASONING_METADATA_KEY),
+        "collection inspection must not persist graphs into the live project"
+    );
+
+    let encoded = serde_json::to_value(&report).expect("serialize collection inspection");
+    let decoded: CollectionConstructReasoningInspectionReport =
+        serde_json::from_value(encoded.clone()).expect("deserialize collection inspection");
+    assert_eq!(
+        serde_json::to_value(decoded).expect("reserialize collection inspection"),
+        encoded
+    );
+}
+
+#[test]
 fn collection_tfbs_scan_matches_direct_scans_and_round_trips_complete_aggregates() {
     let mut state = ProjectState::default();
     state.sequences.insert(

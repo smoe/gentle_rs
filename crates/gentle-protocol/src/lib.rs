@@ -5377,6 +5377,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "DigestCollection",
     "FindRestrictionSites",
     "FindRestrictionSitesCollection",
+    "InspectConstructReasoningCollection",
     "ScanTfbsHitsCollection",
     "QueryRepeatAnnotations",
     "QueryRepeatOverlaps",
@@ -9975,11 +9976,13 @@ pub struct RnaReadInterpretationReportSummary {
 #[cfg(test)]
 mod dotplot_and_concatemer_setting_tests {
     use super::{
-        CutRunRegulatoryTfbsConfirmationStatus, CutRunRegulatoryTfbsRow,
-        DotplotInspectionProvenanceCitation, DotplotMode, DotplotOverlayAnchorExonRef,
-        DotplotOverlayResolvedAnchorSeries, DotplotOverlayXAxisMode, DotplotQuerySeries,
-        DotplotView, RestrictionSiteExpertView, RnaReadConcatemerInspectionSettings,
-        RnaReadMappedIsoformSupportRow,
+        CapabilitySource, CollectionContextRequirement, CollectionLiftSupport,
+        CollectionLiftingMode, CollectionSubjectKind, CutRunRegulatoryTfbsConfirmationStatus,
+        CutRunRegulatoryTfbsRow, DotplotInspectionProvenanceCitation, DotplotMode,
+        DotplotOverlayAnchorExonRef, DotplotOverlayResolvedAnchorSeries, DotplotOverlayXAxisMode,
+        DotplotQuerySeries, DotplotView, RestrictionSiteExpertView,
+        RnaReadConcatemerInspectionSettings, RnaReadMappedIsoformSupportRow,
+        collection_lift_policy,
     };
 
     #[test]
@@ -10187,6 +10190,56 @@ mod dotplot_and_concatemer_setting_tests {
         assert_eq!(row.aligned_read_count, 3);
         assert!(row.dominant_triage_bin.is_none());
         assert!(row.triage_bin_counts.is_empty());
+    }
+
+    #[test]
+    fn construct_reasoning_collection_lift_policies_are_curated_for_every_subject() {
+        for (source, name) in [
+            (
+                CapabilitySource::EngineOperation,
+                "InspectConstructReasoningCollection",
+            ),
+            (
+                CapabilitySource::GlossaryCommand,
+                "construct-reasoning list-inspection-actions",
+            ),
+            (
+                CapabilitySource::GlossaryCommand,
+                "collections run construct-reasoning-inspection",
+            ),
+        ] {
+            for subject_kind in [
+                CollectionSubjectKind::ProjectSequences,
+                CollectionSubjectKind::GeneSetResolution,
+                CollectionSubjectKind::Container,
+                CollectionSubjectKind::Arrangement,
+            ] {
+                let policy = collection_lift_policy(source, name, subject_kind)
+                    .expect("construct-reasoning collection policy");
+                match subject_kind {
+                    CollectionSubjectKind::ProjectSequences
+                    | CollectionSubjectKind::GeneSetResolution => {
+                        assert_ne!(
+                            policy.context_requirement,
+                            CollectionContextRequirement::NotReviewed
+                        );
+                        assert!(matches!(
+                            policy.support,
+                            CollectionLiftSupport::Supported {
+                                mode: CollectionLiftingMode::Map,
+                                ..
+                            }
+                        ));
+                    }
+                    CollectionSubjectKind::Container | CollectionSubjectKind::Arrangement => {
+                        assert!(matches!(
+                            policy.support,
+                            CollectionLiftSupport::Rejected { .. }
+                        ));
+                    }
+                }
+            }
+        }
     }
 
     #[test]

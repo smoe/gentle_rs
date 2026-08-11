@@ -627,6 +627,25 @@ build that produced it. It is also cached per candidate set and file identity,
 because checkpoint reuse binds the running executable and must not see a
 different choice mid-run.
 
+## DEC-038: Collection Construct Inspection Does Not Persist Temporary Graphs
+
+Status: active
+
+Collection construct-reasoning inspection is a `map` over project sequences or
+homogeneous gene-set resolutions. It builds each member's current reasoning
+graph on an engine clone and returns graph identity, input fingerprint, and
+inspection actions in the collection wrapper, without writing those temporary
+graphs into project metadata. Consequently `graph_persisted` is false and the
+generic member status does not advertise a `produced_report_id` that cannot be
+retrieved later.
+
+Project-sequence inspection is context-agnostic because the operation has no
+reference-genome parameter; a gene-set resolution must nevertheless be
+homogeneous so one report does not silently mix declared biological contexts.
+Containers and arrangements are explicitly rejected: physical occupancy and
+member order do not change independent per-sequence reasoning, and accepting
+them would imply unsupported physical semantics.
+
 ## DEC-036: A Dossier States What Is Missing Rather Than Waiting For It
 
 Status: active

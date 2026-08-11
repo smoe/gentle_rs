@@ -11889,6 +11889,7 @@ Error: `{err}`"
                 gene_set_promoter_cohort: None,
                 collection_operation: None,
                 collection_restriction_site_scan: None,
+                collection_construct_reasoning_inspection: None,
                 collection_tfbs_hit_scan: None,
                 collection_digest: None,
                 collection_pool_export: None,

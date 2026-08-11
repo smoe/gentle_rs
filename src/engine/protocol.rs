@@ -38,6 +38,7 @@ pub use gentle_protocol::{
     CollectionLiftingMode, CollectionMemberOutcome, CollectionMemberRef, CollectionMemberStatusRow,
     CollectionOperationReport, CollectionSubjectKind, CollectionSubjectRef, ConstructCandidate,
     ConstructObjective, ConstructReasoningGraph, ConstructReasoningGraphFreshness,
+    ConstructReasoningInputFingerprint, ConstructReasoningInspectionAction,
     ConstructReasoningStore, ConstructRole, ContainerId, ContainerKind, CutRunAlignConfig,
     CutRunCatalogEntry, CutRunCatalogListEntry, CutRunCoverageKind, CutRunDatasetListReport,
     CutRunDatasetProjectionReport, CutRunDatasetStatus, CutRunFragmentSpan, CutRunInputFormat,
@@ -1831,6 +1832,56 @@ pub struct CollectionRestrictionSiteScanReport {
     pub total_matched_site_count: usize,
     #[serde(default)]
     pub matched_site_counts_by_enzyme: BTreeMap<String, usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+}
+
+pub const COLLECTION_CONSTRUCT_REASONING_INSPECTION_REPORT_SCHEMA: &str =
+    "gentle.collection_construct_reasoning_inspection.v1";
+
+/// Explicitly binds one logical collection member to one loaded DNA sequence.
+///
+/// Gene-set members describe genes rather than materialized sequence records,
+/// so collection reasoning inspection never guesses this association from a
+/// symbol or coordinate label.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct ConstructReasoningCollectionMemberBinding {
+    pub stable_member_id: String,
+    pub seq_id: String,
+}
+
+/// One successful, wrapper-owned construct-reasoning inspection snapshot.
+///
+/// The graph is assembled on a cloned engine and is deliberately not persisted
+/// into project metadata. The input fingerprint and complete portable actions
+/// make the snapshot auditable without advertising a dangling report id.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct CollectionConstructReasoningInspectionMemberReport {
+    pub stable_member_id: String,
+    pub seq_id: String,
+    pub graph_id: String,
+    pub graph_persisted: bool,
+    pub objective_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_fingerprint: Option<ConstructReasoningInputFingerprint>,
+    #[serde(default)]
+    pub inspection_actions: Vec<ConstructReasoningInspectionAction>,
+}
+
+/// Non-mutating map of construct-reasoning inspection actions over a collection.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct CollectionConstructReasoningInspectionReport {
+    pub schema: String,
+    pub collection_operation: CollectionOperationReport,
+    #[serde(default)]
+    pub member_reports: Vec<CollectionConstructReasoningInspectionMemberReport>,
+    pub total_inspection_action_count: usize,
+    pub member_count_with_actions: usize,
+    #[serde(default)]
+    pub member_ids_without_actions: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
 }
@@ -4774,6 +4825,9 @@ pub struct OpResult {
     pub collection_operation: Option<CollectionOperationReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub collection_restriction_site_scan: Option<CollectionRestrictionSiteScanReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collection_construct_reasoning_inspection:
+        Option<CollectionConstructReasoningInspectionReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub collection_tfbs_hit_scan: Option<CollectionTfbsHitScanReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

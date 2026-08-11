@@ -12452,6 +12452,41 @@ impl GentleEngine {
         Ok(by_member)
     }
 
+    fn construct_reasoning_collection_binding_map(
+        bindings: Vec<ConstructReasoningCollectionMemberBinding>,
+    ) -> Result<BTreeMap<String, String>, EngineError> {
+        let mut by_member = BTreeMap::new();
+        let mut bound_sequences = BTreeMap::<String, String>::new();
+        for binding in bindings {
+            let stable_member_id = binding.stable_member_id.trim().to_string();
+            let seq_id = binding.seq_id.trim().to_string();
+            if stable_member_id.is_empty() || seq_id.is_empty() {
+                return Err(EngineError::invalid_input(
+                    "Collection construct-reasoning bindings require non-empty stable_member_id and seq_id",
+                ));
+            }
+            if by_member
+                .insert(stable_member_id.clone(), seq_id.clone())
+                .is_some()
+            {
+                return Err(EngineError::invalid_input(format!(
+                    "Collection member '{}' has more than one sequence binding",
+                    stable_member_id
+                )));
+            }
+            if let Some(previous_member) =
+                bound_sequences.insert(seq_id.clone(), stable_member_id.clone())
+                && previous_member != stable_member_id
+            {
+                return Err(EngineError::invalid_input(format!(
+                    "Project sequence '{}' is bound to both '{}' and '{}'; one construct-reasoning inspection must not be duplicated across collection members",
+                    seq_id, previous_member, stable_member_id
+                )));
+            }
+        }
+        Ok(by_member)
+    }
+
     fn tfbs_hit_scan_collection_binding_map(
         bindings: Vec<TfbsHitScanCollectionMemberBinding>,
     ) -> Result<BTreeMap<String, String>, EngineError> {
@@ -13030,6 +13065,227 @@ impl GentleEngine {
             member_reports,
             total_matched_site_count,
             matched_site_counts_by_enzyme,
+            path: None,
+        })
+    }
+
+    fn inspect_construct_reasoning_collection(
+        &self,
+        collection_subject: CollectionSubjectRef,
+        member_bindings: Vec<ConstructReasoningCollectionMemberBinding>,
+        op_id: &str,
+        run_id: &str,
+    ) -> Result<CollectionConstructReasoningInspectionReport, EngineError> {
+        let subject_kind = collection_subject.kind();
+        let lift_policy = collection_lift_policy(
+            CapabilitySource::EngineOperation,
+            "InspectConstructReasoningCollection",
+            subject_kind,
+        )
+        .cloned()
+        .ok_or_else(|| EngineError {
+            code: ErrorCode::Unsupported,
+            message: format!(
+                "InspectConstructReasoningCollection has no collection lift policy for {:?}",
+                subject_kind
+            ),
+            cause_chain: vec![],
+        })?;
+        match &lift_policy.support {
+            CollectionLiftSupport::Supported {
+                mode: CollectionLiftingMode::Map,
+                ..
+            } => {}
+            CollectionLiftSupport::Supported { mode, .. } => {
+                return Err(EngineError::internal(format!(
+                    "InspectConstructReasoningCollection policy for {:?} declares {:?}, expected map",
+                    subject_kind, mode
+                )));
+            }
+            CollectionLiftSupport::Rejected { reason, detail } => {
+                return Err(EngineError::invalid_input(format!(
+                    "InspectConstructReasoningCollection cannot consume {:?}: {}",
+                    subject_kind, detail
+                ))
+                .with_cause(format!(
+                    "collection_lift_rejection_reason={}",
+                    reason.as_str()
+                )));
+            }
+        }
+
+        let (collection_subject, members, provenance, biological_contexts) = self
+            .collection_subject_members_for_project_sequences_or_gene_set(
+                &collection_subject,
+                "construct-reasoning inspection",
+            )?;
+        match lift_policy.context_requirement {
+            CollectionContextRequirement::ContextAgnostic => {}
+            CollectionContextRequirement::Homogeneous => {
+                homogeneous_collection_biological_context(&biological_contexts, &members)
+                    .map_err(EngineError::from)?;
+            }
+            CollectionContextRequirement::NotReviewed => {
+                return Err(EngineError::internal(
+                    "InspectConstructReasoningCollection biological-context behavior has not been reviewed",
+                ));
+            }
+            CollectionContextRequirement::Partitionable
+            | CollectionContextRequirement::ExplicitCrossContext => {
+                return Err(EngineError::internal(format!(
+                    "InspectConstructReasoningCollection does not implement the declared {:?} biological-context behavior",
+                    lift_policy.context_requirement
+                )));
+            }
+        }
+
+        let bindings = Self::construct_reasoning_collection_binding_map(member_bindings)?;
+        let member_ids = members
+            .iter()
+            .map(|member| member.stable_member_id.as_str())
+            .collect::<BTreeSet<_>>();
+        let unknown_bindings = bindings
+            .keys()
+            .filter(|member_id| !member_ids.contains(member_id.as_str()))
+            .cloned()
+            .collect::<Vec<_>>();
+        if !unknown_bindings.is_empty() {
+            return Err(EngineError::invalid_input(format!(
+                "Sequence bindings reference member ids that are not in the collection: {}",
+                unknown_bindings.join(", ")
+            )));
+        }
+
+        let resolved_members = members
+            .into_iter()
+            .map(|member| {
+                let resolved = self.resolve_sequence_scan_collection_member_sequence(
+                    &member,
+                    bindings.get(&member.stable_member_id).map(String::as_str),
+                );
+                (member, resolved)
+            })
+            .collect::<Vec<_>>();
+        let canonical_membership = canonical_collection_membership_json(
+            subject_kind,
+            &resolved_members
+                .iter()
+                .map(|(member, _)| member.clone())
+                .collect::<Vec<_>>(),
+        );
+        let membership_fingerprint = sha256_prefixed_str(&canonical_membership);
+        let identity = serde_json::to_string(&json!({
+            "collection_subject": &collection_subject,
+            "collection_membership_fingerprint_sha256": &membership_fingerprint,
+            "member_bindings": &bindings,
+        }))
+        .map_err(|error| {
+            EngineError::internal(format!(
+                "Could not identify collection construct-reasoning inspection report: {error}"
+            ))
+        })?;
+        let report_id = short_sha256_id("collection_construct_reasoning_inspection", &identity);
+
+        // Build on a clone so fresh reasoning can be assembled without writing
+        // graph snapshots into the caller's project metadata.
+        let mut inspection_engine = self.clone();
+        let mut per_member_status = Vec::with_capacity(resolved_members.len());
+        let mut member_reports = Vec::new();
+        let mut aggregate_warnings = Vec::new();
+        let mut total_inspection_action_count = 0usize;
+        let mut member_ids_without_actions = Vec::new();
+        for (mut member, resolved) in resolved_members {
+            let (seq_id, resolution_kind) = match resolved {
+                Ok(resolved) => resolved,
+                Err(error) => {
+                    aggregate_warnings.push(format!(
+                        "Member '{}': {}",
+                        member.stable_member_id, error.message
+                    ));
+                    per_member_status.push(CollectionMemberStatusRow {
+                        member,
+                        outcome: CollectionMemberOutcome::Failed,
+                        error: Some(error),
+                        produced_report_ids: vec![],
+                    });
+                    continue;
+                }
+            };
+            member.source_provenance.push(GeneSetProvenanceRow {
+                source_kind: "project_sequence_binding".to_string(),
+                source_id: seq_id.clone(),
+                source_label: None,
+                source_path: None,
+                note: Some(format!("Sequence binding resolved by {resolution_kind}")),
+            });
+            match inspection_engine.refresh_construct_reasoning_graph_for_seq_id(&seq_id) {
+                Ok(graph) => {
+                    let action_count = graph.inspection_actions.len();
+                    total_inspection_action_count =
+                        total_inspection_action_count.saturating_add(action_count);
+                    if action_count == 0 {
+                        member_ids_without_actions.push(member.stable_member_id.clone());
+                    }
+                    member_reports.push(CollectionConstructReasoningInspectionMemberReport {
+                        stable_member_id: member.stable_member_id.clone(),
+                        seq_id,
+                        graph_id: graph.graph_id,
+                        graph_persisted: false,
+                        objective_id: graph.objective.objective_id,
+                        input_fingerprint: graph.input_fingerprint,
+                        inspection_actions: graph.inspection_actions,
+                    });
+                    per_member_status.push(CollectionMemberStatusRow {
+                        member,
+                        outcome: CollectionMemberOutcome::Succeeded,
+                        error: None,
+                        produced_report_ids: vec![],
+                    });
+                }
+                Err(error) => {
+                    aggregate_warnings.push(format!(
+                        "Member '{}': {}",
+                        member.stable_member_id, error.message
+                    ));
+                    per_member_status.push(CollectionMemberStatusRow {
+                        member,
+                        outcome: CollectionMemberOutcome::Failed,
+                        error: Some(error),
+                        produced_report_ids: vec![],
+                    });
+                }
+            }
+        }
+        let member_count_with_actions = member_reports
+            .len()
+            .saturating_sub(member_ids_without_actions.len());
+
+        Ok(CollectionConstructReasoningInspectionReport {
+            schema: COLLECTION_CONSTRUCT_REASONING_INSPECTION_REPORT_SCHEMA.to_string(),
+            collection_operation: CollectionOperationReport {
+                schema: COLLECTION_OPERATION_REPORT_SCHEMA.to_string(),
+                report_id,
+                op_id: Some(op_id.to_string()),
+                run_id: Some(run_id.to_string()),
+                generated_at_unix_ms: Self::now_unix_ms(),
+                capability_source: CapabilitySource::EngineOperation,
+                capability_name: "InspectConstructReasoningCollection".to_string(),
+                collection_subject,
+                lifting_mode: CollectionLiftingMode::Map,
+                lift_policy,
+                fingerprint_algorithm: COLLECTION_MEMBERSHIP_FINGERPRINT_ALGORITHM.to_string(),
+                collection_membership_fingerprint_sha256: membership_fingerprint,
+                biological_contexts,
+                dry_run: false,
+                applied: true,
+                per_member_status,
+                aggregate_warnings,
+                provenance,
+            },
+            member_reports,
+            total_inspection_action_count,
+            member_count_with_actions,
+            member_ids_without_actions,
             path: None,
         })
     }
@@ -36591,6 +36847,7 @@ impl GentleEngine {
             gene_set_promoter_cohort: None,
             collection_operation: None,
             collection_restriction_site_scan: None,
+            collection_construct_reasoning_inspection: None,
             collection_tfbs_hit_scan: None,
             collection_digest: None,
             collection_pool_export: None,
@@ -42634,6 +42891,63 @@ impl GentleEngine {
                         .extend(report.collection_operation.aggregate_warnings.clone());
                     result.collection_operation = Some(report.collection_operation.clone());
                     result.collection_restriction_site_scan = Some(report);
+                }
+                Operation::InspectConstructReasoningCollection {
+                    collection_subject,
+                    member_bindings,
+                    path,
+                } => {
+                    let mut report = self.inspect_construct_reasoning_collection(
+                        collection_subject,
+                        member_bindings,
+                        &result.op_id,
+                        run_id,
+                    )?;
+                    parent_seq_ids.extend(
+                        report
+                            .member_reports
+                            .iter()
+                            .map(|member_report| member_report.seq_id.clone()),
+                    );
+                    if let Some(path) = path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        report.path = Some(path.to_string());
+                        self.write_pretty_json_file(
+                            &report,
+                            path,
+                            "collection construct-reasoning inspection report",
+                        )?;
+                        result.messages.push(format!(
+                            "Wrote collection construct-reasoning inspection report to '{path}'"
+                        ));
+                    }
+                    let succeeded = report
+                        .collection_operation
+                        .per_member_status
+                        .iter()
+                        .filter(|row| row.outcome == CollectionMemberOutcome::Succeeded)
+                        .count();
+                    let failed = report
+                        .collection_operation
+                        .per_member_status
+                        .iter()
+                        .filter(|row| row.outcome == CollectionMemberOutcome::Failed)
+                        .count();
+                    result.messages.push(format!(
+                        "Inspected construct reasoning over {} collection member(s): {} succeeded, {} failed, {} recommended action(s)",
+                        report.collection_operation.per_member_status.len(),
+                        succeeded,
+                        failed,
+                        report.total_inspection_action_count,
+                    ));
+                    result
+                        .warnings
+                        .extend(report.collection_operation.aggregate_warnings.clone());
+                    result.collection_operation = Some(report.collection_operation.clone());
+                    result.collection_construct_reasoning_inspection = Some(report);
                 }
                 Operation::ScanTfbsHitsCollection {
                     collection_subject,

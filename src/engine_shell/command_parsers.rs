@@ -7868,6 +7868,20 @@ pub(super) fn parse_collections_command(tokens: &[String]) -> Result<ShellComman
         && tokens.get(1).map(String::as_str) == Some("run")
         && matches!(
             tokens.get(2).map(String::as_str),
+            Some(
+                "construct-reasoning-inspection"
+                    | "construct_reasoning_inspection"
+                    | "construct-reasoning"
+                    | "construct_reasoning"
+            )
+        )
+    {
+        return parse_collections_run_construct_reasoning_inspection(tokens);
+    }
+    if tokens.len() >= 3
+        && tokens.get(1).map(String::as_str) == Some("run")
+        && matches!(
+            tokens.get(2).map(String::as_str),
             Some("export-pool" | "export_pool")
         )
     {
@@ -7906,7 +7920,7 @@ pub(super) fn parse_collections_command(tokens: &[String]) -> Result<ShellComman
         )
     {
         return Err(
-            "collections requires: run primer-specificity|restriction-scan|tfbs-scan|digest|export-pool SUBJECT [operation options]"
+            "collections requires: run primer-specificity|construct-reasoning-inspection|restriction-scan|tfbs-scan|digest|export-pool SUBJECT [operation options]"
                 .to_string(),
         );
     }
@@ -8042,6 +8056,94 @@ pub(super) fn parse_collections_command(tokens: &[String]) -> Result<ShellComman
         policy,
         catalog_path,
         cache_dir,
+        path,
+    })
+}
+
+fn parse_collections_run_construct_reasoning_inspection(
+    tokens: &[String],
+) -> Result<ShellCommand, String> {
+    const COMMAND: &str = "collections run construct-reasoning-inspection";
+    let mut gene_set_report_id: Option<String> = None;
+    let mut seq_ids = Vec::new();
+    let mut member_bindings = Vec::new();
+    let mut path = None;
+    let mut idx = 3usize;
+    if let Some(value) = tokens.get(idx)
+        && !value.starts_with("--")
+    {
+        gene_set_report_id = Some(value.trim().to_string());
+        idx += 1;
+    }
+
+    while idx < tokens.len() {
+        match tokens[idx].as_str() {
+            "--seq-id" => {
+                let seq_id = parse_option_path(tokens, &mut idx, "--seq-id", COMMAND)?;
+                if seq_id.trim().is_empty() {
+                    return Err("--seq-id must not be empty".to_string());
+                }
+                seq_ids.push(seq_id.trim().to_string());
+            }
+            "--seq-ids" => {
+                let raw = parse_option_path(tokens, &mut idx, "--seq-ids", COMMAND)?;
+                let parsed = raw
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string)
+                    .collect::<Vec<_>>();
+                if parsed.is_empty() {
+                    return Err("--seq-ids requires at least one non-empty sequence id".to_string());
+                }
+                seq_ids.extend(parsed);
+            }
+            "--member-sequence" | "--member-binding" => {
+                let flag = tokens[idx].clone();
+                let raw = parse_option_path(tokens, &mut idx, &flag, COMMAND)?;
+                let (member_id, seq_id) = raw
+                    .split_once('=')
+                    .ok_or_else(|| format!("{flag} requires MEMBER_ID=SEQ_ID"))?;
+                let member_id = member_id.trim();
+                let seq_id = seq_id.trim();
+                if member_id.is_empty() || seq_id.is_empty() {
+                    return Err(format!("{flag} requires non-empty MEMBER_ID=SEQ_ID"));
+                }
+                member_bindings.push(ConstructReasoningCollectionMemberBinding {
+                    stable_member_id: member_id.to_string(),
+                    seq_id: seq_id.to_string(),
+                });
+            }
+            "--path" | "--output" => {
+                let flag = tokens[idx].clone();
+                path = Some(parse_option_path(tokens, &mut idx, &flag, COMMAND)?);
+            }
+            other => return Err(format!("Unknown option '{other}' for {COMMAND}")),
+        }
+    }
+
+    if gene_set_report_id.is_some() && !seq_ids.is_empty() {
+        return Err(format!(
+            "{COMMAND} accepts either GENE_SET_REPORT_ID or --seq-ids, not both"
+        ));
+    }
+    let collection_subject = if let Some(report_id) = gene_set_report_id {
+        if report_id.is_empty() {
+            return Err("GENE_SET_REPORT_ID must not be empty".to_string());
+        }
+        CollectionSubjectRef::GeneSetResolution { report_id }
+    } else {
+        if seq_ids.is_empty() {
+            return Err(format!(
+                "{COMMAND} requires GENE_SET_REPORT_ID or --seq-ids ID,..."
+            ));
+        }
+        CollectionSubjectRef::ProjectSequences { seq_ids }
+    };
+
+    Ok(ShellCommand::CollectionsRunConstructReasoningInspection {
+        collection_subject,
+        member_bindings,
         path,
     })
 }

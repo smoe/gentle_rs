@@ -4136,6 +4136,13 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    InspectConstructReasoningCollection {
+        collection_subject: CollectionSubjectRef,
+        #[serde(default)]
+        member_bindings: Vec<ConstructReasoningCollectionMemberBinding>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     ScanTfbsHitsCollection {
         collection_subject: CollectionSubjectRef,
         #[serde(default)]
@@ -9538,6 +9545,7 @@ impl GentleEngine {
                 | Operation::QueryProteinResidueGenomicCoordinates { .. }
                 | Operation::FindRestrictionSites { .. }
                 | Operation::FindRestrictionSitesCollection { .. }
+                | Operation::InspectConstructReasoningCollection { .. }
                 | Operation::ScanTfbsHitsCollection { .. }
                 | Operation::DigestCollection { dry_run: true, .. }
                 | Operation::CreateGeneSetPool { dry_run: true, .. }

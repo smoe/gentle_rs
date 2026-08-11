@@ -3138,6 +3138,8 @@ Shared shell command:
     - `collections run primer-specificity --seq-ids SEQ_ID,... (--pair-rank N | --pair-index N) --target-genome GENOME_ID [--member-report MEMBER_ID=PRIMER_REPORT_ID]... [--policy JSON_OR_@FILE] [--catalog PATH] [--cache-dir DIR] [--path OUTPUT.json]`
     - `collections run restriction-scan GENE_SET_REPORT_ID --member-sequence MEMBER_ID=SEQ_ID ... [--enzyme NAME]... [--max-sites-per-enzyme N] [--no-cut-geometry] [--path OUTPUT.json]`
     - `collections run restriction-scan --seq-ids SEQ_ID,... [--enzyme NAME]... [--max-sites-per-enzyme N] [--no-cut-geometry] [--path OUTPUT.json]`
+    - `collections run construct-reasoning-inspection GENE_SET_REPORT_ID --member-sequence MEMBER_ID=SEQ_ID ... [--path OUTPUT.json]`
+    - `collections run construct-reasoning-inspection --seq-ids SEQ_ID,... [--path OUTPUT.json]`
     - `collections run tfbs-scan GENE_SET_REPORT_ID --member-sequence MEMBER_ID=SEQ_ID ... --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--min-llr-bits VALUE] [--min-llr-quantile VALUE] [--per-tf-min-llr-bits TF=VALUE] [--per-tf-min-llr-quantile TF=VALUE] [--max-hits N] [--path OUTPUT.json]`
     - `collections run tfbs-scan --seq-ids SEQ_ID,... --motif TOKEN [same threshold/cap/output options]`
     - `digest SEQ_ID --enzyme NAME [--enzyme NAME ...] [--enzymes CSV] [--output-prefix PREFIX]`
@@ -3786,6 +3788,14 @@ Shared shell command:
         fail closed. The returned `gentle.collection_restriction_site_scan.v1`
         wrapper includes successful child reports and aggregate counts because
         restriction scans are not otherwise stored by report id.
+      - `collections run construct-reasoning-inspection` assembles a fresh
+        construct-reasoning snapshot for each project sequence or explicitly
+        sequence-bound gene-set member and returns the recommended inspection
+        actions in `gentle.collection_construct_reasoning_inspection.v1`.
+        Snapshots are built on an engine clone: `graph_persisted=false`, generic
+        `produced_report_ids` stays empty, and the live project's graph store is
+        not changed. A failed member remains a typed per-member failure rather
+        than aborting successful inspections.
       - `collections run tfbs-scan` maps the same non-mutating scanner used by
         `features tfbs-scan` over project sequences or explicitly
         sequence-bound gene-set members. Motifs are always explicit and use

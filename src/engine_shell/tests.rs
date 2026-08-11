@@ -485,6 +485,9 @@ fn smoke_command_override(path: &str) -> Option<&'static str> {
         "collections run restriction-scan" => {
             Some("collections run restriction-scan --seq-ids demo --enzyme EcoRI")
         }
+        "collections run construct-reasoning-inspection" => {
+            Some("collections run construct-reasoning-inspection --seq-ids demo")
+        }
         "collections run tfbs-scan" => Some("collections run tfbs-scan --seq-ids demo --motif AAA"),
         "collections run digest" => Some("collections run digest --seq-ids demo --enzyme EcoRI"),
         "digest" => Some("digest demo --enzyme EcoRI"),
@@ -6905,6 +6908,56 @@ fn parse_collections_run_restriction_scan_for_gene_set_and_project_sequences() {
     assert!(ambiguous.contains("either GENE_SET_REPORT_ID or --seq-ids"));
     let malformed = parse_shell_line(
         "collections run restriction-scan resolution:set --member-sequence missing_separator",
+    )
+    .expect_err("member binding requires an explicit member/sequence separator");
+    assert!(malformed.contains("MEMBER_ID=SEQ_ID"));
+}
+
+#[test]
+fn parse_collections_run_construct_reasoning_inspection_preserves_subject_and_bindings() {
+    let command = parse_shell_line(
+        "collections run construct-reasoning-inspection resolution:constructs \
+         --member-sequence construct_a=seq_a \
+         --member-binding construct_b=seq_b \
+         --path reasoning.json",
+    )
+    .expect("parse gene-set construct-reasoning inspection");
+    match command {
+        ShellCommand::CollectionsRunConstructReasoningInspection {
+            collection_subject: CollectionSubjectRef::GeneSetResolution { report_id },
+            member_bindings,
+            path,
+        } => {
+            assert_eq!(report_id, "resolution:constructs");
+            assert_eq!(member_bindings.len(), 2);
+            assert_eq!(member_bindings[0].stable_member_id, "construct_a");
+            assert_eq!(member_bindings[0].seq_id, "seq_a");
+            assert_eq!(member_bindings[1].stable_member_id, "construct_b");
+            assert_eq!(member_bindings[1].seq_id, "seq_b");
+            assert_eq!(path.as_deref(), Some("reasoning.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    assert!(matches!(
+        parse_shell_line(
+            "collections run construct-reasoning-inspection --seq-id seq_a --seq-ids seq_b,seq_c"
+        )
+        .expect("parse project-sequence construct-reasoning inspection"),
+        ShellCommand::CollectionsRunConstructReasoningInspection {
+            collection_subject: CollectionSubjectRef::ProjectSequences { seq_ids },
+            member_bindings,
+            path: None,
+        } if seq_ids == ["seq_a", "seq_b", "seq_c"] && member_bindings.is_empty()
+    ));
+
+    let ambiguous = parse_shell_line(
+        "collections run construct-reasoning-inspection resolution:set --seq-id seq_a",
+    )
+    .expect_err("gene-set and project-sequence subjects are mutually exclusive");
+    assert!(ambiguous.contains("either GENE_SET_REPORT_ID or --seq-ids"));
+    let malformed = parse_shell_line(
+        "collections run construct-reasoning-inspection resolution:set --member-sequence missing_separator",
     )
     .expect_err("member binding requires an explicit member/sequence separator");
     assert!(malformed.contains("MEMBER_ID=SEQ_ID"));
@@ -19174,6 +19227,56 @@ fn execute_collection_restriction_scan_returns_wrapper_owned_child_reports() {
     assert_eq!(
         run.output["report"]["total_matched_site_count"].as_u64(),
         Some(2)
+    );
+}
+
+#[test]
+fn execute_collection_construct_reasoning_inspection_is_non_mutating() {
+    let repeat_sequence = format!(
+        "{}{}{}{}{}",
+        "ACGT".repeat(12),
+        "AAAAAAAAAAAAAA",
+        "ATATATATATATATATATAT",
+        "GATTACAGATTACCCGGGGATTACAGATTA",
+        "GCGTACGCTATTTTTAGCGTACGC"
+    );
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "repeat_risk".to_string(),
+        DNAsequence::from_sequence(&repeat_sequence).expect("sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::CollectionsRunConstructReasoningInspection {
+            collection_subject: CollectionSubjectRef::ProjectSequences {
+                seq_ids: vec!["repeat_risk".to_string()],
+            },
+            member_bindings: vec![],
+            path: None,
+        },
+    )
+    .expect("execute collection construct-reasoning inspection");
+
+    assert!(!run.state_changed);
+    assert_eq!(
+        run.output["schema"].as_str(),
+        Some("gentle.collection_construct_reasoning_inspection_command.v1")
+    );
+    assert_eq!(
+        run.output["report"]["schema"].as_str(),
+        Some("gentle.collection_construct_reasoning_inspection.v1")
+    );
+    assert_eq!(
+        run.output["report"]["member_reports"][0]["graph_persisted"].as_bool(),
+        Some(false)
+    );
+    assert!(
+        !engine
+            .state()
+            .metadata
+            .contains_key(crate::engine::CONSTRUCT_REASONING_METADATA_KEY)
     );
 }
 
