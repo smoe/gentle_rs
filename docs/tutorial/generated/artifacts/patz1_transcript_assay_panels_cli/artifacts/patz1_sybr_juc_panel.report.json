@@ -575,6 +575,21 @@
         },
         "amplicon_spans_junction": true,
         "selected_because_of_junction_evidence": true,
+        "retained_because_of_differential_junction_evidence": false,
+        "incremental_binary_distinction_count": 2,
+        "exclusive_binary_distinction_count": 0,
+        "newly_separated_equivalence_group_pairs": [
+          {
+            "left_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+            "right_equivalence_group_id": "cdna_eq_bf8de0081e092d6f"
+          },
+          {
+            "left_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+            "right_equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447"
+          }
+        ],
+        "binary_redundant_with_assay_ids": [],
+        "retained_despite_zero_marginal_discrimination": false,
         "selection_evidence": [
           {
             "evidence_id": "JUC2200054820.hg.1",
@@ -600,6 +615,7 @@
             "contrast": "synthetic_case_vs_control",
             "measured_statistic": "log2_fold_change",
             "measured_value": -1.2,
+            "differential_eligibility": "not_assessed",
             "intensity_source": "synthetic_log2_fold_change",
             "source_schema": "gentle.probe_region_evidence_interpretation.v2",
             "source_path": "./test_files/fixtures/isoform_evidence/patz1/patz1_probe_evidence.json",
@@ -1019,6 +1035,17 @@
         },
         "amplicon_spans_junction": true,
         "selected_because_of_junction_evidence": false,
+        "retained_because_of_differential_junction_evidence": false,
+        "incremental_binary_distinction_count": 1,
+        "exclusive_binary_distinction_count": 0,
+        "newly_separated_equivalence_group_pairs": [
+          {
+            "left_equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
+            "right_equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447"
+          }
+        ],
+        "binary_redundant_with_assay_ids": [],
+        "retained_despite_zero_marginal_discrimination": false,
         "selection_evidence": [],
         "junction_spanning_status": "no_requested_junction_match_reported",
         "junction_matches": [],
@@ -1375,6 +1402,12 @@
         },
         "amplicon_spans_junction": true,
         "selected_because_of_junction_evidence": false,
+        "retained_because_of_differential_junction_evidence": false,
+        "incremental_binary_distinction_count": 0,
+        "exclusive_binary_distinction_count": 0,
+        "newly_separated_equivalence_group_pairs": [],
+        "binary_redundant_with_assay_ids": [],
+        "retained_despite_zero_marginal_discrimination": false,
         "selection_evidence": [
           {
             "evidence_id": "PSR2200160982.hg.1",
@@ -1400,6 +1433,7 @@
             "contrast": "synthetic_case_vs_control",
             "measured_statistic": "log2_fold_change",
             "measured_value": 0.8,
+            "differential_eligibility": "not_assessed",
             "intensity_source": "synthetic_log2_fold_change",
             "source_schema": "gentle.probe_region_evidence_interpretation.v2",
             "source_path": "./test_files/fixtures/isoform_evidence/patz1/patz1_probe_evidence.json",
@@ -3548,6 +3582,21 @@
         },
         "amplicon_spans_junction": true,
         "selected_because_of_junction_evidence": true,
+        "retained_because_of_differential_junction_evidence": false,
+        "incremental_binary_distinction_count": 2,
+        "exclusive_binary_distinction_count": 0,
+        "newly_separated_equivalence_group_pairs": [
+          {
+            "left_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+            "right_equivalence_group_id": "cdna_eq_bf8de0081e092d6f"
+          },
+          {
+            "left_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+            "right_equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447"
+          }
+        ],
+        "binary_redundant_with_assay_ids": [],
+        "retained_despite_zero_marginal_discrimination": false,
         "selection_evidence": [
           {
             "evidence_id": "JUC2200054820.hg.1",
@@ -3573,6 +3622,7 @@
             "contrast": "synthetic_case_vs_control",
             "measured_statistic": "log2_fold_change",
             "measured_value": -1.2,
+            "differential_eligibility": "not_assessed",
             "intensity_source": "synthetic_log2_fold_change",
             "source_schema": "gentle.probe_region_evidence_interpretation.v2",
             "source_path": "./test_files/fixtures/isoform_evidence/patz1/patz1_probe_evidence.json",

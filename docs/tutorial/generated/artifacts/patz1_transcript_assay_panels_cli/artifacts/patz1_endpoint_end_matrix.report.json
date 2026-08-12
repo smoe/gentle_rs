@@ -579,6 +579,21 @@
         },
         "amplicon_spans_junction": true,
         "selected_because_of_junction_evidence": false,
+        "retained_because_of_differential_junction_evidence": false,
+        "incremental_binary_distinction_count": 2,
+        "exclusive_binary_distinction_count": 2,
+        "newly_separated_equivalence_group_pairs": [
+          {
+            "left_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+            "right_equivalence_group_id": "cdna_eq_bf8de0081e092d6f"
+          },
+          {
+            "left_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+            "right_equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447"
+          }
+        ],
+        "binary_redundant_with_assay_ids": [],
+        "retained_despite_zero_marginal_discrimination": false,
         "selection_evidence": [],
         "junction_spanning_status": "no_requested_junction_match_reported",
         "junction_matches": [],
@@ -994,6 +1009,12 @@
         },
         "amplicon_spans_junction": true,
         "selected_because_of_junction_evidence": false,
+        "retained_because_of_differential_junction_evidence": false,
+        "incremental_binary_distinction_count": 0,
+        "exclusive_binary_distinction_count": 0,
+        "newly_separated_equivalence_group_pairs": [],
+        "binary_redundant_with_assay_ids": [],
+        "retained_despite_zero_marginal_discrimination": false,
         "selection_evidence": [],
         "junction_spanning_status": "no_requested_junction_match_reported",
         "junction_matches": [],
