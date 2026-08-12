@@ -23453,6 +23453,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 {"name": "REQUEST_JSON", "required": true, "detail": "gentle.terminal_exon_rt_primer_pool_request.v1 payload or @file"},
                 {"name": "TARGET_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "one loaded annotated sequence id from targets[]; repeat readiness checks for every ordered target"},
                 {"name": "REPORT_ID", "required": false, "subject_kind": "report", "detail": "explicit terminal-exon RT-primer pool report id carried by the request; required for deterministic effect verification"}
+                ,{"name": "TARGET_GENOME_ID", "required": false, "subject_kind": "prepared_reference", "detail": "prepared genomic-DNA index named by optional genomic_specificity; when present, GENtle runs exhaustive blastn-short checks and binds the report to the database content fingerprint"}
             ],
             "reads": [
                 {"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}

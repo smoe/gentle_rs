@@ -8294,6 +8294,10 @@ pub struct TerminalExonRtPrimerPoolRequest {
     pub terminal_exon_search_window_bp: usize,
     pub max_candidates_per_target: usize,
     pub targets: Vec<TerminalExonRtPrimerTarget>,
+    /// Optional exhaustive genomic-DNA specificity check for every selected
+    /// variable primer segment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_specificity: Option<TerminalExonRtPrimerPoolGenomicSpecificityRequest>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub report_id: Option<String>,
 }
@@ -8307,7 +8311,31 @@ impl Default for TerminalExonRtPrimerPoolRequest {
             terminal_exon_search_window_bp: 250,
             max_candidates_per_target: 10,
             targets: vec![],
+            genomic_specificity: None,
             report_id: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Prepared genomic-DNA reference used to check selected RT-primer segments.
+pub struct TerminalExonRtPrimerPoolGenomicSpecificityRequest {
+    pub target_genome_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catalog_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_dir: Option<String>,
+    pub hit_warning_threshold: usize,
+}
+
+impl Default for TerminalExonRtPrimerPoolGenomicSpecificityRequest {
+    fn default() -> Self {
+        Self {
+            target_genome_id: String::new(),
+            catalog_path: None,
+            cache_dir: None,
+            hit_warning_threshold: 20_000,
         }
     }
 }
@@ -8391,6 +8419,61 @@ pub struct TerminalExonRtPrimerPoolInteraction {
     pub full_oligo_max_3prime_complementary_run_bp: usize,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One perfect, full-length genomic match of a selected variable primer.
+pub struct TerminalExonRtPrimerGenomicExactHit {
+    pub subject_id: String,
+    pub start_1based: usize,
+    pub end_1based: usize,
+    pub strand: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Exhaustive genomic-DNA BLAST result for one selected pool member.
+pub struct TerminalExonRtPrimerGenomicSpecificityResult {
+    pub priority_1based: usize,
+    pub candidate_id: String,
+    pub variable_primer_5_to_3: String,
+    pub raw_hsp_count: usize,
+    pub exact_full_length_hit_count: usize,
+    pub unique_exact_genomic_match: bool,
+    pub expected_subject_id: Option<String>,
+    pub expected_start_1based: Option<usize>,
+    pub expected_end_1based: Option<usize>,
+    pub intended_locus_status: String,
+    #[serde(default)]
+    pub exact_full_length_hits: Vec<TerminalExonRtPrimerGenomicExactHit>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Database-identity-bound genomic specificity evidence for the selected pool.
+pub struct TerminalExonRtPrimerPoolGenomicSpecificityReport {
+    pub status: String,
+    pub target_genome_id: String,
+    pub index_kind: String,
+    pub source_assembly: Option<String>,
+    pub source_release: Option<String>,
+    pub masking: String,
+    pub database_prefix: String,
+    pub blast_database_version: Option<String>,
+    pub database_sequence_count: Option<u64>,
+    pub database_total_bases: Option<u64>,
+    pub database_content_fingerprint: Option<String>,
+    pub blastn_executable: String,
+    pub inspection_tool_executable: String,
+    pub inspection_tool_version: Option<String>,
+    pub hit_warning_threshold: usize,
+    #[serde(default)]
+    pub results: Vec<TerminalExonRtPrimerGenomicSpecificityResult>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default)]
 /// Persisted, provenance-bearing outcome for terminal-exon RT-primer pool
@@ -8409,11 +8492,21 @@ pub struct TerminalExonRtPrimerPoolReport {
     pub terminal_exon_search_window_bp: usize,
     pub max_candidates_per_target: usize,
     pub ranking_policy: String,
+    /// Deterministic policy used to choose one candidate per target after the
+    /// per-target candidate lists have been retained.
+    #[serde(default)]
+    pub pool_selection_policy: String,
+    /// Number of complete or partial pool states scored by the bounded
+    /// deterministic selector.
+    #[serde(default)]
+    pub pool_selection_states_evaluated: usize,
     pub tm_policy: String,
     #[serde(default)]
     pub targets: Vec<TerminalExonRtPrimerTargetResult>,
     #[serde(default)]
     pub selected_pool_interactions: Vec<TerminalExonRtPrimerPoolInteraction>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_specificity: Option<TerminalExonRtPrimerPoolGenomicSpecificityReport>,
     #[serde(default)]
     pub warnings: Vec<String>,
 }

@@ -90,6 +90,47 @@
       ]
     },
     {
+      "intent_id": "terminal_exon_sequence_specific_rt_primer_pool",
+      "description": "Design a fixed-adapter sequence-specific RT-primer pool near explicit terminal exons, including pool-wide complementarity and optional exhaustive content-bound genomic-DNA specificity evidence.",
+      "trigger_terms": [
+        "sequence specific rt primer pool",
+        "terminal exon rt primers",
+        "nanopore sequence specific cdna primers",
+        "fixed adapter rt primer pool",
+        "genomic uniqueness rt primer pool"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "requires_confirmation": true,
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "claim_attribution_mode": "strict",
+            "presentation_profile": "pcr_primer_design",
+            "delegation": {"schema": "gentle.clawbio_skill_delegation.v1", "source_skill": "gentle-pcr-primer-design", "source_skill_version": "0.7.0", "intent_id": "terminal_exon_sequence_specific_rt_primer_pool", "plan_step_index": 0},
+            "mode": "shell",
+            "state_path": ".gentle_state.json",
+            "shell_line": "primers design-terminal-exon-rt-pool @{request_path}",
+            "timeout_secs": 3600
+          },
+          "slots": {
+            "request_path": {
+              "required": true,
+              "description": "Path to a reviewed gentle.terminal_exon_rt_primer_pool_request.v1 payload; genomic_specificity inside the payload names the prepared genomic-DNA reference when required",
+              "pattern": "(?:request|operation)(?:[_ -]?path)?[=: ]+([A-Za-z0-9_./-]+\\.json)",
+              "ignore_case": true
+            }
+          },
+          "confirmation": {
+            "required": true,
+            "reason": "The operation resolves transcript geometry, selects an orderable oligo pool, persists its report, and may execute exhaustive local genomic BLAST searches against an explicitly named content-bound reference."
+          }
+        }
+      ]
+    },
+    {
       "intent_id": "qpcr_taqman_design",
       "description": "Run one caller-reviewed DesignQpcrAssays request through GENtle for a primer-plus-probe TaqMan-style assay.",
       "trigger_terms": [

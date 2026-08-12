@@ -16749,6 +16749,7 @@ fn execute_primers_design_terminal_exon_rt_pool_list_show_export() {
             transcript_id: Some("RTP1-201".to_string()),
             label: Some("RTP1".to_string()),
         }],
+        genomic_specificity: None,
         report_id: Some("rt_pool_shell".to_string()),
     })
     .expect("serialize terminal-exon RT-primer pool request");

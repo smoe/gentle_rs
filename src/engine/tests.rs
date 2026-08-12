@@ -13299,6 +13299,7 @@ fn terminal_exon_rt_primer_pool_request() -> TerminalExonRtPrimerPoolRequest {
                 label: Some("second priority".to_string()),
             },
         ],
+        genomic_specificity: None,
         report_id: Some("terminal_rt_pool_test".to_string()),
     }
 }
@@ -13318,8 +13319,51 @@ fn terminal_exon_rt_primer_pool_is_deterministic_persisted_exportable_and_undoab
     assert_eq!(report.schema, TERMINAL_EXON_RT_PRIMER_POOL_REPORT_SCHEMA);
     assert_eq!(report.report_id, "terminal_rt_pool_test");
     assert_eq!(report.targets.len(), 2);
+    assert!(report.genomic_specificity.is_none());
     assert_eq!(report.selected_pool_interactions.len(), 1);
     assert!(report.tm_policy.contains("excluded from ranking"));
+    assert!(
+        report
+            .pool_selection_policy
+            .contains("bounded_beam_1024_precomputed_pair_matrix")
+    );
+    assert!(report.pool_selection_states_evaluated > 0);
+    let minimum_possible_worst_self_3prime = report
+        .targets
+        .iter()
+        .filter_map(|target| {
+            target
+                .candidates
+                .iter()
+                .map(|candidate| {
+                    candidate
+                        .ranking
+                        .full_oligo_self_3prime_complementary_run_bp
+                })
+                .min()
+        })
+        .max()
+        .unwrap_or(0);
+    let selected_worst_self_3prime = report
+        .targets
+        .iter()
+        .filter_map(|target| {
+            target
+                .candidates
+                .iter()
+                .find(|candidate| candidate.selected)
+        })
+        .map(|candidate| {
+            candidate
+                .ranking
+                .full_oligo_self_3prime_complementary_run_bp
+        })
+        .max()
+        .unwrap_or(0);
+    assert_eq!(
+        selected_worst_self_3prime, minimum_possible_worst_self_3prime,
+        "pool interactions must not be improved by sacrificing avoidable complete-oligo self 3-prime complementarity"
+    );
     assert_eq!(report.targets[0].priority_1based, 1);
     assert_eq!(report.targets[0].resolved_transcript_id, "TX1");
     assert_eq!(report.targets[1].priority_1based, 2);
@@ -13332,7 +13376,7 @@ fn terminal_exon_rt_primer_pool_is_deterministic_persisted_exportable_and_undoab
             .iter()
             .find(|candidate| candidate.selected)
             .expect("selected candidate");
-        assert_eq!(selected.rank, 1);
+        assert!(selected.rank >= 1);
         assert_eq!(selected.variable_length_bp, 22);
         assert_eq!(selected.variable_primer_5_to_3.len(), 22);
         assert_eq!(
@@ -13427,6 +13471,60 @@ fn terminal_exon_rt_primer_pool_is_deterministic_persisted_exportable_and_undoab
 }
 
 #[test]
+fn terminal_exon_rt_primer_genomic_exact_hits_require_a_perfect_full_length_match() {
+    let mut blast = demo_blast_report();
+    blast.query_length = 22;
+    blast.hits = vec![
+        BlastHit {
+            subject_id: "chr3".to_string(),
+            identity_percent: 100.0,
+            alignment_length: 22,
+            mismatches: 0,
+            gap_opens: 0,
+            query_start: 1,
+            query_end: 22,
+            subject_start: 220,
+            subject_end: 199,
+            evalue: 1e-8,
+            bit_score: 44.0,
+            query_coverage_percent: Some(100.0),
+            query_length: Some(22),
+            aligned_query: Some("ACGTACGTACGTACGTACGTAC".to_string()),
+            aligned_subject: Some("ACGTACGTACGTACGTACGTAC".to_string()),
+        },
+        BlastHit {
+            subject_id: "chr7".to_string(),
+            identity_percent: 95.45,
+            alignment_length: 22,
+            mismatches: 1,
+            gap_opens: 0,
+            query_start: 1,
+            query_end: 22,
+            subject_start: 10,
+            subject_end: 31,
+            evalue: 1e-4,
+            bit_score: 30.0,
+            query_coverage_percent: Some(100.0),
+            query_length: Some(22),
+            aligned_query: Some("ACGTACGTACGTACGTACGTAC".to_string()),
+            aligned_subject: Some("ACGTACGTACGTACGTACGTAT".to_string()),
+        },
+    ];
+
+    let hits = GentleEngine::terminal_exon_rt_primer_exact_genomic_hits(&blast, 22);
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].subject_id, "chr3");
+    assert_eq!((hits[0].start_1based, hits[0].end_1based), (199, 220));
+    assert_eq!(hits[0].strand, "-");
+    assert!(GentleEngine::terminal_exon_rt_subject_ids_match(
+        "chr3", "3"
+    ));
+    assert!(!GentleEngine::terminal_exon_rt_subject_ids_match(
+        "chr3", "4"
+    ));
+}
+
+#[test]
 fn terminal_exon_rt_primer_pool_requires_explicit_transcript_for_ambiguous_group() {
     let mut engine = transcript_qpcr_panel_test_engine();
     let mut request = terminal_exon_rt_primer_pool_request();
@@ -13473,6 +13571,7 @@ fn terminal_exon_rt_primer_pool_maps_reverse_strand_terminal_exon_coordinates() 
                     transcript_id: Some("REVRT-201".to_string()),
                     label: None,
                 }],
+                genomic_specificity: None,
                 report_id: Some("reverse_rt_pool".to_string()),
             },
         })

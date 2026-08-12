@@ -29,6 +29,8 @@ metadata:
       - primer preflight
       - primer3 preflight
       - conventional pcr design
+      - sequence specific rt primer pool
+      - terminal exon rt primers
       - endpoint rt-pcr panel
       - isoform pcr panel
       - transcript assay panel
@@ -110,6 +112,11 @@ This skill owns:
    automatic.
 6. Dispatch the approved request through `gentle-cloning`:
    - `primers design` for conventional PCR;
+   - `primers design-terminal-exon-rt-pool` for fixed-adapter,
+     sequence-specific RT-primer pools near explicit terminal exons. When its
+     request includes `genomic_specificity`, GENtle itself runs exhaustive
+     `blastn-short` searches against the named prepared genomic-DNA database
+     and binds exact-hit results to that database's content fingerprint;
    - `primers design-qpcr` for generic TaqMan-style assays;
    - `primers design-transcript-assay-panel` for endpoint RT-PCR and
      transcript-aware SYBR/TaqMan panels;

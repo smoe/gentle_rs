@@ -3089,15 +3089,24 @@ Shared shell command:
     - `variant materialize-allele SEQ_ID --allele reference|alternate [--variant ID] [--output-id ID]`
     - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers design-terminal-exon-rt-pool REQUEST_JSON_OR_@FILE`
+      - the optional request object `genomic_specificity` accepts
+        `target_genome_id`, optional `catalog_path`/`cache_dir`, and
+        `hit_warning_threshold` (default `20000`); GENtle then runs exhaustive
+        local `blastn-short` checks for every selected variable segment and
+        persists exact genomic hits plus database-content provenance in the
+        same report
       - accepts `gentle.terminal_exon_rt_primer_pool_request.v1`
       - resolves each ordered target through the annotated Splicing Expert
         transcript model and searches exact-length sequence-specific segments
         near the transcript-oriented start of its terminal exon
       - the complete oligo is the fixed 5-prime adapter followed by the reverse
         complement of the selected mature-transcript segment
-      - caller order is target priority. Adapter, self-, and prior-pool
-        complementarity are ranked before distance; Tm is reported but does not
-        affect ranking
+      - caller order identifies the requested pool members. GENtle retains a
+        bounded candidate list for each member and selects the final set
+        jointly, protecting complete-oligo/variable self-complementarity and
+        homopolymer quality before minimizing mutual 3-prime and general
+        complementarity and distance; Tm is reported but does not affect
+        ranking
       - example request file:
         ```json
         {
@@ -3120,6 +3129,10 @@ Shared shell command:
               "label": "PATZ1"
             }
           ],
+          "genomic_specificity": {
+            "target_genome_id": "human_grch38_ensembl_116",
+            "hit_warning_threshold": 20000
+          },
           "report_id": "tp73_patz1_terminal_exon_rt_pool"
         }
         ```
@@ -3128,9 +3141,11 @@ Shared shell command:
         Splicing Expert or introspection output.
       - run with
         `gentle_cli primers design-terminal-exon-rt-pool @terminal_exon_rt_pool.json`
-      - this report evaluates terminal-exon geometry and within-request pool
-        compatibility; it does not claim a whole-transcriptome or whole-genome
-        specificity screen
+      - without `genomic_specificity`, this report evaluates terminal-exon
+        geometry and within-request pool compatibility only. With it, the
+        report additionally contains exhaustive, content-fingerprint-bound
+        genomic-DNA exact-hit evidence; it still does not claim
+        whole-transcriptome specificity
     - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers specificity REPORT_ID --pair-rank N --target-genome GENOME_ID [--max-target-amplicon-bp N | --readiness-max-amplicon-bp N --exploratory-max-amplicon-bp N] [--report-detail compact|full] [--min-primer-coverage-fraction F] [--max-3prime-mismatches N] [--three-prime-window-bp N] [--min-total-mismatches-to-unintended-target N] [--max-hits-per-primer N] [--path OUTPUT.json]`
     - `primers specificity --forward SEQ --reverse SEQ --target-genome GENOME_ID [--max-target-amplicon-bp N | --readiness-max-amplicon-bp N --exploratory-max-amplicon-bp N] [--report-detail compact|full] [--min-primer-coverage-fraction F] [--max-3prime-mismatches N] [--three-prime-window-bp N] [--min-total-mismatches-to-unintended-target N] [--max-hits-per-primer N] [--path OUTPUT.json]`

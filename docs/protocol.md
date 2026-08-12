@@ -7988,8 +7988,10 @@ the exact sequence, feature, and transcript identifiers present in the loaded
 GENtle project.
 
 - Request semantics:
-  - `targets[]` order is biological selection priority. The first selected
-    oligo is fixed before the second target is ranked against it, and so on
+  - `targets[]` order identifies the requested pool members and is preserved
+    in the report. GENtle first retains a bounded candidate list per target,
+    then chooses one candidate per target jointly so an avoidable interaction
+    with an earlier target does not become fixed merely because of caller order
   - `source_feature_id` identifies a member of the intended Splicing Expert
     group. When that group contains more than one transcript,
     `transcript_id` is required; GENtle does not guess an isoform
@@ -8008,12 +8010,20 @@ GENtle project.
     `full_oligo_5_to_3` is the fixed adapter plus that variable primer
   - transcript and source intervals are 0-based, half-open. Source intervals
     remain increasing coordinates even when the transcript is on strand `-`
-  - selection uses a deterministic lower-is-better lexicographic rank over:
+  - per-target candidate retention uses a deterministic lower-is-better
+    lexicographic rank over:
     variable 3-prime complementarity to the adapter, adapter/variable maximum
     complementarity, complete-oligo self 3-prime complementarity, maximum
     prior-pool 3-prime complementarity, complete-oligo self complementarity,
     maximum prior-pool complementarity, distance from the terminal-exon start,
-    and finally the variable sequence
+    and finally the variable sequence. The final pool is selected jointly from
+    those retained lists by a deterministic bounded search. It protects
+    complete-oligo and variable-segment self-complementarity and homopolymer
+    quality first, then minimizes the worst complete-oligo and variable-only
+    mutual 3-prime runs, general mutual complementary runs, summed complete-
+    oligo 3-prime runs, candidate ranks, terminal-exon distance, and ordered
+    variable sequences. `pool_selection_policy` and
+    `pool_selection_states_evaluated` make that calculation inspectable
   - `variable_tm_c` is descriptive only. Tm does not participate in this
     ranking and the report states that policy explicitly
   - `selected_pool_interactions[]` records variable-only and complete-oligo
@@ -8022,9 +8032,20 @@ GENtle project.
     `gentle.terminal_exon_rt_primer_pool.v1`; reports are persisted in the
     existing primer-design report store and participate in normal operation
     undo/history
-  - no whole-transcriptome or whole-genome off-target screen is implied by this
-    report. Terminal-exon placement and pool compatibility are design evidence,
-    not experimental validation or global specificity evidence
+  - by default, no whole-transcriptome or whole-genome off-target screen is
+    implied. When the request includes `genomic_specificity`, GENtle executes
+    exhaustive `blastn-short` searches for every selected variable segment
+    against the named prepared `genomic_dna` index. The additive
+    `genomic_specificity` report binds the index kind, assembly/release,
+    masking, prefix, sequence/base counts, BLAST database version, inspection
+    tool, content fingerprint, every perfect full-length hit, and the raw HSP
+    count. GENtle separately compares that exact match with the selected
+    candidate's genome-anchored source interval. `passed` means every selected
+    segment has exactly one perfect full-length genomic match and that match is
+    the intended anchored locus; missing anchors produce `review_required`,
+    while a coordinate mismatch fails readiness. This is genomic uniqueness
+    evidence, not experimental validation and not whole-transcriptome
+    specificity
 
 `ExportTerminalExonRtPrimerPoolReport` writes one persisted
 `gentle.terminal_exon_rt_primer_pool.v1` record to the requested JSON path.

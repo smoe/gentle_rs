@@ -6637,6 +6637,7 @@ impl MainAreaDna {
                 "retained candidates per target",
             )?,
             targets: Self::parse_terminal_exon_rt_primer_targets(&form.targets_tsv)?,
+            genomic_specificity: None,
             report_id: (!form.report_id.trim().is_empty())
                 .then(|| form.report_id.trim().to_string()),
         })

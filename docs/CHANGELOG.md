@@ -9,6 +9,18 @@
   remain authoritative. Independent linear-fallback reports are not promoted
   into native GENtle passes.
 
+- Extended terminal-exon sequence-specific RT-primer pools with optional,
+  exhaustive local genomic-DNA BLAST evidence. Reports now retain exact
+  full-length hits, raw HSP counts, genomic-uniqueness readiness, and prepared
+  database/tool/content-fingerprint provenance; the PCR ClawBio skill exposes
+  the same reviewed request as an explicit delegated intent.
+
+- Improved terminal-exon sequence-specific RT-primer pools from greedy caller-
+  order selection to deterministic bounded pool-wide selection. Reports retain
+  the exact policy and evaluated-state count, and the existing all-against-all
+  interaction matrix now describes the jointly selected complete oligos and
+  their variable segments.
+
 - Made biological workflow extension an explicit GENtle development path.
   A new guide classifies related requests as parameterization, engine-service
   composition, or a missing primitive; documents reusable private

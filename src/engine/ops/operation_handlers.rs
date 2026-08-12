@@ -64,6 +64,16 @@ struct GenomeExtractionProvenanceOverrides {
     anchor_verified: Option<bool>,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+struct TerminalExonRtPoolPairMetrics {
+    variable_max_complementary_run_bp: usize,
+    variable_max_3prime_complementary_run_bp: usize,
+    full_oligo_max_complementary_run_bp: usize,
+    full_oligo_max_3prime_complementary_run_bp: usize,
+}
+
+type TerminalExonRtPoolPairMatrix = Vec<Vec<Option<Vec<Vec<TerminalExonRtPoolPairMetrics>>>>>;
+
 #[derive(Debug, Clone)]
 /// One exon projected onto a mature transcript's local 5'-to-3' coordinate
 /// system while retaining its source-sequence interval.
@@ -8140,6 +8150,196 @@ impl GentleEngine {
             })
     }
 
+    fn terminal_exon_rt_pool_selection_score(
+        candidate_indices: &[usize],
+        target_results: &[TerminalExonRtPrimerTargetResult],
+        pair_metrics: &TerminalExonRtPoolPairMatrix,
+    ) -> (
+        (
+            usize,
+            usize,
+            usize,
+            usize,
+            usize,
+            usize,
+            usize,
+            usize,
+            usize,
+            usize,
+            usize,
+            usize,
+        ),
+        Vec<String>,
+    ) {
+        let candidates = candidate_indices
+            .iter()
+            .enumerate()
+            .map(|(target_index, candidate_index)| {
+                &target_results[target_index].candidates[*candidate_index]
+            })
+            .collect::<Vec<_>>();
+        let max_full_self_3prime = candidates
+            .iter()
+            .map(|candidate| {
+                candidate
+                    .ranking
+                    .full_oligo_self_3prime_complementary_run_bp
+            })
+            .max()
+            .unwrap_or(0);
+        let max_variable_self_3prime = candidates
+            .iter()
+            .map(|candidate| candidate.variable_self_3prime_complementary_run_bp)
+            .max()
+            .unwrap_or(0);
+        let max_full_self = candidates
+            .iter()
+            .map(|candidate| candidate.ranking.full_oligo_self_complementary_run_bp)
+            .max()
+            .unwrap_or(0);
+        let max_variable_self = candidates
+            .iter()
+            .map(|candidate| candidate.variable_self_complementary_run_bp)
+            .max()
+            .unwrap_or(0);
+        let max_homopolymer = candidates
+            .iter()
+            .map(|candidate| candidate.variable_longest_homopolymer_run_bp)
+            .max()
+            .unwrap_or(0);
+        let mut max_full_3prime = 0usize;
+        let mut max_variable_3prime = 0usize;
+        let mut max_full = 0usize;
+        let mut max_variable = 0usize;
+        let mut sum_full_3prime = 0usize;
+        for left_target_index in 0..candidate_indices.len() {
+            for right_target_index in left_target_index.saturating_add(1)..candidate_indices.len() {
+                let metrics = pair_metrics[left_target_index][right_target_index]
+                    .as_ref()
+                    .and_then(|rows| rows.get(candidate_indices[left_target_index]))
+                    .and_then(|row| row.get(candidate_indices[right_target_index]))
+                    .copied()
+                    .unwrap_or_default();
+                max_full_3prime =
+                    max_full_3prime.max(metrics.full_oligo_max_3prime_complementary_run_bp);
+                max_variable_3prime =
+                    max_variable_3prime.max(metrics.variable_max_3prime_complementary_run_bp);
+                max_full = max_full.max(metrics.full_oligo_max_complementary_run_bp);
+                max_variable = max_variable.max(metrics.variable_max_complementary_run_bp);
+                sum_full_3prime = sum_full_3prime
+                    .saturating_add(metrics.full_oligo_max_3prime_complementary_run_bp);
+            }
+        }
+        (
+            (
+                max_full_self_3prime,
+                max_variable_self_3prime,
+                max_full_self,
+                max_variable_self,
+                max_homopolymer,
+                max_full_3prime,
+                max_variable_3prime,
+                max_full,
+                max_variable,
+                sum_full_3prime,
+                candidates.iter().map(|candidate| candidate.rank).sum(),
+                candidates
+                    .iter()
+                    .map(|candidate| candidate.distance_from_terminal_exon_start_bp)
+                    .sum(),
+            ),
+            candidate_indices
+                .iter()
+                .enumerate()
+                .map(|(target_index, candidate_index)| {
+                    target_results[target_index].candidates[*candidate_index]
+                        .variable_primer_5_to_3
+                        .clone()
+                })
+                .collect(),
+        )
+    }
+
+    fn select_terminal_exon_rt_primer_pool(
+        target_results: &mut [TerminalExonRtPrimerTargetResult],
+    ) -> (Vec<TerminalExonRtPrimerCandidate>, usize) {
+        const POOL_SELECTION_BEAM_WIDTH: usize = 1_024;
+        let target_count = target_results.len();
+        let mut pair_metrics = vec![vec![None; target_count]; target_count];
+        for left_target_index in 0..target_count {
+            for right_target_index in left_target_index.saturating_add(1)..target_count {
+                let mut rows =
+                    Vec::with_capacity(target_results[left_target_index].candidates.len());
+                for left in &target_results[left_target_index].candidates {
+                    let mut row =
+                        Vec::with_capacity(target_results[right_target_index].candidates.len());
+                    for right in &target_results[right_target_index].candidates {
+                        let variable = Self::compute_primer_pair_dimer_metrics(
+                            left.variable_primer_5_to_3.as_bytes(),
+                            right.variable_primer_5_to_3.as_bytes(),
+                        );
+                        let full = Self::compute_primer_pair_dimer_metrics(
+                            left.full_oligo_5_to_3.as_bytes(),
+                            right.full_oligo_5_to_3.as_bytes(),
+                        );
+                        row.push(TerminalExonRtPoolPairMetrics {
+                            variable_max_complementary_run_bp: variable.max_complementary_run_bp,
+                            variable_max_3prime_complementary_run_bp: variable
+                                .max_3prime_complementary_run_bp,
+                            full_oligo_max_complementary_run_bp: full.max_complementary_run_bp,
+                            full_oligo_max_3prime_complementary_run_bp: full
+                                .max_3prime_complementary_run_bp,
+                        });
+                    }
+                    rows.push(row);
+                }
+                pair_metrics[left_target_index][right_target_index] = Some(rows);
+            }
+        }
+        let mut states = vec![Vec::<usize>::new()];
+        let mut states_evaluated = 0usize;
+        for target in target_results.iter() {
+            let mut expanded =
+                Vec::with_capacity(states.len().saturating_mul(target.candidates.len()));
+            for state in &states {
+                for candidate_index in 0..target.candidates.len() {
+                    let mut next = state.clone();
+                    next.push(candidate_index);
+                    expanded.push(next);
+                    states_evaluated = states_evaluated.saturating_add(1);
+                }
+            }
+            expanded.sort_by_key(|state| {
+                Self::terminal_exon_rt_pool_selection_score(state, target_results, &pair_metrics)
+            });
+            expanded.truncate(POOL_SELECTION_BEAM_WIDTH);
+            states = expanded;
+        }
+        let selected_indices = states.into_iter().next().unwrap_or_default();
+        let selected = selected_indices
+            .iter()
+            .enumerate()
+            .map(|(target_index, candidate_index)| {
+                target_results[target_index].candidates[*candidate_index].clone()
+            })
+            .collect::<Vec<_>>();
+        for target in target_results.iter_mut() {
+            for candidate in &mut target.candidates {
+                candidate.selected = false;
+            }
+        }
+        for (target, selected_candidate) in target_results.iter_mut().zip(&selected) {
+            if let Some(candidate) = target
+                .candidates
+                .iter_mut()
+                .find(|candidate| candidate.candidate_id == selected_candidate.candidate_id)
+            {
+                candidate.selected = true;
+            }
+        }
+        (selected, states_evaluated)
+    }
+
     fn design_terminal_exon_rt_primer_pool(
         &mut self,
         mut request: TerminalExonRtPrimerPoolRequest,
@@ -8422,6 +8622,21 @@ impl GentleEngine {
             });
         }
 
+        let (selected_pool, pool_selection_states_evaluated) =
+            Self::select_terminal_exon_rt_primer_pool(&mut target_results);
+
+        let genomic_specificity = request
+            .genomic_specificity
+            .as_ref()
+            .map(|specificity_request| {
+                self.check_terminal_exon_rt_primer_pool_genomic_specificity(
+                    specificity_request,
+                    &selected_pool,
+                    &target_results,
+                )
+            })
+            .transpose()?;
+
         let mut selected_pool_interactions = vec![];
         for left_index in 0..selected_pool.len() {
             for right_index in left_index.saturating_add(1)..selected_pool.len() {
@@ -8461,18 +8676,272 @@ impl GentleEngine {
             variable_length_bp: request.variable_length_bp,
             terminal_exon_search_window_bp: request.terminal_exon_search_window_bp,
             max_candidates_per_target: request.max_candidates_per_target,
-            ranking_policy: "lexicographic_min(variable_3prime_to_adapter_complementary_run_bp, adapter_variable_complementary_run_bp, full_oligo_self_3prime_complementary_run_bp, max_prior_pool_3prime_complementary_run_bp, full_oligo_self_complementary_run_bp, max_prior_pool_complementary_run_bp, distance_from_terminal_exon_start_bp, variable_primer_5_to_3); targets are selected in caller order"
+            ranking_policy: "Per-target candidates use lexicographic_min(variable_3prime_to_adapter_complementary_run_bp, adapter_variable_complementary_run_bp, full_oligo_self_3prime_complementary_run_bp, max_prior_pool_3prime_complementary_run_bp, full_oligo_self_complementary_run_bp, max_prior_pool_complementary_run_bp, distance_from_terminal_exon_start_bp, variable_primer_5_to_3). Final selection is pool-global over retained alternatives."
                 .to_string(),
+            pool_selection_policy: "bounded_beam_1024_precomputed_pair_matrix lexicographic_min(max_full_oligo_self_3prime_complementary_run_bp, max_variable_self_3prime_complementary_run_bp, max_full_oligo_self_complementary_run_bp, max_variable_self_complementary_run_bp, max_variable_homopolymer_run_bp, max_full_oligo_pair_3prime_complementary_run_bp, max_variable_pair_3prime_complementary_run_bp, max_full_oligo_pair_complementary_run_bp, max_variable_pair_complementary_run_bp, sum_full_oligo_pair_3prime_complementary_run_bp, sum_candidate_rank, sum_distance_from_terminal_exon_start_bp, ordered_variable_sequences)"
+                .to_string(),
+            pool_selection_states_evaluated,
             tm_policy: format!(
                 "Tm is descriptive and excluded from ranking. {}",
                 Self::primer_tm_model_description()
             ),
             targets: target_results,
             selected_pool_interactions,
+            genomic_specificity,
             warnings,
         };
         self.upsert_terminal_exon_rt_primer_pool_report(report.clone())?;
         Ok(report)
+    }
+
+    pub(crate) fn terminal_exon_rt_primer_exact_genomic_hits(
+        report: &GenomeBlastReport,
+        query_length: usize,
+    ) -> Vec<TerminalExonRtPrimerGenomicExactHit> {
+        let mut hits = report
+            .hits
+            .iter()
+            .filter(|hit| {
+                hit.alignment_length == query_length
+                    && hit.query_start == 1
+                    && hit.query_end == query_length
+                    && hit.mismatches == 0
+                    && hit.gap_opens == 0
+                    && (hit.identity_percent - 100.0).abs() < f64::EPSILON
+            })
+            .map(|hit| TerminalExonRtPrimerGenomicExactHit {
+                subject_id: hit.subject_id.clone(),
+                start_1based: hit.subject_start.min(hit.subject_end),
+                end_1based: hit.subject_start.max(hit.subject_end),
+                strand: if hit.subject_start <= hit.subject_end {
+                    "+".to_string()
+                } else {
+                    "-".to_string()
+                },
+            })
+            .collect::<Vec<_>>();
+        hits.sort_by(|left, right| {
+            left.subject_id
+                .cmp(&right.subject_id)
+                .then_with(|| left.start_1based.cmp(&right.start_1based))
+                .then_with(|| left.end_1based.cmp(&right.end_1based))
+                .then_with(|| left.strand.cmp(&right.strand))
+        });
+        hits.dedup();
+        hits
+    }
+
+    fn check_terminal_exon_rt_primer_pool_genomic_specificity(
+        &self,
+        request: &TerminalExonRtPrimerPoolGenomicSpecificityRequest,
+        selected_pool: &[TerminalExonRtPrimerCandidate],
+        target_results: &[TerminalExonRtPrimerTargetResult],
+    ) -> Result<TerminalExonRtPrimerPoolGenomicSpecificityReport, EngineError> {
+        let target_genome_id = request.target_genome_id.trim();
+        if target_genome_id.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Terminal-exon RT-primer genomic specificity requires target_genome_id"
+                    .to_string(),
+                cause_chain: vec![],
+            });
+        }
+        if request.hit_warning_threshold == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Terminal-exon RT-primer genomic specificity hit_warning_threshold must be at least 1"
+                    .to_string(),
+                cause_chain: vec![],
+            });
+        }
+        let (catalog, _) = Self::open_reference_genome_catalog(request.catalog_path.as_deref())?;
+        let inspection = catalog
+            .inspect_blast_database(target_genome_id, request.cache_dir.as_deref())
+            .map_err(|message| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Could not inspect genomic BLAST database: {message}"),
+                cause_chain: vec![],
+            })?
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "No prepared BLAST database is available for genome '{target_genome_id}'"
+                ),
+                cause_chain: vec![],
+            })?;
+        if inspection.index_kind.as_str() != "genomic_dna" {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Terminal-exon RT-primer genomic specificity requires a genomic_dna index; '{}' is {}",
+                    target_genome_id,
+                    inspection.index_kind.as_str()
+                ),
+                cause_chain: vec![],
+            });
+        }
+        if inspection.validation_status != "valid" || inspection.content_fingerprint.is_none() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Genomic BLAST database '{}' is not content-bound and valid (status '{}')",
+                    target_genome_id, inspection.validation_status
+                ),
+                cause_chain: vec![],
+            });
+        }
+
+        let mut results = Vec::with_capacity(selected_pool.len());
+        let mut blastn_executable = String::new();
+        for (index, candidate) in selected_pool.iter().enumerate() {
+            let blast = catalog
+                .blast_sequence_complete_with_cache(
+                    target_genome_id,
+                    &candidate.variable_primer_5_to_3,
+                    request.hit_warning_threshold,
+                    Some("blastn-short"),
+                    request.cache_dir.as_deref(),
+                )
+                .map_err(|message| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Genomic BLAST failed for selected RT-primer candidate '{}': {message}",
+                        candidate.candidate_id
+                    ),
+                    cause_chain: vec![],
+                })?;
+            if blastn_executable.is_empty() {
+                blastn_executable = blast.blastn_executable.clone();
+            }
+            let exact_hits = Self::terminal_exon_rt_primer_exact_genomic_hits(
+                &blast,
+                candidate.variable_primer_5_to_3.len(),
+            );
+            let unique_exact_genomic_match = exact_hits.len() == 1;
+            let mut result_warnings = blast.warnings;
+            if !unique_exact_genomic_match {
+                result_warnings.push(format!(
+                    "Selected variable primer has {} perfect full-length genomic matches; exactly one is required for genomic uniqueness readiness.",
+                    exact_hits.len()
+                ));
+            }
+            let expected = target_results.get(index).and_then(|target| {
+                self.sequence_genome_anchor_summary(&target.requested.seq_id)
+                    .ok()
+                    .map(|anchor| {
+                        let (start, end) = if anchor.strand == Some('-') {
+                            (
+                                anchor.end_1based.saturating_sub(
+                                    candidate.source_end_0based_exclusive.saturating_sub(1),
+                                ),
+                                anchor
+                                    .end_1based
+                                    .saturating_sub(candidate.source_start_0based),
+                            )
+                        } else {
+                            (
+                                anchor
+                                    .start_1based
+                                    .saturating_add(candidate.source_start_0based),
+                                anchor.start_1based.saturating_add(
+                                    candidate.source_end_0based_exclusive.saturating_sub(1),
+                                ),
+                            )
+                        };
+                        (anchor.chromosome, start.min(end), start.max(end))
+                    })
+            });
+            let intended_locus_match = expected.as_ref().is_some_and(|(subject, start, end)| {
+                exact_hits.iter().any(|hit| {
+                    Self::terminal_exon_rt_subject_ids_match(subject, &hit.subject_id)
+                        && hit.start_1based == *start
+                        && hit.end_1based == *end
+                })
+            });
+            let intended_locus_status = if expected.is_none() {
+                result_warnings.push(
+                    "The source sequence has no genome anchor; GENtle cannot prove that the unique exact hit is the intended locus."
+                        .to_string(),
+                );
+                "not_assessed_missing_genome_anchor"
+            } else if intended_locus_match {
+                "matched"
+            } else {
+                result_warnings.push(
+                    "No perfect full-length hit matches the genome-anchored source interval; inspect annotation/coordinate provenance before ordering."
+                        .to_string(),
+                );
+                "mismatch"
+            };
+            results.push(TerminalExonRtPrimerGenomicSpecificityResult {
+                priority_1based: index.saturating_add(1),
+                candidate_id: candidate.candidate_id.clone(),
+                variable_primer_5_to_3: candidate.variable_primer_5_to_3.clone(),
+                raw_hsp_count: blast.hit_count,
+                exact_full_length_hit_count: exact_hits.len(),
+                unique_exact_genomic_match,
+                expected_subject_id: expected.as_ref().map(|value| value.0.clone()),
+                expected_start_1based: expected.as_ref().map(|value| value.1),
+                expected_end_1based: expected.as_ref().map(|value| value.2),
+                intended_locus_status: intended_locus_status.to_string(),
+                exact_full_length_hits: exact_hits,
+                warnings: result_warnings,
+            });
+        }
+        let all_unique = results
+            .iter()
+            .all(|result| result.unique_exact_genomic_match);
+        let all_intended = results
+            .iter()
+            .all(|result| result.intended_locus_status == "matched");
+        let status = if all_unique && all_intended {
+            "passed"
+        } else if all_unique
+            && results
+                .iter()
+                .any(|result| result.intended_locus_status == "not_assessed_missing_genome_anchor")
+            && results
+                .iter()
+                .all(|result| result.intended_locus_status != "mismatch")
+        {
+            "review_required"
+        } else {
+            "failed"
+        };
+        Ok(TerminalExonRtPrimerPoolGenomicSpecificityReport {
+            status: status.to_string(),
+            target_genome_id: target_genome_id.to_string(),
+            index_kind: inspection.index_kind.as_str().to_string(),
+            source_assembly: inspection.source_assembly,
+            source_release: inspection.source_release,
+            masking: inspection.masking,
+            database_prefix: inspection.prefix,
+            blast_database_version: inspection.blast_database_version,
+            database_sequence_count: inspection.sequence_count,
+            database_total_bases: inspection.total_bases,
+            database_content_fingerprint: inspection.content_fingerprint,
+            blastn_executable,
+            inspection_tool_executable: inspection.tool_executable,
+            inspection_tool_version: inspection.tool_version,
+            hit_warning_threshold: request.hit_warning_threshold,
+            results,
+            warnings: if status == "passed" {
+                vec![]
+            } else {
+                vec!["One or more selected variable primers lack exactly one perfect full-length genomic match or do not match their genome-anchored source interval; the pool is not genomic-uniqueness ready.".to_string()]
+            },
+        })
+    }
+
+    pub(crate) fn terminal_exon_rt_subject_ids_match(left: &str, right: &str) -> bool {
+        fn normalized(value: &str) -> &str {
+            value
+                .trim()
+                .strip_prefix("chr")
+                .or_else(|| value.trim().strip_prefix("CHR"))
+                .unwrap_or(value.trim())
+        }
+        normalized(left) == normalized(right)
     }
 
     fn cdna_assay_genomic_equivalent_span(
