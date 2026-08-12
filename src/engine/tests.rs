@@ -17793,6 +17793,8 @@ fn transcript_assay_sybr_evaluates_patz1_clariom_juc_without_probe() {
         summary.selection_provenance_status,
         "de_novo_with_structured_selection_evidence"
     );
+    assert!(!summary.retained_because_of_differential_junction_evidence);
+    assert!(!summary.retained_despite_zero_marginal_discrimination);
     assert!(summary.selection_reasons.iter().any(|reason| {
         reason.code == PrimerPairSelectionReasonCode::JunctionEvidence
             && !reason.related_ids.is_empty()
@@ -17826,6 +17828,11 @@ fn transcript_assay_sybr_evaluates_patz1_clariom_juc_without_probe() {
             Some("log2_fold_change")
         );
         assert_eq!(evidence.measured_value, Some(-1.2));
+        assert_eq!(evidence.absolute_effect_threshold, None);
+        assert_eq!(
+            evidence.differential_eligibility,
+            PrimerPairDifferentialEvidenceEligibility::NotAssessed
+        );
         assert_eq!(
             evidence.intensity_source.as_deref(),
             Some("synthetic_log2_fold_change")
@@ -17894,6 +17901,87 @@ fn transcript_assay_sybr_evaluates_patz1_clariom_juc_without_probe() {
             || cell.oligo_dt_5prime_reach.status
                 == TranscriptAssayOligoDtReachStatus::WithinConfiguredThreshold
     }));
+}
+
+#[test]
+fn transcript_assay_report_distinguishes_differential_junction_obligation_from_redundancy() {
+    let fixture = "test_files/fixtures/isoform_evidence/patz1/patz1_probe_evidence.json";
+    let mut report: ProbeRegionEvidenceInterpretationReport = serde_json::from_slice(
+        &std::fs::read(fixture).expect("read synthetic probe-evidence fixture"),
+    )
+    .expect("parse synthetic probe-evidence fixture");
+    report.min_abs_logfc = Some(0.5);
+    let tmp = tempdir().expect("tempdir");
+    let evidence_path = tmp.path().join("thresholded_probe_evidence.json");
+    std::fs::write(
+        &evidence_path,
+        serde_json::to_vec_pretty(&report).expect("serialize thresholded evidence"),
+    )
+    .expect("write thresholded evidence");
+
+    let (_, _, evidence, warnings) = GentleEngine::transcript_assay_load_junction_evidence(
+        evidence_path.to_str().expect("utf-8 temp path"),
+        TranscriptAssayJunctionPriority::Required,
+        None,
+    )
+    .expect("load threshold-qualified junction evidence");
+    assert!(warnings.is_empty(), "unexpected warnings: {warnings:?}");
+    let eligible = evidence
+        .iter()
+        .find(|row| row.evidence_kind == PrimerPairSelectionEvidenceKind::Juc)
+        .expect("JUC evidence row");
+    assert_eq!(eligible.absolute_effect_threshold, Some(0.5));
+    assert_eq!(
+        eligible.differential_eligibility,
+        PrimerPairDifferentialEvidenceEligibility::Eligible
+    );
+
+    let group_ids = vec!["class_a".to_string(), "class_b".to_string()];
+    let common_signature = vec!["class_a".to_string(), "class_b".to_string()];
+    let mut assays = vec![
+        TranscriptAssayPanelAssay {
+            assay_id: "common_abundance".to_string(),
+            single_product_equivalence_group_ids: common_signature.clone(),
+            primer_pair_summary: PrimerPairCommunicationSummary {
+                selection_explanation: "Selected as a common abundance assay.".to_string(),
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+        TranscriptAssayPanelAssay {
+            assay_id: "differential_junction_validation".to_string(),
+            single_product_equivalence_group_ids: common_signature,
+            primer_pair_summary: PrimerPairCommunicationSummary {
+                selection_explanation: "Selected as a required junction assay.".to_string(),
+                selection_evidence: evidence
+                    .into_iter()
+                    .filter(|row| row.evidence_kind == PrimerPairSelectionEvidenceKind::Juc)
+                    .collect(),
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    ];
+    GentleEngine::annotate_transcript_assay_panel_selection_audit(&mut assays, &group_ids);
+
+    let junction_summary = &assays[1].primer_pair_summary;
+    assert!(junction_summary.retained_because_of_differential_junction_evidence);
+    assert!(junction_summary.retained_despite_zero_marginal_discrimination);
+    assert_eq!(junction_summary.exclusive_binary_distinction_count, 0);
+    assert_eq!(
+        junction_summary.binary_redundant_with_assay_ids,
+        vec!["common_abundance".to_string()]
+    );
+    assert!(junction_summary.selection_reasons.iter().any(|reason| {
+        reason.code == PrimerPairSelectionReasonCode::DifferentialJunctionEvidence
+            && reason.message.contains("threshold=0.500000")
+            && reason.message.contains("not a significance")
+    }));
+    assert!(
+        junction_summary
+            .selection_explanation
+            .contains("zero exclusive binary transcript distinctions")
+    );
 }
 
 #[cfg(unix)]

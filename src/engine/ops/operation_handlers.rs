@@ -27131,7 +27131,7 @@ impl GentleEngine {
         })
     }
 
-    fn transcript_assay_load_junction_evidence(
+    pub(in crate::engine) fn transcript_assay_load_junction_evidence(
         path: &str,
         priority: TranscriptAssayJunctionPriority,
         source_anchor: Option<&SequenceGenomeAnchorSummary>,
@@ -27223,6 +27223,9 @@ impl GentleEngine {
                         contrast: row.contrast.clone(),
                         measured_statistic: row.logfc.map(|_| "log2_fold_change".to_string()),
                         measured_value: row.logfc,
+                        absolute_effect_threshold: report.min_abs_logfc,
+                        differential_eligibility:
+                            PrimerPairDifferentialEvidenceEligibility::NotAssessed,
                         intensity_source: row.intensity_source.clone(),
                         source_schema: Some(report.schema.clone()),
                         source_path: Some(path.to_string()),
@@ -27270,6 +27273,23 @@ impl GentleEngine {
                             .iter()
                             .map(|tag| format!("ambiguity={tag}")),
                     );
+                    let differential_eligibility = if row
+                        .contrast
+                        .as_deref()
+                        .is_none_or(|value| value.trim().is_empty())
+                    {
+                        PrimerPairDifferentialEvidenceEligibility::MissingContrast
+                    } else if row.logfc.is_none() {
+                        PrimerPairDifferentialEvidenceEligibility::MissingMeasurement
+                    } else if let Some(threshold) = report.min_abs_logfc {
+                        if row.logfc.is_some_and(|value| value.abs() >= threshold) {
+                            PrimerPairDifferentialEvidenceEligibility::Eligible
+                        } else {
+                            PrimerPairDifferentialEvidenceEligibility::BelowThreshold
+                        }
+                    } else {
+                        PrimerPairDifferentialEvidenceEligibility::NotAssessed
+                    };
                     selection_evidence.push(PrimerPairSelectionEvidence {
                         evidence_id: row.evidence_id.clone(),
                         evidence_kind: PrimerPairSelectionEvidenceKind::Juc,
@@ -27302,6 +27322,8 @@ impl GentleEngine {
                         contrast: row.contrast.clone(),
                         measured_statistic: row.logfc.map(|_| "log2_fold_change".to_string()),
                         measured_value: row.logfc,
+                        absolute_effect_threshold: report.min_abs_logfc,
+                        differential_eligibility,
                         intensity_source: row.intensity_source.clone(),
                         source_schema: Some(report.schema.clone()),
                         source_path: Some(path.to_string()),
@@ -27794,6 +27816,142 @@ impl GentleEngine {
         }
     }
 
+    pub(in crate::engine) fn annotate_transcript_assay_panel_selection_audit(
+        assays: &mut [TranscriptAssayPanelAssay],
+        equivalence_group_ids: &[String],
+    ) {
+        let signatures = assays
+            .iter()
+            .map(|assay| {
+                assay
+                    .single_product_equivalence_group_ids
+                    .iter()
+                    .cloned()
+                    .collect::<BTreeSet<_>>()
+            })
+            .collect::<Vec<_>>();
+        let all_pairs = (0..equivalence_group_ids.len())
+            .flat_map(|left| {
+                (left.saturating_add(1)..equivalence_group_ids.len())
+                    .map(move |right| (left, right))
+            })
+            .collect::<BTreeSet<_>>();
+        let mut unresolved = all_pairs.clone();
+
+        for assay_index in 0..assays.len() {
+            let signature = &signatures[assay_index];
+            let separates = |left: usize, right: usize| {
+                signature.contains(&equivalence_group_ids[left])
+                    != signature.contains(&equivalence_group_ids[right])
+            };
+            let newly_separated = unresolved
+                .iter()
+                .filter(|(left, right)| separates(*left, *right))
+                .copied()
+                .collect::<Vec<_>>();
+            for pair in &newly_separated {
+                unresolved.remove(pair);
+            }
+            let exclusive_count = all_pairs
+                .iter()
+                .filter(|(left, right)| separates(*left, *right))
+                .filter(|(left, right)| {
+                    !signatures.iter().enumerate().any(|(other_index, other)| {
+                        other_index != assay_index
+                            && (other.contains(&equivalence_group_ids[*left])
+                                != other.contains(&equivalence_group_ids[*right]))
+                    })
+                })
+                .count();
+            let redundant_ids = signatures
+                .iter()
+                .enumerate()
+                .filter(|(other_index, other)| *other_index != assay_index && *other == signature)
+                .map(|(other_index, _)| assays[other_index].assay_id.clone())
+                .collect::<Vec<_>>();
+            let eligible_evidence = assays[assay_index]
+                .primer_pair_summary
+                .selection_evidence
+                .iter()
+                .filter(|row| {
+                    row.evidence_kind == PrimerPairSelectionEvidenceKind::Juc
+                        && row.requirement == PrimerPairEvidenceRequirement::Required
+                        && row.differential_eligibility
+                            == PrimerPairDifferentialEvidenceEligibility::Eligible
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            let retained_for_differential = !eligible_evidence.is_empty();
+            let zero_marginal_obligation = retained_for_differential && exclusive_count == 0;
+            let summary = &mut assays[assay_index].primer_pair_summary;
+            summary.incremental_binary_distinction_count = newly_separated.len();
+            summary.exclusive_binary_distinction_count = exclusive_count;
+            summary.newly_separated_equivalence_group_pairs = newly_separated
+                .iter()
+                .map(|(left, right)| TranscriptAssayUnresolvedPair {
+                    left_equivalence_group_id: equivalence_group_ids[*left].clone(),
+                    right_equivalence_group_id: equivalence_group_ids[*right].clone(),
+                })
+                .collect();
+            summary.binary_redundant_with_assay_ids = redundant_ids.clone();
+            summary.retained_because_of_differential_junction_evidence = retained_for_differential;
+            summary.retained_despite_zero_marginal_discrimination = zero_marginal_obligation;
+
+            if retained_for_differential {
+                let evidence_descriptions = eligible_evidence
+                    .iter()
+                    .map(|row| {
+                        format!(
+                            "{} (contrast={}, {}={:+.6}, |effect| threshold={:.6})",
+                            row.feature_id.as_deref().unwrap_or(&row.evidence_id),
+                            row.contrast.as_deref().unwrap_or("unspecified"),
+                            row.measured_statistic
+                                .as_deref()
+                                .unwrap_or("measured_effect"),
+                            row.measured_value.unwrap_or_default(),
+                            row.absolute_effect_threshold.unwrap_or_default(),
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                summary.selection_reasons.push(PrimerPairSelectionReason {
+                    code: PrimerPairSelectionReasonCode::DifferentialJunctionEvidence,
+                    message: format!(
+                        "Retained to validate {} required junction(s) that passed an explicit differential-effect gate: {}. This is descriptive prioritization, not a significance or isoform-abundance claim.",
+                        eligible_evidence.len(),
+                        evidence_descriptions.join("; ")
+                    ),
+                    related_ids: eligible_evidence
+                        .iter()
+                        .map(|row| row.junction_id.clone())
+                        .collect(),
+                });
+                let marginal_clause = if zero_marginal_obligation {
+                    format!(
+                        " It contributes zero exclusive binary transcript distinctions in the completed panel{} and is retained solely for this separately requested differential-junction validation role.",
+                        if redundant_ids.is_empty() {
+                            String::new()
+                        } else {
+                            format!(
+                                "; its binary detection signature is shared with {}",
+                                redundant_ids.join(", ")
+                            )
+                        }
+                    )
+                } else {
+                    format!(
+                        " It contributes {} exclusive binary transcript distinction(s) in the completed panel.",
+                        exclusive_count
+                    )
+                };
+                summary.selection_explanation.push_str(&format!(
+                    " Required differential-junction evidence: {}.{}",
+                    evidence_descriptions.join("; "),
+                    marginal_clause
+                ));
+            }
+        }
+    }
+
     fn primer_pair_summary_oligo(
         role: &str,
         primer: &PrimerDesignPrimerRecord,
@@ -28067,6 +28225,20 @@ impl GentleEngine {
                     || reverse_spans_requested_junction,
                 selected_because_of_junction_evidence: previous
                     .selected_because_of_junction_evidence,
+                retained_because_of_differential_junction_evidence: previous
+                    .retained_because_of_differential_junction_evidence,
+                incremental_binary_distinction_count: previous
+                    .incremental_binary_distinction_count,
+                exclusive_binary_distinction_count: previous
+                    .exclusive_binary_distinction_count,
+                newly_separated_equivalence_group_pairs: previous
+                    .newly_separated_equivalence_group_pairs
+                    .clone(),
+                binary_redundant_with_assay_ids: previous
+                    .binary_redundant_with_assay_ids
+                    .clone(),
+                retained_despite_zero_marginal_discrimination: previous
+                    .retained_despite_zero_marginal_discrimination,
                 selection_evidence: previous.selection_evidence.clone(),
                 junction_spanning_status,
                 junction_matches: assay.junction_matches.clone(),
@@ -29737,6 +29909,15 @@ impl GentleEngine {
                 }
             }
         }
+
+        let equivalence_group_ids = equivalence_groups
+            .iter()
+            .map(|group| group.report.equivalence_group_id.clone())
+            .collect::<Vec<_>>();
+        Self::annotate_transcript_assay_panel_selection_audit(
+            &mut selected_assays,
+            &equivalence_group_ids,
+        );
 
         let mut transcript_rows = vec![];
         for (group_index, group) in equivalence_groups.iter().enumerate() {

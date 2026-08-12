@@ -1,5 +1,15 @@
 # GENtle Changelog
 
+- Clarified transcript-assay selection reports for differential Clariom JUC
+  validation. Pair summaries now distinguish geometry-only junction evidence
+  from rows that pass an explicit contrast/effect threshold, retain the
+  qualifying contrast and threshold, and expose incremental, leave-one-out,
+  and redundant binary transcript-detection value. Required response-
+  associated junction assays with no exclusive discrimination are now stated
+  as separately retained validation obligations rather than appearing to add
+  isoform discrimination; descriptive effects remain explicitly distinct
+  from significance or isoform-abundance claims.
+
 - Made exhaustive cDNA primer-specificity handoff import scale with complete
   BLAST HSP count. New handoffs retain validated `qlen`/`qseq`/`sseq` fields
   and convert complete-query HSPs directly into persisted full-primer

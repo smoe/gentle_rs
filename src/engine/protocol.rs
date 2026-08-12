@@ -6402,12 +6402,29 @@ pub enum PrimerPairSelectionReasonCode {
     PredictedProductCoverage,
     EndReactionCoverage,
     JunctionEvidence,
+    /// A required junction was retained because a caller-supplied contrast
+    /// and absolute-effect threshold identified it for differential-response
+    /// validation. This does not assert statistical significance.
+    DifferentialJunctionEvidence,
     CommonRegionAnnotationConfirmed,
     RoutinePracticalityPreferred,
     AllowedNonpreferredProduct,
     LongRangeFallbackRequired,
     PsrEvidenceSupport,
     LegacyProvenanceUnavailable,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Whether a junction-evidence row passed an explicit differential-effect gate.
+pub enum PrimerPairDifferentialEvidenceEligibility {
+    /// No complete contrast + threshold + measurement gate was supplied.
+    #[default]
+    NotAssessed,
+    Eligible,
+    BelowThreshold,
+    MissingContrast,
+    MissingMeasurement,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -6493,6 +6510,12 @@ pub struct PrimerPairSelectionEvidence {
     pub measured_statistic: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub measured_value: Option<f64>,
+    /// Absolute-effect threshold declared by the upstream interpretation
+    /// report. Absence means differential eligibility was not assessed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub absolute_effect_threshold: Option<f64>,
+    #[serde(default)]
+    pub differential_eligibility: PrimerPairDifferentialEvidenceEligibility,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub intensity_source: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -6783,6 +6806,30 @@ pub struct PrimerPairCommunicationSummary {
     pub oligo_qc: PrimerPairSummaryQc,
     pub amplicon_spans_junction: bool,
     pub selected_because_of_junction_evidence: bool,
+    /// True only for required JUC evidence that passed an explicit
+    /// contrast/effect threshold. This is narrower than the legacy geometry-
+    /// level junction-evidence flag above.
+    #[serde(default)]
+    pub retained_because_of_differential_junction_evidence: bool,
+    /// Number of previously unresolved exact-cDNA class pairs separated by
+    /// this assay's binary product/no-product signature at its panel rank.
+    #[serde(default)]
+    pub incremental_binary_distinction_count: usize,
+    /// Binary class-pair distinctions that would be lost if this assay alone
+    /// were removed from the completed selected panel.
+    #[serde(default)]
+    pub exclusive_binary_distinction_count: usize,
+    /// Exact class pairs newly separated at this panel rank.
+    #[serde(default)]
+    pub newly_separated_equivalence_group_pairs: Vec<TranscriptAssayUnresolvedPair>,
+    /// Earlier selected assays with the same exact-cDNA product/no-product
+    /// signature. Equality here does not imply identical primer chemistry.
+    #[serde(default)]
+    pub binary_redundant_with_assay_ids: Vec<String>,
+    /// Explicitly calls out an evidence obligation retained despite adding no
+    /// new binary transcript distinction at this panel rank.
+    #[serde(default)]
+    pub retained_despite_zero_marginal_discrimination: bool,
     #[serde(default)]
     pub selection_evidence: Vec<PrimerPairSelectionEvidence>,
     pub junction_spanning_status: String,

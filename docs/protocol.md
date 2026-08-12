@@ -9671,6 +9671,23 @@ Primer-pair alternative frontier:
     actual probe sequence has been supplied and matched. The current
     transcript-panel adapter consumes projected region geometry and therefore
     emits only `probe_region_influenced`.
+    - Differential-junction eligibility is narrower than junction geometry or
+      `required` priority. `absolute_effect_threshold` and
+      `differential_eligibility` state whether the upstream interpretation
+      report supplied a contrast, numeric effect, and explicit absolute-effect
+      threshold that the JUC row passed. Without all three, eligibility is
+      `not_assessed`, `missing_contrast`, or `missing_measurement`; GENtle does
+      not infer differential transcript contribution merely because a Clariom
+      junction was supplied.
+    - Each selected pair also reports its rank-ordered
+      `incremental_binary_distinction_count`, leave-one-out
+      `exclusive_binary_distinction_count`, newly separated exact-cDNA class
+      pairs, and assays with an identical binary detection signature. A
+      threshold-qualified required JUC can therefore be marked
+      `retained_despite_zero_marginal_discrimination` while its selection
+      reason names the contrast, descriptive effect, threshold, and separate
+      validation role. This is not a statistical-significance or isoform-
+      abundance claim.
   - `selection_provenance_status = de_novo_no_external_selection_evidence`
     makes an evidence-free design explicit; empty aliases or evidence rows are
     not retroactive evidence. Reports predating v2 are refreshed with
