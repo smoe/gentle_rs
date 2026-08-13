@@ -2198,6 +2198,7 @@
         "Interpret `pass`, `specificity_fail`, `not_assessed`, and `incomplete` as distinct whole-panel outcomes.",
         "Separate transcript-annotation commonality, PSR support, product-length practicality, and the existing primer score in the selection rationale.",
         "Compose existing evidence and assay panels into one digest-bound review manifest without rerunning design or specificity.",
+        "Distinguish one measured differential-junction observation from its transcript projections, and verify that a selected-pair audit is bound to the exact panel-design operation.",
         "Persist, list, inspect, and export transcript assay reports from one explicit project state."
       ],
       "concepts": [
@@ -2289,6 +2290,7 @@
         "At least one SYBR junction-evaluation row has `source_kind: clariom_juc` and `status: selected_spanning_assay`.",
         "The routine report has `assay_tier: routine_common_region_screen`; selected commonality is annotation-confirmed, and PSR/JUC evidence kinds remain distinct.",
         "The compound report has `schema: gentle.gene_transcript_assay_routine.v1`, matches the committed isoform-evidence digest, and assigns common-control, junction-validation, and endpoint-structure roles.",
+        "A computed selected-pair audit names its method and target universe, keeps observation and projection counts separate, and carries the normalized panel-design operation digest; legacy missing audit fields are not interpreted as computed zeroes.",
         "Composition does not rerun assay design or specificity, and all three offline panel summaries retain `specificity_accepted: false`.",
         "Every selected assay has a `specificity-plan` follow-up template, while this offline run leaves genomic confirmation explicitly `not_run`.",
         "The fixture is identified as synthetic and is not presented as an order-ready human PATZ1 design.",
