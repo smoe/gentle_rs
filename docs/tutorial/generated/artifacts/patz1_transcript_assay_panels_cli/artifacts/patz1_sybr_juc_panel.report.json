@@ -4,6 +4,7 @@
   "generated_at_unix_ms": 0,
   "op_id": "op-4",
   "run_id": "example_patz1_endpoint_sybr_transcript_assay_panel_offline",
+  "operation_sha256": "sha256:c40f45182329a41166c6c2de4a90338c46423b35a8c6e48dc5fdcbb782da725b",
   "source_seq_id": "patz1_transcript_assay_demo",
   "source_feature_id": 1,
   "source_genome_anchor": {
@@ -465,6 +466,13 @@
             "related_ids": [
               "transcript_assay_4bfca8feaf7962e9"
             ]
+          },
+          {
+            "code": "incomplete_provenance",
+            "message": "Junction geometry influenced candidate selection, but differential eligibility is incomplete (JUC2200054820.hg.1=IncompleteMissingThreshold). GENtle cannot claim response-associated retention from this artifact.",
+            "related_ids": [
+              "JUC2200054820.hg.1"
+            ]
           }
         ],
         "selection_explanation": "Selected because it satisfies the 'one_per_class' biological objective and remains within the configured preferred product range.",
@@ -576,20 +584,23 @@
         "amplicon_spans_junction": true,
         "selected_because_of_junction_evidence": true,
         "retained_because_of_differential_junction_evidence": false,
-        "incremental_binary_distinction_count": 2,
+        "incremental_binary_distinction_count": 0,
         "exclusive_binary_distinction_count": 0,
-        "newly_separated_equivalence_group_pairs": [
-          {
-            "left_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
-            "right_equivalence_group_id": "cdna_eq_bf8de0081e092d6f"
-          },
-          {
-            "left_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
-            "right_equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447"
-          }
+        "newly_separated_equivalence_group_pairs": [],
+        "newly_separated_target_pairs": [],
+        "binary_redundant_with_assay_ids": [
+          "transcript_assay_421e24f8ab259563",
+          "transcript_assay_c6bbe104fcfdbaa5"
         ],
-        "binary_redundant_with_assay_ids": [],
         "retained_despite_zero_marginal_discrimination": false,
+        "selection_audit_status": "computed",
+        "selection_audit_method": "binary_detection_leave_one_out_v1",
+        "selection_audit_generator_revision": "0.1.0-internal.10",
+        "selection_audit_target_kind": "coverage_target",
+        "selection_operation_sha256": "sha256:c40f45182329a41166c6c2de4a90338c46423b35a8c6e48dc5fdcbb782da725b",
+        "selection_evidence_observation_count": 1,
+        "selection_evidence_projection_count": 1,
+        "selection_evidence_matched_target_count": 1,
         "selection_evidence": [
           {
             "evidence_id": "JUC2200054820.hg.1",
@@ -616,6 +627,8 @@
             "measured_statistic": "log2_fold_change",
             "measured_value": -1.2,
             "differential_eligibility": "not_assessed",
+            "disposition": "incomplete_missing_threshold",
+            "interpretation_report_sha256": "sha256:11e2a7b4cbb83af5868902b1834ecbfe6c5e7ddb80e521c1060abf7a4d8418a9",
             "intensity_source": "synthetic_log2_fold_change",
             "source_schema": "gentle.probe_region_evidence_interpretation.v2",
             "source_path": "./test_files/fixtures/isoform_evidence/patz1/patz1_probe_evidence.json",
@@ -1036,16 +1049,23 @@
         "amplicon_spans_junction": true,
         "selected_because_of_junction_evidence": false,
         "retained_because_of_differential_junction_evidence": false,
-        "incremental_binary_distinction_count": 1,
+        "incremental_binary_distinction_count": 0,
         "exclusive_binary_distinction_count": 0,
-        "newly_separated_equivalence_group_pairs": [
-          {
-            "left_equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
-            "right_equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447"
-          }
+        "newly_separated_equivalence_group_pairs": [],
+        "newly_separated_target_pairs": [],
+        "binary_redundant_with_assay_ids": [
+          "transcript_assay_4bfca8feaf7962e9",
+          "transcript_assay_c6bbe104fcfdbaa5"
         ],
-        "binary_redundant_with_assay_ids": [],
         "retained_despite_zero_marginal_discrimination": false,
+        "selection_audit_status": "computed",
+        "selection_audit_method": "binary_detection_leave_one_out_v1",
+        "selection_audit_generator_revision": "0.1.0-internal.10",
+        "selection_audit_target_kind": "coverage_target",
+        "selection_operation_sha256": "sha256:c40f45182329a41166c6c2de4a90338c46423b35a8c6e48dc5fdcbb782da725b",
+        "selection_evidence_observation_count": 0,
+        "selection_evidence_projection_count": 0,
+        "selection_evidence_matched_target_count": 0,
         "selection_evidence": [],
         "junction_spanning_status": "no_requested_junction_match_reported",
         "junction_matches": [],
@@ -1406,8 +1426,20 @@
         "incremental_binary_distinction_count": 0,
         "exclusive_binary_distinction_count": 0,
         "newly_separated_equivalence_group_pairs": [],
-        "binary_redundant_with_assay_ids": [],
+        "newly_separated_target_pairs": [],
+        "binary_redundant_with_assay_ids": [
+          "transcript_assay_4bfca8feaf7962e9",
+          "transcript_assay_421e24f8ab259563"
+        ],
         "retained_despite_zero_marginal_discrimination": false,
+        "selection_audit_status": "computed",
+        "selection_audit_method": "binary_detection_leave_one_out_v1",
+        "selection_audit_generator_revision": "0.1.0-internal.10",
+        "selection_audit_target_kind": "coverage_target",
+        "selection_operation_sha256": "sha256:c40f45182329a41166c6c2de4a90338c46423b35a8c6e48dc5fdcbb782da725b",
+        "selection_evidence_observation_count": 1,
+        "selection_evidence_projection_count": 1,
+        "selection_evidence_matched_target_count": 0,
         "selection_evidence": [
           {
             "evidence_id": "PSR2200160982.hg.1",
@@ -1434,6 +1466,8 @@
             "measured_statistic": "log2_fold_change",
             "measured_value": 0.8,
             "differential_eligibility": "not_assessed",
+            "disposition": "contextual",
+            "interpretation_report_sha256": "sha256:11e2a7b4cbb83af5868902b1834ecbfe6c5e7ddb80e521c1060abf7a4d8418a9",
             "intensity_source": "synthetic_log2_fold_change",
             "source_schema": "gentle.probe_region_evidence_interpretation.v2",
             "source_path": "./test_files/fixtures/isoform_evidence/patz1/patz1_probe_evidence.json",
@@ -3472,6 +3506,13 @@
             "related_ids": [
               "transcript_assay_4bfca8feaf7962e9"
             ]
+          },
+          {
+            "code": "incomplete_provenance",
+            "message": "Junction geometry influenced candidate selection, but differential eligibility is incomplete (JUC2200054820.hg.1=IncompleteMissingThreshold). GENtle cannot claim response-associated retention from this artifact.",
+            "related_ids": [
+              "JUC2200054820.hg.1"
+            ]
           }
         ],
         "selection_explanation": "Selected because it satisfies the 'one_per_class' biological objective and remains within the configured preferred product range.",
@@ -3583,20 +3624,23 @@
         "amplicon_spans_junction": true,
         "selected_because_of_junction_evidence": true,
         "retained_because_of_differential_junction_evidence": false,
-        "incremental_binary_distinction_count": 2,
+        "incremental_binary_distinction_count": 0,
         "exclusive_binary_distinction_count": 0,
-        "newly_separated_equivalence_group_pairs": [
-          {
-            "left_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
-            "right_equivalence_group_id": "cdna_eq_bf8de0081e092d6f"
-          },
-          {
-            "left_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
-            "right_equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447"
-          }
+        "newly_separated_equivalence_group_pairs": [],
+        "newly_separated_target_pairs": [],
+        "binary_redundant_with_assay_ids": [
+          "transcript_assay_421e24f8ab259563",
+          "transcript_assay_c6bbe104fcfdbaa5"
         ],
-        "binary_redundant_with_assay_ids": [],
         "retained_despite_zero_marginal_discrimination": false,
+        "selection_audit_status": "computed",
+        "selection_audit_method": "binary_detection_leave_one_out_v1",
+        "selection_audit_generator_revision": "0.1.0-internal.10",
+        "selection_audit_target_kind": "coverage_target",
+        "selection_operation_sha256": "sha256:c40f45182329a41166c6c2de4a90338c46423b35a8c6e48dc5fdcbb782da725b",
+        "selection_evidence_observation_count": 1,
+        "selection_evidence_projection_count": 1,
+        "selection_evidence_matched_target_count": 1,
         "selection_evidence": [
           {
             "evidence_id": "JUC2200054820.hg.1",
@@ -3623,6 +3667,8 @@
             "measured_statistic": "log2_fold_change",
             "measured_value": -1.2,
             "differential_eligibility": "not_assessed",
+            "disposition": "incomplete_missing_threshold",
+            "interpretation_report_sha256": "sha256:11e2a7b4cbb83af5868902b1834ecbfe6c5e7ddb80e521c1060abf7a4d8418a9",
             "intensity_source": "synthetic_log2_fold_change",
             "source_schema": "gentle.probe_region_evidence_interpretation.v2",
             "source_path": "./test_files/fixtures/isoform_evidence/patz1/patz1_probe_evidence.json",

@@ -3183,7 +3183,8 @@ Microarray track projection notes:
   `gentle.probe_region_evidence_interpretation.v2` by comparing already
   projected `probe_region_output` array features with transcript/exon geometry
   on the target sequence. Optional `--gene LABEL`, `--level all|probe_region|pm_probe`,
-  `--min-abs-logfc N`, and `--path FILE` filter/export the read-only report.
+  `--min-abs-logfc N`, `--threshold-source TEXT`, `--policy-sha256 SHA256`,
+  and `--path FILE` filter/export the read-only report.
   The report records mapping status, overlap transcript ids, ambiguity tags,
   the projected array `platform` on each evidence row when declared,
   per-transcript compatible/constraining counts, and structured
@@ -3196,6 +3197,11 @@ Microarray track projection notes:
   include a review-only `review_status` label for unique, shared,
   constraining, or absent geometry; the report explicitly does not infer
   isoform support, probe uniqueness, or biological validation.
+  `threshold_source`, `policy_sha256`, and
+  `interpretation_request_sha256` content-bind an effective effect gate when
+  supplied. Threshold provenance without a threshold is rejected. Existing
+  reports without these fields remain readable but may not borrow a threshold
+  from a later study plan.
 - manifests may also include `coordinate_projections[]` entries with
   `source_genome_id`, `target_genome_id`, `method`, and `path`. These paths
   point at tab-delimited interval maps for build-to-build projection, currently
@@ -9688,6 +9694,18 @@ Primer-pair alternative frontier:
       reason names the contrast, descriptive effect, threshold, and separate
       validation role. This is not a statistical-significance or isoform-
       abundance claim.
+    - `disposition` separates preferred geometry, preferred differential
+      evidence, required validation obligations, below-threshold rows, and
+      incomplete provenance. Preferred evidence can influence ranking but
+      never masquerades as an obligation. Observation, transcript-projection,
+      and matched-target counts are reported separately.
+    - `selection_audit_status` defaults to `not_computed_legacy`. Current
+      designs and stored reports with canonical detection matrices receive a
+      deterministic `binary_detection_leave_one_out_v1` recomputation,
+      generator revision, and stable coverage-target identity when available;
+      absent historical values are never presented as computed zeroes. The
+      pair-level `selection_operation_sha256` binds the audit to the normalized
+      panel-design request; an empty legacy digest remains missing provenance.
   - `selection_provenance_status = de_novo_no_external_selection_evidence`
     makes an evidence-free design explicit; empty aliases or evidence rows are
     not retroactive evidence. Reports predating v2 are refreshed with

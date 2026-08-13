@@ -62,6 +62,22 @@ fn render_html_primer_table(rows: &[&GeneSetPublicationPrimerRow]) -> String {
         } else {
             format!("<br><small>{}</small>", html_escape(&row.note))
         };
+        let decision = row
+            .selection_decision
+            .as_ref()
+            .map(|decision| {
+                format!(
+                    "<br><small><b>Decision provenance:</b> {} Audit: {}; incremental/exclusive distinctions: {}/{}; design operation <code>{}</code>; source <code>{}</code> ({})</small>",
+                    html_escape(&decision.explanation),
+                    html_escape(&decision.selection_audit_status),
+                    decision.incremental_binary_distinction_count,
+                    decision.exclusive_binary_distinction_count,
+                    html_escape(&decision.selection_operation_sha256),
+                    html_escape(&decision.source_report_id),
+                    html_escape(&decision.source_report_sha256),
+                )
+            })
+            .unwrap_or_default();
         html.push_str(&format!(
             "<tr data-gentle-primer-pair=\"{}\"><td><b>{}</b></td><td>{}<br><span class=\"pill {}\">{}</span></td><td><code>{}</code></td><td><code>{}</code></td><td>{} / {}</td><td>{} / {}{}</td></tr>",
             html_escape(&row.pair_id),
@@ -75,7 +91,7 @@ fn render_html_primer_table(rows: &[&GeneSetPublicationPrimerRow]) -> String {
             html_escape(&row.reverse_tm_c),
             html_escape(&row.cdna_specificity),
             html_escape(&row.genome_assessment),
-            note,
+            format!("{note}{decision}"),
         ));
     }
     html.push_str("</tbody></table></div>");
@@ -302,8 +318,18 @@ fn render_markdown_primer_list(rows: &[&GeneSetPublicationPrimerRow]) -> String 
             markdown.push_str(&format!("## {}\n\n", markdown_cell(&row.gene)));
             previous_gene = &row.gene;
         }
+        let decision = row.selection_decision.as_ref().map(|decision| format!(
+            "\n- Decision provenance: {} Audit `{}`; incremental/exclusive distinctions `{}/{}`; design operation `{}`; source `{}` (`{}`).",
+            markdown_cell(&decision.explanation),
+            markdown_cell(&decision.selection_audit_status),
+            decision.incremental_binary_distinction_count,
+            decision.exclusive_binary_distinction_count,
+            markdown_cell(&decision.selection_operation_sha256),
+            markdown_cell(&decision.source_report_id),
+            markdown_cell(&decision.source_report_sha256),
+        )).unwrap_or_default();
         markdown.push_str(&format!(
-            "**{}** — {} (`{}`)\n\n- Forward 5′→3′: `{}`; Tm {} °C\n- Reverse 5′→3′: `{}`; Tm {} °C\n- Specificity: cDNA `{}`; genome `{}`{}\n\n",
+            "**{}** — {} (`{}`)\n\n- Forward 5′→3′: `{}`; Tm {} °C\n- Reverse 5′→3′: `{}`; Tm {} °C\n- Specificity: cDNA `{}`; genome `{}`{}{}\n\n",
             markdown_cell(&row.pair_id),
             markdown_cell(&row.role),
             markdown_cell(&row.status),
@@ -313,7 +339,8 @@ fn render_markdown_primer_list(rows: &[&GeneSetPublicationPrimerRow]) -> String 
             markdown_cell(&row.reverse_tm_c),
             markdown_cell(&row.cdna_specificity),
             markdown_cell(&row.genome_assessment),
-            if row.note.is_empty() { String::new() } else { format!(" — {}", markdown_cell(&row.note)) }
+            if row.note.is_empty() { String::new() } else { format!(" — {}", markdown_cell(&row.note)) },
+            decision,
         ));
     }
     markdown

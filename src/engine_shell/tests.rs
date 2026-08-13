@@ -10338,7 +10338,7 @@ fn parse_arrays_microarray_track_commands() {
     }
 
     let interpret_probe_evidence = parse_shell_line(
-        "arrays interpret-probe-region-evidence array_slice --gene PATZ1 --level pm_probe --min-abs-logfc 0.5 --path report.json",
+        "arrays interpret-probe-region-evidence array_slice --gene PATZ1 --level pm_probe --min-abs-logfc 0.5 --threshold-source gene_isoform_assay_study_policy.min_abs_regional_effect --policy-sha256 sha256:abc --path report.json",
     )
     .expect("parse probe-region interpretation");
     match interpret_probe_evidence {
@@ -10347,12 +10347,19 @@ fn parse_arrays_microarray_track_commands() {
             gene_label,
             level,
             min_abs_logfc,
+            threshold_source,
+            policy_sha256,
             path,
         } => {
             assert_eq!(seq_id, "array_slice");
             assert_eq!(gene_label.as_deref(), Some("PATZ1"));
             assert_eq!(level.as_deref(), Some("pm_probe"));
             assert_eq!(min_abs_logfc, Some(0.5));
+            assert_eq!(
+                threshold_source.as_deref(),
+                Some("gene_isoform_assay_study_policy.min_abs_regional_effect")
+            );
+            assert_eq!(policy_sha256.as_deref(), Some("sha256:abc"));
             assert_eq!(path.as_deref(), Some("report.json"));
         }
         other => panic!("unexpected command: {other:?}"),

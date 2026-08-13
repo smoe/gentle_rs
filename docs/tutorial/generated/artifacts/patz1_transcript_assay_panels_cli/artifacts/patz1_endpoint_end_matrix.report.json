@@ -4,6 +4,7 @@
   "generated_at_unix_ms": 0,
   "op_id": "op-3",
   "run_id": "example_patz1_endpoint_sybr_transcript_assay_panel_offline",
+  "operation_sha256": "sha256:b03174a875d131d66aefb77a40e5d3627f1fa8c9d92def04eebdc4095e5ce3b4",
   "source_seq_id": "patz1_transcript_assay_demo",
   "source_feature_id": 1,
   "source_genome_anchor": {
@@ -580,20 +581,22 @@
         "amplicon_spans_junction": true,
         "selected_because_of_junction_evidence": false,
         "retained_because_of_differential_junction_evidence": false,
-        "incremental_binary_distinction_count": 2,
-        "exclusive_binary_distinction_count": 2,
-        "newly_separated_equivalence_group_pairs": [
-          {
-            "left_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
-            "right_equivalence_group_id": "cdna_eq_bf8de0081e092d6f"
-          },
-          {
-            "left_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
-            "right_equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447"
-          }
+        "incremental_binary_distinction_count": 0,
+        "exclusive_binary_distinction_count": 0,
+        "newly_separated_equivalence_group_pairs": [],
+        "newly_separated_target_pairs": [],
+        "binary_redundant_with_assay_ids": [
+          "transcript_assay_46b04036f2ccda49"
         ],
-        "binary_redundant_with_assay_ids": [],
         "retained_despite_zero_marginal_discrimination": false,
+        "selection_audit_status": "computed",
+        "selection_audit_method": "binary_detection_leave_one_out_v1",
+        "selection_audit_generator_revision": "0.1.0-internal.10",
+        "selection_audit_target_kind": "coverage_target",
+        "selection_operation_sha256": "sha256:b03174a875d131d66aefb77a40e5d3627f1fa8c9d92def04eebdc4095e5ce3b4",
+        "selection_evidence_observation_count": 0,
+        "selection_evidence_projection_count": 0,
+        "selection_evidence_matched_target_count": 0,
         "selection_evidence": [],
         "junction_spanning_status": "no_requested_junction_match_reported",
         "junction_matches": [],
@@ -1013,8 +1016,19 @@
         "incremental_binary_distinction_count": 0,
         "exclusive_binary_distinction_count": 0,
         "newly_separated_equivalence_group_pairs": [],
-        "binary_redundant_with_assay_ids": [],
+        "newly_separated_target_pairs": [],
+        "binary_redundant_with_assay_ids": [
+          "transcript_assay_27362fde0b95ba9d"
+        ],
         "retained_despite_zero_marginal_discrimination": false,
+        "selection_audit_status": "computed",
+        "selection_audit_method": "binary_detection_leave_one_out_v1",
+        "selection_audit_generator_revision": "0.1.0-internal.10",
+        "selection_audit_target_kind": "coverage_target",
+        "selection_operation_sha256": "sha256:b03174a875d131d66aefb77a40e5d3627f1fa8c9d92def04eebdc4095e5ce3b4",
+        "selection_evidence_observation_count": 0,
+        "selection_evidence_projection_count": 0,
+        "selection_evidence_matched_target_count": 0,
         "selection_evidence": [],
         "junction_spanning_status": "no_requested_junction_match_reported",
         "junction_matches": [],

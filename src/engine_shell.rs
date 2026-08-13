@@ -2015,6 +2015,8 @@ pub enum ShellCommand {
         gene_label: Option<String>,
         level: Option<String>,
         min_abs_logfc: Option<f64>,
+        threshold_source: Option<String>,
+        policy_sha256: Option<String>,
         path: Option<String>,
     },
     ArraysProbeRegions {
@@ -10030,15 +10032,19 @@ impl ShellCommand {
                 gene_label,
                 level,
                 min_abs_logfc,
+                threshold_source,
+                policy_sha256,
                 path,
             } => format!(
-                "interpret projected probe-region evidence on '{}' (gene={}, level={}, min_abs_logfc={}, path={})",
+                "interpret projected probe-region evidence on '{}' (gene={}, level={}, min_abs_logfc={}, threshold_source={}, policy_sha256={}, path={})",
                 seq_id,
                 gene_label.as_deref().unwrap_or("all"),
                 level.as_deref().unwrap_or("all"),
                 min_abs_logfc
                     .map(|value| format!("{value:.3}"))
                     .unwrap_or_else(|| "-".to_string()),
+                threshold_source.as_deref().unwrap_or("-"),
+                policy_sha256.as_deref().unwrap_or("-"),
                 path.as_deref().unwrap_or("-")
             ),
             Self::ArraysProbeRegions {
@@ -44977,7 +44983,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 "interpret-probe-region-evidence" | "interpret-probe-region-output" => {
                     if tokens.len() < 3 {
                         return Err(
-                            "arrays interpret-probe-region-evidence requires SEQ_ID [--gene LABEL] [--level all|probe_region|pm_probe] [--min-abs-logfc N] [--path FILE]"
+                            "arrays interpret-probe-region-evidence requires SEQ_ID [--gene LABEL] [--level all|probe_region|pm_probe] [--min-abs-logfc N] [--threshold-source TEXT] [--policy-sha256 SHA256] [--path FILE]"
                                 .to_string(),
                         );
                     }
@@ -44991,6 +44997,8 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     let mut gene_label = None;
                     let mut level = None;
                     let mut min_abs_logfc = None;
+                    let mut threshold_source = None;
+                    let mut policy_sha256 = None;
                     let mut path = None;
                     let mut idx = 3usize;
                     while idx < tokens.len() {
@@ -45028,6 +45036,22 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                                 min_abs_logfc = Some(value);
                                 idx += 1;
                             }
+                            "--threshold-source" => {
+                                idx += 1;
+                                if idx >= tokens.len() {
+                                    return Err("Missing TEXT after --threshold-source".to_string());
+                                }
+                                threshold_source = Some(tokens[idx].clone());
+                                idx += 1;
+                            }
+                            "--policy-sha256" => {
+                                idx += 1;
+                                if idx >= tokens.len() {
+                                    return Err("Missing SHA256 after --policy-sha256".to_string());
+                                }
+                                policy_sha256 = Some(tokens[idx].clone());
+                                idx += 1;
+                            }
                             "--path" | "--output" => {
                                 idx += 1;
                                 if idx >= tokens.len() {
@@ -45048,6 +45072,8 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         gene_label,
                         level,
                         min_abs_logfc,
+                        threshold_source,
+                        policy_sha256,
                         path,
                     })
                 }
@@ -51898,6 +51924,8 @@ fn execute_reference_and_track_command(
             gene_label,
             level,
             min_abs_logfc,
+            threshold_source,
+            policy_sha256,
             path,
         } => {
             let op_result = engine
@@ -51906,6 +51934,8 @@ fn execute_reference_and_track_command(
                     gene_label: gene_label.clone(),
                     level: level.clone(),
                     min_abs_logfc: *min_abs_logfc,
+                    threshold_source: threshold_source.clone(),
+                    policy_sha256: policy_sha256.clone(),
                     path: path.clone(),
                 })
                 .map_err(|e| e.to_string())?;

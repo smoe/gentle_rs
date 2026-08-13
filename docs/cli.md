@@ -2964,7 +2964,7 @@ Shared shell command:
     - `arrays render-probe-region-output-svg OUTPUT_DIR OUTPUT.svg`
     - `arrays render-probe-region-evidence-svg REPORT.json OUTPUT.svg`
     - `arrays project-probe-region-output SEQ_ID OUTPUT_DIR [--contrasts CSV] [--level probe_region|pm_probe] [--min-abs-logfc N] [--max-features N] [--clear-existing]`
-    - `arrays interpret-probe-region-evidence SEQ_ID [--gene LABEL] [--level all|probe_region|pm_probe] [--min-abs-logfc N] [--path FILE]`
+    - `arrays interpret-probe-region-evidence SEQ_ID [--gene LABEL] [--level all|probe_region|pm_probe] [--min-abs-logfc N] [--threshold-source TEXT] [--policy-sha256 SHA256] [--path FILE]`
     - `arrays probe-regions (--cel PATH ... | --dataset ID) (--gene SYMBOL|--genes CSV|--locus LOCUS|--loci CSV|--transcript-cluster-id ID|--probeset-id ID ...) [--metadata PATH] [--platform NAME] [--annotation-library PATH] [--r-library-path PATH ...] [--condition-column NAME] [--sample-column NAME] [--block-column NAME] [--paired-by-replicate-suffix] [--normalization rma|quantile-feature|none] [--plot] [--output DIR] [--cache-dir DIR] [--dry-run]`
     - `macros run [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
     - `macros instance-list`
@@ -5607,7 +5607,7 @@ Tutorial companion:
     sequence anchor, or a `coordinate_projections[]`/`projection_maps[]`
     interval map whose source and target builds match the helper output and
     anchor.
-- `arrays interpret-probe-region-evidence grch38_tp73 --gene TP73 --level pm_probe --min-abs-logfc 0.5 --path analysis/probe_regions/tp73_interpretation.json`
+- `arrays interpret-probe-region-evidence grch38_tp73 --gene TP73 --level pm_probe --min-abs-logfc 0.5 --threshold-source gene_isoform_assay_study_policy.min_abs_regional_effect --policy-sha256 sha256:... --path analysis/probe_regions/tp73_interpretation.json`
   - Compares projected probe/probeset-region array features with the
     sequence's transcript/exon annotations and writes
     `gentle.probe_region_evidence_interpretation.v2`. The report preserves
@@ -7566,6 +7566,10 @@ Notes:
   evidence-to-transcript mapping. It does not run R/APT and does not claim
   isoform support until probe/probeset-to-transcript ambiguity has been
   audited.
+  When the effect threshold participates in a study decision, also supply
+  `--threshold-source` and `--policy-sha256`. Legacy or ad-hoc reports without
+  those bindings remain geometry evidence but cannot establish
+  response-associated assay retention.
 - The built-in genome catalog includes both `Human GRCh38 Ensembl 116` and
   `Human GRCh37 Ensembl 87` (`hg19`/`GRCh37.p13` aliases), so direct native
   extraction can use either build when the corresponding cache has been

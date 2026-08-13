@@ -61,6 +61,17 @@ The pre-PDF web manifest remains valid when an optional PDF tool fails; after
 a successful PDF build GENtle rewrites the manifest to bind the final PDF and
 the updated HTML/resolved report containing its link.
 
+Primer tables may add `transcript_panel_report_path`,
+`transcript_panel_assay_id`, and `transcript_panel_expected_sha256`. When any
+is supplied, all three are required. GENtle verifies the report bytes and
+assay identity, then copies a sanitized engine-owned selection decision into
+`resolved-report.json`, HTML, and Markdown. Absolute source paths are omitted.
+A digest mismatch or unknown assay fails generation rather than trusting a
+free-text explanation. Publication remains presentation-only and never reruns
+design or strengthens incomplete evidence. The projection retains the
+normalized panel-design operation digest; an empty legacy value remains
+unavailable rather than being reconstructed from prose.
+
 Minimal shape (real reports normally add metrics, narrative, downloads, and
 three figures per gene):
 

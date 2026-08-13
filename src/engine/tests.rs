@@ -264,6 +264,10 @@ fn tp73_validation_pm_probe_evidence_report() -> ProbeRegionEvidenceInterpretati
             gene_label: Some("TP73".to_string()),
             level: Some("pm_probe".to_string()),
             min_abs_logfc: Some(0.5),
+            threshold_source: Some(
+                "gene_isoform_assay_study_policy.min_abs_regional_effect".to_string(),
+            ),
+            policy_sha256: Some("sha256:policy-0.5".to_string()),
             path: None,
         })
         .expect("interpret committed PM probe validation fixture")
@@ -861,6 +865,10 @@ fn interpret_probe_region_evidence_preserves_shared_transcript_ambiguity() {
             gene_label: Some("PATZ1".to_string()),
             level: Some("pm_probe".to_string()),
             min_abs_logfc: Some(0.5),
+            threshold_source: Some(
+                "gene_isoform_assay_study_policy.min_abs_regional_effect".to_string(),
+            ),
+            policy_sha256: Some("sha256:policy-0.5".to_string()),
             path: Some(report_path.to_string_lossy().to_string()),
         })
         .expect("interpret projected probe-region evidence");
@@ -869,6 +877,12 @@ fn interpret_probe_region_evidence_preserves_shared_transcript_ambiguity() {
         .probe_region_evidence_interpretation
         .expect("interpretation report");
     assert_eq!(report.schema, PROBE_REGION_EVIDENCE_INTERPRETATION_SCHEMA);
+    assert_eq!(
+        report.threshold_source.as_deref(),
+        Some("gene_isoform_assay_study_policy.min_abs_regional_effect")
+    );
+    assert_eq!(report.policy_sha256.as_deref(), Some("sha256:policy-0.5"));
+    assert!(report.interpretation_request_sha256.starts_with("sha256:"));
     assert_eq!(report.level, "pm_probe");
     assert_eq!(report.coordinate_frame, "genomic_1based");
     assert_eq!(report.coordinate_system.as_deref(), Some("hg38"));
@@ -926,6 +940,23 @@ fn interpret_probe_region_evidence_preserves_shared_transcript_ambiguity() {
             && tx.review_status == "shared_geometry_for_review"
             && tx.relationship_summary == "only_shared_compatible_evidence"
     }));
+    let first_request_sha256 = report.interpretation_request_sha256.clone();
+    let changed = engine
+        .apply(Operation::InterpretProbeRegionEvidence {
+            seq_id: "array_slice".to_string(),
+            gene_label: Some("PATZ1".to_string()),
+            level: Some("pm_probe".to_string()),
+            min_abs_logfc: Some(0.6),
+            threshold_source: Some(
+                "gene_isoform_assay_study_policy.min_abs_regional_effect".to_string(),
+            ),
+            policy_sha256: Some("sha256:policy-0.6".to_string()),
+            path: None,
+        })
+        .expect("reinterpret with changed bound policy threshold")
+        .probe_region_evidence_interpretation
+        .expect("changed interpretation report");
+    assert_ne!(changed.interpretation_request_sha256, first_request_sha256);
 }
 
 #[test]
@@ -986,6 +1017,8 @@ fn interpret_probe_region_evidence_reports_junction_spanning_geometry() {
             gene_label: Some("PATZ1".to_string()),
             level: Some("pm_probe".to_string()),
             min_abs_logfc: Some(0.5),
+            threshold_source: None,
+            policy_sha256: None,
             path: None,
         })
         .expect("interpret projected junction-spanning evidence");
@@ -1790,6 +1823,8 @@ fn import_project_interpret_pm_probe_region_output_end_to_end() {
             gene_label: Some("PATZ1".to_string()),
             level: Some("pm_probe".to_string()),
             min_abs_logfc: Some(0.5),
+            threshold_source: None,
+            policy_sha256: None,
             path: Some(report_path.to_string_lossy().to_string()),
         })
         .expect("interpret imported and projected PM probe evidence");
@@ -1908,6 +1943,8 @@ fn e_mtab_14704_tp73_validation_fixture_projects_and_interprets_pm_probe_evidenc
             gene_label: Some("TP73".to_string()),
             level: Some("pm_probe".to_string()),
             min_abs_logfc: Some(0.5),
+            threshold_source: None,
+            policy_sha256: None,
             path: Some(report_path.to_string_lossy().to_string()),
         })
         .expect("interpret committed PM probe validation fixture");
@@ -2000,6 +2037,8 @@ fn e_mtab_14704_tp73_validation_report_is_probe_location_figure_ready() {
             gene_label: Some("TP73".to_string()),
             level: Some("pm_probe".to_string()),
             min_abs_logfc: Some(0.5),
+            threshold_source: None,
+            policy_sha256: None,
             path: None,
         })
         .expect("interpret committed PM probe validation fixture")
@@ -16063,6 +16102,11 @@ fn transcript_assay_panel_primer_pair_summary_survives_api_shell_and_export() {
     );
     assert!(legacy.forward.primer_spans_junction);
     assert!(!legacy.reverse.primer_spans_junction);
+    assert_eq!(
+        legacy.selection_audit_status,
+        PrimerPairSelectionAuditStatus::Computed,
+        "stored canonical detection matrices permit a deterministic audit upgrade"
+    );
     assert!(legacy.amplicon_spans_junction);
     assert!(legacy.selection_evidence.is_empty());
     assert!(legacy.selection_explanation.is_empty());
@@ -17834,6 +17878,10 @@ fn transcript_assay_sybr_evaluates_patz1_clariom_juc_without_probe() {
             PrimerPairDifferentialEvidenceEligibility::NotAssessed
         );
         assert_eq!(
+            evidence.disposition,
+            PrimerPairEvidenceDisposition::IncompleteMissingThreshold
+        );
+        assert_eq!(
             evidence.intensity_source.as_deref(),
             Some("synthetic_log2_fold_change")
         );
@@ -17911,6 +17959,10 @@ fn transcript_assay_report_distinguishes_differential_junction_obligation_from_r
     )
     .expect("parse synthetic probe-evidence fixture");
     report.min_abs_logfc = Some(0.5);
+    report.threshold_source =
+        Some("gene_isoform_assay_study_policy.min_abs_regional_effect".to_string());
+    report.policy_sha256 = Some("sha256:synthetic-policy".to_string());
+    report.interpretation_request_sha256 = "sha256:synthetic-request".to_string();
     let tmp = tempdir().expect("tempdir");
     let evidence_path = tmp.path().join("thresholded_probe_evidence.json");
     std::fs::write(
@@ -17935,9 +17987,58 @@ fn transcript_assay_report_distinguishes_differential_junction_obligation_from_r
         eligible.differential_eligibility,
         PrimerPairDifferentialEvidenceEligibility::Eligible
     );
+    assert_eq!(
+        eligible.disposition,
+        PrimerPairEvidenceDisposition::RequiredValidationObligation
+    );
+    assert!(eligible.interpretation_report_sha256.is_some());
+
+    let (_, _, preferred_evidence, _) = GentleEngine::transcript_assay_load_junction_evidence(
+        evidence_path.to_str().expect("utf-8 temp path"),
+        TranscriptAssayJunctionPriority::Preferred,
+        None,
+    )
+    .expect("load preferred threshold-qualified junction evidence");
+    assert!(preferred_evidence.iter().any(|row| {
+        row.evidence_kind == PrimerPairSelectionEvidenceKind::Juc
+            && row.disposition == PrimerPairEvidenceDisposition::PreferredDifferential
+    }));
+
+    report.min_abs_logfc = Some(2.0);
+    let below_path = tmp.path().join("below_threshold_probe_evidence.json");
+    std::fs::write(
+        &below_path,
+        serde_json::to_vec_pretty(&report).expect("serialize below-threshold evidence"),
+    )
+    .expect("write below-threshold evidence");
+    let (_, _, below_evidence, _) = GentleEngine::transcript_assay_load_junction_evidence(
+        below_path.to_str().expect("utf-8 temp path"),
+        TranscriptAssayJunctionPriority::Preferred,
+        None,
+    )
+    .expect("load below-threshold evidence");
+    let below = below_evidence
+        .iter()
+        .find(|row| row.evidence_kind == PrimerPairSelectionEvidenceKind::Juc)
+        .expect("below-threshold JUC row");
+    assert_eq!(
+        below.disposition,
+        PrimerPairEvidenceDisposition::IneligibleBelowThreshold
+    );
 
     let group_ids = vec!["class_a".to_string(), "class_b".to_string()];
     let common_signature = vec!["class_a".to_string(), "class_b".to_string()];
+    let one_juc_observation = evidence
+        .into_iter()
+        .find(|row| row.evidence_kind == PrimerPairSelectionEvidenceKind::Juc)
+        .expect("eligible JUC evidence");
+    let projected_juc_evidence = (1..=4)
+        .map(|projection| {
+            let mut row = one_juc_observation.clone();
+            row.junction_id = format!("projection_{projection}");
+            row
+        })
+        .collect::<Vec<_>>();
     let mut assays = vec![
         TranscriptAssayPanelAssay {
             assay_id: "common_abundance".to_string(),
@@ -17953,16 +18054,13 @@ fn transcript_assay_report_distinguishes_differential_junction_obligation_from_r
             single_product_equivalence_group_ids: common_signature,
             primer_pair_summary: PrimerPairCommunicationSummary {
                 selection_explanation: "Selected as a required junction assay.".to_string(),
-                selection_evidence: evidence
-                    .into_iter()
-                    .filter(|row| row.evidence_kind == PrimerPairSelectionEvidenceKind::Juc)
-                    .collect(),
+                selection_evidence: projected_juc_evidence,
                 ..Default::default()
             },
             ..Default::default()
         },
     ];
-    GentleEngine::annotate_transcript_assay_panel_selection_audit(&mut assays, &group_ids);
+    GentleEngine::annotate_transcript_assay_panel_selection_audit(&mut assays, &group_ids, &[]);
 
     let junction_summary = &assays[1].primer_pair_summary;
     assert!(junction_summary.retained_because_of_differential_junction_evidence);
@@ -17982,6 +18080,32 @@ fn transcript_assay_report_distinguishes_differential_junction_obligation_from_r
             .selection_explanation
             .contains("zero exclusive binary transcript distinctions")
     );
+    assert_eq!(
+        junction_summary.selection_audit_status,
+        PrimerPairSelectionAuditStatus::Computed
+    );
+    assert_eq!(
+        junction_summary.selection_audit_method,
+        "binary_detection_leave_one_out_v1"
+    );
+    assert_eq!(junction_summary.selection_evidence_observation_count, 1);
+    assert_eq!(junction_summary.selection_evidence_projection_count, 4);
+    assert_eq!(junction_summary.selection_evidence_matched_target_count, 4);
+}
+
+#[test]
+fn legacy_primer_pair_summary_does_not_present_missing_audit_as_zero() {
+    let summary: PrimerPairCommunicationSummary = serde_json::from_value(serde_json::json!({
+        "schema": "gentle.primer_pair_summary.v2",
+        "assay_id": "legacy_pair"
+    }))
+    .expect("deserialize additive legacy summary");
+    assert_eq!(
+        summary.selection_audit_status,
+        PrimerPairSelectionAuditStatus::NotComputedLegacy
+    );
+    assert!(summary.selection_audit_method.is_empty());
+    assert_eq!(summary.incremental_binary_distinction_count, 0);
 }
 
 #[cfg(unix)]
@@ -60291,6 +60415,12 @@ fn gene_isoform_assay_study_planner_normalizes_inputs_and_emits_exact_operation_
             min_responsive_regions_for_comprehensive: 1,
             ..GeneIsoformAssayStudyPolicy::default()
         },
+        junction_evidence: vec![GeneIsoformAssayStudyInputRef {
+            input_kind: "probe_region_evidence_interpretation".to_string(),
+            path: "test_files/fixtures/isoform_evidence/patz1/patz1_probe_evidence.json"
+                .to_string(),
+            ..Default::default()
+        }],
         coverage_universe: TranscriptAssayCoverageUniverse {
             kind: TranscriptAssayCoverageUniverseKind::ExplicitTranscripts,
             required_transcript_ids: vec!["TX1".to_string(), "TX2".to_string()],
@@ -60349,6 +60479,15 @@ fn gene_isoform_assay_study_planner_normalizes_inputs_and_emits_exact_operation_
         GeneIsoformAssayStudyProfile::ComprehensiveIsoformDossier
     );
     assert_eq!(plan.selected_profile, plan.recommended_profile);
+    assert!(plan.decision_factors.iter().any(|factor| {
+        factor.rule_id == "junction_interpretation_incomplete_provenance" && factor.triggered
+    }));
+    assert!(
+        plan.evidence_summary
+            .missing_evidence
+            .iter()
+            .any(|item| { item.starts_with("junction_interpretation_threshold_provenance:") })
+    );
     assert_eq!(
         plan.evidence_summary.responsive_region_ids,
         vec!["EXF:synthetic:1".to_string()]

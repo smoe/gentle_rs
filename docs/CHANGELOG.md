@@ -1,5 +1,16 @@
 # GENtle Changelog
 
+- Completed replayable transcript-assay selection provenance across
+  interpretation, planning, saved reports, and publication. Probe-region
+  interpretations can bind an effect threshold to its policy source/digest
+  and normalized request digest; JUC evidence receives typed preferred,
+  required, below-threshold, or incomplete dispositions. Selection audits now
+  carry computed/legacy status, method, generator revision, stable target
+  identity, and separate observation/projection/matched-target counts. Legacy
+  artifacts never borrow later thresholds or present absent audits as
+  computed zeroes. Gene-set publication can digest-bind a primer row to one
+  transcript-panel assay and render only its sanitized engine decision.
+
 - Clarified transcript-assay selection reports for differential Clariom JUC
   validation. Pair summaries now distinguish geometry-only junction evidence
   from rows that pass an explicit contrast/effect threshold, retain the

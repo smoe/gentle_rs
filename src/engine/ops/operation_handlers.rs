@@ -17730,7 +17730,7 @@ impl GentleEngine {
         missing_evidence.sort();
         missing_evidence.dedup();
 
-        let evidence_summary = GeneIsoformAssayStudyEvidenceSummary {
+        let mut evidence_summary = GeneIsoformAssayStudyEvidenceSummary {
             transcript_count,
             exact_cdna_equivalence_group_count: equivalence_groups.len(),
             informative_region_count: informative_regions.len(),
@@ -17777,7 +17777,7 @@ impl GentleEngine {
             .as_ref()
             .map(|value| value.selected_profile)
             .unwrap_or(recommended_profile);
-        let decision_factors = vec![
+        let mut decision_factors = vec![
             GeneIsoformAssayStudyDecisionFactor {
                 rule_id: "explicit_high_priority".to_string(),
                 triggered: high_priority,
@@ -17831,6 +17831,52 @@ impl GentleEngine {
                 evidence_ids: vec![],
             },
         ];
+
+        for input in &request.junction_evidence {
+            let bytes = fs::read(&input.path).map_err(|error| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not inspect junction evidence '{}' while binding study provenance: {error}",
+                    input.path
+                ),
+                cause_chain: vec![],
+            })?;
+            let interpretation: ProbeRegionEvidenceInterpretationReport =
+                serde_json::from_slice(&bytes).map_err(|error| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Could not parse junction interpretation '{}' while binding study provenance: {error}",
+                        input.path
+                    ),
+                    cause_chain: vec![],
+                })?;
+            let threshold_bound = interpretation.min_abs_logfc.is_some()
+                && interpretation.threshold_source.is_some()
+                && interpretation.policy_sha256.is_some()
+                && !interpretation.interpretation_request_sha256.is_empty();
+            if !threshold_bound {
+                missing_evidence.push(format!(
+                    "junction_interpretation_threshold_provenance:{}",
+                    interpretation.seq_id
+                ));
+                decision_factors.push(GeneIsoformAssayStudyDecisionFactor {
+                    rule_id: "junction_interpretation_incomplete_provenance".to_string(),
+                    triggered: true,
+                    summary: format!(
+                        "Interpretation report '{}' has no content-bound differential-effect threshold. Its geometry may remain preferred evidence, but it cannot establish response-associated retention. Create and approve a new InterpretProbeRegionEvidence request with threshold_source and policy_sha256; do not mutate this artifact.",
+                        input.report_id.as_deref().unwrap_or(&interpretation.seq_id)
+                    ),
+                    evidence_ids: interpretation
+                        .evidence_rows
+                        .iter()
+                        .map(|row| row.evidence_id.clone())
+                        .collect(),
+                });
+            }
+        }
+        missing_evidence.sort();
+        missing_evidence.dedup();
+        evidence_summary.missing_evidence = missing_evidence.clone();
 
         let normalized_request_bytes =
             serde_json::to_vec(&request).map_err(|error| EngineError {
@@ -27226,6 +27272,10 @@ impl GentleEngine {
                         absolute_effect_threshold: report.min_abs_logfc,
                         differential_eligibility:
                             PrimerPairDifferentialEvidenceEligibility::NotAssessed,
+                        disposition: PrimerPairEvidenceDisposition::Contextual,
+                        interpretation_report_sha256: Some(source_sha256.clone()),
+                        threshold_source: report.threshold_source.clone(),
+                        policy_sha256: report.policy_sha256.clone(),
                         intensity_source: row.intensity_source.clone(),
                         source_schema: Some(report.schema.clone()),
                         source_path: Some(path.to_string()),
@@ -27281,7 +27331,17 @@ impl GentleEngine {
                         PrimerPairDifferentialEvidenceEligibility::MissingContrast
                     } else if row.logfc.is_none() {
                         PrimerPairDifferentialEvidenceEligibility::MissingMeasurement
-                    } else if let Some(threshold) = report.min_abs_logfc {
+                    } else if let Some(threshold) = report.min_abs_logfc.filter(|_| {
+                        report
+                            .threshold_source
+                            .as_deref()
+                            .is_some_and(|value| !value.trim().is_empty())
+                            && report
+                                .policy_sha256
+                                .as_deref()
+                                .is_some_and(|value| !value.trim().is_empty())
+                            && !report.interpretation_request_sha256.trim().is_empty()
+                    }) {
                         if row.logfc.is_some_and(|value| value.abs() >= threshold) {
                             PrimerPairDifferentialEvidenceEligibility::Eligible
                         } else {
@@ -27289,6 +27349,28 @@ impl GentleEngine {
                         }
                     } else {
                         PrimerPairDifferentialEvidenceEligibility::NotAssessed
+                    };
+                    let disposition = match (priority, differential_eligibility) {
+                        (_, PrimerPairDifferentialEvidenceEligibility::BelowThreshold) => {
+                            PrimerPairEvidenceDisposition::IneligibleBelowThreshold
+                        }
+                        (_, PrimerPairDifferentialEvidenceEligibility::MissingContrast) => {
+                            PrimerPairEvidenceDisposition::IncompleteMissingContrast
+                        }
+                        (_, PrimerPairDifferentialEvidenceEligibility::MissingMeasurement) => {
+                            PrimerPairEvidenceDisposition::IncompleteMissingMeasurement
+                        }
+                        (_, PrimerPairDifferentialEvidenceEligibility::NotAssessed) => {
+                            PrimerPairEvidenceDisposition::IncompleteMissingThreshold
+                        }
+                        (
+                            TranscriptAssayJunctionPriority::Required,
+                            PrimerPairDifferentialEvidenceEligibility::Eligible,
+                        ) => PrimerPairEvidenceDisposition::RequiredValidationObligation,
+                        (
+                            TranscriptAssayJunctionPriority::Preferred,
+                            PrimerPairDifferentialEvidenceEligibility::Eligible,
+                        ) => PrimerPairEvidenceDisposition::PreferredDifferential,
                     };
                     selection_evidence.push(PrimerPairSelectionEvidence {
                         evidence_id: row.evidence_id.clone(),
@@ -27324,6 +27406,10 @@ impl GentleEngine {
                         measured_value: row.logfc,
                         absolute_effect_threshold: report.min_abs_logfc,
                         differential_eligibility,
+                        disposition,
+                        interpretation_report_sha256: Some(source_sha256.clone()),
+                        threshold_source: report.threshold_source.clone(),
+                        policy_sha256: report.policy_sha256.clone(),
                         intensity_source: row.intensity_source.clone(),
                         source_schema: Some(report.schema.clone()),
                         source_path: Some(path.to_string()),
@@ -27819,21 +27905,28 @@ impl GentleEngine {
     pub(in crate::engine) fn annotate_transcript_assay_panel_selection_audit(
         assays: &mut [TranscriptAssayPanelAssay],
         equivalence_group_ids: &[String],
+        coverage_target_ids: &[String],
     ) {
+        let use_coverage_targets = !coverage_target_ids.is_empty();
+        let audit_target_ids = if use_coverage_targets {
+            coverage_target_ids
+        } else {
+            equivalence_group_ids
+        };
         let signatures = assays
             .iter()
             .map(|assay| {
-                assay
-                    .single_product_equivalence_group_ids
-                    .iter()
-                    .cloned()
-                    .collect::<BTreeSet<_>>()
+                let ids = if use_coverage_targets {
+                    &assay.single_product_coverage_target_ids
+                } else {
+                    &assay.single_product_equivalence_group_ids
+                };
+                ids.iter().cloned().collect::<BTreeSet<_>>()
             })
             .collect::<Vec<_>>();
-        let all_pairs = (0..equivalence_group_ids.len())
+        let all_pairs = (0..audit_target_ids.len())
             .flat_map(|left| {
-                (left.saturating_add(1)..equivalence_group_ids.len())
-                    .map(move |right| (left, right))
+                (left.saturating_add(1)..audit_target_ids.len()).map(move |right| (left, right))
             })
             .collect::<BTreeSet<_>>();
         let mut unresolved = all_pairs.clone();
@@ -27841,8 +27934,8 @@ impl GentleEngine {
         for assay_index in 0..assays.len() {
             let signature = &signatures[assay_index];
             let separates = |left: usize, right: usize| {
-                signature.contains(&equivalence_group_ids[left])
-                    != signature.contains(&equivalence_group_ids[right])
+                signature.contains(&audit_target_ids[left])
+                    != signature.contains(&audit_target_ids[right])
             };
             let newly_separated = unresolved
                 .iter()
@@ -27858,8 +27951,8 @@ impl GentleEngine {
                 .filter(|(left, right)| {
                     !signatures.iter().enumerate().any(|(other_index, other)| {
                         other_index != assay_index
-                            && (other.contains(&equivalence_group_ids[*left])
-                                != other.contains(&equivalence_group_ids[*right]))
+                            && (other.contains(&audit_target_ids[*left])
+                                != other.contains(&audit_target_ids[*right]))
                     })
                 })
                 .count();
@@ -27881,28 +27974,84 @@ impl GentleEngine {
                 })
                 .cloned()
                 .collect::<Vec<_>>();
+            let junction_evidence = assays[assay_index]
+                .primer_pair_summary
+                .selection_evidence
+                .iter()
+                .filter(|row| row.evidence_kind == PrimerPairSelectionEvidenceKind::Juc)
+                .cloned()
+                .collect::<Vec<_>>();
             let retained_for_differential = !eligible_evidence.is_empty();
             let zero_marginal_obligation = retained_for_differential && exclusive_count == 0;
             let summary = &mut assays[assay_index].primer_pair_summary;
+            summary.selection_reasons.retain(|reason| {
+                !matches!(
+                    reason.code,
+                    PrimerPairSelectionReasonCode::DifferentialJunctionEvidence
+                        | PrimerPairSelectionReasonCode::EvidenceDisposition
+                        | PrimerPairSelectionReasonCode::IncompleteProvenance
+                )
+            });
             summary.incremental_binary_distinction_count = newly_separated.len();
             summary.exclusive_binary_distinction_count = exclusive_count;
-            summary.newly_separated_equivalence_group_pairs = newly_separated
+            summary.newly_separated_equivalence_group_pairs = if use_coverage_targets {
+                vec![]
+            } else {
+                newly_separated
+                    .iter()
+                    .map(|(left, right)| TranscriptAssayUnresolvedPair {
+                        left_equivalence_group_id: audit_target_ids[*left].clone(),
+                        right_equivalence_group_id: audit_target_ids[*right].clone(),
+                    })
+                    .collect()
+            };
+            summary.newly_separated_target_pairs = newly_separated
                 .iter()
-                .map(|(left, right)| TranscriptAssayUnresolvedPair {
-                    left_equivalence_group_id: equivalence_group_ids[*left].clone(),
-                    right_equivalence_group_id: equivalence_group_ids[*right].clone(),
+                .map(|(left, right)| PrimerPairSelectionAuditTargetPair {
+                    left_target_id: audit_target_ids[*left].clone(),
+                    right_target_id: audit_target_ids[*right].clone(),
                 })
                 .collect();
             summary.binary_redundant_with_assay_ids = redundant_ids.clone();
             summary.retained_because_of_differential_junction_evidence = retained_for_differential;
             summary.retained_despite_zero_marginal_discrimination = zero_marginal_obligation;
+            summary.selection_audit_status = PrimerPairSelectionAuditStatus::Computed;
+            summary.selection_audit_method = "binary_detection_leave_one_out_v1".to_string();
+            summary.selection_audit_generator_revision = option_env!("GIT_COMMIT_HASH")
+                .unwrap_or(crate::about::GENTLE_PACKAGE_VERSION)
+                .to_string();
+            summary.selection_audit_target_kind = if use_coverage_targets {
+                "coverage_target"
+            } else {
+                "exact_cdna_equivalence_group"
+            }
+            .to_string();
+            summary.selection_evidence_observation_count = summary
+                .selection_evidence
+                .iter()
+                .map(|row| {
+                    (
+                        row.evidence_id.clone(),
+                        row.interpretation_report_sha256.clone(),
+                    )
+                })
+                .collect::<BTreeSet<_>>()
+                .len();
+            summary.selection_evidence_projection_count = summary.selection_evidence.len();
+            summary.selection_evidence_matched_target_count = summary
+                .selection_evidence
+                .iter()
+                .map(|row| row.junction_id.clone())
+                .filter(|id| !id.is_empty())
+                .collect::<BTreeSet<_>>()
+                .len();
 
             if retained_for_differential {
                 let evidence_descriptions = eligible_evidence
                     .iter()
                     .map(|row| {
                         format!(
-                            "{} (contrast={}, {}={:+.6}, |effect| threshold={:.6})",
+                            "{} (contrast={}, {}={:+.6}, |effect| threshold={:.6}, policy_sha256={})",
                             row.feature_id.as_deref().unwrap_or(&row.evidence_id),
                             row.contrast.as_deref().unwrap_or("unspecified"),
                             row.measured_statistic
@@ -27910,6 +28059,7 @@ impl GentleEngine {
                                 .unwrap_or("measured_effect"),
                             row.measured_value.unwrap_or_default(),
                             row.absolute_effect_threshold.unwrap_or_default(),
+                            row.policy_sha256.as_deref().unwrap_or("missing"),
                         )
                     })
                     .collect::<Vec<_>>();
@@ -27943,11 +28093,55 @@ impl GentleEngine {
                         exclusive_count
                     )
                 };
-                summary.selection_explanation.push_str(&format!(
-                    " Required differential-junction evidence: {}.{}",
-                    evidence_descriptions.join("; "),
-                    marginal_clause
-                ));
+                if !summary
+                    .selection_explanation
+                    .contains("Required differential-junction evidence:")
+                {
+                    summary.selection_explanation.push_str(&format!(
+                        " Required differential-junction evidence: {}.{}",
+                        evidence_descriptions.join("; "),
+                        marginal_clause
+                    ));
+                }
+            } else if !junction_evidence.is_empty() {
+                let dispositions = junction_evidence
+                    .iter()
+                    .map(|row| format!("{}={:?}", row.evidence_id, row.disposition))
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect::<Vec<_>>();
+                let incomplete = junction_evidence.iter().any(|row| {
+                    matches!(
+                        row.disposition,
+                        PrimerPairEvidenceDisposition::IncompleteMissingThreshold
+                            | PrimerPairEvidenceDisposition::IncompleteMissingContrast
+                            | PrimerPairEvidenceDisposition::IncompleteMissingMeasurement
+                    )
+                });
+                summary.selection_reasons.push(PrimerPairSelectionReason {
+                    code: if incomplete {
+                        PrimerPairSelectionReasonCode::IncompleteProvenance
+                    } else {
+                        PrimerPairSelectionReasonCode::EvidenceDisposition
+                    },
+                    message: if incomplete {
+                        format!(
+                            "Junction geometry influenced candidate selection, but differential eligibility is incomplete ({}). GENtle cannot claim response-associated retention from this artifact.",
+                            dispositions.join("; ")
+                        )
+                    } else {
+                        format!(
+                            "Junction evidence has disposition {}. Preferred evidence may influence ranking but is not a required validation obligation.",
+                            dispositions.join("; ")
+                        )
+                    },
+                    related_ids: junction_evidence
+                        .iter()
+                        .map(|row| row.evidence_id.clone())
+                        .collect::<BTreeSet<_>>()
+                        .into_iter()
+                        .collect(),
+                });
             }
         }
     }
@@ -28234,11 +28428,25 @@ impl GentleEngine {
                 newly_separated_equivalence_group_pairs: previous
                     .newly_separated_equivalence_group_pairs
                     .clone(),
+                newly_separated_target_pairs: previous.newly_separated_target_pairs.clone(),
                 binary_redundant_with_assay_ids: previous
                     .binary_redundant_with_assay_ids
                     .clone(),
                 retained_despite_zero_marginal_discrimination: previous
                     .retained_despite_zero_marginal_discrimination,
+                selection_audit_status: previous.selection_audit_status,
+                selection_audit_method: previous.selection_audit_method.clone(),
+                selection_audit_generator_revision: previous
+                    .selection_audit_generator_revision
+                    .clone(),
+                selection_audit_target_kind: previous.selection_audit_target_kind.clone(),
+                selection_operation_sha256: report.operation_sha256.clone(),
+                selection_evidence_observation_count: previous
+                    .selection_evidence_observation_count,
+                selection_evidence_projection_count: previous
+                    .selection_evidence_projection_count,
+                selection_evidence_matched_target_count: previous
+                    .selection_evidence_matched_target_count,
                 selection_evidence: previous.selection_evidence.clone(),
                 junction_spanning_status,
                 junction_matches: assay.junction_matches.clone(),
@@ -28295,6 +28503,25 @@ impl GentleEngine {
                     },
                 },
             };
+        }
+
+        let equivalence_group_ids = report
+            .equivalence_groups
+            .iter()
+            .map(|group| group.equivalence_group_id.clone())
+            .collect::<Vec<_>>();
+        let coverage_target_ids = report
+            .coverage_resolution
+            .targets
+            .iter()
+            .map(|target| target.target_id.clone())
+            .collect::<Vec<_>>();
+        if !report.detection_matrix.is_empty() && !equivalence_group_ids.is_empty() {
+            Self::annotate_transcript_assay_panel_selection_audit(
+                &mut report.selected_assays,
+                &equivalence_group_ids,
+                &coverage_target_ids,
+            );
         }
 
         let summaries_by_assay = report
@@ -29917,6 +30144,11 @@ impl GentleEngine {
         Self::annotate_transcript_assay_panel_selection_audit(
             &mut selected_assays,
             &equivalence_group_ids,
+            &coverage_resolution
+                .targets
+                .iter()
+                .map(|target| target.target_id.clone())
+                .collect::<Vec<_>>(),
         );
 
         let mut transcript_rows = vec![];
@@ -30309,6 +30541,7 @@ impl GentleEngine {
             generated_at_unix_ms: Self::now_unix_ms(),
             op_id: Some(result.op_id.clone()),
             run_id: Some(run_id.to_string()),
+            operation_sha256,
             source_seq_id: seq_id.clone(),
             source_feature_id,
             source_genome_anchor: source_anchor.clone(),
@@ -40956,6 +41189,8 @@ impl GentleEngine {
                     gene_label,
                     level,
                     min_abs_logfc,
+                    threshold_source,
+                    policy_sha256,
                     path,
                 } => {
                     let dna = self
@@ -40973,6 +41208,8 @@ impl GentleEngine {
                         gene_label.as_deref(),
                         level.as_deref(),
                         min_abs_logfc,
+                        threshold_source.as_deref(),
+                        policy_sha256.as_deref(),
                     )?;
                     if let Some(path) = path
                         .as_deref()

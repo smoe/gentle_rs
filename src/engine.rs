@@ -3592,6 +3592,10 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         min_abs_logfc: Option<f64>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        threshold_source: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        policy_sha256: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
     ProjectGenomeInterval {

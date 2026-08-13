@@ -5406,6 +5406,16 @@ pub struct ProbeRegionEvidenceInterpretationReport {
     pub coordinate_chromosome: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_abs_logfc: Option<f64>,
+    /// Human/machine-readable origin of the effective threshold. Missing on
+    /// legacy and ad-hoc unthresholded interpretations.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub threshold_source: Option<String>,
+    /// Digest of the policy that supplied the threshold, when applicable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy_sha256: Option<String>,
+    /// Digest over the normalized interpretation inputs and effective gate.
+    #[serde(default)]
+    pub interpretation_request_sha256: String,
     pub array_feature_count: usize,
     pub transcript_count: usize,
     pub evidence_rows: Vec<ProbeRegionEvidenceMappingRow>,
@@ -6406,6 +6416,8 @@ pub enum PrimerPairSelectionReasonCode {
     /// and absolute-effect threshold identified it for differential-response
     /// validation. This does not assert statistical significance.
     DifferentialJunctionEvidence,
+    EvidenceDisposition,
+    IncompleteProvenance,
     CommonRegionAnnotationConfirmed,
     RoutinePracticalityPreferred,
     AllowedNonpreferredProduct,
@@ -6425,6 +6437,48 @@ pub enum PrimerPairDifferentialEvidenceEligibility {
     BelowThreshold,
     MissingContrast,
     MissingMeasurement,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Normalized decision role of one external assay-selection observation.
+pub enum PrimerPairEvidenceDisposition {
+    #[default]
+    Contextual,
+    PreferredGeometry,
+    PreferredDifferential,
+    RequiredValidationObligation,
+    IneligibleBelowThreshold,
+    IncompleteMissingThreshold,
+    IncompleteMissingContrast,
+    IncompleteMissingMeasurement,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Whether marginal selection values were actually computed.
+pub enum PrimerPairSelectionAuditStatus {
+    #[default]
+    NotComputedLegacy,
+    Computed,
+    IncompleteProvenance,
+}
+
+impl PrimerPairSelectionAuditStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NotComputedLegacy => "not_computed_legacy",
+            Self::Computed => "computed",
+            Self::IncompleteProvenance => "incomplete_provenance",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct PrimerPairSelectionAuditTargetPair {
+    pub left_target_id: String,
+    pub right_target_id: String,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -6516,6 +6570,15 @@ pub struct PrimerPairSelectionEvidence {
     pub absolute_effect_threshold: Option<f64>,
     #[serde(default)]
     pub differential_eligibility: PrimerPairDifferentialEvidenceEligibility,
+    #[serde(default)]
+    pub disposition: PrimerPairEvidenceDisposition,
+    /// Digest of the complete interpretation report carrying this observation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interpretation_report_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub threshold_source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy_sha256: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub intensity_source: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -6822,6 +6885,8 @@ pub struct PrimerPairCommunicationSummary {
     /// Exact class pairs newly separated at this panel rank.
     #[serde(default)]
     pub newly_separated_equivalence_group_pairs: Vec<TranscriptAssayUnresolvedPair>,
+    #[serde(default)]
+    pub newly_separated_target_pairs: Vec<PrimerPairSelectionAuditTargetPair>,
     /// Earlier selected assays with the same exact-cDNA product/no-product
     /// signature. Equality here does not imply identical primer chemistry.
     #[serde(default)]
@@ -6830,6 +6895,27 @@ pub struct PrimerPairCommunicationSummary {
     /// new binary transcript distinction at this panel rank.
     #[serde(default)]
     pub retained_despite_zero_marginal_discrimination: bool,
+    #[serde(default)]
+    pub selection_audit_status: PrimerPairSelectionAuditStatus,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub selection_audit_method: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub selection_audit_generator_revision: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub selection_audit_target_kind: String,
+    /// Digest of the normalized panel-design operation that produced this
+    /// selected assay. Empty on legacy reports that did not persist it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub selection_operation_sha256: String,
+    /// Distinct measured source observations represented in selection_evidence.
+    #[serde(default)]
+    pub selection_evidence_observation_count: usize,
+    /// Transcript/junction projections retained as evidence references.
+    #[serde(default)]
+    pub selection_evidence_projection_count: usize,
+    /// Projected targets actually matched by this selected assay.
+    #[serde(default)]
+    pub selection_evidence_matched_target_count: usize,
     #[serde(default)]
     pub selection_evidence: Vec<PrimerPairSelectionEvidence>,
     pub junction_spanning_status: String,
@@ -10939,6 +11025,9 @@ pub struct TranscriptAssayPanelReport {
     pub op_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_id: Option<String>,
+    /// Digest of the normalized operation used to produce this report.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub operation_sha256: String,
     pub source_seq_id: String,
     pub source_feature_id: usize,
     /// Genome anchor captured when the panel was designed. Legacy reports

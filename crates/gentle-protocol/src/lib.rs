@@ -108,7 +108,8 @@ pub use gene_set_publication::{
     GeneSetPublicationGene, GeneSetPublicationGeneRequest, GeneSetPublicationGenerationReport,
     GeneSetPublicationMetric, GeneSetPublicationNarrativeSection,
     GeneSetPublicationPrimerColumnMap, GeneSetPublicationPrimerRow,
-    GeneSetPublicationPrimerTableSource, GeneSetPublicationReport, GeneSetPublicationRequest,
+    GeneSetPublicationPrimerSelectionDecision, GeneSetPublicationPrimerTableSource,
+    GeneSetPublicationReport, GeneSetPublicationRequest,
 };
 pub use gene_sets::{
     GENE_SET_CO_REGULATED_CACHE_SCHEMA, GENE_SET_CUTRUN_REGULATORY_SUPPORT_SCHEMA,

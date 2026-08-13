@@ -52,6 +52,9 @@ pub struct GeneSetPublicationPrimerColumnMap {
     pub cdna_specificity: String,
     pub genome_assessment: String,
     pub note: String,
+    pub transcript_panel_report_path: String,
+    pub transcript_panel_assay_id: String,
+    pub transcript_panel_expected_sha256: String,
 }
 
 impl Default for GeneSetPublicationPrimerColumnMap {
@@ -68,6 +71,9 @@ impl Default for GeneSetPublicationPrimerColumnMap {
             cdna_specificity: "whole_cdna_specificity".to_string(),
             genome_assessment: "genome_assessment".to_string(),
             note: "genome_detail".to_string(),
+            transcript_panel_report_path: "transcript_panel_report_path".to_string(),
+            transcript_panel_assay_id: "transcript_panel_assay_id".to_string(),
+            transcript_panel_expected_sha256: "transcript_panel_expected_sha256".to_string(),
         }
     }
 }
@@ -191,6 +197,36 @@ pub struct GeneSetPublicationPrimerRow {
     pub cdna_specificity: String,
     pub genome_assessment: String,
     pub note: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection_decision: Option<GeneSetPublicationPrimerSelectionDecision>,
+}
+
+/// Sanitized, digest-verified projection of one engine-owned pair decision.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneSetPublicationPrimerSelectionDecision {
+    pub source_report_schema: String,
+    pub source_report_id: String,
+    pub source_report_sha256: String,
+    pub assay_id: String,
+    pub disposition: String,
+    pub explanation: String,
+    pub selection_audit_status: String,
+    pub selection_audit_method: String,
+    pub selection_audit_generator_revision: String,
+    pub selection_audit_target_kind: String,
+    pub selection_operation_sha256: String,
+    pub incremental_binary_distinction_count: usize,
+    pub exclusive_binary_distinction_count: usize,
+    pub redundant_with_assay_ids: Vec<String>,
+    pub retained_despite_zero_marginal_discrimination: bool,
+    pub evidence_observation_count: usize,
+    pub evidence_projection_count: usize,
+    pub matched_target_count: usize,
+    pub evidence_ids: Vec<String>,
+    pub interpretation_report_sha256s: Vec<String>,
+    pub policy_sha256s: Vec<String>,
+    pub readiness_status: String,
 }
 
 /// Copied figure paths used by HTML and PDF assembly.

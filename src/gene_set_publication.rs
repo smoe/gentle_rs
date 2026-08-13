@@ -14,7 +14,8 @@ use gentle_protocol::{
     GeneIsoformAssayPublicationRequest, GeneSetPublicationBundleArtifact,
     GeneSetPublicationBundleManifest, GeneSetPublicationDownload, GeneSetPublicationFigure,
     GeneSetPublicationGene, GeneSetPublicationGenerationReport, GeneSetPublicationPrimerColumnMap,
-    GeneSetPublicationPrimerRow, GeneSetPublicationReport, GeneSetPublicationRequest,
+    GeneSetPublicationPrimerRow, GeneSetPublicationPrimerSelectionDecision,
+    GeneSetPublicationReport, GeneSetPublicationRequest,
 };
 use gentle_render::{
     render_gene_isoform_assay_publication_gene, render_gene_isoform_assay_publication_index,
@@ -33,6 +34,7 @@ use crate::{
     digest_utils::sha256_prefixed_bytes,
     engine::protocol::{
         ExperimentalAssayHandoffReport, ExperimentalAssayReadinessState, OligoOrderLineProvenance,
+        TranscriptAssayPanelReport,
     },
     svg_pdf::render_svg_file_to_pdf,
     svg_png::SvgPngRenderOptions,
@@ -157,6 +159,20 @@ fn read_primers(
         let row = record.map_err(|error| {
             format!("Could not parse primer table '{}': {error}", path.display())
         })?;
+        let report_path = cell(&row, &headers, &columns.transcript_panel_report_path, false)?;
+        let assay_id = cell(&row, &headers, &columns.transcript_panel_assay_id, false)?;
+        let expected_sha256 = cell(
+            &row,
+            &headers,
+            &columns.transcript_panel_expected_sha256,
+            false,
+        )?;
+        let selection_decision = resolve_primer_selection_decision(
+            path.parent().unwrap_or_else(|| Path::new(".")),
+            &report_path,
+            &assay_id,
+            &expected_sha256,
+        )?;
         primers.push(GeneSetPublicationPrimerRow {
             gene: cell(&row, &headers, &columns.gene, true)?,
             pair_id: cell(&row, &headers, &columns.pair_id, true)?,
@@ -169,12 +185,130 @@ fn read_primers(
             cdna_specificity: cell(&row, &headers, &columns.cdna_specificity, false)?,
             genome_assessment: cell(&row, &headers, &columns.genome_assessment, false)?,
             note: cell(&row, &headers, &columns.note, false)?,
+            selection_decision,
         });
     }
     if primers.is_empty() {
         return Err("Primer table contains no data rows".to_string());
     }
     Ok(primers)
+}
+
+fn resolve_primer_selection_decision(
+    base: &Path,
+    report_path: &str,
+    assay_id: &str,
+    expected_sha256: &str,
+) -> Result<Option<GeneSetPublicationPrimerSelectionDecision>, String> {
+    if report_path.trim().is_empty()
+        && assay_id.trim().is_empty()
+        && expected_sha256.trim().is_empty()
+    {
+        return Ok(None);
+    }
+    if report_path.trim().is_empty()
+        || assay_id.trim().is_empty()
+        || expected_sha256.trim().is_empty()
+    {
+        return Err("Primer selection references require transcript-panel path, assay id, and expected SHA-256 together".to_string());
+    }
+    let path = source_path(base, report_path);
+    let bytes = fs::read(&path).map_err(|error| {
+        format!(
+            "Could not read transcript-panel report '{}': {error}",
+            path.display()
+        )
+    })?;
+    let digest = sha256_prefixed_bytes(&bytes);
+    if digest != expected_sha256 {
+        return Err(format!(
+            "Transcript-panel report '{}' has digest '{}' but '{}' was required",
+            path.display(),
+            digest,
+            expected_sha256
+        ));
+    }
+    let report: TranscriptAssayPanelReport = serde_json::from_slice(&bytes).map_err(|error| {
+        format!(
+            "Could not parse transcript-panel report '{}': {error}",
+            path.display()
+        )
+    })?;
+    let assay = report
+        .selected_assays
+        .iter()
+        .find(|assay| assay.assay_id == assay_id)
+        .ok_or_else(|| {
+            format!(
+                "Transcript-panel report '{}' has no selected assay '{}'",
+                report.report_id, assay_id
+            )
+        })?;
+    let summary = &assay.primer_pair_summary;
+    let evidence_ids = summary
+        .selection_evidence
+        .iter()
+        .map(|row| row.evidence_id.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let interpretation_report_sha256s = summary
+        .selection_evidence
+        .iter()
+        .filter_map(|row| row.interpretation_report_sha256.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let policy_sha256s = summary
+        .selection_evidence
+        .iter()
+        .filter_map(|row| row.policy_sha256.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let incomplete = summary.selection_audit_status
+        == crate::engine::protocol::PrimerPairSelectionAuditStatus::IncompleteProvenance
+        || summary.selection_reasons.iter().any(|reason| {
+            reason.code
+                == crate::engine::protocol::PrimerPairSelectionReasonCode::IncompleteProvenance
+        });
+    Ok(Some(GeneSetPublicationPrimerSelectionDecision {
+        source_report_schema: report.schema,
+        source_report_id: report.report_id,
+        source_report_sha256: digest,
+        assay_id: assay.assay_id.clone(),
+        disposition: if incomplete {
+            "incomplete_provenance"
+        } else if summary.retained_because_of_differential_junction_evidence {
+            "required_validation_obligation"
+        } else {
+            "objective_selected"
+        }
+        .to_string(),
+        explanation: summary.selection_explanation.clone(),
+        selection_audit_status: summary.selection_audit_status.as_str().to_string(),
+        selection_audit_method: summary.selection_audit_method.clone(),
+        selection_audit_generator_revision: summary.selection_audit_generator_revision.clone(),
+        selection_audit_target_kind: summary.selection_audit_target_kind.clone(),
+        selection_operation_sha256: summary.selection_operation_sha256.clone(),
+        incremental_binary_distinction_count: summary.incremental_binary_distinction_count,
+        exclusive_binary_distinction_count: summary.exclusive_binary_distinction_count,
+        redundant_with_assay_ids: summary.binary_redundant_with_assay_ids.clone(),
+        retained_despite_zero_marginal_discrimination: summary
+            .retained_despite_zero_marginal_discrimination,
+        evidence_observation_count: summary.selection_evidence_observation_count,
+        evidence_projection_count: summary.selection_evidence_projection_count,
+        matched_target_count: summary.selection_evidence_matched_target_count,
+        evidence_ids,
+        interpretation_report_sha256s,
+        policy_sha256s,
+        readiness_status: if summary.whole_genome_specificity_status == "not_run" {
+            "incomplete_specificity"
+        } else {
+            &summary.whole_genome_specificity_status
+        }
+        .to_string(),
+    }))
 }
 
 fn run(command: &mut Command, description: &str, override_env: &str) -> Result<(), String> {
@@ -1729,6 +1863,62 @@ pub fn generate_gene_isoform_assay_publication(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn primer_selection_publication_projection_is_digest_and_assay_bound() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let report = TranscriptAssayPanelReport {
+            schema: "gentle.transcript_assay_panel.v1".to_string(),
+            report_id: "panel_1".to_string(),
+            selected_assays: vec![crate::engine::protocol::TranscriptAssayPanelAssay {
+                assay_id: "assay_1".to_string(),
+                primer_pair_summary: crate::engine::protocol::PrimerPairCommunicationSummary {
+                    selection_explanation: "Geometry influenced ranking; differential eligibility was not assessed.".to_string(),
+                    selection_audit_status: crate::engine::protocol::PrimerPairSelectionAuditStatus::IncompleteProvenance,
+                    selection_audit_method: "binary_detection_leave_one_out_v1".to_string(),
+                    selection_audit_generator_revision: "test-revision".to_string(),
+                    selection_audit_target_kind: "coverage_target".to_string(),
+                    selection_operation_sha256: "sha256:design-operation".to_string(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let bytes = serde_json::to_vec_pretty(&report).expect("serialize panel");
+        let path = temp.path().join("panel.json");
+        fs::write(&path, &bytes).expect("write panel");
+        let digest = sha256_prefixed_bytes(&bytes);
+        let projection =
+            resolve_primer_selection_decision(temp.path(), "panel.json", "assay_1", &digest)
+                .expect("resolve bound decision")
+                .expect("decision projection");
+        assert_eq!(projection.source_report_sha256, digest);
+        assert_eq!(projection.assay_id, "assay_1");
+        assert_eq!(
+            projection.selection_operation_sha256,
+            "sha256:design-operation"
+        );
+        assert_eq!(projection.disposition, "incomplete_provenance");
+        assert!(
+            !serde_json::to_string(&projection)
+                .expect("serialize projection")
+                .contains(temp.path().to_string_lossy().as_ref())
+        );
+
+        let error = resolve_primer_selection_decision(
+            temp.path(),
+            "panel.json",
+            "missing_assay",
+            &projection.source_report_sha256,
+        )
+        .expect_err("missing assay must fail");
+        assert!(error.contains("no selected assay"), "{error}");
+        let error =
+            resolve_primer_selection_decision(temp.path(), "panel.json", "assay_1", "sha256:wrong")
+                .expect_err("digest mismatch must fail");
+        assert!(error.contains("but 'sha256:wrong' was required"), "{error}");
+    }
 
     fn write_minimal_primer_table(directory: &Path) {
         fs::write(

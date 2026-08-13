@@ -8980,6 +8980,8 @@ impl MainAreaDna {
             ),
             level: Self::optional_probe_region_text(&self.probe_region_interpretation_level),
             min_abs_logfc,
+            threshold_source: None,
+            policy_sha256: None,
             path: output_path.clone(),
         };
         let outcome = {
