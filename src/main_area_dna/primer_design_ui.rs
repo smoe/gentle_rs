@@ -7,6 +7,8 @@
 use super::*;
 use crate::engine::{
     PrimerDesignNearMissCapture, PrimerDesignScoreTerm, PrimerPairCharacterizationStatus,
+    TranscriptAssayFallbackSubmissionMode, TranscriptAssayFallbackSubmissionPolicy,
+    TranscriptAssayInformativeSelectionPolicy,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -389,6 +391,12 @@ pub(super) struct TranscriptAssayPanelUiState {
     pub(super) min_5prime_junction_overlap_bp: String,
     pub(super) annotation_release: String,
     pub(super) report_id: String,
+    pub(super) preapprove_informative_fallback: bool,
+    pub(super) fallback_report_id: String,
+    pub(super) fallback_max_assays: String,
+    pub(super) fallback_min_resolvable_size_difference_bp: String,
+    pub(super) fallback_require_nonzero_incremental_value: bool,
+    pub(super) fallback_allow_long_range: bool,
 }
 
 impl Default for TranscriptAssayPanelUiState {
@@ -421,6 +429,12 @@ impl Default for TranscriptAssayPanelUiState {
             min_5prime_junction_overlap_bp: "7".to_string(),
             annotation_release: String::new(),
             report_id: "transcript_assay_panel_gui".to_string(),
+            preapprove_informative_fallback: false,
+            fallback_report_id: String::new(),
+            fallback_max_assays: "6".to_string(),
+            fallback_min_resolvable_size_difference_bp: "20".to_string(),
+            fallback_require_nonzero_incremental_value: true,
+            fallback_allow_long_range: false,
         }
     }
 }
@@ -1296,7 +1310,7 @@ impl MainAreaDna {
                 );
             }
         };
-        Ok(Operation::DesignTranscriptAssayPanel {
+        let strict_operation = Operation::DesignTranscriptAssayPanel {
             seq_id: seq_id.to_string(),
             source_feature_id,
             assay_kind: ui.assay_kind,
@@ -1334,6 +1348,7 @@ impl MainAreaDna {
                 "oligo_dt_5prime_risk_threshold_bp",
             )?,
             search_policy: None,
+            informative_selection: None,
             junctions: explicit_junctions,
             junction_evidence_paths,
             junction_evidence_priority: ui.junction_evidence_priority,
@@ -1349,6 +1364,62 @@ impl MainAreaDna {
                 .then(|| ui.annotation_release.trim().to_string()),
             specificity: None,
             report_id: (!ui.report_id.trim().is_empty()).then(|| ui.report_id.trim().to_string()),
+            path: None,
+        };
+        if !ui.preapprove_informative_fallback {
+            return Ok(strict_operation);
+        }
+        if ui.coverage_policy != TranscriptAssayCoveragePolicy::RequireAll {
+            return Err(
+                "Pre-approved informative fallback requires strict 'Require all' coverage"
+                    .to_string(),
+            );
+        }
+        if !matches!(
+            ui.objective,
+            TranscriptAssayPanelObjective::OnePerClass
+                | TranscriptAssayPanelObjective::MinimalDiscriminationPanel
+        ) {
+            return Err(
+                "Pre-approved informative fallback is available for one-per-class or minimal-discrimination strict panels"
+                    .to_string(),
+            );
+        }
+        let strict_report_id = ui.report_id.trim();
+        if strict_report_id.is_empty() {
+            return Err(
+                "Pre-approved informative fallback requires a strict report id".to_string(),
+            );
+        }
+        let fallback_report_id = if ui.fallback_report_id.trim().is_empty() {
+            format!("{strict_report_id}_informative_partial")
+        } else {
+            ui.fallback_report_id.trim().to_string()
+        };
+        if fallback_report_id == strict_report_id {
+            return Err("Fallback report id must differ from the strict report id".to_string());
+        }
+        let max_assays =
+            Self::parse_positive_usize_text(&ui.fallback_max_assays, "fallback_max_assays")?;
+        let minimum_resolvable_size_difference_bp = Self::parse_positive_usize_text(
+            &ui.fallback_min_resolvable_size_difference_bp,
+            "fallback_min_resolvable_size_difference_bp",
+        )?;
+        Ok(Operation::DesignTranscriptAssayPanelWithFallback {
+            strict_operation: Box::new(strict_operation),
+            fallback_submission: TranscriptAssayFallbackSubmissionPolicy {
+                mode: TranscriptAssayFallbackSubmissionMode::PreapprovedInformativePartial,
+                informative_selection: TranscriptAssayInformativeSelectionPolicy {
+                    max_assays,
+                    minimum_resolvable_size_difference_bp,
+                    require_nonzero_incremental_value: ui
+                        .fallback_require_nonzero_incremental_value,
+                    allow_long_range_fallback: ui.fallback_allow_long_range,
+                    ..Default::default()
+                },
+                fallback_report_id,
+                ..Default::default()
+            },
             path: None,
         })
     }
@@ -4262,6 +4333,9 @@ impl MainAreaDna {
             TranscriptAssayPanelObjective::MinimalDiscriminationPanel => {
                 "Minimal discrimination panel"
             }
+            TranscriptAssayPanelObjective::MaximallyInformativePanel => {
+                "Maximally informative panel"
+            }
             TranscriptAssayPanelObjective::IsoformEndMatrix => "First x terminal exon matrix",
         }
     }
@@ -4498,6 +4572,55 @@ impl MainAreaDna {
                 ui.monospace(policy_label);
                 ui.end_row();
             });
+
+        if let Some(fallback) = report.fallback_provenance.as_ref() {
+            ui.group(|ui| {
+                ui.strong("Informative partial fallback");
+                ui.label(
+                    "The approved strict operation failed coverage. This separate panel remains partial and does not replace that failure.",
+                );
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Parent failure");
+                    ui.monospace(&fallback.parent_failure_id);
+                    ui.label("Policy");
+                    ui.monospace(&fallback.fallback_policy_sha256);
+                });
+                if let Some(informative) = report.informative_selection.as_ref() {
+                    ui.label(format!(
+                        "Covered {}/{} bound targets; separated {}/{} observable target pairs with {}/{} approved assays ({})",
+                        informative.covered_target_count,
+                        informative.target_count,
+                        informative.separated_target_pair_count,
+                        informative.total_target_pair_count,
+                        informative.selected_assay_count,
+                        informative.assay_budget,
+                        informative.certificate.as_str(),
+                    ));
+                }
+                if !report.uncovered_equivalence_group_ids.is_empty() {
+                    ui.label(format!(
+                        "Uncovered cDNA classes: {}",
+                        report.uncovered_equivalence_group_ids.join(", ")
+                    ));
+                }
+                if let Some(gel) = report.fallback_virtual_gel.as_ref() {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(format!(
+                            "Combined virtual gel: {} ({} lanes, {} products)",
+                            gel.status.as_str(),
+                            gel.sample_lane_count,
+                            gel.rendered_product_count
+                        ));
+                        if !gel.svg_sha256.is_empty() {
+                            ui.monospace(&gel.svg_sha256);
+                        }
+                    });
+                    if let Some(reason) = gel.no_products_reason.as_deref() {
+                        ui.label(reason);
+                    }
+                }
+            });
+        }
 
         egui::CollapsingHeader::new("Pair selection rationale")
             .default_open(report.assay_tier != TranscriptAssayUseTier::Unspecified)
@@ -5174,6 +5297,73 @@ impl MainAreaDna {
                 )
                 .on_hover_text("Return a partial panel and enumerate uncovered classes");
             });
+        });
+
+        ui.group(|ui| {
+            ui.checkbox(
+                &mut self
+                    .transcript_assay_panel_ui
+                    .preapprove_informative_fallback,
+                "Pre-approve informative partial fallback",
+            )
+            .on_hover_text(
+                "If this exact strict require-all panel reaches a typed coverage-infeasible result after bounded search, submit one separately identified best-effort panel under the policy shown here. Other failures remain fail-closed.",
+            );
+            if self
+                .transcript_assay_panel_ui
+                .preapprove_informative_fallback
+            {
+                ui.small(
+                    "Approval is bound into the submitted operation. The strict failure remains primary; the fallback is always labelled partial.",
+                );
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Fallback report id");
+                    ui.add(
+                        egui::TextEdit::singleline(
+                            &mut self.transcript_assay_panel_ui.fallback_report_id,
+                        )
+                        .desired_width(210.0)
+                        .hint_text("<strict id>_informative_partial"),
+                    );
+                    ui.label("Assay budget");
+                    ui.add(
+                        egui::TextEdit::singleline(
+                            &mut self.transcript_assay_panel_ui.fallback_max_assays,
+                        )
+                        .desired_width(48.0),
+                    );
+                    ui.label("Resolvable band difference");
+                    ui.add(
+                        egui::TextEdit::singleline(
+                            &mut self
+                                .transcript_assay_panel_ui
+                                .fallback_min_resolvable_size_difference_bp,
+                        )
+                        .desired_width(48.0),
+                    );
+                    ui.label("bp");
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.checkbox(
+                        &mut self
+                            .transcript_assay_panel_ui
+                            .fallback_require_nonzero_incremental_value,
+                        "Require nonzero incremental value",
+                    )
+                    .on_hover_text(
+                        "Stop before adding an assay that covers no new target and separates no new observable target pair.",
+                    );
+                    ui.checkbox(
+                        &mut self
+                            .transcript_assay_panel_ui
+                            .fallback_allow_long_range,
+                        "Allow long-range fallback assays",
+                    )
+                    .on_hover_text(
+                        "Permit candidates classified as long-range fallback to consume the approved assay budget.",
+                    );
+                });
+            }
         });
 
         egui::Grid::new("transcript_assay_panel_numeric_constraints")

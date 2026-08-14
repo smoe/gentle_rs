@@ -492,11 +492,13 @@ an agent has selected a deterministic operation.
 - `primers export-qpcr-report`
 - `primers export-report`
 - `primers export-restriction-cloning-handoff`
+- `primers export-transcript-assay-fallback`
 - `primers export-transcript-assay-panel`
 - `primers import-external-pairs`
 - `primers list-qpcr-reports`
 - `primers list-reports`
 - `primers list-restriction-cloning-handoffs`
+- `primers list-transcript-assay-fallbacks`
 - `primers list-transcript-assay-panels`
 - `primers primerbank search`
 - `primers primerbank show`
@@ -511,6 +513,7 @@ an agent has selected a deterministic operation.
 - `primers show-qpcr-report`
 - `primers show-report`
 - `primers show-restriction-cloning-handoff`
+- `primers show-transcript-assay-fallback`
 - `primers show-transcript-assay-panel`
 - `primers transcript-assay-specificity-plan`
 - `primers transcript-assay-specificity-finalize`

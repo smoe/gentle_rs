@@ -7751,6 +7751,43 @@ fn parse_primers_seed_from_feature_and_splicing() {
             && backend == Some(PrimerDesignBackend::Internal)
             && primer3_executable.as_deref() == Some("primer3_core")
     ));
+    let informative_panel = parse_shell_line(
+        "primers design-transcript-assay-panel seq_a 17 --objective maximally-informative-panel --coverage-policy best-effort",
+    )
+    .expect("parse bounded informative transcript panel");
+    assert!(matches!(
+        informative_panel,
+        ShellCommand::PrimersDesignTranscriptAssayPanel { objective, .. }
+            if objective == TranscriptAssayPanelObjective::MaximallyInformativePanel
+    ));
+    let fallback_operation = parse_shell_line(
+        r#"primers design-transcript-assay-panel '{"DesignTranscriptAssayPanelWithFallback":{"strict_operation":{"DesignTranscriptAssayPanel":{"seq_id":"seq_a","source_feature_id":17}},"fallback_submission":{"mode":"never"}}}'"#,
+    )
+    .expect("parse approval-bound fallback operation JSON");
+    assert!(matches!(
+        fallback_operation,
+        ShellCommand::PrimersDesignTranscriptAssayPanelRequest { operation_json, .. }
+            if operation_json.contains("DesignTranscriptAssayPanelWithFallback")
+    ));
+    assert!(matches!(
+        parse_shell_line("primers list-transcript-assay-fallbacks")
+            .expect("parse fallback listing"),
+        ShellCommand::PrimersListTranscriptAssayFallbacks
+    ));
+    assert!(matches!(
+        parse_shell_line("primers show-transcript-assay-fallback fallback_1")
+            .expect("parse fallback show"),
+        ShellCommand::PrimersShowTranscriptAssayFallback { execution_id }
+            if execution_id == "fallback_1"
+    ));
+    assert!(matches!(
+        parse_shell_line(
+            "primers export-transcript-assay-fallback fallback_1 fallback.json"
+        )
+        .expect("parse fallback export"),
+        ShellCommand::PrimersExportTranscriptAssayFallback { execution_id, path }
+            if execution_id == "fallback_1" && path == "fallback.json"
+    ));
     let feasibility = parse_shell_line(
         r#"primers inspect-transcript-assay-feasibility @endpoint-operation.json --path endpoint-feasibility.json"#,
     )
@@ -9103,6 +9140,7 @@ fn approved_gene_isoform_study_batch_rejects_structural_endpoint_before_mutation
             min_5prime_junction_overlap_bp: None,
             annotation_release: Some("synthetic".to_string()),
             specificity: None,
+            informative_selection: None,
             report_id: Some("must_not_be_persisted".to_string()),
             path: None,
         }],

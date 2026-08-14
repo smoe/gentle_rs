@@ -1094,6 +1094,7 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
         primerbank_search_report: None,
         transcript_qpcr_panel: None,
         transcript_assay_panel: None,
+        transcript_assay_fallback_execution: None,
         transcript_assay_cdna_similarity_map: None,
         transcript_assay_specificity_redesign: None,
         gene_isoform_assay_study_plan: None,
@@ -4939,6 +4940,7 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
             primerbank_search_report: None,
             transcript_qpcr_panel: None,
             transcript_assay_panel: None,
+            transcript_assay_fallback_execution: None,
             transcript_assay_cdna_similarity_map: None,
             transcript_assay_specificity_redesign: None,
             gene_isoform_assay_study_plan: None,
@@ -9515,6 +9517,66 @@ fn transcript_assay_panel_gui_builds_shared_sybr_operation_with_junction_evidenc
 }
 
 #[test]
+fn transcript_assay_panel_gui_builds_exact_preapproved_fallback_wrapper() {
+    let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).unwrap();
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    area.transcript_assay_panel_ui.source_feature_id = "7".to_string();
+    area.transcript_assay_panel_ui.assay_kind = crate::engine::TranscriptAssayKind::SybrQpcr;
+    area.transcript_assay_panel_ui.objective =
+        crate::engine::TranscriptAssayPanelObjective::OnePerClass;
+    area.transcript_assay_panel_ui.coverage_policy =
+        crate::engine::TranscriptAssayCoveragePolicy::RequireAll;
+    area.transcript_assay_panel_ui.report_id = "strict_gui_panel".to_string();
+    area.transcript_assay_panel_ui
+        .preapprove_informative_fallback = true;
+    area.transcript_assay_panel_ui.fallback_max_assays = "3".to_string();
+    area.transcript_assay_panel_ui
+        .fallback_min_resolvable_size_difference_bp = "25".to_string();
+
+    let operation = area
+        .build_design_transcript_assay_panel_operation("seq1")
+        .expect("pre-approved GUI operation");
+    let Operation::DesignTranscriptAssayPanelWithFallback {
+        strict_operation,
+        fallback_submission,
+        path,
+    } = operation
+    else {
+        panic!("expected approval-bound fallback wrapper");
+    };
+    assert!(matches!(
+        strict_operation.as_ref(),
+        Operation::DesignTranscriptAssayPanel {
+            coverage_policy: crate::engine::TranscriptAssayCoveragePolicy::RequireAll,
+            objective: crate::engine::TranscriptAssayPanelObjective::OnePerClass,
+            report_id: Some(report_id),
+            ..
+        } if report_id == "strict_gui_panel"
+    ));
+    assert_eq!(
+        fallback_submission.mode,
+        crate::engine::TranscriptAssayFallbackSubmissionMode::PreapprovedInformativePartial
+    );
+    assert_eq!(
+        fallback_submission.fallback_report_id,
+        "strict_gui_panel_informative_partial"
+    );
+    assert_eq!(fallback_submission.informative_selection.max_assays, 3);
+    assert_eq!(
+        fallback_submission
+            .informative_selection
+            .minimum_resolvable_size_difference_bp,
+        25
+    );
+    assert!(
+        fallback_submission
+            .informative_selection
+            .require_nonzero_incremental_value
+    );
+    assert!(path.is_none());
+}
+
+#[test]
 fn transcript_assay_panel_gui_requires_both_preferred_range_bounds() {
     let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).unwrap();
     let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
@@ -9599,6 +9661,11 @@ fn transcript_assay_panel_gui_state_defaults_when_missing_from_saved_window_stat
     assert_eq!(
         decoded.transcript_assay_panel_ui.coverage_policy,
         crate::engine::TranscriptAssayCoveragePolicy::RequireAll
+    );
+    assert!(
+        !decoded
+            .transcript_assay_panel_ui
+            .preapprove_informative_fallback
     );
 }
 

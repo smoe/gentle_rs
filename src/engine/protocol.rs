@@ -4777,6 +4777,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_assay_panel: Option<Box<TranscriptAssayPanelReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_assay_fallback_execution: Option<Box<TranscriptAssayFallbackExecutionReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_assay_cdna_similarity_map: Option<Box<TranscriptAssayCdnaSimilarityMap>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_assay_specificity_redesign:
@@ -9741,6 +9743,9 @@ pub enum TranscriptAssayPanelObjective {
     OnePerClass,
     /// Select a small assay set that separates every distinguishable class pair.
     MinimalDiscriminationPanel,
+    /// Select a bounded assay set by coverage, then observable target-pair
+    /// separation, then fewer reactions and existing candidate preference.
+    MaximallyInformativePanel,
     /// Design one endpoint RT-PCR reaction for each annotated first-end x
     /// terminal-end combination represented by a mature transcript.
     IsoformEndMatrix,
@@ -9752,9 +9757,286 @@ impl TranscriptAssayPanelObjective {
             Self::PanTranscript => "pan_transcript",
             Self::OnePerClass => "one_per_class",
             Self::MinimalDiscriminationPanel => "minimal_discrimination_panel",
+            Self::MaximallyInformativePanel => "maximally_informative_panel",
             Self::IsoformEndMatrix => "isoform_end_matrix",
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Weighting contract for the bounded informative selector.
+pub enum TranscriptAssayInformativeTargetWeighting {
+    #[default]
+    EqualBoundCoverageTargets,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+/// Explicit whole-panel budget and observable-product policy.
+pub struct TranscriptAssayInformativeSelectionPolicy {
+    pub schema: String,
+    pub max_assays: usize,
+    #[serde(default)]
+    pub target_weighting: TranscriptAssayInformativeTargetWeighting,
+    pub require_nonzero_incremental_value: bool,
+    pub minimum_resolvable_size_difference_bp: usize,
+    pub allow_long_range_fallback: bool,
+}
+
+impl Default for TranscriptAssayInformativeSelectionPolicy {
+    fn default() -> Self {
+        Self {
+            schema: "gentle.transcript_assay_informative_selection_policy.v1".to_string(),
+            max_assays: 6,
+            target_weighting: TranscriptAssayInformativeTargetWeighting::default(),
+            require_nonzero_incremental_value: true,
+            minimum_resolvable_size_difference_bp: 20,
+            allow_long_range_fallback: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Strength of the optimization claim made by the selector.
+pub enum TranscriptAssayInformativeOptimalityCertificate {
+    #[default]
+    NotComputed,
+    /// Deterministic greedy search over all generated candidates. The result
+    /// is reproducible but is not a proof of global subset optimality.
+    BoundedGreedyV1,
+}
+
+impl TranscriptAssayInformativeOptimalityCertificate {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NotComputed => "not_computed",
+            Self::BoundedGreedyV1 => "bounded_greedy_v1",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Recomputable marginal contribution of one selected assay.
+pub struct TranscriptAssayInformativeAssayContribution {
+    pub assay_id: String,
+    pub rank: usize,
+    pub incremental_covered_target_count: usize,
+    pub incremental_separated_target_pair_count: usize,
+    pub leave_one_out_covered_target_loss: usize,
+    pub leave_one_out_separated_target_pair_loss: usize,
+    #[serde(default)]
+    pub redundant_alternative_assay_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Whole-panel objective audit for a bounded informative selection.
+pub struct TranscriptAssayInformativeSelectionReport {
+    pub schema: String,
+    pub policy: TranscriptAssayInformativeSelectionPolicy,
+    pub policy_sha256: String,
+    #[serde(default)]
+    pub certificate: TranscriptAssayInformativeOptimalityCertificate,
+    pub target_kind: String,
+    pub target_count: usize,
+    pub covered_target_count: usize,
+    pub total_target_pair_count: usize,
+    pub separated_target_pair_count: usize,
+    pub assay_budget: usize,
+    pub selected_assay_count: usize,
+    #[serde(default)]
+    pub assay_contributions: Vec<TranscriptAssayInformativeAssayContribution>,
+    #[serde(default)]
+    pub unresolved_target_pairs: Vec<PrimerPairSelectionAuditTargetPair>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Whether an operation may submit a linked partial fallback.
+pub enum TranscriptAssayFallbackSubmissionMode {
+    #[default]
+    Never,
+    PreapprovedInformativePartial,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Typed trigger accepted by the fallback executor.
+pub enum TranscriptAssayFallbackTrigger {
+    #[default]
+    StrictCoverageInfeasibleOnly,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+/// Approval basis for deriving one exact partial operation after strict
+/// coverage infeasibility. Legacy omission defaults to `mode=never`.
+pub struct TranscriptAssayFallbackSubmissionPolicy {
+    pub schema: String,
+    #[serde(default)]
+    pub mode: TranscriptAssayFallbackSubmissionMode,
+    #[serde(default)]
+    pub trigger: TranscriptAssayFallbackTrigger,
+    #[serde(default)]
+    pub informative_selection: TranscriptAssayInformativeSelectionPolicy,
+    pub fallback_report_id: String,
+}
+
+impl Default for TranscriptAssayFallbackSubmissionPolicy {
+    fn default() -> Self {
+        Self {
+            schema: "gentle.transcript_assay_fallback_submission_policy.v1".to_string(),
+            mode: TranscriptAssayFallbackSubmissionMode::Never,
+            trigger: TranscriptAssayFallbackTrigger::default(),
+            informative_selection: TranscriptAssayInformativeSelectionPolicy::default(),
+            fallback_report_id: String::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One exact field replacement used to derive the approved fallback operation.
+pub struct TranscriptAssayFallbackOperationDiff {
+    pub field: String,
+    pub strict_value_json: String,
+    pub fallback_value_json: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Machine-readable uncovered cDNA class retained with a strict failure.
+pub struct TranscriptAssayUncoveredEquivalenceGroup {
+    pub equivalence_group_id: String,
+    #[serde(default)]
+    pub transcript_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Durable identity of the primary strict failure.
+pub struct TranscriptAssayPanelInfeasibilityReport {
+    pub schema: String,
+    pub failure_id: String,
+    pub strict_operation_sha256: String,
+    pub error_code: String,
+    pub error_message: String,
+    pub error_sha256: String,
+    pub trigger_classification: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strict_report_id: Option<String>,
+    pub coverage_target_kind: String,
+    pub candidate_assay_count: usize,
+    pub selected_assay_count: usize,
+    #[serde(default)]
+    pub search_plan_status: TranscriptAssayPrimerSearchPlanStatus,
+    #[serde(default)]
+    pub uncovered_coverage_target_ids: Vec<String>,
+    #[serde(default)]
+    pub unresolved_coverage_target_pairs: Vec<TranscriptAssayCoverageUnresolvedTargetPair>,
+    #[serde(default)]
+    pub uncovered_equivalence_groups: Vec<TranscriptAssayUncoveredEquivalenceGroup>,
+    #[serde(default)]
+    pub unresolved_group_pairs: Vec<TranscriptAssayUnresolvedPair>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Parent/derivation link embedded in the separately stored fallback panel.
+pub struct TranscriptAssayPanelFallbackProvenance {
+    pub parent_strict_operation_sha256: String,
+    pub parent_failure_id: String,
+    pub fallback_policy_sha256: String,
+    pub trigger_classification: String,
+    #[serde(default)]
+    pub operation_diff: Vec<TranscriptAssayFallbackOperationDiff>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Required combined-gel disposition for an informative fallback panel.
+pub enum TranscriptAssayFallbackVirtualGelStatus {
+    #[default]
+    NotApplicable,
+    Generated,
+    NoPredictedProducts,
+}
+
+impl TranscriptAssayFallbackVirtualGelStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NotApplicable => "not_applicable",
+            Self::Generated => "generated",
+            Self::NoPredictedProducts => "no_predicted_products",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Inline deterministic one-assay-per-lane projection carried by a fallback.
+pub struct TranscriptAssayFallbackVirtualGel {
+    pub schema: String,
+    #[serde(default)]
+    pub status: TranscriptAssayFallbackVirtualGelStatus,
+    pub source_panel_report_id: String,
+    pub source_operation_sha256: String,
+    pub svg: String,
+    pub svg_sha256: String,
+    pub conditions: gentle_protocol::GelRunConditions,
+    pub render_options: gentle_protocol::PoolGelRenderOptions,
+    pub sample_lane_count: usize,
+    pub rendered_product_count: usize,
+    #[serde(default)]
+    pub empty_lane_assay_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub no_products_reason: Option<String>,
+    pub interpretation: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Linked outcome of one strict operation and its pre-approved fallback.
+pub struct TranscriptAssayFallbackExecutionReport {
+    pub schema: String,
+    pub execution_id: String,
+    pub summary: String,
+    pub strict_operation_sha256: String,
+    pub fallback_policy: TranscriptAssayFallbackSubmissionPolicy,
+    pub fallback_policy_sha256: String,
+    pub engine_revision: String,
+    pub search_policy_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strict_panel_report: Option<Box<TranscriptAssayPanelReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strict_infeasibility: Option<TranscriptAssayPanelInfeasibilityReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_operation_sha256: Option<String>,
+    #[serde(default)]
+    pub fallback_operation_diff: Vec<TranscriptAssayFallbackOperationDiff>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_panel_report: Option<Box<TranscriptAssayPanelReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_error: Option<EngineError>,
+    pub fallback_submitted: bool,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Compact listing row for a persisted strict/fallback execution audit.
+pub struct TranscriptAssayFallbackExecutionSummary {
+    pub execution_id: String,
+    pub strict_operation_sha256: String,
+    pub strict_succeeded: bool,
+    pub fallback_submitted: bool,
+    pub fallback_completed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_report_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -10996,7 +11278,7 @@ pub struct TranscriptAssayPanelTranscriptRow {
     pub notes: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
 /// One still-unresolved pair of distinguishable cDNA equivalence classes.
 pub struct TranscriptAssayUnresolvedPair {
@@ -11058,6 +11340,16 @@ pub struct TranscriptAssayPanelReport {
     pub practicality_policy: Option<TranscriptAssayPracticalityPolicy>,
     #[serde(default)]
     pub completion_status: TranscriptAssayPanelCompletionStatus,
+    /// Present only for the bounded informative objective.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub informative_selection: Option<TranscriptAssayInformativeSelectionReport>,
+    /// Present only on a panel derived by the approval-bound fallback wrapper.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_provenance: Option<TranscriptAssayPanelFallbackProvenance>,
+    /// Every informative fallback carries either one combined virtual gel or
+    /// an explicit typed reason that no predicted products could be rendered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_virtual_gel: Option<TranscriptAssayFallbackVirtualGel>,
     pub transcript_count: usize,
     pub equivalence_group_count: usize,
     pub candidate_assay_count: usize,
@@ -11380,6 +11672,10 @@ pub struct GeneIsoformAssayStudyPlanRequest {
     /// this named plan. Run separate named plans to compare alternatives.
     #[serde(default)]
     pub coverage_universe: TranscriptAssayCoverageUniverse,
+    /// Optional approval-bound recovery for a strict one-per-class design.
+    /// Omission preserves the legacy fail-closed behavior (`mode=never`).
+    #[serde(default)]
+    pub fallback_submission: TranscriptAssayFallbackSubmissionPolicy,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub policy_sha256: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -11407,6 +11703,7 @@ impl Default for GeneIsoformAssayStudyPlanRequest {
             prior_priority: GeneIsoformAssayPriorPriority::Routine,
             policy: GeneIsoformAssayStudyPolicy::default(),
             coverage_universe: TranscriptAssayCoverageUniverse::default(),
+            fallback_submission: TranscriptAssayFallbackSubmissionPolicy::default(),
             policy_sha256: None,
             profile_override: None,
             prior_plan: None,

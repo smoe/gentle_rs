@@ -980,7 +980,10 @@ fn transcript_assay_panel_reachability_is_locked_across_adapters() {
         .expect("transcript assay panel glossary command");
     assert_eq!(
         command.engine_operations,
-        vec!["DesignTranscriptAssayPanel".to_string()]
+        vec![
+            "DesignTranscriptAssayPanel".to_string(),
+            "DesignTranscriptAssayPanelWithFallback".to_string(),
+        ]
     );
     assert_eq!(
         command.surfacing_for_adapter(CapabilityAdapter::Gui),
@@ -1002,24 +1005,29 @@ fn transcript_assay_panel_reachability_is_locked_across_adapters() {
         );
     }
 
-    let operation = capability_registry()
-        .iter()
-        .find(|descriptor| {
-            descriptor.source == CapabilitySource::EngineOperation
-                && descriptor.name == "DesignTranscriptAssayPanel"
-        })
-        .expect("DesignTranscriptAssayPanel operation descriptor");
-    for adapter in [
-        CapabilityAdapter::Cli,
-        CapabilityAdapter::Mcp,
-        CapabilityAdapter::Js,
-        CapabilityAdapter::Lua,
+    for operation_name in [
+        "DesignTranscriptAssayPanel",
+        "DesignTranscriptAssayPanelWithFallback",
     ] {
-        assert_eq!(
-            operation.surfacing_for_adapter(adapter),
-            AdapterSurfacing::ShellPassthrough,
-            "DesignTranscriptAssayPanel must remain reachable on {adapter:?}"
-        );
+        let operation = capability_registry()
+            .iter()
+            .find(|descriptor| {
+                descriptor.source == CapabilitySource::EngineOperation
+                    && descriptor.name == operation_name
+            })
+            .unwrap_or_else(|| panic!("{operation_name} operation descriptor"));
+        for adapter in [
+            CapabilityAdapter::Cli,
+            CapabilityAdapter::Mcp,
+            CapabilityAdapter::Js,
+            CapabilityAdapter::Lua,
+        ] {
+            assert_eq!(
+                operation.surfacing_for_adapter(adapter),
+                AdapterSurfacing::ShellPassthrough,
+                "{operation_name} must remain reachable on {adapter:?}"
+            );
+        }
     }
 }
 

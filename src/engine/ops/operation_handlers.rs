@@ -17342,6 +17342,12 @@ impl GentleEngine {
 
         request.coverage_universe =
             Self::normalize_transcript_assay_coverage_universe(request.coverage_universe, false)?;
+        request.fallback_submission.fallback_report_id = request
+            .fallback_submission
+            .fallback_report_id
+            .trim()
+            .to_string();
+        Self::validate_transcript_assay_fallback_policy(&request.fallback_submission, false)?;
 
         if let Some(override_request) = &mut request.profile_override {
             override_request.reason = override_request.reason.trim().to_string();
@@ -17495,6 +17501,7 @@ impl GentleEngine {
             require_3prime_exact_bases: Some(8),
             oligo_dt_5prime_risk_threshold_bp,
             search_policy: None,
+            informative_selection: None,
             junctions: vec![],
             junction_evidence_paths,
             junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
@@ -17991,6 +17998,43 @@ impl GentleEngine {
                 operations.push(endpoint_operation());
             }
         }
+        let mut fallback_wrapped_operation_count = 0usize;
+        if request.fallback_submission.mode
+            == TranscriptAssayFallbackSubmissionMode::PreapprovedInformativePartial
+        {
+            for operation in &mut operations {
+                let strict_report_id = match operation {
+                    Operation::DesignTranscriptAssayPanel {
+                        objective,
+                        coverage_policy: TranscriptAssayCoveragePolicy::RequireAll,
+                        report_id,
+                        ..
+                    } if matches!(
+                        objective,
+                        TranscriptAssayPanelObjective::OnePerClass
+                            | TranscriptAssayPanelObjective::MinimalDiscriminationPanel
+                    ) => report_id.clone().ok_or_else(|| {
+                        EngineError::internal(
+                            "Planned strict transcript panel is missing its deterministic report_id",
+                        )
+                    })?,
+                    _ => continue,
+                };
+                let mut fallback_submission = request.fallback_submission.clone();
+                if fallback_submission.fallback_report_id.is_empty() {
+                    fallback_submission.fallback_report_id =
+                        format!("{strict_report_id}_informative_partial");
+                }
+                let strict_operation = operation.clone();
+                *operation = Operation::DesignTranscriptAssayPanelWithFallback {
+                    strict_operation: Box::new(strict_operation),
+                    fallback_submission,
+                    path: None,
+                };
+                fallback_wrapped_operation_count =
+                    fallback_wrapped_operation_count.saturating_add(1);
+            }
+        }
         let operation_batch_sha256 =
             sha256_prefixed_bytes(&serde_json::to_vec(&operations).map_err(|error| {
                 EngineError {
@@ -18033,6 +18077,15 @@ impl GentleEngine {
                         Operation::DesignTranscriptAssayPanel { assay_tier, .. } => {
                             assay_tier.as_str().to_string()
                         }
+                        Operation::DesignTranscriptAssayPanelWithFallback {
+                            strict_operation,
+                            ..
+                        } => match strict_operation.as_ref() {
+                            Operation::DesignTranscriptAssayPanel { assay_tier, .. } => {
+                                assay_tier.as_str().to_string()
+                            }
+                            _ => "assay_design".to_string(),
+                        },
                         _ => "assay_design".to_string(),
                     },
                     operation: operation_value,
@@ -18113,6 +18166,15 @@ impl GentleEngine {
         if !request.retained_assay_ids.is_empty() {
             warnings.push(
                 "Retained assay identifiers require renewed readiness and specificity checks in this iteration."
+                    .to_string(),
+            );
+        }
+        if request.fallback_submission.mode
+            == TranscriptAssayFallbackSubmissionMode::PreapprovedInformativePartial
+            && fallback_wrapped_operation_count == 0
+        {
+            warnings.push(
+                "The pre-approved informative fallback was retained in the normalized request but this study profile emitted no strict one-per-class or minimal-discrimination operation eligible for that fallback."
                     .to_string(),
             );
         }
@@ -28536,6 +28598,592 @@ impl GentleEngine {
         }
     }
 
+    fn transcript_assay_observable_target_signatures(
+        candidate: &TranscriptAssayEvaluatedCandidate,
+        requirement_count: usize,
+        use_uniprot_target_semantics: bool,
+        target_group_indices: &[BTreeSet<usize>],
+    ) -> Vec<Vec<usize>> {
+        (0..requirement_count)
+            .map(|target_index| {
+                let group_indices = if use_uniprot_target_semantics {
+                    target_group_indices
+                        .get(target_index)
+                        .cloned()
+                        .unwrap_or_default()
+                } else {
+                    BTreeSet::from([target_index])
+                };
+                group_indices
+                    .into_iter()
+                    .filter_map(|group_index| candidate.group_evaluations.get(group_index))
+                    .filter(|evaluation| {
+                        evaluation.status == TranscriptAssayDetectionStatus::SingleProduct
+                    })
+                    .flat_map(|evaluation| evaluation.amplicon_lengths_bp.iter().copied())
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect()
+            })
+            .collect()
+    }
+
+    fn transcript_assay_observable_signatures_separate(
+        left: &[usize],
+        right: &[usize],
+        minimum_difference_bp: usize,
+    ) -> bool {
+        if left.is_empty() != right.is_empty() {
+            return true;
+        }
+        if left.is_empty() || left == right {
+            return false;
+        }
+        let visibly_unique = |source: &[usize], other: &[usize]| {
+            source.iter().any(|source_bp| {
+                other
+                    .iter()
+                    .all(|other_bp| source_bp.abs_diff(*other_bp) >= minimum_difference_bp.max(1))
+            })
+        };
+        visibly_unique(left, right) || visibly_unique(right, left)
+    }
+
+    fn transcript_assay_informative_candidate_values(
+        signatures: &[Vec<usize>],
+        minimum_difference_bp: usize,
+    ) -> (BTreeSet<usize>, BTreeSet<(usize, usize)>) {
+        let covered = signatures
+            .iter()
+            .enumerate()
+            .filter_map(|(index, signature)| (!signature.is_empty()).then_some(index))
+            .collect::<BTreeSet<_>>();
+        let mut separated = BTreeSet::new();
+        for left in 0..signatures.len() {
+            for right in left.saturating_add(1)..signatures.len() {
+                if Self::transcript_assay_observable_signatures_separate(
+                    &signatures[left],
+                    &signatures[right],
+                    minimum_difference_bp,
+                ) {
+                    separated.insert((left, right));
+                }
+            }
+        }
+        (covered, separated)
+    }
+
+    fn select_maximally_informative_transcript_assays(
+        evaluated_candidates: &[TranscriptAssayEvaluatedCandidate],
+        required_indices: &[usize],
+        target_ids: &[String],
+        use_uniprot_target_semantics: bool,
+        target_group_indices: &[BTreeSet<usize>],
+        assay_tier: TranscriptAssayUseTier,
+        policy: &TranscriptAssayInformativeSelectionPolicy,
+    ) -> Result<(Vec<usize>, TranscriptAssayInformativeSelectionReport), EngineError> {
+        if policy.schema != "gentle.transcript_assay_informative_selection_policy.v1" {
+            return Err(EngineError::invalid_input(format!(
+                "Unsupported informative-selection policy schema '{}'; expected gentle.transcript_assay_informative_selection_policy.v1",
+                policy.schema
+            )));
+        }
+        if policy.max_assays == 0 {
+            return Err(EngineError::invalid_input(
+                "Informative transcript-panel selection requires max_assays > 0",
+            ));
+        }
+        let mut selected = required_indices.iter().copied().collect::<Vec<_>>();
+        selected.sort_unstable();
+        selected.dedup();
+        if selected.len() > policy.max_assays {
+            return Err(EngineError::invalid_input(format!(
+                "{} required evidence assay(s) exceed the approved whole-panel budget of {}",
+                selected.len(),
+                policy.max_assays
+            )));
+        }
+        if !policy.allow_long_range_fallback
+            && selected.iter().any(|index| {
+                evaluated_candidates[*index].practicality_classification
+                    == TranscriptAssayPracticalityClassification::LongRangeFallback
+            })
+        {
+            return Err(EngineError::invalid_input(
+                "A required evidence assay is long-range but the approved informative-selection policy forbids long-range fallback",
+            ));
+        }
+
+        let candidate_signatures = evaluated_candidates
+            .iter()
+            .map(|candidate| {
+                Self::transcript_assay_observable_target_signatures(
+                    candidate,
+                    target_ids.len(),
+                    use_uniprot_target_semantics,
+                    target_group_indices,
+                )
+            })
+            .collect::<Vec<_>>();
+        let candidate_values = candidate_signatures
+            .iter()
+            .map(|signatures| {
+                Self::transcript_assay_informative_candidate_values(
+                    signatures,
+                    policy.minimum_resolvable_size_difference_bp,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let union_values = |indices: &[usize]| {
+            let mut covered = BTreeSet::new();
+            let mut separated = BTreeSet::new();
+            for index in indices {
+                covered.extend(candidate_values[*index].0.iter().copied());
+                separated.extend(candidate_values[*index].1.iter().copied());
+            }
+            (covered, separated)
+        };
+
+        while selected.len() < policy.max_assays {
+            let (covered, separated) = union_values(&selected);
+            let mut best: Option<(usize, usize, usize)> = None;
+            for (index, candidate) in evaluated_candidates.iter().enumerate() {
+                if selected.contains(&index)
+                    || (!policy.allow_long_range_fallback
+                        && candidate.practicality_classification
+                            == TranscriptAssayPracticalityClassification::LongRangeFallback)
+                {
+                    continue;
+                }
+                let coverage_gain = candidate_values[index].0.difference(&covered).count();
+                let separation_gain = candidate_values[index].1.difference(&separated).count();
+                if policy.require_nonzero_incremental_value
+                    && coverage_gain == 0
+                    && separation_gain == 0
+                {
+                    continue;
+                }
+                let replace =
+                    best.as_ref()
+                        .is_none_or(|(best_index, best_coverage, best_separation)| {
+                            coverage_gain > *best_coverage
+                                || (coverage_gain == *best_coverage
+                                    && separation_gain > *best_separation)
+                                || (coverage_gain == *best_coverage
+                                    && separation_gain == *best_separation
+                                    && Self::transcript_assay_candidate_preference(
+                                        candidate,
+                                        &evaluated_candidates[*best_index],
+                                        assay_tier,
+                                    ) == Ordering::Greater)
+                        });
+                if replace {
+                    best = Some((index, coverage_gain, separation_gain));
+                }
+            }
+            let Some((index, coverage_gain, separation_gain)) = best else {
+                break;
+            };
+            if coverage_gain == 0 && separation_gain == 0 {
+                break;
+            }
+            selected.push(index);
+        }
+
+        let (final_covered, final_separated) = union_values(&selected);
+        let mut prefix = Vec::new();
+        let mut contributions = Vec::new();
+        for (rank_index, index) in selected.iter().enumerate() {
+            let (before_covered, before_separated) = union_values(&prefix);
+            prefix.push(*index);
+            let (after_covered, after_separated) = union_values(&prefix);
+            let without = selected
+                .iter()
+                .copied()
+                .filter(|other| other != index)
+                .collect::<Vec<_>>();
+            let (without_covered, without_separated) = union_values(&without);
+            let redundant_alternative_assay_ids = evaluated_candidates
+                .iter()
+                .enumerate()
+                .filter(|(other_index, _)| {
+                    !selected.contains(other_index)
+                        && candidate_signatures[*other_index] == candidate_signatures[*index]
+                })
+                .map(|(_, candidate)| candidate.assay_id.clone())
+                .collect();
+            contributions.push(TranscriptAssayInformativeAssayContribution {
+                assay_id: evaluated_candidates[*index].assay_id.clone(),
+                rank: rank_index.saturating_add(1),
+                incremental_covered_target_count: after_covered.len() - before_covered.len(),
+                incremental_separated_target_pair_count: after_separated.len()
+                    - before_separated.len(),
+                leave_one_out_covered_target_loss: final_covered.len() - without_covered.len(),
+                leave_one_out_separated_target_pair_loss: final_separated.len()
+                    - without_separated.len(),
+                redundant_alternative_assay_ids,
+            });
+        }
+        let mut unresolved_target_pairs = Vec::new();
+        for left in 0..target_ids.len() {
+            for right in left.saturating_add(1)..target_ids.len() {
+                if !final_separated.contains(&(left, right)) {
+                    unresolved_target_pairs.push(PrimerPairSelectionAuditTargetPair {
+                        left_target_id: target_ids[left].clone(),
+                        right_target_id: target_ids[right].clone(),
+                    });
+                }
+            }
+        }
+        let policy_sha256 = crate::digest_utils::sha256_prefixed_bytes(
+            &serde_json::to_vec(policy).map_err(|error| {
+                EngineError::internal(format!(
+                    "Could not serialize informative-selection policy: {error}"
+                ))
+            })?,
+        );
+        let selected_assay_count = selected.len();
+        Ok((
+            selected,
+            TranscriptAssayInformativeSelectionReport {
+                schema: "gentle.transcript_assay_informative_selection.v1".to_string(),
+                policy: policy.clone(),
+                policy_sha256,
+                certificate: TranscriptAssayInformativeOptimalityCertificate::BoundedGreedyV1,
+                target_kind: if use_uniprot_target_semantics {
+                    "bound_uniprot_target"
+                } else {
+                    "mature_cdna_equivalence_group"
+                }
+                .to_string(),
+                target_count: target_ids.len(),
+                covered_target_count: final_covered.len(),
+                total_target_pair_count: target_ids
+                    .len()
+                    .saturating_mul(target_ids.len().saturating_sub(1))
+                    / 2,
+                separated_target_pair_count: final_separated.len(),
+                assay_budget: policy.max_assays,
+                selected_assay_count,
+                assay_contributions: contributions,
+                unresolved_target_pairs,
+            },
+        ))
+    }
+
+    fn transcript_assay_fallback_policy_sha256(
+        policy: &TranscriptAssayFallbackSubmissionPolicy,
+    ) -> Result<String, EngineError> {
+        Ok(crate::digest_utils::sha256_prefixed_bytes(
+            &serde_json::to_vec(policy).map_err(|error| {
+                EngineError::internal(format!(
+                    "Could not serialize transcript-assay fallback policy: {error}"
+                ))
+            })?,
+        ))
+    }
+
+    fn validate_transcript_assay_fallback_policy(
+        policy: &TranscriptAssayFallbackSubmissionPolicy,
+        require_report_id: bool,
+    ) -> Result<(), EngineError> {
+        if policy.schema != "gentle.transcript_assay_fallback_submission_policy.v1" {
+            return Err(EngineError::invalid_input(format!(
+                "Unsupported transcript-assay fallback policy schema '{}'; expected gentle.transcript_assay_fallback_submission_policy.v1",
+                policy.schema
+            )));
+        }
+        if policy.mode == TranscriptAssayFallbackSubmissionMode::Never {
+            return Ok(());
+        }
+        if policy.informative_selection.schema
+            != "gentle.transcript_assay_informative_selection_policy.v1"
+        {
+            return Err(EngineError::invalid_input(format!(
+                "Unsupported informative-selection policy schema '{}'; expected gentle.transcript_assay_informative_selection_policy.v1",
+                policy.informative_selection.schema
+            )));
+        }
+        if policy.informative_selection.max_assays == 0 {
+            return Err(EngineError::invalid_input(
+                "Pre-approved informative fallback requires max_assays > 0",
+            ));
+        }
+        if policy
+            .informative_selection
+            .minimum_resolvable_size_difference_bp
+            == 0
+        {
+            return Err(EngineError::invalid_input(
+                "Pre-approved informative fallback requires minimum_resolvable_size_difference_bp > 0",
+            ));
+        }
+        if require_report_id && policy.fallback_report_id.is_empty() {
+            return Err(EngineError::invalid_input(
+                "Pre-approved transcript-assay fallback requires fallback_report_id",
+            ));
+        }
+        if policy.fallback_report_id != policy.fallback_report_id.trim() {
+            return Err(EngineError::invalid_input(
+                "fallback_report_id must not contain surrounding whitespace",
+            ));
+        }
+        Ok(())
+    }
+
+    fn derive_preapproved_transcript_assay_fallback_operation(
+        strict_operation: &Operation,
+        policy: &TranscriptAssayFallbackSubmissionPolicy,
+    ) -> Result<(Operation, Vec<TranscriptAssayFallbackOperationDiff>, String), EngineError> {
+        Self::validate_transcript_assay_fallback_policy(policy, true)?;
+        if policy.mode != TranscriptAssayFallbackSubmissionMode::PreapprovedInformativePartial {
+            return Err(EngineError::invalid_input(
+                "Fallback derivation requires mode=preapproved_informative_partial",
+            ));
+        }
+        let mut fallback = strict_operation.clone();
+        let Operation::DesignTranscriptAssayPanel {
+            coverage_policy,
+            objective,
+            informative_selection,
+            search_policy,
+            report_id,
+            path,
+            ..
+        } = &mut fallback
+        else {
+            return Err(EngineError::invalid_input(
+                "Transcript-assay fallback requires an exact DesignTranscriptAssayPanel strict_operation",
+            ));
+        };
+        if *coverage_policy != TranscriptAssayCoveragePolicy::RequireAll {
+            return Err(EngineError::invalid_input(
+                "Transcript-assay fallback strict_operation must use coverage_policy=require_all",
+            ));
+        }
+        if report_id.as_deref() == Some(policy.fallback_report_id.as_str()) {
+            return Err(EngineError::invalid_input(
+                "fallback_report_id must differ from the strict report_id",
+            ));
+        }
+        let search_policy_sha256 = crate::digest_utils::sha256_prefixed_bytes(
+            &serde_json::to_vec(search_policy).map_err(|error| {
+                EngineError::internal(format!(
+                    "Could not serialize transcript-assay search policy: {error}"
+                ))
+            })?,
+        );
+        let mut diff = vec![
+            TranscriptAssayFallbackOperationDiff {
+                field: "coverage_policy".to_string(),
+                strict_value_json: serde_json::to_string(coverage_policy).unwrap_or_default(),
+                fallback_value_json: serde_json::to_string(
+                    &TranscriptAssayCoveragePolicy::BestEffort,
+                )
+                .unwrap_or_default(),
+            },
+            TranscriptAssayFallbackOperationDiff {
+                field: "objective".to_string(),
+                strict_value_json: serde_json::to_string(objective).unwrap_or_default(),
+                fallback_value_json: serde_json::to_string(
+                    &TranscriptAssayPanelObjective::MaximallyInformativePanel,
+                )
+                .unwrap_or_default(),
+            },
+            TranscriptAssayFallbackOperationDiff {
+                field: "informative_selection".to_string(),
+                strict_value_json: serde_json::to_string(informative_selection).unwrap_or_default(),
+                fallback_value_json: serde_json::to_string(&policy.informative_selection)
+                    .unwrap_or_default(),
+            },
+            TranscriptAssayFallbackOperationDiff {
+                field: "report_id".to_string(),
+                strict_value_json: serde_json::to_string(report_id).unwrap_or_default(),
+                fallback_value_json: serde_json::to_string(&policy.fallback_report_id)
+                    .unwrap_or_default(),
+            },
+        ];
+        if path.is_some() {
+            diff.push(TranscriptAssayFallbackOperationDiff {
+                field: "path".to_string(),
+                strict_value_json: serde_json::to_string(path).unwrap_or_default(),
+                fallback_value_json: "null".to_string(),
+            });
+        }
+        *coverage_policy = TranscriptAssayCoveragePolicy::BestEffort;
+        *objective = TranscriptAssayPanelObjective::MaximallyInformativePanel;
+        *informative_selection = Some(policy.informative_selection.clone());
+        *report_id = Some(policy.fallback_report_id.clone());
+        *path = None;
+        Ok((fallback, diff, search_policy_sha256))
+    }
+
+    fn build_transcript_assay_fallback_virtual_gel(
+        panel: &TranscriptAssayPanelReport,
+    ) -> Result<TranscriptAssayFallbackVirtualGel, EngineError> {
+        let render_options = PoolGelRenderOptions::default();
+        let conditions = GelRunConditions::default();
+        let mut samples = Vec::new();
+        let mut empty_lane_assay_ids = Vec::new();
+        let mut rendered_product_count = 0usize;
+        for assay in &panel.selected_assays {
+            let lengths = panel
+                .detection_matrix
+                .iter()
+                .filter(|cell| {
+                    cell.assay_id == assay.assay_id
+                        && cell.status == TranscriptAssayDetectionStatus::SingleProduct
+                })
+                .flat_map(|cell| cell.amplicon_lengths_bp.iter().copied())
+                .collect::<BTreeSet<_>>();
+            let members = lengths
+                .into_iter()
+                .map(|bp| GelSampleMember {
+                    seq_id: format!("{}__{}bp", assay.assay_id, bp),
+                    bp,
+                    topology_form: GelTopologyForm::Linear,
+                })
+                .collect::<Vec<_>>();
+            rendered_product_count = rendered_product_count.saturating_add(members.len());
+            if members.is_empty() {
+                empty_lane_assay_ids.push(assay.assay_id.clone());
+            }
+            samples.push(GelSampleInput {
+                name: format!("Pair {} | {}", assay.rank, assay.assay_id),
+                role_label: Some("informative partial fallback".to_string()),
+                members,
+            });
+        }
+        if rendered_product_count == 0 {
+            return Ok(TranscriptAssayFallbackVirtualGel {
+                schema: "gentle.transcript_assay_fallback_virtual_gel.v1".to_string(),
+                status: TranscriptAssayFallbackVirtualGelStatus::NoPredictedProducts,
+                source_panel_report_id: panel.report_id.clone(),
+                source_operation_sha256: panel.operation_sha256.clone(),
+                conditions,
+                render_options,
+                sample_lane_count: samples.len(),
+                rendered_product_count,
+                empty_lane_assay_ids,
+                no_products_reason: Some(
+                    "The approved bounded fallback selected no assay with a predicted single cDNA product."
+                        .to_string(),
+                ),
+                interpretation: "No combined virtual gel was drawn because the fallback has no predicted products; this is an explicit negative design outcome, not evidence of absent expression."
+                    .to_string(),
+                ..Default::default()
+            });
+        }
+
+        let non_empty_samples = samples
+            .iter()
+            .filter(|sample| !sample.members.is_empty())
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut layout = build_serial_gel_layout(&non_empty_samples, &[], Some(&conditions))
+            .map_err(|message| {
+                EngineError::internal(format!(
+                    "Could not build informative-fallback virtual gel: {message}"
+                ))
+            })?;
+        let first_sample_index = layout
+            .lanes
+            .iter()
+            .position(|lane| !lane.is_ladder)
+            .unwrap_or(layout.lanes.len());
+        let last_sample_index = layout
+            .lanes
+            .iter()
+            .rposition(|lane| !lane.is_ladder)
+            .map(|index| index.saturating_add(1))
+            .unwrap_or(first_sample_index);
+        let left_ladders = layout.lanes[..first_sample_index].to_vec();
+        let right_ladders = layout.lanes[last_sample_index..].to_vec();
+        let mut rendered_lanes = layout.lanes[first_sample_index..last_sample_index]
+            .iter()
+            .cloned()
+            .map(|lane| (lane.name.clone(), lane))
+            .collect::<BTreeMap<_, _>>();
+        let mut lanes = left_ladders;
+        for sample in &samples {
+            lanes.push(
+                rendered_lanes
+                    .remove(&sample.name)
+                    .unwrap_or_else(|| PoolGelLane {
+                        name: sample.name.clone(),
+                        role_label: sample.role_label.clone(),
+                        is_ladder: false,
+                        bands: vec![],
+                    }),
+            );
+        }
+        lanes.extend(right_ladders);
+        layout.lanes = lanes;
+        layout.sample_count = samples.len();
+        layout.pool_member_count = rendered_product_count;
+        let svg = export_pool_gel_svg_with_options(&layout, &render_options)
+            .replacen(
+                "<svg ",
+                "<svg data-provenance-source=\"gentle\" data-provenance-schema=\"gentle.transcript_assay_fallback_virtual_gel.v1\" ",
+                1,
+            )
+            .replacen(
+                "Serial Gel Preview",
+                "[gentle] Informative Partial Fallback",
+                1,
+            );
+        let svg_sha256 = sha256_prefixed_bytes(svg.as_bytes());
+        Ok(TranscriptAssayFallbackVirtualGel {
+            schema: "gentle.transcript_assay_fallback_virtual_gel.v1".to_string(),
+            status: TranscriptAssayFallbackVirtualGelStatus::Generated,
+            source_panel_report_id: panel.report_id.clone(),
+            source_operation_sha256: panel.operation_sha256.clone(),
+            svg,
+            svg_sha256,
+            conditions: layout.conditions,
+            render_options,
+            sample_lane_count: samples.len(),
+            rendered_product_count,
+            empty_lane_assay_ids,
+            no_products_reason: None,
+            interpretation: "Each selected fallback assay is one lane under shared default visualization conditions. Bands are GENtle-predicted mature-cDNA products, not observed abundance or experimental validation."
+                .to_string(),
+        })
+    }
+
+    fn persist_transcript_assay_fallback_execution(
+        &mut self,
+        report: &TranscriptAssayFallbackExecutionReport,
+        path: Option<&str>,
+    ) -> Result<(), EngineError> {
+        let mut store = self.read_primer_design_store();
+        store
+            .transcript_assay_fallback_executions
+            .insert(report.execution_id.clone(), report.clone());
+        if let Some(panel) = report.fallback_panel_report.as_deref() {
+            store
+                .transcript_assay_panels
+                .insert(panel.report_id.clone(), panel.clone());
+        }
+        self.write_primer_design_store(store)?;
+        if let Some(path) = path.map(str::trim).filter(|value| !value.is_empty()) {
+            let file = File::create(path).map_err(|error| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not create transcript-assay fallback report '{path}': {error}"
+                ),
+                cause_chain: vec![],
+            })?;
+            serde_json::to_writer_pretty(BufWriter::new(file), report).map_err(|error| {
+                EngineError::internal(format!(
+                    "Could not serialize transcript-assay fallback report '{path}': {error}"
+                ))
+            })?;
+        }
+        Ok(())
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn execute_design_transcript_assay_panel(
         &mut self,
@@ -28565,6 +29213,7 @@ impl GentleEngine {
         require_3prime_exact_bases: Option<usize>,
         oligo_dt_5prime_risk_threshold_bp: Option<usize>,
         search_policy: Option<TranscriptAssayPrimerSearchPolicy>,
+        informative_selection: Option<TranscriptAssayInformativeSelectionPolicy>,
         mut junctions: Vec<TranscriptAssayJunctionRequest>,
         junction_evidence_paths: Vec<String>,
         junction_evidence_priority: TranscriptAssayJunctionPriority,
@@ -28575,6 +29224,12 @@ impl GentleEngine {
         report_id: Option<String>,
         path: Option<String>,
     ) -> Result<(), EngineError> {
+        // Validate an explicit report identity before any expensive search so
+        // malformed input can never masquerade as biological infeasibility.
+        let report_id = report_id
+            .as_deref()
+            .map(Self::normalize_primer_design_report_id)
+            .transpose()?;
         let source_dna = self
             .state
             .sequences
@@ -29604,6 +30259,8 @@ impl GentleEngine {
                 selected_indices.push(index);
             }
         }
+        let required_selection_indices = selected_indices.clone();
+        let mut informative_selection_report = None;
         match objective {
             TranscriptAssayPanelObjective::PanTranscript => {
                 let full = evaluated_candidates
@@ -29719,6 +30376,36 @@ impl GentleEngine {
                     }
                 }
             }
+            TranscriptAssayPanelObjective::MaximallyInformativePanel => {
+                let policy = informative_selection.as_ref().ok_or_else(|| {
+                    EngineError::invalid_input(
+                        "maximally_informative_panel requires informative_selection policy",
+                    )
+                })?;
+                let target_ids = if use_uniprot_target_semantics {
+                    coverage_resolution
+                        .targets
+                        .iter()
+                        .map(|target| target.target_id.clone())
+                        .collect::<Vec<_>>()
+                } else {
+                    equivalence_groups
+                        .iter()
+                        .map(|group| group.report.equivalence_group_id.clone())
+                        .collect::<Vec<_>>()
+                };
+                let (selected, audit) = Self::select_maximally_informative_transcript_assays(
+                    &evaluated_candidates,
+                    &required_selection_indices,
+                    &target_ids,
+                    use_uniprot_target_semantics,
+                    &target_group_indices,
+                    assay_tier,
+                    policy,
+                )?;
+                selected_indices = selected;
+                informative_selection_report = Some(audit);
+            }
             TranscriptAssayPanelObjective::IsoformEndMatrix => {
                 for reaction in &mut end_reactions_internal {
                     if reaction.report.status == "structurally_impossible" {
@@ -29784,12 +30471,39 @@ impl GentleEngine {
             .copied()
             .collect::<Vec<_>>();
         let mut unresolved_group_index_pairs = vec![];
-        if objective == TranscriptAssayPanelObjective::MinimalDiscriminationPanel {
+        if matches!(
+            objective,
+            TranscriptAssayPanelObjective::MinimalDiscriminationPanel
+                | TranscriptAssayPanelObjective::MaximallyInformativePanel
+        ) {
+            let minimum_size_difference_bp = informative_selection
+                .as_ref()
+                .map(|policy| policy.minimum_resolvable_size_difference_bp)
+                .unwrap_or(1);
             for left in 0..equivalence_groups.len() {
                 for right in left.saturating_add(1)..equivalence_groups.len() {
                     let separated = selected_indices.iter().any(|index| {
-                        let detected = detected_group_indices(&evaluated_candidates[*index]);
-                        detected.contains(&left) != detected.contains(&right)
+                        if objective == TranscriptAssayPanelObjective::MaximallyInformativePanel {
+                            let signatures = [left, right].map(|group_index| {
+                                evaluated_candidates[*index]
+                                    .group_evaluations
+                                    .get(group_index)
+                                    .filter(|evaluation| {
+                                        evaluation.status
+                                            == TranscriptAssayDetectionStatus::SingleProduct
+                                    })
+                                    .map(|evaluation| evaluation.amplicon_lengths_bp.clone())
+                                    .unwrap_or_default()
+                            });
+                            Self::transcript_assay_observable_signatures_separate(
+                                &signatures[0],
+                                &signatures[1],
+                                minimum_size_difference_bp,
+                            )
+                        } else {
+                            let detected = detected_group_indices(&evaluated_candidates[*index]);
+                            detected.contains(&left) != detected.contains(&right)
+                        }
                     });
                     if !separated {
                         unresolved_group_index_pairs.push((left, right));
@@ -29798,14 +30512,36 @@ impl GentleEngine {
             }
         }
         let mut unresolved_requirement_index_pairs = vec![];
-        if objective == TranscriptAssayPanelObjective::MinimalDiscriminationPanel
-            || use_uniprot_target_semantics
+        if matches!(
+            objective,
+            TranscriptAssayPanelObjective::MinimalDiscriminationPanel
+                | TranscriptAssayPanelObjective::MaximallyInformativePanel
+        ) || use_uniprot_target_semantics
         {
+            let minimum_size_difference_bp = informative_selection
+                .as_ref()
+                .map(|policy| policy.minimum_resolvable_size_difference_bp)
+                .unwrap_or(1);
             for left in 0..all_requirement_indices.len() {
                 for right in left.saturating_add(1)..all_requirement_indices.len() {
                     let separated = selected_indices.iter().any(|index| {
-                        let detected = detected_requirement_indices(&evaluated_candidates[*index]);
-                        detected.contains(&left) != detected.contains(&right)
+                        if objective == TranscriptAssayPanelObjective::MaximallyInformativePanel {
+                            let signatures = Self::transcript_assay_observable_target_signatures(
+                                &evaluated_candidates[*index],
+                                all_requirement_indices.len(),
+                                use_uniprot_target_semantics,
+                                &target_group_indices,
+                            );
+                            Self::transcript_assay_observable_signatures_separate(
+                                &signatures[left],
+                                &signatures[right],
+                                minimum_size_difference_bp,
+                            )
+                        } else {
+                            let detected =
+                                detected_requirement_indices(&evaluated_candidates[*index]);
+                            detected.contains(&left) != detected.contains(&right)
+                        }
                     });
                     if !separated {
                         unresolved_requirement_index_pairs.push((left, right));
@@ -29927,6 +30663,10 @@ impl GentleEngine {
             }
         }
         if coverage_policy == TranscriptAssayCoveragePolicy::RequireAll && !complete {
+            let typed_coverage_infeasible = !required_coverage_complete
+                && uncovered_end_reaction_ids.is_empty()
+                && required_junction_failures.is_empty()
+                && routine_common_region_satisfied;
             let runtime_reduction_receipt = if primer_search_plan.runtime_reductions.is_empty() {
                 "none".to_string()
             } else {
@@ -29970,50 +30710,117 @@ impl GentleEngine {
                 .iter()
                 .map(|pair| format!("{} <-> {}", pair.left_target_id, pair.right_target_id))
                 .collect::<Vec<_>>();
+            let error_message = format!(
+                "Transcript assay panel objective '{}' with coverage policy 'require_all' could not be satisfied. Uncovered mandatory coverage targets: {}. Protein targets not distinguished (informational for UniProt universes): {}. Uncovered equivalence classes: {}. Unresolved class pairs: {}. Uncovered end reactions: {}. Required junctions without a spanning assay: {}. Annotation-confirmed routine common region: {}. Primer3 runtime-reduction receipts: {}.",
+                objective.as_str(),
+                if uncovered_targets.is_empty() {
+                    "none".to_string()
+                } else {
+                    uncovered_targets.join("; ")
+                },
+                if unresolved_targets.is_empty() {
+                    "none".to_string()
+                } else {
+                    unresolved_targets.join("; ")
+                },
+                if uncovered.is_empty() {
+                    "none".to_string()
+                } else {
+                    uncovered.join("; ")
+                },
+                if unresolved.is_empty() {
+                    "none".to_string()
+                } else {
+                    unresolved.join("; ")
+                },
+                if uncovered_end_reaction_ids.is_empty() {
+                    "none".to_string()
+                } else {
+                    uncovered_end_reaction_ids.join("; ")
+                },
+                if required_junction_failures.is_empty() {
+                    "none".to_string()
+                } else {
+                    required_junction_failures.join("; ")
+                },
+                if assay_tier == TranscriptAssayUseTier::RoutineCommonRegionScreen {
+                    routine_common_region_satisfied.to_string()
+                } else {
+                    "not_requested".to_string()
+                },
+                runtime_reduction_receipt,
+            );
+            let cause_chain = if typed_coverage_infeasible {
+                let failure_id = crate::digest_utils::short_sha256_id(
+                    "transcript_assay_infeasibility",
+                    &format!("{operation_sha256}:{error_message}"),
+                );
+                let infeasibility = TranscriptAssayPanelInfeasibilityReport {
+                    schema: TRANSCRIPT_ASSAY_PANEL_INFEASIBILITY_SCHEMA.to_string(),
+                    failure_id,
+                    strict_operation_sha256: operation_sha256.clone(),
+                    error_code: "transcript_assay_coverage_infeasible".to_string(),
+                    error_message: error_message.clone(),
+                    error_sha256: String::new(),
+                    trigger_classification: "strict_coverage_infeasible_after_bounded_search"
+                        .to_string(),
+                    strict_report_id: report_id.clone(),
+                    coverage_target_kind: if use_uniprot_target_semantics {
+                        "bound_uniprot_target"
+                    } else {
+                        "mature_cdna_equivalence_group"
+                    }
+                    .to_string(),
+                    candidate_assay_count: evaluated_candidates.len(),
+                    selected_assay_count: selected_indices.len(),
+                    search_plan_status: primer_search_plan.status,
+                    uncovered_coverage_target_ids: uncovered_coverage_target_ids.clone(),
+                    unresolved_coverage_target_pairs: unresolved_coverage_target_pairs.clone(),
+                    uncovered_equivalence_groups: uncovered_group_indices
+                        .iter()
+                        .map(|index| TranscriptAssayUncoveredEquivalenceGroup {
+                            equivalence_group_id: equivalence_groups[*index]
+                                .report
+                                .equivalence_group_id
+                                .clone(),
+                            transcript_ids: equivalence_groups[*index]
+                                .report
+                                .members
+                                .iter()
+                                .map(|member| member.transcript_id.clone())
+                                .collect(),
+                        })
+                        .collect(),
+                    unresolved_group_pairs: unresolved_group_index_pairs
+                        .iter()
+                        .map(|(left, right)| TranscriptAssayUnresolvedPair {
+                            left_equivalence_group_id: equivalence_groups[*left]
+                                .report
+                                .equivalence_group_id
+                                .clone(),
+                            right_equivalence_group_id: equivalence_groups[*right]
+                                .report
+                                .equivalence_group_id
+                                .clone(),
+                        })
+                        .collect(),
+                };
+                vec![serde_json::to_string(&infeasibility).map_err(|error| {
+                    EngineError::internal(format!(
+                        "Could not serialize typed transcript-panel infeasibility: {error}"
+                    ))
+                })?]
+            } else {
+                vec![]
+            };
             return Err(EngineError {
-                code: ErrorCode::InvalidInput,
-                message: format!(
-                    "Transcript assay panel objective '{}' with coverage policy 'require_all' could not be satisfied. Uncovered mandatory coverage targets: {}. Protein targets not distinguished (informational for UniProt universes): {}. Uncovered equivalence classes: {}. Unresolved class pairs: {}. Uncovered end reactions: {}. Required junctions without a spanning assay: {}. Annotation-confirmed routine common region: {}. Primer3 runtime-reduction receipts: {}.",
-                    objective.as_str(),
-                    if uncovered_targets.is_empty() {
-                        "none".to_string()
-                    } else {
-                        uncovered_targets.join("; ")
-                    },
-                    if unresolved_targets.is_empty() {
-                        "none".to_string()
-                    } else {
-                        unresolved_targets.join("; ")
-                    },
-                    if uncovered.is_empty() {
-                        "none".to_string()
-                    } else {
-                        uncovered.join("; ")
-                    },
-                    if unresolved.is_empty() {
-                        "none".to_string()
-                    } else {
-                        unresolved.join("; ")
-                    },
-                    if uncovered_end_reaction_ids.is_empty() {
-                        "none".to_string()
-                    } else {
-                        uncovered_end_reaction_ids.join("; ")
-                    },
-                    if required_junction_failures.is_empty() {
-                        "none".to_string()
-                    } else {
-                        required_junction_failures.join("; ")
-                    },
-                    if assay_tier == TranscriptAssayUseTier::RoutineCommonRegionScreen {
-                        routine_common_region_satisfied.to_string()
-                    } else {
-                        "not_requested".to_string()
-                    },
-                    runtime_reduction_receipt,
-                ),
-
-                cause_chain: vec![],
+                code: if typed_coverage_infeasible {
+                    ErrorCode::TranscriptAssayCoverageInfeasible
+                } else {
+                    ErrorCode::InvalidInput
+                },
+                message: error_message,
+                cause_chain,
             });
         }
         if !complete {
@@ -30560,6 +31367,9 @@ impl GentleEngine {
             } else {
                 TranscriptAssayPanelCompletionStatus::Partial
             },
+            informative_selection: informative_selection_report,
+            fallback_provenance: None,
+            fallback_virtual_gel: None,
             transcript_count: templates.len(),
             equivalence_group_count: equivalence_groups.len(),
             candidate_assay_count: evaluated_candidates.len(),
@@ -37934,6 +38744,7 @@ impl GentleEngine {
             primer_group_target_design: None,
             transcript_qpcr_panel: None,
             transcript_assay_panel: None,
+            transcript_assay_fallback_execution: None,
             transcript_assay_cdna_similarity_map: None,
             transcript_assay_specificity_redesign: None,
             gene_isoform_assay_study_plan: None,
@@ -44690,6 +45501,7 @@ impl GentleEngine {
                     require_3prime_exact_bases,
                     oligo_dt_5prime_risk_threshold_bp,
                     search_policy,
+                    informative_selection,
                     junctions,
                     junction_evidence_paths,
                     junction_evidence_priority,
@@ -44728,6 +45540,7 @@ impl GentleEngine {
                         require_3prime_exact_bases,
                         oligo_dt_5prime_risk_threshold_bp,
                         search_policy,
+                        informative_selection,
                         junctions,
                         junction_evidence_paths,
                         junction_evidence_priority,
@@ -44738,6 +45551,234 @@ impl GentleEngine {
                         report_id,
                         path,
                     )?;
+                }
+                Operation::DesignTranscriptAssayPanelWithFallback {
+                    strict_operation,
+                    fallback_submission,
+                    path,
+                } => {
+                    let strict_operation = *strict_operation;
+                    let strict_operation_sha256 =
+                        Self::transcript_assay_operation_sha256(&strict_operation)?;
+                    if let Operation::DesignTranscriptAssayPanel { seq_id, .. } = &strict_operation
+                    {
+                        parent_seq_ids.push(seq_id.clone());
+                    } else {
+                        return Err(EngineError::invalid_input(
+                            "DesignTranscriptAssayPanelWithFallback requires strict_operation=DesignTranscriptAssayPanel",
+                        ));
+                    }
+                    if fallback_submission.mode == TranscriptAssayFallbackSubmissionMode::Never {
+                        let strict_result = self.apply_internal(
+                            strict_operation,
+                            &format!("{run_id}:strict"),
+                            on_progress,
+                        )?;
+                        result.warnings.extend(strict_result.warnings);
+                        result.messages.extend(strict_result.messages);
+                        result.transcript_assay_panel = strict_result.transcript_assay_panel;
+                    } else {
+                        let (fallback_operation, operation_diff, search_policy_sha256) =
+                            Self::derive_preapproved_transcript_assay_fallback_operation(
+                                &strict_operation,
+                                &fallback_submission,
+                            )?;
+                        let fallback_policy_sha256 =
+                            Self::transcript_assay_fallback_policy_sha256(&fallback_submission)?;
+                        let fallback_operation_sha256 =
+                            Self::transcript_assay_operation_sha256(&fallback_operation)?;
+                        let execution_id = crate::digest_utils::short_sha256_id(
+                            "transcript_assay_fallback",
+                            &format!("{strict_operation_sha256}:{fallback_policy_sha256}"),
+                        );
+                        let engine_revision = option_env!("GIT_COMMIT_HASH")
+                            .unwrap_or(crate::about::GENTLE_PACKAGE_VERSION)
+                            .to_string();
+                        let strict_result = self.apply_internal(
+                            strict_operation,
+                            &format!("{run_id}:strict"),
+                            on_progress,
+                        );
+                        let mut execution = TranscriptAssayFallbackExecutionReport {
+                            schema: TRANSCRIPT_ASSAY_FALLBACK_EXECUTION_SCHEMA.to_string(),
+                            execution_id,
+                            strict_operation_sha256: strict_operation_sha256.clone(),
+                            fallback_policy: fallback_submission.clone(),
+                            fallback_policy_sha256: fallback_policy_sha256.clone(),
+                            engine_revision,
+                            search_policy_sha256,
+                            fallback_operation_sha256: Some(fallback_operation_sha256.clone()),
+                            fallback_operation_diff: operation_diff.clone(),
+                            ..Default::default()
+                        };
+                        match strict_result {
+                            Ok(strict_result) => {
+                                execution.strict_panel_report =
+                                    strict_result.transcript_assay_panel;
+                                execution.summary =
+                                    "The strict require-all transcript panel succeeded; the pre-approved informative fallback was not submitted."
+                                        .to_string();
+                                execution.warnings.push(
+                                "The strict panel succeeded, so the pre-approved fallback was not submitted."
+                                    .to_string(),
+                            );
+                                result.messages.extend(strict_result.messages);
+                                result.warnings.extend(strict_result.warnings);
+                                result.transcript_assay_panel =
+                                    execution.strict_panel_report.clone();
+                            }
+                            Err(error)
+                                if error.code == ErrorCode::TranscriptAssayCoverageInfeasible =>
+                            {
+                                let error_bytes = serde_json::to_vec(&error).map_err(|serialize| {
+                                EngineError::internal(format!(
+                                    "Could not serialize strict transcript-panel failure: {serialize}"
+                                ))
+                            })?;
+                                let error_sha256 =
+                                    crate::digest_utils::sha256_prefixed_bytes(&error_bytes);
+                                let mut infeasibility = error
+                                .cause_chain
+                                .iter()
+                                .find_map(|entry| {
+                                    serde_json::from_str::<
+                                        TranscriptAssayPanelInfeasibilityReport,
+                                    >(entry)
+                                    .ok()
+                                })
+                                .ok_or_else(|| {
+                                    EngineError::internal(
+                                        "Typed transcript-panel coverage failure lacked its machine-readable infeasibility record; fallback was not submitted",
+                                    )
+                                })?;
+                                if infeasibility.schema
+                                    != TRANSCRIPT_ASSAY_PANEL_INFEASIBILITY_SCHEMA
+                                    || infeasibility.strict_operation_sha256
+                                        != strict_operation_sha256
+                                {
+                                    return Err(EngineError::internal(
+                                        "Typed transcript-panel infeasibility record did not match the strict operation; fallback was not submitted",
+                                    ));
+                                }
+                                infeasibility.error_sha256 = error_sha256;
+                                let failure_id = infeasibility.failure_id.clone();
+                                let uncovered_summary = if !infeasibility
+                                    .uncovered_coverage_target_ids
+                                    .is_empty()
+                                {
+                                    infeasibility.uncovered_coverage_target_ids.join(", ")
+                                } else if !infeasibility.uncovered_equivalence_groups.is_empty() {
+                                    infeasibility
+                                        .uncovered_equivalence_groups
+                                        .iter()
+                                        .map(|group| {
+                                            format!(
+                                                "{} [{}]",
+                                                group.equivalence_group_id,
+                                                group.transcript_ids.join(", ")
+                                            )
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .join("; ")
+                                } else {
+                                    "none reported".to_string()
+                                };
+                                execution.strict_infeasibility = Some(infeasibility);
+                                execution.fallback_submitted = true;
+                                match self.apply_internal(
+                                    fallback_operation,
+                                    &format!("{run_id}:fallback"),
+                                    on_progress,
+                                ) {
+                                    Ok(fallback_result) => {
+                                        let mut fallback_panel = fallback_result
+                                        .transcript_assay_panel
+                                        .ok_or_else(|| {
+                                            EngineError::internal(
+                                                "Fallback execution returned no transcript panel",
+                                            )
+                                        })?;
+                                        fallback_panel.completion_status =
+                                            TranscriptAssayPanelCompletionStatus::Partial;
+                                        fallback_panel.fallback_provenance = Some(
+                                        TranscriptAssayPanelFallbackProvenance {
+                                            parent_strict_operation_sha256:
+                                                strict_operation_sha256.clone(),
+                                            parent_failure_id: failure_id,
+                                            fallback_policy_sha256:
+                                                fallback_policy_sha256.clone(),
+                                            trigger_classification:
+                                                "strict_coverage_infeasible_after_bounded_search"
+                                                    .to_string(),
+                                            operation_diff,
+                                        },
+                                    );
+                                        fallback_panel.warnings.push(
+                                            "This is a separately approved informative partial fallback; it does not satisfy or overwrite the failed strict objective."
+                                                .to_string(),
+                                        );
+                                        fallback_panel.fallback_virtual_gel = Some(
+                                            Self::build_transcript_assay_fallback_virtual_gel(
+                                                &fallback_panel,
+                                            )?,
+                                        );
+                                        result.messages.extend(fallback_result.messages);
+                                        result.warnings.extend(fallback_result.warnings);
+                                        result.transcript_assay_panel =
+                                            Some(fallback_panel.clone());
+                                        let informative = fallback_panel
+                                            .informative_selection
+                                            .as_ref()
+                                            .map(|audit| {
+                                                format!(
+                                                    "covering {}/{} bound targets with {}/{} approved assays",
+                                                    audit.covered_target_count,
+                                                    audit.target_count,
+                                                    audit.selected_assay_count,
+                                                    audit.assay_budget
+                                                )
+                                            })
+                                            .unwrap_or_else(|| {
+                                                format!(
+                                                    "selecting {} assay(s)",
+                                                    fallback_panel.selected_assay_count
+                                                )
+                                            });
+                                        execution.summary = format!(
+                                            "Strict require-all transcript panel infeasible: {uncovered_summary} remained uncovered. Because informative fallback was approved in advance, GENtle generated a separate partial panel {informative}. The uncovered targets remain listed."
+                                        );
+                                        execution.fallback_panel_report = Some(fallback_panel);
+                                    }
+                                    Err(fallback_error) => {
+                                        execution.summary = format!(
+                                            "Strict require-all transcript panel infeasible: {uncovered_summary} remained uncovered. The approved informative fallback was submitted but did not complete: {}",
+                                            fallback_error.message
+                                        );
+                                        execution.warnings.push(format!(
+                                        "The approved fallback was submitted but did not complete: {}",
+                                        fallback_error.message
+                                    ));
+                                        execution.fallback_error = Some(fallback_error);
+                                    }
+                                }
+                            }
+                            Err(error) => return Err(error),
+                        }
+                        self.persist_transcript_assay_fallback_execution(
+                            &execution,
+                            path.as_deref(),
+                        )?;
+                        result.warnings.extend(execution.warnings.clone());
+                        result.messages.push(execution.summary.clone());
+                        result.messages.push(format!(
+                        "Transcript-assay fallback execution '{}' recorded strict_success={} fallback_submitted={} fallback_completed={}.",
+                        execution.execution_id,
+                        execution.strict_panel_report.is_some(),
+                        execution.fallback_submitted,
+                        execution.fallback_panel_report.is_some()
+                    ));
+                        result.transcript_assay_fallback_execution = Some(Box::new(execution));
+                    }
                 }
                 Operation::PlanGeneIsoformAssayStudy {
                     request,
@@ -50789,5 +51830,125 @@ mod molecular_weight_tests {
             empty.message,
             "Could not estimate molecular weight for peptide 2: sequence contains no supported amino-acid residues"
         );
+    }
+}
+
+#[cfg(test)]
+mod transcript_assay_informative_selector_tests {
+    use super::*;
+
+    fn candidate(
+        id: &str,
+        score: f64,
+        signatures: &[&[usize]],
+    ) -> TranscriptAssayEvaluatedCandidate {
+        TranscriptAssayEvaluatedCandidate {
+            assay_id: id.to_string(),
+            design_equivalence_group_id: "design_group".to_string(),
+            design_transcript_id: "design_transcript".to_string(),
+            assay_kind: TranscriptAssayKind::EndpointRtPcr,
+            primer_pair: PrimerDesignPairRecord::default(),
+            probe: None,
+            taqman_assay: None,
+            score,
+            end_reaction_ids: vec![],
+            junction_matches: vec![],
+            group_evaluations: signatures
+                .iter()
+                .map(|signature| TranscriptAssayGroupEvaluation {
+                    status: if signature.is_empty() {
+                        TranscriptAssayDetectionStatus::NoProduct
+                    } else {
+                        TranscriptAssayDetectionStatus::SingleProduct
+                    },
+                    detail_status: String::new(),
+                    product_count: signature.len(),
+                    amplicon_lengths_bp: signature.to_vec(),
+                    exact_negative_prefiltered: false,
+                    oligo_dt_5prime_reach: TranscriptAssayOligoDtReachAssessment::default(),
+                })
+                .collect(),
+            practicality_classification: TranscriptAssayPracticalityClassification::Routine,
+            common_region_evidence: TranscriptAssayCommonRegionEvidence::default(),
+        }
+    }
+
+    #[test]
+    fn informative_selector_honors_budget_and_counts_size_separation() {
+        let candidates = vec![
+            candidate("size_informative", 10.0, &[&[100], &[140], &[]]),
+            candidate("third_target", 8.0, &[&[], &[], &[120]]),
+            candidate("redundant_size_alternative", 9.0, &[&[100], &[140], &[]]),
+        ];
+        let policy = TranscriptAssayInformativeSelectionPolicy {
+            max_assays: 2,
+            minimum_resolvable_size_difference_bp: 20,
+            ..Default::default()
+        };
+        let target_ids = vec![
+            "target_a".to_string(),
+            "target_b".to_string(),
+            "target_c".to_string(),
+        ];
+        let (selected, report) = GentleEngine::select_maximally_informative_transcript_assays(
+            &candidates,
+            &[],
+            &target_ids,
+            false,
+            &[],
+            TranscriptAssayUseTier::IsoformDiscrimination,
+            &policy,
+        )
+        .expect("bounded informative selection");
+
+        assert_eq!(selected, vec![0, 1]);
+        assert_eq!(report.selected_assay_count, 2);
+        assert!(report.selected_assay_count <= report.assay_budget);
+        assert_eq!(report.covered_target_count, 3);
+        assert_eq!(report.total_target_pair_count, 3);
+        assert_eq!(report.separated_target_pair_count, 3);
+        assert!(report.unresolved_target_pairs.is_empty());
+        assert_eq!(
+            report.certificate,
+            TranscriptAssayInformativeOptimalityCertificate::BoundedGreedyV1
+        );
+        assert_eq!(
+            report.assay_contributions[0].redundant_alternative_assay_ids,
+            vec!["redundant_size_alternative".to_string()]
+        );
+        assert_eq!(
+            report.assay_contributions[0].incremental_separated_target_pair_count,
+            3
+        );
+        assert_eq!(
+            report.assay_contributions[1].incremental_covered_target_count,
+            1
+        );
+    }
+
+    #[test]
+    fn informative_selector_does_not_claim_subthreshold_size_separation() {
+        let candidates = vec![candidate("close_bands", 10.0, &[&[100], &[115]])];
+        let policy = TranscriptAssayInformativeSelectionPolicy {
+            max_assays: 1,
+            minimum_resolvable_size_difference_bp: 20,
+            ..Default::default()
+        };
+        let target_ids = vec!["target_a".to_string(), "target_b".to_string()];
+        let (selected, report) = GentleEngine::select_maximally_informative_transcript_assays(
+            &candidates,
+            &[],
+            &target_ids,
+            false,
+            &[],
+            TranscriptAssayUseTier::IsoformDiscrimination,
+            &policy,
+        )
+        .expect("bounded informative selection");
+
+        assert_eq!(selected, vec![0]);
+        assert_eq!(report.covered_target_count, 2);
+        assert_eq!(report.separated_target_pair_count, 0);
+        assert_eq!(report.unresolved_target_pairs.len(), 1);
     }
 }

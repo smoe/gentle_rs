@@ -524,6 +524,16 @@ by the approved plan. Those payloads are not regenerated or altered after
 approval, and one batch approval is valid only because its digest covers the
 complete ordered set.
 
+An optional pre-approved informative fallback is part of both approval bases,
+not a runtime convenience flag. The normalized request digest binds its typed
+policy and whole-panel budget. The emitted operation digest binds the exact
+wrapper, unchanged strict child, deterministic fallback template, and distinct
+report identity. Execution may derive that child only after a matching typed
+strict coverage-infeasibility record; all other failures remain fail-closed.
+The strict failure and partial fallback are separate durable records, and a
+bounded-greedy selector certificate must never be presented as a proven global
+optimum or as experimental/order readiness.
+
 For a multi-study second stage, independently approved plan/workflow pairs are
 first composed into one engine-owned batch record. That record binds each
 plan/workflow file, their existing workflow and operation digests, their order,

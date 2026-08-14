@@ -9230,6 +9230,9 @@ Primer-design shell command family (implemented):
   - `primers list-transcript-assay-panels`
   - `primers show-transcript-assay-panel REPORT_ID`
   - `primers export-transcript-assay-panel REPORT_ID OUTPUT.json`
+  - `primers list-transcript-assay-fallbacks`
+  - `primers show-transcript-assay-fallback EXECUTION_ID`
+  - `primers export-transcript-assay-fallback EXECUTION_ID OUTPUT.json`
   - `primers oligo-order create REQUEST_JSON_OR_@FILE`
   - `primers oligo-order from-primer-report REPORT_ID --pair-rank N[,N...] [--form-id ID] [--scale TEXT] [--purification TEXT] [--modification TEXT ...]`
   - `primers oligo-order from-qpcr-report REPORT_ID --assay-rank N[,N...] [--include-probe true|false] [--form-id ID] [--scale TEXT] [--purification TEXT] [--modification TEXT ...]`
@@ -9542,11 +9545,24 @@ Primer-pair alternative frontier:
     always carry the canonical primer pair and leave `probe` plus the legacy
     TaqMan `assay` object absent.
   - objectives are `pan_transcript`, `one_per_class`,
-    `minimal_discrimination_panel`, and endpoint-only `isoform_end_matrix`.
+    `minimal_discrimination_panel`, `maximally_informative_panel`, and
+    endpoint-only `isoform_end_matrix`.
     The endpoint objective derives first-exon/first-junction and terminal-exon/
     last-junction classes, retains only combinations supported by an annotated
     mature transcript, and permits one physical primer pair to reference more
     than one supported end reaction.
+  - `maximally_informative_panel` requires
+    `informative_selection = gentle.transcript_assay_informative_selection_policy.v1`.
+    Its whole-panel `max_assays` budget is applied after required evidence
+    assays, then a deterministic bounded-greedy selector maximizes equal-weight
+    target coverage, observable target-pair separation, and existing assay
+    preference in that order. Separation may be presence/absence or predicted
+    single-product size, but a size distinction counts only at or above
+    `minimum_resolvable_size_difference_bp`. The report carries
+    `bounded_greedy_v1`, never a global-optimum claim, plus recomputable
+    incremental/leave-one-out counts, redundant alternatives, and unresolved
+    target pairs. Long-range candidates and zero-increment assays remain
+    excluded unless the explicit policy allows them.
   - With `uniprot_supported_isoforms`, the existing objective names operate on
     mandatory protein targets: pan coverage reaches every target, one-per-class
     selects coverage per protein target, discrimination tries to separate
@@ -9614,6 +9630,23 @@ Primer-pair alternative frontier:
     blocker details; a feasible search that finds no acceptable pair instead
     records `primer_search_exhausted`. Cancellation/timeout remains an
     execution error and is not reclassified as either scientific outcome
+  - `DesignTranscriptAssayPanelWithFallback` is the approval-bound exception
+    to asking again after a strict run. It executes the nested `require_all`
+    operation unchanged and derives a separate `best_effort` /
+    `maximally_informative_panel` operation only from the machine-typed
+    `transcript_assay_coverage_infeasible` result after bounded search. Invalid
+    input, unresolved UniProt mappings, absent evidence or backend, search-
+    budget refusal, specificity failure, cancellation, digest drift, and
+    internal errors never trigger it. Legacy requests and
+    `fallback_submission.mode=never` retain the original fail-closed behavior.
+    A persisted `gentle.transcript_assay_fallback_execution.v1` binds the
+    strict operation digest/failure identity, policy digest/schema, search
+    policy digest, engine revision, fallback operation digest, and exact field
+    diff. The strict outcome is not overwritten. Any generated fallback panel
+    is forcibly `completion_status=partial`, keeps all uncovered targets
+    visible, and carries one deterministic combined virtual gel or the typed
+    `no_predicted_products` reason. This does not imply specificity, validation,
+    UniProt completeness, experimental success, or order readiness.
   - the detection matrix records `no_product`, `single_product`, or
     `multiple_products` for every selected assay and transcript row. Transcript
     interpretation is typed as `specific`, `shared_family`, `no_product`, or
@@ -9789,6 +9822,15 @@ Primer-pair alternative frontier:
     universe. This changes only the mandatory target set. It neither chooses
     an objective nor weakens coverage. Compare alternative universes by keeping
     separate named plans rather than silently rewriting an approved plan
+  - the request may also declare
+    `fallback_submission.mode=preapproved_informative_partial`. Normalization
+    binds the complete versioned fallback policy into `request_sha256`; only
+    eligible strict one-per-class/minimal-discrimination steps are wrapped,
+    and the exact wrapper bytes are then bound into `operation_batch_sha256`
+    and `approved_workflow_sha256`. A blank fallback report id is derived
+    deterministically from the strict report id before those second-stage
+    digests are computed. Changing the assay budget, size-resolution threshold,
+    or any other fallback field invalidates both approval bases.
   - selected profiles are `routine_common_region_screen`,
     `targeted_junction_validation`, `isoform_discrimination`,
     `comprehensive_isoform_dossier`, and `long_range_structure_discovery`.

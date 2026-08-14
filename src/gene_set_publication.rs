@@ -234,6 +234,81 @@ fn resolve_primer_selection_decision(
             path.display()
         )
     })?;
+    let fallback_provenance = report.fallback_provenance.as_ref();
+    let fallback_gel = report.fallback_virtual_gel.as_ref();
+    if fallback_provenance.is_some() {
+        if report.completion_status
+            != crate::engine::protocol::TranscriptAssayPanelCompletionStatus::Partial
+            || report.coverage_policy
+                != crate::engine::protocol::TranscriptAssayCoveragePolicy::BestEffort
+            || report.objective
+                != crate::engine::protocol::TranscriptAssayPanelObjective::MaximallyInformativePanel
+            || report.informative_selection.is_none()
+        {
+            return Err(format!(
+                "Fallback transcript-panel report '{}' is not an explicitly partial, budgeted informative panel",
+                report.report_id
+            ));
+        }
+        let gel = fallback_gel.ok_or_else(|| {
+            format!(
+                "Fallback transcript-panel report '{}' lacks its required combined virtual-gel disposition",
+                report.report_id
+            )
+        })?;
+        if gel.source_panel_report_id != report.report_id
+            || gel.source_operation_sha256 != report.operation_sha256
+        {
+            return Err(format!(
+                "Fallback transcript-panel report '{}' has a virtual gel bound to another panel or operation",
+                report.report_id
+            ));
+        }
+        match gel.status {
+            crate::engine::protocol::TranscriptAssayFallbackVirtualGelStatus::Generated => {
+                let lower_svg = gel.svg.to_ascii_lowercase();
+                let unsafe_svg = [
+                    "<script",
+                    "javascript:",
+                    "<foreignobject",
+                    "onload=",
+                    "onclick=",
+                    "<!entity",
+                ]
+                .iter()
+                .any(|needle| lower_svg.contains(needle));
+                if gel.svg.is_empty()
+                    || gel.svg_sha256 != sha256_prefixed_bytes(gel.svg.as_bytes())
+                    || !gel.svg.contains("data-provenance-source=\"gentle\"")
+                    || unsafe_svg
+                {
+                    return Err(format!(
+                        "Fallback transcript-panel report '{}' has an invalid, hash-mismatched, or unsafe combined virtual gel",
+                        report.report_id
+                    ));
+                }
+            }
+            crate::engine::protocol::TranscriptAssayFallbackVirtualGelStatus::NoPredictedProducts => {
+                if gel
+                    .no_products_reason
+                    .as_deref()
+                    .is_none_or(|reason| reason.trim().is_empty())
+                    || !gel.svg.is_empty()
+                {
+                    return Err(format!(
+                        "Fallback transcript-panel report '{}' must give an explicit no-products reason when no gel is generated",
+                        report.report_id
+                    ));
+                }
+            }
+            crate::engine::protocol::TranscriptAssayFallbackVirtualGelStatus::NotApplicable => {
+                return Err(format!(
+                    "Fallback transcript-panel report '{}' cannot publish a not-applicable combined gel",
+                    report.report_id
+                ));
+            }
+        }
+    }
     let assay = report
         .selected_assays
         .iter()
@@ -273,11 +348,15 @@ fn resolve_primer_selection_decision(
                 == crate::engine::protocol::PrimerPairSelectionReasonCode::IncompleteProvenance
         });
     Ok(Some(GeneSetPublicationPrimerSelectionDecision {
-        source_report_schema: report.schema,
-        source_report_id: report.report_id,
+        source_report_schema: report.schema.clone(),
+        source_report_id: report.report_id.clone(),
         source_report_sha256: digest,
         assay_id: assay.assay_id.clone(),
-        disposition: if incomplete {
+        disposition: if fallback_provenance.is_some() && incomplete {
+            "informative_partial_fallback_incomplete_provenance"
+        } else if fallback_provenance.is_some() {
+            "informative_partial_fallback"
+        } else if incomplete {
             "incomplete_provenance"
         } else if summary.retained_because_of_differential_junction_evidence {
             "required_validation_obligation"
@@ -302,12 +381,46 @@ fn resolve_primer_selection_decision(
         evidence_ids,
         interpretation_report_sha256s,
         policy_sha256s,
-        readiness_status: if summary.whole_genome_specificity_status == "not_run" {
+        readiness_status: if fallback_provenance.is_some() {
+            "informative_partial_not_order_ready"
+        } else if summary.whole_genome_specificity_status == "not_run" {
             "incomplete_specificity"
         } else {
             &summary.whole_genome_specificity_status
         }
         .to_string(),
+        panel_completion_status: match report.completion_status {
+            crate::engine::protocol::TranscriptAssayPanelCompletionStatus::Complete => "complete",
+            crate::engine::protocol::TranscriptAssayPanelCompletionStatus::Partial => "partial",
+        }
+        .to_string(),
+        uncovered_equivalence_group_ids: report.uncovered_equivalence_group_ids.clone(),
+        fallback_parent_failure_id: fallback_provenance
+            .map(|provenance| provenance.parent_failure_id.clone()),
+        fallback_policy_sha256: fallback_provenance
+            .map(|provenance| provenance.fallback_policy_sha256.clone()),
+        informative_certificate: report
+            .informative_selection
+            .as_ref()
+            .map(|selection| selection.certificate.as_str().to_string()),
+        informative_assay_budget: report
+            .informative_selection
+            .as_ref()
+            .map(|selection| selection.assay_budget),
+        fallback_virtual_gel_status: fallback_gel
+            .map(|gel| gel.status.as_str())
+            .unwrap_or("not_applicable")
+            .to_string(),
+        fallback_virtual_gel_svg_sha256: fallback_gel
+            .map(|gel| gel.svg_sha256.clone())
+            .unwrap_or_default(),
+        fallback_virtual_gel_svg: fallback_gel
+            .filter(|gel| {
+                gel.status
+                    == crate::engine::protocol::TranscriptAssayFallbackVirtualGelStatus::Generated
+            })
+            .map(|gel| gel.svg.clone()),
+        fallback_no_products_reason: fallback_gel.and_then(|gel| gel.no_products_reason.clone()),
     }))
 }
 
@@ -1918,6 +2031,91 @@ mod tests {
             resolve_primer_selection_decision(temp.path(), "panel.json", "assay_1", "sha256:wrong")
                 .expect_err("digest mismatch must fail");
         assert!(error.contains("but 'sha256:wrong' was required"), "{error}");
+    }
+
+    #[test]
+    fn publication_preserves_partial_fallback_and_requires_combined_gel_disposition() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let svg = "<svg data-provenance-source=\"gentle\" xmlns=\"http://www.w3.org/2000/svg\"><title>Informative fallback</title></svg>".to_string();
+        let mut report = TranscriptAssayPanelReport {
+            schema: "gentle.transcript_assay_panel.v2".to_string(),
+            report_id: "fallback_panel".to_string(),
+            operation_sha256: "sha256:fallback-operation".to_string(),
+            objective: crate::engine::protocol::TranscriptAssayPanelObjective::MaximallyInformativePanel,
+            coverage_policy: crate::engine::protocol::TranscriptAssayCoveragePolicy::BestEffort,
+            completion_status: crate::engine::protocol::TranscriptAssayPanelCompletionStatus::Partial,
+            selected_assays: vec![crate::engine::protocol::TranscriptAssayPanelAssay {
+                assay_id: "assay_1".to_string(),
+                primer_pair_summary: crate::engine::protocol::PrimerPairCommunicationSummary {
+                    selection_audit_status: crate::engine::protocol::PrimerPairSelectionAuditStatus::Computed,
+                    selection_explanation: "Selected within the approved informative assay budget.".to_string(),
+                    selection_operation_sha256: "sha256:fallback-operation".to_string(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }],
+            uncovered_equivalence_group_ids: vec!["cdna_eq_irf9_uncovered".to_string()],
+            informative_selection: Some(crate::engine::protocol::TranscriptAssayInformativeSelectionReport {
+                certificate: crate::engine::protocol::TranscriptAssayInformativeOptimalityCertificate::BoundedGreedyV1,
+                assay_budget: 2,
+                selected_assay_count: 1,
+                ..Default::default()
+            }),
+            fallback_provenance: Some(crate::engine::protocol::TranscriptAssayPanelFallbackProvenance {
+                parent_strict_operation_sha256: "sha256:strict-operation".to_string(),
+                parent_failure_id: "strict_failure_irf9".to_string(),
+                fallback_policy_sha256: "sha256:fallback-policy".to_string(),
+                trigger_classification: "strict_coverage_infeasible_after_bounded_search".to_string(),
+                operation_diff: vec![],
+            }),
+            fallback_virtual_gel: Some(crate::engine::protocol::TranscriptAssayFallbackVirtualGel {
+                schema: "gentle.transcript_assay_fallback_virtual_gel.v1".to_string(),
+                status: crate::engine::protocol::TranscriptAssayFallbackVirtualGelStatus::Generated,
+                source_panel_report_id: "fallback_panel".to_string(),
+                source_operation_sha256: "sha256:fallback-operation".to_string(),
+                svg_sha256: sha256_prefixed_bytes(svg.as_bytes()),
+                svg,
+                sample_lane_count: 1,
+                rendered_product_count: 1,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let path = temp.path().join("fallback-panel.json");
+        let bytes = serde_json::to_vec_pretty(&report).expect("serialize fallback panel");
+        fs::write(&path, &bytes).expect("write fallback panel");
+        let projection = resolve_primer_selection_decision(
+            temp.path(),
+            "fallback-panel.json",
+            "assay_1",
+            &sha256_prefixed_bytes(&bytes),
+        )
+        .expect("publish fallback decision")
+        .expect("fallback decision");
+        assert_eq!(projection.disposition, "informative_partial_fallback");
+        assert_eq!(projection.panel_completion_status, "partial");
+        assert_eq!(
+            projection.uncovered_equivalence_group_ids,
+            vec!["cdna_eq_irf9_uncovered".to_string()]
+        );
+        assert_eq!(projection.fallback_virtual_gel_status, "generated");
+        assert!(projection.fallback_virtual_gel_svg.is_some());
+        assert_eq!(
+            projection.readiness_status,
+            "informative_partial_not_order_ready"
+        );
+
+        report.fallback_virtual_gel = None;
+        let missing_gel_bytes = serde_json::to_vec_pretty(&report).expect("serialize missing gel");
+        fs::write(&path, &missing_gel_bytes).expect("write missing gel panel");
+        let error = resolve_primer_selection_decision(
+            temp.path(),
+            "fallback-panel.json",
+            "assay_1",
+            &sha256_prefixed_bytes(&missing_gel_bytes),
+        )
+        .expect_err("fallback publication must require a gel disposition");
+        assert!(error.contains("lacks its required combined virtual-gel disposition"));
     }
 
     fn write_minimal_primer_table(directory: &Path) {

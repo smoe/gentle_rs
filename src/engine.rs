@@ -857,6 +857,10 @@ pub const TRANSCRIPT_ASSAY_SPECIFICITY_REDESIGN_SCHEMA: &str =
     "gentle.transcript_assay_specificity_redesign.v1";
 pub const TRANSCRIPT_QPCR_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_qpcr_panel.v1";
 pub const TRANSCRIPT_ASSAY_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_assay_panel.v2";
+pub const TRANSCRIPT_ASSAY_PANEL_INFEASIBILITY_SCHEMA: &str =
+    "gentle.transcript_assay_panel_infeasibility.v1";
+pub const TRANSCRIPT_ASSAY_FALLBACK_EXECUTION_SCHEMA: &str =
+    "gentle.transcript_assay_fallback_execution.v1";
 pub const TRANSCRIPT_ASSAY_PANEL_FEASIBILITY_SCHEMA: &str =
     "gentle.transcript_assay_panel_feasibility.v1";
 pub const TRANSCRIPT_ASSAY_PRIMER_SEARCH_PLAN_SCHEMA: &str =
@@ -2770,6 +2774,7 @@ struct PrimerDesignStore {
     terminal_exon_rt_primer_pools: HashMap<String, TerminalExonRtPrimerPoolReport>,
     primer_specificity_reports: HashMap<String, PrimerSpecificityReport>,
     transcript_assay_panels: HashMap<String, TranscriptAssayPanelReport>,
+    transcript_assay_fallback_executions: HashMap<String, TranscriptAssayFallbackExecutionReport>,
     external_primer_pair_imports: HashMap<String, ExternalPrimerPairImportReport>,
     restriction_cloning_handoffs: HashMap<String, RestrictionCloningPcrHandoffReport>,
     oligo_order_forms: HashMap<String, OligoOrderForm>,
@@ -4594,6 +4599,10 @@ pub enum Operation {
         /// not serialized so legacy operation digests remain stable.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         search_policy: Option<TranscriptAssayPrimerSearchPolicy>,
+        /// Whole-panel budget and observable-product policy required by
+        /// `maximally_informative_panel`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        informative_selection: Option<TranscriptAssayInformativeSelectionPolicy>,
         #[serde(default)]
         junctions: Vec<TranscriptAssayJunctionRequest>,
         /// Existing probe-evidence interpretation reports whose JUC rows
@@ -4614,6 +4623,15 @@ pub enum Operation {
         specificity: Option<TranscriptAssaySpecificityRequest>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         report_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    /// Execute one exact strict panel request and, only after typed coverage
+    /// infeasibility, derive and execute its pre-approved partial fallback.
+    DesignTranscriptAssayPanelWithFallback {
+        strict_operation: Box<Operation>,
+        #[serde(default)]
+        fallback_submission: TranscriptAssayFallbackSubmissionPolicy,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
@@ -12039,6 +12057,7 @@ impl GentleEngine {
             && store.terminal_exon_rt_primer_pools.is_empty()
             && store.primer_specificity_reports.is_empty()
             && store.transcript_assay_panels.is_empty()
+            && store.transcript_assay_fallback_executions.is_empty()
             && store.external_primer_pair_imports.is_empty()
             && store.restriction_cloning_handoffs.is_empty()
             && store.oligo_order_forms.is_empty()
@@ -12955,6 +12974,72 @@ impl GentleEngine {
             code: ErrorCode::Io,
             message: format!("Could not write transcript assay panel report to '{path}': {e}"),
 
+            cause_chain: vec![],
+        })?;
+        Ok(report)
+    }
+
+    pub fn list_transcript_assay_fallback_executions(
+        &self,
+    ) -> Vec<TranscriptAssayFallbackExecutionSummary> {
+        let store = self.read_primer_design_store();
+        let mut reports = store
+            .transcript_assay_fallback_executions
+            .values()
+            .map(|report| TranscriptAssayFallbackExecutionSummary {
+                execution_id: report.execution_id.clone(),
+                strict_operation_sha256: report.strict_operation_sha256.clone(),
+                strict_succeeded: report.strict_panel_report.is_some(),
+                fallback_submitted: report.fallback_submitted,
+                fallback_completed: report.fallback_panel_report.is_some(),
+                fallback_report_id: report
+                    .fallback_panel_report
+                    .as_deref()
+                    .map(|panel| panel.report_id.clone()),
+            })
+            .collect::<Vec<_>>();
+        reports.sort_by(|left, right| left.execution_id.cmp(&right.execution_id));
+        reports
+    }
+
+    pub fn get_transcript_assay_fallback_execution(
+        &self,
+        execution_id: &str,
+    ) -> Result<TranscriptAssayFallbackExecutionReport, EngineError> {
+        let execution_id = Self::normalize_primer_design_report_id(execution_id)?;
+        self.read_primer_design_store()
+            .transcript_assay_fallback_executions
+            .get(&execution_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Transcript assay fallback execution '{}' not found",
+                    execution_id
+                ),
+                cause_chain: vec![],
+            })
+    }
+
+    pub fn export_transcript_assay_fallback_execution(
+        &self,
+        execution_id: &str,
+        path: &str,
+    ) -> Result<TranscriptAssayFallbackExecutionReport, EngineError> {
+        let report = self.get_transcript_assay_fallback_execution(execution_id)?;
+        let text = serde_json::to_string_pretty(&report).map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not serialize transcript assay fallback execution '{}': {error}",
+                report.execution_id
+            ),
+            cause_chain: vec![],
+        })?;
+        std::fs::write(path, text).map_err(|error| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not write transcript assay fallback execution to '{path}': {error}"
+            ),
             cause_chain: vec![],
         })?;
         Ok(report)

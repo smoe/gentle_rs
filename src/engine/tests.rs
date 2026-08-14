@@ -13091,6 +13091,118 @@ fn transcript_qpcr_panel_test_engine() -> GentleEngine {
     engine
 }
 
+fn irf9_informative_fallback_acceptance_engine() -> GentleEngine {
+    let common_tail = "GCTAGTCGATCGTACCGTACGATCGTACGA";
+    let tx1 = format!("ATGCCGTAGCTTACGATCCGTTAGCGTACCTGATCGGATCCGATTAAC{common_tail}");
+    let tx2 = format!("CGTACGATTCGGAACCTGATCGATGCTTACGGTACCGATCTAGGCTTA{common_tail}");
+    let shared = "GATCGTACCGATGCTAGCTAGGATCCGATCGTACGATCCGTTACGATGCTAGCTAGGCTA\
+         CGATCGGATCCGTACGATCGATGCTAGCTACCGATGCTAGCTAGGATCGTACCGATGCTAGCTA"
+        .replace(' ', "");
+    let spacer = "N".repeat(20);
+    let unassayable = "N".repeat(180);
+    let tx1_start = 0usize;
+    let tx1_end = tx1.len();
+    let tx2_start = tx1_end + spacer.len();
+    let tx2_end = tx2_start + tx2.len();
+    let shared_start = tx2_end + spacer.len();
+    let shared_end = shared_start + shared.len();
+    let unassayable_start = shared_end + spacer.len();
+    let unassayable_end = unassayable_start + unassayable.len();
+    let mut dna = seq(&format!(
+        "{tx1}{spacer}{tx2}{spacer}{shared}{spacer}{unassayable}"
+    ));
+    for transcript_id in ["IRF9_SYNTHETIC_A", "IRF9_SYNTHETIC_B"] {
+        let (first_start, first_end) = if transcript_id.ends_with('A') {
+            (tx1_start, tx1_end)
+        } else {
+            (tx2_start, tx2_end)
+        };
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::Join(vec![
+                gb_io::seq::Location::simple_range(first_start as i64, first_end as i64),
+                gb_io::seq::Location::simple_range(shared_start as i64, shared_end as i64),
+            ]),
+            qualifiers: vec![
+                ("gene".into(), Some("IRF9".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(format!("IRF9 {transcript_id}"))),
+            ],
+        });
+    }
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::simple_range(
+            unassayable_start as i64,
+            unassayable_end as i64,
+        ),
+        qualifiers: vec![
+            ("gene".into(), Some("IRF9".to_string())),
+            ("transcript_id".into(), Some("ENST00000699070".to_string())),
+            (
+                "label".into(),
+                Some("IRF9 ENST00000699070 synthetic unassayable class".to_string()),
+            ),
+        ],
+    });
+    let source_len = dna.len();
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "source".into(),
+        location: gb_io::seq::Location::simple_range(0, source_len as i64),
+        qualifiers: vec![
+            ("chromosome".into(), Some("synthetic_IRF9".to_string())),
+            ("genomic_start_1based".into(), Some("1".to_string())),
+            ("genomic_end_1based".into(), Some(source_len.to_string())),
+            ("strand".into(), Some("+".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("irf9_fallback_fixture".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+    engine
+}
+
+fn irf9_strict_one_per_class_operation(report_id: &str) -> Operation {
+    let side = transcript_assay_panel_relaxed_side();
+    Operation::DesignTranscriptAssayPanel {
+        seq_id: "irf9_fallback_fixture".to_string(),
+        source_feature_id: 0,
+        assay_kind: TranscriptAssayKind::TaqmanQpcr,
+        cdna_synthesis: TranscriptAssayCdnaSynthesis::Unspecified,
+        objective: TranscriptAssayPanelObjective::OnePerClass,
+        coverage_policy: TranscriptAssayCoveragePolicy::RequireAll,
+        coverage_universe: TranscriptAssayCoverageUniverse::default(),
+        assay_tier: TranscriptAssayUseTier::IsoformDiscrimination,
+        practicality: None,
+        forward: side.clone(),
+        reverse: side.clone(),
+        probe: side,
+        pair_constraints: PrimerDesignPairConstraint::default(),
+        min_amplicon_bp: Some(50),
+        max_amplicon_bp: Some(240),
+        max_tm_delta_c: Some(100.0),
+        max_probe_tm_delta_c: Some(100.0),
+        max_assays_per_class: Some(2),
+        max_mismatches: Some(0),
+        require_3prime_exact_bases: Some(8),
+        oligo_dt_5prime_risk_threshold_bp: None,
+        search_policy: None,
+        informative_selection: None,
+        junctions: vec![],
+        junction_evidence_paths: vec![],
+        junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
+        min_3prime_junction_overlap_bp: None,
+        min_5prime_junction_overlap_bp: None,
+        annotation_release: Some("synthetic IRF9 fallback acceptance v1".to_string()),
+        specificity: None,
+        report_id: Some(report_id.to_string()),
+        path: None,
+    }
+}
+
 fn transcript_endpoint_structural_failure_engine() -> GentleEngine {
     let short_first = "ATGCCGTAGCTTACGAT";
     let long_first = "CGTACGATTCGGAACCTGATCGATGCTTACGGTACCGATCTAGGCTTACGATCG";
@@ -13186,6 +13298,7 @@ fn transcript_endpoint_structural_failure_operation(
         require_3prime_exact_bases: Some(8),
         oligo_dt_5prime_risk_threshold_bp: None,
         search_policy: None,
+        informative_selection: None,
         junctions: vec![],
         junction_evidence_paths: vec![],
         junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
@@ -13814,6 +13927,7 @@ fn transcript_assay_panel_operation(
         require_3prime_exact_bases: Some(8),
         oligo_dt_5prime_risk_threshold_bp: None,
         search_policy: None,
+        informative_selection: None,
         junctions: vec![],
         junction_evidence_paths: vec![],
         junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
@@ -16287,6 +16401,352 @@ fn transcript_assay_panel_require_all_refuses_and_best_effort_is_explicit() {
     );
 }
 
+fn preapproved_informative_fallback_policy(
+    report_id: &str,
+    max_assays: usize,
+) -> TranscriptAssayFallbackSubmissionPolicy {
+    TranscriptAssayFallbackSubmissionPolicy {
+        mode: TranscriptAssayFallbackSubmissionMode::PreapprovedInformativePartial,
+        fallback_report_id: report_id.to_string(),
+        informative_selection: TranscriptAssayInformativeSelectionPolicy {
+            max_assays,
+            minimum_resolvable_size_difference_bp: 20,
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+#[test]
+fn irf9_strict_failure_retains_typed_uncovered_transcript() {
+    let acceptance: serde_json::Value = serde_json::from_str(include_str!(
+        "../../test_files/fixtures/transcript_assay_fallback/irf9_acceptance_reference.json"
+    ))
+    .expect("IRF9 fallback acceptance metadata");
+    let expected_uncovered_transcript = acceptance["strict_uncovered_transcript_id"]
+        .as_str()
+        .expect("fixture uncovered transcript");
+    assert_eq!(
+        acceptance["external_reproduction_evidence"]["operation_sha256"],
+        "sha256:035c423b839f6d03166490b2e4efb510bde1deed397765a5081b1b3cb0e81a46"
+    );
+    let mut engine = irf9_informative_fallback_acceptance_engine();
+    let error = engine
+        .apply(irf9_strict_one_per_class_operation("irf9_strict"))
+        .expect_err("synthetic IRF9 strict panel must be infeasible");
+    assert_eq!(error.code, ErrorCode::TranscriptAssayCoverageInfeasible);
+    let infeasibility = error
+        .cause_chain
+        .iter()
+        .find_map(|entry| {
+            serde_json::from_str::<TranscriptAssayPanelInfeasibilityReport>(entry).ok()
+        })
+        .expect("typed strict infeasibility record");
+    assert_eq!(
+        infeasibility.schema,
+        TRANSCRIPT_ASSAY_PANEL_INFEASIBILITY_SCHEMA
+    );
+    assert_eq!(
+        infeasibility.strict_report_id.as_deref(),
+        Some("irf9_strict")
+    );
+    assert!(infeasibility.candidate_assay_count > 0);
+    assert!(
+        infeasibility
+            .uncovered_equivalence_groups
+            .iter()
+            .any(|group| {
+                group
+                    .transcript_ids
+                    .iter()
+                    .any(|transcript_id| transcript_id == expected_uncovered_transcript)
+            })
+    );
+    assert!(
+        engine
+            .get_transcript_assay_panel_report("irf9_strict")
+            .is_err(),
+        "the failed strict operation must not be reinterpreted or persisted as a panel"
+    );
+}
+
+#[test]
+fn irf9_preapproved_fallback_is_separate_partial_and_digest_linked() {
+    let mut engine = irf9_informative_fallback_acceptance_engine();
+    let strict_operation = irf9_strict_one_per_class_operation("irf9_strict_parent");
+    let strict_operation_sha256 =
+        GentleEngine::transcript_assay_operation_sha256(&strict_operation)
+            .expect("strict operation digest");
+    let fallback_policy = preapproved_informative_fallback_policy("irf9_informative_partial", 2);
+    let fallback_policy_sha256 = crate::digest_utils::sha256_prefixed_bytes(
+        &serde_json::to_vec(&fallback_policy).expect("fallback policy bytes"),
+    );
+    let result = engine
+        .apply(Operation::DesignTranscriptAssayPanelWithFallback {
+            strict_operation: Box::new(strict_operation),
+            fallback_submission: fallback_policy,
+            path: None,
+        })
+        .expect("pre-approved IRF9 fallback execution");
+    let execution = result
+        .transcript_assay_fallback_execution
+        .as_deref()
+        .expect("fallback execution audit");
+    let strict_failure = execution
+        .strict_infeasibility
+        .as_ref()
+        .expect("preserved strict failure");
+    let fallback = execution
+        .fallback_panel_report
+        .as_deref()
+        .expect("separate fallback panel");
+
+    assert_eq!(execution.strict_operation_sha256, strict_operation_sha256);
+    assert_eq!(execution.fallback_policy_sha256, fallback_policy_sha256);
+    assert!(execution.fallback_submitted);
+    assert!(execution.fallback_error.is_none());
+    assert!(execution.summary.contains("ENST00000699070"));
+    assert!(execution.summary.contains("separate partial panel"));
+    assert!(
+        strict_failure
+            .uncovered_equivalence_groups
+            .iter()
+            .any(|group| {
+                group
+                    .transcript_ids
+                    .iter()
+                    .any(|transcript_id| transcript_id == "ENST00000699070")
+            })
+    );
+    assert_eq!(fallback.report_id, "irf9_informative_partial");
+    assert_eq!(
+        fallback.completion_status,
+        TranscriptAssayPanelCompletionStatus::Partial
+    );
+    assert_eq!(
+        fallback.coverage_policy,
+        TranscriptAssayCoveragePolicy::BestEffort
+    );
+    assert_eq!(
+        fallback.objective,
+        TranscriptAssayPanelObjective::MaximallyInformativePanel
+    );
+    let informative = fallback
+        .informative_selection
+        .as_ref()
+        .expect("informative selection audit");
+    assert!(informative.selected_assay_count <= 2);
+    assert_eq!(
+        informative.selected_assay_count,
+        fallback.selected_assay_count
+    );
+    let selected_assay_ids = fallback
+        .selected_assays
+        .iter()
+        .map(|assay| assay.assay_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let observable_signature = |assay_id: &str, group_id: &str| {
+        fallback
+            .detection_matrix
+            .iter()
+            .find(|cell| cell.assay_id == assay_id && cell.equivalence_group_id == group_id)
+            .filter(|cell| cell.status == TranscriptAssayDetectionStatus::SingleProduct)
+            .map(|cell| cell.amplicon_lengths_bp.clone())
+            .unwrap_or_default()
+    };
+    let recomputed_covered = fallback
+        .equivalence_groups
+        .iter()
+        .filter(|group| {
+            selected_assay_ids.iter().any(|assay_id| {
+                !observable_signature(assay_id, &group.equivalence_group_id).is_empty()
+            })
+        })
+        .count();
+    let minimum_difference_bp = informative
+        .policy
+        .minimum_resolvable_size_difference_bp
+        .max(1);
+    let signatures_separate = |left: &[usize], right: &[usize]| {
+        if left.is_empty() != right.is_empty() {
+            return true;
+        }
+        if left.is_empty() || left == right {
+            return false;
+        }
+        left.iter().any(|left_bp| {
+            right
+                .iter()
+                .all(|right_bp| left_bp.abs_diff(*right_bp) >= minimum_difference_bp)
+        }) || right.iter().any(|right_bp| {
+            left.iter()
+                .all(|left_bp| right_bp.abs_diff(*left_bp) >= minimum_difference_bp)
+        })
+    };
+    let mut recomputed_separated = 0usize;
+    for (left_index, left) in fallback.equivalence_groups.iter().enumerate() {
+        for right in fallback
+            .equivalence_groups
+            .iter()
+            .skip(left_index.saturating_add(1))
+        {
+            if selected_assay_ids.iter().any(|assay_id| {
+                signatures_separate(
+                    &observable_signature(assay_id, &left.equivalence_group_id),
+                    &observable_signature(assay_id, &right.equivalence_group_id),
+                )
+            }) {
+                recomputed_separated = recomputed_separated.saturating_add(1);
+            }
+        }
+    }
+    assert_eq!(informative.covered_target_count, recomputed_covered);
+    assert_eq!(
+        informative.separated_target_pair_count, recomputed_separated,
+        "reported information values must recompute from the saved detection matrix"
+    );
+    let fallback_gel = fallback
+        .fallback_virtual_gel
+        .as_ref()
+        .expect("combined fallback gel disposition");
+    match fallback_gel.status {
+        TranscriptAssayFallbackVirtualGelStatus::Generated => {
+            assert!(fallback_gel.svg.contains("Informative Partial Fallback"));
+            assert_eq!(
+                fallback_gel.svg_sha256,
+                crate::digest_utils::sha256_prefixed_bytes(fallback_gel.svg.as_bytes())
+            );
+        }
+        TranscriptAssayFallbackVirtualGelStatus::NoPredictedProducts => {
+            assert!(fallback_gel.no_products_reason.is_some());
+        }
+        TranscriptAssayFallbackVirtualGelStatus::NotApplicable => {
+            panic!("fallback gel must be generated or carry an explicit no-products reason")
+        }
+    }
+    assert!(
+        fallback
+            .uncovered_equivalence_group_ids
+            .iter()
+            .any(|group_id| {
+                strict_failure
+                    .uncovered_equivalence_groups
+                    .iter()
+                    .any(|group| &group.equivalence_group_id == group_id)
+            })
+    );
+    let provenance = fallback
+        .fallback_provenance
+        .as_ref()
+        .expect("parent fallback provenance");
+    assert_eq!(
+        provenance.parent_strict_operation_sha256,
+        strict_operation_sha256
+    );
+    assert_eq!(provenance.parent_failure_id, strict_failure.failure_id);
+    assert_eq!(provenance.fallback_policy_sha256, fallback_policy_sha256);
+    assert_eq!(execution.fallback_operation_diff, provenance.operation_diff);
+    assert_eq!(
+        execution
+            .fallback_operation_diff
+            .iter()
+            .map(|entry| entry.field.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "coverage_policy",
+            "objective",
+            "informative_selection",
+            "report_id"
+        ]
+    );
+    assert!(
+        engine
+            .get_transcript_assay_panel_report("irf9_strict_parent")
+            .is_err()
+    );
+    assert!(
+        engine
+            .get_transcript_assay_panel_report("irf9_informative_partial")
+            .is_ok()
+    );
+    assert!(
+        engine
+            .read_primer_design_store()
+            .transcript_assay_fallback_executions
+            .contains_key(&execution.execution_id)
+    );
+}
+
+#[test]
+fn strict_success_does_not_submit_preapproved_fallback() {
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let strict_operation = transcript_assay_panel_operation(
+        TranscriptAssayCoveragePolicy::RequireAll,
+        transcript_assay_panel_relaxed_side(),
+        0,
+        "strict_success_parent",
+    );
+    let result = engine
+        .apply(Operation::DesignTranscriptAssayPanelWithFallback {
+            strict_operation: Box::new(strict_operation),
+            fallback_submission: preapproved_informative_fallback_policy(
+                "unused_informative_fallback",
+                2,
+            ),
+            path: None,
+        })
+        .expect("strict successful transcript panel");
+    let execution = result
+        .transcript_assay_fallback_execution
+        .as_deref()
+        .expect("execution audit");
+    assert!(execution.strict_panel_report.is_some());
+    assert!(!execution.fallback_submitted);
+    assert!(execution.fallback_panel_report.is_none());
+    assert!(
+        engine
+            .get_transcript_assay_panel_report("unused_informative_fallback")
+            .is_err()
+    );
+}
+
+#[test]
+fn noncoverage_failure_never_submits_preapproved_fallback() {
+    let mut engine = irf9_informative_fallback_acceptance_engine();
+    let mut strict_operation = irf9_strict_one_per_class_operation("missing_source_parent");
+    let Operation::DesignTranscriptAssayPanel { seq_id, .. } = &mut strict_operation else {
+        panic!("strict transcript operation");
+    };
+    *seq_id = "missing_sequence".to_string();
+    let error = engine
+        .apply(Operation::DesignTranscriptAssayPanelWithFallback {
+            strict_operation: Box::new(strict_operation),
+            fallback_submission: preapproved_informative_fallback_policy(
+                "must_not_run_fallback",
+                2,
+            ),
+            path: None,
+        })
+        .expect_err("missing source is not coverage infeasibility");
+    assert_eq!(error.code, ErrorCode::NotFound);
+    assert!(
+        engine
+            .read_primer_design_store()
+            .transcript_assay_fallback_executions
+            .is_empty()
+    );
+}
+
+#[test]
+fn legacy_study_request_defaults_to_no_fallback() {
+    let request: GeneIsoformAssayStudyPlanRequest =
+        serde_json::from_value(serde_json::json!({})).expect("legacy request shape");
+    assert_eq!(
+        request.fallback_submission.mode,
+        TranscriptAssayFallbackSubmissionMode::Never
+    );
+}
+
 #[test]
 fn transcript_assay_panel_does_not_equate_one_base_near_matches() {
     let impossible_side = PrimerDesignSideConstraint {
@@ -16331,6 +16791,7 @@ fn transcript_assay_panel_does_not_equate_one_base_near_matches() {
             min_5prime_junction_overlap_bp: None,
             annotation_release: None,
             specificity: None,
+            informative_selection: None,
             report_id: Some("near_match_classes".to_string()),
             path: None,
         })
@@ -17577,6 +18038,7 @@ fn transcript_assay_endpoint_end_matrix_is_primer_only_and_warns_for_oligo_dt() 
             min_5prime_junction_overlap_bp: None,
             annotation_release: Some("synthetic-test".to_string()),
             specificity: None,
+            informative_selection: None,
             report_id: Some("endpoint_end_matrix".to_string()),
             path: None,
         })
@@ -17728,6 +18190,7 @@ fn transcript_assay_sybr_evaluates_patz1_clariom_juc_without_probe() {
             min_5prime_junction_overlap_bp: Some(7),
             annotation_release: Some("synthetic GRCh38.p14 fixture".to_string()),
             specificity: None,
+            informative_selection: None,
             report_id: Some("patz1_sybr_juc".to_string()),
             path: None,
         })
@@ -18157,6 +18620,7 @@ fn transcript_assay_primer3_emits_native_junction_overlap_tags() {
             min_5prime_junction_overlap_bp: Some(8),
             annotation_release: Some("synthetic-test".to_string()),
             specificity: None,
+            informative_selection: None,
             report_id: Some("primer3_junction_tags".to_string()),
             path: None,
         })
@@ -18259,6 +18723,7 @@ fn transcript_assay_endpoint_long_product_respects_ten_kb_ceiling() {
             min_5prime_junction_overlap_bp: None,
             annotation_release: Some("synthetic-long-transcript".to_string()),
             specificity: None,
+            informative_selection: None,
             report_id: Some("long_endpoint_10kb".to_string()),
             path: None,
         })
@@ -18331,6 +18796,7 @@ fn transcript_assay_endpoint_long_product_respects_ten_kb_ceiling() {
             min_5prime_junction_overlap_bp: None,
             annotation_release: None,
             specificity: None,
+            informative_selection: None,
             report_id: Some("over_ceiling".to_string()),
             path: None,
         })
@@ -60580,6 +61046,101 @@ fn gene_isoform_assay_study_planner_normalizes_inputs_and_emits_exact_operation_
         plan.operation_batch_sha256
     );
     assert!(engine.list_transcript_assay_panel_reports().is_empty());
+
+    let mut fallback_request = initial_request.clone();
+    fallback_request.plan_id = Some("panel1_preapproved_fallback".to_string());
+    fallback_request.fallback_submission = TranscriptAssayFallbackSubmissionPolicy {
+        mode: TranscriptAssayFallbackSubmissionMode::PreapprovedInformativePartial,
+        fallback_report_id: String::new(),
+        informative_selection: TranscriptAssayInformativeSelectionPolicy {
+            max_assays: 2,
+            minimum_resolvable_size_difference_bp: 20,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let fallback_plan = engine
+        .apply(Operation::PlanGeneIsoformAssayStudy {
+            request: fallback_request.clone(),
+            path: None,
+            workflow_path: None,
+        })
+        .expect("plan with a pre-approved informative fallback")
+        .gene_isoform_assay_study_plan
+        .expect("fallback-bound study plan");
+    let fallback_operations = fallback_plan
+        .planned_operations
+        .iter()
+        .map(|step| {
+            serde_json::from_value::<Operation>(step.operation.clone())
+                .expect("deserialize fallback-bound planned operation")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        sha256_prefixed_bytes(
+            &serde_json::to_vec(&fallback_operations).expect("serialize fallback operation batch")
+        ),
+        fallback_plan.operation_batch_sha256
+    );
+    let wrapped = fallback_operations
+        .iter()
+        .find_map(|operation| match operation {
+            Operation::DesignTranscriptAssayPanelWithFallback {
+                strict_operation,
+                fallback_submission,
+                ..
+            } => Some((strict_operation.as_ref(), fallback_submission)),
+            _ => None,
+        })
+        .expect("comprehensive plan wraps its strict discrimination panel");
+    assert!(matches!(
+        wrapped.0,
+        Operation::DesignTranscriptAssayPanel {
+            objective: TranscriptAssayPanelObjective::OnePerClass,
+            coverage_policy: TranscriptAssayCoveragePolicy::RequireAll,
+            ..
+        }
+    ));
+    assert_eq!(wrapped.1.informative_selection.max_assays, 2);
+    assert_eq!(
+        wrapped.1.mode,
+        TranscriptAssayFallbackSubmissionMode::PreapprovedInformativePartial
+    );
+    assert!(
+        wrapped
+            .1
+            .fallback_report_id
+            .ends_with("_informative_partial")
+    );
+    assert_eq!(
+        fallback_plan.request_sha256,
+        sha256_prefixed_bytes(
+            &serde_json::to_vec(&fallback_plan.normalized_request)
+                .expect("serialize normalized fallback request")
+        )
+    );
+
+    fallback_request
+        .fallback_submission
+        .informative_selection
+        .max_assays = 3;
+    let different_budget_plan = engine
+        .apply(Operation::PlanGeneIsoformAssayStudy {
+            request: fallback_request,
+            path: None,
+            workflow_path: None,
+        })
+        .expect("plan with a different approved fallback budget")
+        .gene_isoform_assay_study_plan
+        .expect("different-budget study plan");
+    assert_ne!(
+        fallback_plan.request_sha256, different_budget_plan.request_sha256,
+        "the normalized approval identity must bind the fallback budget"
+    );
+    assert_ne!(
+        fallback_plan.operation_batch_sha256, different_budget_plan.operation_batch_sha256,
+        "the exact operation batch must bind the fallback budget"
+    );
 
     let first_plan_bytes = fs::read(&plan_path).expect("read first plan");
     let first_plan_sha256 = sha256_prefixed_bytes(&first_plan_bytes);

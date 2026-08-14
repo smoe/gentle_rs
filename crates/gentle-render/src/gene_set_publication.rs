@@ -56,6 +56,7 @@ fn render_html_primer_table(rows: &[&GeneSetPublicationPrimerRow]) -> String {
     let mut html = String::from(
         "<div class=\"table-scroll\"><table><thead><tr><th>Pair</th><th>Role / status</th><th>Forward primer 5′→3′</th><th>Reverse primer 5′→3′</th><th>Tm, °C</th><th>Specificity / genome</th></tr></thead><tbody>",
     );
+    let mut rendered_fallback_gels = BTreeSet::new();
     for row in rows {
         let note = if row.note.is_empty() {
             String::new()
@@ -66,8 +67,39 @@ fn render_html_primer_table(rows: &[&GeneSetPublicationPrimerRow]) -> String {
             .selection_decision
             .as_ref()
             .map(|decision| {
+                let fallback_summary = if decision.fallback_parent_failure_id.is_some() {
+                    format!(
+                        " Completion: {}; fallback policy <code>{}</code>; uncovered classes: {}; combined gel: {} <code>{}</code>.",
+                        html_escape(&decision.panel_completion_status),
+                        html_escape(
+                            decision
+                                .fallback_policy_sha256
+                                .as_deref()
+                                .unwrap_or("unavailable")
+                        ),
+                        if decision.uncovered_equivalence_group_ids.is_empty() {
+                            "none".to_string()
+                        } else {
+                            html_escape(&decision.uncovered_equivalence_group_ids.join(", "))
+                        },
+                        html_escape(&decision.fallback_virtual_gel_status),
+                        html_escape(&decision.fallback_virtual_gel_svg_sha256),
+                    )
+                } else {
+                    String::new()
+                };
+                let fallback_gel = decision
+                    .fallback_virtual_gel_svg
+                    .as_deref()
+                    .filter(|_| rendered_fallback_gels.insert(decision.source_report_id.clone()))
+                    .map(|svg| {
+                        format!(
+                            "<details><summary>Combined informative-fallback virtual gel</summary><div class=\"fallback-gel\">{svg}</div><small>Predicted products under shared visualization conditions; not experimental validation.</small></details>"
+                        )
+                    })
+                    .unwrap_or_default();
                 format!(
-                    "<br><small><b>Decision provenance:</b> {} Audit: {}; incremental/exclusive distinctions: {}/{}; design operation <code>{}</code>; source <code>{}</code> ({})</small>",
+                    "<br><small><b>Decision provenance:</b> {} Audit: {}; incremental/exclusive distinctions: {}/{}; design operation <code>{}</code>; source <code>{}</code> ({}).{}</small>{}",
                     html_escape(&decision.explanation),
                     html_escape(&decision.selection_audit_status),
                     decision.incremental_binary_distinction_count,
@@ -75,6 +107,8 @@ fn render_html_primer_table(rows: &[&GeneSetPublicationPrimerRow]) -> String {
                     html_escape(&decision.selection_operation_sha256),
                     html_escape(&decision.source_report_id),
                     html_escape(&decision.source_report_sha256),
+                    fallback_summary,
+                    fallback_gel,
                 )
             })
             .unwrap_or_default();
@@ -318,16 +352,27 @@ fn render_markdown_primer_list(rows: &[&GeneSetPublicationPrimerRow]) -> String 
             markdown.push_str(&format!("## {}\n\n", markdown_cell(&row.gene)));
             previous_gene = &row.gene;
         }
-        let decision = row.selection_decision.as_ref().map(|decision| format!(
-            "\n- Decision provenance: {} Audit `{}`; incremental/exclusive distinctions `{}/{}`; design operation `{}`; source `{}` (`{}`).",
-            markdown_cell(&decision.explanation),
-            markdown_cell(&decision.selection_audit_status),
-            decision.incremental_binary_distinction_count,
-            decision.exclusive_binary_distinction_count,
-            markdown_cell(&decision.selection_operation_sha256),
-            markdown_cell(&decision.source_report_id),
-            markdown_cell(&decision.source_report_sha256),
-        )).unwrap_or_default();
+        let decision = row.selection_decision.as_ref().map(|decision| {
+            let fallback = decision.fallback_parent_failure_id.as_ref().map(|failure_id| format!(
+                " Partial fallback: parent failure `{}`; policy `{}`; uncovered classes `{}`; combined gel `{}` (`{}`).",
+                markdown_cell(failure_id),
+                markdown_cell(decision.fallback_policy_sha256.as_deref().unwrap_or("unavailable")),
+                markdown_cell(&decision.uncovered_equivalence_group_ids.join(", ")),
+                markdown_cell(&decision.fallback_virtual_gel_status),
+                markdown_cell(&decision.fallback_virtual_gel_svg_sha256),
+            )).unwrap_or_default();
+            format!(
+                "\n- Decision provenance: {} Audit `{}`; incremental/exclusive distinctions `{}/{}`; design operation `{}`; source `{}` (`{}`).{}",
+                markdown_cell(&decision.explanation),
+                markdown_cell(&decision.selection_audit_status),
+                decision.incremental_binary_distinction_count,
+                decision.exclusive_binary_distinction_count,
+                markdown_cell(&decision.selection_operation_sha256),
+                markdown_cell(&decision.source_report_id),
+                markdown_cell(&decision.source_report_sha256),
+                fallback,
+            )
+        }).unwrap_or_default();
         markdown.push_str(&format!(
             "**{}** — {} (`{}`)\n\n- Forward 5′→3′: `{}`; Tm {} °C\n- Reverse 5′→3′: `{}`; Tm {} °C\n- Specificity: cDNA `{}`; genome `{}`{}{}\n\n",
             markdown_cell(&row.pair_id),

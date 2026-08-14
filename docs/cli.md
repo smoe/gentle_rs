@@ -3317,6 +3317,9 @@ Shared shell command:
     - `primers list-transcript-assay-panels`
     - `primers show-transcript-assay-panel REPORT_ID`
     - `primers export-transcript-assay-panel REPORT_ID OUTPUT.json`
+    - `primers list-transcript-assay-fallbacks`
+    - `primers show-transcript-assay-fallback EXECUTION_ID`
+    - `primers export-transcript-assay-fallback EXECUTION_ID OUTPUT.json`
     - `primers oligo-order create REQUEST_JSON_OR_@FILE`
       - creates and persists a first-class `gentle.oligo_order_form.v1` from
         supplied line items; duplicate line items are kept and reported
@@ -4129,10 +4132,11 @@ Shared shell command:
         the requested size. This reduces genomic-carryover risk by design but
         does not replace the genomic specificity gate
       - the command accepts either the concise `SEQ_ID FEATURE_ID` flag form or
-        a complete externally tagged `DesignTranscriptAssayPanel` operation as
-        inline JSON / `@FILE`. The operation form exposes every shared primer,
-        probe, pair, junction, assay, and provenance field without adding a
-        CLI-only request schema
+        a complete externally tagged `DesignTranscriptAssayPanel` or
+        `DesignTranscriptAssayPanelWithFallback` operation as inline JSON /
+        `@FILE`. The operation form exposes every shared primer, probe, pair,
+        junction, assay, fallback-policy, and provenance field without adding
+        a CLI-only request schema
       - that same operation object is accepted unchanged by `gentle_cli op`,
         workflow JSON, MCP tool `op` (`confirm=true`), JavaScript
         `apply_operation`, and Lua `apply_operation`; all routes execute the
@@ -4189,6 +4193,17 @@ Shared shell command:
         pan-transcript, one-per-class, discrimination, or endpoint objectives
       - `--coverage-policy best-effort` is an explicit opt-in that saves a
         visibly partial report with uncovered class ids and warnings
+      - `--objective maximally-informative-panel` uses the versioned default
+        informative policy in the concise form. For pre-approved automatic
+        recovery, use the complete wrapper operation instead: keep the nested
+        strict operation at `coverage_policy=require_all`, set
+        `fallback_submission.mode=preapproved_informative_partial`, and approve
+        its whole-panel `max_assays`, minimum resolvable product-size difference,
+        nonzero-increment rule, long-range permission, and distinct fallback
+        report id. Only typed strict coverage infeasibility can submit that
+        second operation. The command returns the panel when one completed and
+        the linked `fallback_execution`; list/show/export inspect the persisted
+        audit without rerunning design
       - anomalous wall-clock behavior does not silently select biological
         `best-effort`: GENtle may stop one bounded Primer3 record and continue
         other already planned records, but the requested coverage policy is
@@ -4272,6 +4287,12 @@ Shared shell command:
         the normalized request itself and can be persisted verbatim; planning emits a transparent
         recommendation plus exact ordered assay operations for a separate
         batch approval, but does not execute design
+      - optional `fallback_submission` is part of that normalized first-stage
+        approval. `mode=never` is the legacy/default behavior. With
+        `preapproved_informative_partial`, eligible strict discrimination steps
+        are emitted as exact `DesignTranscriptAssayPanelWithFallback` objects;
+        their policy and derived fallback report id are also covered by the
+        operation-batch and workflow digests used for second-stage approval
       - an optional request-level `coverage_universe` is resolved before the
         first approval and copied unchanged into every emitted assay operation.
         Keep separate named plans when comparing all annotated cDNA classes,
