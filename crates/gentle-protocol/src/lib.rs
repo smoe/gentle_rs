@@ -5764,6 +5764,7 @@ const MCP_PROMINENT_GLOSSARY_COMMAND_PATHS: &[&str] = &[
     "primers specificity",
     "collections run primer-specificity",
     "collections run restriction-scan",
+    "collections run construct-reasoning-inspection",
     "collections run tfbs-scan",
     "collections run digest",
     "primers specificity-plan",
