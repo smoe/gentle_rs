@@ -4097,6 +4097,10 @@ impl RnaReadAlignmentInspectionSortKey {
 /// Stable high-level error class for engine operation failures.
 pub enum ErrorCode {
     InvalidInput,
+    /// A valid, bounded transcript-panel search completed but strict target
+    /// coverage could not be satisfied. This is the only error class eligible
+    /// for a pre-approved informative-partial retry.
+    TranscriptAssayCoverageInfeasible,
     NotFound,
     Unsupported,
     Io,

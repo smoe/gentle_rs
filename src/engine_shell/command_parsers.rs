@@ -5561,7 +5561,7 @@ fn parse_primers_primerbank_command(tokens: &[String]) -> Result<ShellCommand, S
 pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "primers requires a subcommand: primerbank, design, design-terminal-exon-rt-pool, design-qpcr, design-group-target, build-transcript-assay-cdna-similarity-map, design-transcript-assay-panel, plan-gene-isoform-study, execute-gene-isoform-study-workflow, compose-gene-isoform-study-workflow-batch, execute-gene-isoform-study-workflow-batch, publish-gene-isoform-study, compose-gene-assay-routine, experimental-handoff, import-external-pairs, screen-variants, specificity, specificity-plan, specificity-import, specificity-alignment-html, transcript-assay-specificity-plan, transcript-assay-specificity-finalize, transcript-assay-specificity-redesign, test-cdna-pcr, test-cdna-qpcr, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, oligo-order"
+            "primers requires a subcommand: primerbank, design, design-terminal-exon-rt-pool, design-qpcr, design-group-target, build-transcript-assay-cdna-similarity-map, design-transcript-assay-panel, plan-gene-isoform-study, execute-gene-isoform-study-workflow, compose-gene-isoform-study-workflow-batch, execute-gene-isoform-study-workflow-batch, publish-gene-isoform-study, compose-gene-assay-routine, experimental-handoff, import-external-pairs, screen-variants, specificity, specificity-plan, specificity-import, specificity-alignment-html, transcript-assay-specificity-plan, transcript-assay-specificity-finalize, transcript-assay-specificity-redesign, test-cdna-pcr, test-cdna-qpcr, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, list-transcript-assay-fallbacks, show-transcript-assay-fallback, export-transcript-assay-fallback, oligo-order"
                 .to_string(),
         );
     }
@@ -6692,7 +6692,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             })
         }
         "design-transcript-assay-panel" => {
-            const USAGE: &str = "primers design-transcript-assay-panel SEQ_ID FEATURE_ID [--assay-kind endpoint-rt-pcr|sybr-qpcr|taqman-qpcr] [--cdna-synthesis oligo-dt|random-hexamers|gene-specific|mixed] [--objective pan-transcript|one-per-class|minimal-discrimination-panel|isoform-end-matrix] [--assay-tier routine-common-region-screen|isoform-discrimination|long-range-structure-discovery] [--coverage-policy require-all|best-effort] [--coverage-universe JSON_OR_@FILE] [--preferred-min-amplicon-bp N --preferred-max-amplicon-bp N] [--junctions JSON_OR_@FILE] [--junction-evidence PATH ...] [--junction-evidence-priority required|preferred] [--min-3prime-junction-overlap-bp N] [--min-5prime-junction-overlap-bp N] [--annotation-release TEXT] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--oligo-dt-5prime-risk-threshold-bp N] [--specificity-check none|report-only|require-pass] [--specificity-target-genome ID] [--specificity-catalog PATH] [--specificity-cache-dir DIR] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]\n       primers design-transcript-assay-panel OPERATION_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]";
+            const USAGE: &str = "primers design-transcript-assay-panel SEQ_ID FEATURE_ID [--assay-kind endpoint-rt-pcr|sybr-qpcr|taqman-qpcr] [--cdna-synthesis oligo-dt|random-hexamers|gene-specific|mixed] [--objective pan-transcript|one-per-class|minimal-discrimination-panel|maximally-informative-panel|isoform-end-matrix] [--assay-tier routine-common-region-screen|isoform-discrimination|long-range-structure-discovery] [--coverage-policy require-all|best-effort] [--coverage-universe JSON_OR_@FILE] [--preferred-min-amplicon-bp N --preferred-max-amplicon-bp N] [--junctions JSON_OR_@FILE] [--junction-evidence PATH ...] [--junction-evidence-priority required|preferred] [--min-3prime-junction-overlap-bp N] [--min-5prime-junction-overlap-bp N] [--annotation-release TEXT] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--oligo-dt-5prime-risk-threshold-bp N] [--specificity-check none|report-only|require-pass] [--specificity-target-genome ID] [--specificity-catalog PATH] [--specificity-cache-dir DIR] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]\n       primers design-transcript-assay-panel OPERATION_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]";
             if tokens.len() < 3 {
                 return Err(format!(
                     "primers design-transcript-assay-panel requires either:\n       {USAGE}"
@@ -7509,6 +7509,34 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 path: tokens[3].clone(),
             })
         }
+        "list-transcript-assay-fallbacks" => {
+            if tokens.len() != 2 {
+                return Err("primers list-transcript-assay-fallbacks takes no options".to_string());
+            }
+            Ok(ShellCommand::PrimersListTranscriptAssayFallbacks)
+        }
+        "show-transcript-assay-fallback" => {
+            if tokens.len() != 3 {
+                return Err(
+                    "primers show-transcript-assay-fallback requires EXECUTION_ID".to_string(),
+                );
+            }
+            Ok(ShellCommand::PrimersShowTranscriptAssayFallback {
+                execution_id: tokens[2].clone(),
+            })
+        }
+        "export-transcript-assay-fallback" => {
+            if tokens.len() != 4 {
+                return Err(
+                    "primers export-transcript-assay-fallback requires EXECUTION_ID OUTPUT.json"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::PrimersExportTranscriptAssayFallback {
+                execution_id: tokens[2].clone(),
+                path: tokens[3].clone(),
+            })
+        }
         "plan-gene-isoform-study" => {
             const USAGE: &str = "primers plan-gene-isoform-study REQUEST_JSON_OR_@FILE [--normalize-only] [--normalized-request OUTPUT.json] [--path PLAN.json] [--workflow WORKFLOW.json]";
             if tokens.len() < 3 {
@@ -7858,7 +7886,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             })
         }
         other => Err(format!(
-            "Unknown primers subcommand '{other}' (expected design, design-terminal-exon-rt-pool, design-qpcr, design-group-target, build-transcript-assay-cdna-similarity-map, design-transcript-assay-panel, plan-gene-isoform-study, execute-gene-isoform-study-workflow, compose-gene-isoform-study-workflow-batch, execute-gene-isoform-study-workflow-batch, publish-gene-isoform-study, compose-gene-assay-routine, experimental-handoff, import-external-pairs, screen-variants, specificity, specificity-plan, specificity-import, specificity-alignment-html, transcript-assay-specificity-plan, transcript-assay-specificity-finalize, transcript-assay-specificity-redesign, test-cdna-pcr, test-cdna-qpcr, transcript-qpcr-panel, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, oligo-order)"
+            "Unknown primers subcommand '{other}' (expected design, design-terminal-exon-rt-pool, design-qpcr, design-group-target, build-transcript-assay-cdna-similarity-map, design-transcript-assay-panel, plan-gene-isoform-study, execute-gene-isoform-study-workflow, compose-gene-isoform-study-workflow-batch, execute-gene-isoform-study-workflow-batch, publish-gene-isoform-study, compose-gene-assay-routine, experimental-handoff, import-external-pairs, screen-variants, specificity, specificity-plan, specificity-import, specificity-alignment-html, transcript-assay-specificity-plan, transcript-assay-specificity-finalize, transcript-assay-specificity-redesign, test-cdna-pcr, test-cdna-qpcr, transcript-qpcr-panel, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, list-transcript-assay-fallbacks, show-transcript-assay-fallback, export-transcript-assay-fallback, oligo-order)"
         )),
     }
 }

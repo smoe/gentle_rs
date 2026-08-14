@@ -4233,6 +4233,15 @@ qPCR form:
     without changing the engine defaults used by older callers
   - strict `Require all` coverage is the GUI default; `Best effort` remains an
     explicit choice that preserves uncovered cDNA classes in the report
+  - a default-off `Pre-approve informative partial fallback` block wraps the
+    exact strict one-per-class/minimal-discrimination operation in the shared
+    engine contract. The user approves a whole-panel assay budget, minimum
+    resolvable band-size difference, nonzero-increment rule, optional long-
+    range permission, and distinct fallback report id before starting the
+    strict run. Only typed coverage infeasibility can activate it; other errors
+    remain fail-closed. Saved fallback panels are visibly partial and show the
+    parent failure/policy identities, objective totals, uncovered classes, and
+    combined-gel disposition
   - an independent experimental-tier control distinguishes routine common-
     region screening, isoform discrimination, and long-range structural
     discovery; optional preferred product limits sit inside the existing hard

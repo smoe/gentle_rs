@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+- Added an approval-bound informative fallback for infeasible strict
+  transcript-primer panels. The engine preserves the typed strict coverage
+  failure, derives a separate best-effort operation only for that failure
+  class, and binds the parent operation, policy, search context, exact diff,
+  engine revision, and outputs in a persisted execution audit. The new
+  budgeted selector counts both presence/absence and threshold-resolvable
+  product-size distinctions, reports a bounded-greedy rather than optimality
+  claim, and exposes marginal/redundancy/unresolved-target evidence. Every
+  fallback stays visibly partial and includes a combined virtual gel or typed
+  no-products reason. Planner/workflow digests, shared shell/MCP/direct JSON,
+  PCR Designer controls, publication projection, and synthetic IRF9 acceptance
+  evidence use the same engine contract; legacy requests remain fail-closed.
+
 - Completed replayable transcript-assay selection provenance across
   interpretation, planning, saved reports, and publication. Probe-region
   interpretations can bind an effect threshold to its policy source/digest

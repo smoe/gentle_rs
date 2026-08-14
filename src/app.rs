@@ -11871,6 +11871,7 @@ Error: `{err}`"
                 primer_specificity_report: None,
                 transcript_qpcr_panel: None,
                 transcript_assay_panel: None,
+                transcript_assay_fallback_execution: None,
                 gene_isoform_assay_study_plan: None,
                 experimental_assay_handoff: None,
                 construct_reasoning_graph: None,

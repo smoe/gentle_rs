@@ -122,12 +122,12 @@ use crate::{
         TfbsTrackSimilarityRankingMetric, TranscriptAssayAmpliconRange,
         TranscriptAssayCdnaSimilarityMapBuildRequest, TranscriptAssayCdnaSynthesis,
         TranscriptAssayCoveragePolicy, TranscriptAssayCoverageUniverse,
-        TranscriptAssayJunctionPriority, TranscriptAssayJunctionRequest, TranscriptAssayKind,
-        TranscriptAssayPanelFeasibilityReport, TranscriptAssayPanelObjective,
-        TranscriptAssayPanelSpecificityExecutionManifest, TranscriptAssayPracticalityPolicy,
-        TranscriptAssaySpecificityRedesignRequest, TranscriptAssaySpecificityRequest,
-        TranscriptAssayUseTier, TranslationSpeedMark, TranslationSpeedProfile,
-        UniprotFeatureCodingDnaQueryMode, VariantAlleleChoice,
+        TranscriptAssayInformativeSelectionPolicy, TranscriptAssayJunctionPriority,
+        TranscriptAssayJunctionRequest, TranscriptAssayKind, TranscriptAssayPanelFeasibilityReport,
+        TranscriptAssayPanelObjective, TranscriptAssayPanelSpecificityExecutionManifest,
+        TranscriptAssayPracticalityPolicy, TranscriptAssaySpecificityRedesignRequest,
+        TranscriptAssaySpecificityRequest, TranscriptAssayUseTier, TranslationSpeedMark,
+        TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode, VariantAlleleChoice,
         WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
         WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
         construct_reasoning_action_dotplot_request,
@@ -2848,6 +2848,14 @@ pub enum ShellCommand {
     },
     PrimersExportTranscriptAssayPanel {
         report_id: String,
+        path: String,
+    },
+    PrimersListTranscriptAssayFallbacks,
+    PrimersShowTranscriptAssayFallback {
+        execution_id: String,
+    },
+    PrimersExportTranscriptAssayFallback {
+        execution_id: String,
         path: String,
     },
     PrimersExperimentalHandoff {
@@ -12047,6 +12055,17 @@ impl ShellCommand {
                 "export stored transcript assay panel report '{}' to '{}'",
                 report_id, path
             ),
+            Self::PrimersListTranscriptAssayFallbacks => {
+                "list stored transcript assay strict/fallback execution audits".to_string()
+            }
+            Self::PrimersShowTranscriptAssayFallback { execution_id } => format!(
+                "show transcript assay strict/fallback execution audit '{}'",
+                execution_id
+            ),
+            Self::PrimersExportTranscriptAssayFallback { execution_id, path } => format!(
+                "export transcript assay strict/fallback execution audit '{}' to '{}'",
+                execution_id, path
+            ),
             Self::PrimersExperimentalHandoff {
                 panel_report_id,
                 variant_evidence_paths,
@@ -15660,11 +15679,14 @@ fn parse_transcript_assay_panel_objective(
         "minimal_discrimination_panel" | "minimal_discrimination" | "minimal" => {
             Ok(TranscriptAssayPanelObjective::MinimalDiscriminationPanel)
         }
+        "maximally_informative_panel" | "maximally_informative" | "informative" => {
+            Ok(TranscriptAssayPanelObjective::MaximallyInformativePanel)
+        }
         "isoform_end_matrix" | "end_matrix" | "first_last_matrix" => {
             Ok(TranscriptAssayPanelObjective::IsoformEndMatrix)
         }
         other => Err(format!(
-            "Unsupported transcript assay objective '{other}' (expected pan-transcript|one-per-class|minimal-discrimination-panel|isoform-end-matrix)"
+            "Unsupported transcript assay objective '{other}' (expected pan-transcript|one-per-class|minimal-discrimination-panel|maximally-informative-panel|isoform-end-matrix)"
         )),
     }
 }
@@ -16357,6 +16379,14 @@ fn push_introspection_report_facts(graph: &mut ProjectFactGraph, engine: &Gentle
             .list_transcript_assay_panel_reports()
             .into_iter()
             .map(|row| introspection_report_fact(row.report_id, "transcript_assay_panel")),
+    );
+    graph.facts.extend(
+        engine
+            .list_transcript_assay_fallback_executions()
+            .into_iter()
+            .map(|row| {
+                introspection_report_fact(row.execution_id, "transcript_assay_fallback_execution")
+            }),
     );
     graph.facts.extend(
         engine
@@ -23669,6 +23699,36 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "registry": registry_metadata_for_introspection("DesignTranscriptAssayPanel")
         }),
         json!({
+            "id": "DesignTranscriptAssayPanelWithFallback",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence named by the exact nested strict operation"},
+                {"name": "FALLBACK_POLICY", "required": true, "subject_kind": "other", "detail": "versioned pre-approved informative-partial policy or explicit mode=never"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "report.exists",
+                    "report_kind": "transcript_assay_fallback_execution",
+                    "equals": "transcript_assay_fallback_execution",
+                    "effect_kind": "may_on_success",
+                    "description": "Persists a deterministic execution audit when the strict operation succeeds or an eligible fallback attempt is recorded."
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Run an unchanged strict transcript-panel operation and submit a separate budgeted informative partial only after machine-typed strict coverage infeasibility and prior policy approval.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("DesignTranscriptAssayPanelWithFallback")
+        }),
+        json!({
             "id": "primers inspect-transcript-assay-feasibility",
             "kind": "operation",
             "mutating": "false",
@@ -24181,6 +24241,64 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "description": "Export one persisted transcript assay panel report to an external JSON file.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("primers export-transcript-assay-panel")
+        }),
+        json!({
+            "id": "primers list-transcript-assay-fallbacks",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "List persisted strict/fallback transcript-assay execution audits.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers list-transcript-assay-fallbacks")
+        }),
+        json!({
+            "id": "primers show-transcript-assay-fallback",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "EXECUTION_ID", "required": true, "subject_kind": "report", "detail": "persisted transcript assay fallback execution id"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "EXECUTION_ID"}, "equals": "transcript_assay_fallback_execution"}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "EXECUTION_ID"}, "equals": "transcript_assay_fallback_execution"}
+                ]
+            },
+            "description": "Inspect the preserved strict failure/success and linked informative fallback outcome.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers show-transcript-assay-fallback")
+        }),
+        json!({
+            "id": "primers export-transcript-assay-fallback",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "EXECUTION_ID", "required": true, "subject_kind": "report", "detail": "persisted transcript assay fallback execution id"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external JSON output path"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "EXECUTION_ID"}, "equals": "transcript_assay_fallback_execution"}
+            ],
+            "effects": [
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "EXECUTION_ID"}, "equals": "transcript_assay_fallback_execution"}
+                ]
+            },
+            "description": "Export one strict/fallback transcript-assay execution audit without rerunning design.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers export-transcript-assay-fallback")
         }),
         report_export_any_kind_operation_descriptor(
             "ExportPrimerDesignReport",
@@ -28773,7 +28891,8 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         ]),
         "primers design-transcript-assay-panel"
         | "primers inspect-transcript-assay-feasibility"
-        | "DesignTranscriptAssayPanel" => Some(vec![
+        | "DesignTranscriptAssayPanel"
+        | "DesignTranscriptAssayPanelWithFallback" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
         "primers design-group-target" | "DesignPrimerGroupTarget" => Some(vec![
@@ -28793,9 +28912,15 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         ]),
         "primers screen-variants" | "ScreenPrimerVariants" => Some(vec![]),
         "primers list-transcript-assay-panels" => Some(vec![]),
+        "primers list-transcript-assay-fallbacks" => Some(vec![]),
         "primers show-transcript-assay-panel" | "primers export-transcript-assay-panel" => {
             Some(vec![
                 json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "transcript_assay_panel"}),
+            ])
+        }
+        "primers show-transcript-assay-fallback" | "primers export-transcript-assay-fallback" => {
+            Some(vec![
+                json!({"fact": "report.exists", "subject": {"arg": "EXECUTION_ID"}, "equals": "transcript_assay_fallback_execution"}),
             ])
         }
         "primers prepare-restriction-cloning" => Some(vec![
@@ -53399,13 +53524,14 @@ fn execute_primers_command(
     ) -> Result<Operation, String> {
         let op: Operation = serde_json::from_str(json_text).map_err(|error| {
             format!(
-                "Invalid primers design-transcript-assay-panel operation JSON: {error} (expected an Operation payload with DesignTranscriptAssayPanel)"
+                "Invalid primers design-transcript-assay-panel operation JSON: {error} (expected DesignTranscriptAssayPanel or DesignTranscriptAssayPanelWithFallback)"
             )
         })?;
         match op {
-            Operation::DesignTranscriptAssayPanel { .. } => Ok(op),
+            Operation::DesignTranscriptAssayPanel { .. }
+            | Operation::DesignTranscriptAssayPanelWithFallback { .. } => Ok(op),
             _ => Err(
-                "primers design-transcript-assay-panel expects an Operation payload with DesignTranscriptAssayPanel"
+                "primers design-transcript-assay-panel expects DesignTranscriptAssayPanel or DesignTranscriptAssayPanelWithFallback"
                     .to_string(),
             ),
         }
@@ -53419,11 +53545,11 @@ fn execute_primers_command(
         options: &ShellExecutionOptions,
     ) -> Result<ShellRunResult, String> {
         let path = match &operation {
-            Operation::DesignTranscriptAssayPanel { path, .. } => path.clone(),
+            Operation::DesignTranscriptAssayPanel { path, .. }
+            | Operation::DesignTranscriptAssayPanelWithFallback { path, .. } => path.clone(),
             _ => {
                 return Err(
-                    "Transcript assay panel shell execution requires DesignTranscriptAssayPanel"
-                        .to_string(),
+                    "Transcript assay panel shell execution requires DesignTranscriptAssayPanel or DesignTranscriptAssayPanelWithFallback".to_string(),
                 );
             }
         };
@@ -53458,10 +53584,10 @@ fn execute_primers_command(
         let report = op_result
             .transcript_assay_panel
             .as_ref()
-            .map(|report| (**report).clone())
-            .ok_or_else(|| {
-                "Transcript assay panel operation did not return its report".to_string()
-            })?;
+            .map(|report| (**report).clone());
+        if report.is_none() && op_result.transcript_assay_fallback_execution.is_none() {
+            return Err("Transcript assay panel operation returned neither a panel nor a fallback execution audit".to_string());
+        }
         let after = engine
             .state()
             .metadata
@@ -53470,8 +53596,9 @@ fn execute_primers_command(
         Ok(ShellRunResult {
             state_changed: before != after,
             output: json!({
-                "schema": "gentle.transcript_assay_panel_command.v2",
+                "schema": "gentle.transcript_assay_panel_command.v3",
                 "report": report,
+                "fallback_execution": op_result.transcript_assay_fallback_execution.as_deref(),
                 "path": path,
                 "result": op_result,
             }),
@@ -55086,6 +55213,9 @@ fn execute_primers_command(
                 require_3prime_exact_bases: *require_3prime_exact_bases,
                 oligo_dt_5prime_risk_threshold_bp: *oligo_dt_5prime_risk_threshold_bp,
                 search_policy: None,
+                informative_selection: (*objective
+                    == TranscriptAssayPanelObjective::MaximallyInformativePanel)
+                    .then(TranscriptAssayInformativeSelectionPolicy::default),
                 junctions,
                 junction_evidence_paths: junction_evidence_paths.clone(),
                 junction_evidence_priority: *junction_evidence_priority,
@@ -55696,6 +55826,39 @@ fn execute_primers_command(
                     "report_id": report.report_id,
                     "path": path,
                     "selected_assay_count": report.selected_assay_count,
+                }),
+            })
+        }
+        ShellCommand::PrimersListTranscriptAssayFallbacks => {
+            let reports = engine.list_transcript_assay_fallback_executions();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.transcript_assay_fallback_execution_list.v1",
+                    "execution_count": reports.len(),
+                    "executions": reports,
+                }),
+            })
+        }
+        ShellCommand::PrimersShowTranscriptAssayFallback { execution_id } => {
+            let report = engine
+                .get_transcript_assay_fallback_execution(execution_id)
+                .map_err(|error| error.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "report": report }),
+            })
+        }
+        ShellCommand::PrimersExportTranscriptAssayFallback { execution_id, path } => {
+            let report = engine
+                .export_transcript_assay_fallback_execution(execution_id, path)
+                .map_err(|error| error.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.transcript_assay_fallback_execution_export.v1",
+                    "execution_id": report.execution_id,
+                    "path": path,
                 }),
             })
         }
@@ -62705,6 +62868,9 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::PrimersListTranscriptAssayPanels
             | ShellCommand::PrimersShowTranscriptAssayPanel { .. }
             | ShellCommand::PrimersExportTranscriptAssayPanel { .. }
+            | ShellCommand::PrimersListTranscriptAssayFallbacks
+            | ShellCommand::PrimersShowTranscriptAssayFallback { .. }
+            | ShellCommand::PrimersExportTranscriptAssayFallback { .. }
             | ShellCommand::PrimersExperimentalHandoff { .. }
             | ShellCommand::PrimersOligoOrderCreate { .. }
             | ShellCommand::PrimersOligoOrderFromPrimerReport { .. }
@@ -64491,6 +64657,9 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersListTranscriptAssayPanels
         | ShellCommand::PrimersShowTranscriptAssayPanel { .. }
         | ShellCommand::PrimersExportTranscriptAssayPanel { .. }
+        | ShellCommand::PrimersListTranscriptAssayFallbacks
+        | ShellCommand::PrimersShowTranscriptAssayFallback { .. }
+        | ShellCommand::PrimersExportTranscriptAssayFallback { .. }
         | ShellCommand::PrimersExperimentalHandoff { .. }
         | ShellCommand::PrimersOligoOrderCreate { .. }
         | ShellCommand::PrimersOligoOrderFromPrimerReport { .. }

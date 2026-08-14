@@ -227,6 +227,23 @@ pub struct GeneSetPublicationPrimerSelectionDecision {
     pub interpretation_report_sha256s: Vec<String>,
     pub policy_sha256s: Vec<String>,
     pub readiness_status: String,
+    pub panel_completion_status: String,
+    #[serde(default)]
+    pub uncovered_equivalence_group_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_parent_failure_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_policy_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub informative_certificate: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub informative_assay_budget: Option<usize>,
+    pub fallback_virtual_gel_status: String,
+    pub fallback_virtual_gel_svg_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_virtual_gel_svg: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_no_products_reason: Option<String>,
 }
 
 /// Copied figure paths used by HTML and PDF assembly.
