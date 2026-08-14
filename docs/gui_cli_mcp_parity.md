@@ -19,7 +19,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 |---|---:|---:|---:|
 | GUI | 35 | 650 | 0 |
 | gentle_cli | 413 | 296 | 0 |
-| MCP | 97 | 460 | 53 |
+| MCP | 98 | 459 | 53 |
 | JS | 78 | 461 | 58 |
 | Lua | 77 | 462 | 58 |
 | ClawBio | 0 | 0 | 0 |
@@ -312,7 +312,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | primers specificity | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | collections run primer-specificity | glossary-command | prominent | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | collections run restriction-scan | glossary-command | prominent | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
-| collections run construct-reasoning-inspection | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| collections run construct-reasoning-inspection | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | collections run tfbs-scan | glossary-command | prominent | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | collections run digest | glossary-command | prominent | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | collections run export-pool | glossary-command | prominent | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
