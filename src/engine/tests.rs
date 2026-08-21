@@ -16481,17 +16481,25 @@ fn irf9_preapproved_fallback_is_separate_partial_and_digest_linked() {
     let fallback_policy_sha256 = crate::digest_utils::sha256_prefixed_bytes(
         &serde_json::to_vec(&fallback_policy).expect("fallback policy bytes"),
     );
-    let result = engine
-        .apply(Operation::DesignTranscriptAssayPanelWithFallback {
-            strict_operation: Box::new(strict_operation),
-            fallback_submission: fallback_policy,
-            path: None,
-        })
-        .expect("pre-approved IRF9 fallback execution");
-    let execution = result
-        .transcript_assay_fallback_execution
-        .as_deref()
-        .expect("fallback execution audit");
+    let operation = Operation::DesignTranscriptAssayPanelWithFallback {
+        strict_operation: Box::new(strict_operation),
+        fallback_submission: fallback_policy,
+        path: None,
+    };
+    let operation_json = serde_json::to_string(&operation).expect("serialize fallback operation");
+    let command = crate::engine_shell::parse_shell_line(&format!(
+        "primers design-transcript-assay-panel '{operation_json}'"
+    ))
+    .expect("parse documented fallback shell route");
+    let shell_result = crate::engine_shell::execute_shell_command(&mut engine, &command)
+        .expect("pre-approved IRF9 fallback shell execution");
+    assert_eq!(
+        shell_result.output["schema"],
+        "gentle.transcript_assay_panel_command.v3"
+    );
+    let execution: TranscriptAssayFallbackExecutionReport =
+        serde_json::from_value(shell_result.output["fallback_execution"].clone())
+            .expect("fallback execution audit");
     let strict_failure = execution
         .strict_infeasibility
         .as_ref()
@@ -16503,6 +16511,10 @@ fn irf9_preapproved_fallback_is_separate_partial_and_digest_linked() {
 
     assert_eq!(execution.strict_operation_sha256, strict_operation_sha256);
     assert_eq!(execution.fallback_policy_sha256, fallback_policy_sha256);
+    assert_eq!(
+        execution.engine_revision,
+        crate::about::GENTLE_SOURCE_REVISION
+    );
     assert!(execution.fallback_submitted);
     assert!(execution.fallback_error.is_none());
     assert!(execution.summary.contains("ENST00000699070"));
@@ -16540,6 +16552,10 @@ fn irf9_preapproved_fallback_is_separate_partial_and_digest_linked() {
         informative.selected_assay_count,
         fallback.selected_assay_count
     );
+    assert!(fallback.selected_assays.iter().all(|assay| {
+        assay.primer_pair_summary.selection_audit_generator_revision
+            == crate::about::GENTLE_SOURCE_REVISION
+    }));
     let selected_assay_ids = fallback
         .selected_assays
         .iter()
