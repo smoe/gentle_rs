@@ -9653,7 +9653,11 @@ Primer-pair alternative frontier:
     A persisted `gentle.transcript_assay_fallback_execution.v1` binds the
     strict operation digest/failure identity, policy digest/schema, search
     policy digest, engine revision, fallback operation digest, and exact field
-    diff. The strict outcome is not overwritten. Any generated fallback panel
+    diff. For ordinary repository builds, the engine and selection-audit
+    revision is the package version plus the full Git `HEAD` commit; source
+    archives without Git retain the package version alone. This identifies the
+    committed source baseline and is not a clean-working-tree attestation. The
+    strict outcome is not overwritten. Any generated fallback panel
     is forcibly `completion_status=partial`, keeps all uncovered targets
     visible, and carries one deterministic combined virtual gel or the typed
     `no_predicted_products` reason. This does not imply specificity, validation,

@@ -3,6 +3,8 @@
 pub const GENTLE_DISPLAY_VERSION: &str = env!("GENTLE_DISPLAY_VERSION");
 pub const GENTLE_BUILD_N: &str = env!("GENTLE_BUILD_N");
 pub const GENTLE_PACKAGE_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const GENTLE_GIT_COMMIT: &str = env!("GENTLE_GIT_COMMIT");
+pub const GENTLE_SOURCE_REVISION: &str = env!("GENTLE_SOURCE_REVISION");
 pub const GENTLE_DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
 pub const GENTLE_REPOSITORY_URL: &str = env!("CARGO_PKG_REPOSITORY");
 pub const GENTLE_DOCUMENTATION_URL: &str = "https://github.com/smoe/gentle_rs/tree/main/docs";
@@ -12,8 +14,8 @@ pub const GENTLE_LICENSE: &str = "GPL-2.0-or-later";
 
 pub fn version_cli_text() -> String {
     format!(
-        "GENtle {}\nBuild {}\nCross-platform DNA cloning workbench",
-        GENTLE_PACKAGE_VERSION, GENTLE_BUILD_N
+        "GENtle {}\nBuild {}\nSource revision {}\nCross-platform DNA cloning workbench",
+        GENTLE_PACKAGE_VERSION, GENTLE_BUILD_N, GENTLE_SOURCE_REVISION
     )
 }
 
@@ -759,12 +761,28 @@ mod tests {
     fn about_metadata_is_bound_to_the_built_package() {
         assert!(!GENTLE_PACKAGE_VERSION.is_empty());
         assert!(!GENTLE_BUILD_N.is_empty());
+        assert!(!GENTLE_SOURCE_REVISION.is_empty());
+        if GENTLE_GIT_COMMIT == "unknown" {
+            assert_eq!(GENTLE_SOURCE_REVISION, GENTLE_PACKAGE_VERSION);
+        } else {
+            assert!((7..=64).contains(&GENTLE_GIT_COMMIT.len()));
+            assert!(
+                GENTLE_GIT_COMMIT
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit())
+            );
+            assert_eq!(
+                GENTLE_SOURCE_REVISION,
+                format!("{GENTLE_PACKAGE_VERSION}+git.{GENTLE_GIT_COMMIT}")
+            );
+        }
         assert!(GENTLE_REPOSITORY_URL.starts_with("https://github.com/"));
         assert_eq!(GENTLE_LICENSE, "GPL-2.0-or-later");
 
         let clipboard = about_clipboard_text();
         assert!(clipboard.contains(GENTLE_PACKAGE_VERSION));
         assert!(clipboard.contains(GENTLE_BUILD_N));
+        assert!(clipboard.contains(GENTLE_SOURCE_REVISION));
         assert!(clipboard.contains(GENTLE_REPOSITORY_URL));
         assert!(clipboard.contains(GENTLE_LICENSE));
     }

@@ -8,6 +8,13 @@
   complete top-level Markdown JSON fence while retaining strict schema,
   unknown-field, and surrounding-prose rejection.
 
+- Hardened the approval-bound transcript-assay fallback adapters after a real
+  IRF9 replay. The shared shell worker now reserves enough stack for the nested
+  strict/fallback reports, selection audit, and combined gel payload. Ordinary
+  Cargo builds also bind the repository HEAD into one package-plus-commit
+  source revision used by both fallback execution and selection-audit
+  provenance; source archives without Git remain explicitly package-bound.
+
 - Added an approval-bound informative fallback for infeasible strict
   transcript-primer panels. The engine preserves the typed strict coverage
   failure, derives a separate best-effort operation only for that failure

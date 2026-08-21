@@ -28079,9 +28079,8 @@ impl GentleEngine {
             summary.retained_despite_zero_marginal_discrimination = zero_marginal_obligation;
             summary.selection_audit_status = PrimerPairSelectionAuditStatus::Computed;
             summary.selection_audit_method = "binary_detection_leave_one_out_v1".to_string();
-            summary.selection_audit_generator_revision = option_env!("GIT_COMMIT_HASH")
-                .unwrap_or(crate::about::GENTLE_PACKAGE_VERSION)
-                .to_string();
+            summary.selection_audit_generator_revision =
+                crate::about::GENTLE_SOURCE_REVISION.to_string();
             summary.selection_audit_target_kind = if use_coverage_targets {
                 "coverage_target"
             } else {
@@ -45591,9 +45590,7 @@ impl GentleEngine {
                             "transcript_assay_fallback",
                             &format!("{strict_operation_sha256}:{fallback_policy_sha256}"),
                         );
-                        let engine_revision = option_env!("GIT_COMMIT_HASH")
-                            .unwrap_or(crate::about::GENTLE_PACKAGE_VERSION)
-                            .to_string();
+                        let engine_revision = crate::about::GENTLE_SOURCE_REVISION.to_string();
                         let strict_result = self.apply_internal(
                             strict_operation,
                             &format!("{run_id}:strict"),

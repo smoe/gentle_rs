@@ -7766,9 +7766,16 @@ fn parse_primers_seed_from_feature_and_splicing() {
     .expect("parse approval-bound fallback operation JSON");
     assert!(matches!(
         fallback_operation,
-        ShellCommand::PrimersDesignTranscriptAssayPanelRequest { operation_json, .. }
+        ShellCommand::PrimersDesignTranscriptAssayPanelRequest {
+            ref operation_json,
+            ..
+        }
             if operation_json.contains("DesignTranscriptAssayPanelWithFallback")
     ));
+    assert!(
+        SHELL_COMMAND_STACK_SIZE >= 64 * 1024 * 1024,
+        "large strict/fallback reports require the shell worker stack budget"
+    );
     assert!(matches!(
         parse_shell_line("primers list-transcript-assay-fallbacks")
             .expect("parse fallback listing"),

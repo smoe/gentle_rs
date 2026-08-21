@@ -251,6 +251,9 @@ const BLAST_ASYNC_RESTART_INTERRUPTED_ERROR: &str =
     "BLAST async job interrupted by restart/reload before completion";
 static BLAST_ASYNC_JOB_COUNTER: AtomicU64 = AtomicU64::new(1);
 const SHELL_EXPANDED_STACK_SIZE: usize = 8 * 1024 * 1024;
+// The all-command dispatcher can retain strict and fallback panel reports plus
+// their serialized audit in one frame; reserve virtual stack accordingly.
+const SHELL_COMMAND_STACK_SIZE: usize = 64 * 1024 * 1024;
 
 thread_local! {
     static SHELL_EXPANDED_STACK_ACTIVE: Cell<bool> = const { Cell::new(false) };
@@ -62365,7 +62368,7 @@ fn execute_shell_command_with_options_on_expanded_stack(
     let scoped_tool_overrides = crate::tool_overrides::scoped_tool_overrides_snapshot();
     let worker = thread::Builder::new()
         .name("gentle-shell-command".to_string())
-        .stack_size(SHELL_EXPANDED_STACK_SIZE)
+        .stack_size(SHELL_COMMAND_STACK_SIZE)
         .spawn(move || {
             #[cfg(test)]
             let _scoped_tool_overrides =
