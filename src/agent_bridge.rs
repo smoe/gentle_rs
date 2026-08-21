@@ -21,6 +21,8 @@ use std::{
 };
 
 pub const DEFAULT_AGENT_SYSTEM_CATALOG_PATH: &str = "assets/agent_systems.json";
+pub const PI_LOCAL_AGENT_SYSTEM_ID: &str = "pi_local_stdio";
+pub const PI_BIN_ENV: &str = "PI_BIN";
 const AGENT_SYSTEMS_SCHEMA: &str = "gentle.agent_systems.v1";
 const AGENT_REQUEST_SCHEMA: &str = "gentle.agent_request.v1";
 const AGENT_RESPONSE_SCHEMA: &str = "gentle.agent_response.v1";
@@ -343,6 +345,38 @@ fn resolve_executable_path(program: &str) -> Option<PathBuf> {
         }
     }
     None
+}
+
+/// Whether an external stdio system is the co-shipped Pi adapter.
+pub fn is_pi_local_agent_system(system: &AgentSystemSpec) -> bool {
+    system.id == PI_LOCAL_AGENT_SYSTEM_ID
+        || system.command.iter().any(|part| {
+            Path::new(part)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name == "pi-agent-bridge")
+        })
+}
+
+pub(crate) fn resolve_pi_executable_path(system: &AgentSystemSpec) -> Option<PathBuf> {
+    if let Some(explicit) = resolve_env_key(system, PI_BIN_ENV)
+        && let Some(path) = resolve_executable_path(&explicit)
+    {
+        return Some(path);
+    }
+    for program in ["pi", "pi.exe", "pi.cmd"] {
+        if let Some(path) = resolve_executable_path(program) {
+            return Some(path);
+        }
+    }
+    let mut candidates = vec![
+        PathBuf::from("/opt/homebrew/bin/pi"),
+        PathBuf::from("/usr/local/bin/pi"),
+    ];
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        candidates.push(home.join(".local/bin/pi"));
+    }
+    candidates.into_iter().find(|path| is_executable_file(path))
 }
 
 fn resolve_env_key(system: &AgentSystemSpec, key: &str) -> Option<String> {
@@ -1001,6 +1035,25 @@ pub fn agent_system_availability(system: &AgentSystemSpec) -> AgentSystemAvailab
                 };
             }
             match resolve_executable_path(program) {
+                Some(path) if is_pi_local_agent_system(system) => {
+                    match resolve_pi_executable_path(system) {
+                        Some(pi_path) => AgentSystemAvailability {
+                            available: true,
+                            reason: Some(format!(
+                                "adapter found at {}; Pi found at {}",
+                                path.display(),
+                                pi_path.display()
+                            )),
+                        },
+                        None => AgentSystemAvailability {
+                            available: false,
+                            reason: Some(format!(
+                                "adapter found at {}, but Pi was not found; install Pi, add it to PATH, or set {PI_BIN_ENV}",
+                                path.display()
+                            )),
+                        },
+                    }
+                }
                 Some(path) => AgentSystemAvailability {
                     available: true,
                     reason: Some(format!("executable found at {}", path.display())),
@@ -2175,7 +2228,8 @@ fn parse_agent_response(stdout: &str) -> Result<AgentResponse, String> {
             "agent produced empty stdout",
         ));
     }
-    let value = serde_json::from_str::<Value>(trimmed).map_err(|e| {
+    let json_text = unwrap_markdown_json_code_fence(trimmed).unwrap_or(trimmed);
+    let value = serde_json::from_str::<Value>(json_text).map_err(|e| {
         agent_err(
             AgentBridgeErrorCode::ResponseParse,
             format!(
@@ -3792,6 +3846,40 @@ mod tests {
             response.suggested_commands[0].execution,
             AgentExecutionIntent::Auto
         );
+    }
+
+    #[test]
+    fn parse_agent_response_accepts_single_top_level_json_fence() {
+        let response = parse_agent_response(
+            r#"```json
+{
+  "schema": "gentle.agent_response.v1",
+  "assistant_message": "ready",
+  "questions": [],
+  "suggested_commands": []
+}
+```"#,
+        )
+        .expect("external adapter fenced json payload should be unwrapped");
+        assert_eq!(response.schema, AGENT_RESPONSE_SCHEMA);
+        assert_eq!(response.assistant_message, "ready");
+    }
+
+    #[test]
+    fn parse_agent_response_rejects_prose_around_fenced_json() {
+        let err = parse_agent_response(
+            r#"Here is the JSON:
+```json
+{
+  "schema": "gentle.agent_response.v1",
+  "assistant_message": "ready",
+  "questions": [],
+  "suggested_commands": []
+}
+```"#,
+        )
+        .expect_err("external adapter prose around fenced json should stay rejected");
+        assert!(err.starts_with("AGENT_RESPONSE_PARSE:"));
     }
 
     #[test]

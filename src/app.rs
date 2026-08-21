@@ -135,12 +135,13 @@ use crate::{
         MISTRAL_API_KEY_AUTH_HINT, MISTRAL_API_KEY_ENV, OPENAI_API_KEY_ENV, OPENAI_BILLING_URL,
         OPENAI_COMPAT_UNSPECIFIED_MODEL, OPENAI_USAGE_URL, agent_system_availability,
         anthropic_api_key_kind_warning, build_agent_introspection_context,
-        invoke_agent_support_with_request_context, load_agent_system_catalog,
+        invoke_agent_support_with_request_context, is_pi_local_agent_system,
+        load_agent_system_catalog,
     },
     agent_transport::{
         AgentLiveProbeStatusClass, AgentSystemPreflight, agent_system_supports_model_discovery,
         agent_system_supports_model_selection, build_agent_system_preflight_with_live,
-        discover_models_for_agent_system,
+        discover_models_for_agent_system, is_codex_local_agent_system,
     },
     dna_sequence::{self, DNAsequence},
     engine::{

@@ -41,6 +41,19 @@
       }
     },
     {
+      "id": "pi_local_stdio",
+      "label": "Pi Local (uses Pi provider login)",
+      "description": "Routes Agent Assistant requests through a locally installed Pi CLI. GENtle starts an ephemeral, tool-free Pi process and keeps conversation history in the GENtle project. Selectable provider/model ids are read from 'pi --list-models'.",
+      "transport": "external_json_stdio",
+      "command": [
+        "scripts/pi-agent-bridge"
+      ],
+      "env": {
+        "GENTLE_AGENT_MAX_RETRIES": "0",
+        "GENTLE_AGENT_READ_TIMEOUT_SECS": "300"
+      }
+    },
+    {
       "id": "openai_gpt5_native",
       "label": "OpenAI GPT-5 (native HTTP)",
       "description": "Direct OpenAI API integration without external bridge binary. Requires OPENAI_API_KEY in environment (or in this system's env map).",

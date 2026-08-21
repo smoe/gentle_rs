@@ -21,6 +21,7 @@
   "agent.clear_timeout": "Clear Timeout",
   "agent.clear_url": "Clear URL",
   "agent.credential.codex_login": "Codex Local uses the Codex CLI/App login; GENtle does not import an API key for this route.",
+  "agent.credential.pi_login": "Pi Local uses Pi's own provider login; GENtle does not read Pi credentials. If no models appear, run Pi and use /login.",
   "agent.credential.environment": "Using {env} from the process environment.",
   "agent.credential.file": "Using {path} automatically because no session key or {env} is set.",
   "agent.credential.file_problem": "{path} could not be used: {reason}. Paste a session key above.",

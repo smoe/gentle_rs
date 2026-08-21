@@ -13,13 +13,15 @@ use crate::agent_bridge::{
     MISTRAL_API_KEY_ENV, OPENAI_API_KEY_ENV, OPENAI_BILLING_URL, OPENAI_USAGE_URL,
     anthropic_api_key_is_known_non_api_token, anthropic_api_key_kind_warning,
     discover_mistral_models, extract_anthropic_error_code, extract_mistral_error_code,
-    extract_models_from_openai_models_payload, extract_openai_error_code, redact_sensitive_text,
+    extract_models_from_openai_models_payload, extract_openai_error_code, is_pi_local_agent_system,
+    redact_sensitive_text, resolve_pi_executable_path,
 };
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
     fs,
     path::{Path, PathBuf},
+    process::Command,
     time::Duration,
 };
 
@@ -54,6 +56,7 @@ pub fn agent_system_supports_model_selection(system: &AgentSystemSpec) -> bool {
             | AgentSystemTransport::NativeMistral
             | AgentSystemTransport::NativeOpenaiCompat
     ) || is_codex_local_agent_system(system)
+        || is_pi_local_agent_system(system)
 }
 
 /// Whether GENtle can enumerate model identifiers for an agent system.
@@ -61,7 +64,7 @@ pub fn agent_system_supports_model_discovery(system: &AgentSystemSpec) -> bool {
     agent_system_supports_model_selection(system)
 }
 
-fn is_codex_local_agent_system(system: &AgentSystemSpec) -> bool {
+pub fn is_codex_local_agent_system(system: &AgentSystemSpec) -> bool {
     system.id == CODEX_LOCAL_SYSTEM_ID
         || system.command.iter().any(|part| {
             Path::new(part)
@@ -69,6 +72,75 @@ fn is_codex_local_agent_system(system: &AgentSystemSpec) -> bool {
                 .and_then(|name| name.to_str())
                 .is_some_and(|name| name == "codex-agent-bridge")
         })
+}
+
+fn parse_pi_model_list(stdout: &str) -> Vec<String> {
+    let mut header_seen = false;
+    let mut seen = HashSet::new();
+    let mut models = Vec::new();
+    for line in stdout.lines() {
+        let columns = line.split_whitespace().collect::<Vec<_>>();
+        if !header_seen {
+            header_seen = columns.len() >= 2
+                && columns[0].eq_ignore_ascii_case("provider")
+                && columns[1].eq_ignore_ascii_case("model");
+            continue;
+        }
+        if columns.len() < 2 {
+            continue;
+        }
+        let model = format!("{}/{}", columns[0], columns[1]);
+        if seen.insert(model.clone()) {
+            models.push(model);
+        }
+    }
+    models
+}
+
+fn discover_pi_models(system: &AgentSystemSpec) -> Result<Vec<String>, String> {
+    let pi_path = resolve_pi_executable_path(system).ok_or_else(|| {
+        "Pi model discovery could not find Pi; install Pi, add it to PATH, or set PI_BIN"
+            .to_string()
+    })?;
+    let output = Command::new(&pi_path)
+        .arg("--list-models")
+        .envs(&system.env)
+        .output()
+        .map_err(|error| {
+            format!(
+                "could not run Pi model discovery at '{}': {error}",
+                pi_path.display()
+            )
+        })?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !output.status.success() {
+        let detail = if stderr.trim().is_empty() {
+            stdout.trim()
+        } else {
+            stderr.trim()
+        };
+        return Err(format!(
+            "Pi model discovery failed{}",
+            if detail.is_empty() {
+                String::new()
+            } else {
+                format!(": {detail}")
+            }
+        ));
+    }
+    let models = parse_pi_model_list(&stdout);
+    if models.is_empty() {
+        let detail = stdout.trim();
+        return Err(
+            if detail.to_ascii_lowercase().contains("no models available") {
+                "Pi is installed but has no available models; run Pi interactively and use /login, then retry model discovery".to_string()
+            } else {
+                "Pi model discovery returned no parseable provider/model rows".to_string()
+            },
+        );
+    }
+    Ok(models)
 }
 
 fn codex_models_cache_path(system: &AgentSystemSpec) -> Result<PathBuf, String> {
@@ -851,6 +923,21 @@ pub fn build_agent_system_preflight_with_live(
                 if let Ok(cache_path) = codex_models_cache_path(&system) {
                     discovery_endpoint_candidates.push(cache_path.display().to_string());
                 }
+            } else if is_pi_local_agent_system(&system) {
+                model = system
+                    .env
+                    .get(AGENT_MODEL_ENV)
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty())
+                    .or_else(|| {
+                        system
+                            .model
+                            .as_deref()
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                            .map(str::to_string)
+                    });
+                discovery_endpoint_candidates.push("pi --list-models".to_string());
             }
         }
         AgentSystemTransport::NativeOpenai => {
@@ -958,6 +1045,11 @@ pub fn discover_models_for_agent_system(
     {
         return discover_codex_models_from_cache(&system);
     }
+    if matches!(system.transport, AgentSystemTransport::ExternalJsonStdio)
+        && is_pi_local_agent_system(&system)
+    {
+        return discover_pi_models(&system);
+    }
     let base_url = match system.transport {
         AgentSystemTransport::NativeOpenai => resolve_base_url(&system, OPENAI_DEFAULT_BASE_URL),
         AgentSystemTransport::NativeAnthropic => {
@@ -1056,6 +1148,69 @@ mod tests {
         .expect("discover Codex models");
 
         assert_eq!(models, vec!["gpt-5.6-sol", "gpt-5.4"]);
+    }
+
+    #[test]
+    fn pi_model_list_parser_returns_provider_qualified_ids() {
+        let models = parse_pi_model_list(
+            "provider      model              context  max-out  thinking  images\n\
+             anthropic     claude-sonnet-4-6  200K     64K      yes       yes\n\
+             openai-codex  gpt-5.4            272K     128K     yes       yes\n",
+        );
+
+        assert_eq!(
+            models,
+            vec!["anthropic/claude-sonnet-4-6", "openai-codex/gpt-5.4"]
+        );
+    }
+
+    #[test]
+    fn pi_local_supports_model_selection_and_discovery() {
+        let system = AgentSystemSpec {
+            id: "pi_local_stdio".to_string(),
+            label: "Pi Local".to_string(),
+            transport: AgentSystemTransport::ExternalJsonStdio,
+            command: vec!["scripts/pi-agent-bridge".to_string()],
+            ..Default::default()
+        };
+
+        assert!(agent_system_supports_model_selection(&system));
+        assert!(agent_system_supports_model_discovery(&system));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pi_model_discovery_runs_configured_pi_binary() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let pi_path = temp.path().join("pi");
+        fs::write(
+            &pi_path,
+            "#!/bin/sh\nprintf '%s\\n' 'provider  model  context  max-out  thinking  images' 'mistral  codestral-latest  256K  32K  yes  no'\n",
+        )
+        .expect("write fake Pi");
+        let mut permissions = fs::metadata(&pi_path)
+            .expect("fake Pi metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&pi_path, permissions).expect("make fake Pi executable");
+        let system = AgentSystemSpec {
+            id: "pi_local_stdio".to_string(),
+            label: "Pi Local".to_string(),
+            transport: AgentSystemTransport::ExternalJsonStdio,
+            command: vec!["scripts/pi-agent-bridge".to_string()],
+            env: std::collections::HashMap::from([(
+                "PI_BIN".to_string(),
+                pi_path.to_string_lossy().to_string(),
+            )]),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            discover_pi_models(&system).expect("discover fake Pi models"),
+            vec!["mistral/codestral-latest"]
+        );
     }
 
     fn spawn_model_list_server(routes: Vec<(&str, u16, &str)>) -> Option<String> {

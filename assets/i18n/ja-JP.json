@@ -21,6 +21,7 @@
   "agent.clear_timeout": "タイムアウトを消去",
   "agent.clear_url": "URL を消去",
   "agent.credential.codex_login": "Codex Local は Codex CLI/App のログインを使用します。この経路では GENtle は API キーを読み込みません。",
+  "agent.credential.pi_login": "Pi Local は Pi 独自のプロバイダーログインを使用し、GENtle は Pi の認証情報を読みません。モデルが表示されない場合は Pi を起動して /login を使用してください。",
   "agent.credential.environment": "プロセス環境の {env} を使用しています。",
   "agent.credential.file": "セッションキーも {env} も設定されていないため、{path} を自動的に使用しています。",
   "agent.credential.file_problem": "{path} を使用できませんでした: {reason}。上にセッションキーを貼り付けてください。",

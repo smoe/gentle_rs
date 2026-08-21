@@ -292,6 +292,10 @@ wet-lab conclusions or unconfirmed mutations.
   workflow-candidate discovery only after bound-readiness safeguards are
   demonstrated.
 - Optional OS credential-store persistence for Agent Assistant API keys.
+- Separate opt-in inner coding-agent mode for Codex, Pi, or comparable local
+  harnesses, with explicit workspace scope, tool permissions, diff review,
+  bounded tests, and rollback. Do not inherit Agent Assistant command-execution
+  permissions or present model prose as an applied source change.
 - Optional tiny generation probe for quota verification.
 - Implement the opt-in native-Mistral inner-agent conformance routine described
   in `docs/testing.md`; self-skip unless `MISTRAL_API_KEY` is supplied.

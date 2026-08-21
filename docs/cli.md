@@ -2113,6 +2113,9 @@ cargo run --bin gentle_cli -- agents discover-models msty_mlx_local_compat_templ
 cargo run --bin gentle_cli -- agents ask msty_mlx_local_compat_template --prompt "summarize project context" --model mlx-community/granite-3.3-2b-instruct-4bit
 cargo run --bin gentle_cli -- agents discover-models codex_local_stdio
 cargo run --bin gentle_cli -- agents ask codex_local_stdio --prompt "summarize project context" --model gpt-5.4
+cargo run --bin gentle_cli -- agents preflight pi_local_stdio
+cargo run --bin gentle_cli -- agents discover-models pi_local_stdio
+cargo run --bin gentle_cli -- agents ask pi_local_stdio --prompt "summarize project context" --model mistral/codestral-latest
 cargo run --bin gentle_cli -- op '{"PrepareGenome":{"genome_id":"ToyGenome","catalog_path":"catalog.json"}}'
 cargo run --bin gentle_cli -- op '{"ExtractGenomeRegion":{"genome_id":"ToyGenome","chromosome":"chr1","start_1based":1001,"end_1based":1600,"output_id":"toy_chr1_1001_1600","annotation_scope":"core","catalog_path":"catalog.json"}}'
 cargo run --bin gentle_cli -- op '{"ExtractGenomeGene":{"genome_id":"ToyGenome","gene_query":"MYGENE","occurrence":1,"output_id":"toy_mygene","catalog_path":"catalog.json"}}'
@@ -5986,6 +5989,31 @@ Conceptual/tutorial companion:
 - `docs/tutorial/01-01_agent_interfaces.md` (role map + interface comparison:
   CLI/shared shell vs MCP vs Agent Assistant vs external coding agents).
 
+Recommended Pi Local workflow:
+
+1. Start `pi` outside GENtle once and use Pi's `/login` command to authenticate
+   the provider you intend to use. Confirm that `pi --list-models` lists at
+   least one provider/model pair. GENtle neither reads nor stores Pi's
+   credentials.
+2. Check the adapter without starting a model request:
+   `cargo run --bin gentle_cli -- agents preflight pi_local_stdio`.
+3. Read the exact provider-qualified model ids that GENtle can select:
+   `cargo run --bin gentle_cli -- agents discover-models pi_local_stdio`.
+4. Ask for help, selecting one of those ids when desired:
+   `cargo run --bin gentle_cli -- agents ask pi_local_stdio --model mistral/codestral-latest --prompt "Summarize this project and suggest one safe next GENtle command"`.
+5. Inspect the returned command before running it. Keep the default confirmation
+   boundary for mutating or network-backed work; use `--execute-index` or
+   `--execute-all` only when the corresponding suggestions have been reviewed.
+
+Pi supplies the selected language model, while GENtle supplies the bounded
+project summary/facts, validates the structured response, and controls command
+execution. Each Pi invocation is ephemeral and runs without Pi tools, sessions,
+skills, extensions, prompt templates, or project-file discovery. Therefore this
+adapter helps operate GENtle; it is deliberately not an inner source-code editor.
+Use Pi separately, outside GENtle, for repository-editing work. If the GUI does
+not inherit Pi's executable path, set `PI_BIN` to the exact executable before
+starting GENtle.
+
 - `agents list [--catalog PATH]`
   - Lists configured agent systems from catalog JSON.
   - Default catalog path: `assets/agent_systems.json`.
@@ -6016,13 +6044,16 @@ Conceptual/tutorial companion:
   - For `codex_local_stdio`, reads visible model ids from the logged-in Codex
     CLI's local `models_cache.json`; it does not read credentials or send a
     provider request.
+  - For `pi_local_stdio`, runs `pi --list-models` and returns the
+    provider-qualified ids visible to the installed Pi CLI. If none are
+    available, start Pi outside GENtle and use `/login` before trying again.
 - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
   - Invokes one configured agent system and returns message/questions/suggested shell commands.
   - `--base-url` sets a per-request runtime endpoint override (maps to
     `GENTLE_AGENT_BASE_URL`) for native transports.
   - `--model` sets a per-request model override (maps to `GENTLE_AGENT_MODEL`)
-    for native transports and `codex_local_stdio`; the Codex bridge forwards it
-    as `codex --model MODEL`.
+    for native transports, `codex_local_stdio`, and `pi_local_stdio`; each
+    local bridge forwards it as its CLI's `--model MODEL` argument.
   - `--timeout-secs` sets per-request timeout override (maps to
     `GENTLE_AGENT_TIMEOUT_SECS`) for stdio/native transports.
   - `--connect-timeout-secs` sets per-request HTTP connect timeout (maps to

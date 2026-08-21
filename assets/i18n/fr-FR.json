@@ -21,6 +21,7 @@
   "agent.clear_timeout": "Effacer le délai",
   "agent.clear_url": "Effacer l'URL",
   "agent.credential.codex_login": "Codex Local utilise la connexion de l'application/CLI Codex ; GENtle n'importe pas de clé API pour cette voie.",
+  "agent.credential.pi_login": "Pi Local utilise la connexion fournisseur de Pi ; GENtle ne lit pas les identifiants Pi. Si aucun modèle n'apparaît, lancez Pi et utilisez /login.",
   "agent.credential.environment": "Utilisation de {env} depuis l'environnement du processus.",
   "agent.credential.file": "Utilisation automatique de {path}, car aucune clé de session ni {env} n'est définie.",
   "agent.credential.file_problem": "Impossible d'utiliser {path} : {reason}. Collez une clé de session ci-dessus.",

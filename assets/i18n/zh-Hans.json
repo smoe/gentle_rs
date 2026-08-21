@@ -21,6 +21,7 @@
   "agent.clear_timeout": "清除超时",
   "agent.clear_url": "清除 URL",
   "agent.credential.codex_login": "Codex Local 使用 Codex CLI/应用的登录；GENtle 不会为此路径导入 API 密钥。",
+  "agent.credential.pi_login": "Pi Local 使用 Pi 自己的提供商登录；GENtle 不读取 Pi 凭据。如果没有显示模型，请启动 Pi 并使用 /login。",
   "agent.credential.environment": "正在使用进程环境中的 {env}。",
   "agent.credential.file": "由于未设置会话密钥或 {env}，正在自动使用 {path}。",
   "agent.credential.file_problem": "无法使用 {path}：{reason}。请在上方粘贴会话密钥。",

@@ -21,6 +21,7 @@
   "agent.clear_timeout": "Tempus purgare",
   "agent.clear_url": "URL purgare",
   "agent.credential.codex_login": "Codex Local initium sessionis Codex CLI/App adhibet; GENtle clavem API hac via non importat.",
+  "agent.credential.pi_login": "Pi Local initium sessionis provisorum ipsius Pi adhibet; GENtle documenta credentialia Pi non legit. Si nulla exemplaria apparent, Pi aperi et /login utere.",
   "agent.credential.environment": "{env} ex ambitu processus adhibetur.",
   "agent.credential.file": "{path} automatice adhibetur quia nec clavis sessionis nec {env} constituta est.",
   "agent.credential.file_problem": "{path} adhiberi non potuit: {reason}. Clavem sessionis supra insere.",

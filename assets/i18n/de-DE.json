@@ -21,6 +21,7 @@
   "agent.clear_timeout": "Zeitlimit löschen",
   "agent.clear_url": "URL löschen",
   "agent.credential.codex_login": "Codex Local verwendet die Anmeldung der Codex-CLI/App; GENtle importiert für diesen Weg keinen API-Schlüssel.",
+  "agent.credential.pi_login": "Pi Local verwendet Pis eigene Anbieter-Anmeldung; GENtle liest keine Pi-Zugangsdaten. Falls keine Modelle erscheinen, starte Pi und verwende /login.",
   "agent.credential.environment": "{env} aus der Prozessumgebung wird verwendet.",
   "agent.credential.file": "{path} wird automatisch verwendet, weil weder ein Sitzungsschlüssel noch {env} gesetzt ist.",
   "agent.credential.file_problem": "{path} konnte nicht verwendet werden: {reason}. Füge oben einen Sitzungsschlüssel ein.",

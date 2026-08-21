@@ -1,0 +1,293 @@
+#!/usr/bin/env python3
+"""Bridge GENtle Agent Assistant requests through a local Pi installation.
+
+GENtle owns conversation history and command validation. Pi runs one ephemeral,
+tool-free print request and never receives access to the current project tree.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+from typing import Any
+
+
+REQUEST_SCHEMA = "gentle.agent_request.v1"
+RESPONSE_SCHEMA = "gentle.agent_response.v1"
+ERROR_SCHEMA = "gentle.pi_agent_bridge_error.v1"
+
+COMMON_PI_PATHS = (
+    "~/.local/bin/pi",
+    "/opt/homebrew/bin/pi",
+    "/usr/local/bin/pi",
+)
+
+
+def bridge_error(code: str, message: str, **details: Any) -> int:
+    payload = {"schema": ERROR_SCHEMA, "code": code, "message": message}
+    if details:
+        payload["details"] = details
+    print(json.dumps(payload, sort_keys=True), file=sys.stderr)
+    return 1
+
+
+def read_request() -> dict[str, Any]:
+    raw = sys.stdin.read()
+    if not raw.strip():
+        raise ValueError("stdin did not contain a GENtle agent request JSON object")
+    value = json.loads(raw)
+    if not isinstance(value, dict):
+        raise ValueError("GENtle agent request must be a JSON object")
+    if value.get("schema") != REQUEST_SCHEMA:
+        raise ValueError(f"expected schema {REQUEST_SCHEMA}, got {value.get('schema')!r}")
+    prompt = value.get("prompt")
+    if not isinstance(prompt, str) or not prompt.strip():
+        raise ValueError("GENtle agent request requires a non-empty prompt string")
+    return value
+
+
+def resolve_pi_bin() -> str:
+    explicit = os.environ.get("PI_BIN", "").strip()
+    candidates: list[str] = []
+    if explicit:
+        candidates.append(explicit)
+    which = shutil.which("pi")
+    if which:
+        candidates.append(which)
+    candidates.extend(os.path.expanduser(path) for path in COMMON_PI_PATHS)
+    for candidate in candidates:
+        if candidate and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    raise FileNotFoundError(
+        "Could not find Pi. Set PI_BIN or add pi to PATH. Checked: "
+        + ", ".join(dict.fromkeys(candidates or ["pi"]))
+    )
+
+
+def render_pi_prompt(request: dict[str, Any]) -> str:
+    request_json = json.dumps(request, ensure_ascii=False, indent=2, sort_keys=True)
+    return f"""You are GENtle's inner Agent Assistant.
+
+Return exactly one JSON object matching {RESPONSE_SCHEMA}. Do not wrap it in
+Markdown fences and do not include prose outside the JSON object.
+
+Required response shape:
+{{
+  "schema": "{RESPONSE_SCHEMA}",
+  "assistant_message": "short answer for the user",
+  "questions": ["optional follow-up question"],
+  "suggested_commands": [
+    {{
+      "title": "optional short label",
+      "preconditions": ["optional human-readable requirement"],
+      "expected_outcomes": ["optional observable result"],
+      "rationale": "optional reason",
+      "command": "one GENtle shared-shell command",
+      "execution": "chat|ask|auto"
+    }}
+  ]
+}}
+
+Rules:
+- Suggest GENtle shared-shell commands or GENtle-local slash aliases only.
+- Never suggest operating-system shell commands, filesystem searches, source
+  edits, nested agents, or MCP launches.
+- Use execution="ask" for mutations and network/external actions.
+- Use execution="chat" when no command should run.
+- Treat x_conversation as prior dialogue and reuse facts already supplied there.
+- Treat x_introspection as a bounded current-state projection. Missing open-world
+  facts do not prove absence; honor its truncation metadata.
+- Ask instead of guessing an unknown species, identifier, path, or coordinate.
+- Do not infer files from Pi's temporary working directory.
+- Use empty arrays for absent questions, preconditions, expected outcomes, or
+  suggested commands.
+
+GENtle agent request:
+{request_json}
+"""
+
+
+def parse_positive_int_env(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return default
+    return parsed if parsed > 0 else default
+
+
+def pi_command(pi_bin: str) -> list[str]:
+    command = [
+        pi_bin,
+        "--print",
+        "--no-session",
+        "--no-tools",
+        "--no-extensions",
+        "--no-skills",
+        "--no-prompt-templates",
+        "--no-context-files",
+        "--no-approve",
+        "--system-prompt",
+        "You are GENtle's tool-free inner Agent Assistant. Follow the supplied response schema exactly.",
+    ]
+    model = os.environ.get("GENTLE_AGENT_MODEL", "").strip()
+    if model:
+        command.extend(["--model", model])
+    return command
+
+
+def invoke_pi(pi_bin: str, prompt: str) -> tuple[str, str, int]:
+    timeout = parse_positive_int_env(
+        "PI_AGENT_TIMEOUT_SECS",
+        parse_positive_int_env("GENTLE_AGENT_READ_TIMEOUT_SECS", 300),
+    )
+    with tempfile.TemporaryDirectory(prefix="gentle-pi-agent-") as temp_dir:
+        completed = subprocess.run(
+            pi_command(pi_bin),
+            cwd=temp_dir,
+            input=prompt,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=timeout,
+            check=False,
+        )
+    return completed.stdout, completed.stderr, completed.returncode
+
+
+def unwrap_json_fence(text: str) -> str:
+    trimmed = text.strip()
+    if not trimmed.startswith("```"):
+        return trimmed
+    first_line, separator, rest = trimmed.partition("\n")
+    if not separator or first_line.strip().lower() not in {"```", "```json"}:
+        raise ValueError("Pi output used an unsupported Markdown code fence")
+    body = rest.rstrip()
+    if not body.endswith("```"):
+        raise ValueError("Pi output contained an unterminated Markdown code fence")
+    unwrapped = body[:-3].strip()
+    if not unwrapped:
+        raise ValueError("Pi output contained an empty Markdown code fence")
+    return unwrapped
+
+
+def extension_key(key: str) -> bool:
+    return key.startswith("x_") or key.startswith("x-")
+
+
+def validate_agent_response(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError("agent response must be a JSON object")
+    allowed_top = {"schema", "assistant_message", "questions", "suggested_commands"}
+    unknown = [key for key in value if key not in allowed_top and not extension_key(key)]
+    if unknown:
+        raise ValueError("agent response has unsupported fields: " + ", ".join(sorted(unknown)))
+    if value.get("schema") != RESPONSE_SCHEMA:
+        raise ValueError(f"agent response schema must be {RESPONSE_SCHEMA}")
+    assistant_message = value.get("assistant_message")
+    if not isinstance(assistant_message, str):
+        raise ValueError("agent response assistant_message must be a string")
+    questions = value.get("questions", [])
+    if not isinstance(questions, list) or not all(isinstance(item, str) for item in questions):
+        raise ValueError("agent response questions must be a string array")
+    commands = value.get("suggested_commands", [])
+    if not isinstance(commands, list):
+        raise ValueError("agent response suggested_commands must be an array")
+    allowed_command = {
+        "title",
+        "preconditions",
+        "precondition_expr",
+        "expected_outcomes",
+        "expected_effects",
+        "rationale",
+        "command",
+        "execution",
+    }
+    for idx, item in enumerate(commands):
+        if not isinstance(item, dict):
+            raise ValueError(f"suggested_commands[{idx}] must be an object")
+        unknown_command = [
+            key for key in item if key not in allowed_command and not extension_key(key)
+        ]
+        if unknown_command:
+            raise ValueError(
+                f"suggested_commands[{idx}] has unsupported fields: "
+                + ", ".join(sorted(unknown_command))
+            )
+        command = item.get("command")
+        if not isinstance(command, str) or not command.strip():
+            raise ValueError(f"suggested_commands[{idx}].command must be a non-empty string")
+        execution = item.get("execution", "ask")
+        if execution not in {"chat", "ask", "auto"}:
+            raise ValueError(f"suggested_commands[{idx}].execution must be chat, ask, or auto")
+        for field in ("preconditions", "expected_outcomes"):
+            values = item.get(field, [])
+            if not isinstance(values, list) or not all(isinstance(entry, str) for entry in values):
+                raise ValueError(f"suggested_commands[{idx}].{field} must be a string array")
+            item[field] = values
+        item["execution"] = execution
+    value["questions"] = questions
+    value["suggested_commands"] = commands
+    if not assistant_message.strip() and not questions and not commands:
+        raise ValueError("agent response must include message, questions, or commands")
+    return value
+
+
+def parse_pi_response(text: str) -> dict[str, Any]:
+    value = json.loads(unwrap_json_fence(text))
+    return validate_agent_response(value)
+
+
+def classify_pi_failure(message: str) -> str:
+    lower = message.lower()
+    if "no models available" in lower or "/login" in lower or "not logged in" in lower:
+        return "pi_not_logged_in"
+    if "quota" in lower or "rate limit" in lower or "too many requests" in lower:
+        return "pi_quota_or_rate_limit"
+    if "network" in lower or "connection" in lower or "dns" in lower:
+        return "pi_network_error"
+    return "pi_failed"
+
+
+def main() -> int:
+    try:
+        request = read_request()
+        pi_bin = resolve_pi_bin()
+        output_text, stderr_text, exit_code = invoke_pi(pi_bin, render_pi_prompt(request))
+    except subprocess.TimeoutExpired as exc:
+        return bridge_error("pi_timeout", f"Pi timed out after {exc.timeout}s")
+    except FileNotFoundError as exc:
+        return bridge_error("pi_missing", str(exc))
+    except (json.JSONDecodeError, ValueError) as exc:
+        return bridge_error("invalid_request", str(exc))
+    except OSError as exc:
+        return bridge_error("pi_spawn_failed", str(exc))
+
+    if exit_code != 0:
+        combined = (stderr_text or output_text).strip()
+        return bridge_error(
+            classify_pi_failure(combined),
+            combined or f"Pi exited with status {exit_code}",
+        )
+
+    try:
+        response = parse_pi_response(output_text)
+    except (json.JSONDecodeError, ValueError) as exc:
+        return bridge_error(
+            "pi_output_invalid",
+            str(exc),
+            output_preview=output_text.strip()[:1000],
+        )
+
+    print(json.dumps(response, ensure_ascii=False, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

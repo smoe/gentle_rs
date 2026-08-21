@@ -4714,6 +4714,8 @@ Adapter-equivalence guarantee for UI-intent tools:
   - Native HTTP systems use model-list endpoints. `codex_local_stdio` instead
     reads visible ids from the local Codex `models_cache.json`, excludes hidden
     entries, and performs no provider request or credential-file read.
+  - `pi_local_stdio` invokes `pi --list-models`, returns provider-qualified ids,
+    and reports a deterministic setup error when Pi has no authenticated model.
 
 - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
   - Invokes one configured agent system via catalog transport.
@@ -4722,8 +4724,9 @@ Adapter-equivalence guarantee for UI-intent tools:
     `native_openai_compat`).
   - `--model` applies a per-request runtime model override for native
     transports (`native_openai`, `native_anthropic`, `native_mistral`,
-    `native_openai_compat`) and `codex_local_stdio`. The latter maps the shared
-    `GENTLE_AGENT_MODEL` override to the bridge's `codex --model MODEL` argument.
+    `native_openai_compat`), `codex_local_stdio`, and `pi_local_stdio`. The
+    stdio bridges map the shared `GENTLE_AGENT_MODEL` override to their
+    respective `--model MODEL` argument.
   - `--timeout-secs` applies a per-request timeout override for stdio/native
     transports (maps to `GENTLE_AGENT_TIMEOUT_SECS`).
   - `--connect-timeout-secs` applies a per-request HTTP connect timeout override
@@ -4853,6 +4856,13 @@ Transport notes:
   app executable, followed by the legacy standalone Codex app path. Its model
   selector reads the CLI's non-secret local model metadata cache; leaving
   `Codex default` selected omits an explicit `--model` argument.
+  The default catalog also includes `pi_local_stdio`, which runs
+  `scripts/pi-agent-bridge`. That bridge delegates authentication to Pi,
+  launches one ephemeral print request in an empty temporary directory, and
+  disables tools, sessions, project context files, extensions, skills, and
+  prompt templates. It resolves Pi from `PI_BIN`, `PATH`, or common local
+  install paths. `pi --list-models` supplies provider-qualified model ids;
+  leaving `Pi default` selected omits an explicit model argument.
 - `native_openai`: built-in OpenAI HTTP adapter; requires `OPENAI_API_KEY`
   (environment or system-level `env` override in catalog entry).
 - `native_anthropic`: built-in Anthropic Claude HTTP adapter; requires
@@ -4872,7 +4882,7 @@ Transport notes:
   `native_openai_compat`.
 - `GENTLE_AGENT_MODEL` (or CLI `--model`) overrides catalog `model` per request
   for `native_openai`, `native_anthropic`, `native_mistral`, and
-  `native_openai_compat`.
+  `native_openai_compat`, `codex_local_stdio`, and `pi_local_stdio`.
 - `GENTLE_AGENT_TIMEOUT_SECS` (or CLI `--timeout-secs`) overrides request
   timeout per attempt for agent transports.
 - `GENTLE_AGENT_CONNECT_TIMEOUT_SECS` (or CLI `--connect-timeout-secs`)
@@ -5041,8 +5051,9 @@ that text is already a JSON object with `assistant_message`, `questions`, or
 `gentle.agent_response.v1` before validation. Native HTTP transports also
 unwrap a single top-level Markdown `json` code fence before validation, because
 local chat models often add that wrapper despite a JSON-only instruction.
-`external_json_stdio` adapters remain strict and must emit the `schema` string
-themselves.
+`external_json_stdio` adapters receive the same narrowly bounded fence
+unwrapping, but otherwise remain strict: they must emit the `schema` string
+themselves, and prose around a fence or JSON object is rejected.
 
 Agent command-scope declaration:
 

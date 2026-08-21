@@ -1286,6 +1286,10 @@ GENtle now provides a shared agent-assistance bridge across GUI and CLI shell:
 - Catalog entries describe transport and invocation details:
   - `builtin_echo` (offline/demo transport)
   - `external_json_stdio` (external adapter command over stdin/stdout JSON)
+    - co-shipped local harnesses include Codex Local and Pi Local
+    - both run in isolated temporary working directories and receive only the
+      explicit GENtle request; Pi Local additionally disables every Pi tool,
+      session, extension, skill, prompt-template, and project-context source
   - `native_openai` / `native_openai_compat` (built-in HTTP adapters with optional per-request base URL/model override)
   - `native_openai_compat` is the preferred path for OpenAI-compatible hosted
     providers (including [clawbio.ai](https://clawbio.ai/)) through explicit
@@ -1322,6 +1326,13 @@ GENtle now provides a shared agent-assistance bridge across GUI and CLI shell:
   - token-file contents are never written to project state, settings, logs, or
     diagnostics; Codex Local continues to use its CLI/App login and does not
     consume the OpenAI token-file fallback
+  - Pi Local likewise delegates credentials to Pi and does not read or persist
+    Pi's authentication store; GENtle owns conversation persistence for this
+    stateless adapter invocation
+- Agent Assistant provider adapters are not source-editing agents. Any future
+  inner coding-agent mode must define a separate engine-facing contract for
+  workspace scope, tool permission, patch review, tests, and rollback rather
+  than inheriting Agent Assistant command execution rights.
 - Agent response payload supports mixed outcomes per reply:
   - plain assistant message (`chat`)
   - follow-up questions (`ask`)

@@ -274,7 +274,8 @@ impl GENtleApp {
         } else if matches!(
             system.transport,
             AgentSystemTransport::NativeOpenaiCompat | AgentSystemTransport::ExternalJsonStdio
-        ) && system.id != "codex_local_stdio"
+        ) && !is_codex_local_agent_system(system)
+            && !is_pi_local_agent_system(system)
             && !session_api_key.is_empty()
         {
             overrides.insert(OPENAI_API_KEY_ENV.to_string(), session_api_key.to_string());
@@ -465,10 +466,16 @@ impl GENtleApp {
         if matches!(system.transport, AgentSystemTransport::ExternalJsonStdio)
             && agent_system_supports_model_discovery(system)
         {
+            let source = if is_pi_local_agent_system(system) {
+                "local-pi-model-list"
+            } else {
+                "local-codex-model-cache"
+            };
             return Some(format!(
-                "{}|{}|local-codex-model-cache",
+                "{}|{}|{}",
                 system.id,
-                system.transport.as_str()
+                system.transport.as_str(),
+                source
             ));
         }
         let base_url = self.selected_agent_runtime_base_url(system)?;
@@ -530,8 +537,11 @@ impl GENtleApp {
     }
 
     fn selected_agent_credential_messages(&self, system: &AgentSystemSpec) -> Vec<(String, bool)> {
-        if system.id == "codex_local_stdio" {
+        if is_codex_local_agent_system(system) {
             return vec![(self.tr("agent.credential.codex_login"), false)];
+        }
+        if is_pi_local_agent_system(system) {
+            return vec![(self.tr("agent.credential.pi_login"), false)];
         }
         if system.transport == AgentSystemTransport::NativeOpenaiCompat {
             return vec![(self.tr("agent.credential.optional"), false)];
@@ -1118,7 +1128,11 @@ impl GENtleApp {
         }
         let discovery_source =
             if matches!(system.transport, AgentSystemTransport::ExternalJsonStdio) {
-                "local Codex model metadata cache".to_string()
+                if is_pi_local_agent_system(system) {
+                    "installed Pi CLI".to_string()
+                } else {
+                    "local Codex model metadata cache".to_string()
+                }
             } else {
                 let Some(base_url) = self.selected_agent_runtime_base_url(system) else {
                     return;
@@ -3309,7 +3323,13 @@ impl GENtleApp {
                         AgentSystemTransport::NativeMistral => {
                             GUI_MISTRAL_DEFAULT_MODEL.to_string()
                         }
-                        AgentSystemTransport::ExternalJsonStdio => "Codex default".to_string(),
+                        AgentSystemTransport::ExternalJsonStdio => {
+                            if is_pi_local_agent_system(&system) {
+                                "Pi default".to_string()
+                            } else {
+                                "Codex default".to_string()
+                            }
+                        }
                         _ => OPENAI_COMPAT_UNSPECIFIED_MODEL.to_string(),
                     });
                 let model_override = normalize_agent_model_name(self.agent_model_override.trim());
@@ -3349,8 +3369,9 @@ impl GENtleApp {
         }
         if let Some(selected_system) = self.selected_agent_system() {
             let credential_messages = self.selected_agent_credential_messages(&selected_system);
-            let key_field_relevant =
-                selected_system.id != "builtin_echo" && selected_system.id != "codex_local_stdio";
+            let key_field_relevant = selected_system.id != "builtin_echo"
+                && !is_codex_local_agent_system(&selected_system)
+                && !is_pi_local_agent_system(&selected_system);
             if key_field_relevant {
                 let (key_label, key_hint) = match selected_system.transport {
                     AgentSystemTransport::NativeAnthropic => {
@@ -3523,7 +3544,11 @@ impl GENtleApp {
                         system.transport,
                         AgentSystemTransport::ExternalJsonStdio
                     ) {
-                        "Read selectable model ids from the local Codex model metadata cache"
+                        if is_pi_local_agent_system(&system) {
+                            "Read selectable provider/model ids from the installed Pi CLI"
+                        } else {
+                            "Read selectable model ids from the local Codex model metadata cache"
+                        }
                     } else {
                         "Query local/server model list from current base URL"
                     };
@@ -3549,15 +3574,20 @@ impl GENtleApp {
                 self.clear_agent_model_discovery_snapshot();
             } else {
                 if self.should_render_agent_model_selector(&system) {
-                    let codex_local =
-                        matches!(system.transport, AgentSystemTransport::ExternalJsonStdio);
+                    let codex_local = is_codex_local_agent_system(&system);
+                    let pi_local = is_pi_local_agent_system(&system);
+                    let local_default = if pi_local {
+                        "Pi default"
+                    } else {
+                        "Codex default"
+                    };
                     let previous_pick = self.agent_discovered_model_pick.clone();
                     ui.horizontal(|ui| {
                         ui.label(self.tr("agent.discovered_model"));
                         egui::ComboBox::from_id_salt("agent_discovered_model_combo")
                             .selected_text(if self.agent_discovered_model_pick.trim().is_empty() {
-                                if codex_local {
-                                    "Codex default".to_string()
+                                if codex_local || pi_local {
+                                    local_default.to_string()
                                 } else {
                                     self.tr("agent.choose_model")
                                 }
@@ -3565,11 +3595,11 @@ impl GENtleApp {
                                 self.agent_discovered_model_pick.clone()
                             })
                             .show_ui(ui, |ui| {
-                                if codex_local {
+                                if codex_local || pi_local {
                                     ui.selectable_value(
                                         &mut self.agent_discovered_model_pick,
                                         String::new(),
-                                        "Codex default",
+                                        local_default,
                                     );
                                     ui.separator();
                                 }
@@ -3589,6 +3619,10 @@ impl GENtleApp {
                     if codex_local {
                         ui.small(
                             "Models are read from the logged-in Codex CLI metadata cache. Codex default leaves model choice to the CLI.",
+                        );
+                    } else if pi_local {
+                        ui.small(
+                            "Models are read from 'pi --list-models'. Pi default leaves model choice to Pi; authenticate providers in Pi with /login.",
                         );
                     } else {
                         ui.small(self.tr("agent.discovered_model_note"));

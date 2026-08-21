@@ -64,8 +64,10 @@ The first pass is successful only when GENtle parses the reply and every shown
 suggestion is a valid GENtle command. Good first suggestions include
 `state-summary`, `capabilities`, or `/help`. If the status reports
 `AGENT_RESPONSE_PARSE`, the provider answered in a form GENtle could not parse.
-Native HTTP transports tolerate a single top-level Markdown `json` code fence,
-but they still reject prose wrapped around the JSON.
+All model-facing transports tolerate a single top-level Markdown `json` code
+fence, but they still reject prose wrapped around the JSON. External stdio
+adapters remain responsible for returning the versioned response schema and
+should emit bare JSON whenever possible.
 
 Successful turns appear under `Conversation`. GENtle stores that transcript
 with the current project and supplies a bounded recent portion to later agent
@@ -759,6 +761,17 @@ Key properties:
   Local immediately presents `Codex default`; GENtle reads the CLI's visible
   model ids from its local metadata cache and forwards a selected id through
   `GENTLE_AGENT_MODEL` to `codex --model`.
+- Pi can be used as a second local Agent Assistant harness through the
+  `Pi Local (uses Pi provider login)` catalog entry. GENtle invokes
+  `scripts/pi-agent-bridge`, which runs one ephemeral `pi --print` request with
+  tools, sessions, extensions, skills, prompt templates, and project-context
+  discovery disabled. GENtle keeps the conversation and project-fact context;
+  Pi supplies the selected provider/model. Model discovery uses
+  `pi --list-models`, and authentication remains in Pi's own `/login` flow.
+  GENtle does not read or copy Pi's credential store.
+- This Pi entry is not a source-editing developer agent. A future coding mode
+  would need a separate workspace, permission, diff-review, and test contract;
+  it must not inherit the Agent Assistant's reviewed-command permissions.
 - Native Claude mode uses the Anthropic API directly and needs
   `ANTHROPIC_API_KEY`; Claude Code or Claude.ai subscription/login tokens do
   not authenticate direct Anthropic API calls.

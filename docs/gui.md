@@ -2827,6 +2827,10 @@ Behavior:
 - the `Codex Local (uses Codex CLI login)` catalog entry is different: it calls
   the local Codex CLI through `scripts/codex-agent-bridge`, reusing the user's
   existing Codex CLI/App login instead of `OPENAI_API_KEY`
+- the `Pi Local (uses Pi provider login)` entry calls
+  `scripts/pi-agent-bridge`; it uses provider authentication configured by Pi,
+  not the API-key field in GENtle, and runs Pi without tools or project-file
+  access
 - the Claude quick-start path uses `ANTHROPIC_API_KEY` and talks to the
   Anthropic API directly
 - the Mistral quick-start path uses `MISTRAL_API_KEY` and talks to the Mistral
@@ -3038,6 +3042,29 @@ Notes:
 - If a Finder/Spotlight-launched macOS app cannot find Codex or cannot access
   the same login/keychain context, launch GENtle from a terminal as a
   workaround or set explicit `CODEX_BIN`/catalog paths.
+
+Pi Local setup (multiple providers, no GENtle-managed API key):
+
+1. Install Pi and run it once outside GENtle. In Pi, use `/login` to configure
+   the provider you want. GENtle does not inspect `~/.pi/agent/auth.json`.
+2. Confirm `pi --list-models` shows at least one provider/model row. If Pi is
+   not on the GUI process `PATH`, set `PI_BIN` to its executable path; a common
+   Apple Silicon Homebrew path is `/opt/homebrew/bin/pi`.
+3. Open `Configuration -> Agent Systems` and choose
+   `Pi Local (uses Pi provider login)`.
+4. Click `Discover Models` and choose a provider-qualified id such as
+   `mistral/codestral-latest`, or leave `Pi default` selected to use Pi's
+   configured default.
+5. Click `Test Setup`, then open `File -> Agent Assistant...` and ask a small
+   orientation question.
+
+The Pi bridge uses `--no-session` because GENtle stores the project conversation
+and sends its bounded recent turns with each request. It also uses `--no-tools`,
+`--no-context-files`, `--no-extensions`, `--no-skills`, and
+`--no-prompt-templates`; the Agent Assistant can therefore suggest validated
+GENtle commands but cannot edit files or run operating-system commands through
+Pi. A source-editing inner coding agent would be a separate future mode with a
+different approval boundary.
 
 Claude setup (explicit):
 

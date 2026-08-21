@@ -1,5 +1,13 @@
 # GENtle Changelog
 
+- Added Pi as a local, multi-provider Agent Assistant harness. The co-shipped
+  bridge runs an ephemeral tool-free Pi request in an isolated directory,
+  keeps conversation state in GENtle, discovers provider-qualified models via
+  `pi --list-models`, forwards explicit model choices, and never reads Pi's
+  credential store. The generic stdio response boundary now also accepts one
+  complete top-level Markdown JSON fence while retaining strict schema,
+  unknown-field, and surrounding-prose rejection.
+
 - Added an approval-bound informative fallback for infeasible strict
   transcript-primer panels. The engine preserves the typed strict coverage
   failure, derives a separate best-effort operation only for that failure

@@ -707,6 +707,38 @@ fn codex_local_selected_model_is_forwarded_to_bridge_environment() {
 }
 
 #[test]
+fn pi_local_model_selector_appears_before_model_discovery_completes() {
+    let app = GENtleApp::default();
+    let pi = test_agent_system("pi_local_stdio", AgentSystemTransport::ExternalJsonStdio);
+
+    assert!(agent_system_supports_model_selection(&pi));
+    assert!(agent_system_supports_model_discovery(&pi));
+    assert!(app.should_render_agent_model_selector(&pi));
+}
+
+#[test]
+fn pi_local_selected_model_is_forwarded_without_gui_api_key() {
+    let mut app = GENtleApp::default();
+    let pi = test_agent_system("pi_local_stdio", AgentSystemTransport::ExternalJsonStdio);
+    app.agent_openai_api_key = "must-not-reach-pi".to_string();
+    app.agent_discovered_models = vec![
+        "mistral/codestral-latest".to_string(),
+        "anthropic/claude-sonnet-4-6".to_string(),
+    ];
+    app.agent_discovered_model_pick = "mistral/codestral-latest".to_string();
+
+    let overrides = app
+        .selected_agent_session_env_overrides(&pi)
+        .expect("Pi Local overrides");
+
+    assert_eq!(
+        overrides.get(AGENT_MODEL_ENV).map(String::as_str),
+        Some("mistral/codestral-latest")
+    );
+    assert_eq!(overrides.get(OPENAI_API_KEY_ENV), None);
+}
+
+#[test]
 fn selected_agent_session_env_overrides_use_anthropic_key_for_claude() {
     let mut app = GENtleApp::default();
     let system = test_agent_system(
