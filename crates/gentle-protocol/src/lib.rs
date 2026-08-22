@@ -4935,6 +4935,8 @@ pub struct SequenceFeatureQuery {
     pub qualifier_filters: Vec<SequenceFeatureQualifierFilter>,
     pub min_len_bp: Option<usize>,
     pub max_len_bp: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nearest_to_0based: Option<usize>,
     pub limit: Option<usize>,
     pub offset: usize,
     pub sort_by: SequenceFeatureSortBy,
@@ -4949,6 +4951,8 @@ pub struct SequenceFeatureQueryRow {
     pub start_0based: usize,
     pub end_0based_exclusive: usize,
     pub length_bp: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub distance_to_query_bp: Option<usize>,
     pub strand: String,
     pub label: String,
     pub labels: Vec<String>,
@@ -4969,6 +4973,8 @@ pub struct SequenceFeatureQueryResult {
     pub range_relation: String,
     pub strand_filter: String,
     pub sort_by: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nearest_to_0based: Option<usize>,
     pub descending: bool,
     pub query: SequenceFeatureQuery,
     pub rows: Vec<SequenceFeatureQueryRow>,

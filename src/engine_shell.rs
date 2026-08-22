@@ -10663,7 +10663,7 @@ impl ShellCommand {
                 seq_id
             ),
             Self::FeaturesQuery { query } => format!(
-                "query features on '{}' (kinds={}, range={}..{}, relation={}, strand={}, label='{}', qualifiers={}, limit={}, offset={})",
+                "query features on '{}' (kinds={}, range={}..{}, nearest_to={}, relation={}, strand={}, label='{}', qualifiers={}, limit={}, offset={})",
                 query.seq_id,
                 if query.kind_in.is_empty() {
                     "any".to_string()
@@ -10676,6 +10676,10 @@ impl ShellCommand {
                     .unwrap_or_else(|| "-".to_string()),
                 query
                     .end_0based_exclusive
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                query
+                    .nearest_to_0based
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "-".to_string()),
                 query.range_relation.as_str(),
@@ -21669,7 +21673,8 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "args": [
                 {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id"},
                 {"name": "--kind", "required": false, "detail": "optional feature kind filter"},
-                {"name": "--range", "required": false, "detail": "optional query interval START..END"}
+                {"name": "--range", "required": false, "detail": "optional query interval START..END"},
+                {"name": "--nearest-to", "required": false, "detail": "optional 0-based sequence coordinate that sorts matching features by nearest-base distance"}
             ],
             "reads": [
                 {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}

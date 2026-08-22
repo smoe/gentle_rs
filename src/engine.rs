@@ -6191,6 +6191,7 @@ struct FeatureBedExportRow {
     qualifiers_json: String,
     sort_feature_id: usize,
     length_bp: usize,
+    distance_to_query_bp: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -16266,6 +16267,7 @@ impl GentleEngine {
                 qualifiers_json,
                 sort_feature_id: row.feature_id,
                 length_bp: row.length_bp,
+                distance_to_query_bp: row.distance_to_query_bp,
             });
         }
 
@@ -16387,59 +16389,76 @@ impl GentleEngine {
                     qualifiers_json,
                     sort_feature_id: usize::MAX / 2usize + site_idx,
                     length_bp,
+                    distance_to_query_bp: query.nearest_to_0based.map(|point_0based| {
+                        Self::feature_distance_to_point_0based(
+                            point_0based,
+                            start_0based,
+                            end_0based_exclusive,
+                        )
+                    }),
                 });
             }
         }
 
         let matched_row_count =
             matched_sequence_feature_count.saturating_add(matched_restriction_site_count);
-        export_rows.sort_by(|a, b| match query.sort_by {
-            SequenceFeatureSortBy::FeatureId => a
-                .sort_feature_id
-                .cmp(&b.sort_feature_id)
-                .then(a.chrom_start_0based.cmp(&b.chrom_start_0based))
-                .then(
-                    a.chrom_end_0based_exclusive
-                        .cmp(&b.chrom_end_0based_exclusive),
-                )
-                .then(a.row_id.cmp(&b.row_id)),
-            SequenceFeatureSortBy::Start => a
-                .chrom_start_0based
-                .cmp(&b.chrom_start_0based)
-                .then(
-                    a.chrom_end_0based_exclusive
-                        .cmp(&b.chrom_end_0based_exclusive),
-                )
-                .then(a.sort_feature_id.cmp(&b.sort_feature_id))
-                .then(a.row_id.cmp(&b.row_id)),
-            SequenceFeatureSortBy::End => a
-                .chrom_end_0based_exclusive
-                .cmp(&b.chrom_end_0based_exclusive)
-                .then(a.chrom_start_0based.cmp(&b.chrom_start_0based))
-                .then(a.sort_feature_id.cmp(&b.sort_feature_id))
-                .then(a.row_id.cmp(&b.row_id)),
-            SequenceFeatureSortBy::Kind => a
-                .kind
-                .to_ascii_uppercase()
-                .cmp(&b.kind.to_ascii_uppercase())
-                .then(a.chrom_start_0based.cmp(&b.chrom_start_0based))
-                .then(
-                    a.chrom_end_0based_exclusive
-                        .cmp(&b.chrom_end_0based_exclusive),
-                )
-                .then(a.sort_feature_id.cmp(&b.sort_feature_id))
-                .then(a.row_id.cmp(&b.row_id)),
-            SequenceFeatureSortBy::Length => a
-                .length_bp
-                .cmp(&b.length_bp)
-                .then(a.chrom_start_0based.cmp(&b.chrom_start_0based))
-                .then(
-                    a.chrom_end_0based_exclusive
-                        .cmp(&b.chrom_end_0based_exclusive),
-                )
-                .then(a.sort_feature_id.cmp(&b.sort_feature_id))
-                .then(a.row_id.cmp(&b.row_id)),
-        });
+        if query.nearest_to_0based.is_some() {
+            export_rows.sort_by(|a, b| {
+                a.distance_to_query_bp
+                    .unwrap_or(usize::MAX)
+                    .cmp(&b.distance_to_query_bp.unwrap_or(usize::MAX))
+                    .then(a.sort_feature_id.cmp(&b.sort_feature_id))
+                    .then(a.row_id.cmp(&b.row_id))
+            });
+        } else {
+            export_rows.sort_by(|a, b| match query.sort_by {
+                SequenceFeatureSortBy::FeatureId => a
+                    .sort_feature_id
+                    .cmp(&b.sort_feature_id)
+                    .then(a.chrom_start_0based.cmp(&b.chrom_start_0based))
+                    .then(
+                        a.chrom_end_0based_exclusive
+                            .cmp(&b.chrom_end_0based_exclusive),
+                    )
+                    .then(a.row_id.cmp(&b.row_id)),
+                SequenceFeatureSortBy::Start => a
+                    .chrom_start_0based
+                    .cmp(&b.chrom_start_0based)
+                    .then(
+                        a.chrom_end_0based_exclusive
+                            .cmp(&b.chrom_end_0based_exclusive),
+                    )
+                    .then(a.sort_feature_id.cmp(&b.sort_feature_id))
+                    .then(a.row_id.cmp(&b.row_id)),
+                SequenceFeatureSortBy::End => a
+                    .chrom_end_0based_exclusive
+                    .cmp(&b.chrom_end_0based_exclusive)
+                    .then(a.chrom_start_0based.cmp(&b.chrom_start_0based))
+                    .then(a.sort_feature_id.cmp(&b.sort_feature_id))
+                    .then(a.row_id.cmp(&b.row_id)),
+                SequenceFeatureSortBy::Kind => a
+                    .kind
+                    .to_ascii_uppercase()
+                    .cmp(&b.kind.to_ascii_uppercase())
+                    .then(a.chrom_start_0based.cmp(&b.chrom_start_0based))
+                    .then(
+                        a.chrom_end_0based_exclusive
+                            .cmp(&b.chrom_end_0based_exclusive),
+                    )
+                    .then(a.sort_feature_id.cmp(&b.sort_feature_id))
+                    .then(a.row_id.cmp(&b.row_id)),
+                SequenceFeatureSortBy::Length => a
+                    .length_bp
+                    .cmp(&b.length_bp)
+                    .then(a.chrom_start_0based.cmp(&b.chrom_start_0based))
+                    .then(
+                        a.chrom_end_0based_exclusive
+                            .cmp(&b.chrom_end_0based_exclusive),
+                    )
+                    .then(a.sort_feature_id.cmp(&b.sort_feature_id))
+                    .then(a.row_id.cmp(&b.row_id)),
+            });
+        }
         if query.descending {
             export_rows.reverse();
         }
@@ -16519,6 +16538,22 @@ impl GentleEngine {
             skipped_missing_genomic_coordinates,
             query,
         })
+    }
+
+    fn feature_distance_to_point_0based(
+        point_0based: usize,
+        start_0based: usize,
+        end_0based_exclusive: usize,
+    ) -> usize {
+        if point_0based < start_0based {
+            start_0based.saturating_sub(point_0based)
+        } else if point_0based >= end_0based_exclusive {
+            point_0based
+                .saturating_sub(end_0based_exclusive)
+                .saturating_add(1)
+        } else {
+            0
+        }
     }
 
     pub fn query_sequence_features(
@@ -16615,6 +16650,18 @@ impl GentleEngine {
                 cause_chain: vec![],
             })?;
         let sequence_length_bp = dna.len();
+        if let Some(point_0based) = query.nearest_to_0based
+            && point_0based >= sequence_length_bp
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Feature nearest-point coordinate {point_0based} is outside sequence length {sequence_length_bp}"
+                ),
+
+                cause_chain: vec![],
+            });
+        }
 
         let range_filter = if let (Some(start), Some(end_exclusive)) =
             (query.start_0based, query.end_0based_exclusive)
@@ -16745,6 +16792,13 @@ impl GentleEngine {
                 continue;
             }
             let length_bp = end_0based_exclusive.saturating_sub(start_0based);
+            let distance_to_query_bp = query.nearest_to_0based.map(|point_0based| {
+                Self::feature_distance_to_point_0based(
+                    point_0based,
+                    start_0based,
+                    end_0based_exclusive,
+                )
+            });
 
             if let Some(min_len_bp) = query.min_len_bp
                 && length_bp < min_len_bp
@@ -16857,6 +16911,7 @@ impl GentleEngine {
                 start_0based,
                 end_0based_exclusive,
                 length_bp,
+                distance_to_query_bp,
                 strand: strand_text.to_string(),
                 label: Self::feature_display_label(feature, feature_id),
                 labels,
@@ -16864,32 +16919,43 @@ impl GentleEngine {
             });
         }
 
-        rows.sort_by(|a, b| match query.sort_by {
-            SequenceFeatureSortBy::FeatureId => a.feature_id.cmp(&b.feature_id),
-            SequenceFeatureSortBy::Start => a
-                .start_0based
-                .cmp(&b.start_0based)
-                .then(a.end_0based_exclusive.cmp(&b.end_0based_exclusive))
-                .then(a.feature_id.cmp(&b.feature_id)),
-            SequenceFeatureSortBy::End => a
-                .end_0based_exclusive
-                .cmp(&b.end_0based_exclusive)
-                .then(a.start_0based.cmp(&b.start_0based))
-                .then(a.feature_id.cmp(&b.feature_id)),
-            SequenceFeatureSortBy::Kind => a
-                .kind
-                .to_ascii_uppercase()
-                .cmp(&b.kind.to_ascii_uppercase())
-                .then(a.start_0based.cmp(&b.start_0based))
-                .then(a.end_0based_exclusive.cmp(&b.end_0based_exclusive))
-                .then(a.feature_id.cmp(&b.feature_id)),
-            SequenceFeatureSortBy::Length => a
-                .length_bp
-                .cmp(&b.length_bp)
-                .then(a.start_0based.cmp(&b.start_0based))
-                .then(a.end_0based_exclusive.cmp(&b.end_0based_exclusive))
-                .then(a.feature_id.cmp(&b.feature_id)),
-        });
+        if query.nearest_to_0based.is_some() {
+            rows.sort_by(|a, b| {
+                a.distance_to_query_bp
+                    .unwrap_or(usize::MAX)
+                    .cmp(&b.distance_to_query_bp.unwrap_or(usize::MAX))
+                    .then(a.start_0based.cmp(&b.start_0based))
+                    .then(a.end_0based_exclusive.cmp(&b.end_0based_exclusive))
+                    .then(a.feature_id.cmp(&b.feature_id))
+            });
+        } else {
+            rows.sort_by(|a, b| match query.sort_by {
+                SequenceFeatureSortBy::FeatureId => a.feature_id.cmp(&b.feature_id),
+                SequenceFeatureSortBy::Start => a
+                    .start_0based
+                    .cmp(&b.start_0based)
+                    .then(a.end_0based_exclusive.cmp(&b.end_0based_exclusive))
+                    .then(a.feature_id.cmp(&b.feature_id)),
+                SequenceFeatureSortBy::End => a
+                    .end_0based_exclusive
+                    .cmp(&b.end_0based_exclusive)
+                    .then(a.start_0based.cmp(&b.start_0based))
+                    .then(a.feature_id.cmp(&b.feature_id)),
+                SequenceFeatureSortBy::Kind => a
+                    .kind
+                    .to_ascii_uppercase()
+                    .cmp(&b.kind.to_ascii_uppercase())
+                    .then(a.start_0based.cmp(&b.start_0based))
+                    .then(a.end_0based_exclusive.cmp(&b.end_0based_exclusive))
+                    .then(a.feature_id.cmp(&b.feature_id)),
+                SequenceFeatureSortBy::Length => a
+                    .length_bp
+                    .cmp(&b.length_bp)
+                    .then(a.start_0based.cmp(&b.start_0based))
+                    .then(a.end_0based_exclusive.cmp(&b.end_0based_exclusive))
+                    .then(a.feature_id.cmp(&b.feature_id)),
+            });
+        }
         if query.descending {
             rows.reverse();
         }
@@ -16920,7 +16986,12 @@ impl GentleEngine {
             limit,
             range_relation: query.range_relation.as_str().to_string(),
             strand_filter: query.strand.as_str().to_string(),
-            sort_by: query.sort_by.as_str().to_string(),
+            sort_by: if query.nearest_to_0based.is_some() {
+                "distance".to_string()
+            } else {
+                query.sort_by.as_str().to_string()
+            },
+            nearest_to_0based: query.nearest_to_0based,
             descending: query.descending,
             query,
             rows,

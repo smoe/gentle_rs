@@ -8,6 +8,15 @@
   complete top-level Markdown JSON fence while retaining strict schema,
   unknown-field, and surrounding-prose rejection.
 
+- Clarified the DNA viewer's microarray state and made nearest-array navigation
+  reusable. An empty layer now opens `Array setup...` directly at the built-in
+  Clariom D Human profile, populated layers distinguish in-view from
+  full-sequence counts, and the context menu can focus the nearest projected
+  interval. The additive shared feature-query contract and shell option
+  `--nearest-to` expose the same deterministic distance ordering to CLI and
+  embedding clients; transcript association remains an explicit probe-region
+  interpretation step.
+
 - Hardened the approval-bound transcript-assay fallback adapters after a real
   IRF9 replay. The shared shell worker now reserves enough stack for the nested
   strict/fallback reports, selection audit, and combined gel payload. Ordinary
