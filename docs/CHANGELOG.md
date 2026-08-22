@@ -1,5 +1,12 @@
 # GENtle Changelog
 
+- Moved sequence-specific configuration and execution controls out of the DNA
+  map toolbar into a separate resizable Sequence tools window. Engine Ops,
+  Shell, genome-anchor extension, repeat-index configuration, and the Clariom D
+  probe-region workflow no longer consume map height; the new workspace has
+  two-dimensional scrolling and German/English labels for its main controls
+  and Clariom workflow stages.
+
 - Added an approval-bound informative fallback for infeasible strict
   transcript-primer panels. The engine preserves the typed strict coverage
   failure, derives a separate best-effort operation only for that failure

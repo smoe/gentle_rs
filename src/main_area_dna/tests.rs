@@ -9734,21 +9734,6 @@ fn rmsk_materialization_controls_default_when_missing_in_serialized_engine_ops_s
 }
 
 #[test]
-fn clamp_extended_top_panel_height_respects_bounds() {
-    let max_height = MainAreaDna::max_extended_top_panel_height(900.0, true);
-    assert!(
-        (MainAreaDna::clamp_extended_top_panel_height(0.0, 900.0, true)
-            - super::EXTENDED_TOP_PANEL_MIN_HEIGHT_PX)
-            .abs()
-            <= f32::EPSILON
-    );
-    assert!(
-        (MainAreaDna::clamp_extended_top_panel_height(9_999.0, 900.0, true) - max_height).abs()
-            <= f32::EPSILON
-    );
-}
-
-#[test]
 fn sync_contextual_transcript_visibility_filter_is_mode_aware() {
     let dna = DNAsequence::from_sequence("ACGT").unwrap();
     let mut area = MainAreaDna::new(dna, None, None);

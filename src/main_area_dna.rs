@@ -876,7 +876,6 @@ const ENABLE_LINEAR_VERTICAL_PAN: bool = true;
 const ENABLE_SEQUENCE_WINDOW_BACKDROP_IMAGES: bool = true;
 const EXTENDED_TOP_PANEL_DEFAULT_HEIGHT_PX: f32 = 420.0;
 const EXTENDED_TOP_PANEL_MIN_HEIGHT_PX: f32 = 180.0;
-const EXTENDED_TOP_PANEL_HANDLE_HEIGHT_PX: f32 = 8.0;
 const FEATURE_TREE_DEFAULT_WIDTH_PX: f32 = 320.0;
 const FEATURE_TREE_MIN_WIDTH_PX: f32 = 180.0;
 // The map pane already has its own minimum width; avoid an extra small absolute
@@ -2031,49 +2030,6 @@ impl MainAreaDna {
     fn extended_top_panel_visible(&self) -> bool {
         self.dna_presentation_mode.allows_engine_shell_panels()
             && (self.show_engine_ops || self.show_shell)
-    }
-
-    fn preferred_extended_top_panel_height(total_height: f32, sequence_panel_visible: bool) -> f32 {
-        let safe_total = if total_height.is_finite() {
-            total_height.clamp(EXTENDED_TOP_PANEL_MIN_HEIGHT_PX * 2.0, 6000.0)
-        } else {
-            900.0
-        };
-        let fraction = if sequence_panel_visible { 0.48 } else { 0.60 };
-        let floor = if sequence_panel_visible { 400.0 } else { 460.0 };
-        (safe_total * fraction).clamp(floor, safe_total * 0.72)
-    }
-
-    fn max_extended_top_panel_height(total_height: f32, sequence_panel_visible: bool) -> f32 {
-        let safe_total = if total_height.is_finite() {
-            total_height.clamp(EXTENDED_TOP_PANEL_MIN_HEIGHT_PX * 2.0, 6000.0)
-        } else {
-            900.0
-        };
-        let fraction = if sequence_panel_visible { 0.62 } else { 0.82 };
-        (safe_total * fraction).clamp(EXTENDED_TOP_PANEL_MIN_HEIGHT_PX + 120.0, safe_total - 80.0)
-    }
-
-    fn clamp_extended_top_panel_height(
-        height: f32,
-        total_height: f32,
-        sequence_panel_visible: bool,
-    ) -> f32 {
-        let min_height = EXTENDED_TOP_PANEL_MIN_HEIGHT_PX;
-        let max_height = Self::max_extended_top_panel_height(total_height, sequence_panel_visible);
-        if height.is_finite() {
-            height.clamp(min_height, max_height)
-        } else {
-            Self::preferred_extended_top_panel_height(total_height, sequence_panel_visible)
-        }
-    }
-
-    fn clamp_extended_top_panel_scroll_height(available_height: f32) -> f32 {
-        if available_height.is_finite() {
-            available_height.clamp(72.0, 2400.0)
-        } else {
-            520.0
-        }
     }
 
     fn sanitize_widget_size(size: Vec2) -> Vec2 {
@@ -4172,17 +4128,7 @@ impl MainAreaDna {
         let auto_hidden_sequence_panel = self.should_auto_hide_sequence_panel();
         let full_height = ctx.content_rect().height().max(240.0);
         let sequence_panel_visible = self.show_sequence && !auto_hidden_sequence_panel;
-        let mut top_panel = egui::Panel::top(top_panel_id).frame(Frame::NONE);
-        if self.extended_top_panel_visible() {
-            self.extended_top_panel_height_px = Self::clamp_extended_top_panel_height(
-                self.extended_top_panel_height_px,
-                full_height,
-                sequence_panel_visible,
-            );
-            top_panel = top_panel
-                .min_size(EXTENDED_TOP_PANEL_MIN_HEIGHT_PX)
-                .exact_size(self.extended_top_panel_height_px);
-        }
+        let top_panel = egui::Panel::top(top_panel_id).frame(Frame::NONE);
         crate::egui_compat::show_top_panel(ctx, top_panel_id, top_panel, |ui| {
             crate::gentle_gui_profile_scope!("MainAreaDna::render.top_panel");
             paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
@@ -4272,17 +4218,7 @@ impl MainAreaDna {
         let auto_hidden_sequence_panel = self.should_auto_hide_sequence_panel();
         let full_height = ui.available_height().max(240.0);
         let sequence_panel_visible = self.show_sequence && !auto_hidden_sequence_panel;
-        let mut top_panel = egui::Panel::top(top_panel_id).frame(Frame::NONE);
-        if self.extended_top_panel_visible() {
-            self.extended_top_panel_height_px = Self::clamp_extended_top_panel_height(
-                self.extended_top_panel_height_px,
-                full_height,
-                sequence_panel_visible,
-            );
-            top_panel = top_panel
-                .min_size(EXTENDED_TOP_PANEL_MIN_HEIGHT_PX)
-                .exact_size(self.extended_top_panel_height_px);
-        }
+        let top_panel = egui::Panel::top(top_panel_id).frame(Frame::NONE);
         crate::egui_compat::show_top_panel_inside(ui, top_panel, |ui| {
             crate::gentle_gui_profile_scope!("MainAreaDna::render_inside.top_panel");
             paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
@@ -6198,21 +6134,19 @@ impl MainAreaDna {
             if allow_engine_shell_panels {
                 ui.separator();
                 if ui
-                    .button("Engine Ops")
-                    .on_hover_text("Open strict engine operation controls")
+                    .button(Self::tr("sequence.tools.open"))
+                    .on_hover_text(Self::tr("sequence.tools.open_hover"))
                     .clicked()
                 {
-                    self.show_engine_ops = !self.show_engine_ops;
+                    self.show_engine_ops = true;
                     self.save_engine_ops_state();
                 }
                 if ui
-                    .button("Shell")
-                    .on_hover_text(
-                        "Open GENtle shell (shared command parser/executor with gentle_cli shell)",
-                    )
+                    .button(Self::tr("sequence.tools.shell_open"))
+                    .on_hover_text(Self::tr("sequence.tools.shell_open_hover"))
                     .clicked()
                 {
-                    self.show_shell = !self.show_shell;
+                    self.show_shell = true;
                     self.save_engine_ops_state();
                 }
             }
@@ -6240,132 +6174,42 @@ impl MainAreaDna {
                 if let Some(summary) = anchor_summary.clone() {
                     let (label, badge_color, hover_text) = match summary.anchor_verified {
                         Some(true) => (
-                            "verified",
+                            Self::tr("sequence.anchor.verified"),
                             egui::Color32::from_rgb(24, 120, 52),
-                            "Anchor sequence was verified against the prepared reference genome.",
+                            Self::tr("sequence.anchor.verified_hover"),
                         ),
                         Some(false) => (
-                            "unverified",
+                            Self::tr("sequence.anchor.unverified"),
                             egui::Color32::from_rgb(176, 46, 42),
-                            "Anchor sequence does not match the prepared reference genome at recorded coordinates.",
+                            Self::tr("sequence.anchor.unverified_hover"),
                         ),
                         None => (
-                            "n/a",
+                            Self::tr("sequence.anchor.not_available"),
                             egui::Color32::from_rgb(96, 96, 96),
-                            "Anchor verification has not been recorded for this sequence yet.",
+                            Self::tr("sequence.anchor.not_available_hover"),
                         ),
                     };
                     ui.label(
-                        egui::RichText::new(format!("anchor check: {label}"))
+                        egui::RichText::new(format!(
+                            "{}: {label}",
+                            Self::tr("sequence.anchor.check")
+                        ))
                             .color(badge_color)
                             .monospace()
                             .strong(),
                     )
                     .on_hover_text(hover_text);
                 }
+                if is_anchored
+                    && ui
+                        .small_button(Self::tr("sequence.anchor.configure"))
+                        .on_hover_text(Self::tr("sequence.anchor.configure_hover"))
+                        .clicked()
+                {
+                    self.show_engine_ops = true;
+                    self.save_engine_ops_state();
+                }
             });
-            if is_anchored {
-                ui.horizontal_wrapped(|ui| {
-                    ui.label("Extend anchored span by");
-                    let length_changed = ui
-                        .add(
-                            egui::TextEdit::singleline(&mut self.genome_anchor_extend_length_bp)
-                                .desired_width(70.0),
-                        )
-                        .on_hover_text(
-                            "Number of additional genomic bases to include on the selected anchor side.",
-                        )
-                        .changed();
-                    ui.label("bp");
-                    ui.label("output_id");
-                    let output_changed = ui
-                        .add(
-                            egui::TextEdit::singleline(&mut self.genome_anchor_extend_output_id)
-                                .desired_width(180.0),
-                        )
-                        .on_hover_text(
-                            "Optional explicit ID for the derived sequence (leave empty for auto-generated ID).",
-                        )
-                        .changed();
-                    if length_changed || output_changed {
-                        self.save_engine_ops_state();
-                    }
-                    if ui
-                        .small_button("Extend 5'")
-                        .on_hover_text(
-                            "Create a new sequence extended on the contextual 5' side of this anchored sequence.",
-                        )
-                        .clicked()
-                    {
-                        self.extend_active_genome_anchor(GenomeAnchorSide::FivePrime);
-                    }
-                    if ui
-                        .small_button("Extend 3'")
-                        .on_hover_text(
-                            "Create a new sequence extended on the contextual 3' side of this anchored sequence.",
-                        )
-                        .clicked()
-                    {
-                        self.extend_active_genome_anchor(GenomeAnchorSide::ThreePrime);
-                    }
-                    if ui
-                        .small_button("Re-verify anchor")
-                        .on_hover_text(
-                            "Re-check this sequence against the prepared genome and refresh anchor verification status.",
-                        )
-                        .clicked()
-                    {
-                        self.verify_active_genome_anchor();
-                    }
-                });
-                ui.horizontal_wrapped(|ui| {
-                    ui.label("rmsk index");
-                    let index_changed = ui
-                        .add(
-                            egui::TextEdit::singleline(&mut self.rmsk_index_path)
-                                .desired_width(320.0),
-                        )
-                        .on_hover_text(
-                            "Prepared UCSC rmsk interval index JSON used to annotate this anchored sequence.",
-                        )
-                        .changed();
-                    ui.label("max");
-                    let max_changed = ui
-                        .add(
-                            egui::TextEdit::singleline(&mut self.rmsk_max_features)
-                                .desired_width(70.0),
-                        )
-                        .on_hover_text("Maximum repeat features to add; leave blank for no cap.")
-                        .changed();
-                    let append_changed = ui
-                        .checkbox(&mut self.rmsk_append_features, "Append")
-                        .on_hover_text(
-                            "Keep existing generated rmsk repeat features instead of replacing them.",
-                        )
-                        .changed();
-                    if index_changed || max_changed || append_changed {
-                        self.save_engine_ops_state();
-                    }
-                    let can_load_repeats = anchor_summary.is_some();
-                    let load_response =
-                        ui.add_enabled(can_load_repeats, egui::Button::new("Load Repeats"));
-                    let load_response = if can_load_repeats {
-                        load_response.on_hover_text(
-                            "Materialize overlapping UCSC rmsk repeats as repeat_region features.",
-                        )
-                    } else {
-                        load_response.on_disabled_hover_text(
-                            "Repeat loading requires a genome anchor on the active sequence.",
-                        )
-                    };
-                    if load_response.clicked() {
-                        self.materialize_active_repeat_features();
-                    }
-                });
-                ui.small(
-                    "5'/3' follows anchor strand orientation (for strand '-', 5' extends toward increasing genomic coordinates).",
-                );
-            }
         }
         if !self.op_status.is_empty() {
             ui.add(egui::Label::new(egui::RichText::new(&self.op_status).monospace()).wrap());
@@ -6388,36 +6232,37 @@ impl MainAreaDna {
         }
 
         if self.extended_top_panel_visible() {
-            ui.separator();
-            let total_height = ui.ctx().content_rect().height().max(240.0);
-            let sequence_panel_visible =
-                self.show_sequence && !self.should_auto_hide_sequence_panel();
-            let remaining_height = ui
-                .available_height()
-                .max(EXTENDED_TOP_PANEL_HANDLE_HEIGHT_PX + 1.0);
-            let extended_controls_height = Self::clamp_extended_top_panel_scroll_height(
-                remaining_height - EXTENDED_TOP_PANEL_HANDLE_HEIGHT_PX,
-            );
-            egui::ScrollArea::vertical()
+            let mut open = true;
+            let sequence_id = self.seq_id.as_deref().unwrap_or("—");
+            let title = format!("{} — {sequence_id}", Self::tr("sequence.tools.title"));
+            egui::Window::new(title)
+                .id(egui::Id::new(("sequence_tools_window", self.panel_scope_key())))
+                .default_size(Vec2::new(1080.0, 720.0))
+                .min_size(Vec2::new(720.0, 420.0))
+                .resizable(true)
+                .open(&mut open)
+                .show(ui.ctx(), |ui| {
+            egui::ScrollArea::both()
                 .id_salt(format!(
                     "engine_shell_panels_scroll_{}",
                     self.seq_id.as_deref().unwrap_or("_global")
                 ))
                 .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
                 .auto_shrink([false, false])
-                .max_height(extended_controls_height)
-                .min_scrolled_height(extended_controls_height)
                 .show(ui, |ui| {
                     scroll_input_policy::apply_scrollarea_keyboard_navigation(
                         ui,
                         scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                     );
+                    ui.set_min_width(980.0);
                     if self.show_engine_ops && self.dna_presentation_mode.allows_engine_shell_panels()
                     {
-                        egui::CollapsingHeader::new("Strict Engine Operations")
+                        self.render_sequence_context_tools(ui);
+                        ui.separator();
+                        egui::CollapsingHeader::new(Self::tr("sequence.tools.engine_operations"))
                             .default_open(true)
                             .show(ui, |ui| {
-                            ui.label("IDs are comma-separated sequence IDs.");
+                            ui.label(Self::tr("sequence.tools.ids_hint"));
                             let template_seq_id = self.seq_id.clone().unwrap_or_default();
                             egui::CollapsingHeader::new("Core cloning operations")
                                 .default_open(false)
@@ -7953,7 +7798,7 @@ impl MainAreaDna {
                         self.render_cutrun_regulatory_support_summary_panel(ui);
                     });
 
-                egui::CollapsingHeader::new("Clariom D / probe-region evidence")
+                egui::CollapsingHeader::new(Self::tr("sequence.clariom.title"))
                     .default_open(false)
                     .show(ui, |ui| {
                         self.render_probe_region_output_inspection_panel(ui);
@@ -8209,61 +8054,114 @@ impl MainAreaDna {
                         self.render_shell_panel(ui);
                     }
                 });
-            let (split_rect, _) = ui.allocate_exact_size(
-                Vec2::new(ui.available_width(), EXTENDED_TOP_PANEL_HANDLE_HEIGHT_PX),
-                egui::Sense::hover(),
-            );
-            let split_response = ui.interact(
-                split_rect,
-                ui.make_persistent_id(format!(
-                    "extended_top_panel_split_{}",
-                    self.panel_scope_key()
-                )),
-                egui::Sense::click_and_drag(),
-            );
-            let split_color = if split_response.dragged() {
-                egui::Color32::from_rgb(40, 140, 210)
-            } else if split_response.hovered() {
-                egui::Color32::from_rgb(110, 110, 110)
-            } else {
-                egui::Color32::from_gray(90)
-            };
-            if split_response.hovered() || split_response.dragged() {
-                ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::ResizeVertical);
-            }
-            let split_y = split_rect.center().y;
-            ui.painter().line_segment(
-                [
-                    egui::pos2(split_rect.left(), split_y),
-                    egui::pos2(split_rect.right(), split_y),
-                ],
-                egui::Stroke::new(1.0_f32, split_color),
-            );
-            if split_response.double_clicked() {
-                self.extended_top_panel_height_px =
-                    Self::preferred_extended_top_panel_height(total_height, sequence_panel_visible);
-                self.save_engine_ops_state();
-            }
-            if split_response.dragged() {
-                let delta = ui.ctx().input(|i| i.pointer.delta().y);
-                if delta.abs() > f32::EPSILON {
-                    self.extended_top_panel_height_px = Self::clamp_extended_top_panel_height(
-                        self.extended_top_panel_height_px + delta,
-                        total_height,
-                        sequence_panel_visible,
-                    );
-                    ui.ctx().request_repaint();
-                }
-            }
-            if split_response.drag_stopped() {
-                self.extended_top_panel_height_px = Self::clamp_extended_top_panel_height(
-                    self.extended_top_panel_height_px,
-                    total_height,
-                    sequence_panel_visible,
-                );
+                });
+            if !open {
+                self.show_engine_ops = false;
+                self.show_shell = false;
                 self.save_engine_ops_state();
             }
         }
+    }
+
+    fn render_sequence_context_tools(&mut self, ui: &mut egui::Ui) {
+        let Some((_anchor_status, is_anchored)) = self.active_sequence_genome_anchor_status()
+        else {
+            return;
+        };
+        if !is_anchored {
+            return;
+        }
+        egui::CollapsingHeader::new(Self::tr("sequence.anchor.tools"))
+            .default_open(true)
+            .show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(Self::tr("sequence.anchor.extend_by"));
+                    let length_changed = ui
+                        .add(
+                            egui::TextEdit::singleline(&mut self.genome_anchor_extend_length_bp)
+                                .desired_width(70.0),
+                        )
+                        .on_hover_text(Self::tr("sequence.anchor.extend_by_hover"))
+                        .changed();
+                    ui.label("bp");
+                    ui.label(Self::tr("sequence.anchor.output_id"));
+                    let output_changed = ui
+                        .add(
+                            egui::TextEdit::singleline(&mut self.genome_anchor_extend_output_id)
+                                .desired_width(180.0),
+                        )
+                        .on_hover_text(Self::tr("sequence.anchor.output_id_hover"))
+                        .changed();
+                    if length_changed || output_changed {
+                        self.save_engine_ops_state();
+                    }
+                    if ui
+                        .small_button(Self::tr("sequence.anchor.extend_5"))
+                        .on_hover_text(Self::tr("sequence.anchor.extend_5_hover"))
+                        .clicked()
+                    {
+                        self.extend_active_genome_anchor(GenomeAnchorSide::FivePrime);
+                    }
+                    if ui
+                        .small_button(Self::tr("sequence.anchor.extend_3"))
+                        .on_hover_text(Self::tr("sequence.anchor.extend_3_hover"))
+                        .clicked()
+                    {
+                        self.extend_active_genome_anchor(GenomeAnchorSide::ThreePrime);
+                    }
+                    if ui
+                        .small_button(Self::tr("sequence.anchor.reverify"))
+                        .on_hover_text(Self::tr("sequence.anchor.reverify_hover"))
+                        .clicked()
+                    {
+                        self.verify_active_genome_anchor();
+                    }
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(Self::tr("sequence.anchor.rmsk_index"));
+                    let index_changed = ui
+                        .add(
+                            egui::TextEdit::singleline(&mut self.rmsk_index_path)
+                                .desired_width(320.0),
+                        )
+                        .on_hover_text(Self::tr("sequence.anchor.rmsk_index_hover"))
+                        .changed();
+                    ui.label(Self::tr("sequence.anchor.max_features"));
+                    let max_changed = ui
+                        .add(
+                            egui::TextEdit::singleline(&mut self.rmsk_max_features)
+                                .desired_width(70.0),
+                        )
+                        .on_hover_text(Self::tr("sequence.anchor.max_features_hover"))
+                        .changed();
+                    let append_changed = ui
+                        .checkbox(
+                            &mut self.rmsk_append_features,
+                            Self::tr("sequence.anchor.append"),
+                        )
+                        .on_hover_text(Self::tr("sequence.anchor.append_hover"))
+                        .changed();
+                    if index_changed || max_changed || append_changed {
+                        self.save_engine_ops_state();
+                    }
+                    let can_load_repeats = self.active_sequence_anchor_summary().is_some();
+                    let load_response = ui.add_enabled(
+                        can_load_repeats,
+                        egui::Button::new(Self::tr("sequence.anchor.load_repeats")),
+                    );
+                    let load_response = if can_load_repeats {
+                        load_response.on_hover_text(Self::tr("sequence.anchor.load_repeats_hover"))
+                    } else {
+                        load_response.on_disabled_hover_text(Self::tr(
+                            "sequence.anchor.load_repeats_disabled",
+                        ))
+                    };
+                    if load_response.clicked() {
+                        self.materialize_active_repeat_features();
+                    }
+                });
+                ui.small(Self::tr("sequence.anchor.orientation_hint"));
+            });
     }
 
     fn probe_region_optional_label(value: &Option<String>) -> &str {
@@ -9188,14 +9086,12 @@ impl MainAreaDna {
 
     fn render_probe_region_output_inspection_panel(&mut self, ui: &mut egui::Ui) {
         ui.small(
-            egui::RichText::new(
-                "Inspects completed Affymetrix probe-region helper output; it does not run R, APT, downloads, or external analysis.",
-            )
-            .color(egui::Color32::from_rgb(100, 116, 139)),
+            egui::RichText::new(Self::tr("sequence.clariom.description"))
+                .color(egui::Color32::from_rgb(100, 116, 139)),
         );
         ui.add_space(4.0);
 
-        ui.label(egui::RichText::new("Import APT summary").strong());
+        ui.label(egui::RichText::new(Self::tr("sequence.clariom.import_summary")).strong());
         let mut import_fields_changed = false;
         ui.horizontal_wrapped(|ui| {
             ui.label("summary_tsv");
@@ -9334,7 +9230,7 @@ impl MainAreaDna {
                     !self.probe_region_apt_summary_path.trim().is_empty()
                         && !self.probe_region_apt_annotation_path.trim().is_empty()
                         && !self.probe_region_output_dir.trim().is_empty(),
-                    egui::Button::new("Import APT output"),
+                    egui::Button::new(Self::tr("sequence.clariom.import_output")),
                 )
                 .on_hover_text(
                     "Convert explicit APT summary + annotation files into GENtle's inspectable probe-region output directory",
@@ -9368,7 +9264,7 @@ impl MainAreaDna {
 
         ui.add_space(4.0);
         ui.separator();
-        ui.label(egui::RichText::new("Run planned backend").strong());
+        ui.label(egui::RichText::new(Self::tr("sequence.clariom.run_backend")).strong());
         let mut backend_fields_changed = false;
         ui.horizontal_wrapped(|ui| {
             ui.label("plan_json");
@@ -9413,7 +9309,7 @@ impl MainAreaDna {
                 .add_enabled(
                     self.probe_region_backend_allow_external_execution
                         && !self.probe_region_backend_plan_path.trim().is_empty(),
-                    egui::Button::new("Run backend (external R/APT)"),
+                    egui::Button::new(Self::tr("sequence.clariom.run_backend_button")),
                 )
                 .on_hover_text(
                     "Run arrays run-probe-region-backend through the shared shell executor after explicit confirmation",
@@ -9433,7 +9329,7 @@ impl MainAreaDna {
 
         ui.add_space(4.0);
         ui.separator();
-        ui.label(egui::RichText::new("Inspect completed output").strong());
+        ui.label(egui::RichText::new(Self::tr("sequence.clariom.inspect_output")).strong());
         let mut output_dir_changed = false;
         ui.horizontal_wrapped(|ui| {
             ui.label("output_dir");
@@ -9449,7 +9345,7 @@ impl MainAreaDna {
             if ui
                 .add_enabled(
                     !self.probe_region_output_dir.trim().is_empty(),
-                    egui::Button::new("Inspect output"),
+                    egui::Button::new(Self::tr("sequence.clariom.inspect_output_button")),
                 )
                 .on_hover_text(
                     "Run arrays inspect-probe-region-output through the shared shell executor",
@@ -9498,7 +9394,7 @@ impl MainAreaDna {
 
         ui.add_space(4.0);
         ui.separator();
-        ui.label(egui::RichText::new("Project helper output").strong());
+        ui.label(egui::RichText::new(Self::tr("sequence.clariom.project_output")).strong());
         let mut projection_fields_changed = false;
         ui.horizontal_wrapped(|ui| {
             ui.label("target_seq_id");
@@ -9514,7 +9410,7 @@ impl MainAreaDna {
                 self.cached_probe_region_interpretation = None;
             }
             if ui
-                .button("Use current")
+                .button(Self::tr("sequence.clariom.use_current"))
                 .on_hover_text("Use the active sequence window as projection target")
                 .clicked()
             {
@@ -9650,7 +9546,7 @@ impl MainAreaDna {
             if ui
                 .add_enabled(
                     project_enabled,
-                    egui::Button::new("Project as array features"),
+                    egui::Button::new(Self::tr("sequence.clariom.project_button")),
                 )
                 .on_hover_text(
                     "Run arrays project-probe-region-output through the shared shell executor",
@@ -9687,7 +9583,7 @@ impl MainAreaDna {
 
         ui.add_space(4.0);
         ui.separator();
-        ui.label(egui::RichText::new("Interpret projected evidence").strong());
+        ui.label(egui::RichText::new(Self::tr("sequence.clariom.interpret_evidence")).strong());
         let mut interpretation_fields_changed = false;
         ui.horizontal_wrapped(|ui| {
             ui.label("gene");
@@ -9776,7 +9672,7 @@ impl MainAreaDna {
             if ui
                 .add_enabled(
                     interpretation_enabled,
-                    egui::Button::new("Interpret evidence"),
+                    egui::Button::new(Self::tr("sequence.clariom.interpret_button")),
                 )
                 .on_hover_text(
                     "Run arrays interpret-probe-region-evidence through the shared shell executor",
@@ -9832,14 +9728,14 @@ impl MainAreaDna {
         }
 
         let Some(report) = self.cached_probe_region_output_inspection.as_ref() else {
-            ui.small("No inspected output cached yet.");
+            ui.small(Self::tr("sequence.clariom.no_cached_output"));
             return;
         };
 
         ui.add_space(6.0);
         ui.group(|ui| {
             ui.horizontal_wrapped(|ui| {
-                ui.label(egui::RichText::new("Inspected output").strong());
+                ui.label(egui::RichText::new(Self::tr("sequence.clariom.inspected_output")).strong());
                 let status_text = if report.usable {
                     "usable"
                 } else {
