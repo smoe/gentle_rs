@@ -34,6 +34,222 @@ impl GENtleApp {
         self.show_agent_assistant_dialog = true;
         self.mark_window_open_or_focus(Self::agent_assistant_viewport_id(), was_open);
     }
+
+    fn encode_agent_help_png(image: &egui::ColorImage) -> Result<Vec<u8>, String> {
+        let [width, height] = image.size;
+        if width == 0 || height == 0 || image.pixels.len() != width.saturating_mul(height) {
+            return Err("Captured GENtle view has invalid pixel dimensions".to_string());
+        }
+        let rgba = image
+            .pixels
+            .iter()
+            .flat_map(|pixel| pixel.to_array())
+            .collect::<Vec<_>>();
+        let buffer = image::RgbaImage::from_raw(width as u32, height as u32, rgba)
+            .ok_or_else(|| "Could not construct captured GENtle image".to_string())?;
+        let mut encoded = Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(buffer)
+            .write_to(&mut encoded, image::ImageFormat::Png)
+            .map_err(|error| format!("Could not encode captured GENtle view as PNG: {error}"))?;
+        Ok(encoded.into_inner())
+    }
+
+    fn agent_help_sha256(bytes: &[u8]) -> String {
+        ring::digest::digest(&ring::digest::SHA256, bytes)
+            .as_ref()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect()
+    }
+
+    fn prepare_agent_help_attachment(
+        capture: crate::agent_help::AgentHelpCapturedImage,
+    ) -> Result<AgentPendingImageAttachment, String> {
+        let png_bytes = Self::encode_agent_help_png(&capture.image)?;
+        if png_bytes.len() > 20 * 1024 * 1024 {
+            return Err(format!(
+                "Captured image is too large for Agent Assistant ({} MiB; limit 20 MiB)",
+                png_bytes.len() / (1024 * 1024)
+            ));
+        }
+        let mut temp_file = tempfile::Builder::new()
+            .prefix("gentle-agent-help-")
+            .suffix(".png")
+            .tempfile()
+            .map_err(|error| format!("Could not create temporary screenshot file: {error}"))?;
+        temp_file
+            .write_all(&png_bytes)
+            .map_err(|error| format!("Could not write temporary screenshot file: {error}"))?;
+        temp_file
+            .flush()
+            .map_err(|error| format!("Could not flush temporary screenshot file: {error}"))?;
+        let path = temp_file
+            .path()
+            .canonicalize()
+            .map_err(|error| format!("Could not resolve temporary screenshot path: {error}"))?;
+        let [pixel_width, pixel_height] = capture.image.size;
+        let file_name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("gentle-agent-help.png")
+            .to_string();
+        let request = AgentRequestAttachment {
+            schema: AGENT_ATTACHMENT_SCHEMA.to_string(),
+            id: format!("agent_help_{}", capture.request_id),
+            kind: "image".to_string(),
+            file_name,
+            mime_type: "image/png".to_string(),
+            path: path.to_string_lossy().to_string(),
+            byte_len: png_bytes.len() as u64,
+            sha256: Self::agent_help_sha256(&png_bytes),
+            source_window_title: Some(capture.window_title),
+            capture_backend: Some(capture.backend),
+            pixel_width: Some(pixel_width),
+            pixel_height: Some(pixel_height),
+        };
+        Ok(AgentPendingImageAttachment {
+            request,
+            png_bytes: Arc::<[u8]>::from(png_bytes),
+            temp_file: Arc::new(temp_file),
+        })
+    }
+
+    fn agent_help_prompt(window_title: &str) -> String {
+        crate::i18n::tr("agent.help_prompt").replace("{window}", window_title)
+    }
+
+    fn render_agent_help_attachment_panel(&mut self, ui: &mut egui::Ui) {
+        if let Some(attachment) = self.agent_pending_image_attachment.clone() {
+            let supports_images = self
+                .selected_agent_system()
+                .map(|system| system.supports_image_attachments)
+                .unwrap_or(false);
+            ui.group(|ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.strong("Attached screenshot");
+                    ui.small(
+                        attachment
+                            .request
+                            .source_window_title
+                            .as_deref()
+                            .unwrap_or("GENtle window"),
+                    );
+                    if let (Some(width), Some(height)) = (
+                        attachment.request.pixel_width,
+                        attachment.request.pixel_height,
+                    ) {
+                        ui.small(format!("{width} x {height} px"));
+                    }
+                    ui.small(format!(
+                        "{} KiB | {}",
+                        attachment.request.byte_len.div_ceil(1024),
+                        attachment
+                            .request
+                            .capture_backend
+                            .as_deref()
+                            .unwrap_or("capture")
+                    ));
+                });
+                ui.add(
+                    egui::Image::from_bytes(
+                        format!(
+                            "bytes://gentle-agent-help-{}.png",
+                            attachment.request.sha256
+                        ),
+                        attachment.png_bytes.clone(),
+                    )
+                    .max_width(ui.available_width())
+                    .max_height(260.0)
+                    .shrink_to_fit(),
+                );
+                ui.small(
+                    "The screenshot remains local until you click Ask agent. Only this selected image is attached.",
+                );
+                if !supports_images {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(180, 70, 45),
+                        "The selected agent system does not support image attachments. Choose an image-capable system or remove the screenshot.",
+                    );
+                }
+                if ui
+                    .add_enabled(
+                        self.agent_task.is_none(),
+                        egui::Button::new("Remove screenshot"),
+                    )
+                    .clicked()
+                {
+                    self.agent_pending_image_attachment = None;
+                    self.agent_status = "Pending screenshot removed".to_string();
+                }
+            });
+        }
+
+        if let Some(failure) = self.agent_help_capture_failure.clone() {
+            ui.group(|ui| {
+                ui.colored_label(
+                    egui::Color32::from_rgb(180, 70, 45),
+                    format!("Screenshot unavailable: {}", failure.message),
+                );
+                ui.small(format!("Requested for '{}'.", failure.window_title));
+                if matches!(
+                    failure.kind,
+                    crate::agent_help::AgentHelpCaptureFailureKind::PermissionRequired
+                        | crate::agent_help::AgentHelpCaptureFailureKind::RestartRequired
+                ) && ui.button("Open Screen Recording settings").clicked()
+                {
+                    self.agent_status = match crate::agent_help::open_macos_screen_recording_settings()
+                    {
+                        Ok(()) => {
+                            "Opened macOS Screen Recording settings. Restart GENtle after granting access."
+                                .to_string()
+                        }
+                        Err(error) => error,
+                    };
+                }
+                ui.small(
+                    "The normal Agent help click captures only GENtle's drawn viewport and does not require Screen Recording permission; native full-window capture is optional.",
+                );
+            });
+        }
+    }
+
+    pub(super) fn poll_agent_help_capture_events(&mut self) {
+        for event in take_capture_events() {
+            match event {
+                AgentHelpCaptureEvent::Captured(capture) => {
+                    let request_id = capture.request_id;
+                    let window_title = capture.window_title.clone();
+                    match Self::prepare_agent_help_attachment(capture) {
+                        Ok(attachment) => {
+                            self.agent_pending_image_attachment = Some(attachment);
+                            self.agent_help_capture_failure = None;
+                            self.agent_prompt = Self::agent_help_prompt(&window_title);
+                            self.agent_status = format!(
+                                "Screenshot from '{window_title}' is attached locally. Review it and your prompt before asking the agent."
+                            );
+                        }
+                        Err(message) => {
+                            self.agent_pending_image_attachment = None;
+                            self.agent_help_capture_failure = Some(AgentHelpCaptureFailure {
+                                request_id,
+                                window_title: window_title.clone(),
+                                kind: crate::agent_help::AgentHelpCaptureFailureKind::CaptureFailed,
+                                message: message.clone(),
+                            });
+                            self.agent_status = message;
+                        }
+                    }
+                    self.open_agent_assistant_dialog();
+                }
+                AgentHelpCaptureEvent::Failed(failure) => {
+                    self.agent_pending_image_attachment = None;
+                    self.agent_status = failure.message.clone();
+                    self.agent_help_capture_failure = Some(failure);
+                    self.open_agent_assistant_dialog();
+                }
+            }
+        }
+    }
     pub(super) fn refresh_agent_system_catalog(&mut self) {
         let catalog_path = self.agent_catalog_path.trim().to_string();
         if !self.agent_systems.is_empty()
@@ -1298,6 +1514,15 @@ impl GENtleApp {
             self.agent_status = "Selected agent system is not available in catalog".to_string();
             return;
         };
+        if self.agent_pending_image_attachment.is_some()
+            && !selected_system.supports_image_attachments
+        {
+            self.agent_status = format!(
+                "Selected agent system '{}' does not support image attachments. Choose an image-capable system or remove the screenshot.",
+                selected_system.label
+            );
+            return;
+        }
         let (available, reason) = self.selected_agent_system_availability(&selected_system);
         if !available {
             if let Some(prompt) = self.agent_model_selection_prompt(&selected_system) {
@@ -1360,10 +1585,26 @@ impl GENtleApp {
 
         let include_state_summary = self.agent_include_state_summary;
         let conversation = self.agent_conversation.clone();
+        let attachments = self
+            .agent_pending_image_attachment
+            .iter()
+            .map(|attachment| attachment.request.clone())
+            .collect::<Vec<_>>();
+        let attachment_summaries = attachments
+            .iter()
+            .map(AgentAttachmentSummary::from)
+            .collect::<Vec<_>>();
+        let attachment_files = self
+            .agent_pending_image_attachment
+            .iter()
+            .map(|attachment| attachment.temp_file.clone())
+            .collect::<Vec<_>>();
+        let worker_attachment_files = attachment_files.clone();
         let engine = self.engine.clone();
         let catalog_path = self.agent_catalog_path.trim().to_string();
         let job_id = self.alloc_background_job_id();
         let (tx, rx) = mpsc::channel::<AgentAskTaskMessage>();
+        self.agent_last_command_output = None;
         self.agent_status = if let Some(timeout) = timeout_seconds {
             format!(
                 "Starting agent '{}' in background (timeout={}s, retries={})",
@@ -1388,11 +1629,14 @@ impl GENtleApp {
         self.agent_task = Some(AgentAskTask {
             job_id,
             prompt: prompt.clone(),
+            attachment_summaries,
+            _attachment_files: attachment_files,
             started: Instant::now(),
             runtime_frame,
             receiver: rx,
         });
         std::thread::spawn(move || {
+            let _attachment_files = worker_attachment_files;
             let request_context = if include_state_summary {
                 let _ = tx.send(AgentAskTaskMessage::Status {
                     job_id,
@@ -1416,7 +1660,7 @@ impl GENtleApp {
                 job_id,
                 message: format!("Contacting agent system '{}'", system_id),
             });
-            let result = invoke_agent_support_with_request_context(
+            let result = invoke_agent_support_with_request_context_and_attachments(
                 Some(catalog_path.as_str()),
                 &system_id,
                 &prompt,
@@ -1425,6 +1669,7 @@ impl GENtleApp {
                     .as_ref()
                     .map(|(_, introspection)| introspection),
                 Some(&conversation),
+                &attachments,
                 if env_overrides.is_empty() {
                     None
                 } else {
@@ -1468,8 +1713,10 @@ impl GENtleApp {
     fn clear_agent_conversation(&mut self) {
         self.agent_conversation = AgentConversation::default();
         self.agent_last_invocation = None;
+        self.agent_pending_image_attachment = None;
+        self.agent_help_capture_failure = None;
         self.persist_agent_conversation_to_state();
-        self.agent_status = "Conversation cleared".to_string();
+        self.agent_status = "Conversation and pending attachment cleared".to_string();
     }
 
     pub(super) fn execute_agent_suggested_command(
@@ -1498,6 +1745,7 @@ impl GENtleApp {
         command_text: &str,
         trigger: &str,
     ) {
+        self.agent_last_command_output = None;
         let trimmed = command_text.trim();
         if trimmed.is_empty() {
             self.agent_status = format!("{source_label} is empty");
@@ -1640,7 +1888,21 @@ impl GENtleApp {
                 } else {
                     Vec::new()
                 };
-                let mut extra_summary: Option<String> = None;
+                let mut extra_summary: Option<String> = match &command {
+                    ShellCommand::Help { topic, .. } => {
+                        self.open_help_doc(HelpDoc::Shell);
+                        if !topic.is_empty() {
+                            self.help_search_query = topic.join(" ");
+                            self.help_search_selected = 0;
+                            self.refresh_help_search_matches();
+                        }
+                        Some("opened Help > Shell Commands".to_string())
+                    }
+                    ShellCommand::StateSummary => {
+                        Some("showing the current project summary below".to_string())
+                    }
+                    _ => None,
+                };
                 let mut effective_state_changed = run.state_changed;
                 if let ShellCommand::EnsemblGeneFetch { entry_id, .. } = &command {
                     match self.import_agent_ensembl_gene_fetch_result(entry_id.as_deref(), &run) {
@@ -1716,6 +1978,11 @@ impl GENtleApp {
                     state_changed: effective_state_changed,
                     summary,
                     executed_at_unix_ms: Self::now_unix_ms(),
+                });
+                self.agent_last_command_output = Some(AgentCommandOutput {
+                    command: trimmed.to_string(),
+                    output: run.output,
+                    state_changed: effective_state_changed,
                 });
             }
             Err(err) => {
@@ -2257,6 +2524,11 @@ impl GENtleApp {
                 .as_ref()
                 .map(|task| task.prompt.clone())
                 .unwrap_or_default();
+            let completed_attachments = self
+                .agent_task
+                .as_ref()
+                .map(|task| task.attachment_summaries.clone())
+                .unwrap_or_default();
             self.agent_task = None;
             match outcome {
                 Ok(invocation) => {
@@ -2278,12 +2550,15 @@ impl GENtleApp {
                     self.agent_conversation.push_turn(AgentConversationTurn {
                         user_message: completed_prompt,
                         response: response.clone(),
+                        attachments: completed_attachments,
                         system_id: invocation.system_id.clone(),
                         system_label: invocation.system_label.clone(),
                         completed_at_unix_ms: Self::now_unix_ms(),
                     });
                     self.persist_agent_conversation_to_state();
                     self.agent_last_invocation = Some(invocation);
+                    self.agent_pending_image_attachment = None;
+                    self.agent_help_capture_failure = None;
                     if self.agent_allow_auto_exec {
                         self.execute_agent_auto_suggestions(&response);
                     }
@@ -3791,6 +4066,282 @@ impl GENtleApp {
         );
     }
 
+    pub(super) fn agent_sequence_object_commands(seq_id: &str) -> Vec<AgentObjectCommand> {
+        let seq_id = Self::shell_quote_command_arg(seq_id);
+        vec![
+            AgentObjectCommand {
+                label: "Open sequence",
+                detail: "Open this project sequence in its DNA/RNA window.",
+                command: format!("/open sequence-window {seq_id}"),
+            },
+            AgentObjectCommand {
+                label: "List annotations",
+                detail: "Return a read-only structured list of annotations on this sequence.",
+                command: format!("features query {seq_id} --limit 100"),
+            },
+            AgentObjectCommand {
+                label: "Find restriction sites",
+                detail: "Run the shared read-only restriction-site scan on this sequence.",
+                command: format!("features restriction-scan {seq_id}"),
+            },
+        ]
+    }
+
+    pub(super) fn agent_container_object_command(
+        container_id: &str,
+        declared_contents_exclusive: bool,
+    ) -> AgentObjectCommand {
+        let container_id = Self::shell_quote_command_arg(container_id);
+        let (label, detail, exclusive) = if declared_contents_exclusive {
+            (
+                "Mark contents as a measured subset",
+                "Match the subset interpretation offered by the main project overview.",
+                false,
+            )
+        } else {
+            (
+                "Mark contents as exhaustive",
+                "Match the exhaustive-content interpretation offered by the main project overview.",
+                true,
+            )
+        };
+        AgentObjectCommand {
+            label,
+            detail,
+            command: format!("containers set-exclusive {container_id} {exclusive}"),
+        }
+    }
+
+    fn render_agent_object_command_menu(
+        ui: &mut egui::Ui,
+        object_label: &str,
+        commands: &[AgentObjectCommand],
+        pending_command: &mut Option<String>,
+    ) {
+        ui.set_min_width(440.0);
+        ui.strong(format!("Actions for {object_label}"));
+        ui.small("These are the same parser-validated commands used by GUI Shell and CLI Shell.");
+        ui.separator();
+        for action in commands {
+            ui.label(egui::RichText::new(action.label).strong());
+            ui.small(action.detail);
+            ui.monospace(&action.command);
+            ui.horizontal(|ui| {
+                if ui.button("Run").clicked() {
+                    *pending_command = Some(action.command.clone());
+                    ui.close();
+                }
+                if ui.button("Copy command").clicked() {
+                    ui.ctx().copy_text(action.command.clone());
+                }
+            });
+            ui.separator();
+        }
+        ui.small("Use /help for the complete command catalog.");
+    }
+
+    fn render_agent_project_state_summary(
+        &mut self,
+        ui: &mut egui::Ui,
+        summary: &EngineStateSummary,
+    ) -> Option<String> {
+        let mut pending_command = None;
+        ui.label(format!(
+            "Current project: {} sequence(s), {} container(s), {} arrangement(s).",
+            summary.sequence_count, summary.container_count, summary.arrangement_count
+        ));
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .button("Show complete project overview")
+                .on_hover_text(
+                    "Focus the main window's table/graph with sequences, analyses, containers, arrangements, and their context menus",
+                )
+                .clicked()
+            {
+                self.focus_project_overview_target(ProjectOverviewTarget::Lineage);
+                self.queue_focus_viewport(egui::ViewportId::ROOT);
+                self.agent_status = "Focused the complete project overview in the main window"
+                    .to_string();
+            }
+            ui.small("Right-click a sequence or container below for its contextual commands.");
+        });
+        if summary.sequence_count == 0
+            && summary.container_count == 0
+            && summary.arrangement_count == 0
+        {
+            ui.small("No sequences, containers, or arrangements are currently loaded.");
+            return pending_command;
+        }
+
+        if !summary.sequences.is_empty() {
+            egui::CollapsingHeader::new(format!("Sequences ({})", summary.sequence_count))
+                .default_open(true)
+                .show(ui, |ui| {
+                    for sequence in summary.sequences.iter().take(50) {
+                        let name = sequence
+                            .name
+                            .as_deref()
+                            .map(str::trim)
+                            .filter(|name| !name.is_empty() && *name != sequence.id.as_str())
+                            .map(|name| format!(" | {name}"))
+                            .unwrap_or_default();
+                        let response = ui.add(
+                            egui::Label::new(format!(
+                                "{}{} | {} bp | {}",
+                                sequence.id,
+                                name,
+                                sequence.length,
+                                if sequence.circular {
+                                    "circular"
+                                } else {
+                                    "linear"
+                                }
+                            ))
+                            .wrap(),
+                        );
+                        response
+                            .on_hover_text("Right-click for commands that operate on this sequence")
+                            .context_menu(|ui| {
+                                Self::render_agent_object_command_menu(
+                                    ui,
+                                    &sequence.id,
+                                    &Self::agent_sequence_object_commands(&sequence.id),
+                                    &mut pending_command,
+                                );
+                            });
+                    }
+                    if summary.sequences.len() > 50 {
+                        ui.small(format!(
+                            "... and {} more sequence(s); use Copy JSON for the complete list.",
+                            summary.sequences.len() - 50
+                        ));
+                    }
+                });
+        }
+        if !summary.containers.is_empty() {
+            egui::CollapsingHeader::new(format!("Containers ({})", summary.container_count))
+                .default_open(false)
+                .show(ui, |ui| {
+                    for container in summary.containers.iter().take(50) {
+                        let response = ui.add(
+                            egui::Label::new(format!(
+                                "{} | {} | {} member(s)",
+                                container.id, container.kind, container.member_count
+                            ))
+                            .wrap(),
+                        );
+                        response
+                            .on_hover_text(
+                                "Right-click for commands that operate on this container",
+                            )
+                            .context_menu(|ui| {
+                                Self::render_agent_object_command_menu(
+                                    ui,
+                                    &container.id,
+                                    &[Self::agent_container_object_command(
+                                        &container.id,
+                                        container.declared_contents_exclusive,
+                                    )],
+                                    &mut pending_command,
+                                );
+                            });
+                    }
+                    if summary.containers.len() > 50 {
+                        ui.small(format!(
+                            "... and {} more container(s); use Copy JSON for the complete list.",
+                            summary.containers.len() - 50
+                        ));
+                    }
+                });
+        }
+        if !summary.arrangements.is_empty() {
+            egui::CollapsingHeader::new(format!("Arrangements ({})", summary.arrangement_count))
+                .default_open(false)
+                .show(ui, |ui| {
+                    for arrangement in summary.arrangements.iter().take(50) {
+                        ui.add(
+                            egui::Label::new(format!(
+                                "{} | {} | {} lane(s)",
+                                arrangement.id, arrangement.mode, arrangement.lane_count
+                            ))
+                            .wrap(),
+                        )
+                        .on_hover_text(
+                            "Use Show complete project overview for arrangement actions",
+                        );
+                    }
+                    if summary.arrangements.len() > 50 {
+                        ui.small(format!(
+                            "... and {} more arrangement(s); use Copy JSON for the complete list.",
+                            summary.arrangements.len() - 50
+                        ));
+                    }
+                });
+        }
+        pending_command
+    }
+
+    fn render_agent_command_output(&mut self, ui: &mut egui::Ui, result: &AgentCommandOutput) {
+        let pretty_output = serde_json::to_string_pretty(&result.output)
+            .unwrap_or_else(|_| result.output.to_string());
+        ui.separator();
+        let mut pending_command = None;
+        ui.group(|ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.strong("Command result");
+                ui.monospace(result.command.trim());
+                ui.small(if result.state_changed {
+                    "project changed"
+                } else {
+                    "read only"
+                });
+                if ui
+                    .button("Copy JSON")
+                    .on_hover_text("Copy the complete structured result from this local command")
+                    .clicked()
+                {
+                    ui.ctx().copy_text(pretty_output.clone());
+                    self.agent_status =
+                        format!("Copied structured result for {}", result.command.trim());
+                }
+            });
+
+            if let Ok(summary) = serde_json::from_value::<EngineStateSummary>(result.output.clone())
+            {
+                pending_command = self.render_agent_project_state_summary(ui, &summary);
+            } else if result.output.get("help").is_some()
+                || result.output.get("help_markdown").is_some()
+            {
+                ui.label("The shared-shell command reference is open in Help > Shell Commands.");
+                ui.small("Use the Help window's Find field to locate a command or topic.");
+            } else {
+                ui.small("Structured command output:");
+                let mut visible_output = pretty_output;
+                egui::ScrollArea::vertical()
+                    .id_salt("agent_local_command_output_scroll")
+                    .max_height(220.0)
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        ui.add(
+                            egui::TextEdit::multiline(&mut visible_output)
+                                .code_editor()
+                                .interactive(false)
+                                .desired_rows(8)
+                                .desired_width(ui.available_width()),
+                        );
+                    });
+            }
+        });
+        if let Some(command) = pending_command {
+            self.execute_agent_shell_command_from_ui(
+                0,
+                "Project item action",
+                &command,
+                "list context menu",
+            );
+        }
+    }
+
     pub(super) fn render_agent_assistant_contents(&mut self, ui: &mut Ui) -> bool {
         self.refresh_agent_system_catalog();
         let mut close_requested = false;
@@ -3845,6 +4396,7 @@ impl GENtleApp {
             ui.checkbox(&mut self.agent_allow_auto_exec, auto_run_suggestions_label)
                 .on_hover_text(self.tr("agent.auto_run_suggestions.tooltip"));
         });
+        self.render_agent_help_attachment_panel(ui);
         if !self.agent_conversation.turns.is_empty() {
             let turns = self.agent_conversation.turns.clone();
             let mut copied_response = false;
@@ -3867,6 +4419,24 @@ impl GENtleApp {
                             }
                             ui.strong(self.tr("agent.conversation.you"));
                             ui.add(egui::Label::new(turn.user_message.trim()).wrap());
+                            for attachment in &turn.attachments {
+                                let dimensions =
+                                    match (attachment.pixel_width, attachment.pixel_height) {
+                                        (Some(width), Some(height)) => {
+                                            format!(" | {width} x {height} px")
+                                        }
+                                        _ => String::new(),
+                                    };
+                                ui.small(format!(
+                                    "Attached image: {}{} | source {}",
+                                    attachment.file_name,
+                                    dimensions,
+                                    attachment
+                                        .source_window_title
+                                        .as_deref()
+                                        .unwrap_or("GENtle window")
+                                ));
+                            }
                             ui.horizontal_wrapped(|ui| {
                                 ui.strong(if turn.system_label.trim().is_empty() {
                                     turn.system_id.as_str()
@@ -4029,7 +4599,14 @@ impl GENtleApp {
         }
         let direct_prompt_command =
             Self::agent_prompt_direct_shell_command(&self.agent_prompt).map(str::to_string);
-        let can_submit_prompt = !running && (selected_available || direct_prompt_command.is_some());
+        let selected_supports_pending_attachment = self.agent_pending_image_attachment.is_none()
+            || selected_system
+                .as_ref()
+                .map(|system| system.supports_image_attachments)
+                .unwrap_or(false);
+        let can_submit_prompt = !running
+            && (selected_available || direct_prompt_command.is_some())
+            && (direct_prompt_command.is_some() || selected_supports_pending_attachment);
         if prompt_submit_shortcut && can_submit_prompt {
             if let Some(command) = direct_prompt_command.as_deref() {
                 self.execute_agent_prompt_command(command);
@@ -4077,6 +4654,7 @@ impl GENtleApp {
                 .clicked()
             {
                 self.agent_execution_log.clear();
+                self.agent_last_command_output = None;
             }
         });
         let mut stop_agent_request = false;
@@ -4104,6 +4682,10 @@ impl GENtleApp {
         if !self.agent_status.is_empty() {
             ui.separator();
             self.render_agent_status_message(ui, &self.agent_status, true);
+        }
+
+        if let Some(output) = self.agent_last_command_output.clone() {
+            self.render_agent_command_output(ui, &output);
         }
 
         if let Some(invocation) = self.agent_last_invocation.clone() {

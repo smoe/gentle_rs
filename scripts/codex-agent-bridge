@@ -62,6 +62,32 @@ def read_request() -> dict[str, Any]:
     return value
 
 
+def attachment_paths(request: dict[str, Any]) -> list[str]:
+    attachments = request.get("x_attachments", [])
+    if not isinstance(attachments, list):
+        raise ValueError("x_attachments must be an array")
+    paths: list[str] = []
+    for index, attachment in enumerate(attachments):
+        if not isinstance(attachment, dict) or attachment.get("kind") != "image":
+            raise ValueError(f"x_attachments[{index}] must be an image object")
+        path = attachment.get("path")
+        candidate = Path(path) if isinstance(path, str) else None
+        if candidate is None or not candidate.is_absolute() or not candidate.is_file():
+            raise ValueError(f"x_attachments[{index}].path must be an existing absolute file")
+        paths.append(str(candidate))
+    return paths
+
+
+def request_for_model_prompt(request: dict[str, Any]) -> dict[str, Any]:
+    redacted = json.loads(json.dumps(request))
+    attachments = redacted.get("x_attachments", [])
+    if isinstance(attachments, list):
+        for attachment in attachments:
+            if isinstance(attachment, dict) and "path" in attachment:
+                attachment["path"] = "<local attachment>"
+    return redacted
+
+
 def resolve_codex_bin() -> str:
     explicit = os.environ.get("CODEX_BIN", "").strip()
     candidates: list[str] = []
@@ -116,7 +142,9 @@ def response_json_schema() -> dict[str, Any]:
 
 
 def render_codex_prompt(request: dict[str, Any]) -> str:
-    request_json = json.dumps(request, ensure_ascii=False, indent=2, sort_keys=True)
+    request_json = json.dumps(
+        request_for_model_prompt(request), ensure_ascii=False, indent=2, sort_keys=True
+    )
     return f"""You are GENtle's inner Agent Assistant.
 
 Return exactly one JSON object matching schema {RESPONSE_SCHEMA}. Do not wrap it
@@ -156,12 +184,15 @@ Command boundary:
 Use only state_summary, x_introspection, and x_conversation included in the
 request. x_introspection is a bounded deterministic projection of current
 GENtle facts; honor its truncation fields and do not infer falsehood from an
-omitted or missing open-world fact. Treat x_conversation.turns as the earlier
-dialogue and prompt as the current user message. Reuse explicit facts from
+omitted or missing open-world fact. Treat x_conversation.turns as the earlier dialogue
+and prompt as the current user message. Reuse explicit facts from
 those turns, such as species and sequence identifiers, unless the current
 prompt changes them; do not ask for the same fact again merely because this is
 a fresh Codex process. Do not infer hidden files from the Codex working
 directory.
+When x_attachments is present, the corresponding user-approved image is attached
+to this request. Diagnose only what is visible and distinguish observations from
+inference; do not claim access to any other screen content.
 
 GENtle agent request:
 {request_json}
@@ -179,7 +210,13 @@ def parse_positive_int_env(name: str, default: int) -> int:
     return parsed if parsed > 0 else default
 
 
-def codex_command(codex_bin: str, work_dir: str, schema_path: str, output_path: str) -> list[str]:
+def codex_command(
+    codex_bin: str,
+    work_dir: str,
+    schema_path: str,
+    output_path: str,
+    image_paths: list[str] | None = None,
+) -> list[str]:
     command = [
         codex_bin,
         "--ask-for-approval",
@@ -207,11 +244,13 @@ def codex_command(codex_bin: str, work_dir: str, schema_path: str, output_path: 
     )
     if model and model.strip():
         command.extend(["--model", model.strip()])
+    for path in image_paths or []:
+        command.extend(["--image", path])
     command.append("-")
     return command
 
 
-def invoke_codex(codex_bin: str, prompt: str) -> tuple[str, str, int]:
+def invoke_codex(codex_bin: str, prompt: str, image_paths: list[str]) -> tuple[str, str, int]:
     timeout = parse_positive_int_env(
         "CODEX_AGENT_TIMEOUT_SECS",
         parse_positive_int_env("GENTLE_AGENT_READ_TIMEOUT_SECS", 300),
@@ -223,7 +262,9 @@ def invoke_codex(codex_bin: str, prompt: str) -> tuple[str, str, int]:
             json.dumps(response_json_schema(), sort_keys=True),
             encoding="utf-8",
         )
-        command = codex_command(codex_bin, temp_dir, schema_path, output_path)
+        command = codex_command(
+            codex_bin, temp_dir, schema_path, output_path, image_paths
+        )
         completed = subprocess.run(
             command,
             input=prompt,
@@ -360,7 +401,9 @@ def main() -> int:
         request = read_request()
         codex_bin = resolve_codex_bin()
         prompt = render_codex_prompt(request)
-        output_text, stderr_text, exit_code = invoke_codex(codex_bin, prompt)
+        output_text, stderr_text, exit_code = invoke_codex(
+            codex_bin, prompt, attachment_paths(request)
+        )
     except subprocess.TimeoutExpired as exc:
         return bridge_error("codex_timeout", f"Codex CLI timed out after {exc.timeout}s")
     except FileNotFoundError as exc:

@@ -133,9 +133,20 @@ expansion paths.
 
 Status: active
 
-Screenshot capture paths stay disabled unless project policy explicitly
-approves them. Documentation should prefer deterministic SVG/export routes
-while screenshot execution is policy-disabled.
+Project policy permits only user-invoked, window-bound screenshots for Agent
+Assistant help. The request must originate from an `Agent help` control in the
+GENtle viewport being diagnosed; GENtle captures that viewport before opening
+or focusing Agent Assistant, previews the image locally, and sends it only when
+the user explicitly submits the prompt. Conversation history stores path-free
+attachment provenance, not the temporary local image path.
+
+Native macOS full-window capture is an optional same-process enhancement. It
+must use ScreenCaptureKit, refuse windows not owned by GENtle, and remain
+unavailable when the user does not grant macOS Screen Recording permission.
+Automatic/background capture, desktop capture, capture of another application,
+and headless agent-triggered capture remain prohibited. The reserved
+`screenshot-window` CLI/shared-shell route therefore stays disabled;
+deterministic SVG/export routes remain preferred for reproducible artifacts.
 
 ## DEC-015: ClawBio/OpenClaw Boundary
 

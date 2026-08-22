@@ -7,6 +7,7 @@ use crate::{
     },
     runtime_status::{RuntimeStatusFrameKind, runtime_status_registry},
 };
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -25,6 +26,7 @@ pub const PI_LOCAL_AGENT_SYSTEM_ID: &str = "pi_local_stdio";
 pub const PI_BIN_ENV: &str = "PI_BIN";
 const AGENT_SYSTEMS_SCHEMA: &str = "gentle.agent_systems.v1";
 const AGENT_REQUEST_SCHEMA: &str = "gentle.agent_request.v1";
+pub const AGENT_ATTACHMENT_SCHEMA: &str = "gentle.agent_attachment.v1";
 const AGENT_RESPONSE_SCHEMA: &str = "gentle.agent_response.v1";
 pub const AGENT_INTROSPECTION_CONTEXT_SCHEMA: &str = "gentle.agent_introspection_context.v1";
 const AGENT_INTROSPECTION_FACT_LIMIT: usize = 128;
@@ -53,6 +55,7 @@ Suggested command contract:
 - Intent/precondition/outcome rule: use suggested_commands[].title for the user intent, suggested_commands[].preconditions for human-readable requirements such as "a sequence with seq_id demo_seq exists", optional suggested_commands[].precondition_expr for machine-readable fact-graph logic, suggested_commands[].expected_outcomes for postcondition-like effects expected if the command succeeds, and optional suggested_commands[].expected_effects for machine-readable fact-graph effects. Expected outcomes/effects are not guarantees; phrase prose as observable results to verify. Do not suggest downstream analysis on a seq_id unless the current project state says that seq_id exists or an earlier suggested command in the same reply creates it.
 - Fact vocabulary rule: when emitting precondition_expr or expected_effects, use the generated Known project fact vocabulary block appended to this system prompt. Unknown future fact names evaluate as "unknown"; avoid them unless your intent is to ask GENtle for a non-ready future capability.
 - Introspection context rule: fact definitions describe the allowed vocabulary, not what is currently true. When the request contains x_introspection, use its facts and fact_type_counts as the bounded current-state projection. Respect its truncated and omitted_fact_count fields. If decisive facts are missing or omitted, suggest the read-only introspection command identified for that purpose instead of guessing. A missing open-world fact is not proof of absence.
+- Screenshot attachment rule: x_attachments contains only images explicitly approved by the user for this turn. Inspect the attached image, distinguish visible evidence from inference, and do not claim access to other windows or screen content. The local attachment path is transport metadata and is not evidence.
 - suggested_commands[].command must be one exact GENtle shared-shell command parseable by GENtle.
 - GENtle-local slash aliases are deliberately small and parser-validated. Allowed aliases are: /help; /list; /history; /undo; /redo; /open; /import; /open sequence-window SEQ_ID; /close sequence-window SEQ_ID; /open file PATH [--id ID]; /import file PATH [--id ID]; /paste sequence --sequence-text DNA [--id ID]; /features restriction-scan SEQ_ID [--enzyme NAME]; /fetch genbank ACCESSION [--id ID]; /fetch ncbi ACCESSION [--id ID]; /fetch uniprot QUERY [--id ID]; /fetch ensembl QUERY [--species NAME] [--id ID] [--no-open]; /fetch ensembl-gene QUERY [--species NAME] [--id ID] [--no-open]; /fetch ensembl-protein QUERY [--id ID]; /fetch ensembl-region SPECIES CHR START END [--strand +|-] [--id ID]; /fetch dbsnp RS_ID GENOME_ID [--id ID].
 - /list reports GENtle's current project state and loaded sequence/project records. It does not list operating-system files or folders.
@@ -103,6 +106,8 @@ const AGENT_MAX_RESPONSE_BYTES_DEFAULT: usize = 1_048_576;
 const AGENT_MAX_RESPONSE_BYTES_HARD_MAX: usize = 64 * 1024 * 1024;
 const AGENT_CONVERSATION_CONTEXT_MAX_TURNS: usize = 12;
 const AGENT_CONVERSATION_STORED_MAX_TURNS: usize = 50;
+const AGENT_ATTACHMENT_MAX_COUNT: usize = 4;
+const AGENT_ATTACHMENT_MAX_BYTES: u64 = 20 * 1024 * 1024;
 const OPENAI_DEFAULT_MODEL: &str = "gpt-5";
 const OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const ANTHROPIC_DEFAULT_MODEL: &str = "claude-sonnet-4-6";
@@ -1190,6 +1195,58 @@ pub struct AgentSystemSpec {
     pub base_url: Option<String>,
     pub env: HashMap<String, String>,
     pub working_dir: Option<String>,
+    pub supports_image_attachments: bool,
+}
+
+/// One explicit local image selected by the user for an Agent Assistant turn.
+/// The local path is transport input only and is not copied into conversation
+/// history.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct AgentRequestAttachment {
+    pub schema: String,
+    pub id: String,
+    pub kind: String,
+    pub file_name: String,
+    pub mime_type: String,
+    pub path: String,
+    pub byte_len: u64,
+    pub sha256: String,
+    pub source_window_title: Option<String>,
+    pub capture_backend: Option<String>,
+    pub pixel_width: Option<usize>,
+    pub pixel_height: Option<usize>,
+}
+
+/// Persistable, path-free attachment provenance for one completed turn.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct AgentAttachmentSummary {
+    pub id: String,
+    pub file_name: String,
+    pub mime_type: String,
+    pub byte_len: u64,
+    pub sha256: String,
+    pub source_window_title: Option<String>,
+    pub capture_backend: Option<String>,
+    pub pixel_width: Option<usize>,
+    pub pixel_height: Option<usize>,
+}
+
+impl From<&AgentRequestAttachment> for AgentAttachmentSummary {
+    fn from(attachment: &AgentRequestAttachment) -> Self {
+        Self {
+            id: attachment.id.clone(),
+            file_name: attachment.file_name.clone(),
+            mime_type: attachment.mime_type.clone(),
+            byte_len: attachment.byte_len,
+            sha256: attachment.sha256.clone(),
+            source_window_title: attachment.source_window_title.clone(),
+            capture_backend: attachment.capture_backend.clone(),
+            pixel_width: attachment.pixel_width,
+            pixel_height: attachment.pixel_height,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -1847,6 +1904,8 @@ struct AgentRequestPayload {
     conversation: Option<AgentConversation>,
     #[serde(rename = "x_local_documents", skip_serializing_if = "Option::is_none")]
     local_documents: Option<AgentLocalDocumentsContext>,
+    #[serde(rename = "x_attachments", skip_serializing_if = "Vec::is_empty")]
+    attachments: Vec<AgentRequestAttachment>,
 }
 
 impl Default for AgentRequestPayload {
@@ -1860,6 +1919,7 @@ impl Default for AgentRequestPayload {
             introspection: None,
             conversation: None,
             local_documents: None,
+            attachments: vec![],
         }
     }
 }
@@ -1929,6 +1989,7 @@ fn agent_response_has_content(response: &AgentResponse) -> bool {
 pub struct AgentConversationTurn {
     pub user_message: String,
     pub response: AgentResponse,
+    pub attachments: Vec<AgentAttachmentSummary>,
     pub system_id: String,
     pub system_label: String,
     pub completed_at_unix_ms: u128,
@@ -1939,6 +2000,7 @@ impl Default for AgentConversationTurn {
         Self {
             user_message: String::new(),
             response: AgentResponse::default(),
+            attachments: vec![],
             system_id: String::new(),
             system_label: String::new(),
             completed_at_unix_ms: 0,
@@ -2072,6 +2134,7 @@ fn build_agent_request(
     state_summary: Option<&EngineStateSummary>,
     introspection: Option<&AgentIntrospectionContext>,
     conversation: Option<&AgentConversation>,
+    attachments: &[AgentRequestAttachment],
 ) -> Result<(AgentRequestPayload, Value, String), String> {
     let local_documents = build_agent_local_documents_context(prompt);
     let payload = AgentRequestPayload {
@@ -2083,6 +2146,7 @@ fn build_agent_request(
         introspection: introspection.cloned(),
         conversation: conversation.and_then(AgentConversation::context_window),
         local_documents,
+        attachments: attachments.to_vec(),
     };
     let request_value = serde_json::to_value(&payload).map_err(|e| {
         agent_err(
@@ -2236,6 +2300,17 @@ fn validate_agent_request_value(value: &Value) -> Result<(), String> {
             })?;
         validate_agent_local_documents_context(&local_documents)?;
     }
+    if let Some(attachments_value) = object.get("x_attachments") {
+        let attachments =
+            serde_json::from_value::<Vec<AgentRequestAttachment>>(attachments_value.clone())
+                .map_err(|err| {
+                    agent_err(
+                        AgentBridgeErrorCode::SchemaValidation,
+                        format!("agent request 'x_attachments' is invalid: {err}"),
+                    )
+                })?;
+        validate_agent_attachments(&attachments)?;
+    }
     Ok(())
 }
 
@@ -2327,6 +2402,126 @@ fn validate_agent_local_documents_context(
         return Err(invalid(
             "warnings require path, code, and message".to_string(),
         ));
+    }
+    Ok(())
+}
+
+fn validate_agent_attachments(attachments: &[AgentRequestAttachment]) -> Result<(), String> {
+    if attachments.len() > AGENT_ATTACHMENT_MAX_COUNT {
+        return Err(agent_err(
+            AgentBridgeErrorCode::SchemaValidation,
+            format!(
+                "agent request has {} attachments; at most {} are allowed",
+                attachments.len(),
+                AGENT_ATTACHMENT_MAX_COUNT
+            ),
+        ));
+    }
+    let mut ids = HashSet::new();
+    for attachment in attachments {
+        if attachment.schema != AGENT_ATTACHMENT_SCHEMA {
+            return Err(agent_err(
+                AgentBridgeErrorCode::SchemaValidation,
+                format!(
+                    "agent attachment schema must be '{}'",
+                    AGENT_ATTACHMENT_SCHEMA
+                ),
+            ));
+        }
+        if attachment.id.trim().is_empty() || !ids.insert(attachment.id.trim().to_string()) {
+            return Err(agent_err(
+                AgentBridgeErrorCode::SchemaValidation,
+                "agent attachment ids must be non-empty and unique",
+            ));
+        }
+        if attachment.kind != "image" {
+            return Err(agent_err(
+                AgentBridgeErrorCode::SchemaValidation,
+                format!("unsupported agent attachment kind '{}'", attachment.kind),
+            ));
+        }
+        if !matches!(attachment.mime_type.as_str(), "image/png" | "image/jpeg") {
+            return Err(agent_err(
+                AgentBridgeErrorCode::SchemaValidation,
+                format!(
+                    "unsupported agent image MIME type '{}'",
+                    attachment.mime_type
+                ),
+            ));
+        }
+        if attachment.byte_len == 0 || attachment.byte_len > AGENT_ATTACHMENT_MAX_BYTES {
+            return Err(agent_err(
+                AgentBridgeErrorCode::SchemaValidation,
+                format!(
+                    "agent attachment '{}' must be between 1 and {} bytes",
+                    attachment.id, AGENT_ATTACHMENT_MAX_BYTES
+                ),
+            ));
+        }
+        if attachment.sha256.len() != 64
+            || !attachment
+                .sha256
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
+        {
+            return Err(agent_err(
+                AgentBridgeErrorCode::SchemaValidation,
+                format!("agent attachment '{}' has invalid SHA-256", attachment.id),
+            ));
+        }
+        let path = Path::new(attachment.path.trim());
+        if !path.is_absolute() || !path.is_file() {
+            return Err(agent_err(
+                AgentBridgeErrorCode::SchemaValidation,
+                format!(
+                    "agent attachment '{}' must reference an existing absolute local file",
+                    attachment.id
+                ),
+            ));
+        }
+        let actual_len = fs::metadata(path)
+            .map_err(|error| {
+                agent_err(
+                    AgentBridgeErrorCode::SchemaValidation,
+                    format!(
+                        "could not inspect agent attachment '{}': {error}",
+                        attachment.id
+                    ),
+                )
+            })?
+            .len();
+        if actual_len != attachment.byte_len {
+            return Err(agent_err(
+                AgentBridgeErrorCode::SchemaValidation,
+                format!(
+                    "agent attachment '{}' size changed (declared {}, actual {})",
+                    attachment.id, attachment.byte_len, actual_len
+                ),
+            ));
+        }
+        let actual_bytes = fs::read(path).map_err(|error| {
+            agent_err(
+                AgentBridgeErrorCode::SchemaValidation,
+                format!(
+                    "could not verify agent attachment '{}': {error}",
+                    attachment.id
+                ),
+            )
+        })?;
+        let actual_sha256 = ring::digest::digest(&ring::digest::SHA256, &actual_bytes)
+            .as_ref()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        if !actual_sha256.eq_ignore_ascii_case(&attachment.sha256) {
+            return Err(agent_err(
+                AgentBridgeErrorCode::SchemaValidation,
+                format!(
+                    "agent attachment '{}' does not match its declared SHA-256",
+                    attachment.id
+                ),
+            ));
+        }
     }
     Ok(())
 }
@@ -3204,9 +3399,57 @@ fn classify_mistral_http_error(status: reqwest::StatusCode, body: &str) -> Exter
     ExternalAttemptError { kind, message }
 }
 
+fn attachment_bytes(attachment: &AgentRequestAttachment) -> Result<Vec<u8>, ExternalAttemptError> {
+    fs::read(&attachment.path).map_err(|error| ExternalAttemptError {
+        kind: ExternalAttemptErrorKind::Fatal,
+        message: format!(
+            "could not read approved agent attachment '{}': {error}",
+            attachment.file_name
+        ),
+    })
+}
+
+fn attachment_data_url(
+    attachment: &AgentRequestAttachment,
+) -> Result<String, ExternalAttemptError> {
+    Ok(format!(
+        "data:{};base64,{}",
+        attachment.mime_type,
+        BASE64_STANDARD.encode(attachment_bytes(attachment)?)
+    ))
+}
+
+fn redact_local_attachment_paths(request: &mut Value) {
+    if let Some(attachments) = request
+        .get_mut("x_attachments")
+        .and_then(Value::as_array_mut)
+    {
+        for attachment in attachments {
+            if let Some(object) = attachment.as_object_mut() {
+                object.insert(
+                    "path".to_string(),
+                    Value::String("<local attachment>".to_string()),
+                );
+            }
+        }
+    }
+}
+
+fn redacted_remote_request_json(request: &Value) -> Result<String, String> {
+    let mut redacted = request.clone();
+    redact_local_attachment_paths(&mut redacted);
+    serde_json::to_string(&redacted).map_err(|error| {
+        agent_err(
+            AgentBridgeErrorCode::SchemaValidation,
+            format!("could not encode redacted agent request JSON: {error}"),
+        )
+    })
+}
+
 fn invoke_native_openai_once(
     system: &AgentSystemSpec,
     request_json: &str,
+    attachments: &[AgentRequestAttachment],
 ) -> Result<NativeHttpInvokeResult, ExternalAttemptError> {
     let runtime = resolve_agent_runtime_config(system);
     let api_key = resolve_openai_api_key(system).ok_or_else(|| ExternalAttemptError {
@@ -3217,6 +3460,17 @@ fn invoke_native_openai_once(
     let base_url = resolve_base_url(system, OPENAI_DEFAULT_BASE_URL);
     let endpoint = format!("{base_url}/responses");
     let system_prompt = agent_bridge_system_prompt();
+    let mut user_content = vec![json!({
+        "type": "input_text",
+        "text": format!("GENtle agent request JSON:\n{request_json}")
+    })];
+    for attachment in attachments {
+        user_content.push(json!({
+            "type": "input_image",
+            "image_url": attachment_data_url(attachment)?,
+            "detail": "high"
+        }));
+    }
     let payload = json!({
         "model": model,
         "input": [
@@ -3228,12 +3482,7 @@ fn invoke_native_openai_once(
             },
             {
                 "role": "user",
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": format!("GENtle agent request JSON:\n{request_json}")
-                    }
-                ]
+                "content": user_content
             }
         ]
     });
@@ -3283,6 +3532,7 @@ fn invoke_native_openai_once(
 fn invoke_native_anthropic_once(
     system: &AgentSystemSpec,
     request_json: &str,
+    attachments: &[AgentRequestAttachment],
 ) -> Result<NativeHttpInvokeResult, ExternalAttemptError> {
     let runtime = resolve_agent_runtime_config(system);
     let api_key = resolve_anthropic_api_key(system).ok_or_else(|| ExternalAttemptError {
@@ -3303,6 +3553,20 @@ fn invoke_native_anthropic_once(
         .cloned()
         .unwrap_or_else(|| format!("{base_url}/messages"));
     let system_prompt = agent_bridge_system_prompt();
+    let mut user_content = vec![json!({
+        "type": "text",
+        "text": format!("GENtle agent request JSON:\n{request_json}")
+    })];
+    for attachment in attachments {
+        user_content.push(json!({
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": attachment.mime_type,
+                "data": BASE64_STANDARD.encode(attachment_bytes(attachment)?)
+            }
+        }));
+    }
     let payload = json!({
         "model": model,
         "max_tokens": 4096,
@@ -3310,7 +3574,7 @@ fn invoke_native_anthropic_once(
         "messages": [
             {
                 "role": "user",
-                "content": format!("GENtle agent request JSON:\n{request_json}")
+                "content": user_content
             }
         ]
     });
@@ -3363,6 +3627,7 @@ fn invoke_native_anthropic_once(
 fn invoke_native_mistral_once(
     system: &AgentSystemSpec,
     request_json: &str,
+    attachments: &[AgentRequestAttachment],
 ) -> Result<NativeHttpInvokeResult, ExternalAttemptError> {
     let runtime = resolve_agent_runtime_config(system);
     let api_key = resolve_mistral_api_key(system).ok_or_else(|| ExternalAttemptError {
@@ -3377,6 +3642,16 @@ fn invoke_native_mistral_once(
         .cloned()
         .unwrap_or_else(|| format!("{base_url}/chat/completions"));
     let system_prompt = agent_bridge_system_prompt();
+    let mut user_content = vec![json!({
+        "type": "text",
+        "text": format!("GENtle agent request JSON:\n{request_json}")
+    })];
+    for attachment in attachments {
+        user_content.push(json!({
+            "type": "image_url",
+            "image_url": attachment_data_url(attachment)?
+        }));
+    }
     let payload = json!({
         "model": model,
         "messages": [
@@ -3386,7 +3661,7 @@ fn invoke_native_mistral_once(
             },
             {
                 "role": "user",
-                "content": format!("GENtle agent request JSON:\n{request_json}")
+                "content": user_content
             }
         ],
         "temperature": 0.2
@@ -3440,6 +3715,7 @@ fn invoke_native_mistral_once(
 fn invoke_native_openai_compat_once(
     system: &AgentSystemSpec,
     request_json: &str,
+    attachments: &[AgentRequestAttachment],
 ) -> Result<NativeHttpInvokeResult, ExternalAttemptError> {
     let runtime = resolve_agent_runtime_config(system);
     let api_key = resolve_openai_api_key(system);
@@ -3462,6 +3738,16 @@ fn invoke_native_openai_compat_once(
     })?;
     let endpoints = openai_compat_endpoint_candidates(&base_url);
     let system_prompt = agent_bridge_system_prompt();
+    let mut user_content = vec![json!({
+        "type": "text",
+        "text": format!("GENtle agent request JSON:\n{request_json}")
+    })];
+    for attachment in attachments {
+        user_content.push(json!({
+            "type": "image_url",
+            "image_url": { "url": attachment_data_url(attachment)? }
+        }));
+    }
     let payload = json!({
         "model": model,
         "messages": [
@@ -3471,7 +3757,7 @@ fn invoke_native_openai_compat_once(
             },
             {
                 "role": "user",
-                "content": format!("GENtle agent request JSON:\n{request_json}")
+                "content": user_content
             }
         ],
         "temperature": 0.2
@@ -3630,6 +3916,29 @@ pub fn invoke_agent_support_with_request_context(
     conversation: Option<&AgentConversation>,
     env_overrides: Option<&HashMap<String, String>>,
 ) -> Result<AgentInvocationOutcome, String> {
+    invoke_agent_support_with_request_context_and_attachments(
+        catalog_path,
+        system_id,
+        prompt,
+        state_summary,
+        introspection,
+        conversation,
+        &[],
+        env_overrides,
+    )
+}
+
+/// Invokes an agent with explicit, user-approved local image attachments.
+pub fn invoke_agent_support_with_request_context_and_attachments(
+    catalog_path: Option<&str>,
+    system_id: &str,
+    prompt: &str,
+    state_summary: Option<&EngineStateSummary>,
+    introspection: Option<&AgentIntrospectionContext>,
+    conversation: Option<&AgentConversation>,
+    attachments: &[AgentRequestAttachment],
+    env_overrides: Option<&HashMap<String, String>>,
+) -> Result<AgentInvocationOutcome, String> {
     if prompt.trim().is_empty() {
         return Err(agent_err(
             AgentBridgeErrorCode::InvalidInput,
@@ -3656,13 +3965,25 @@ pub fn invoke_agent_support_with_request_context(
                 .unwrap_or_else(|| "agent system is not available".to_string()),
         ));
     }
+    validate_agent_attachments(attachments)?;
+    if !attachments.is_empty() && !system.supports_image_attachments {
+        return Err(agent_err(
+            AgentBridgeErrorCode::AdapterUnavailable,
+            format!(
+                "agent system '{}' does not declare image-attachment support",
+                system.id
+            ),
+        ));
+    }
     let (_payload, request_value, request_json) = build_agent_request(
         &system.id,
         prompt,
         state_summary,
         introspection,
         conversation,
+        attachments,
     )?;
+    let remote_request_json = redacted_remote_request_json(&request_value)?;
     let start = std::time::Instant::now();
     let runtime = resolve_agent_runtime_config(&system);
     let attempt_limit = effective_attempt_limit(&runtime);
@@ -3673,7 +3994,7 @@ pub fn invoke_agent_support_with_request_context(
     );
     agent_frame.update_phase("invoke");
 
-    let outcome = match system.transport {
+    let mut outcome = match system.transport {
         AgentSystemTransport::BuiltinEcho => {
             let response = builtin_echo_response(prompt);
             AgentInvocationOutcome {
@@ -3792,7 +4113,7 @@ pub fn invoke_agent_support_with_request_context(
             let mut selected_endpoint: Option<String> = None;
             let mut last_transient_message: Option<String> = None;
             for attempt in 1..=attempt_limit {
-                match invoke_native_openai_once(&system, &request_json) {
+                match invoke_native_openai_once(&system, &remote_request_json, attachments) {
                     Ok(result) => {
                         stdout = Some(result.text);
                         raw_body = Some(result.raw_body);
@@ -3874,7 +4195,7 @@ pub fn invoke_agent_support_with_request_context(
             let mut selected_endpoint: Option<String> = None;
             let mut last_transient_message: Option<String> = None;
             for attempt in 1..=attempt_limit {
-                match invoke_native_anthropic_once(&system, &request_json) {
+                match invoke_native_anthropic_once(&system, &remote_request_json, attachments) {
                     Ok(result) => {
                         stdout = Some(result.text);
                         raw_body = Some(result.raw_body);
@@ -3956,7 +4277,7 @@ pub fn invoke_agent_support_with_request_context(
             let mut selected_endpoint: Option<String> = None;
             let mut last_transient_message: Option<String> = None;
             for attempt in 1..=attempt_limit {
-                match invoke_native_mistral_once(&system, &request_json) {
+                match invoke_native_mistral_once(&system, &remote_request_json, attachments) {
                     Ok(result) => {
                         stdout = Some(result.text);
                         raw_body = Some(result.raw_body);
@@ -4036,7 +4357,7 @@ pub fn invoke_agent_support_with_request_context(
             let mut selected_endpoint: Option<String> = None;
             let mut last_transient_message: Option<String> = None;
             for attempt in 1..=attempt_limit {
-                match invoke_native_openai_compat_once(&system, &request_json) {
+                match invoke_native_openai_compat_once(&system, &remote_request_json, attachments) {
                     Ok(result) => {
                         stdout = Some(result.text);
                         raw_body = Some(result.raw_body);
@@ -4110,6 +4431,7 @@ pub fn invoke_agent_support_with_request_context(
             }
         }
     };
+    redact_local_attachment_paths(&mut outcome.request);
     Ok(outcome)
 }
 
@@ -4186,6 +4508,7 @@ mod tests {
                 questions: vec![],
                 suggested_commands: vec![],
             },
+            attachments: vec![],
             system_id: "codex_local_stdio".to_string(),
             system_label: "Codex Local".to_string(),
             completed_at_unix_ms: index as u128,
@@ -4205,6 +4528,7 @@ mod tests {
             None,
             None,
             Some(&conversation),
+            &[],
         )
         .expect("request with conversation");
         let turns = request["x_conversation"]["turns"]
@@ -4223,12 +4547,13 @@ mod tests {
     #[test]
     fn agent_request_omits_conversation_extension_for_existing_callers() {
         let (_, request, _) =
-            build_agent_request("builtin_echo", "current question", None, None, None)
+            build_agent_request("builtin_echo", "current question", None, None, None, &[])
                 .expect("request without conversation");
 
         assert!(request.get("x_conversation").is_none());
         assert!(request.get("x_introspection").is_none());
         assert!(request.get("x_local_documents").is_none());
+        assert!(request.get("x_attachments").is_none());
     }
 
     #[test]
@@ -4252,7 +4577,7 @@ mod tests {
             roadmap.display()
         );
 
-        let (_, request, _) = build_agent_request("pi_local_stdio", &prompt, None, None, None)
+        let (_, request, _) = build_agent_request("pi_local_stdio", &prompt, None, None, None, &[])
             .expect("request with local document");
         let context = &request["x_local_documents"];
         let documents = context["documents"].as_array().expect("documents array");
@@ -4287,7 +4612,7 @@ mod tests {
         let missing = temp.path().join("missing.md");
         let prompt = format!("Please use `{}`.", missing.display());
 
-        let (_, request, _) = build_agent_request("pi_local_stdio", &prompt, None, None, None)
+        let (_, request, _) = build_agent_request("pi_local_stdio", &prompt, None, None, None, &[])
             .expect("missing attachment should remain an auditable request");
         let context = &request["x_local_documents"];
 
@@ -4303,8 +4628,9 @@ mod tests {
             .expect("write large text document");
         let prompt = format!("Review `{}`.", large.display());
 
-        let (_, mut request, _) = build_agent_request("pi_local_stdio", &prompt, None, None, None)
-            .expect("request with truncated document");
+        let (_, mut request, _) =
+            build_agent_request("pi_local_stdio", &prompt, None, None, None, &[])
+                .expect("request with truncated document");
         let document = &request["x_local_documents"]["documents"][0];
         assert_eq!(
             document["included_byte_count"].as_u64(),
@@ -4325,10 +4651,86 @@ mod tests {
         fs::write(&sequence, ">demo\nACGT\n").expect("write sequence fixture");
         let prompt = format!("Open {}.", sequence.display());
 
-        let (_, request, _) = build_agent_request("pi_local_stdio", &prompt, None, None, None)
+        let (_, request, _) = build_agent_request("pi_local_stdio", &prompt, None, None, None, &[])
             .expect("request mentioning sequence path");
 
         assert!(request.get("x_local_documents").is_none());
+    }
+
+    #[test]
+    fn agent_request_validates_attachment_and_remote_json_redacts_local_path() {
+        let mut file = tempfile::NamedTempFile::new().expect("temporary image");
+        let bytes = b"synthetic screenshot bytes";
+        file.write_all(bytes).expect("write image bytes");
+        file.flush().expect("flush image bytes");
+        let path = file.path().canonicalize().expect("absolute image path");
+        let sha256 = ring::digest::digest(&ring::digest::SHA256, bytes)
+            .as_ref()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        let attachment = AgentRequestAttachment {
+            schema: AGENT_ATTACHMENT_SCHEMA.to_string(),
+            id: "agent_help_1".to_string(),
+            kind: "image".to_string(),
+            file_name: "problem.png".to_string(),
+            mime_type: "image/png".to_string(),
+            path: path.to_string_lossy().to_string(),
+            byte_len: bytes.len() as u64,
+            sha256,
+            source_window_title: Some("Splicing Expert".to_string()),
+            capture_backend: Some("egui.viewport".to_string()),
+            pixel_width: Some(640),
+            pixel_height: Some(480),
+        };
+
+        let (_, request, _) = build_agent_request(
+            "codex_local_stdio",
+            "What is wrong?",
+            None,
+            None,
+            None,
+            std::slice::from_ref(&attachment),
+        )
+        .expect("request with validated image");
+        let remote = redacted_remote_request_json(&request).expect("redacted request");
+        let summary_json = serde_json::to_string(&AgentAttachmentSummary::from(&attachment))
+            .expect("attachment summary");
+
+        assert_eq!(
+            request["x_attachments"][0]["source_window_title"].as_str(),
+            Some("Splicing Expert")
+        );
+        assert!(remote.contains("<local attachment>"));
+        assert!(!remote.contains(path.to_string_lossy().as_ref()));
+        assert!(!summary_json.contains(path.to_string_lossy().as_ref()));
+    }
+
+    #[test]
+    fn agent_attachment_rejects_changed_image_bytes() {
+        let mut file = tempfile::NamedTempFile::new().expect("temporary image");
+        file.write_all(b"changed bytes").expect("write image bytes");
+        file.flush().expect("flush image bytes");
+        let attachment = AgentRequestAttachment {
+            schema: AGENT_ATTACHMENT_SCHEMA.to_string(),
+            id: "agent_help_2".to_string(),
+            kind: "image".to_string(),
+            file_name: "problem.png".to_string(),
+            mime_type: "image/png".to_string(),
+            path: file
+                .path()
+                .canonicalize()
+                .expect("absolute image path")
+                .to_string_lossy()
+                .to_string(),
+            byte_len: 13,
+            sha256: "0".repeat(64),
+            ..AgentRequestAttachment::default()
+        };
+
+        let error = validate_agent_attachments(&[attachment])
+            .expect_err("digest mismatch must be rejected");
+        assert!(error.contains("does not match its declared SHA-256"));
     }
 
     fn test_project_fact(index: usize, fact: &str) -> ProjectFact {
@@ -4401,6 +4803,7 @@ mod tests {
             None,
             Some(&context),
             None,
+            &[],
         )
         .expect("request with introspection context");
 
@@ -4724,6 +5127,7 @@ mod tests {
             base_url: None,
             env: HashMap::new(),
             working_dir: None,
+            supports_image_attachments: false,
         };
         let unavailable = agent_system_availability(&system);
         assert!(!unavailable.available);
@@ -4746,6 +5150,7 @@ mod tests {
             base_url: None,
             env: HashMap::new(),
             working_dir: None,
+            supports_image_attachments: false,
         };
         let unavailable = agent_system_availability(&system);
         assert!(!unavailable.available);
@@ -4772,6 +5177,7 @@ mod tests {
             base_url: None,
             env: HashMap::new(),
             working_dir: None,
+            supports_image_attachments: false,
         };
         let _lock = crate::genomes::genbank_env_lock()
             .lock()
@@ -4810,6 +5216,7 @@ mod tests {
             base_url: None,
             env: HashMap::new(),
             working_dir: None,
+            supports_image_attachments: false,
         };
         let availability = agent_system_availability(&system);
         assert!(!availability.available);
@@ -4827,6 +5234,7 @@ mod tests {
             base_url: Some("http://127.0.0.1:11434/v1".to_string()),
             env: HashMap::new(),
             working_dir: None,
+            supports_image_attachments: false,
         };
         let availability = agent_system_availability(&system);
         assert!(availability.available);
@@ -4844,6 +5252,7 @@ mod tests {
             base_url: Some("http://127.0.0.1:11434/v1".to_string()),
             env: HashMap::new(),
             working_dir: None,
+            supports_image_attachments: false,
         };
         system.env.insert(
             AGENT_BASE_URL_ENV.to_string(),
@@ -4872,6 +5281,7 @@ mod tests {
             base_url: Some("http://127.0.0.1:11434/v1".to_string()),
             env: HashMap::new(),
             working_dir: None,
+            supports_image_attachments: false,
         };
         let availability = agent_system_availability(&system);
         assert!(!availability.available);
@@ -4916,6 +5326,7 @@ mod tests {
             base_url: Some("http://127.0.0.1:10000/v1".to_string()),
             env: HashMap::new(),
             working_dir: None,
+            supports_image_attachments: false,
         };
         let endpoints = openai_compat_endpoint_candidates_for_system(&system);
         assert_eq!(
@@ -5157,6 +5568,7 @@ mod tests {
             base_url: Some("http://localhost:11964/v1".to_string()),
             env: HashMap::new(),
             working_dir: None,
+            supports_image_attachments: false,
         };
         system
             .env

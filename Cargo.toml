@@ -47,6 +47,7 @@ tempfile = "3.27.0"
 identifier = "com.example.gentle"
 icon = ["assets/icon.icns"]  # Path to your .icns file
 resources = ["assets/", "docs/", "Credits.rtf"]      # Additional resources if needed
+osx_info_plist_exts = ["Info.plist"]
 
 [package.metadata.bundle.windows]
 icon = ["assets/icon.ico"]
@@ -86,8 +87,8 @@ path = "src/bin/gentle_publication_report.rs"
 name = "gentle"
 
 [features]
-default = []
-screenshot-capture = []
+default = ["screenshot-capture"]
+screenshot-capture = ["dep:screencapturekit"]
 gui-profiler = ["dep:puffin", "dep:puffin_http"]
 snapshot-tests = ["gentle-render/snapshot-tests"]
 js-interface = [
@@ -140,6 +141,7 @@ regex = "^1"
 scraper = "0.27.0"
 pulldown-cmark = "0.13.4"
 ring = "0.17.14"
+base64 = "0.22.1"
 puffin = { version = "0.20.0", optional = true }
 puffin_http = { version = "0.17.0", optional = true }
 
@@ -159,6 +161,7 @@ libc = "0.2.189"
 objc2 = "0.6.4"
 objc2-foundation = "0.3.2"
 objc2-app-kit = { version = "0.3.2", features = ["NSApplication", "NSMenu", "NSMenuItem", "NSResponder", "NSWindow"] }
+screencapturekit = { version = "8.0.1", optional = true, features = ["macos_14_0"] }
 
 [build-dependencies]
 winres = "0.1"

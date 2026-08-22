@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 from typing import Any
 
 
@@ -51,6 +52,31 @@ def read_request() -> dict[str, Any]:
     return value
 
 
+def attachment_paths(request: dict[str, Any]) -> list[str]:
+    attachments = request.get("x_attachments", [])
+    if not isinstance(attachments, list):
+        raise ValueError("x_attachments must be an array")
+    paths: list[str] = []
+    for index, attachment in enumerate(attachments):
+        if not isinstance(attachment, dict) or attachment.get("kind") != "image":
+            raise ValueError(f"x_attachments[{index}] must be an image object")
+        path = attachment.get("path")
+        if not isinstance(path, str) or not Path(path).is_absolute() or not Path(path).is_file():
+            raise ValueError(f"x_attachments[{index}].path must be an existing absolute file")
+        paths.append(path)
+    return paths
+
+
+def request_for_model_prompt(request: dict[str, Any]) -> dict[str, Any]:
+    redacted = json.loads(json.dumps(request))
+    attachments = redacted.get("x_attachments", [])
+    if isinstance(attachments, list):
+        for attachment in attachments:
+            if isinstance(attachment, dict) and "path" in attachment:
+                attachment["path"] = "<local attachment>"
+    return redacted
+
+
 def resolve_pi_bin() -> str:
     explicit = os.environ.get("PI_BIN", "").strip()
     candidates: list[str] = []
@@ -70,7 +96,9 @@ def resolve_pi_bin() -> str:
 
 
 def render_pi_prompt(request: dict[str, Any]) -> str:
-    request_json = json.dumps(request, ensure_ascii=False, indent=2, sort_keys=True)
+    request_json = json.dumps(
+        request_for_model_prompt(request), ensure_ascii=False, indent=2, sort_keys=True
+    )
     return f"""You are GENtle's inner Agent Assistant.
 
 Return exactly one JSON object matching {RESPONSE_SCHEMA}. Do not wrap it in
@@ -109,6 +137,9 @@ Rules:
 - For GUI walkthroughs, suggest parser-valid GENtle ui/display commands where
   available. Otherwise describe one exact manual action and ask what the user
   sees next; never claim that Pi pressed or observed a control.
+- x_attachments describes images explicitly approved by the user and attached
+  to this request. Distinguish visible evidence from assumptions when diagnosing
+  them; never claim to have seen content outside the attached image.
 - Ask instead of guessing an unknown species, identifier, path, or coordinate.
 - Do not infer files from Pi's temporary working directory.
 - Use empty arrays for absent questions, preconditions, expected outcomes, or
@@ -130,7 +161,7 @@ def parse_positive_int_env(name: str, default: int) -> int:
     return parsed if parsed > 0 else default
 
 
-def pi_command(pi_bin: str) -> list[str]:
+def pi_command(pi_bin: str, image_paths: list[str] | None = None) -> list[str]:
     command = [
         pi_bin,
         "--print",
@@ -147,17 +178,19 @@ def pi_command(pi_bin: str) -> list[str]:
     model = os.environ.get("GENTLE_AGENT_MODEL", "").strip()
     if model:
         command.extend(["--model", model])
+    for path in image_paths or []:
+        command.append(f"@{path}")
     return command
 
 
-def invoke_pi(pi_bin: str, prompt: str) -> tuple[str, str, int]:
+def invoke_pi(pi_bin: str, prompt: str, image_paths: list[str]) -> tuple[str, str, int]:
     timeout = parse_positive_int_env(
         "PI_AGENT_TIMEOUT_SECS",
         parse_positive_int_env("GENTLE_AGENT_READ_TIMEOUT_SECS", 300),
     )
     with tempfile.TemporaryDirectory(prefix="gentle-pi-agent-") as temp_dir:
         completed = subprocess.run(
-            pi_command(pi_bin),
+            pi_command(pi_bin, image_paths),
             cwd=temp_dir,
             input=prompt,
             text=True,
@@ -267,7 +300,9 @@ def main() -> int:
     try:
         request = read_request()
         pi_bin = resolve_pi_bin()
-        output_text, stderr_text, exit_code = invoke_pi(pi_bin, render_pi_prompt(request))
+        output_text, stderr_text, exit_code = invoke_pi(
+            pi_bin, render_pi_prompt(request), attachment_paths(request)
+        )
     except subprocess.TimeoutExpired as exc:
         return bridge_error("pi_timeout", f"Pi timed out after {exc.timeout}s")
     except FileNotFoundError as exc:

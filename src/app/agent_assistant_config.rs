@@ -536,6 +536,7 @@ mod tests {
             base_url: None,
             model: None,
             working_dir: None,
+            supports_image_attachments: false,
         }
     }
 

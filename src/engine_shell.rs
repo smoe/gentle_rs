@@ -15808,13 +15808,13 @@ fn active_window_info_from_appkit() -> Result<(u64, String), String> {
         return Err("Screenshot capture requires the macOS main thread".to_string());
     };
     let app = NSApplication::sharedApplication(mtm);
-    let Some(window) = app.keyWindow().or_else(|| unsafe { app.mainWindow() }) else {
+    let Some(window) = app.keyWindow().or_else(|| app.mainWindow()) else {
         return Err(
             "No active GENtle window in this process; run from GUI shell with the target window focused"
                 .to_string(),
         );
     };
-    let raw_window_id = unsafe { window.windowNumber() };
+    let raw_window_id = window.windowNumber();
     if raw_window_id <= 0 {
         return Err(format!(
             "Active GENtle window reported invalid window number {raw_window_id}"

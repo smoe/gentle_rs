@@ -4875,6 +4875,11 @@ impl MainAreaDna {
     fn render_variant_followup_window_contents(&mut self, ui: &mut egui::Ui) {
         let engine_available = self.engine.is_some();
         let source_seq_id = self.variant_followup_ui.source_seq_id.clone();
+        crate::agent_help::render_agent_help_button(
+            ui,
+            format!("Promoter design - {}", source_seq_id),
+        );
+        ui.separator();
         let current_seq_id = self.seq_id.clone().unwrap_or_default();
         let source_missing = !self.variant_followup_sequence_exists(&source_seq_id);
         let has_variant_seed = self.variant_followup_has_variant_seed();

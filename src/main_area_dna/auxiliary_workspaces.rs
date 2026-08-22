@@ -4254,6 +4254,14 @@ impl MainAreaDna {
     }
 
     pub(super) fn render_dotplot_workspace_ui(&mut self, ui: &mut egui::Ui) {
+        crate::agent_help::render_agent_help_button(
+            ui,
+            format!(
+                "Dotplot workspace - {}",
+                self.seq_id.as_deref().unwrap_or("sequence")
+            ),
+        );
+        ui.separator();
         let panel_width = ui.available_width().max(600.0);
         self.last_linear_map_width_px = panel_width;
         self.ensure_dotplot_cache_current();
@@ -6557,6 +6565,11 @@ impl MainAreaDna {
         ui: &mut egui::Ui,
         view: &IsoformArchitectureExpertView,
     ) {
+        crate::agent_help::render_agent_help_button(
+            ui,
+            format!("Isoform Expert - {}", view.gene_symbol),
+        );
+        ui.separator();
         let font_size = self.feature_details_font_size();
         ui.label(
             egui::RichText::new(format!(
@@ -8616,6 +8629,11 @@ impl MainAreaDna {
         view: &SplicingExpertView,
         pending_initial_render: bool,
     ) {
+        crate::agent_help::render_agent_help_button(
+            ui,
+            format!("RNA-read Mapping - {}", view.group_label),
+        );
+        ui.separator();
         self.render_rna_read_mapping_window_intro(ui, view);
         if pending_initial_render {
             self.log_rna_read_mapping_status(view, "first frame deferred", true);

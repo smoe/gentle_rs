@@ -75,6 +75,26 @@ def test_shared_model_override_is_forwarded_to_codex_cli(monkeypatch):
     assert command[model_flag + 1] == "gpt-5.4"
 
 
+def test_image_attachment_is_forwarded_as_codex_image_flag(tmp_path):
+    bridge = load_bridge_module()
+    image_path = tmp_path / "problem.png"
+    image_path.write_bytes(b"synthetic png fixture")
+    request = request_payload()
+    request["x_attachments"] = [{"kind": "image", "path": str(image_path)}]
+
+    paths = bridge.attachment_paths(request)
+    command = bridge.codex_command(
+        "codex", "/tmp", "schema.json", "output.json", paths
+    )
+
+    image_flag = command.index("--image")
+    assert command[image_flag + 1] == str(image_path)
+    assert command[-1] == "-"
+    prompt = bridge.render_codex_prompt(request)
+    assert str(image_path) not in prompt
+    assert "<local attachment>" in prompt
+
+
 def test_rendered_prompt_treats_conversation_as_prior_context():
     bridge = load_bridge_module()
     request = request_payload()

@@ -167,6 +167,14 @@ fn main() {
     emit_build_version();
     emit_source_revision();
 
+    let macos_target = std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos");
+    let screenshot_capture = std::env::var_os("CARGO_FEATURE_SCREENSHOT_CAPTURE").is_some();
+    if macos_target && screenshot_capture {
+        // Swift link arguments from static dependencies do not propagate to
+        // GENtle's final binary, so expose the macOS system runtime directly.
+        println!("cargo:rustc-link-arg=-Wl,-rpath,/usr/lib/swift");
+    }
+
     #[cfg(target_os = "windows")]
     {
         let mut res = winres::WindowsResource::new();

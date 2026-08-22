@@ -22,6 +22,24 @@
   with GENtle's exact ephemeral no-tools/no-session flags plus `--help`, catching
   unsupported local Pi CLI flags without sending a prompt to a model.
 
+- Added explicit, window-bound screenshot help for Agent Assistant. `Agent help`
+  captures the GENtle viewport where it was clicked before opening the
+  assistant, presents a local preview, and sends that image only after the
+  user submits the prompt to an image-capable provider. Optional macOS native
+  full-window capture uses ScreenCaptureKit, is restricted to GENtle-owned
+  windows, and fails clearly when Screen Recording permission is unavailable.
+  Codex/Pi bridges and native multimodal providers share the attachment
+  contract; stored conversation turns retain path-free provenance only.
+
+- Fixed invisible Agent Assistant results for GENtle-local read-only commands.
+  `/help` now opens the built-in Help window at the Shell Commands tab, and
+  `/list` renders a compact current-project overview instead of recording only
+  `success - executed`. The latest local command result remains available in a
+  dedicated panel with complete JSON copy support. `/list` object rows now expose
+  contextual shared-shell actions and can focus the complete main-window project
+  overview rather than duplicating its full lineage/analysis model; shared shell
+  payloads and headless behavior are unchanged.
+
 - Added Pi as a local, multi-provider Agent Assistant harness. The co-shipped
   bridge runs an ephemeral tool-free Pi request in an isolated directory,
   keeps conversation state in GENtle, discovers provider-qualified models via
