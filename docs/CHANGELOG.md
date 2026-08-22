@@ -8,6 +8,22 @@
   complete top-level Markdown JSON fence while retaining strict schema,
   unknown-field, and surrounding-prose rejection.
 
+- Clarified the DNA viewer's microarray state and made nearest-array navigation
+  reusable. An empty layer now opens `Array setup...` directly at the built-in
+  Clariom D Human profile, populated layers distinguish in-view from
+  full-sequence counts, and the context menu can focus the nearest projected
+  interval. The additive shared feature-query contract and shell option
+  `--nearest-to` expose the same deterministic distance ordering to CLI and
+  embedding clients; transcript association remains an explicit probe-region
+  interpretation step.
+
+- Hardened the approval-bound transcript-assay fallback adapters after a real
+  IRF9 replay. The shared shell worker now reserves enough stack for the nested
+  strict/fallback reports, selection audit, and combined gel payload. Ordinary
+  Cargo builds also bind the repository HEAD into one package-plus-commit
+  source revision used by both fallback execution and selection-audit
+  provenance; source archives without Git remain explicitly package-bound.
+
 - Added an approval-bound informative fallback for infeasible strict
   transcript-primer panels. The engine preserves the typed strict coverage
   failure, derives a separate best-effort operation only for that failure

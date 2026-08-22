@@ -140,8 +140,8 @@ use crate::{
         RnaReadPairwiseAlignmentDetail, RnaReadReportMode, RnaReadScoreDensityScale,
         RnaReadScoreDensityVariant, RnaReadSeedFilterConfig, RnaReadTopHitPreview,
         RnaSeedHashCatalogEntry, RnaSeedHashTemplateAuditEntry, SequenceAlignmentReport,
-        SequenceFeatureQuery, SequenceGenomeAnchorSummary, SequenceScanTarget,
-        SequencingConfirmationDiscrepancy, SequencingConfirmationReadResult,
+        SequenceFeatureQualifierFilter, SequenceFeatureQuery, SequenceGenomeAnchorSummary,
+        SequenceScanTarget, SequencingConfirmationDiscrepancy, SequencingConfirmationReadResult,
         SequencingConfirmationReport, SequencingConfirmationReportSummary,
         SequencingConfirmationStatus, SequencingConfirmationTargetKind,
         SequencingConfirmationTargetResult, SequencingConfirmationTargetSpec,
@@ -1122,6 +1122,7 @@ struct LayerVisibilityCounts {
     repeat_feature_kind_counts: HashMap<String, usize>,
     repeat_feature_count: usize,
     array_feature_count: usize,
+    array_feature_total_count: usize,
     construct_reasoning_evidence_count: usize,
     contextual_transcript_feature_count: usize,
     regulatory_feature_count: usize,
@@ -1154,6 +1155,10 @@ impl LayerVisibilityCounts {
 
     fn array_count(&self) -> usize {
         self.array_feature_count
+    }
+
+    fn array_total_count(&self) -> usize {
+        self.array_feature_total_count
     }
 
     fn construct_reasoning_evidence_count(&self) -> usize {
@@ -1350,6 +1355,7 @@ pub struct MainAreaDna {
     rna_read_evidence_ui: RnaReadEvidenceUiState,
     rna_read_concatemer_ui: RnaReadConcatemerUiState,
     show_engine_ops: bool,
+    probe_region_setup_requested: bool,
     show_shell: bool,
     shell_command_text: String,
     shell_preview_text: String,
@@ -2142,6 +2148,7 @@ impl MainAreaDna {
             rna_read_evidence_ui: RnaReadEvidenceUiState::default(),
             rna_read_concatemer_ui: RnaReadConcatemerUiState::default(),
             show_engine_ops: false,
+            probe_region_setup_requested: false,
             show_shell: false,
             shell_command_text: "state-summary".to_string(),
             shell_preview_text: String::new(),
@@ -3566,6 +3573,11 @@ impl MainAreaDna {
                 if RenderDna::is_source_feature(feature) {
                     continue;
                 }
+                let is_array_track = RenderDna::is_array_track_feature(feature);
+                if is_array_track {
+                    counts.array_feature_total_count =
+                        counts.array_feature_total_count.saturating_add(1);
+                }
                 if let Some((start, end)) = viewport
                     && !Self::feature_overlaps_linear_viewport(feature, sequence_length, start, end)
                 {
@@ -3589,7 +3601,7 @@ impl MainAreaDna {
                         .entry(kind.clone())
                         .or_insert(0) += 1;
                 }
-                if RenderDna::is_array_track_feature(feature) {
+                if is_array_track {
                     counts.array_feature_count = counts.array_feature_count.saturating_add(1);
                 }
                 let is_contextual_transcript = RenderDna::is_contextual_transcript_feature(feature);
@@ -4345,6 +4357,147 @@ impl MainAreaDna {
         self.render_feature_location_editor(ctx);
         self.render_error_popup(ctx);
         self.render_anchor_prepared_choice_popup(ctx);
+    }
+
+    fn array_layer_button_label(in_view: usize, total: usize) -> String {
+        if total == 0 {
+            "Array setup...".to_string()
+        } else if in_view == total {
+            format!("Array ({total})")
+        } else {
+            format!("Array ({in_view}/{total})")
+        }
+    }
+
+    fn ensure_clariom_d_array_defaults(&mut self) {
+        if self.probe_region_apt_platform.trim().is_empty() {
+            self.probe_region_apt_platform = "Clariom_D_Human".to_string();
+        }
+        if self.probe_region_apt_normalization.trim().is_empty() {
+            self.probe_region_apt_normalization = "rma-sketch".to_string();
+        }
+        if self.probe_region_apt_coordinate_system.trim().is_empty() {
+            self.probe_region_apt_coordinate_system = "hg38".to_string();
+        }
+        if self.probe_region_apt_genome_build.trim().is_empty() {
+            self.probe_region_apt_genome_build = "GRCh38".to_string();
+        }
+        if self.probe_region_output_dir.trim().is_empty() {
+            self.probe_region_output_dir = "analysis/probe_regions".to_string();
+        }
+        if self.probe_region_projection_seq_id.trim().is_empty() {
+            self.probe_region_projection_seq_id = self.seq_id.clone().unwrap_or_default();
+        }
+    }
+
+    fn restore_clariom_d_array_defaults(&mut self) {
+        self.probe_region_apt_platform = "Clariom_D_Human".to_string();
+        self.probe_region_apt_normalization = "rma-sketch".to_string();
+        self.probe_region_apt_coordinate_system = "hg38".to_string();
+        self.probe_region_apt_genome_build = "GRCh38".to_string();
+        self.probe_region_output_dir = "analysis/probe_regions".to_string();
+        self.probe_region_projection_seq_id = self.seq_id.clone().unwrap_or_default();
+        self.cached_probe_region_apt_import = None;
+        self.cached_probe_region_output_inspection = None;
+        self.cached_probe_region_projection = None;
+        self.cached_probe_region_interpretation = None;
+    }
+
+    fn open_array_setup(&mut self) {
+        self.ensure_clariom_d_array_defaults();
+        self.show_engine_ops = true;
+        self.probe_region_setup_requested = true;
+        self.op_status = "Opened Engine Ops > Clariom D / probe-region evidence. The built-in Clariom D Human profile is ready; project prepared output to create visible Array features."
+            .to_string();
+        self.save_engine_ops_state();
+    }
+
+    fn array_navigation_anchor_0based(&self) -> Option<(usize, &'static str)> {
+        if let Some((start, end_exclusive)) = self.current_selection_range_0based() {
+            return Some((
+                start.saturating_add(end_exclusive.saturating_sub(start) / 2),
+                "current selection",
+            ));
+        }
+        if let Some((start, end_exclusive)) = self.active_linear_viewport_range() {
+            return Some((
+                start.saturating_add(end_exclusive.saturating_sub(start) / 2),
+                "visible span",
+            ));
+        }
+        let sequence_length = self.dna.read().ok()?.len();
+        (sequence_length > 0).then_some((sequence_length / 2, "sequence midpoint"))
+    }
+
+    fn query_nearest_array_feature(
+        &self,
+        point_0based: usize,
+    ) -> Result<Option<(usize, usize, String)>, String> {
+        let seq_id = self
+            .seq_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| "The active DNA window has no sequence id".to_string())?;
+        let engine = self
+            .engine
+            .as_ref()
+            .ok_or_else(|| "No shared engine is attached to this DNA window".to_string())?;
+        let engine = engine
+            .read()
+            .map_err(|_| "Engine lock poisoned while querying array features".to_string())?;
+        let mut nearest: Option<(usize, usize, String)> = None;
+        for (key, value) in [
+            ("gentle_track_source", "Array"),
+            ("gentle_generated", "microarray_track_projection"),
+        ] {
+            let result = engine
+                .query_sequence_features(SequenceFeatureQuery {
+                    seq_id: seq_id.to_string(),
+                    qualifier_filters: vec![SequenceFeatureQualifierFilter {
+                        key: key.to_string(),
+                        value_contains: Some(value.to_string()),
+                        ..SequenceFeatureQualifierFilter::default()
+                    }],
+                    nearest_to_0based: Some(point_0based),
+                    limit: Some(1),
+                    ..SequenceFeatureQuery::default()
+                })
+                .map_err(|err| err.to_string())?;
+            let Some(row) = result.rows.into_iter().next() else {
+                continue;
+            };
+            let candidate = (
+                row.feature_id,
+                row.distance_to_query_bp.unwrap_or(usize::MAX),
+                row.label,
+            );
+            let replace = nearest
+                .as_ref()
+                .is_none_or(|current| (candidate.1, candidate.0) < (current.1, current.0));
+            if replace {
+                nearest = Some(candidate);
+            }
+        }
+        Ok(nearest)
+    }
+
+    fn focus_nearest_array_feature(&mut self) {
+        let Some((point_0based, anchor_label)) = self.array_navigation_anchor_0based() else {
+            self.op_status =
+                "Could not choose a coordinate for nearest-array navigation".to_string();
+            return;
+        };
+        match self.query_nearest_array_feature(point_0based) {
+            Ok(Some((feature_id, distance_bp, label))) => {
+                self.focus_feature(feature_id);
+                self.op_status = format!(
+                    "Focused nearest array feature n-{feature_id} '{label}': {distance_bp} bp from {anchor_label} midpoint at local coordinate {point_0based} (0-based)"
+                );
+            }
+            Ok(None) => self.open_array_setup(),
+            Err(err) => self.op_status = format!("Could not query nearest array feature: {err}"),
+        }
     }
 
     pub fn render_top_panel(&mut self, ui: &mut egui::Ui) {
@@ -5214,21 +5367,79 @@ impl MainAreaDna {
                 .expect("DNA display lock poisoned")
                 .show_array_features();
             let array_count = layer_counts.array_count();
-            let array_response = ui
-                .selectable_label(array_active, format!("Array ({array_count})"))
-                .on_hover_text(format!(
-                    "Show or hide genome-projected microarray contrast features ({array_count} in current view)"
-                ));
+            let array_total_count = layer_counts.array_total_count();
+            let array_label = Self::array_layer_button_label(array_count, array_total_count);
+            let array_response = if array_total_count == 0 {
+                ui.button(array_label).on_hover_text(
+                    "No genome-projected microarray features are loaded on this sequence. Open Engine Ops > Clariom D / probe-region evidence to inspect, import, and project array data.",
+                )
+            } else {
+                ui.selectable_label(array_active, array_label)
+                    .on_hover_text(format!(
+                        "Show or hide genome-projected microarray contrast features ({array_count} in the current view; {array_total_count} on the full sequence)"
+                    ))
+            };
             if array_response.clicked() {
-                let visible = {
-                    let display = self.dna_display.read().expect("DNA display lock poisoned");
-                    !display.show_array_features()
-                };
-                self.dna_display
-                    .write()
-                    .expect("DNA display lock poisoned")
-                    .set_show_array_features(visible);
-                self.set_display_visibility(DisplayTarget::ArrayFeatures, visible);
+                if array_total_count == 0 {
+                    self.open_array_setup();
+                } else {
+                    let visible = {
+                        let display = self.dna_display.read().expect("DNA display lock poisoned");
+                        !display.show_array_features()
+                    };
+                    self.dna_display
+                        .write()
+                        .expect("DNA display lock poisoned")
+                        .set_show_array_features(visible);
+                    self.set_display_visibility(DisplayTarget::ArrayFeatures, visible);
+                }
+            }
+            let mut focus_nearest_array = false;
+            let mut open_array_setup = false;
+            let mut restore_clariom_defaults = false;
+            array_response.context_menu(|ui| {
+                if array_total_count > 0 {
+                    if ui
+                        .button("Focus nearest array feature")
+                        .on_hover_text(
+                            "Use the current selection midpoint, otherwise the visible-span midpoint, and run the shared nearest feature query",
+                        )
+                        .clicked()
+                    {
+                        focus_nearest_array = true;
+                        ui.close();
+                    }
+                    ui.separator();
+                }
+                if ui
+                    .button("Open Clariom D / array setup")
+                    .on_hover_text(
+                        "Open Engine Ops directly at Clariom D / probe-region evidence",
+                    )
+                    .clicked()
+                {
+                    open_array_setup = true;
+                    ui.close();
+                }
+                if ui
+                    .button("Restore Clariom D defaults")
+                    .on_hover_text(
+                        "Restore Clariom_D_Human, rma-sketch, hg38/GRCh38, and the default output directory",
+                    )
+                    .clicked()
+                {
+                    restore_clariom_defaults = true;
+                    ui.close();
+                }
+            });
+            if focus_nearest_array {
+                self.focus_nearest_array_feature();
+            }
+            if restore_clariom_defaults {
+                self.restore_clariom_d_array_defaults();
+                self.open_array_setup();
+            } else if open_array_setup {
+                self.open_array_setup();
             }
 
             let construct_reasoning_active = self
@@ -7953,11 +8164,16 @@ impl MainAreaDna {
                         self.render_cutrun_regulatory_support_summary_panel(ui);
                     });
 
+                let force_probe_region_open = self.probe_region_setup_requested;
                 egui::CollapsingHeader::new("Clariom D / probe-region evidence")
                     .default_open(false)
+                    .open(force_probe_region_open.then_some(true))
                     .show(ui, |ui| {
                         self.render_probe_region_output_inspection_panel(ui);
                     });
+                if force_probe_region_open {
+                    self.probe_region_setup_requested = false;
+                }
 
                 egui::CollapsingHeader::new("Direct scan inspectors")
                     .default_open(false)
@@ -9193,6 +9409,24 @@ impl MainAreaDna {
             )
             .color(egui::Color32::from_rgb(100, 116, 139)),
         );
+        ui.horizontal_wrapped(|ui| {
+            ui.small(
+                egui::RichText::new(
+                    "Built-in profile: Clariom D Human | Clariom_D_Human | rma-sketch | hg38 / GRCh38",
+                )
+                .color(egui::Color32::from_rgb(45, 96, 72)),
+            );
+            if ui
+                .small_button("Restore profile defaults")
+                .on_hover_text(
+                    "Restore the built-in Clariom D Human platform, normalization, build, output directory, and current projection target",
+                )
+                .clicked()
+            {
+                self.restore_clariom_d_array_defaults();
+                self.save_engine_ops_state();
+            }
+        });
         ui.add_space(4.0);
 
         ui.label(egui::RichText::new("Import APT summary").strong());

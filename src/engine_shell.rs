@@ -251,6 +251,9 @@ const BLAST_ASYNC_RESTART_INTERRUPTED_ERROR: &str =
     "BLAST async job interrupted by restart/reload before completion";
 static BLAST_ASYNC_JOB_COUNTER: AtomicU64 = AtomicU64::new(1);
 const SHELL_EXPANDED_STACK_SIZE: usize = 8 * 1024 * 1024;
+// The all-command dispatcher can retain strict and fallback panel reports plus
+// their serialized audit in one frame; reserve virtual stack accordingly.
+const SHELL_COMMAND_STACK_SIZE: usize = 64 * 1024 * 1024;
 
 thread_local! {
     static SHELL_EXPANDED_STACK_ACTIVE: Cell<bool> = const { Cell::new(false) };
@@ -10660,7 +10663,7 @@ impl ShellCommand {
                 seq_id
             ),
             Self::FeaturesQuery { query } => format!(
-                "query features on '{}' (kinds={}, range={}..{}, relation={}, strand={}, label='{}', qualifiers={}, limit={}, offset={})",
+                "query features on '{}' (kinds={}, range={}..{}, nearest_to={}, relation={}, strand={}, label='{}', qualifiers={}, limit={}, offset={})",
                 query.seq_id,
                 if query.kind_in.is_empty() {
                     "any".to_string()
@@ -10673,6 +10676,10 @@ impl ShellCommand {
                     .unwrap_or_else(|| "-".to_string()),
                 query
                     .end_0based_exclusive
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                query
+                    .nearest_to_0based
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "-".to_string()),
                 query.range_relation.as_str(),
@@ -21666,7 +21673,8 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "args": [
                 {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id"},
                 {"name": "--kind", "required": false, "detail": "optional feature kind filter"},
-                {"name": "--range", "required": false, "detail": "optional query interval START..END"}
+                {"name": "--range", "required": false, "detail": "optional query interval START..END"},
+                {"name": "--nearest-to", "required": false, "detail": "optional 0-based sequence coordinate that sorts matching features by nearest-base distance"}
             ],
             "reads": [
                 {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
@@ -62365,7 +62373,7 @@ fn execute_shell_command_with_options_on_expanded_stack(
     let scoped_tool_overrides = crate::tool_overrides::scoped_tool_overrides_snapshot();
     let worker = thread::Builder::new()
         .name("gentle-shell-command".to_string())
-        .stack_size(SHELL_EXPANDED_STACK_SIZE)
+        .stack_size(SHELL_COMMAND_STACK_SIZE)
         .spawn(move || {
             #[cfg(test)]
             let _scoped_tool_overrides =

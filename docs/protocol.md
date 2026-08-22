@@ -3202,6 +3202,12 @@ Microarray track projection notes:
   supplied. Threshold provenance without a threshold is rejected. Existing
   reports without these fields remain readable but may not borrow a threshold
   from a later study plan.
+- Nearest-array navigation is a composition of shared contracts rather than a
+  separate GUI operation. Query projected intervals with `features query
+  SEQ_ID --qual-contains gentle_track_source=Array --nearest-to POSITION
+  --limit 1 --include-qualifiers`; then use this interpretation operation when
+  transcript/exon/junction geometry is required. Distance alone never implies
+  transcript association.
 - manifests may also include `coordinate_projections[]` entries with
   `source_genome_id`, `target_genome_id`, `method`, and `path`. These paths
   point at tab-delimited interval maps for build-to-build projection, currently
@@ -9653,7 +9659,11 @@ Primer-pair alternative frontier:
     A persisted `gentle.transcript_assay_fallback_execution.v1` binds the
     strict operation digest/failure identity, policy digest/schema, search
     policy digest, engine revision, fallback operation digest, and exact field
-    diff. The strict outcome is not overwritten. Any generated fallback panel
+    diff. For ordinary repository builds, the engine and selection-audit
+    revision is the package version plus the full Git `HEAD` commit; source
+    archives without Git retain the package version alone. This identifies the
+    committed source baseline and is not a clean-working-tree attestation. The
+    strict outcome is not overwritten. Any generated fallback panel
     is forcibly `completion_status=partial`, keeps all uncovered targets
     visible, and carries one deterministic combined virtual gel or the typed
     `no_predicted_products` reason. This does not imply specificity, validation,
@@ -10362,7 +10372,7 @@ Feature-record curation contract (implemented):
 Feature-query shell contract (implemented):
 
 - Shared-shell command:
-  - `features query SEQ_ID [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
+  - `features query SEQ_ID [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--nearest-to POSITION] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
 - Execution semantics:
   - non-mutating engine inspection over one sequence’s feature table
   - deterministic filter pipeline:
@@ -10370,20 +10380,25 @@ Feature-query shell contract (implemented):
     strand filter, label contains/regex, qualifier filters, and length bounds
   - deterministic ordering by requested sort key with stable tie-breaks +
     pagination (`offset`/`limit`)
+  - optional `nearest_to_0based` / `--nearest-to POSITION` replaces the primary
+    ordering with nearest-base interval distance; equal distances are ordered
+    by start, end, and feature id. The point must lie within the local sequence.
 - Response schema:
   - `gentle.sequence_feature_query_result.v1`
   - fields include:
     - `seq_id`, `sequence_length_bp`, `total_feature_count`
-    - `matched_count`, `returned_count`, `offset`, `limit`
+    - `matched_count`, `returned_count`, `offset`, `limit`, optional
+      `nearest_to_0based`
     - normalized `query`
     - `rows[]` with `feature_id`, `kind`, `start_0based`,
-      `end_0based_exclusive`, `length_bp`, `strand`, `label`, `labels[]`, and
-      optional qualifier maps when requested (`--include-qualifiers`)
+      `end_0based_exclusive`, `length_bp`, optional `distance_to_query_bp`,
+      `strand`, `label`, `labels[]`, and optional qualifier maps when requested
+      (`--include-qualifiers`)
 
 Feature BED export contract (implemented):
 
 - Shared-shell command:
-  - `features export-bed SEQ_ID OUTPUT.bed [--coordinate-mode auto|local|genomic] [--include-restriction-sites] [--restriction-enzyme NAME] [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
+  - `features export-bed SEQ_ID OUTPUT.bed [--coordinate-mode auto|local|genomic] [--include-restriction-sites] [--restriction-enzyme NAME] [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--nearest-to POSITION] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
 - Raw/shared operation:
   - `{"ExportFeaturesBed":{"query":{"seq_id":"tp53_region","kind_in":["gene","mRNA","exon","CDS"]},"path":"artifacts/tp53_region.features.bed","coordinate_mode":"auto","include_restriction_sites":false,"restriction_enzymes":[]}}`
 - Execution semantics:

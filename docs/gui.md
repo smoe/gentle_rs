@@ -3481,6 +3481,20 @@ The `Help` menu now includes:
   ordinals, ranges, junction spans, overlap base counts, geometry scores, and
   score-basis guardrails. Transcript rows show review-only labels for unique,
   shared, constraining, or absent geometry; these labels are not isoform calls.
+- The DNA-viewer layer control distinguishes configuration from visibility.
+  When no projected microarray feature exists on the active sequence it reads
+  `Array setup...` and opens the `Engine Ops > Clariom D / probe-region
+  evidence` panel rather than toggling an empty layer. The panel visibly offers
+  the built-in `Clariom_D_Human` / `rma-sketch` / `hg38` (`GRCh38`) profile and
+  a restore-defaults action. Once data is projected, the control reports both
+  visible and full-sequence counts when they differ, for example `Array
+  (0/14)` after panning away from all array intervals.
+- Right-click the Array control and choose `Focus nearest array feature` to
+  navigate from the current selection midpoint, otherwise the visible-span
+  midpoint, to the nearest projected array interval. This uses the shared
+  engine feature query rather than a GUI-only lookup. `Open Clariom D / array
+  setup` remains available from the same context menu even when array data is
+  already present.
 
 ## microRNA Target Scan
 

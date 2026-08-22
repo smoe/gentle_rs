@@ -7766,9 +7766,16 @@ fn parse_primers_seed_from_feature_and_splicing() {
     .expect("parse approval-bound fallback operation JSON");
     assert!(matches!(
         fallback_operation,
-        ShellCommand::PrimersDesignTranscriptAssayPanelRequest { operation_json, .. }
+        ShellCommand::PrimersDesignTranscriptAssayPanelRequest {
+            ref operation_json,
+            ..
+        }
             if operation_json.contains("DesignTranscriptAssayPanelWithFallback")
     ));
+    assert!(
+        SHELL_COMMAND_STACK_SIZE >= 64 * 1024 * 1024,
+        "large strict/fallback reports require the shell worker stack budget"
+    );
     assert!(matches!(
         parse_shell_line("primers list-transcript-assay-fallbacks")
             .expect("parse fallback listing"),
@@ -9249,7 +9256,7 @@ fn parse_features_formula_preserves_expression_tail() {
 #[test]
 fn parse_features_query_with_filters() {
     let cmd = parse_shell_line(
-        "features query seq_a --kind CDS --kind-not source --range 10..200 --within --strand reverse --label TP73 --label-regex ^TP73 --qual gene --qual-contains note=promoter --qual-regex product=TP73.* --min-len 30 --max-len 500 --limit 50 --offset 5 --sort start --desc --include-source --include-qualifiers",
+        "features query seq_a --kind CDS --kind-not source --range 10..200 --within --strand reverse --label TP73 --label-regex ^TP73 --qual gene --qual-contains note=promoter --qual-regex product=TP73.* --min-len 30 --max-len 500 --nearest-to 75 --limit 50 --offset 5 --sort start --desc --include-source --include-qualifiers",
     )
     .expect("parse features query");
     match cmd {
@@ -9266,6 +9273,7 @@ fn parse_features_query_with_filters() {
             assert_eq!(query.qualifier_filters.len(), 3);
             assert_eq!(query.min_len_bp, Some(30));
             assert_eq!(query.max_len_bp, Some(500));
+            assert_eq!(query.nearest_to_0based, Some(75));
             assert_eq!(query.limit, Some(50));
             assert_eq!(query.offset, 5);
             assert_eq!(query.sort_by, SequenceFeatureSortBy::Start);

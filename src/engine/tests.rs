@@ -16481,17 +16481,25 @@ fn irf9_preapproved_fallback_is_separate_partial_and_digest_linked() {
     let fallback_policy_sha256 = crate::digest_utils::sha256_prefixed_bytes(
         &serde_json::to_vec(&fallback_policy).expect("fallback policy bytes"),
     );
-    let result = engine
-        .apply(Operation::DesignTranscriptAssayPanelWithFallback {
-            strict_operation: Box::new(strict_operation),
-            fallback_submission: fallback_policy,
-            path: None,
-        })
-        .expect("pre-approved IRF9 fallback execution");
-    let execution = result
-        .transcript_assay_fallback_execution
-        .as_deref()
-        .expect("fallback execution audit");
+    let operation = Operation::DesignTranscriptAssayPanelWithFallback {
+        strict_operation: Box::new(strict_operation),
+        fallback_submission: fallback_policy,
+        path: None,
+    };
+    let operation_json = serde_json::to_string(&operation).expect("serialize fallback operation");
+    let command = crate::engine_shell::parse_shell_line(&format!(
+        "primers design-transcript-assay-panel '{operation_json}'"
+    ))
+    .expect("parse documented fallback shell route");
+    let shell_result = crate::engine_shell::execute_shell_command(&mut engine, &command)
+        .expect("pre-approved IRF9 fallback shell execution");
+    assert_eq!(
+        shell_result.output["schema"],
+        "gentle.transcript_assay_panel_command.v3"
+    );
+    let execution: TranscriptAssayFallbackExecutionReport =
+        serde_json::from_value(shell_result.output["fallback_execution"].clone())
+            .expect("fallback execution audit");
     let strict_failure = execution
         .strict_infeasibility
         .as_ref()
@@ -16503,6 +16511,10 @@ fn irf9_preapproved_fallback_is_separate_partial_and_digest_linked() {
 
     assert_eq!(execution.strict_operation_sha256, strict_operation_sha256);
     assert_eq!(execution.fallback_policy_sha256, fallback_policy_sha256);
+    assert_eq!(
+        execution.engine_revision,
+        crate::about::GENTLE_SOURCE_REVISION
+    );
     assert!(execution.fallback_submitted);
     assert!(execution.fallback_error.is_none());
     assert!(execution.summary.contains("ENST00000699070"));
@@ -16540,6 +16552,10 @@ fn irf9_preapproved_fallback_is_separate_partial_and_digest_linked() {
         informative.selected_assay_count,
         fallback.selected_assay_count
     );
+    assert!(fallback.selected_assays.iter().all(|assay| {
+        assay.primer_pair_summary.selection_audit_generator_revision
+            == crate::about::GENTLE_SOURCE_REVISION
+    }));
     let selected_assay_ids = fallback
         .selected_assays
         .iter()
@@ -51045,6 +51061,77 @@ fn query_sequence_features_applies_qualifier_filters_and_pagination() {
             .expect("gene value"),
         "TP73"
     );
+}
+
+#[test]
+fn query_sequence_features_sorts_matching_array_tracks_by_nearest_base() {
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(30)).expect("sequence");
+    for (start, end, label) in [(10, 20, "array-left"), (80, 90, "array-right")] {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "track".into(),
+            location: gb_io::seq::Location::simple_range(start, end),
+            qualifiers: vec![
+                ("label".into(), Some(label.to_string())),
+                ("gentle_track_source".into(), Some("Array".to_string())),
+            ],
+        });
+    }
+    let mut state = ProjectState::default();
+    state.sequences.insert("array-locus".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+
+    let result = engine
+        .query_sequence_features(SequenceFeatureQuery {
+            seq_id: "array-locus".to_string(),
+            qualifier_filters: vec![SequenceFeatureQualifierFilter {
+                key: "gentle_track_source".to_string(),
+                value_contains: Some("Array".to_string()),
+                ..SequenceFeatureQualifierFilter::default()
+            }],
+            nearest_to_0based: Some(75),
+            include_qualifiers: true,
+            ..SequenceFeatureQuery::default()
+        })
+        .expect("nearest feature query should succeed");
+
+    assert_eq!(result.sort_by, "distance");
+    assert_eq!(result.nearest_to_0based, Some(75));
+    assert_eq!(result.rows.len(), 2);
+    assert_eq!(result.rows[0].label, "array-right");
+    assert_eq!(result.rows[0].distance_to_query_bp, Some(5));
+    assert_eq!(result.rows[1].label, "array-left");
+    assert_eq!(result.rows[1].distance_to_query_bp, Some(56));
+}
+
+#[test]
+fn query_sequence_features_rejects_nearest_point_outside_sequence() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "short-sequence".to_string(),
+        DNAsequence::from_sequence("ACGT").expect("sequence"),
+    );
+    let engine = GentleEngine::from_state(state);
+
+    let err = engine
+        .query_sequence_features(SequenceFeatureQuery {
+            seq_id: "short-sequence".to_string(),
+            nearest_to_0based: Some(4),
+            ..SequenceFeatureQuery::default()
+        })
+        .expect_err("nearest point equal to sequence length must fail");
+
+    assert_eq!(err.code, ErrorCode::InvalidInput);
+    assert!(err.message.contains("outside sequence length 4"));
+}
+
+#[test]
+fn legacy_sequence_feature_query_defaults_nearest_point_to_none() {
+    let query: SequenceFeatureQuery = serde_json::from_value(serde_json::json!({
+        "seq_id": "legacy-sequence"
+    }))
+    .expect("legacy feature query");
+
+    assert_eq!(query.nearest_to_0based, None);
 }
 
 #[test]
