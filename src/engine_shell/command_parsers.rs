@@ -1811,6 +1811,7 @@ struct FeatureQueryOptionState {
     range_arg: Option<(usize, usize)>,
     start_arg: Option<usize>,
     end_arg: Option<usize>,
+    nearest_to_arg: Option<usize>,
 }
 
 fn parse_feature_bed_coordinate_mode(raw: &str) -> Result<FeatureBedCoordinateMode, String> {
@@ -1981,6 +1982,18 @@ fn try_parse_feature_query_option(
             query.max_len_bp = Some(parsed);
             Ok(true)
         }
+        "--nearest-to" | "--nearest" => {
+            let flag = tokens[*idx].clone();
+            let raw = parse_option_path(tokens, idx, &flag, context)?;
+            if state.nearest_to_arg.is_some() {
+                return Err("--nearest-to was specified multiple times".to_string());
+            }
+            state.nearest_to_arg = Some(
+                raw.parse::<usize>()
+                    .map_err(|e| format!("Invalid {flag} value '{raw}': {e}"))?,
+            );
+            Ok(true)
+        }
         "--limit" => {
             let raw = parse_option_path(tokens, idx, "--limit", context)?;
             let parsed = raw
@@ -2054,6 +2067,7 @@ fn finalize_feature_query_options(
         query.start_0based = Some(start);
         query.end_0based_exclusive = Some(end_exclusive);
     }
+    query.nearest_to_0based = state.nearest_to_arg;
     Ok(())
 }
 
@@ -3317,7 +3331,7 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
         "query" => {
             if tokens.len() < 3 {
                 return Err(
-                    "features query requires SEQ_ID [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]"
+                    "features query requires SEQ_ID [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--nearest-to POSITION] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]"
                         .to_string(),
                 );
             }
@@ -3347,7 +3361,7 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
         "export-bed" => {
             if tokens.len() < 4 {
                 return Err(
-                    "features export-bed requires SEQ_ID OUTPUT.bed [--coordinate-mode auto|local|genomic] [--include-restriction-sites] [--restriction-enzyme NAME] [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]"
+                    "features export-bed requires SEQ_ID OUTPUT.bed [--coordinate-mode auto|local|genomic] [--include-restriction-sites] [--restriction-enzyme NAME] [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--nearest-to POSITION] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]"
                         .to_string(),
                 );
             }

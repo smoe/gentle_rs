@@ -2420,6 +2420,103 @@ fn restriction_layer_counts_respect_display_mode_and_total_sites() {
 }
 
 #[test]
+fn array_layer_button_label_distinguishes_setup_view_and_total_counts() {
+    assert_eq!(
+        MainAreaDna::array_layer_button_label(0, 0),
+        "Array setup..."
+    );
+    assert_eq!(MainAreaDna::array_layer_button_label(0, 2), "Array (0/2)");
+    assert_eq!(MainAreaDna::array_layer_button_label(1, 2), "Array (1/2)");
+    assert_eq!(MainAreaDna::array_layer_button_label(2, 2), "Array (2)");
+}
+
+#[test]
+fn array_layer_counts_distinguish_visible_and_full_sequence_features() {
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(75)).expect("sequence");
+    for (start, end, label) in [(20, 30, "visible-array"), (220, 230, "distant-array")] {
+        dna.features_mut().push(Feature {
+            kind: "track".into(),
+            location: Location::simple_range(start, end),
+            qualifiers: vec![
+                ("label".into(), Some(label.to_string())),
+                (
+                    "gentle_generated".into(),
+                    Some("microarray_track_projection".to_string()),
+                ),
+            ],
+        });
+    }
+    let mut area = MainAreaDna::new(dna, Some("array-locus".to_string()), None);
+    area.set_linear_viewport(0, 100);
+
+    let counts = area.compute_layer_visibility_counts();
+    assert_eq!(counts.array_count(), 1);
+    assert_eq!(counts.array_total_count(), 2);
+}
+
+#[test]
+fn nearest_array_navigation_uses_shared_feature_query_for_both_projection_tags() {
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(75)).expect("sequence");
+    dna.features_mut().push(Feature {
+        kind: "track".into(),
+        location: Location::simple_range(20, 30),
+        qualifiers: vec![
+            ("label".into(), Some("track-source-array".to_string())),
+            ("gentle_track_source".into(), Some("Array".to_string())),
+        ],
+    });
+    dna.features_mut().push(Feature {
+        kind: "track".into(),
+        location: Location::simple_range(80, 90),
+        qualifiers: vec![
+            ("label".into(), Some("generated-array".to_string())),
+            (
+                "gentle_generated".into(),
+                Some("microarray_track_projection".to_string()),
+            ),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("array-locus".to_string(), dna.clone());
+    let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let area = MainAreaDna::new(dna, Some("array-locus".to_string()), Some(engine));
+
+    let nearest = area
+        .query_nearest_array_feature(75)
+        .expect("shared nearest-array query")
+        .expect("nearest array feature");
+
+    assert_eq!(nearest.0, 1);
+    assert_eq!(nearest.1, 5);
+    assert_eq!(nearest.2, "generated-array");
+}
+
+#[test]
+fn open_array_setup_restores_missing_clariom_d_defaults() {
+    let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("array-locus".to_string()), None);
+    area.probe_region_apt_platform.clear();
+    area.probe_region_apt_normalization.clear();
+    area.probe_region_apt_coordinate_system.clear();
+    area.probe_region_apt_genome_build.clear();
+    area.probe_region_output_dir.clear();
+    area.probe_region_projection_seq_id.clear();
+
+    area.open_array_setup();
+
+    assert!(area.show_engine_ops);
+    assert!(area.probe_region_setup_requested);
+    assert_eq!(area.probe_region_apt_platform, "Clariom_D_Human");
+    assert_eq!(area.probe_region_apt_normalization, "rma-sketch");
+    assert_eq!(area.probe_region_apt_coordinate_system, "hg38");
+    assert_eq!(area.probe_region_apt_genome_build, "GRCh38");
+    assert_eq!(area.probe_region_output_dir, "analysis/probe_regions");
+    assert_eq!(area.probe_region_projection_seq_id, "array-locus");
+}
+
+#[test]
 fn layer_visibility_counts_reuse_cache_until_display_changes() {
     let dna = DNAsequence::from_sequence("ATGCGCGCATGC").expect("seq");
     let mut area = MainAreaDna::new(dna, Some("s".to_string()), None);

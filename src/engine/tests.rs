@@ -51064,6 +51064,77 @@ fn query_sequence_features_applies_qualifier_filters_and_pagination() {
 }
 
 #[test]
+fn query_sequence_features_sorts_matching_array_tracks_by_nearest_base() {
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(30)).expect("sequence");
+    for (start, end, label) in [(10, 20, "array-left"), (80, 90, "array-right")] {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "track".into(),
+            location: gb_io::seq::Location::simple_range(start, end),
+            qualifiers: vec![
+                ("label".into(), Some(label.to_string())),
+                ("gentle_track_source".into(), Some("Array".to_string())),
+            ],
+        });
+    }
+    let mut state = ProjectState::default();
+    state.sequences.insert("array-locus".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+
+    let result = engine
+        .query_sequence_features(SequenceFeatureQuery {
+            seq_id: "array-locus".to_string(),
+            qualifier_filters: vec![SequenceFeatureQualifierFilter {
+                key: "gentle_track_source".to_string(),
+                value_contains: Some("Array".to_string()),
+                ..SequenceFeatureQualifierFilter::default()
+            }],
+            nearest_to_0based: Some(75),
+            include_qualifiers: true,
+            ..SequenceFeatureQuery::default()
+        })
+        .expect("nearest feature query should succeed");
+
+    assert_eq!(result.sort_by, "distance");
+    assert_eq!(result.nearest_to_0based, Some(75));
+    assert_eq!(result.rows.len(), 2);
+    assert_eq!(result.rows[0].label, "array-right");
+    assert_eq!(result.rows[0].distance_to_query_bp, Some(5));
+    assert_eq!(result.rows[1].label, "array-left");
+    assert_eq!(result.rows[1].distance_to_query_bp, Some(56));
+}
+
+#[test]
+fn query_sequence_features_rejects_nearest_point_outside_sequence() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "short-sequence".to_string(),
+        DNAsequence::from_sequence("ACGT").expect("sequence"),
+    );
+    let engine = GentleEngine::from_state(state);
+
+    let err = engine
+        .query_sequence_features(SequenceFeatureQuery {
+            seq_id: "short-sequence".to_string(),
+            nearest_to_0based: Some(4),
+            ..SequenceFeatureQuery::default()
+        })
+        .expect_err("nearest point equal to sequence length must fail");
+
+    assert_eq!(err.code, ErrorCode::InvalidInput);
+    assert!(err.message.contains("outside sequence length 4"));
+}
+
+#[test]
+fn legacy_sequence_feature_query_defaults_nearest_point_to_none() {
+    let query: SequenceFeatureQuery = serde_json::from_value(serde_json::json!({
+        "seq_id": "legacy-sequence"
+    }))
+    .expect("legacy feature query");
+
+    assert_eq!(query.nearest_to_0based, None);
+}
+
+#[test]
 fn inspect_sequence_context_view_uses_display_viewport_and_visible_classes() {
     let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(120)).expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {
