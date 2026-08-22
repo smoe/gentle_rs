@@ -56,6 +56,24 @@ class PiAgentBridgeTests(unittest.TestCase):
         model_flag = command.index("--model")
         self.assertEqual(command[model_flag + 1], "openai-codex/gpt-5.4")
 
+    def test_image_attachment_is_forwarded_as_pi_file_argument(self):
+        bridge = load_bridge_module()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            image_path = Path(temp_dir) / "problem.png"
+            image_path.write_bytes(b"synthetic png fixture")
+            request = request_payload()
+            request["x_attachments"] = [
+                {"kind": "image", "path": str(image_path)}
+            ]
+
+            paths = bridge.attachment_paths(request)
+            command = bridge.pi_command("pi", paths)
+
+            self.assertIn(f"@{image_path}", command)
+            prompt = bridge.render_pi_prompt(request)
+            self.assertNotIn(str(image_path), prompt)
+            self.assertIn("<local attachment>", prompt)
+
     def test_parse_pi_response_accepts_one_json_fence(self):
         bridge = load_bridge_module()
         parsed = bridge.parse_pi_response(

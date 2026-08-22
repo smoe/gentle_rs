@@ -908,6 +908,8 @@ impl GENtleApp {
                 .auto_shrink([false, false])
                 .scroll_source(egui::scroll_area::ScrollSource::ALL)
                 .show(ui, |ui| {
+                    crate::agent_help::render_agent_help_button(ui, "JASPAR Expert");
+                    ui.separator();
                     ui.label("Inspect local JASPAR entries through GENtle’s own matrix/scoring path, with optional remote species metadata from the JASPAR REST API.");
                     ui.horizontal(|ui| {
                     ui.label("Filter");

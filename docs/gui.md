@@ -109,9 +109,17 @@ Example startup window:
 
 Screenshot capture policy:
 
-- Screenshot capture is currently disabled by security policy.
-- `--allow-screenshots` is rejected at startup and `screenshot-window` is
-  disabled in shared shell command execution.
+- `Agent help` is an explicit, window-bound diagnostic action. A normal click
+  captures only the GENtle viewport containing that button, then opens Agent
+  Assistant with a local preview and a prompt for the user's problem report.
+- Right-clicking `Agent help` on macOS 14 or newer offers an optional complete-
+  window capture through ScreenCaptureKit. This requires Screen Recording
+  permission; declining it simply leaves that optional feature unavailable.
+- No screenshot is sent until the user clicks `Ask agent`. Automatic capture,
+  desktop capture, and capture of non-GENtle windows are prohibited.
+- The headless `--allow-screenshots` option and `screenshot-window` shared-shell
+  command remain disabled; this narrow GUI help flow does not enable general
+  screenshot automation.
 
 macOS auxiliary-window stability note:
 
@@ -2776,7 +2784,10 @@ Status output note:
 Screenshot command status:
 
 - `screenshot-window OUTPUT.png` is currently disabled by security policy.
-- Manual documentation updates remain the active path for image artifacts.
+- This reserved artifact-export command is distinct from the explicit,
+  preview-before-send `Agent help` attachment flow described below.
+- Deterministic SVG exports and manual documentation updates remain the active
+  path for reproducible image artifacts.
 
 ## Agent Assistant
 
@@ -2795,6 +2806,28 @@ Access:
 - main menu: `File -> Agent Assistant...`
 - command palette action: `Agent Assistant`
 - shortcut: `Cmd+Shift+A`
+- `Agent help` in every GENtle-owned window, including the main project and
+  sequence windows, specialist-window navigation, Help/History/Jobs/JASPAR
+  diagnostics, and sequence-owned Dotplot, Splicing Expert, RNA-read Mapping,
+  Isoform Expert, and Promoter design workspaces
+
+Window screenshot help:
+
+- Click `Agent help` in the window where the problem is visible. The capture
+  request is bound to that viewport before Agent Assistant is opened, so the
+  assistant window cannot accidentally replace the intended target.
+- GENtle shows the captured image, source-window title, dimensions, size, and
+  capture backend in Agent Assistant. The user can remove it or add explanatory
+  text before sending.
+- Only catalog systems declaring image-attachment support can receive the
+  screenshot. GENtle disables submission for other systems rather than silently
+  dropping the image.
+- A successful conversation turn retains image digest, dimensions, source
+  window, and backend but omits the temporary local file path and image bytes.
+- The normal viewport capture does not require macOS Screen Recording access.
+  The optional right-click `Capture complete macOS window` path includes native
+  window chrome, is restricted to the current GENtle process, and opens a clear
+  permission/settings recovery path when macOS blocks it.
 
 Behavior:
 
@@ -2943,8 +2976,16 @@ Behavior:
 - `Ctrl+Return` while the prompt editor is focused is equivalent to clicking
   `Ask Agent`; plain `Return` still inserts a new line
 - GENtle-local slash aliases are deliberately small and parser-validated:
-  - `/help` shows shared-shell help
-  - `/list` shows the current project state summary
+  - `/help [TOPIC]` opens the built-in Help window at `Shell Commands`; an
+    optional topic is placed in the Help search field
+  - `/list` shows a readable `Command result` panel with current sequences,
+    lengths/topology, containers, and arrangements; right-clicking a sequence or
+    container shows parser-validated commands for that object, and `Show complete
+    project overview` focuses the main table/graph with its broader object context
+    menus
+  - successful local read-only commands retain their latest structured output
+    in that panel and offer `Copy JSON`; they no longer disappear behind the
+    generic execution-log status
   - `/history` shows session-local undo/redo availability
   - `/undo` and `/redo` use the same guarded transitions as `Edit -> Undo` and
     `Edit -> Redo`; they are disabled while background jobs are active and

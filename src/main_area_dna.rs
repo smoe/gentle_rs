@@ -18614,6 +18614,8 @@ impl MainAreaDna {
         id_namespace: &str,
         pending_initial_render: bool,
     ) {
+        crate::agent_help::render_agent_help_button(ui, Self::splicing_expert_window_title(view));
+        ui.separator();
         ui.horizontal(|ui| {
             ui.selectable_value(
                 &mut self.splicing_expert_tab,

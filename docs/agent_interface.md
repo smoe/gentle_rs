@@ -110,6 +110,27 @@ uses the same parser and confirmation boundary as any other Agent Assistant
 suggestion. If a checklist action has no registered GUI intent, the agent can
 coach the human but must not claim to have pressed or observed the control.
 
+For visual GUI problems, use `Agent help` in the window where the problem is
+visible. A normal click captures that exact GENtle viewport before opening Agent
+Assistant; on macOS, the right-click menu can optionally capture the complete
+native GENtle window after Screen Recording permission is granted. Agent
+Assistant previews the image locally and asks for explanatory prompt text. The
+image is sent only when the user clicks `Ask agent`, and only to catalog systems
+that explicitly declare image support. Bare prompt paths are deliberately not
+treated as attachments, and agents cannot initiate screenshot capture.
+
+Local command results are presented directly beneath the prompt status. In the
+GUI, `/help` also opens the built-in Help window at `Shell Commands`; an
+optional topic is copied into Help search. `/list` renders a compact current-
+project overview with sequence ids, names, lengths, topology, container counts,
+and arrangement counts. Its object rows have context menus with concrete shared-
+shell actions: sequence rows can open the sequence, query annotations, or scan
+restriction sites, while container rows expose the same exhaustive/subset toggle
+as the main project overview. A `Show complete project overview` action focuses
+the main table/graph for analyses and the other project-object context menus.
+`Copy JSON` preserves the complete engine-owned result when a machine-readable
+handoff is needed.
+
 Session history is also available locally: `/history` reports undo/redo
 availability, while `/undo` and `/redo` apply the corresponding session-local
 transition. A command typed and run by the user is explicit. A command proposed

@@ -38,8 +38,9 @@ use super::{
 };
 use crate::{
     agent_bridge::{
-        AgentConversation, AgentConversationTurn, AgentExecutionIntent, AgentInvocationOutcome,
-        AgentResponse, AgentSuggestedCommand, AgentSystemSpec, AgentSystemTransport,
+        AgentAttachmentSummary, AgentConversation, AgentConversationTurn, AgentExecutionIntent,
+        AgentInvocationOutcome, AgentResponse, AgentSuggestedCommand, AgentSystemSpec,
+        AgentSystemTransport,
     },
     agent_transport::{
         agent_system_supports_model_discovery, agent_system_supports_model_selection,
@@ -349,6 +350,7 @@ fn test_agent_system(id: &str, transport: AgentSystemTransport) -> AgentSystemSp
         base_url: None,
         model: None,
         working_dir: None,
+        supports_image_attachments: false,
     }
 }
 
@@ -1376,12 +1378,16 @@ fn agent_prompt_direct_shell_command_detects_agent_control_commands_only() {
 #[test]
 fn agent_prompt_direct_shell_command_executes_without_agent_roundtrip() {
     let mut app = GENtleApp::default();
+    app.engine.write().unwrap().state_mut().sequences.insert(
+        "demo-sequence".to_string(),
+        DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+    );
 
     app.execute_agent_prompt_command("/list");
 
     assert!(
         app.agent_status
-            .contains("Prompt command: success - executed"),
+            .contains("Prompt command: success - showing the current project summary below"),
         "unexpected status: {}",
         app.agent_status
     );
@@ -1394,6 +1400,70 @@ fn agent_prompt_direct_shell_command_executes_without_agent_roundtrip() {
     assert_eq!(entry.command, "/list");
     assert!(entry.ok);
     assert!(!entry.state_changed);
+    let output = app
+        .agent_last_command_output
+        .as_ref()
+        .expect("prompt command output should be retained for presentation");
+    assert_eq!(output.command, "/list");
+    assert!(!output.state_changed);
+    assert_eq!(output.output["sequence_count"], serde_json::json!(1));
+    assert_eq!(
+        output.output["sequences"][0]["id"],
+        serde_json::json!("demo-sequence")
+    );
+}
+
+#[test]
+fn agent_prompt_help_opens_shell_help_and_retains_structured_output() {
+    let mut app = GENtleApp::default();
+
+    app.execute_agent_prompt_command("/help");
+
+    assert!(app.show_help_dialog);
+    assert_eq!(app.help_doc, HelpDoc::Shell);
+    assert!(
+        app.agent_status
+            .contains("Prompt command: success - opened Help > Shell Commands"),
+        "unexpected status: {}",
+        app.agent_status
+    );
+    let output = app
+        .agent_last_command_output
+        .as_ref()
+        .expect("help output should be retained for presentation");
+    assert_eq!(output.command, "/help");
+    assert!(output.output.get("help").is_some());
+}
+
+#[test]
+fn agent_list_sequence_context_commands_use_shared_shell_grammar() {
+    let commands = GENtleApp::agent_sequence_object_commands("demo sequence");
+    assert_eq!(commands.len(), 3);
+    for action in commands {
+        parse_shell_line(&action.command).unwrap_or_else(|err| {
+            panic!(
+                "agent /list action '{}' should parse through the shared shell: {err}",
+                action.command
+            )
+        });
+    }
+}
+
+#[test]
+fn agent_list_container_context_command_matches_project_overview_toggle() {
+    let mark_subset = GENtleApp::agent_container_object_command("tube 1", true);
+    assert_eq!(
+        mark_subset.command,
+        "containers set-exclusive 'tube 1' false"
+    );
+    parse_shell_line(&mark_subset.command).expect("parse subset command");
+
+    let mark_exhaustive = GENtleApp::agent_container_object_command("tube 1", false);
+    assert_eq!(
+        mark_exhaustive.command,
+        "containers set-exclusive 'tube 1' true"
+    );
+    parse_shell_line(&mark_exhaustive.command).expect("parse exhaustive command");
 }
 
 #[test]
@@ -1480,6 +1550,8 @@ fn agent_history_transition_rejects_auto_execution_and_active_background_jobs() 
     app.agent_task = Some(AgentAskTask {
         job_id: 99,
         prompt: "background test".to_string(),
+        attachment_summaries: vec![],
+        _attachment_files: vec![],
         started: Instant::now(),
         runtime_frame: test_runtime_frame("history-guard"),
         receiver: rx,
@@ -10301,6 +10373,7 @@ fn agent_assistant_content_scrolls_on_small_viewport() {
                 questions: vec![],
                 suggested_commands: vec![],
             },
+            attachments: vec![],
             system_id: "builtin_echo".to_string(),
             system_label: "Built-in Echo".to_string(),
             completed_at_unix_ms: idx,
@@ -12128,6 +12201,8 @@ fn request_agent_cancel_stops_waiting_and_logs_event() {
     app.agent_task = Some(AgentAskTask {
         job_id: 44,
         prompt: "test prompt".to_string(),
+        attachment_summaries: vec![],
+        _attachment_files: vec![],
         started: Instant::now() - Duration::from_secs(2),
         runtime_frame: test_runtime_frame("agent-cancel"),
         receiver: rx,
@@ -12169,6 +12244,8 @@ fn poll_agent_assistant_task_updates_phase_status() {
     app.agent_task = Some(AgentAskTask {
         job_id: 45,
         prompt: "test prompt".to_string(),
+        attachment_summaries: vec![],
+        _attachment_files: vec![],
         started: Instant::now(),
         runtime_frame: test_runtime_frame("agent-status"),
         receiver: rx,
@@ -12197,6 +12274,18 @@ fn poll_agent_assistant_task_stores_successful_turn_for_followup_context() {
     app.agent_task = Some(AgentAskTask {
         job_id: 46,
         prompt: "The species is homo_sapiens.".to_string(),
+        attachment_summaries: vec![AgentAttachmentSummary {
+            id: "agent_help_46".to_string(),
+            file_name: "problem.png".to_string(),
+            mime_type: "image/png".to_string(),
+            byte_len: 128,
+            sha256: "a".repeat(64),
+            source_window_title: Some("Splicing Expert".to_string()),
+            capture_backend: Some("egui.viewport".to_string()),
+            pixel_width: Some(640),
+            pixel_height: Some(480),
+        }],
+        _attachment_files: vec![],
         started: Instant::now(),
         runtime_frame: test_runtime_frame("agent-conversation"),
         receiver: rx,
@@ -12232,6 +12321,13 @@ fn poll_agent_assistant_task_stores_successful_turn_for_followup_context() {
         app.agent_conversation.turns[0].user_message,
         "The species is homo_sapiens."
     );
+    assert_eq!(app.agent_conversation.turns[0].attachments.len(), 1);
+    assert_eq!(
+        app.agent_conversation.turns[0].attachments[0]
+            .source_window_title
+            .as_deref(),
+        Some("Splicing Expert")
+    );
     assert_eq!(
         app.engine
             .read()
@@ -12259,6 +12355,7 @@ fn agent_conversation_reloads_from_project_metadata_without_credentials() {
                 questions: vec![],
                 suggested_commands: vec![],
             },
+            attachments: vec![],
             system_id: "builtin_echo".to_string(),
             system_label: "Built-in Echo".to_string(),
             completed_at_unix_ms: 1,

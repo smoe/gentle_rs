@@ -206,6 +206,7 @@ impl WindowDna {
     }
 
     fn render_nav_row(&mut self, ui: &mut egui::Ui) {
+        let agent_help_window_title = self.name();
         ui.horizontal(|ui| {
             if ui
                 .button(crate::i18n::tr("button.help"))
@@ -233,6 +234,7 @@ impl WindowDna {
             {
                 request_open_graphics_settings_from_native_menu();
             }
+            crate::agent_help::render_agent_help_button(ui, agent_help_window_title.clone());
             if ui
                 .button(crate::i18n::tr("button.close"))
                 .on_hover_text("Close this sequence window (Cmd/Ctrl+W)")

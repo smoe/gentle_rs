@@ -14,6 +14,8 @@ pub mod about;
 pub mod agent_bridge;
 /// Deterministic execution of stored machine-facing agent plans.
 pub mod agent_execution;
+/// User-invoked, viewport-bound screenshot capture for Agent Assistant help.
+pub mod agent_help;
 /// Machine-facing prose compiler and typed plan/result contracts.
 pub mod agent_planner;
 /// Shared agent transport metadata, availability, and discovery helpers.

@@ -1,9 +1,10 @@
 # GENtle Roadmap
 
-Last session: 2026-08-21 - clarified empty versus off-screen Array evidence in
-the TP73 DNA viewer, exposed the built-in Clariom D Human setup, and added a
-shared nearest-feature query for array navigation; manual GUI smoke for the
-unreleased `v0.1.0-internal.10` release remains before the tag
+Last session: 2026-08-22 - made Agent Assistant `/help` and `/list` outcomes
+visible, added parser-validated object actions plus main-project-overview parity,
+and added explicit window-bound screenshot help with preview-before-send and
+typed image-capable provider handoff; manual GUI smoke for the unreleased
+`v0.1.0-internal.10` release remains before the tag
 
 Purpose: fast session orientation. This file answers "what next?" and should be
 readable in under two minutes. Completed work belongs in

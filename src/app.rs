@@ -112,7 +112,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     env, fs,
     hash::{Hash, Hasher},
-    io::ErrorKind,
+    io::{Cursor, ErrorKind, Write},
     panic::{AssertUnwindSafe, catch_unwind},
     path::{Path, PathBuf},
     process::Command,
@@ -127,18 +127,20 @@ use std::{
 use crate::{
     about,
     agent_bridge::{
-        AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV,
-        AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV,
-        AGENT_TIMEOUT_SECS_ENV, ANTHROPIC_API_KEY_AUTH_HINT, ANTHROPIC_API_KEY_ENV,
-        AgentConversation, AgentConversationTurn, AgentExecutionIntent, AgentInvocationOutcome,
-        AgentResponse, AgentSystemSpec, AgentSystemTransport, DEFAULT_AGENT_SYSTEM_CATALOG_PATH,
+        AGENT_ATTACHMENT_SCHEMA, AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV,
+        AGENT_MAX_RESPONSE_BYTES_ENV, AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV,
+        AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV, ANTHROPIC_API_KEY_AUTH_HINT,
+        ANTHROPIC_API_KEY_ENV, AgentAttachmentSummary, AgentConversation, AgentConversationTurn,
+        AgentExecutionIntent, AgentInvocationOutcome, AgentRequestAttachment, AgentResponse,
+        AgentSystemSpec, AgentSystemTransport, DEFAULT_AGENT_SYSTEM_CATALOG_PATH,
         MISTRAL_API_KEY_AUTH_HINT, MISTRAL_API_KEY_ENV, OPENAI_API_KEY_ENV, OPENAI_BILLING_URL,
         OPENAI_COMPAT_UNSPECIFIED_MODEL, OPENAI_USAGE_URL, agent_explicit_local_document_paths,
         agent_path_is_supported_local_document, agent_system_availability,
         anthropic_api_key_kind_warning, build_agent_introspection_context,
-        invoke_agent_support_with_request_context, is_pi_local_agent_system,
+        invoke_agent_support_with_request_context_and_attachments, is_pi_local_agent_system,
         load_agent_system_catalog,
     },
+    agent_help::{AgentHelpCaptureEvent, AgentHelpCaptureFailure, take_capture_events},
     agent_transport::{
         AgentLiveProbeKind, AgentLiveProbeStatusClass, AgentSystemPreflight,
         agent_system_supports_model_discovery, agent_system_supports_model_selection,
@@ -152,8 +154,8 @@ use crate::{
         DEFAULT_HOST_PROFILE_CATALOG_PATH, DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
         DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP, DbSnpFetchProgress, DbSnpFetchStage,
         DisplaySettings, DisplayTarget, DotplotInspectionProvenanceStatus, Engine, EngineError,
-        EngineHistorySummary, ErrorCode, FeatureExpertTarget, GenomeAnnotationScope,
-        GenomeGeneExtractMode, GenomeTrackImportProgress, GenomeTrackSource,
+        EngineHistorySummary, EngineStateSummary, ErrorCode, FeatureExpertTarget,
+        GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackImportProgress, GenomeTrackSource,
         GenomeTrackSubscription, GenomeTrackSyncReport, GentleEngine, HostProfileRecord,
         JasparCatalogReport, JasparCatalogRow, JasparEntryExpertView,
         LabAssistantInstructionsFormat, LineageMacroPortBinding, LinearSequenceLetterLayoutMode,
@@ -1138,6 +1140,9 @@ pub struct GENtleApp {
     agent_last_invocation: Option<AgentInvocationOutcome>,
     agent_conversation: AgentConversation,
     agent_execution_log: Vec<AgentCommandExecutionRecord>,
+    agent_last_command_output: Option<AgentCommandOutput>,
+    agent_pending_image_attachment: Option<AgentPendingImageAttachment>,
+    agent_help_capture_failure: Option<AgentHelpCaptureFailure>,
 }
 
 #[derive(Clone)]
@@ -2048,6 +2053,8 @@ struct GenomeBlastBatchResult {
 struct AgentAskTask {
     job_id: u64,
     prompt: String,
+    attachment_summaries: Vec<AgentAttachmentSummary>,
+    _attachment_files: Vec<Arc<tempfile::NamedTempFile>>,
     started: Instant,
     runtime_frame: RuntimeStatusGuard,
     receiver: mpsc::Receiver<AgentAskTaskMessage>,
@@ -2087,6 +2094,27 @@ struct AgentCommandExecutionRecord {
     state_changed: bool,
     summary: String,
     executed_at_unix_ms: u128,
+}
+
+#[derive(Clone)]
+struct AgentCommandOutput {
+    command: String,
+    output: serde_json::Value,
+    state_changed: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct AgentObjectCommand {
+    label: &'static str,
+    detail: &'static str,
+    command: String,
+}
+
+#[derive(Clone)]
+struct AgentPendingImageAttachment {
+    request: AgentRequestAttachment,
+    png_bytes: Arc<[u8]>,
+    temp_file: Arc<tempfile::NamedTempFile>,
 }
 
 #[derive(Clone)]
@@ -2986,6 +3014,9 @@ impl Default for GENtleApp {
             agent_last_invocation: None,
             agent_conversation: AgentConversation::default(),
             agent_execution_log: vec![],
+            agent_last_command_output: None,
+            agent_pending_image_attachment: None,
+            agent_help_capture_failure: None,
         }
     }
 }
@@ -7179,6 +7210,9 @@ Error: `{err}`"
         self.agent_last_invocation = None;
         self.agent_conversation = AgentConversation::default();
         self.agent_execution_log.clear();
+        self.agent_last_command_output = None;
+        self.agent_pending_image_attachment = None;
+        self.agent_help_capture_failure = None;
         self.agent_discovered_models.clear();
         self.agent_discovered_model_pick.clear();
         self.agent_model_discovery_status.clear();
@@ -15577,6 +15611,9 @@ Error: `{err}`"
         self.agent_last_invocation = None;
         self.agent_conversation = AgentConversation::default();
         self.agent_execution_log.clear();
+        self.agent_last_command_output = None;
+        self.agent_pending_image_attachment = None;
+        self.agent_help_capture_failure = None;
         self.agent_discovered_models.clear();
         self.agent_discovered_model_pick.clear();
         self.agent_model_discovery_status.clear();
@@ -15887,6 +15924,15 @@ Error: `{err}`"
         close_button: Option<(&str, &str)>,
     ) -> bool {
         let mut close_requested = false;
+        let viewport_id = ui.ctx().viewport_id();
+        let agent_help_window_title = self
+            .open_window_model_cache
+            .model
+            .entries
+            .iter()
+            .find(|entry| entry.viewport_id == viewport_id)
+            .map(|entry| entry.title.clone())
+            .unwrap_or_else(|| "GENtle specialist window".to_string());
         ui.horizontal(|ui| {
             if ui
                 .button(self.tr("button.help"))
@@ -15902,6 +15948,7 @@ Error: `{err}`"
             {
                 self.queue_focus_viewport(ViewportId::ROOT);
             }
+            crate::agent_help::render_agent_help_button(ui, agent_help_window_title.clone());
             if let Some((label, hover_text)) = close_button
                 && ui.button(label).on_hover_text(hover_text).clicked()
             {
@@ -16834,6 +16881,7 @@ Error: `{err}`"
                     ui.close();
                 }
             });
+            crate::agent_help::render_agent_help_button(ui, "Main project window");
         });
     }
 
@@ -22071,6 +22119,8 @@ Error: `{err}`"
         .default_size(Vec2::new(460.0, 520.0))
         .min_size(Vec2::new(420.0, 460.0));
         crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {
+            crate::agent_help::render_agent_help_button(ui, self.tr("about.title"));
+            ui.separator();
             ui.set_min_width(390.0);
             let dark_mode = ui.visuals().dark_mode;
             let card_fill = if dark_mode {
@@ -22170,6 +22220,8 @@ Error: `{err}`"
         .min_size(Vec2::new(620.0, 460.0))
         .resizable(true);
         crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {
+            crate::agent_help::render_agent_help_button(ui, self.tr("about.details.title"));
+            ui.separator();
             egui::ScrollArea::vertical().show(ui, |ui| {
                 ui.columns(2, |columns| {
                     columns[0].vertical_centered(|ui| {
@@ -22281,6 +22333,8 @@ Error: `{err}`"
             .with_min_inner_size([500.0, 320.0]);
         if ctx.embed_viewports() {
             let mut render_contents = |ui: &mut Ui| {
+                crate::agent_help::render_agent_help_button(ui, "Command Palette");
+                ui.separator();
                 ui.label("Search actions, settings, and help topics");
                 let input_id = ui.make_persistent_id("gentle_command_palette_search");
                 let search_response = ui.add(
@@ -22364,6 +22418,8 @@ Error: `{err}`"
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, viewport_id);
             let mut render_contents = |ui: &mut Ui| {
+                crate::agent_help::render_agent_help_button(ui, "Command Palette");
+                ui.separator();
                 ui.label("Search actions, settings, and help topics");
                 let input_id = ui.make_persistent_id("gentle_command_palette_search");
                 let search_response = ui.add(
@@ -22474,6 +22530,8 @@ Error: `{err}`"
             Vec2::new(520.0, 320.0),
         );
         crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+            crate::agent_help::render_agent_help_button(ui, "Background Jobs");
+            ui.separator();
             ui.label("Centralized progress, cancellation, and completion summaries");
             ui.separator();
 
@@ -23598,6 +23656,11 @@ Error: `{err}`"
             &self.window_backdrops,
         );
         with_window_content_inset(ui, |ui| {
+            crate::agent_help::render_agent_help_button(
+                ui,
+                format!("Help - {}", self.active_help_title()),
+            );
+            ui.separator();
             let find_shortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::F);
             if ui.ctx().input_mut(|i| i.consume_shortcut(&find_shortcut)) {
                 self.help_focus_search_box = true;
@@ -25073,6 +25136,7 @@ impl GENtleApp {
             self.poll_dbsnp_fetch_task(ctx);
             self.poll_jaspar_background_task(ctx);
             self.poll_agent_assistant_task(ctx);
+            self.poll_agent_help_capture_events();
             self.poll_agent_model_discovery_task(ctx);
             self.poll_clawbio_task(ctx);
             self.poll_container_pool_export_task(ctx);

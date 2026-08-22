@@ -4680,8 +4680,30 @@ Adapter-equivalence guarantee for UI-intent tools:
   - currently disabled by security policy
   - returns deterministic disabled message from shared shell/CLI/GUI command
     paths
-  - kept as reserved adapter contract for future re-enable after explicit
-    endpoint-security approval
+  - kept as a reserved artifact-export adapter contract; approval of the narrow
+    GUI Agent-help attachment flow does not enable headless capture
+
+Agent Assistant image attachment extension:
+
+- GUI Agent help requests may add `x_attachments[]` to
+  `gentle.agent_request.v1`; ordinary text-only requests omit the field.
+- Each entry uses schema `gentle.agent_attachment.v1` and carries `id`,
+  `kind=image`, `file_name`, `mime_type`, absolute temporary `path`,
+  `byte_len`, `sha256`, optional `source_window_title`, `capture_backend`, and
+  pixel dimensions.
+- Attachments are accepted only after explicit GUI capture and preview, are
+  limited to four images / 20 MiB each, and are rejected when the selected
+  `AgentSystemSpec.supports_image_attachments` value is false.
+- External JSON-stdio adapters receive the validated typed attachment record.
+  The bundled Codex and Pi bridges translate it to their native image arguments;
+  native OpenAI, Anthropic, Mistral, and OpenAI-compatible transports encode
+  the image as provider-native multimodal content.
+- Remote request inspection redacts the local temporary path. Persisted
+  `AgentConversationTurn.attachments[]` stores only path-free provenance and
+  never stores image bytes.
+- This is a GUI-host capability, not a capture operation callable by an agent,
+  CLI, MCP, JS, or Lua adapter. Those adapters can consume explicitly supplied
+  image-capable agent requests in future, but cannot initiate screen capture.
 
 - `agents list [--catalog PATH]`
   - Lists configured agent systems from catalog JSON.
@@ -5129,6 +5151,15 @@ Agent command-scope declaration:
   - `/help [TOPIC]`
   - `/list`
   - `/history` (canonical command: `history status`)
+  - GUI presentation is host-specific but result-preserving: `/help` opens the
+    built-in Shell Commands help tab, while `/list` renders the returned
+    `EngineStateSummary` as a compact project overview. The latest structured
+    local-command output remains copyable as JSON. Object-row context menus
+    instantiate commands that are parsed and executed through the same shared
+    shell; they do not introduce GUI-only engine operations. The main project
+    overview remains the complete table/graph for lineage analyses and other
+    project objects. Headless adapters continue to receive the same unchanged
+    shell result payloads.
 - Accepted session-history aliases:
   - `/undo` (canonical command: `history undo`)
   - `/redo` (canonical command: `history redo`)
@@ -7859,7 +7890,7 @@ RNA ladder catalog semantics:
   - Writes the same structured payload to JSON at `path`.
   - Optional `name_filter` applies case-insensitive name matching before export.
 
-Historical screenshot artifact contract (currently disabled):
+Historical screenshot artifact contract (still disabled):
 
 - Guardrail:
   - command is currently rejected by security policy even when
@@ -7873,8 +7904,8 @@ Historical screenshot artifact contract (currently disabled):
   - command is primarily intended for GUI shell contexts with an active window
   - rejects full-desktop capture and non-GENtle targets
   - rejects request if no eligible active GENtle window is available
-  - current backend support is macOS (`screencapture`); non-macOS returns
-    unsupported
+  - its historical backend was macOS `screencapture`; it is not reused by the
+    GUI Agent-help flow, whose optional native path uses ScreenCaptureKit
 - Output:
   - writes an image file at caller-provided `OUTPUT` path (custom filename
     supported)
