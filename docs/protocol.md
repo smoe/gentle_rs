@@ -4690,10 +4690,11 @@ Adapter-equivalence guarantee for UI-intent tools:
 - `agents preflight SYSTEM_ID [--live] [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N]`
   - Returns read-only transport/runtime metadata as `gentle.agent_preflight.v1`.
   - Default behavior is config-only for CLI/MCP compatibility.
-  - `--live` adds a non-generating model-discovery probe for
-    `native_openai`, `native_anthropic`, `native_mistral`, and
-    `native_openai_compat`.
+  - `--live` adds a non-generating setup probe for `native_openai`,
+    `native_anthropic`, `native_mistral`, `native_openai_compat`, and
+    `pi_local_stdio`.
   - `live_probe` fields:
+    - `probe_kind`: `model_discovery | command_shape`
     - `enabled`
     - `attempted_endpoints`
     - `selected_endpoint`
@@ -4705,12 +4706,19 @@ Adapter-equivalence guarantee for UI-intent tools:
       `ok | missing_key | auth_failed | quota_or_billing | model_missing | endpoint_unreachable | unsupported_transport | provider_error`
     - `message`
     - `provider_error_code`
-  - Endpoint policy:
+  - Endpoint/local-command policy:
     - OpenAI: `GET /models` with bearer auth
     - Anthropic: `GET /models` with `x-api-key` and `anthropic-version`
     - Mistral: `GET /models` with bearer auth
     - OpenAI-compatible: `/models`, then `/v1/models` fallback when the base
       URL is not already `/v1`
+    - Pi Local: invoke the selected Pi executable with GENtle's intended
+      `--print --no-session --no-tools --no-extensions --no-skills
+      --no-prompt-templates --no-context-files --no-approve --system-prompt ...`
+      command shape plus any selected `--model`, then append `--help` so the
+      local CLI parses the flags without sending a prompt to a model
+      (`probe_kind = command_shape`; authentication/model-list booleans are not
+      claimed by this probe)
     - no chat/completion/responses request is made
     - quota/billing is reported only when that provider error appears during
       the model-list probe
@@ -4967,6 +4975,28 @@ Agent request payload schema (`gentle.agent_request.v1`):
         "completed_at_unix_ms": 1768859999000
       }
     ]
+  },
+  "x_local_documents": {
+    "schema": "gentle.agent_local_documents.v1",
+    "max_document_count": 4,
+    "max_document_bytes": 131072,
+    "max_total_bytes": 262144,
+    "linked_markdown_depth": 1,
+    "total_included_byte_count": 39,
+    "documents": [
+      {
+        "requested_path": "/checkout/docs/roadmap.md",
+        "resolved_path": "/checkout/docs/roadmap.md",
+        "source": "explicit_prompt",
+        "media_type": "text/markdown",
+        "original_byte_count": 39,
+        "included_byte_count": 39,
+        "truncated": false,
+        "sha256": "sha256:7ca1345cb504834b64563bf72aa1a325756388e9e321d04d6bd997b4e4e41ff3",
+        "content": "# Roadmap\nRun the GUI smoke checklist.\n"
+      }
+    ],
+    "warnings": []
   }
 }
 ```
@@ -5004,6 +5034,26 @@ the transcript (for example a species or sequence id) unless the current
 prompt changes them, rather than asking for the same value again.
 Prompt and response text are stored verbatim; provider credential fields are
 excluded, but callers must not place secrets inside the prompt itself.
+
+`x_local_documents` is an optional, backward-compatible extension generated
+when the current prompt explicitly contains an absolute path to a supported
+UTF-8 text/document file (`.md`, `.txt`, `.json`, `.toml`, `.yaml`, `.csv`,
+`.tsv`, and related text forms). GENtle copies bounded content into the request;
+the provider never receives a filesystem handle. Limits are four documents,
+128 KiB per document, and 256 KiB total. For an explicitly named Markdown
+document, GENtle may include one level of prioritized local guide/runbook links
+that resolve beneath the same directory tree. Each included document records
+its requested/resolved path, source, media type, byte counts, truncation flag,
+and SHA-256 digest. Read failures are retained in `warnings` so an agent does
+not ask the user to paste a document that was actually included or silently
+pretend that an unreadable document was reviewed.
+
+This feature is an explicit disclosure boundary: the copied content is sent to
+the selected local or cloud provider. It does not grant Pi, Codex, or an HTTP
+provider ambient filesystem access, and document text cannot override GENtle's
+response schema, parser validation, confirmation gates, or nested-agent ban.
+Sequence/GenBank/FASTA files are not attached through this route; use GENtle's
+normal import commands and project state for biological records.
 
 Documentation context for agent systems:
 

@@ -81,9 +81,34 @@ The prompt box is still an Agent Assistant prompt, not the full GENtle shell.
 For convenience it intercepts a small set of local control commands before
 contacting the model: `/...` Agent Assistant slash commands plus bare `help`,
 `state-summary`, and `capabilities`. Mistyped slash commands fail locally
-instead of being reinterpreted as prose. Ollama REPL habits such as bare
-`/path/to/file` attachments are not used here; use `/open file PATH`, `/import
-file PATH`, or the GUI import path for local sequence files.
+instead of being reinterpreted as prose. Ollama REPL paths are not a biological
+sequence-import command here; use `/open file PATH`, `/import file PATH`, or
+the GUI import path for local sequence files.
+
+For textual guidance documents, use the separate bounded document-context
+route. Click `Attach text document...`, or include an exact absolute path such
+as `/Users/name/checkout/docs/roadmap.md` in a natural-language prompt. GENtle
+reads that supported UTF-8 text file itself and adds `x_local_documents` to the
+request with byte limits, truncation state, and SHA-256 provenance. One level of
+prioritized local Markdown guide/runbook links can be included under the same
+directory tree. Pi/Codex/local HTTP models still receive no filesystem tool and
+cannot browse adjacent files. Review the visible paths and selected provider:
+the copied contents are sent to that provider.
+
+A useful walkthrough request is:
+
+```text
+Please guide me through the GUI smoke test described in
+/absolute/path/to/gentle_rs/docs/roadmap.md.
+
+Use validated GENtle ui/display commands where they exist. Otherwise give me
+one exact manual step at a time and ask what I see before continuing.
+```
+
+The resulting command suggestions remain review rows in GENtle. Running one
+uses the same parser and confirmation boundary as any other Agent Assistant
+suggestion. If a checklist action has no registered GUI intent, the agent can
+coach the human but must not claim to have pressed or observed the control.
 
 Session history is also available locally: `/history` reports undo/redo
 availability, while `/undo` and `/redo` apply the corresponding session-local
@@ -768,7 +793,11 @@ Key properties:
   discovery disabled. GENtle keeps the conversation and project-fact context;
   Pi supplies the selected provider/model. Model discovery uses
   `pi --list-models`, and authentication remains in Pi's own `/login` flow.
-  GENtle does not read or copy Pi's credential store.
+  `agents preflight pi_local_stdio --live` and GUI `Test Setup` also run a
+  non-generating command-shape probe: Pi is invoked with the same ephemeral
+  no-tools/no-session flags used for real Agent Assistant requests plus
+  `--help`, so unsupported local Pi CLI flags are reported before any prompt is
+  sent to a model. GENtle does not read or copy Pi's credential store.
 - This Pi entry is not a source-editing developer agent. A future coding mode
   would need a separate workspace, permission, diff-review, and test contract;
   it must not inherit the Agent Assistant's reviewed-command permissions.
@@ -779,8 +808,9 @@ Key properties:
   `MISTRAL_API_KEY`; Le Chat or Mistral account login tokens do not
   authenticate direct Mistral API calls.
 - `agents preflight` remains config-only by default. `--live` adds the optional
-  `gentle.agent_preflight.v1.live_probe` model-list probe without sending a
-  generation request.
+  `gentle.agent_preflight.v1.live_probe`: native HTTP systems use model-list
+  probes, while Pi Local uses the no-generation command-shape probe described
+  above.
 
 ## CLI vs planner vs MCP vs Agent Assistant
 

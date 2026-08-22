@@ -2829,8 +2829,20 @@ Behavior:
   existing Codex CLI/App login instead of `OPENAI_API_KEY`
 - the `Pi Local (uses Pi provider login)` entry calls
   `scripts/pi-agent-bridge`; it uses provider authentication configured by Pi,
-  not the API-key field in GENtle, and runs Pi without tools or project-file
-  access
+  not the API-key field in GENtle, and runs Pi without tools or direct
+  project-file access
+- `Attach text document...` beside the prompt inserts an exact absolute path
+  and shows every detected document path before submission. A supported text
+  path written directly in the prompt is detected in the same way.
+  - GENtle copies bounded UTF-8 content into the request; it does not grant the
+    provider a filesystem tool
+  - the warning above the prompt is intentional: copied document content is
+    sent to the currently selected provider, including cloud providers
+  - limits are four documents, 128 KiB each, and 256 KiB total; one level of
+    prioritized local Markdown guide/runbook links can be included under the
+    selected document's directory tree
+  - sequence files remain project inputs and should be opened/imported, not
+    attached as prose context
 - the Claude quick-start path uses `ANTHROPIC_API_KEY` and talks to the
   Anthropic API directly
 - the Mistral quick-start path uses `MISTRAL_API_KEY` and talks to the Mistral
@@ -2889,9 +2901,14 @@ Behavior:
     `native_openai_compat`, it also runs a live non-generating model-list probe
     (`GET /models`, with `/v1/models` fallback for OpenAI-compatible or root
     provider URLs)
-  - the live probe reports `status_class`, attempted/selected endpoints,
-    reachability, authentication, model-list parsing, and whether the selected
-    model was present
+  - for `Pi Local`, it runs a non-generating command-shape probe that asks Pi
+    for local help after the exact ephemeral no-tools/no-session flags GENtle
+    will use for real requests; this catches unsupported Pi CLI flags before
+    an assistant prompt is sent
+  - the live probe reports `status_class`, attempted/selected endpoints or
+    local command shape, reachability, authentication, model-list parsing, and
+    whether the selected model was present when the transport exposes that
+    information
   - common next actions are shown for missing key, authentication failure,
     endpoint unreachable, unspecified model, and selected model not found
 - `Discover Models` queries the current endpoint and populates a model dropdown
@@ -3057,13 +3074,20 @@ Pi Local setup (multiple providers, no GENtle-managed API key):
    configured default.
 5. Click `Test Setup`, then open `File -> Agent Assistant...` and ask a small
    orientation question.
+6. For documentation-guided help, click `Attach text document...` or name the
+   exact absolute text-document path in the prompt. For example, ask Pi to guide
+   the manual GUI smoke described by `docs/roadmap.md`; GENtle supplies the
+   bounded roadmap/runbook text while Pi remains unable to browse other files.
 
 The Pi bridge uses `--no-session` because GENtle stores the project conversation
 and sends its bounded recent turns with each request. It also uses `--no-tools`,
 `--no-context-files`, `--no-extensions`, `--no-skills`, and
 `--no-prompt-templates`; the Agent Assistant can therefore suggest validated
 GENtle commands but cannot edit files or run operating-system commands through
-Pi. A source-editing inner coding agent would be a separate future mode with a
+Pi. It can return reviewable `ui ...` or `display ...` suggestions for exposed
+GUI intents. Where no intent exists, it must describe one manual step and ask
+what the user sees rather than claiming to have clicked or observed it. A
+source-editing inner coding agent would be a separate future mode with a
 different approval boundary.
 
 Claude setup (explicit):

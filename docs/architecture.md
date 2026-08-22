@@ -1290,6 +1290,9 @@ GENtle now provides a shared agent-assistance bridge across GUI and CLI shell:
     - both run in isolated temporary working directories and receive only the
       explicit GENtle request; Pi Local additionally disables every Pi tool,
       session, extension, skill, prompt-template, and project-context source
+    - Pi Local live preflight checks the exact intended no-tools/no-session Pi
+      command shape with `--help`, so unsupported local CLI flags are reported
+      without sending a prompt to a model
   - `native_openai` / `native_openai_compat` (built-in HTTP adapters with optional per-request base URL/model override)
   - `native_openai_compat` is the preferred path for OpenAI-compatible hosted
     providers (including [clawbio.ai](https://clawbio.ai/)) through explicit
@@ -1309,6 +1312,17 @@ GENtle now provides a shared agent-assistance bridge across GUI and CLI shell:
     - explicit included/omitted counts and a truncation flag,
     - read-only command routes for complete fact projection, expression
       evaluation, capability readiness, and effect verification
+  - an optional `x_local_documents` extension when the current prompt names an
+    exact absolute path to a supported text document:
+    - GENtle reads and validates the document rather than granting the provider
+      filesystem access,
+    - at most four documents, 128 KiB per document, and 256 KiB total are
+      included, with UTF-8 validation, truncation state, and SHA-256 provenance,
+    - one level of prioritized local Markdown guide/runbook links may be
+      included when they remain under the explicitly named document's directory
+      tree and within the same limits,
+    - missing/unreadable documents become typed request warnings rather than
+      silent omissions or filesystem searches.
 - The system prompt embeds an engine-generated fact vocabulary and a compact
   introspection control card. It does not rely on the provider being able to
   open repository documentation files; remote HTTP models and the isolated
@@ -1317,6 +1331,11 @@ GENtle now provides a shared agent-assistance bridge across GUI and CLI shell:
   open-world facts remain unknown, parser/engine validation remains
   authoritative, and suggested commands keep their existing confirmation
   policy.
+- `x_local_documents` is explicit request context, not ambient project access.
+  Its contents are sent to the selected provider, are treated as untrusted
+  reference material, and cannot raise the provider's command or confirmation
+  permissions. Sequence files continue through GENtle import operations rather
+  than this text-document channel.
 - GUI provider selection is durable but credentials are not:
   - the selected catalog system id may be stored in GUI settings
   - manual API-key, endpoint, model, and runtime overrides remain session-only

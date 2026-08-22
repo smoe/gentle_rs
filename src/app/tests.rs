@@ -902,7 +902,7 @@ fn selected_agent_session_env_overrides_reject_invalid_timeout() {
 }
 
 #[test]
-fn agent_test_setup_uses_live_for_native_transports_only() {
+fn agent_test_setup_uses_live_for_native_transports_and_pi_local() {
     let native = test_agent_system("openai_gpt5_native", AgentSystemTransport::NativeOpenai);
     let anthropic = test_agent_system(
         "anthropic_claude_sonnet_native",
@@ -913,11 +913,13 @@ fn agent_test_setup_uses_live_for_native_transports_only() {
         "msty_local_compat_template",
         AgentSystemTransport::NativeOpenaiCompat,
     );
+    let pi = test_agent_system("pi_local_stdio", AgentSystemTransport::ExternalJsonStdio);
     let echo = test_agent_system("builtin_echo", AgentSystemTransport::BuiltinEcho);
     assert!(GENtleApp::agent_test_setup_uses_live_probe(&native));
     assert!(GENtleApp::agent_test_setup_uses_live_probe(&anthropic));
     assert!(GENtleApp::agent_test_setup_uses_live_probe(&mistral));
     assert!(GENtleApp::agent_test_setup_uses_live_probe(&compat));
+    assert!(GENtleApp::agent_test_setup_uses_live_probe(&pi));
     assert!(!GENtleApp::agent_test_setup_uses_live_probe(&echo));
 }
 
@@ -1363,6 +1365,11 @@ fn agent_prompt_direct_shell_command_detects_agent_control_commands_only() {
     assert_eq!(
         GENtleApp::agent_prompt_direct_shell_command("Please explain /list"),
         None
+    );
+    assert_eq!(
+        GENtleApp::agent_prompt_direct_shell_command("/Users/example/docs/roadmap.md"),
+        None,
+        "supported text-document paths should be sent as agent context rather than parsed as slash commands"
     );
 }
 

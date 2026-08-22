@@ -660,13 +660,14 @@ impl GENtleApp {
     }
 
     pub(super) fn agent_test_setup_uses_live_probe(system: &AgentSystemSpec) -> bool {
-        matches!(
-            system.transport,
-            AgentSystemTransport::NativeOpenai
-                | AgentSystemTransport::NativeAnthropic
-                | AgentSystemTransport::NativeMistral
-                | AgentSystemTransport::NativeOpenaiCompat
-        )
+        is_pi_local_agent_system(system)
+            || matches!(
+                system.transport,
+                AgentSystemTransport::NativeOpenai
+                    | AgentSystemTransport::NativeAnthropic
+                    | AgentSystemTransport::NativeMistral
+                    | AgentSystemTransport::NativeOpenaiCompat
+            )
     }
 
     pub(super) fn shell_quote_command_arg(raw: &str) -> String {
@@ -939,6 +940,9 @@ impl GENtleApp {
         if trimmed.contains('\n') {
             return None;
         }
+        if agent_path_is_supported_local_document(std::path::Path::new(trimmed)) {
+            return None;
+        }
         if trimmed.starts_with('/') || matches!(trimmed, "capabilities" | "help" | "state-summary")
         {
             Some(trimmed)
@@ -1017,18 +1021,36 @@ impl GENtleApp {
                         ]
                     }
                 }
-                AgentLiveProbeStatusClass::EndpointUnreachable => vec![
-                    "Start the local server or correct Base URL override, then run Test Setup again."
-                        .to_string(),
-                ],
+                AgentLiveProbeStatusClass::EndpointUnreachable => {
+                    if preflight.system_id == "pi_local_stdio" {
+                        vec![
+                            "Install Pi, add it to PATH, or set PI_BIN to the Pi executable, then run Test Setup again."
+                                .to_string(),
+                        ]
+                    } else {
+                        vec![
+                            "Start the local server or correct Base URL override, then run Test Setup again."
+                                .to_string(),
+                        ]
+                    }
+                }
                 AgentLiveProbeStatusClass::UnsupportedTransport => vec![
                     "Use this setup check as config-only validation for this non-HTTP transport."
                         .to_string(),
                 ],
-                AgentLiveProbeStatusClass::ProviderError => vec![
-                    "Inspect the provider response; model discovery must return JSON with model ids."
-                        .to_string(),
-                ],
+                AgentLiveProbeStatusClass::ProviderError => {
+                    if preflight.system_id == "pi_local_stdio" {
+                        vec![
+                            "Update Pi or check PI_BIN; GENtle's Pi bridge requires the documented no-tools/no-session flags."
+                                .to_string(),
+                        ]
+                    } else {
+                        vec![
+                            "Inspect the provider response; model discovery must return JSON with model ids."
+                                .to_string(),
+                        ]
+                    }
+                }
             };
         }
 
@@ -3712,10 +3734,20 @@ impl GENtleApp {
                     {
                         self.render_openai_quota_links(ui);
                     }
-                    ui.small(format!(
-                        "reachable={} | auth_ok={} | model_list_ok={} | selected_model_seen={}",
-                        live.reachable, live.auth_ok, live.model_list_ok, live.selected_model_seen
-                    ));
+                    match live.probe_kind {
+                        AgentLiveProbeKind::CommandShape => ui.small(format!(
+                            "probe=command_shape | executable_reachable={} | command_shape_ok={}",
+                            live.reachable,
+                            live.status_class == AgentLiveProbeStatusClass::Ok
+                        )),
+                        AgentLiveProbeKind::ModelDiscovery => ui.small(format!(
+                            "probe=model_discovery | reachable={} | auth_ok={} | model_list_ok={} | selected_model_seen={}",
+                            live.reachable,
+                            live.auth_ok,
+                            live.model_list_ok,
+                            live.selected_model_seen
+                        )),
+                    };
                     if !live.attempted_endpoints.is_empty() {
                         ui.small(format!(
                             "attempted endpoints: {}",
@@ -3934,7 +3966,45 @@ impl GENtleApp {
                     );
             }
         });
-        ui.label(self.tr("agent.prompt"));
+        ui.horizontal_wrapped(|ui| {
+            ui.label(self.tr("agent.prompt"));
+            if ui
+                .button(self.tr("agent.attach_document"))
+                .on_hover_text(self.tr("agent.attach_document.tooltip"))
+                .clicked()
+                && let Some(path) = rfd::FileDialog::new()
+                    .add_filter(
+                        "Text documents",
+                        &[
+                            "md", "markdown", "txt", "rst", "log", "json", "toml", "yaml", "yml",
+                            "csv", "tsv",
+                        ],
+                    )
+                    .pick_file()
+            {
+                let path = fs::canonicalize(&path).unwrap_or(path);
+                if !self.agent_prompt.trim().is_empty() {
+                    self.agent_prompt.push('\n');
+                }
+                self.agent_prompt.push_str(&format!(
+                    "Use local text document `{}` as reference context.",
+                    path.display()
+                ));
+            }
+        });
+        let local_document_paths = agent_explicit_local_document_paths(&self.agent_prompt);
+        if !local_document_paths.is_empty() {
+            ui.colored_label(
+                egui::Color32::from_rgb(165, 105, 35),
+                self.tr("agent.local_documents.notice"),
+            );
+            ui.horizontal_wrapped(|ui| {
+                ui.small(self.tr("agent.local_documents.detected"));
+                for path in &local_document_paths {
+                    ui.monospace(path.display().to_string());
+                }
+            });
+        }
         let prompt_edit_id = ui.make_persistent_id("agent_assistant_prompt_edit");
         let prompt_submit_shortcut = ui.memory(|memory| memory.has_focus(prompt_edit_id))
             && ui.input_mut(|input| {

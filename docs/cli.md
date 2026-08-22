@@ -6013,6 +6013,9 @@ Recommended Pi Local workflow:
    `cargo run --bin gentle_cli -- agents discover-models pi_local_stdio`.
 4. Ask for help, selecting one of those ids when desired:
    `cargo run --bin gentle_cli -- agents ask pi_local_stdio --model mistral/codestral-latest --prompt "Summarize this project and suggest one safe next GENtle command"`.
+   To ground the request in one local text document, include its exact absolute
+   path in the prompt, for example:
+   `cargo run --bin gentle_cli -- agents ask pi_local_stdio --prompt "Guide me through the GUI smoke test described in $PWD/docs/roadmap.md"`.
 5. Inspect the returned command before running it. Keep the default confirmation
    boundary for mutating or network-backed work; use `--execute-index` or
    `--execute-all` only when the corresponding suggestions have been reviewed.
@@ -6022,6 +6025,13 @@ project summary/facts, validates the structured response, and controls command
 execution. Each Pi invocation is ephemeral and runs without Pi tools, sessions,
 skills, extensions, prompt templates, or project-file discovery. Therefore this
 adapter helps operate GENtle; it is deliberately not an inner source-code editor.
+When an `agents ask` prompt explicitly names a supported absolute text-document
+path, the shared request builder includes bounded UTF-8 content as
+`x_local_documents` (four files maximum, 128 KiB each, 256 KiB total, with
+digest/truncation provenance and one prioritized Markdown-link level). This is
+the same behavior as the GUI attachment control. The content is sent to the
+selected provider; it is not a general filesystem permission. FASTA, GenBank,
+and other sequence inputs still use GENtle import commands.
 Use Pi separately, outside GENtle, for repository-editing work. If the GUI does
 not inherit Pi's executable path, set `PI_BIN` to the exact executable before
 starting GENtle.
@@ -6038,12 +6048,15 @@ starting GENtle.
     chat/planning request.
   - By default this is config-only and does not contact the provider.
   - `--live` adds `live_probe` to `gentle.agent_preflight.v1` for
-    `native_openai`, `native_anthropic`, `native_mistral`, and
-    `native_openai_compat`.
-  - The live probe only uses model-discovery endpoints (`GET /models`, with
-    `/v1/models` fallback for OpenAI-compatible roots). It does not make a
-    chat/completion/responses request and does not intentionally generate
-    tokens.
+    `native_openai`, `native_anthropic`, `native_mistral`,
+    `native_openai_compat`, and `pi_local_stdio`.
+  - Native HTTP live probes only use model-discovery endpoints (`GET /models`,
+    with `/v1/models` fallback for OpenAI-compatible roots). They do not make a
+    chat/completion/responses request and do not intentionally generate tokens.
+  - `pi_local_stdio` uses a local command-shape probe: GENtle invokes Pi with
+    the same ephemeral no-tools/no-session flags used by `scripts/pi-agent-bridge`
+    and appends `--help`, so Pi parses the intended flags but no prompt is sent
+    to a model.
   - `live_probe.status_class` is one of:
     `ok`, `missing_key`, `auth_failed`, `quota_or_billing`, `model_missing`,
     `endpoint_unreachable`, `unsupported_transport`, `provider_error`.
