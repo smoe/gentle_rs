@@ -117,6 +117,15 @@ class PiAgentBridgeTests(unittest.TestCase):
                 "schema": "gentle.agent_conversation.v1",
                 "turns": [{"user_message": "Use homo_sapiens."}],
             }
+            request["x_local_documents"] = {
+                "schema": "gentle.agent_local_documents.v1",
+                "documents": [
+                    {
+                        "requested_path": "/docs/roadmap.md",
+                        "content": "Run the GUI smoke checklist.",
+                    }
+                ],
+            }
 
             env = os.environ.copy()
             env["PI_BIN"] = str(fake_pi)
@@ -139,6 +148,9 @@ class PiAgentBridgeTests(unittest.TestCase):
             prompt = prompt_path.read_text(encoding="utf-8")
             self.assertIn("x_conversation", prompt)
             self.assertIn("Use homo_sapiens.", prompt)
+            self.assertIn("x_local_documents", prompt)
+            self.assertIn("Run the GUI smoke checklist.", prompt)
+            self.assertIn("do not ask the user to paste", prompt)
             self.assertTrue(
                 Path(cwd_path.read_text(encoding="utf-8")).name.startswith(
                     "gentle-pi-agent-"

@@ -3,14 +3,14 @@
 //! This module exposes the machine-facing transport metadata needed by both the
 //! local assistant UX and external orchestrators. It intentionally keeps the
 //! public surface read-only and deterministic: catalog loading, availability,
-//! preflight summaries, native HTTP model discovery, and local Codex model
-//! metadata discovery.
+//! preflight summaries, native HTTP model discovery, local CLI command-shape
+//! probes, and local Codex model metadata discovery.
 
 use crate::agent_bridge::{
     AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV,
     AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV,
     ANTHROPIC_API_KEY_AUTH_HINT, ANTHROPIC_API_KEY_ENV, MISTRAL_API_KEY_AUTH_HINT,
-    MISTRAL_API_KEY_ENV, OPENAI_API_KEY_ENV, OPENAI_BILLING_URL, OPENAI_USAGE_URL,
+    MISTRAL_API_KEY_ENV, OPENAI_API_KEY_ENV, OPENAI_BILLING_URL, OPENAI_USAGE_URL, PI_BIN_ENV,
     anthropic_api_key_is_known_non_api_token, anthropic_api_key_kind_warning,
     discover_mistral_models, extract_anthropic_error_code, extract_mistral_error_code,
     extract_models_from_openai_models_payload, extract_openai_error_code, is_pi_local_agent_system,
@@ -21,8 +21,9 @@ use std::{
     collections::HashSet,
     fs,
     path::{Path, PathBuf},
-    process::Command,
-    time::Duration,
+    process::{Command, Stdio},
+    thread,
+    time::{Duration, Instant},
 };
 
 pub use crate::agent_bridge::{
@@ -247,10 +248,16 @@ pub struct AgentSystemPreflight {
     pub live_probe: Option<AgentSystemLiveProbe>,
 }
 
-/// Live, non-generating model-discovery probe for one configured agent system.
+/// Live, non-generating setup probe for one configured agent system.
+///
+/// Native HTTP transports populate the model-list fields from provider model
+/// discovery. Local CLI transports may instead use the same envelope to report
+/// whether their intended no-tools invocation shape is accepted by the local
+/// executable without contacting a model.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct AgentSystemLiveProbe {
+    pub probe_kind: AgentLiveProbeKind,
     pub enabled: bool,
     pub attempted_endpoints: Vec<String>,
     pub selected_endpoint: Option<String>,
@@ -261,6 +268,15 @@ pub struct AgentSystemLiveProbe {
     pub status_class: AgentLiveProbeStatusClass,
     pub message: String,
     pub provider_error_code: Option<String>,
+}
+
+/// What a live preflight actually checked.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentLiveProbeKind {
+    #[default]
+    ModelDiscovery,
+    CommandShape,
 }
 
 /// Coarse, user-facing live-probe classification.
@@ -742,20 +758,216 @@ fn build_model_list_live_probe(
     probe
 }
 
+fn display_command(parts: &[String]) -> String {
+    parts
+        .iter()
+        .map(|part| {
+            if part
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '/' | '.' | '_' | '-'))
+            {
+                part.clone()
+            } else {
+                format!("'{}'", part.replace('\'', "'\\''"))
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn pi_command_shape_probe_command(pi_path: &Path, selected_model: Option<&str>) -> Vec<String> {
+    let mut command = vec![
+        pi_path.display().to_string(),
+        "--print".to_string(),
+        "--no-session".to_string(),
+        "--no-tools".to_string(),
+        "--no-extensions".to_string(),
+        "--no-skills".to_string(),
+        "--no-prompt-templates".to_string(),
+        "--no-context-files".to_string(),
+        "--no-approve".to_string(),
+        "--system-prompt".to_string(),
+        "GENtle Pi compatibility probe: validate flags only; do not generate.".to_string(),
+    ];
+    if let Some(model) = selected_model
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+    {
+        command.extend(["--model".to_string(), model.to_string()]);
+    }
+    // Placing --help after the intended invocation flags makes Pi parse those
+    // flags but print local help and exit instead of contacting a provider.
+    command.push("--help".to_string());
+    command
+}
+
+fn command_output_excerpt(stdout: &[u8], stderr: &[u8]) -> String {
+    let combined = if stderr.is_empty() {
+        String::from_utf8_lossy(stdout).to_string()
+    } else if stdout.is_empty() {
+        String::from_utf8_lossy(stderr).to_string()
+    } else {
+        format!(
+            "{} | stdout: {}",
+            String::from_utf8_lossy(stderr),
+            String::from_utf8_lossy(stdout)
+        )
+    };
+    clipped_message(&combined)
+}
+
+fn build_pi_command_shape_live_probe(system: &AgentSystemSpec) -> AgentSystemLiveProbe {
+    let Some(pi_path) = resolve_pi_executable_path(system) else {
+        let mut probe = live_probe_with_status(
+            AgentLiveProbeStatusClass::EndpointUnreachable,
+            format!("Pi executable was not found; install Pi, add it to PATH, or set {PI_BIN_ENV}"),
+        );
+        probe.probe_kind = AgentLiveProbeKind::CommandShape;
+        return probe;
+    };
+    let selected_model = system
+        .env
+        .get(AGENT_MODEL_ENV)
+        .map(String::as_str)
+        .or(system.model.as_deref())
+        .map(str::trim)
+        .filter(|model| !model.is_empty());
+    let command_parts = pi_command_shape_probe_command(&pi_path, selected_model);
+    let command_label = display_command(&command_parts);
+    let timeout_secs = agent_runtime(system)
+        .read_timeout_secs
+        .unwrap_or(10)
+        .min(10)
+        .max(1);
+
+    let mut command = Command::new(&command_parts[0]);
+    command
+        .args(&command_parts[1..])
+        .envs(&system.env)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(error) => {
+            return AgentSystemLiveProbe {
+                probe_kind: AgentLiveProbeKind::CommandShape,
+                enabled: true,
+                attempted_endpoints: vec![command_label],
+                status_class: AgentLiveProbeStatusClass::EndpointUnreachable,
+                message: redact_sensitive_text(&format!(
+                    "Pi command-shape probe could not start '{}': {error}",
+                    pi_path.display()
+                )),
+                ..Default::default()
+            };
+        }
+    };
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {
+                if started.elapsed() >= Duration::from_secs(timeout_secs) {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return AgentSystemLiveProbe {
+                        probe_kind: AgentLiveProbeKind::CommandShape,
+                        enabled: true,
+                        attempted_endpoints: vec![command_label],
+                        selected_endpoint: Some("pi command-shape help probe".to_string()),
+                        reachable: true,
+                        status_class: AgentLiveProbeStatusClass::EndpointUnreachable,
+                        message: format!(
+                            "Pi command-shape probe timed out after {timeout_secs}s before generation; check the Pi executable or set {PI_BIN_ENV}"
+                        ),
+                        ..Default::default()
+                    };
+                }
+                thread::sleep(Duration::from_millis(25));
+            }
+            Err(error) => {
+                return AgentSystemLiveProbe {
+                    probe_kind: AgentLiveProbeKind::CommandShape,
+                    enabled: true,
+                    attempted_endpoints: vec![command_label],
+                    reachable: true,
+                    status_class: AgentLiveProbeStatusClass::ProviderError,
+                    message: redact_sensitive_text(&format!(
+                        "Pi command-shape probe could not wait for process: {error}"
+                    )),
+                    ..Default::default()
+                };
+            }
+        }
+    }
+    let output = match child.wait_with_output() {
+        Ok(output) => output,
+        Err(error) => {
+            return AgentSystemLiveProbe {
+                probe_kind: AgentLiveProbeKind::CommandShape,
+                enabled: true,
+                attempted_endpoints: vec![command_label],
+                reachable: true,
+                status_class: AgentLiveProbeStatusClass::ProviderError,
+                message: redact_sensitive_text(&format!(
+                    "Pi command-shape probe could not collect process output: {error}"
+                )),
+                ..Default::default()
+            };
+        }
+    };
+    if output.status.success() {
+        AgentSystemLiveProbe {
+            probe_kind: AgentLiveProbeKind::CommandShape,
+            enabled: true,
+            attempted_endpoints: vec![command_label],
+            selected_endpoint: Some("pi command-shape help probe".to_string()),
+            reachable: true,
+            status_class: AgentLiveProbeStatusClass::Ok,
+            message: "Pi accepted GENtle's ephemeral no-tools command shape; no model generation was requested".to_string(),
+            ..Default::default()
+        }
+    } else {
+        AgentSystemLiveProbe {
+            probe_kind: AgentLiveProbeKind::CommandShape,
+            enabled: true,
+            attempted_endpoints: vec![command_label],
+            selected_endpoint: Some("pi command-shape help probe".to_string()),
+            reachable: true,
+            status_class: AgentLiveProbeStatusClass::ProviderError,
+            message: redact_sensitive_text(&format!(
+                "Pi rejected GENtle's ephemeral no-tools command shape (exit={:?}): {}",
+                output.status.code(),
+                command_output_excerpt(&output.stdout, &output.stderr)
+            )),
+            ..Default::default()
+        }
+    }
+}
+
 fn build_agent_live_probe(
     system: &AgentSystemSpec,
     availability: &AgentSystemAvailability,
     preflight: &AgentSystemPreflight,
 ) -> AgentSystemLiveProbe {
     match system.transport {
-        AgentSystemTransport::BuiltinEcho | AgentSystemTransport::ExternalJsonStdio => {
-            live_probe_with_status(
-                AgentLiveProbeStatusClass::UnsupportedTransport,
-                format!(
-                    "Live endpoint probing is only supported for native_openai, native_anthropic, native_mistral, and native_openai_compat transports, not '{}'",
-                    system.transport.as_str()
-                ),
-            )
+        AgentSystemTransport::BuiltinEcho => live_probe_with_status(
+            AgentLiveProbeStatusClass::UnsupportedTransport,
+            "Live setup probing is not needed for the built-in echo transport",
+        ),
+        AgentSystemTransport::ExternalJsonStdio => {
+            if is_pi_local_agent_system(system) {
+                build_pi_command_shape_live_probe(system)
+            } else {
+                live_probe_with_status(
+                    AgentLiveProbeStatusClass::UnsupportedTransport,
+                    format!(
+                        "Live endpoint probing is only supported for native OpenAI-compatible transports and the co-shipped Pi Local adapter, not '{}'",
+                        system.transport.as_str()
+                    ),
+                )
+            }
         }
         AgentSystemTransport::NativeOpenai => {
             let Some(api_key) = resolve_openai_api_key(system) else {
@@ -876,7 +1088,7 @@ pub fn build_agent_system_preflight(
 }
 
 /// Build a deterministic preflight summary and optionally add a live,
-/// non-generating model-discovery probe for native HTTP transports.
+/// non-generating setup probe for transports that support one.
 pub fn build_agent_system_preflight_with_live(
     catalog_path: Option<&str>,
     system_id: &str,
@@ -1179,22 +1391,26 @@ mod tests {
     }
 
     #[cfg(unix)]
-    #[test]
-    fn pi_model_discovery_runs_configured_pi_binary() {
+    fn make_executable(path: &Path, text: &str) {
         use std::os::unix::fs::PermissionsExt;
 
-        let temp = tempfile::tempdir().expect("temporary directory");
-        let pi_path = temp.path().join("pi");
-        fs::write(
-            &pi_path,
-            "#!/bin/sh\nprintf '%s\\n' 'provider  model  context  max-out  thinking  images' 'mistral  codestral-latest  256K  32K  yes  no'\n",
-        )
-        .expect("write fake Pi");
-        let mut permissions = fs::metadata(&pi_path)
-            .expect("fake Pi metadata")
+        fs::write(path, text).expect("write executable fixture");
+        let mut permissions = fs::metadata(path)
+            .expect("executable fixture metadata")
             .permissions();
         permissions.set_mode(0o755);
-        fs::set_permissions(&pi_path, permissions).expect("make fake Pi executable");
+        fs::set_permissions(path, permissions).expect("make fixture executable");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pi_model_discovery_runs_configured_pi_binary() {
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let pi_path = temp.path().join("pi");
+        make_executable(
+            &pi_path,
+            "#!/bin/sh\nprintf '%s\\n' 'provider  model  context  max-out  thinking  images' 'mistral  codestral-latest  256K  32K  yes  no'\n",
+        );
         let system = AgentSystemSpec {
             id: "pi_local_stdio".to_string(),
             label: "Pi Local".to_string(),
@@ -1211,6 +1427,108 @@ mod tests {
             discover_pi_models(&system).expect("discover fake Pi models"),
             vec!["mistral/codestral-latest"]
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pi_live_probe_checks_no_generation_command_shape() {
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let pi_path = temp.path().join("pi");
+        let bridge_path = temp.path().join("pi-agent-bridge");
+        let args_path = temp.path().join("pi_args.txt");
+        make_executable(&bridge_path, "#!/bin/sh\nexit 0\n");
+        make_executable(
+            &pi_path,
+            &format!(
+                "#!/bin/sh\nprintf '%s\\n' \"$@\" > {}\ncase \" $* \" in *' --help '*) exit 0;; *) echo generated >&2; exit 64;; esac\n",
+                args_path.display()
+            ),
+        );
+        let catalog_path = temp.path().join("agent_systems.json");
+        fs::write(
+            &catalog_path,
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "schema": "gentle.agent_systems.v1",
+                "systems": [{
+                    "id": "pi_local_stdio",
+                    "label": "Pi Local",
+                    "transport": "external_json_stdio",
+                    "command": [bridge_path],
+                    "env": {
+                        "PI_BIN": pi_path,
+                        "GENTLE_AGENT_MODEL": "mistral/codestral-latest"
+                    }
+                }]
+            }))
+            .expect("serialize catalog"),
+        )
+        .expect("write catalog");
+
+        let preflight = build_agent_system_preflight_with_live(
+            Some(catalog_path.to_string_lossy().as_ref()),
+            "pi_local_stdio",
+            None,
+            true,
+        )
+        .expect("Pi preflight");
+        let live = preflight.live_probe.expect("Pi live probe");
+
+        assert_eq!(live.status_class, AgentLiveProbeStatusClass::Ok);
+        assert!(live.reachable);
+        assert_eq!(live.probe_kind, AgentLiveProbeKind::CommandShape);
+        assert!(!live.auth_ok, "the help probe does not test authentication");
+        assert!(
+            !live.model_list_ok,
+            "the help probe does not perform model discovery"
+        );
+        let args = fs::read_to_string(args_path).expect("captured Pi args");
+        for expected in [
+            "--print",
+            "--no-session",
+            "--no-tools",
+            "--no-extensions",
+            "--no-skills",
+            "--no-prompt-templates",
+            "--no-context-files",
+            "--no-approve",
+            "--system-prompt",
+            "--model",
+            "mistral/codestral-latest",
+            "--help",
+        ] {
+            assert!(
+                args.lines().any(|line| line == expected),
+                "missing {expected} in {args}"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pi_live_probe_reports_rejected_command_shape() {
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let pi_path = temp.path().join("pi");
+        make_executable(
+            &pi_path,
+            "#!/bin/sh\necho 'unknown option --no-context-files' >&2\nexit 2\n",
+        );
+        let system = AgentSystemSpec {
+            id: "pi_local_stdio".to_string(),
+            label: "Pi Local".to_string(),
+            transport: AgentSystemTransport::ExternalJsonStdio,
+            command: vec!["scripts/pi-agent-bridge".to_string()],
+            env: std::collections::HashMap::from([(
+                "PI_BIN".to_string(),
+                pi_path.to_string_lossy().to_string(),
+            )]),
+            ..Default::default()
+        };
+
+        let live = build_pi_command_shape_live_probe(&system);
+
+        assert_eq!(live.status_class, AgentLiveProbeStatusClass::ProviderError);
+        assert!(live.message.contains("rejected"));
+        assert!(live.message.contains("unknown option"));
     }
 
     fn spawn_model_list_server(routes: Vec<(&str, u16, &str)>) -> Option<String> {

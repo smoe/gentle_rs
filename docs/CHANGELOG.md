@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+- Added explicit, bounded local-document grounding for the Agent Assistant.
+  Exact supported text paths in GUI/CLI prompts (or the GUI `Attach text
+  document...` picker) now produce validated `gentle.agent_local_documents.v1`
+  request context with UTF-8 checks, byte/truncation limits, SHA-256 provenance,
+  typed read warnings, and one prioritized local Markdown guide-link level.
+  Pi remains tool-free: it can use supplied roadmap/runbook text to propose
+  reviewed GUI intents or coach manual observations without browsing the
+  project tree. The UI warns that copied contents are sent to the selected
+  provider.
+
+- Added live Pi command-shape probing to Agent Assistant setup. `agents preflight
+  pi_local_stdio --live` and GUI `Test Setup` now invoke the selected Pi binary
+  with GENtle's exact ephemeral no-tools/no-session flags plus `--help`, catching
+  unsupported local Pi CLI flags without sending a prompt to a model.
+
 - Added Pi as a local, multi-provider Agent Assistant harness. The co-shipped
   bridge runs an ephemeral tool-free Pi request in an isolated directory,
   keeps conversation state in GENtle, discovers provider-qualified models via
