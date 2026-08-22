@@ -110,6 +110,40 @@ struct LinearDetailLevel {
     show_open_reading_frames: bool,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct IntronConnectorSeed {
+    start_bp: usize,
+    end_bp: usize,
+    visible_x1: f32,
+    visible_x2: f32,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct IntronConnectorPosition {
+    points: [Pos2; 3],
+    point_count: usize,
+}
+
+impl IntronConnectorPosition {
+    fn line(start: Pos2, end: Pos2) -> Self {
+        Self {
+            points: [start, end, end],
+            point_count: 2,
+        }
+    }
+
+    fn wedge(start: Pos2, apex: Pos2, end: Pos2) -> Self {
+        Self {
+            points: [start, apex, end],
+            point_count: 3,
+        }
+    }
+
+    fn points(&self) -> &[Pos2] {
+        &self.points[..self.point_count]
+    }
+}
+
 #[derive(Debug, Clone)]
 struct FeaturePosition {
     feature_number: usize,
@@ -129,7 +163,7 @@ struct FeaturePosition {
     rect: Rect,
     exon_rects: Vec<Rect>,
     exon_length_mod3_cues: Vec<Option<u8>>,
-    intron_connectors: Vec<[Pos2; 3]>,
+    intron_connectors: Vec<IntronConnectorPosition>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -710,9 +744,9 @@ impl RenderDnaLinear {
                 include_span(exon_rect.top(), exon_rect.bottom());
             }
             for connector in &feature.intron_connectors {
-                include_span(connector[0].y, connector[0].y);
-                include_span(connector[1].y, connector[1].y);
-                include_span(connector[2].y, connector[2].y);
+                for point in connector.points() {
+                    include_span(point.y, point.y);
+                }
             }
         }
         for restriction_site in &self.restriction_enzyme_sites {
@@ -786,9 +820,9 @@ impl RenderDnaLinear {
             include_span(exon_rect.top(), exon_rect.bottom());
         }
         for connector in &feature.intron_connectors {
-            include_span(connector[0].y, connector[0].y);
-            include_span(connector[1].y, connector[1].y);
-            include_span(connector[2].y, connector[2].y);
+            for point in connector.points() {
+                include_span(point.y, point.y);
+            }
         }
 
         if min_y.is_finite() && max_y.is_finite() && min_y <= max_y {
@@ -870,6 +904,59 @@ impl RenderDnaLinear {
         }
         let frac = (bp.saturating_sub(viewport.start)) as f32 / viewport.span as f32;
         self.area.left() + frac * self.area.width()
+    }
+
+    fn fractional_bp_to_x(&self, bp: f64, viewport: LinearViewport) -> f32 {
+        if viewport.span == 0 {
+            return self.area.left();
+        }
+        let frac = (bp - viewport.start as f64) / viewport.span as f64;
+        (self.area.left() as f64 + frac * self.area.width() as f64) as f32
+    }
+
+    fn visible_intron_connector(
+        &self,
+        intron_start: usize,
+        intron_end: usize,
+        viewport: LinearViewport,
+        center_y: f32,
+        apex_y: f32,
+    ) -> Option<IntronConnectorPosition> {
+        let (visible_start, visible_end) =
+            Self::range_overlap(intron_start, intron_end, viewport.start, viewport.end)?;
+        let intron_start = intron_start as f64;
+        let intron_end = intron_end as f64;
+        let midpoint = (intron_start + intron_end) * 0.5;
+        let point_at = |bp: f64| {
+            let lift = if bp <= midpoint {
+                (bp - intron_start) / (midpoint - intron_start)
+            } else {
+                (intron_end - bp) / (intron_end - midpoint)
+            }
+            .clamp(0.0, 1.0) as f32;
+            Pos2::new(
+                self.fractional_bp_to_x(bp, viewport)
+                    .clamp(self.area.left(), self.area.right()),
+                center_y + (apex_y - center_y) * lift,
+            )
+        };
+
+        let visible_start = visible_start as f64;
+        let visible_end = visible_end as f64;
+        let start = point_at(visible_start);
+        let end = point_at(visible_end);
+        if end.x <= start.x {
+            return None;
+        }
+        if midpoint > visible_start && midpoint < visible_end {
+            Some(IntronConnectorPosition::wedge(
+                start,
+                point_at(midpoint),
+                end,
+            ))
+        } else {
+            Some(IntronConnectorPosition::line(start, end))
+        }
     }
 
     fn x_to_bp(&self, x: f32, viewport: LinearViewport) -> usize {
@@ -1573,7 +1660,7 @@ impl RenderDnaLinear {
             to: usize,
             exon_segments: Vec<(f32, f32)>,
             exon_length_mod3_cues: Vec<Option<u8>>,
-            connector_segments: Vec<(f32, f32)>,
+            connector_segments: Vec<IntronConnectorSeed>,
             x1: f32,
             x2: f32,
             label: String,
@@ -1740,16 +1827,12 @@ impl RenderDnaLinear {
 
                 let mut exon_segments: Vec<(f32, f32)> = Vec::new();
                 let mut exon_length_mod3_cues: Vec<Option<u8>> = Vec::new();
-                let mut exon_visibility: Vec<Option<(f32, f32)>> =
-                    Vec::with_capacity(exon_ranges.len());
                 for (exon_start, exon_end_exclusive) in exon_ranges.iter().copied() {
                     if exon_start >= self.sequence_length {
-                        exon_visibility.push(None);
                         continue;
                     }
                     let exon_end_exclusive = exon_end_exclusive.min(self.sequence_length);
                     if exon_end_exclusive <= exon_start {
-                        exon_visibility.push(None);
                         continue;
                     }
                     let Some((visible_start, visible_end)) = Self::range_overlap(
@@ -1758,7 +1841,6 @@ impl RenderDnaLinear {
                         viewport.start,
                         viewport.end,
                     ) else {
-                        exon_visibility.push(None);
                         continue;
                     };
                     let seg_x1 = self.bp_to_x(visible_start, viewport).max(self.area.left());
@@ -1770,7 +1852,6 @@ impl RenderDnaLinear {
                     exon_length_mod3_cues.push(show_exon_length_cues.then(|| {
                         RenderDna::exon_length_mod3_for_range(exon_start, exon_end_exclusive)
                     }));
-                    exon_visibility.push(Some((seg_x1, seg_x2)));
                 }
                 let mut exon_segments_with_cues: Vec<((f32, f32), Option<u8>)> = exon_segments
                     .into_iter()
@@ -1786,7 +1867,7 @@ impl RenderDnaLinear {
                 let (mut exon_segments, exon_length_mod3_cues): (Vec<_>, Vec<_>) =
                     exon_segments_with_cues.into_iter().unzip();
 
-                let mut connector_segments: Vec<(f32, f32)> = Vec::new();
+                let mut connector_segments: Vec<IntronConnectorSeed> = Vec::new();
                 for exon_idx in 0..exon_ranges.len().saturating_sub(1) {
                     let (left_start, left_end_exclusive) = exon_ranges[exon_idx];
                     let (right_start, _right_end_exclusive) = exon_ranges[exon_idx + 1];
@@ -1798,21 +1879,26 @@ impl RenderDnaLinear {
                     if intron_end <= intron_start {
                         continue;
                     }
-                    if Self::range_overlap(intron_start, intron_end, viewport.start, viewport.end)
-                        .is_none()
-                    {
+                    let Some((visible_start, visible_end)) =
+                        Self::range_overlap(intron_start, intron_end, viewport.start, viewport.end)
+                    else {
+                        continue;
+                    };
+                    let visible_x1 = self
+                        .bp_to_x(visible_start, viewport)
+                        .clamp(self.area.left(), self.area.right());
+                    let visible_x2 = self
+                        .bp_to_x(visible_end, viewport)
+                        .clamp(self.area.left(), self.area.right());
+                    if visible_x2 <= visible_x1 {
                         continue;
                     }
-                    let start_x = exon_visibility[exon_idx]
-                        .map(|(_, x2)| x2)
-                        .unwrap_or_else(|| self.area.left());
-                    let end_x = exon_visibility[exon_idx + 1]
-                        .map(|(x1, _)| x1)
-                        .unwrap_or_else(|| self.area.right());
-                    if end_x <= start_x {
-                        continue;
-                    }
-                    connector_segments.push((start_x, end_x));
+                    connector_segments.push(IntronConnectorSeed {
+                        start_bp: intron_start,
+                        end_bp: intron_end,
+                        visible_x1,
+                        visible_x2,
+                    });
                 }
                 if exon_segments.is_empty() && connector_segments.is_empty() {
                     continue;
@@ -1821,12 +1907,20 @@ impl RenderDnaLinear {
                 let mut x1 = exon_segments
                     .iter()
                     .map(|(sx1, _)| *sx1)
-                    .chain(connector_segments.iter().map(|(sx1, _)| *sx1))
+                    .chain(
+                        connector_segments
+                            .iter()
+                            .map(|connector| connector.visible_x1),
+                    )
                     .fold(f32::INFINITY, f32::min);
                 let mut x2 = exon_segments
                     .iter()
                     .map(|(_, sx2)| *sx2)
-                    .chain(connector_segments.iter().map(|(_, sx2)| *sx2))
+                    .chain(
+                        connector_segments
+                            .iter()
+                            .map(|connector| connector.visible_x2),
+                    )
                     .fold(f32::NEG_INFINITY, f32::max);
                 if !x1.is_finite() || !x2.is_finite() {
                     continue;
@@ -2125,7 +2219,12 @@ impl RenderDnaLinear {
             let rect = if exon_rects.is_empty() {
                 let (min_x, max_x) = seed.connector_segments.iter().fold(
                     (f32::INFINITY, f32::NEG_INFINITY),
-                    |(min_x, max_x), (start_x, end_x)| (min_x.min(*start_x), max_x.max(*end_x)),
+                    |(min_x, max_x), connector| {
+                        (
+                            min_x.min(connector.visible_x1),
+                            max_x.max(connector.visible_x2),
+                        )
+                    },
                 );
                 if !min_x.is_finite() || !max_x.is_finite() || max_x <= min_x {
                     continue;
@@ -2148,17 +2247,18 @@ impl RenderDnaLinear {
             } else {
                 center_y - connector_delta
             };
-            let mut intron_connectors: Vec<[Pos2; 3]> = Vec::new();
+            let mut intron_connectors: Vec<IntronConnectorPosition> = Vec::new();
             if !suppress_introns {
-                for (start_x, end_x) in &seed.connector_segments {
-                    if end_x <= start_x {
-                        continue;
+                for connector in &seed.connector_segments {
+                    if let Some(position) = self.visible_intron_connector(
+                        connector.start_bp,
+                        connector.end_bp,
+                        viewport,
+                        center_y,
+                        connector_apex_y,
+                    ) {
+                        intron_connectors.push(position);
                     }
-                    let start = Pos2::new(*start_x, center_y);
-                    let end = Pos2::new(*end_x, center_y);
-                    let apex_x = (start.x + end.x) * 0.5;
-                    let apex = Pos2::new(apex_x, connector_apex_y);
-                    intron_connectors.push([start, apex, end]);
                 }
             }
 
@@ -3411,8 +3511,9 @@ impl RenderDnaLinear {
                 Stroke::new(1.0_f32, Color32::DARK_GRAY)
             };
             for connector in &feature.intron_connectors {
-                painter.line_segment([connector[0], connector[1]], connector_stroke);
-                painter.line_segment([connector[1], connector[2]], connector_stroke);
+                for segment in connector.points().windows(2) {
+                    painter.line_segment([segment[0], segment[1]], connector_stroke);
+                }
             }
 
             if selected || hovered {
@@ -5122,9 +5223,10 @@ mod tests {
         assert_eq!(fp.from, 509);
         assert_eq!(fp.to, 635);
         assert!(fp.exon_rects[0].right() < fp.exon_rects[1].left());
-        let connector = fp.intron_connectors[0];
-        assert!((connector[0].x - fp.exon_rects[0].right()).abs() < 0.01);
-        assert!((connector[2].x - fp.exon_rects[1].left()).abs() < 0.01);
+        let connector = &fp.intron_connectors[0];
+        let points = connector.points();
+        assert!((points[0].x - fp.exon_rects[0].right()).abs() < 0.01);
+        assert!((points[2].x - fp.exon_rects[1].left()).abs() < 0.01);
     }
 
     #[test]
@@ -5292,7 +5394,7 @@ mod tests {
     }
 
     #[test]
-    fn intron_connector_remains_visible_when_adjacent_exon_is_offscreen() {
+    fn intron_connector_preserves_true_slope_when_right_exon_is_offscreen() {
         let feature = make_test_feature(Location::Join(vec![
             Location::simple_range(100, 160),
             Location::simple_range(520, 580),
@@ -5307,10 +5409,16 @@ mod tests {
         let fp = &renderer.features[0];
         assert_eq!(fp.exon_rects.len(), 1);
         assert_eq!(fp.intron_connectors.len(), 1);
-        let connector = fp.intron_connectors[0];
-        assert!((connector[0].x - fp.exon_rects[0].right()).abs() < 0.01);
-        assert!((connector[2].x - renderer.area.right()).abs() < 0.01);
-        assert!(connector[0].x < connector[2].x);
+        let connector = &fp.intron_connectors[0];
+        let points = connector.points();
+        assert_eq!(points.len(), 2, "the true intron midpoint is off-screen");
+        assert!((points[0].x - fp.exon_rects[0].right()).abs() < 0.01);
+        assert!((points[1].x - renderer.area.right()).abs() < 0.01);
+        assert!((points[0].y - fp.exon_rects[0].center().y).abs() < 0.01);
+        assert!(
+            points[1].y < points[0].y,
+            "the visible connector must keep rising toward its off-screen true midpoint"
+        );
     }
 
     #[test]
@@ -5329,10 +5437,95 @@ mod tests {
         let fp = &renderer.features[0];
         assert!(fp.exon_rects.is_empty());
         assert_eq!(fp.intron_connectors.len(), 1);
-        let connector = fp.intron_connectors[0];
-        assert!((connector[0].x - renderer.area.left()).abs() < 0.01);
-        assert!((connector[2].x - renderer.area.right()).abs() < 0.01);
-        assert!(connector[0].x < connector[2].x);
+        let connector = &fp.intron_connectors[0];
+        let points = connector.points();
+        assert_eq!(points.len(), 3, "the true intron midpoint is visible");
+        assert!((points[0].x - renderer.area.left()).abs() < 0.01);
+        assert!((points[2].x - renderer.area.right()).abs() < 0.01);
+        assert!(points[0].x < points[1].x && points[1].x < points[2].x);
+        assert!(points[1].y < points[0].y && points[1].y < points[2].y);
+        assert!(
+            points[0].y < fp.rect.center().y && points[2].y < fp.rect.center().y,
+            "clipped intron endpoints must retain their interpolated lift"
+        );
+    }
+
+    #[test]
+    fn intron_connector_preserves_true_slope_when_left_exon_is_offscreen() {
+        let feature = make_test_feature(Location::Join(vec![
+            Location::simple_range(100, 160),
+            Location::simple_range(520, 580),
+        ]));
+        let mut renderer = test_renderer_with_feature(feature, 1000);
+        renderer.layout_features(LinearViewport {
+            start: 450,
+            end: 590,
+            span: 140,
+        });
+
+        let fp = &renderer.features[0];
+        assert_eq!(fp.exon_rects.len(), 1);
+        let points = fp.intron_connectors[0].points();
+        assert_eq!(points.len(), 2, "the true intron midpoint is off-screen");
+        assert!((points[0].x - renderer.area.left()).abs() < 0.01);
+        assert!((points[1].x - fp.exon_rects[0].left()).abs() < 0.01);
+        assert!(points[0].y < points[1].y);
+        assert!((points[1].y - fp.exon_rects[0].center().y).abs() < 0.01);
+    }
+
+    #[test]
+    fn farther_offscreen_exon_produces_shallower_connector_slope() {
+        let edge_lift = |next_exon_start: i64| {
+            let feature = make_test_feature(Location::Join(vec![
+                Location::simple_range(100, 160),
+                Location::simple_range(next_exon_start, next_exon_start + 60),
+            ]));
+            let mut renderer = test_renderer_with_feature(feature, 1200);
+            renderer.layout_features(LinearViewport {
+                start: 90,
+                end: 250,
+                span: 160,
+            });
+            let fp = &renderer.features[0];
+            let points = fp.intron_connectors[0].points();
+            (fp.exon_rects[0].center().y - points[1].y).abs()
+        };
+
+        let near_lift = edge_lift(520);
+        let far_lift = edge_lift(920);
+        assert!(
+            near_lift > far_lift,
+            "nearer exon should produce a steeper visible slope ({near_lift} <= {far_lift})"
+        );
+    }
+
+    #[test]
+    fn intron_connector_height_is_continuous_across_pan_boundary() {
+        let feature = make_test_feature(Location::Join(vec![
+            Location::simple_range(100, 160),
+            Location::simple_range(840, 900),
+        ]));
+        let mut renderer = test_renderer_with_feature(feature, 1200);
+        renderer.layout_features(LinearViewport {
+            start: 300,
+            end: 500,
+            span: 200,
+        });
+        let left_edge_y = *renderer.features[0].intron_connectors[0]
+            .points()
+            .last()
+            .expect("left viewport connector endpoint");
+
+        renderer.layout_features(LinearViewport {
+            start: 500,
+            end: 700,
+            span: 200,
+        });
+        let right_edge_y = renderer.features[0].intron_connectors[0].points()[0];
+        assert!(
+            (left_edge_y.y - right_edge_y.y).abs() < 0.01,
+            "the true apex height must not jump while panning"
+        );
     }
 
     #[test]
