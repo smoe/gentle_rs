@@ -2,10 +2,10 @@
 
 | Release field | Value |
 | --- | --- |
-| Status | Draft, pending automated pre-tag validation |
-| Target date | 2026-07-13 |
+| Status | Draft through 2026-08-14, pending automated pre-tag validation |
+| Target date | August 2026 |
 | Previous tag | `v0.1.0-internal.9` (2026-06-05) |
-| Primary story | Genome-anchored TP73 evidence viewer |
+| Primary story | Genome-anchored TP73 evidence viewer and transcript-aware primer workflows |
 | Manual GUI smoke | Deliberately deferred until after this interim release |
 
 This internal release covers the work after `v0.1.0-internal.9`, tagged on
@@ -25,11 +25,11 @@ and coordinate/build provenance in one project. The same proof is reproducible
 through a committed headless workflow and inspectable through GUI, CLI/shared
 shell, MCP, and agent-facing paths.
 
-This is also a substantial infrastructure cut. It expands fact-aware
-capability introspection, local and external agent integration, probe-region
-and RNA evidence handling, gene-set/promoter reasoning, review-gated material
-handoffs, and the amount of expensive GUI work that runs safely away from the
-egui thread.
+This is also a substantial infrastructure cut. It expands transcript-aware
+primer and isoform-assay planning, fact-aware capability introspection, local
+and external agent integration, probe-region and RNA evidence handling,
+gene-set/promoter reasoning, review-gated material handoffs, and the amount of
+expensive GUI work that runs safely away from the egui thread.
 
 ## Highlights
 
@@ -46,6 +46,11 @@ egui thread.
   support/provenance presentation; RNA workflows gained target-region rescue,
   allele-aware hash screening, persisted disjoint exonic parts, and DEXSeq
   annotation/count exports.
+- **Transcript-aware primer workflows:** bounded and progress-aware Primer3
+  searches, explicit transcript-coverage universes, whole-cDNA similarity
+  guidance, terminal-exon RT-primer pools, related-sequence common primers,
+  exhaustive cDNA/genomic specificity checks, and digest-bound multi-gene
+  isoform-study execution now share auditable engine contracts.
 - **Fact-aware automation:** project facts, capability requirements, expected
   effects, readiness evaluation, and post-run effect verification now cover
   the shared capability registry broadly. JSON help and capability
@@ -135,7 +140,68 @@ egui thread.
 - Improved transcript exon-path handling and reduced RNA mapping/inspection UI
   repaint and presentation work.
 
-### 4. Introspection, Agents, and Interface Parity
+### 4. August Primer and Isoform-Assay Work
+
+- Added deterministic, digest-bound planning and execution for single- and
+  multi-gene isoform-assay studies. Two explicit approval stages bind the
+  normalized biological request and the exact ordered operations before shared
+  project state changes.
+- Added atomic multi-gene execution, content-bound checkpoints, separately
+  approved exact-prefix reuse, and opt-in per-gene continuation. A failed gene
+  rolls back to its own boundary; external output paths remain fail-closed
+  because filesystem writes cannot be revoked by an in-memory rollback.
+- Added sequence-aware bounded Primer3 plans with annotation-anchored allowed
+  and rejected intervals, deterministic work budgets, pre-launch feasibility,
+  candidate counters, cancellation, and progress streaming. GENtle detects
+  `--progress`, can request an updated Unix status with `SIGUSR1`, and retains a
+  legacy path for unextended Primer3 binaries.
+- Added capability-aware Primer3 discovery. A progress-capable build is
+  preferred, then the highest version and newest executable; an explicit user
+  override remains authoritative. Windows `PATHEXT` discovery and deterministic
+  fake-binary tests cover the cross-platform behavior.
+- Added explicit transcript-coverage universes, including content-bound UniProt
+  isoform inventories. Coverage and isoform distinction remain separate, and
+  unresolved mandatory targets stop strict searches before Primer3.
+- Added content-bound whole-cDNA resources and similarity maps that guide
+  Primer3 toward lower-risk intervals. Variant, repeat, and cDNA-similarity
+  evidence can be reviewed as hard or soft design constraints without replacing
+  final complete-cDNA or genomic specificity gates.
+- Added Primer-BLAST-style review material: bounded junction-side matching,
+  complete-primer realignment, narrowly reviewed off-target products, stored
+  alignment rendering, chemistry settings, and content-bound redesign proposals
+  after specificity failure.
+- Added deterministic common-primer design for related loaded sequences,
+  complete pair-by-member product matrices, explicit strict versus best-effort
+  coverage, and bounded Pareto alternatives. Existing selection and specificity
+  gates are unchanged.
+- Added `gentle.terminal_exon_rt_primer_pool.v1` for sequence-specific RT oligos
+  composed from a fixed adapter and terminal-exon-derived variable segment.
+  Strand-aware transcript mapping, bounded pool-wide interaction selection,
+  persisted provenance, JSON export, and optional exhaustive local genomic
+  BLAST evidence are shared across PCR Designer, shell/CLI, MCP, Python,
+  JavaScript, and Lua.
+- Improved exhaustive cDNA specificity import by consuming validated complete
+  BLAST HSP alignments directly while retaining the established semiglobal
+  fallback for partial or legacy rows. Subject-grouped product pairing,
+  completeness, intended-target, allowlist, and provenance gates remain
+  authoritative.
+- Retained the linear cDNA evaluator as independently labelled fallback
+  evidence only. It can help inspect very large handoffs, but it is never
+  promoted into a native GENtle-finalized specificity pass.
+- Added replayable selection provenance and clearer differential-junction
+  explanations, including qualifying contrasts, thresholds, incremental and
+  redundant detection value, and explicit validation obligations that do not
+  claim isoform abundance.
+- Added an approval-bound informative fallback for strict transcript-panel
+  designs that are structurally infeasible. The original typed failure remains
+  intact; any derived best-effort panel is visibly partial, budgeted, audited,
+  and never presented as an optimal or complete strict solution.
+- Expanded isoform-assay dossiers and publication bundles with readiness gates,
+  blockers, evidence and report identities, order provenance, complete primer
+  tables, locus/exon/gel figures, and explicit `resolved`, `pending`, or
+  `unresolved` status for partially completed studies.
+
+### 5. Introspection, Agents, and Interface Parity
 
 - Added the first shared project fact graph and fact domains for sequences,
   reports, displays, persisted workflow objects, host tools, and GUI
@@ -160,7 +226,7 @@ egui thread.
 - Added JS and Lua bindings for construct-reasoning inspection actions and
   maintained CLI/MCP/ClawBio parity checks over shared routes.
 
-### 5. Gene Sets, Promoters, and Construct Reasoning
+### 6. Gene Sets, Promoters, and Construct Reasoning
 
 - Added first-class gene sets across protocol, engine, shell, GUI, CUT&RUN,
   promoter TFBS, lineage, and documentation paths.
@@ -174,7 +240,7 @@ egui thread.
   execution routes, including objective-specific task severity and curated
   repeat-family corroboration.
 
-### 6. Materials and External-Service Handoffs
+### 7. Materials and External-Service Handoffs
 
 - Added persisted oligo order forms with deterministic line ids, source primer
   or qPCR report provenance, duplicate/reuse groups, explicit review, and
@@ -188,7 +254,7 @@ egui thread.
   oligo/m-block handoffs, GeneArt cloned-gene/protein-expression handoffs, and
   generic sequence-delivery routing.
 
-### 7. GUI Responsiveness and Correctness
+### 8. GUI Responsiveness and Correctness
 
 - Moved long mutating GUI jobs onto engine-owned detached forks and retained
   stale-result, display-merge, auxiliary-metadata conflict, revision, and undo
@@ -211,7 +277,7 @@ egui thread.
   complete refreshes for structural, feature, topology, sequence, and visible
   presentation changes.
 
-### 8. Runtime, Security, Dependencies, and Documentation
+### 9. Runtime, Security, Dependencies, and Documentation
 
 - Added `gentle.runtime_status.v1` and a process-local activity stack exposed
   through shared introspection, MCP, Unix SIGUSR1 dumps, and a compact GUI
@@ -248,6 +314,9 @@ egui thread.
   was generated.
 - Microarray, repeat, TFBS, and CUT&RUN tracks are evidence layers. Their
   presence or geometric overlap is not itself a biological conclusion.
+- Primer search intervals, similarity maps, Pareto alternatives, and fallback
+  panels are design evidence. They do not replace native specificity
+  finalization or experimental primer validation.
 
 ## Release-Facing Known Limitations
 
@@ -270,6 +339,12 @@ egui thread.
 - BLAST+, Primer3, ViennaRNA/RNAPKIN, `bigWigToBedGraph`, R/oligo/APT helpers,
   and legacy SHA-1 tools remain optional and are reported through preflight or
   runtime status when absent.
+- Terminal-exon RT-primer melting temperatures remain descriptive. Global
+  genomic uniqueness is reported only when the optional exhaustive genomic
+  BLAST step was requested and completed against an identified prepared
+  database.
+- Independent linear cDNA fallback reports remain separately labelled evidence
+  and cannot establish a native GENtle specificity pass.
 
 ## Suggested Pre-Tag Validation
 
@@ -279,6 +354,9 @@ release-story checks in the tag record:
 ```bash
 cargo check -q
 cargo test -q --test release_version_consistency
+cargo test -q terminal_exon_rt_primer_pool --lib
+cargo test -q transcript_assay --lib
+cargo test -q primer3 --lib
 cargo test --workspace --no-fail-fast
 cargo run --quiet --bin gentle_examples_docs -- --check
 cargo run --quiet --bin gentle_examples_docs -- tutorial-check
@@ -299,5 +377,11 @@ anchor/build status, repeat/array/BED/TFBS visibility and details,
 feature-detail copy controls, Splicing Expert presentation, and the first 1200
 bp linear viewport. Also open the Agent Assistant, select Codex Local, and
 confirm that the model selector is visible before model discovery completes.
+For the August primer tranche, open PCR Designer and confirm that Primer3
+preflight explains the selected executable, a terminal-exon RT-primer-pool
+request exposes its fixed adapter and complete selected oligos, and a bounded
+Primer3 run reports progress and remains cancellable when a progress-capable
+binary is available. A machine without Primer3 or BLAST+ should instead show a
+clear preflight limitation without disabling unrelated project work.
 
 Manual GUI smoke: _deferred until after `v0.1.0-internal.10`_.
