@@ -3476,7 +3476,7 @@ The `Help` menu now includes:
   auto-downloaded by GENtle. Both concise canonical ZIP names and
   browser-preserved `TFS-Assets_LSG_Support-Files_...` download names are
   accepted.
-- The sequence-window extended panel includes a native
+- The separate sequence-tools window includes a native
   `Clariom D / probe-region evidence` inspector for completed
   `probe_regions_oligo.R` output directories and explicit APT summary +
   annotation table imports, with optional sample metadata columns to derive
@@ -4067,14 +4067,15 @@ terminal-exon RT-primer-pool modes without moving their biology into the GUI.
 
 Layout:
 
-- when `Engine Ops` or `Shell` is open, the lower border of the top control area
-  acts as a draggable vertical divider
-- dragging that divider changes how much height is reserved for Engine Ops/Shell
-  versus the feature/map area below
-- the expanded controls area remains scrollable and the chosen height is
-  persisted per sequence window state
+- `Sequence tools…` opens sequence-specific configuration and Engine Ops in a
+  separate resizable window instead of expanding the DNA-view toolbar
+- `Shell…` opens the shared shell in that same tools window; horizontal and
+  vertical scrollbars keep wide operation forms usable without shrinking the
+  DNA map
+- genome-anchor extension and repeat-index inputs also live in Sequence tools;
+  the DNA view retains only compact anchor status and a `Configure…` launcher
 - `Primer and qPCR design reports` is opened by default so the primer/qPCR forms
-  get the first share of that expanded space
+  appear first in the tools workspace
 
 Primer backend/preflight controls:
 

@@ -1,5 +1,12 @@
 # GENtle Changelog
 
+- Moved sequence-specific configuration and execution controls out of the DNA
+  map toolbar into a separate resizable Sequence tools window. Engine Ops,
+  Shell, genome-anchor extension, repeat-index configuration, and the Clariom D
+  probe-region workflow no longer consume map height; the new workspace has
+  two-dimensional scrolling and German/English labels for its main controls
+  and Clariom workflow stages.
+
 - Added explicit, bounded local-document grounding for the Agent Assistant.
   Exact supported text paths in GUI/CLI prompts (or the GUI `Attach text
   document...` picker) now produce validated `gentle.agent_local_documents.v1`
