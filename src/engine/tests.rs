@@ -17269,7 +17269,7 @@ fn transcript_assay_cdna_similarity_map_producer_binds_resource_and_classificati
     let fake_makeblastdb = root.join("makeblastdb.sh");
     fs::write(
         &fake_makeblastdb,
-        "#!/bin/sh\nout=''\nwhile [ \"$#\" -gt 0 ]; do\n  if [ \"$1\" = '-out' ]; then shift; out=\"$1\"; fi\n  shift\ndone\nmkdir -p \"$(dirname \"$out\")\"\nprintf nhr > \"${out}.nhr\"\nprintf nin > \"${out}.nin\"\nprintf nsq > \"${out}.nsq\"\n",
+        "#!/bin/sh\nif [ \"$1\" = '-version' ]; then echo 'makeblastdb: fake 1.0'; exit 0; fi\nout=''\nwhile [ \"$#\" -gt 0 ]; do\n  if [ \"$1\" = '-out' ]; then shift; out=\"$1\"; fi\n  shift\ndone\nif [ -z \"$out\" ]; then echo 'missing -out' >&2; exit 2; fi\nmkdir -p \"$(dirname \"$out\")\"\nprintf nhr > \"${out}.nhr\"\nprintf nin > \"${out}.nin\"\nprintf nsq > \"${out}.nsq\"\n",
     )
     .expect("write fake makeblastdb");
     let fake_blastdbcmd = root.join("blastdbcmd.sh");
