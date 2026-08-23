@@ -45659,27 +45659,26 @@ impl GentleEngine {
                                 }
                                 infeasibility.error_sha256 = error_sha256;
                                 let failure_id = infeasibility.failure_id.clone();
-                                let uncovered_summary = if !infeasibility
-                                    .uncovered_coverage_target_ids
-                                    .is_empty()
-                                {
-                                    infeasibility.uncovered_coverage_target_ids.join(", ")
-                                } else if !infeasibility.uncovered_equivalence_groups.is_empty() {
-                                    infeasibility
-                                        .uncovered_equivalence_groups
-                                        .iter()
-                                        .map(|group| {
-                                            format!(
-                                                "{} [{}]",
-                                                group.equivalence_group_id,
-                                                group.transcript_ids.join(", ")
-                                            )
-                                        })
-                                        .collect::<Vec<_>>()
-                                        .join("; ")
-                                } else {
-                                    "none reported".to_string()
-                                };
+                                let uncovered_summary =
+                                    if !infeasibility.uncovered_coverage_target_ids.is_empty() {
+                                        infeasibility.uncovered_coverage_target_ids.join(", ")
+                                    } else if !infeasibility.uncovered_equivalence_groups.is_empty()
+                                    {
+                                        infeasibility
+                                            .uncovered_equivalence_groups
+                                            .iter()
+                                            .map(|group| {
+                                                format!(
+                                                    "{} [{}]",
+                                                    group.equivalence_group_id,
+                                                    group.transcript_ids.join(", ")
+                                                )
+                                            })
+                                            .collect::<Vec<_>>()
+                                            .join("; ")
+                                    } else {
+                                        "none reported".to_string()
+                                    };
                                 execution.strict_infeasibility = Some(infeasibility);
                                 execution.fallback_submitted = true;
                                 match self.apply_internal(
