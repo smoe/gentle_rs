@@ -3074,6 +3074,20 @@ fn normalize_retained_tutorial_artifact_line(line: &str) -> String {
             return normalized;
         }
     }
+    if let Some((prefix, suffix)) = line.split_once("\"selection_audit_generator_revision\":") {
+        let whitespace_len = suffix.len() - suffix.trim_start().len();
+        let value = &suffix[whitespace_len..];
+        if let Some(value) = value.strip_prefix('"')
+            && let Some(end_quote) = value.find('"')
+        {
+            return format!(
+                "{prefix}\"selection_audit_generator_revision\":{}\"{}\"{}",
+                &suffix[..whitespace_len],
+                env!("CARGO_PKG_VERSION"),
+                &value[end_quote + 1..]
+            );
+        }
+    }
     if let Some(prefix) = line.strip_prefix("- Generated (Unix ms): `")
         && let Some((_, suffix)) = prefix.split_once('`')
     {
@@ -7437,12 +7451,23 @@ mod tests {
 
     #[test]
     fn retained_tutorial_artifact_normalization_removes_wall_clock_fields() {
-        let raw = "- Generated (Unix ms): `1777756509715`\n{\n  \"generated_at_unix_ms\": 1777756511961,\n}\n\n";
+        let raw = concat!(
+            "- Generated (Unix ms): `1777756509715`\n",
+            "{\n",
+            "  \"generated_at_unix_ms\": 1777756511961,\n",
+            "  \"selection_audit_generator_revision\": \"0.1.0-internal.10+git.0123456789abcdef\"\n",
+            "}\n\n"
+        );
         let normalized = normalize_retained_tutorial_artifact_text(raw);
         assert!(normalized.contains("- Generated (Unix ms): `0`"));
         assert!(normalized.contains("\"generated_at_unix_ms\": 0,"));
+        assert!(normalized.contains(&format!(
+            "\"selection_audit_generator_revision\": \"{}\"",
+            env!("CARGO_PKG_VERSION")
+        )));
         assert!(!normalized.contains("1777756509715"));
         assert!(!normalized.contains("1777756511961"));
+        assert!(!normalized.contains("+git.0123456789abcdef"));
         assert!(!normalized.ends_with("\n\n"));
     }
 

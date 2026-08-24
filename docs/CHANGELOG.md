@@ -1,5 +1,12 @@
 # GENtle Changelog
 
+- Kept committed tutorial assay artifacts deterministic across Git checkouts by
+  normalizing their selection-audit generator revision to the package version;
+  ordinary engine reports still retain the complete source revision.
+
+- Routed the separate Sequence tools surface through GENtle's hosted-window
+  compatibility wrapper instead of constructing a direct `egui::Window`.
+
 - Fixed Array setup navigation after sequence-specific controls moved into the
   separate Sequence tools window: the action now opens and scrolls directly to
   the Clariom D panel. Added a dedicated read-only `Microarrays` Configuration

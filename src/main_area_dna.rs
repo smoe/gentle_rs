@@ -6446,14 +6446,14 @@ impl MainAreaDna {
             let mut open = true;
             let sequence_id = self.seq_id.as_deref().unwrap_or("—");
             let title = format!("{} — {sequence_id}", Self::tr("sequence.tools.title"));
-            egui::Window::new(title)
-                .id(egui::Id::new(("sequence_tools_window", self.panel_scope_key())))
-                .default_size(Vec2::new(1080.0, 720.0))
-                .min_size(Vec2::new(720.0, 420.0))
-                .resizable(true)
-                .open(&mut open)
-                .show(ui.ctx(), |ui| {
-            egui::ScrollArea::both()
+            let spec = crate::egui_compat::HostedWindowSpec::new(
+                title,
+                egui::Id::new(("sequence_tools_window", self.panel_scope_key())),
+                Vec2::new(1080.0, 720.0),
+                Vec2::new(720.0, 420.0),
+            );
+            crate::egui_compat::show_hosted_window(ui.ctx(), &spec, &mut open, |ui| {
+                egui::ScrollArea::both()
                 .id_salt(format!(
                     "engine_shell_panels_scroll_{}",
                     self.seq_id.as_deref().unwrap_or("_global")
@@ -6509,7 +6509,7 @@ impl MainAreaDna {
                             });
                         }
                     }
-                });
+            });
                 ui.horizontal_wrapped(|ui| {
                     if ui
                         .small_button("Use MCS enzymes")
@@ -8273,7 +8273,7 @@ impl MainAreaDna {
                         self.render_shell_panel(ui);
                     }
                 });
-                });
+            });
             if !open {
                 self.show_engine_ops = false;
                 self.show_shell = false;
