@@ -1,5 +1,14 @@
 # GENtle Changelog
 
+- Fixed Array setup navigation after sequence-specific controls moved into the
+  separate Sequence tools window: the action now opens and scrolls directly to
+  the Clariom D panel. Added a dedicated read-only `Microarrays` Configuration
+  tab with file-role/source guidance and bounded checkout-local status for
+  Thermo Fisher support archives, E-MTAB-14704 inputs, analyzed TP73 tables, and
+  the synthetic demonstration output. The sequence panel reuses those checks
+  for explicit local suggestions without downloading files, overwriting user
+  paths, or presenting synthetic fixtures as biological evidence.
+
 - Moved sequence-specific configuration and execution controls out of the DNA
   map toolbar into a separate resizable Sequence tools window. Engine Ops,
   Shell, genome-anchor extension, repeat-index configuration, and the Clariom D

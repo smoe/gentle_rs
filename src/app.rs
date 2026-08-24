@@ -321,6 +321,7 @@ static NATIVE_HELP_OPEN_REQUESTED_AT_MS: AtomicU64 = AtomicU64::new(0);
 static NATIVE_ABOUT_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_SETTINGS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_SETTINGS_OPEN_GRAPHICS_TAB_REQUESTED: AtomicBool = AtomicBool::new(false);
+static NATIVE_SETTINGS_OPEN_MICROARRAY_TAB_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_PCR_DESIGN_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_PCR_DESIGN_SEQ_ID_REQUESTED: Mutex<Option<String>> = Mutex::new(None);
 static NATIVE_JASPAR_EXPERT_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -366,11 +367,19 @@ pub fn request_open_about_from_native_menu() {
 
 pub fn request_open_settings_from_native_menu() {
     NATIVE_SETTINGS_OPEN_GRAPHICS_TAB_REQUESTED.store(false, Ordering::SeqCst);
+    NATIVE_SETTINGS_OPEN_MICROARRAY_TAB_REQUESTED.store(false, Ordering::SeqCst);
     NATIVE_SETTINGS_OPEN_REQUESTED.store(true, Ordering::SeqCst);
 }
 
 pub fn request_open_graphics_settings_from_native_menu() {
     NATIVE_SETTINGS_OPEN_GRAPHICS_TAB_REQUESTED.store(true, Ordering::SeqCst);
+    NATIVE_SETTINGS_OPEN_MICROARRAY_TAB_REQUESTED.store(false, Ordering::SeqCst);
+    NATIVE_SETTINGS_OPEN_REQUESTED.store(true, Ordering::SeqCst);
+}
+
+pub fn request_open_microarray_settings_from_native_menu() {
+    NATIVE_SETTINGS_OPEN_GRAPHICS_TAB_REQUESTED.store(false, Ordering::SeqCst);
+    NATIVE_SETTINGS_OPEN_MICROARRAY_TAB_REQUESTED.store(true, Ordering::SeqCst);
     NATIVE_SETTINGS_OPEN_REQUESTED.store(true, Ordering::SeqCst);
 }
 
@@ -1260,6 +1269,7 @@ struct RenderedHelpMarkdownEntry {
 enum ConfigurationTab {
     ExternalApplications,
     AgentSystems,
+    Microarrays,
     Graphics,
     Language,
 }
@@ -3825,9 +3835,13 @@ Error: `{err}`"
 
     fn consume_native_settings_request(&mut self) {
         if NATIVE_SETTINGS_OPEN_REQUESTED.swap(false, Ordering::SeqCst) {
+            let microarray_tab_requested =
+                NATIVE_SETTINGS_OPEN_MICROARRAY_TAB_REQUESTED.swap(false, Ordering::SeqCst);
             let graphics_tab_requested =
                 NATIVE_SETTINGS_OPEN_GRAPHICS_TAB_REQUESTED.swap(false, Ordering::SeqCst);
-            if graphics_tab_requested {
+            if microarray_tab_requested {
+                self.open_configuration_microarray_dialog();
+            } else if graphics_tab_requested {
                 self.open_configuration_graphics_dialog();
             } else {
                 self.open_configuration_dialog();
@@ -4130,6 +4144,10 @@ Error: `{err}`"
 
     fn open_configuration_graphics_dialog(&mut self) {
         self.open_configuration_dialog_for_tab(ConfigurationTab::Graphics);
+    }
+
+    fn open_configuration_microarray_dialog(&mut self) {
+        self.open_configuration_dialog_for_tab(ConfigurationTab::Microarrays);
     }
 
     fn open_configuration_agent_systems_dialog(&mut self) {

@@ -18,6 +18,7 @@ impl GENtleApp {
             self.render_specialist_window_nav(ui);
             let external_tab_label = self.tr("configuration.tab.external_applications");
             let agent_tab_label = self.tr("configuration.tab.agent_systems");
+            let microarray_tab_label = self.tr("configuration.tab.microarrays");
             let graphics_tab_label = self.tr("configuration.tab.graphics");
             let language_tab_label = self.tr("configuration.tab.language");
             let unapplied_changes_label = self.tr("configuration.status.unapplied_changes");
@@ -40,6 +41,15 @@ impl GENtleApp {
                     .clicked()
                 {
                     self.configuration_tab = ConfigurationTab::AgentSystems;
+                }
+                if ui
+                    .selectable_label(
+                        self.configuration_tab == ConfigurationTab::Microarrays,
+                        microarray_tab_label,
+                    )
+                    .clicked()
+                {
+                    self.configuration_tab = ConfigurationTab::Microarrays;
                 }
                 if ui
                     .selectable_label(
@@ -81,10 +91,11 @@ impl GENtleApp {
             ui.separator();
             ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
                 ui.horizontal(|ui| {
-                    let agent_settings_are_immediate = self.configuration_tab
-                        == ConfigurationTab::AgentSystems
-                        && !has_unapplied_changes;
-                    let cancel_label = if agent_settings_are_immediate {
+                    let tab_is_read_only_or_immediate = matches!(
+                        self.configuration_tab,
+                        ConfigurationTab::AgentSystems | ConfigurationTab::Microarrays
+                    ) && !has_unapplied_changes;
+                    let cancel_label = if tab_is_read_only_or_immediate {
                         self.tr("button.close")
                     } else {
                         self.tr("button.cancel")
@@ -113,7 +124,7 @@ impl GENtleApp {
                         };
                         self.show_configuration_dialog = false;
                     }
-                    if !agent_settings_are_immediate
+                    if !tab_is_read_only_or_immediate
                         && ui
                             .add_enabled(has_unapplied_changes, egui::Button::new(apply_label))
                             .on_hover_text("Apply all unapplied configuration changes")
@@ -142,6 +153,9 @@ impl GENtleApp {
                                 }
                                 ConfigurationTab::AgentSystems => {
                                     self.render_agent_configuration_tab(ui);
+                                }
+                                ConfigurationTab::Microarrays => {
+                                    self.render_configuration_microarrays_tab(ui);
                                 }
                                 ConfigurationTab::Graphics => {
                                     self.render_configuration_graphics_tab(ui);
@@ -192,14 +206,179 @@ impl GENtleApp {
         ui.small(self.tr("configuration.language.experimental_note"));
     }
 
+    fn render_microarray_resource_row(ui: &mut Ui, label: &str, path: &Path, exists: bool) {
+        ui.vertical(|ui| {
+            let (status, color) = if exists {
+                ("present", egui::Color32::from_rgb(20, 140, 45))
+            } else {
+                ("missing", egui::Color32::from_rgb(180, 83, 9))
+            };
+            ui.horizontal_wrapped(|ui| {
+                ui.colored_label(color, status);
+                ui.label(label);
+                if ui.small_button("Copy path").clicked() {
+                    ui.ctx().copy_text(path.display().to_string());
+                }
+            });
+            ui.add(
+                egui::Label::new(egui::RichText::new(path.display().to_string()).monospace())
+                    .wrap(),
+            );
+        });
+    }
+
+    fn render_configuration_microarrays_tab(&mut self, ui: &mut Ui) {
+        use crate::microarray_setup::{
+            CLARIOM_D_HUMAN_SUPPORT_README, CLARIOM_D_PROBESET_URL, CLARIOM_D_TRANSCRIPT_URL,
+            E_MTAB_14704_LANDING_URL, MicroarraySetupDiscovery,
+        };
+
+        let resources = MicroarraySetupDiscovery::discover_checkout();
+        ui.heading(self.tr("configuration.microarray.heading"));
+        ui.label(self.tr("configuration.microarray.description"));
+        ui.small(
+            "This page configures and explains reusable platform resources. Import, projection, and interpretation remain sequence-specific actions in Array setup.",
+        );
+        ui.add_space(8.0);
+
+        egui::Frame::group(ui.style()).show(ui, |ui| {
+            ui.strong("Choose the route that matches the files you actually have");
+            ui.label(
+                "1. Prepared GENtle output: select a directory containing region_intensity_chrom_order.csv, normalized_feature_matrix_manifest.json, and provenance.json, then inspect and project it.",
+            );
+            ui.label(
+                "2. Completed APT/R tables: provide a normalized probeset summary matrix plus a NetAffx-style coordinate annotation table. Sample metadata and a PM-probe matrix are optional.",
+            );
+            ui.label(
+                "3. Raw CEL files: obtain CEL files from your own experiment or a public repository, add sample metadata and platform annotation, then create and review an arrays probe-regions preflight before allowing R/APT execution.",
+            );
+        });
+
+        ui.add_space(8.0);
+        ui.heading("Expected sources and file roles");
+        ui.label(
+            "Raw experiment input: .CEL files plus IDF/SDRF or another sample table. The bundled TP73 example is E-MTAB-14704 from EMBL-EBI BioStudies/ArrayExpress.",
+        );
+        ui.hyperlink_to("Open E-MTAB-14704 at EMBL-EBI", E_MTAB_14704_LANDING_URL);
+        ui.label(
+            "Platform coordinates: the Clariom D Human na36 hg38 probeset and transcript annotation ZIPs are manual Thermo Fisher/NetAffx downloads. They are login-walled and GENtle never downloads them silently.",
+        );
+        ui.horizontal_wrapped(|ui| {
+            ui.hyperlink_to("Probeset annotation ZIP", CLARIOM_D_PROBESET_URL);
+            ui.hyperlink_to("Transcript annotation ZIP", CLARIOM_D_TRANSCRIPT_URL);
+        });
+        let support_readme = resources.checkout_root.join(CLARIOM_D_HUMAN_SUPPORT_README);
+        Self::render_microarray_resource_row(
+            ui,
+            "local staging instructions",
+            &support_readme,
+            support_readme.is_file(),
+        );
+
+        ui.add_space(8.0);
+        ui.heading("Detected in this checkout");
+        ui.small(format!(
+            "Selected bounded checkout root: {}. GENtle compares only the build checkout and current working checkout; it does not search unrelated folders.",
+            resources.checkout_root.display()
+        ));
+        Self::render_microarray_resource_row(
+            ui,
+            resources.vendor_probeset_zip.role,
+            &resources.vendor_probeset_zip.path,
+            resources.vendor_probeset_zip.exists,
+        );
+        Self::render_microarray_resource_row(
+            ui,
+            resources.vendor_transcript_zip.role,
+            &resources.vendor_transcript_zip.path,
+            resources.vendor_transcript_zip.exists,
+        );
+        Self::render_microarray_resource_row(
+            ui,
+            resources.publication_idf.role,
+            &resources.publication_idf.path,
+            resources.publication_idf.exists,
+        );
+        Self::render_microarray_resource_row(
+            ui,
+            resources.publication_sdrf.role,
+            &resources.publication_sdrf.path,
+            resources.publication_sdrf.exists,
+        );
+        ui.label(format!(
+            "E-MTAB-14704 raw CEL files present: {} (the published TP73 example expects 9)",
+            resources.publication_cel_paths.len()
+        ));
+        Self::render_microarray_resource_row(
+            ui,
+            resources.local_summary_tsv.role,
+            &resources.local_summary_tsv.path,
+            resources.local_summary_tsv.exists,
+        );
+        Self::render_microarray_resource_row(
+            ui,
+            resources.local_annotation_tsv.role,
+            &resources.local_annotation_tsv.path,
+            resources.local_annotation_tsv.exists,
+        );
+        Self::render_microarray_resource_row(
+            ui,
+            resources.local_metadata_tsv.role,
+            &resources.local_metadata_tsv.path,
+            resources.local_metadata_tsv.exists,
+        );
+        if resources.has_local_analysis_tables() {
+            ui.small(
+                egui::RichText::new(
+                    "These are full-platform analysis source tables, not a coordinate-complete direct-import subset. Use the raw-data probe-region preflight to select TP73 before helper output is projected.",
+                )
+                .color(egui::Color32::from_rgb(180, 83, 9)),
+            );
+        }
+        ui.vertical(|ui| {
+            let ready = resources.has_synthetic_output();
+            let color = if ready {
+                egui::Color32::from_rgb(20, 140, 45)
+            } else {
+                egui::Color32::from_rgb(180, 83, 9)
+            };
+            ui.horizontal_wrapped(|ui| {
+                ui.colored_label(color, if ready { "present" } else { "incomplete" });
+                ui.label(format!(
+                    "synthetic TP73 demonstration output: {}/{} required files",
+                    resources.synthetic_output_files_present,
+                    resources.synthetic_output_required_file_count()
+                ));
+            });
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(resources.synthetic_output_dir.display().to_string())
+                        .monospace(),
+                )
+                .wrap(),
+            );
+        });
+        ui.small(
+            egui::RichText::new(
+                "The synthetic output is for learning and deterministic tests only; it is not biological evidence.",
+            )
+            .color(egui::Color32::from_rgb(180, 83, 9)),
+        );
+        ui.small(
+            "Array setup in a DNA window reads these same checks, suggests a TP73 preflight for local CEL files, and offers only validated prepared output for direct selection; it never replaces paths you selected yourself.",
+        );
+    }
+
     pub(super) fn render_configuration_dialog(&mut self, ctx: &egui::Context) {
         if !self.show_configuration_dialog {
             return;
         }
         let viewport_id = Self::configuration_viewport_id();
         let title = self.tr("dialog.configuration.title");
-        let (preferred_size, min_size) = if self.configuration_tab == ConfigurationTab::AgentSystems
-        {
+        let (preferred_size, min_size) = if matches!(
+            self.configuration_tab,
+            ConfigurationTab::AgentSystems | ConfigurationTab::Microarrays
+        ) {
             (Vec2::new(980.0, 720.0), Vec2::new(620.0, 420.0))
         } else {
             (Vec2::new(720.0, 540.0), Vec2::new(460.0, 320.0))

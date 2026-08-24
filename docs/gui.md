@@ -327,6 +327,21 @@ Tabs:
     `GENTLE_DISABLE_LEGACY_SHA1=1` to skip it intentionally. GENtle reports
     availability in `resources status` and in relevant prepare warnings rather
     than showing a startup warning.
+- `Microarrays`
+  - Explains the three supported starting points without conflating them:
+    prepared GENtle helper output, completed APT/R summary plus coordinate
+    annotation tables, or raw CEL analysis through an explicit preflight.
+  - Shows bounded, read-only status for the checkout-local Clariom D Human
+    NetAffx staging directory, E-MTAB-14704 IDF/SDRF/CEL inputs, existing
+    analyzed TP73 tables, and the committed synthetic TP73 demonstration
+    output. GENtle compares only the build checkout and current working
+    checkout, then uses whichever contains more of these documented resources.
+  - Links to the public EMBL-EBI E-MTAB-14704 study and to the two documented
+    Thermo Fisher support archives. The latter remain login-walled manual
+    downloads; GENtle never downloads them silently.
+  - This tab owns reusable resource guidance only. Import, output inspection,
+    projection, and interpretation remain explicit actions for an active DNA
+    sequence in `Array setup...`.
 - `Graphics`
   - Configure project-level display visibility defaults (panels, feature layers, overlays).
   - Configure sequence text-panel max length (`Sequence panel max text length`, default `200000 bp`, `0=unlimited`).
@@ -3546,12 +3561,23 @@ The `Help` menu now includes:
   ordinals, ranges, junction spans, overlap base counts, geometry scores, and
   score-basis guardrails. Transcript rows show review-only labels for unique,
   shared, constraining, or absent geometry; these labels are not isoform calls.
+- The inspector starts with contextual file-role help and uses the same bounded
+  checkout discovery as `Configuration -> Microarrays`. When available it
+  offers an explicit TP73 `arrays probe-regions` preflight command for locally
+  staged E-MTAB-14704 CEL files, or direct selection of the committed synthetic
+  TP73 helper output. Full-platform analyzed tables are shown with their exact
+  paths but are not blindly filled into the direct-import form because they
+  contain coordinate-less platform rows that require selector-aware preflight.
+  Suggestions never overwrite a path without a click, and the synthetic output
+  is marked as learning/test data rather than biological evidence.
 - The DNA-viewer layer control distinguishes configuration from visibility.
   When no projected microarray feature exists on the active sequence it reads
-  `Array setup...` and opens the `Engine Ops > Clariom D / probe-region
-  evidence` panel rather than toggling an empty layer. The panel visibly offers
+  `Array setup...` and opens the separate Sequence tools window scrolled
+  directly to `Clariom D / probe-region evidence` rather than toggling an empty
+  layer or leaving the user at the top of a long workspace. The panel visibly offers
   the built-in `Clariom_D_Human` / `rma-sketch` / `hg38` (`GRCh38`) profile and
-  a restore-defaults action. Once data is projected, the control reports both
+  a restore-defaults action plus a direct link to the general Microarrays
+  configuration/help tab. Once data is projected, the control reports both
   visible and full-sequence counts when they differ, for example `Array
   (0/14)` after panning away from all array intervals.
 - Right-click the Array control and choose `Focus nearest array feature` to

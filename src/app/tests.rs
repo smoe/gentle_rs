@@ -3583,6 +3583,19 @@ fn open_configuration_dialog_focuses_existing_window_without_resetting_edits() {
     );
 }
 
+#[test]
+fn microarray_configuration_opens_directly_on_its_dedicated_tab() {
+    let mut app = GENtleApp::default();
+
+    app.open_configuration_microarray_dialog();
+
+    assert!(app.show_configuration_dialog);
+    assert!(matches!(
+        app.configuration_tab,
+        ConfigurationTab::Microarrays
+    ));
+}
+
 fn collect_rendered_text_from_shape(shape: &egui::epaint::Shape, out: &mut Vec<String>) {
     match shape {
         egui::epaint::Shape::Text(text) => {
