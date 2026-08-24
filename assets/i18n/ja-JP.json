@@ -380,6 +380,7 @@
   "sequence.tools.shell_open": "Shell…",
   "sequence.tools.shell_open_hover": "共有 GENtle Shell を配列ツールウィンドウで開きます",
   "sequence.tools.title": "配列ツール",
+  "sequence.window.opening": "DNA 配列ビューアーを開いています…",
   "sequence.tools.engine_operations": "エンジン操作",
   "sequence.tools.ids_hint": "ID はカンマ区切りの配列 ID です。",
   "sequence.anchor.check": "アンカー確認",

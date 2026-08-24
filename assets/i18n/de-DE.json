@@ -380,6 +380,7 @@
   "sequence.tools.shell_open": "Shell…",
   "sequence.tools.shell_open_hover": "Die gemeinsame GENtle-Shell im separaten Sequenz-Werkzeugfenster öffnen",
   "sequence.tools.title": "Sequenz-Werkzeuge",
+  "sequence.window.opening": "DNA-Sequenzansicht wird geöffnet…",
   "sequence.tools.engine_operations": "Engine-Operationen",
   "sequence.tools.ids_hint": "IDs sind kommagetrennte Sequenz-IDs.",
   "sequence.anchor.check": "Ankerprüfung",

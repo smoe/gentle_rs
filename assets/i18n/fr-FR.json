@@ -380,6 +380,7 @@
   "sequence.tools.shell_open": "Shell…",
   "sequence.tools.shell_open_hover": "Ouvrir le shell GENtle partagé dans la fenêtre des outils de séquence",
   "sequence.tools.title": "Outils de séquence",
+  "sequence.window.opening": "Ouverture de la visionneuse de séquence ADN…",
   "sequence.tools.engine_operations": "Opérations du moteur",
   "sequence.tools.ids_hint": "Les ID sont des ID de séquence séparés par des virgules.",
   "sequence.anchor.check": "vérification de l’ancrage",

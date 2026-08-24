@@ -175,6 +175,53 @@ fn unchanged_metadata_persistence_does_not_mark_project_dirty() {
 }
 
 #[test]
+fn first_lineage_render_does_not_dirty_a_clean_loaded_project() {
+    let mut app = GENtleApp::default();
+    app.engine
+        .write()
+        .expect("engine")
+        .state_mut()
+        .sequences
+        .insert(
+            "loaded-sequence".to_string(),
+            DNAsequence::from_sequence("ATGC").expect("sequence"),
+        );
+    app.mark_clean_snapshot();
+
+    let ctx = egui::Context::default();
+    let _ = ctx.run_ui(egui::RawInput::default(), |ui| app.render_main_lineage(ui));
+
+    assert!(!app.is_project_dirty());
+}
+
+#[test]
+fn sequence_window_open_status_tracks_queued_and_registered_windows() {
+    let mut app = GENtleApp::default();
+    assert!(!app.sequence_window_open_in_progress());
+
+    app.engine
+        .write()
+        .expect("engine")
+        .state_mut()
+        .sequences
+        .insert(
+            "opening-sequence".to_string(),
+            DNAsequence::from_sequence("ATGC").expect("sequence"),
+        );
+    app.open_sequence_window("opening-sequence");
+    assert!(app.sequence_window_open_in_progress());
+
+    app.new_windows.clear();
+    let viewport_id = egui::ViewportId::from_hash_of("opening-sequence");
+    app.pending_window_open_timestamps
+        .insert(viewport_id, Instant::now());
+    assert!(app.sequence_window_open_in_progress());
+
+    app.pending_window_open_timestamps.remove(&viewport_id);
+    assert!(!app.sequence_window_open_in_progress());
+}
+
+#[test]
 fn lineage_projection_cache_ignores_zoom_and_pan_state() {
     let mut app = GENtleApp::default();
     app.refresh_lineage_cache_if_needed();

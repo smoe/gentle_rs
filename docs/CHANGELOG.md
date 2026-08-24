@@ -1,5 +1,10 @@
 # GENtle Changelog
 
+- Prevented automatic first-frame lineage panel fitting from marking a freshly
+  opened, saved project as modified. Sequence-node opening now shows the
+  translated `Opening DNA Sequence Viewer…` status while the viewer is queued
+  or completing its first render, and removes it once the viewer is open.
+
 - Moved sequence-specific configuration and execution controls out of the DNA
   map toolbar into a separate resizable Sequence tools window. Engine Ops,
   Shell, genome-anchor extension, repeat-index configuration, and the Clariom D

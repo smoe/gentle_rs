@@ -20714,19 +20714,21 @@ Error: `{err}`"
                         },
                     );
                     ui.separator();
-                    if project_dirty {
-                        ui.label(Self::project_footer_status_text(
-                            ui.ctx(),
-                            &self.tr("project.status"),
-                            &self.tr("project.status.unsaved_changes"),
-                        ));
+                    let project_status = if project_dirty {
+                        self.tr("project.status.unsaved_changes")
                     } else {
-                        ui.label(Self::project_footer_status_text(
-                            ui.ctx(),
-                            &self.tr("project.status"),
-                            &self.tr("project.status.saved"),
-                        ));
-                    }
+                        self.tr("project.status.saved")
+                    };
+                    let project_status = if self.sequence_window_open_in_progress() {
+                        format!("{project_status} | {}", self.tr("sequence.window.opening"))
+                    } else {
+                        project_status
+                    };
+                    ui.label(Self::project_footer_status_text(
+                        ui.ctx(),
+                        &self.tr("project.status"),
+                        &project_status,
+                    ));
                 },
             );
         });
@@ -23482,6 +23484,10 @@ Error: `{err}`"
                 });
             },
         );
+    }
+
+    fn sequence_window_open_in_progress(&self) -> bool {
+        !self.new_windows.is_empty() || !self.pending_window_open_timestamps.is_empty()
     }
 
     fn help_content_width_requires_relayout(previous_width: f32, current_width: f32) -> bool {

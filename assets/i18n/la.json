@@ -380,6 +380,7 @@
   "sequence.tools.shell_open": "Testa…",
   "sequence.tools.shell_open_hover": "Testam communem GENtle in fenestra instrumentorum aperire",
   "sequence.tools.title": "Instrumenta sequentiae",
+  "sequence.window.opening": "Inspector sequentiae DNA aperitur…",
   "sequence.tools.engine_operations": "Operationes machinae",
   "sequence.tools.ids_hint": "ID sunt ID sequentiarum commatibus separata.",
   "sequence.anchor.check": "probatio ancorae",

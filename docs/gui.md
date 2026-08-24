@@ -4117,6 +4117,10 @@ Layout:
   the DNA view retains only compact anchor status and a `Configure…` launcher
 - `Primer and qPCR design reports` is opened by default so the primer/qPCR forms
   appear first in the tools workspace
+- opening a lineage sequence node reports `Opening DNA Sequence Viewer…` in the
+  status bar until the queued viewer completes its first render
+- first-frame fitting of lineage panels to the current window is read-only and
+  does not mark a freshly opened project as modified
 
 Primer backend/preflight controls:
 
