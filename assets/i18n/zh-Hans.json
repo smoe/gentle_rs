@@ -380,6 +380,7 @@
   "sequence.tools.shell_open": "Shell…",
   "sequence.tools.shell_open_hover": "在序列工具窗口中打开共享 GENtle Shell",
   "sequence.tools.title": "序列工具",
+  "sequence.window.opening": "正在打开 DNA 序列查看器…",
   "sequence.tools.engine_operations": "引擎操作",
   "sequence.tools.ids_hint": "ID 是用逗号分隔的序列 ID。",
   "sequence.anchor.check": "锚点检查",

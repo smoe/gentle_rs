@@ -4204,11 +4204,9 @@ impl GENtleApp {
         }
         if (self.lineage_graph_area_height - graph_area_height).abs() > 0.5 {
             self.lineage_graph_area_height = graph_area_height;
-            persist_workspace_after_frame = true;
         }
         if (self.lineage_container_area_height - container_area_height).abs() > 0.5 {
             self.lineage_container_area_height = container_area_height;
-            persist_workspace_after_frame = true;
         }
         if (self.lineage_container_arrangement_split_fraction
             - container_arrangement_split_fraction)
@@ -4217,7 +4215,6 @@ impl GENtleApp {
         {
             self.lineage_container_arrangement_split_fraction =
                 container_arrangement_split_fraction;
-            persist_workspace_after_frame = true;
         }
         let combined_panel_height =
             (graph_area_height.max(0.0) + container_area_height.max(0.0)).max(1.0);
@@ -4228,7 +4225,6 @@ impl GENtleApp {
             && (self.lineage_main_split_fraction - main_split_fraction).abs() > 0.0001
         {
             self.lineage_main_split_fraction = main_split_fraction;
-            persist_workspace_after_frame = true;
         }
         if self.lineage_graph_compact_labels != graph_compact_labels {
             self.lineage_graph_compact_labels = graph_compact_labels;

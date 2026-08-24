@@ -380,6 +380,7 @@
   "sequence.tools.shell_open": "Shell…",
   "sequence.tools.shell_open_hover": "Open the shared GENtle shell in the separate sequence-tools window",
   "sequence.tools.title": "Sequence tools",
+  "sequence.window.opening": "Opening DNA Sequence Viewer…",
   "sequence.tools.engine_operations": "Engine operations",
   "sequence.tools.ids_hint": "IDs are comma-separated sequence IDs.",
   "sequence.anchor.check": "anchor check",
