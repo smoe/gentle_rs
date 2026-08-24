@@ -8010,13 +8010,16 @@ impl MainAreaDna {
                     });
 
                 let force_probe_region_open = self.probe_region_setup_requested;
-                egui::CollapsingHeader::new(Self::tr("sequence.clariom.title"))
+                let probe_region_header = egui::CollapsingHeader::new(Self::tr("sequence.clariom.title"))
                     .default_open(false)
                     .open(force_probe_region_open.then_some(true))
                     .show(ui, |ui| {
                         self.render_probe_region_output_inspection_panel(ui);
                     });
                 if force_probe_region_open {
+                    probe_region_header
+                        .header_response
+                        .scroll_to_me(Some(egui::Align::TOP));
                     self.probe_region_setup_requested = false;
                 }
 
@@ -8465,6 +8468,13 @@ impl MainAreaDna {
         } else {
             Some(trimmed.to_string())
         }
+    }
+
+    fn local_tp73_probe_region_preflight_command(output_dir: &str) -> String {
+        let output_dir = output_dir.trim().replace('\\', "\\\\").replace('"', "\\\"");
+        format!(
+            "arrays probe-regions --dataset E-MTAB-14704 --gene TP73 --platform Clariom_D_Human --normalization rma --output \"{output_dir}\" --dry-run"
+        )
     }
 
     fn import_apt_probe_region_output_for_current_paths(&mut self) {
@@ -9301,6 +9311,8 @@ impl MainAreaDna {
     }
 
     fn render_probe_region_output_inspection_panel(&mut self, ui: &mut egui::Ui) {
+        let local_resources =
+            crate::microarray_setup::MicroarraySetupDiscovery::discover_checkout();
         ui.small(
             egui::RichText::new(Self::tr("sequence.clariom.description"))
                 .color(egui::Color32::from_rgb(100, 116, 139)),
@@ -9324,6 +9336,97 @@ impl MainAreaDna {
             }
         });
         ui.add_space(4.0);
+
+        egui::Frame::group(ui.style()).show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.strong("Getting started");
+                if ui
+                    .small_button("Microarray setup and file help...")
+                    .on_hover_text(
+                        "Open Configuration directly on the Microarrays tab with file roles, sources, and checkout-local resource status",
+                    )
+                    .clicked()
+                {
+                    crate::app::request_open_microarray_settings_from_native_menu();
+                }
+            });
+            ui.small(
+                "Use one route: inspect prepared GENtle output; import completed summary plus coordinate annotation tables; or preflight raw CEL analysis. Projection and interpretation happen only after the corresponding files have been inspected.",
+            );
+            ui.horizontal_wrapped(|ui| {
+                let local_raw_data_ready = local_resources.publication_idf.exists
+                    && local_resources.publication_sdrf.exists
+                    && !local_resources.publication_cel_paths.is_empty();
+                if ui
+                    .add_enabled(
+                        local_raw_data_ready,
+                        egui::Button::new("Copy local TP73 preflight command"),
+                    )
+                    .on_hover_text(if local_raw_data_ready {
+                        "Copy a read-only arrays probe-regions plan command for the locally staged E-MTAB-14704 CEL files"
+                    } else {
+                        "The checkout does not currently contain E-MTAB-14704 metadata and CEL files"
+                    })
+                    .clicked()
+                {
+                    let command = Self::local_tp73_probe_region_preflight_command(
+                        &self.probe_region_output_dir,
+                    );
+                    ui.ctx().copy_text(command);
+                    self.op_status =
+                        "Copied the local E-MTAB-14704 TP73 read-only preflight command. Run it in GENtle Shell, review plan.json, then explicitly allow a backend if appropriate."
+                            .to_string();
+                }
+
+                let synthetic_ready = local_resources.has_synthetic_output();
+                if ui
+                    .add_enabled(
+                        synthetic_ready,
+                        egui::Button::new("Use synthetic TP73 demonstration output"),
+                    )
+                    .on_hover_text(if synthetic_ready {
+                        "Set output_dir to the committed deterministic TP73 fixture. This is a learning/test artifact, not biological evidence."
+                    } else {
+                        "The committed synthetic helper-output fixture is incomplete"
+                    })
+                    .clicked()
+                {
+                    self.probe_region_output_dir = local_resources
+                        .synthetic_output_dir
+                        .to_string_lossy()
+                        .into_owned();
+                    self.cached_probe_region_output_inspection = None;
+                    self.cached_probe_region_projection = None;
+                    self.cached_probe_region_interpretation = None;
+                    self.op_status =
+                        "Selected the synthetic TP73 demonstration output. Inspect it before projection; do not treat it as biological evidence."
+                            .to_string();
+                    self.save_engine_ops_state();
+                }
+            });
+            ui.small(format!(
+                "Detected locally: vendor annotation ZIPs {}/2 | E-MTAB-14704 CEL files {} (published example: 9) | analysis source tables {}/3 | synthetic output {}/{} required files",
+                local_resources.vendor_file_count(),
+                local_resources.publication_cel_paths.len(),
+                usize::from(local_resources.local_summary_tsv.exists)
+                    + usize::from(local_resources.local_annotation_tsv.exists)
+                    + usize::from(local_resources.local_metadata_tsv.exists),
+                local_resources.synthetic_output_files_present,
+                local_resources.synthetic_output_required_file_count(),
+            ));
+            ui.small(
+                egui::RichText::new(
+                    "GENtle only suggests detected files. It never downloads login-walled Thermo Fisher resources or silently replaces a path you entered.",
+                )
+                .color(egui::Color32::from_rgb(180, 83, 9)),
+            );
+            if local_resources.has_local_analysis_tables() {
+                ui.small(
+                    "The detected full-platform analyzed tables are listed in Configuration -> Microarrays but are not auto-filled here: their coordinate-less rows require selector-aware preflight rather than blind direct import.",
+                );
+            }
+        });
+        ui.add_space(6.0);
 
         ui.label(egui::RichText::new(Self::tr("sequence.clariom.import_summary")).strong());
         let mut import_fields_changed = false;

@@ -100,6 +100,8 @@ pub mod main_area_dna;
 pub mod mcp_server;
 /// Methylation-site detection and state helpers.
 pub mod methylation_sites;
+/// Bounded checkout-local discovery used by guided microarray setup surfaces.
+pub mod microarray_setup;
 /// microRNA seed-site scanning reports over annotated sequence records.
 pub mod mirna;
 /// NCBI sequence XML (`GBSet/GBSeq`, `INSDSet/INSDSeq`) parsing helpers.

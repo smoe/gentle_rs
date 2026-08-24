@@ -45,7 +45,7 @@ use crate::{
         TfbsTrackSimilarityRankingMetric, TfbsTrackSimilarityReport, VariantPromoterContextReport,
         parse_required_usize_or_formula_text_on_sequence,
     },
-    engine_shell::ShellCommand,
+    engine_shell::{ShellCommand, parse_shell_line},
     enzymes::active_restriction_enzymes,
     feature_expert::{
         FeatureExpertView, GeneLocusEvidenceDisplayReport, IsoformArchitectureExpertView,
@@ -2428,6 +2428,49 @@ fn array_layer_button_label_distinguishes_setup_view_and_total_counts() {
     assert_eq!(MainAreaDna::array_layer_button_label(0, 2), "Array (0/2)");
     assert_eq!(MainAreaDna::array_layer_button_label(1, 2), "Array (1/2)");
     assert_eq!(MainAreaDna::array_layer_button_label(2, 2), "Array (2)");
+}
+
+#[test]
+fn array_setup_opens_sequence_tools_and_requests_probe_region_focus() {
+    let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("array-setup".to_string()), None);
+    area.probe_region_apt_platform.clear();
+    area.probe_region_apt_normalization.clear();
+    area.probe_region_apt_coordinate_system.clear();
+    area.probe_region_apt_genome_build.clear();
+
+    area.open_array_setup();
+
+    assert!(area.show_engine_ops);
+    assert!(area.probe_region_setup_requested);
+    assert_eq!(area.probe_region_apt_platform, "Clariom_D_Human");
+    assert_eq!(area.probe_region_apt_normalization, "rma-sketch");
+    assert_eq!(area.probe_region_apt_coordinate_system, "hg38");
+    assert_eq!(area.probe_region_apt_genome_build, "GRCh38");
+    assert!(area.op_status.contains("Clariom D"));
+}
+
+#[test]
+fn local_tp73_array_preflight_suggestion_uses_shared_shell_contract() {
+    let line = MainAreaDna::local_tp73_probe_region_preflight_command("/tmp/gentle probe regions");
+    let parsed = parse_shell_line(&line).expect("suggested command should parse");
+
+    let ShellCommand::ArraysProbeRegions {
+        dataset,
+        genes,
+        platform,
+        output_dir,
+        dry_run,
+        ..
+    } = parsed
+    else {
+        panic!("expected arrays probe-regions command");
+    };
+    assert_eq!(dataset.as_deref(), Some("E-MTAB-14704"));
+    assert_eq!(genes, vec!["TP73"]);
+    assert_eq!(platform.as_deref(), Some("Clariom_D_Human"));
+    assert_eq!(output_dir.as_deref(), Some("/tmp/gentle probe regions"));
+    assert!(dry_run);
 }
 
 #[test]
