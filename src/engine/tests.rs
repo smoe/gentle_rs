@@ -61344,6 +61344,21 @@ fn experimental_handoff_order_form_requires_approved_digest_and_order_ready_rows
         .expect("build order-ready handoff")
         .experimental_assay_handoff
         .expect("handoff report");
+    let coverage = handoff
+        .coverage_summary
+        .as_ref()
+        .expect("coverage denominator summary");
+    assert!(!coverage.uniprot_coverage_available);
+    assert_eq!(
+        coverage.distinct_annotated_mature_cdna_count,
+        panel.equivalence_group_count
+    );
+    assert!(
+        coverage
+            .summary_lines
+            .iter()
+            .any(|line| line.contains("UniProt-linked target coverage is not available"))
+    );
     assert!(
         handoff
             .order_readiness_table
@@ -61416,6 +61431,76 @@ fn experimental_handoff_order_form_requires_approved_digest_and_order_ready_rows
         )
         .expect_err("candidate handoff must not create order lines");
     assert!(error.message.contains("no rows"));
+}
+
+#[test]
+fn experimental_handoff_coverage_summary_separates_uniprot_records_from_cdna_sequences() {
+    let transcript_ids = ["ENST_A", "ENST_PATCH", "ENST_B", "ENST_C"];
+    let group_ids = ["cdna_1", "cdna_2", "cdna_3"];
+    let panel = TranscriptAssayPanelReport {
+        coverage_universe: TranscriptAssayCoverageUniverse {
+            kind: TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms,
+            sources: vec![TranscriptAssayCoverageSourceRef {
+                expected_sha256: Some("sha256:coverage".to_string()),
+                report_id: Some("uniprot_audit_1".to_string()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        },
+        coverage_resolution: TranscriptAssayCoverageResolution {
+            targets: vec![TranscriptAssayCoverageTarget {
+                target_id: "uniprot_target_1".to_string(),
+                uniprot_entry_ids: vec!["Q00000".to_string()],
+                mapped_transcript_ids: transcript_ids.map(str::to_string).to_vec(),
+                equivalence_group_ids: group_ids.map(str::to_string).to_vec(),
+                coverage_status: TranscriptAssayCoverageEvaluationStatus::Covered,
+                ..Default::default()
+            }],
+            ..Default::default()
+        },
+        equivalence_groups: group_ids
+            .iter()
+            .map(|id| TranscriptAssayEquivalenceGroup {
+                equivalence_group_id: (*id).to_string(),
+                ..Default::default()
+            })
+            .collect(),
+        selected_assays: vec![TranscriptAssayPanelAssay {
+            single_product_equivalence_group_ids: group_ids.map(str::to_string).to_vec(),
+            ..Default::default()
+        }],
+        transcript_rows: transcript_ids
+            .iter()
+            .enumerate()
+            .map(|(index, id)| TranscriptAssayPanelTranscriptRow {
+                transcript_id: (*id).to_string(),
+                equivalence_group_id: group_ids[index.min(2)].to_string(),
+                covering_assay_ids: vec!["assay_1".to_string()],
+                ..Default::default()
+            })
+            .collect(),
+        provenance: TranscriptAssayPanelProvenance {
+            annotation_release: Some("Ensembl 116".to_string()),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    let summary = GentleEngine::experimental_assay_coverage_summary(&panel);
+
+    assert!(summary.uniprot_coverage_available);
+    assert_eq!(summary.uniprot_entry_count, 1);
+    assert_eq!(summary.uniprot_protein_target_count, 1);
+    assert_eq!(summary.uniprot_linked_transcript_record_count, 4);
+    assert_eq!(summary.distinct_uniprot_linked_mature_cdna_count, 3);
+    assert_eq!(summary.covered_uniprot_linked_transcript_record_count, 4);
+    assert_eq!(summary.covered_distinct_uniprot_linked_mature_cdna_count, 3);
+    assert!(summary.summary_lines.iter().any(|line| {
+        line.contains("3/3 distinct UniProt-linked mature transcript sequence(s)")
+            && line.contains("4/4 UniProt-linked transcript record(s)")
+    }));
+    assert_eq!(summary.coverage_source_report_ids, vec!["uniprot_audit_1"]);
+    assert_eq!(summary.coverage_source_sha256s, vec!["sha256:coverage"]);
 }
 
 #[cfg(unix)]

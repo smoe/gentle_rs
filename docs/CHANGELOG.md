@@ -1,5 +1,12 @@
 # GENtle Changelog
 
+- Added plain, provenance-bound primer coverage denominators to experimental
+  assay handoffs and publication QA: broader annotation transcript records and
+  distinct mature-cDNA sequences remain separate from UniProt protein targets,
+  linked transcript records, and distinct linked mature-cDNA sequences. Legacy
+  handoffs now render missing denominator evidence as unavailable rather than
+  zero, while existing specificity/QC/order-readiness gates remain unchanged.
+
 - Made DNA-viewer opening truthful and non-mutating: the opening status and
   shared runtime frame now remain active through deferred payload hydration and
   the first real-content paint, then clear on readiness, failure, or closure.

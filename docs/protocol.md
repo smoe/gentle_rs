@@ -10084,6 +10084,15 @@ Primer-pair alternative frontier:
     every selected pair, and emits one `gentle.experimental_assay_card.v1` per
     pair plus a compact order/readiness table. It does not redesign primers,
     submit an order, or record a wet-lab result.
+  - additive `coverage_summary` separates the broader annotation denominator
+    (transcript records and exact distinct mature-cDNA sequences) from the
+    UniProt-supported denominator (protein targets, linked transcript records,
+    and distinct linked mature-cDNA sequences). It carries uncovered ids,
+    annotation release, source report ids/digests, and plain summary lines.
+    Legacy handoffs deserialize without this field; renderers must show the
+    denominator as unavailable rather than displaying zero or inferring pass.
+    Patch-locus records remain separate transcript records and may share one
+    exact mature-cDNA sequence denominator.
   - canonical oligo identity removes all whitespace, uppercases, and maps
     `U` to `T`; full SHA-256-derived `oligo_id` and ordered `pair_id` values are
     authoritative for joins. Existing `primer_id` and `assay_id` fields remain

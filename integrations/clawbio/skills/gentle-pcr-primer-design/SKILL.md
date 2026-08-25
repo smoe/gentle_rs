@@ -171,6 +171,13 @@ This skill owns:
 7. Inspect the persisted GENtle report. Preserve all warnings, uncovered
    transcript classes, unresolved junctions, cDNA-reach cautions, and review
    states.
+   In human-facing summaries, consume GENtle's typed `coverage_summary` rather
+   than reconstructing counts from prose. Lead with transcript records and
+   distinct mature transcript sequences; keep equivalence-group ids as
+   parenthetical machine identities. Keep UniProt protein targets,
+   UniProt-linked transcript records, distinct linked mature-cDNA sequences,
+   and the broader annotation universe as separate denominators. Missing
+   legacy evidence is `not available`, never zero.
 8. When specificity is required, prepare genomic-DNA and transcriptome/cDNA
    handoffs separately. A `specificity-plan` result is a plan, not evidence.
    An external runner may execute BLAST; GENtle must then import/finalize the
@@ -183,6 +190,11 @@ This skill owns:
     approved handoff SHA-256 and accepts only order-ready rows under the
     handoff's embedded named policy. Preserve the handoff/policy/readiness-row
     provenance rather than copying an `order_ready` label.
+    Keep `generated candidate`, target coverage, transcriptome specificity,
+    genomic specificity, oligo QC, order readiness, and experimental
+    validation as separate states. Never paraphrase `generated` as
+    `order-ready`, and foreground any incomplete specificity gate or QC
+    warning before listing sequences.
 11. For a reviewed transcript panel, use `primers experimental-handoff` with
    JSON, order-table, and virtual-gel outputs. The default skill route requests
    one comparable gel lane per primer pair under one shared GENtle gel model.

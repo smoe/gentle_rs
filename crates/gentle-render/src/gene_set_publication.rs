@@ -741,6 +741,33 @@ fn quality_gate_status_class(status: &str) -> &'static str {
     }
 }
 
+fn render_assay_coverage_summary(report: &serde_json::Value) -> String {
+    let Some(summary) = report
+        .get("coverage_summary")
+        .filter(|value| !value.is_null())
+    else {
+        return "<section><h4>Coverage denominators</h4><p class=\"status warning\">Coverage denominator summary is not available in this legacy handoff. No zero or passing coverage is inferred.</p></section>".to_string();
+    };
+    let lines = summary
+        .get("summary_lines")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|line| format!("<li>{}</li>", html_escape(&json_scalar(Some(line)))))
+        .collect::<String>();
+    let source_reports = json_scalar(summary.get("coverage_source_report_ids"));
+    let source_hashes = json_scalar(summary.get("coverage_source_sha256s"));
+    let annotation_release = json_scalar(summary.get("annotation_release"));
+    format!(
+        "<section data-gentle-coverage-universe=\"{}\"><h4>Coverage denominators</h4><ul>{}</ul><p class=\"muted\"><b>Annotation release:</b> <code>{}</code> · <b>coverage reports:</b> <code>{}</code> · <b>source SHA-256:</b> <code>{}</code></p></section>",
+        html_escape(&json_scalar(summary.get("coverage_universe_kind"))),
+        lines,
+        html_escape(&annotation_release),
+        html_escape(&source_reports),
+        html_escape(&source_hashes),
+    )
+}
+
 fn render_quality_assurance(value: &serde_json::Value) -> String {
     let mut handoffs = String::new();
     for bound in value.as_array().into_iter().flatten() {
@@ -751,6 +778,7 @@ fn render_quality_assurance(value: &serde_json::Value) -> String {
         let policy_id = json_scalar(report.get("policy_id"));
         let policy_schema = json_scalar(report.pointer("/policy/schema"));
         let policy_version = json_scalar(report.pointer("/policy/policy_version"));
+        let coverage_summary = render_assay_coverage_summary(report);
         let mut cards = String::new();
         for card in report
             .get("cards")
@@ -857,7 +885,7 @@ fn render_quality_assurance(value: &serde_json::Value) -> String {
             .map(|rows| format!("<h3>Handoff warnings</h3><ul>{rows}</ul>"))
             .unwrap_or_default();
         handoffs.push_str(&format!(
-            "<section data-gentle-qa-handoff=\"{}\"><h3>Handoff <code>{}</code></h3><p><b>Source panel:</b> <code>{}</code> · <b>panel SHA-256:</b> <code>{}</code><br><b>Readiness policy:</b> <code>{}</code> · schema <code>{}</code> · version <code>{}</code></p>{}{}</section>",
+            "<section data-gentle-qa-handoff=\"{}\"><h3>Handoff <code>{}</code></h3><p><b>Source panel:</b> <code>{}</code> · <b>panel SHA-256:</b> <code>{}</code><br><b>Readiness policy:</b> <code>{}</code> · schema <code>{}</code> · version <code>{}</code></p>{}{}{}</section>",
             html_escape(&package_id),
             html_escape(&package_id),
             html_escape(&source_panel_report_id),
@@ -865,6 +893,7 @@ fn render_quality_assurance(value: &serde_json::Value) -> String {
             html_escape(&policy_id),
             html_escape(&policy_schema),
             html_escape(&policy_version),
+            coverage_summary,
             cards,
             report_warnings,
         ));
@@ -1310,6 +1339,15 @@ mod tests {
                     "schema": "gentle.experimental_assay_readiness_policy.v1",
                     "policy_version": "1"
                 },
+                "coverage_summary": {
+                    "coverage_universe_kind": "uniprot_supported_isoforms",
+                    "annotation_release": "Ensembl 116",
+                    "coverage_source_report_ids": ["uniprot_audit_1"],
+                    "coverage_source_sha256s": ["sha256:coverage"],
+                    "summary_lines": [
+                        "3/3 distinct UniProt-linked mature transcript sequences are covered, corresponding by sequence to 4/4 linked transcript records."
+                    ]
+                },
                 "cards": [{
                     "assay_id": "assay_1",
                     "pair_id": "pair_1",
@@ -1330,11 +1368,29 @@ mod tests {
         }]));
         assert!(html.contains("Quality assurance"));
         assert!(html.contains("data-gentle-qa-handoff=\"handoff_1\""));
+        assert!(html.contains("data-gentle-coverage-universe=\"uniprot_supported_isoforms\""));
+        assert!(html.contains("3/3 distinct UniProt-linked"));
+        assert!(html.contains("uniprot_audit_1"));
         assert!(html.contains("data-gentle-qa-card=\"assay_1\""));
         assert!(html.contains("data-gentle-qa-gate=\"transcriptome_specificity\""));
         assert!(html.contains("class=\"status warning\">incomplete"));
         assert!(html.contains("specificity_1"));
         assert!(html.contains("Blocker:"));
         assert!(html.contains("Warning:"));
+    }
+
+    #[test]
+    fn legacy_handoff_renders_coverage_as_unavailable_not_zero() {
+        let html = render_quality_assurance(&serde_json::json!([{
+            "value": {
+                "package_id": "legacy_handoff",
+                "source_panel_report_id": "legacy_panel",
+                "cards": []
+            }
+        }]));
+
+        assert!(html.contains("Coverage denominator summary is not available"));
+        assert!(html.contains("No zero or passing coverage is inferred"));
+        assert!(!html.contains("0/0"));
     }
 }
