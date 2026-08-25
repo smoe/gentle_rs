@@ -31877,6 +31877,171 @@ impl GentleEngine {
         Ok(reports)
     }
 
+    pub(crate) fn experimental_assay_coverage_summary(
+        panel: &TranscriptAssayPanelReport,
+    ) -> ExperimentalAssayCoverageSummary {
+        let covered_transcript_ids = panel
+            .transcript_rows
+            .iter()
+            .filter(|row| !row.covering_assay_ids.is_empty())
+            .map(|row| row.transcript_id.clone())
+            .collect::<BTreeSet<_>>();
+        let annotated_transcript_ids = panel
+            .transcript_rows
+            .iter()
+            .map(|row| row.transcript_id.clone())
+            .collect::<BTreeSet<_>>();
+        let covered_group_ids = panel
+            .selected_assays
+            .iter()
+            .flat_map(|assay| assay.single_product_equivalence_group_ids.iter().cloned())
+            .collect::<BTreeSet<_>>();
+        let annotated_group_ids = panel
+            .equivalence_groups
+            .iter()
+            .map(|group| group.equivalence_group_id.clone())
+            .collect::<BTreeSet<_>>();
+        let mut uncovered_transcript_ids = annotated_transcript_ids
+            .difference(&covered_transcript_ids)
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut uncovered_group_ids = annotated_group_ids
+            .difference(&covered_group_ids)
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let uniprot_available = panel.coverage_universe.kind
+            == TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms;
+        let uniprot_entry_ids = panel
+            .coverage_resolution
+            .targets
+            .iter()
+            .flat_map(|target| target.uniprot_entry_ids.iter().cloned())
+            .collect::<BTreeSet<_>>();
+        let uniprot_linked_transcript_ids = panel
+            .coverage_resolution
+            .targets
+            .iter()
+            .flat_map(|target| target.mapped_transcript_ids.iter().cloned())
+            .collect::<BTreeSet<_>>();
+        let uniprot_group_ids = panel
+            .coverage_resolution
+            .targets
+            .iter()
+            .flat_map(|target| target.equivalence_group_ids.iter().cloned())
+            .collect::<BTreeSet<_>>();
+        let covered_uniprot_linked_transcript_count = uniprot_linked_transcript_ids
+            .intersection(&covered_transcript_ids)
+            .count();
+        let covered_uniprot_group_count =
+            uniprot_group_ids.intersection(&covered_group_ids).count();
+        let uncovered_uniprot_linked_transcript_ids = uniprot_linked_transcript_ids
+            .difference(&covered_transcript_ids)
+            .cloned()
+            .collect::<Vec<_>>();
+        let uncovered_uniprot_group_ids = uniprot_group_ids
+            .difference(&covered_group_ids)
+            .cloned()
+            .collect::<Vec<_>>();
+        let covered_uniprot_target_count = panel
+            .coverage_resolution
+            .targets
+            .iter()
+            .filter(|target| {
+                target.coverage_status == TranscriptAssayCoverageEvaluationStatus::Covered
+            })
+            .count();
+        let mut source_report_ids = panel
+            .coverage_universe
+            .sources
+            .iter()
+            .filter_map(|source| source.report_id.clone())
+            .collect::<Vec<_>>();
+        let mut source_sha256s = panel
+            .coverage_universe
+            .sources
+            .iter()
+            .filter_map(|source| source.expected_sha256.clone())
+            .collect::<Vec<_>>();
+        uncovered_transcript_ids.sort();
+        uncovered_group_ids.sort();
+        source_report_ids.sort();
+        source_report_ids.dedup();
+        source_sha256s.sort();
+        source_sha256s.dedup();
+
+        let mut summary_lines = vec![
+            format!(
+                "GENtle evaluated {} distinct annotated mature transcript sequence(s) and predicts that the panel amplifies {}.",
+                annotated_group_ids.len(),
+                covered_group_ids.intersection(&annotated_group_ids).count()
+            ),
+            format!(
+                "Those sequences represent {} annotation transcript record(s); {} record(s) have at least one covering assay.",
+                annotated_transcript_ids.len(),
+                covered_transcript_ids
+                    .intersection(&annotated_transcript_ids)
+                    .count()
+            ),
+        ];
+        if !uncovered_transcript_ids.is_empty() {
+            summary_lines.push(format!(
+                "Annotated transcript record(s) not covered: {}.",
+                uncovered_transcript_ids.join(", ")
+            ));
+        }
+        if uniprot_available {
+            summary_lines.push(format!(
+                "{}/{} distinct UniProt-linked mature transcript sequence(s) are covered, corresponding by sequence to {}/{} UniProt-linked transcript record(s).",
+                covered_uniprot_group_count,
+                uniprot_group_ids.len(),
+                covered_uniprot_linked_transcript_count,
+                uniprot_linked_transcript_ids.len()
+            ));
+            summary_lines.push(format!(
+                "{}/{} UniProt protein target(s) are covered; shared coverage does not imply that the targets are distinguished.",
+                covered_uniprot_target_count,
+                panel.coverage_resolution.targets.len()
+            ));
+        } else {
+            summary_lines.push(
+                "UniProt-linked target coverage is not available for this panel; no zero or pass is inferred."
+                    .to_string(),
+            );
+        }
+
+        ExperimentalAssayCoverageSummary {
+            coverage_universe_kind: panel.coverage_universe.kind.as_str().to_string(),
+            annotation_release: panel.provenance.annotation_release.clone(),
+            annotated_transcript_record_count: annotated_transcript_ids.len(),
+            covered_annotated_transcript_record_count: covered_transcript_ids
+                .intersection(&annotated_transcript_ids)
+                .count(),
+            distinct_annotated_mature_cdna_count: annotated_group_ids.len(),
+            covered_distinct_annotated_mature_cdna_count: covered_group_ids
+                .intersection(&annotated_group_ids)
+                .count(),
+            uncovered_annotated_transcript_ids: uncovered_transcript_ids,
+            uncovered_distinct_mature_cdna_ids: uncovered_group_ids,
+            uniprot_coverage_available: uniprot_available,
+            uniprot_entry_count: uniprot_entry_ids.len(),
+            uniprot_protein_target_count: panel.coverage_resolution.targets.len(),
+            covered_uniprot_protein_target_count: covered_uniprot_target_count,
+            uniprot_linked_transcript_record_count: uniprot_linked_transcript_ids.len(),
+            covered_uniprot_linked_transcript_record_count: covered_uniprot_linked_transcript_count,
+            uncovered_uniprot_linked_transcript_ids,
+            distinct_uniprot_linked_mature_cdna_count: uniprot_group_ids.len(),
+            covered_distinct_uniprot_linked_mature_cdna_count: covered_uniprot_group_count,
+            uncovered_distinct_uniprot_linked_mature_cdna_ids: uncovered_uniprot_group_ids,
+            uncovered_uniprot_target_ids: panel.coverage_resolution.uncovered_target_ids.clone(),
+            unresolved_uniprot_target_ids: panel.coverage_resolution.unresolved_target_ids.clone(),
+            ambiguous_uniprot_target_ids: panel.coverage_resolution.ambiguous_target_ids.clone(),
+            coverage_source_report_ids: source_report_ids,
+            coverage_source_sha256s: source_sha256s,
+            summary_lines,
+        }
+    }
+
     pub fn build_experimental_assay_handoff(
         &self,
         panel_report_id: &str,
@@ -31900,6 +32065,7 @@ impl GentleEngine {
             policy.policy_version = "1".to_string();
         }
         let panel = self.get_transcript_assay_panel_report(panel_report_id)?;
+        let coverage_summary = Self::experimental_assay_coverage_summary(&panel);
         let panel_bytes = serde_json::to_vec(&panel).map_err(|error| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not fingerprint transcript assay panel: {error}"),
@@ -32394,6 +32560,7 @@ impl GentleEngine {
             source_order_form_sha256,
             policy,
             policy_id,
+            coverage_summary: Some(coverage_summary),
             order_readiness_table,
             cards,
             assay_tests,

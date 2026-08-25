@@ -12632,6 +12632,50 @@ pub struct ExperimentalAssayOrderReadinessRow {
     pub predicted_product_lengths_bp: Vec<usize>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Plain-denominator coverage projection bound to one source assay panel.
+///
+/// Exact mature-cDNA equivalence identifiers remain available in the source
+/// panel, but users should not need that internal term to understand coverage.
+pub struct ExperimentalAssayCoverageSummary {
+    pub coverage_universe_kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotation_release: Option<String>,
+    pub annotated_transcript_record_count: usize,
+    pub covered_annotated_transcript_record_count: usize,
+    pub distinct_annotated_mature_cdna_count: usize,
+    pub covered_distinct_annotated_mature_cdna_count: usize,
+    #[serde(default)]
+    pub uncovered_annotated_transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub uncovered_distinct_mature_cdna_ids: Vec<String>,
+    pub uniprot_coverage_available: bool,
+    pub uniprot_entry_count: usize,
+    pub uniprot_protein_target_count: usize,
+    pub covered_uniprot_protein_target_count: usize,
+    pub uniprot_linked_transcript_record_count: usize,
+    pub covered_uniprot_linked_transcript_record_count: usize,
+    #[serde(default)]
+    pub uncovered_uniprot_linked_transcript_ids: Vec<String>,
+    pub distinct_uniprot_linked_mature_cdna_count: usize,
+    pub covered_distinct_uniprot_linked_mature_cdna_count: usize,
+    #[serde(default)]
+    pub uncovered_distinct_uniprot_linked_mature_cdna_ids: Vec<String>,
+    #[serde(default)]
+    pub uncovered_uniprot_target_ids: Vec<String>,
+    #[serde(default)]
+    pub unresolved_uniprot_target_ids: Vec<String>,
+    #[serde(default)]
+    pub ambiguous_uniprot_target_ids: Vec<String>,
+    #[serde(default)]
+    pub coverage_source_report_ids: Vec<String>,
+    #[serde(default)]
+    pub coverage_source_sha256s: Vec<String>,
+    #[serde(default)]
+    pub summary_lines: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default)]
 /// Provenance-bound virtual-gel projection of one experimental assay handoff.
@@ -12677,6 +12721,8 @@ pub struct ExperimentalAssayHandoffReport {
     #[serde(default)]
     pub policy: ExperimentalAssayReadinessPolicy,
     pub policy_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coverage_summary: Option<ExperimentalAssayCoverageSummary>,
     #[serde(default)]
     pub order_readiness_table: Vec<ExperimentalAssayOrderReadinessRow>,
     #[serde(default)]
