@@ -128,13 +128,15 @@ Required input:
 Useful commands:
 
 ```text
-/fetch ensembl FUS --species homo_sapiens --id fus_live
+/fetch ensembl TP73 --species homo_sapiens --assembly GRCh38 --flank-bp 10000 --id tp73_grch38
 /fetch genbank ACCESSION --id record_id
 /fetch uniprot QUERY --id protein_id
 /fetch ensembl-region homo_sapiens CHR START END --id region_id
 ```
 
 For human genes, prefer `homo_sapiens` over informal labels such as `HUMAN`.
+Use this network route only when no compatible prepared reference is present;
+`--assembly` verifies the resolved build and the flanks follow gene orientation.
 
 Validation checks:
 
@@ -160,9 +162,15 @@ Command families:
 genomes status GENOME_ID --catalog PATH --cache-dir PATH
 genomes prepare GENOME_ID --catalog PATH --cache-dir PATH
 genomes genes GENOME_ID --filter "^FUS$" --limit 20 --catalog PATH --cache-dir PATH
-genomes extract-gene GENOME_ID FUS --occurrence 1 --output-id fus_grch38 --catalog PATH --cache-dir PATH
+genomes extract-gene "Human GRCh38 Ensembl 116" TP73 --occurrence 1 --output-id tp73_grch38
+genomes extend-anchor tp73_grch38 5p 10000 --output-id tp73_grch38_5p
+genomes extend-anchor tp73_grch38_5p 3p 10000 --output-id tp73_grch38_context
+ui open sequence-window tp73_grch38_context
 genomes extract-region GENOME_ID CHR START END --output-id region_id --catalog PATH --cache-dir PATH
 ```
+
+Quote catalog ids that contain spaces. Run the extraction, extension, and open
+rows separately so each output id exists before the next command consumes it.
 
 Stop and ask when:
 

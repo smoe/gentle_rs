@@ -6216,7 +6216,7 @@ fn build_shell_alias_registry() -> Vec<ShellAliasDescriptor> {
         "/paste sequence --sequence-text DNA [--id ID]",
         "/features restriction-scan SEQ_ID [--enzyme NAME]",
         "/fetch genbank ACCESSION [--id ID]",
-        "/fetch ensembl QUERY [--species NAME] [--id ID]",
+        "/fetch ensembl QUERY [--species NAME] [--assembly NAME] [--flank-bp N] [--id ID]",
         "/fetch uniprot QUERY [--id ID]",
     ];
     vec![
@@ -6478,9 +6478,9 @@ fn build_shell_alias_registry() -> Vec<ShellAliasDescriptor> {
         ),
         shell_alias_descriptor_row(
             "/fetch ensembl",
-            "/fetch ensembl QUERY [--species NAME] [--id ID]",
-            "ensembl-gene fetch QUERY [--species NAME] [--entry-id ID]",
-            "Fetch an Ensembl gene lookup record by HGNC-approved symbol or stable Ensembl gene id; --species uses names such as homo_sapiens and --id names the local GENtle metadata entry.",
+            "/fetch ensembl QUERY [--species NAME] [--assembly NAME] [--flank-bp N] [--id ID]",
+            "ensembl-gene fetch QUERY [--species NAME] [--assembly NAME] [--flank-bp N] [--entry-id ID]",
+            "Fetch an Ensembl gene lookup record and genomic sequence by HGNC-approved symbol or stable Ensembl gene id; --assembly verifies the resolved assembly, --flank-bp requests symmetric gene-oriented context, and --id names the local GENtle metadata entry.",
             CapabilityMutation::External,
             &["FetchEnsemblGene"],
             &["ensembl-gene fetch"],
@@ -6494,9 +6494,9 @@ fn build_shell_alias_registry() -> Vec<ShellAliasDescriptor> {
         ),
         shell_alias_descriptor_row(
             "/fetch ensembl-gene",
-            "/fetch ensembl-gene QUERY [--species NAME] [--id ID]",
-            "ensembl-gene fetch QUERY [--species NAME] [--entry-id ID]",
-            "Fetch an Ensembl gene lookup record by HGNC-approved symbol or stable Ensembl gene id; --species uses names such as homo_sapiens and --id names the local GENtle metadata entry.",
+            "/fetch ensembl-gene QUERY [--species NAME] [--assembly NAME] [--flank-bp N] [--id ID]",
+            "ensembl-gene fetch QUERY [--species NAME] [--assembly NAME] [--flank-bp N] [--entry-id ID]",
+            "Fetch an Ensembl gene lookup record and genomic sequence by HGNC-approved symbol or stable Ensembl gene id; --assembly verifies the resolved assembly, --flank-bp requests symmetric gene-oriented context, and --id names the local GENtle metadata entry.",
             CapabilityMutation::External,
             &["FetchEnsemblGene"],
             &["ensembl-gene fetch"],

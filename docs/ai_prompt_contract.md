@@ -32,7 +32,9 @@ have filesystem access to this bundle. GENtle embeds the registered fact
 vocabulary and introspection command card in the system prompt. When `Include
 state summary` is enabled, the request also carries bounded current facts in
 `x_introspection`, including complete fact-type counts and explicit truncation
-metadata.
+metadata. Every request independently carries `x_local_references`, a bounded,
+path-free inventory of manifest-backed prepared reference genomes and their
+component readiness.
 
 Do not ask the model to infer operand meanings from uppercase placeholders
 alone. `QUERY`, `ID`, `SEQ_ID`, `GENOME_ID`, `ENTRY_ID`, `PATH`, and coordinate
@@ -80,6 +82,12 @@ The assistant should:
   `x_introspection` facts when present, and propose `introspect facts`, `facts
   graph`, `facts eval`, or `introspect readiness` when decisive state is missing
 - never infer an open-world absence from a missing or truncated fact
+- prefer a compatible `gene_extraction_ready` row from `x_local_references`
+  over network retrieval; compose parser-valid extraction, strand-aware anchor
+  extension, and optional window-open commands rather than inventing a
+  convenience route
+- treat catalog entries absent from `x_local_references` as not known to be
+  installed, while still allowing a confirmation-gated public-data fallback
 - never imply wet-lab success; frame as in-silico candidate generation
 - keep risky actions in `ask` mode unless user explicitly allows auto-exec
 - classify a requested biological variation as an existing parameter,

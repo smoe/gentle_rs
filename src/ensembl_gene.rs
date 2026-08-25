@@ -67,6 +67,10 @@ pub struct EnsemblGeneEntry {
     pub seq_region_name: Option<String>,
     pub genomic_start_1based: Option<usize>,
     pub genomic_end_1based: Option<usize>,
+    pub sequence_genomic_start_1based: Option<usize>,
+    pub sequence_genomic_end_1based: Option<usize>,
+    pub flank_5prime_bp: usize,
+    pub flank_3prime_bp: usize,
     pub sequence: String,
     pub sequence_length: usize,
     #[serde(default)]
@@ -93,6 +97,10 @@ pub struct EnsemblGeneEntrySummary {
     pub seq_region_name: Option<String>,
     pub genomic_start_1based: Option<usize>,
     pub genomic_end_1based: Option<usize>,
+    pub sequence_genomic_start_1based: Option<usize>,
+    pub sequence_genomic_end_1based: Option<usize>,
+    pub flank_5prime_bp: usize,
+    pub flank_3prime_bp: usize,
     pub transcript_count: usize,
     pub sequence_length: usize,
     pub imported_at_unix_ms: u128,
@@ -476,16 +484,68 @@ pub fn parse_region_sequence_json(text: &str) -> Result<EnsemblRegionSequencePay
     })
 }
 
+fn parse_sequence_description_span(description: Option<&str>) -> Option<(usize, usize, i8)> {
+    let mut parts = description?.trim().rsplit(':');
+    let strand = parts.next()?.parse::<i8>().ok()?;
+    let end_1based = parts.next()?.parse::<usize>().ok()?;
+    let start_1based = parts.next()?.parse::<usize>().ok()?;
+    if start_1based == 0 || end_1based < start_1based || !matches!(strand, -1 | 1) {
+        return None;
+    }
+    Some((start_1based, end_1based, strand))
+}
+
 pub fn build_entry_from_rest_payloads(
     source_query: &str,
     lookup_source_url: &str,
     lookup_json: &str,
     sequence_source_url: &str,
     sequence_json: &str,
+    requested_flank_5prime_bp: usize,
+    requested_flank_3prime_bp: usize,
     entry_id_override: Option<&str>,
 ) -> Result<EnsemblGeneEntry, String> {
     let lookup = parse_gene_lookup_json(lookup_json)?;
     let sequence = parse_gene_sequence_json(sequence_json)?;
+    let description_span = parse_sequence_description_span(sequence.description.as_deref());
+    let fallback_sequence_span = lookup
+        .genomic_start_1based
+        .zip(lookup.genomic_end_1based)
+        .map(|(gene_start, _gene_end)| {
+            let lower_flank = if lookup.strand == Some(-1) {
+                requested_flank_3prime_bp
+            } else {
+                requested_flank_5prime_bp
+            };
+            let sequence_start = gene_start.saturating_sub(lower_flank).max(1);
+            let sequence_end =
+                sequence_start.saturating_add(sequence.sequence.len().saturating_sub(1));
+            (sequence_start, sequence_end)
+        });
+    let sequence_span = description_span
+        .map(|(start, end, _)| (start, end))
+        .or(fallback_sequence_span);
+    let (flank_5prime_bp, flank_3prime_bp) = lookup
+        .genomic_start_1based
+        .zip(lookup.genomic_end_1based)
+        .zip(sequence_span)
+        .map(|((gene_start, gene_end), (sequence_start, sequence_end))| {
+            if sequence_start > gene_start || sequence_end < gene_end {
+                return (0, 0);
+            }
+            if lookup.strand == Some(-1) {
+                (
+                    sequence_end.saturating_sub(gene_end),
+                    gene_start.saturating_sub(sequence_start),
+                )
+            } else {
+                (
+                    gene_start.saturating_sub(sequence_start),
+                    sequence_end.saturating_sub(gene_end),
+                )
+            }
+        })
+        .unwrap_or((requested_flank_5prime_bp, requested_flank_3prime_bp));
     let default_entry_id = entry_id_override
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -526,6 +586,10 @@ pub fn build_entry_from_rest_payloads(
         seq_region_name: lookup.seq_region_name,
         genomic_start_1based: lookup.genomic_start_1based,
         genomic_end_1based: lookup.genomic_end_1based,
+        sequence_genomic_start_1based: sequence_span.map(|(start, _)| start),
+        sequence_genomic_end_1based: sequence_span.map(|(_, end)| end),
+        flank_5prime_bp,
+        flank_3prime_bp,
         sequence: sequence.sequence.clone(),
         sequence_length: sequence.sequence.len(),
         transcripts: lookup.transcripts,
@@ -602,6 +666,8 @@ mod tests {
             lookup_json,
             "https://rest.ensembl.org/sequence/id/ENSG00000141510?content-type=application/json;type=genomic",
             sequence_json,
+            0,
+            0,
             None,
         )
         .expect("build entry");
@@ -615,6 +681,45 @@ mod tests {
         assert_eq!(entry.transcripts[0].transcript_id, "ENST00000269305");
         assert_eq!(entry.sequence_length, 12);
         assert!(entry.aliases.contains(&"tp53".to_string()));
+    }
+
+    #[test]
+    fn parse_rest_payloads_records_strand_aware_negative_gene_flanks() {
+        let lookup_json = r#"{
+          "id":"ENSGTESTNEG",
+          "display_name":"TP73",
+          "species":"homo_sapiens",
+          "assembly_name":"GRCh38",
+          "strand":-1,
+          "seq_region_name":"1",
+          "start":100,
+          "end":199,
+          "Transcript":[]
+        }"#;
+        let sequence_json = serde_json::json!({
+            "id": "ENSGTESTNEG",
+            "desc": "chromosome:GRCh38:1:80:229:-1",
+            "seq": "A".repeat(150),
+            "molecule": "dna"
+        })
+        .to_string();
+        let entry = build_entry_from_rest_payloads(
+            "TP73",
+            "https://rest.ensembl.org/lookup/symbol/homo_sapiens/TP73",
+            lookup_json,
+            "https://rest.ensembl.org/sequence/id/ENSGTESTNEG",
+            &sequence_json,
+            30,
+            20,
+            Some("tp73_flanked"),
+        )
+        .expect("build flanked negative-strand entry");
+
+        assert_eq!(entry.sequence_genomic_start_1based, Some(80));
+        assert_eq!(entry.sequence_genomic_end_1based, Some(229));
+        assert_eq!(entry.flank_5prime_bp, 30);
+        assert_eq!(entry.flank_3prime_bp, 20);
+        assert_eq!(entry.sequence_length, 150);
     }
 
     #[test]

@@ -1,5 +1,14 @@
 # GENtle Changelog
 
+- Grounded every Agent Assistant request in a bounded, path-free inventory of
+  manifest-backed local references, and supplied Pi Local with the same shared
+  parser contract as native providers. Agents are now instructed to prefer a
+  prepared-genome `extract-gene` plus strand-aware `extend-anchor` chain before
+  suggesting network retrieval. Direct Ensembl gene fetch remains available as
+  a confirmation-gated fallback and now accepts an assembly assertion plus
+  symmetric or directional 5-prime/3-prime flanks; imported annotations retain
+  the actual expanded genomic span on both strands.
+
 - Fixed the DNA-viewer opening status so unrelated pending hosted-window probes
   cannot keep `Opening DNA Sequence Viewer…` visible after the sequence viewer
   has completed its first render.

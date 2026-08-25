@@ -2975,6 +2975,13 @@ Behavior:
     it needs information beyond the bounded projection
   - missing open-world facts are unknown rather than false; this context does
     not bypass shared parser/engine validation or confirmation requirements
+- every request includes a bounded `x_local_references` inventory of prepared,
+  manifest-backed reference genomes even when `Include state summary` is off
+  - only catalog identity and component readiness are exposed; local paths are
+    omitted and inventory construction performs no downloads
+  - the agent is instructed to prefer a compatible local gene extraction plus
+    strand-aware anchor-extension chain over external retrieval
+  - catalog-only rows are not presented as installed references
 - optional `Allow auto execute` only applies to suggestions marked with `auto`
 - successful conversation turns are shown in chronological order and stored as
   `gentle.agent_conversation.v1` metadata with the current project
@@ -3031,8 +3038,10 @@ Behavior:
   - `/fetch genbank`, `/fetch ncbi`, `/fetch uniprot`, `/fetch ensembl*`, and
     `/fetch dbsnp` normalize to existing external fetch routes and should be
     confirmation-gated
-  - `/fetch ensembl ... --no-open` imports the fetched Ensembl gene record
-    without automatically opening a DNA sequence viewer
+  - `/fetch ensembl ... --assembly NAME --flank-bp N` verifies the resolved
+    assembly and requests strand-aware genomic context around the gene;
+    `--no-open` imports the record without automatically opening a DNA sequence
+    viewer
   - `/grep`, `/find`, `/ls`, `/new`, `/example`, and vague file-discovery
     requests are rejected rather than treated as ClawBio/OpenClaw commands
 - response panel can include:
@@ -3140,7 +3149,10 @@ and sends its bounded recent turns with each request. It also uses `--no-tools`,
 `--no-context-files`, `--no-extensions`, `--no-skills`, and
 `--no-prompt-templates`; the Agent Assistant can therefore suggest validated
 GENtle commands but cannot edit files or run operating-system commands through
-Pi. It can return reviewable `ui ...` or `display ...` suggestions for exposed
+Pi. GENtle supplies Pi with the same shared command contract used by native
+providers, including exact local genome-extraction/anchor-extension and Ensembl
+assembly/flank syntax, so Pi does not need to guess parser routes. It can return
+reviewable `ui ...` or `display ...` suggestions for exposed
 GUI intents. Where no intent exists, it must describe one manual step and ask
 what the user sees rather than claiming to have clicked or observed it. A
 source-editing inner coding agent would be a separate future mode with a

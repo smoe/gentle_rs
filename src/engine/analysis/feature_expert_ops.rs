@@ -1535,6 +1535,10 @@ impl GentleEngine {
                 seq_region_name: entry.seq_region_name.clone(),
                 genomic_start_1based: entry.genomic_start_1based,
                 genomic_end_1based: entry.genomic_end_1based,
+                sequence_genomic_start_1based: entry.sequence_genomic_start_1based,
+                sequence_genomic_end_1based: entry.sequence_genomic_end_1based,
+                flank_5prime_bp: entry.flank_5prime_bp,
+                flank_3prime_bp: entry.flank_3prime_bp,
                 transcript_count: entry.transcripts.len(),
                 sequence_length: entry.sequence_length,
                 imported_at_unix_ms: entry.imported_at_unix_ms,
@@ -3850,6 +3854,9 @@ impl GentleEngine {
     pub(super) fn fetch_ensembl_gene_entry_from_rest(
         query: &str,
         species: Option<&str>,
+        assembly: Option<&str>,
+        flank_5prime_bp: usize,
+        flank_3prime_bp: usize,
         entry_id_override: Option<&str>,
     ) -> Result<EnsemblGeneEntry, EngineError> {
         let query = query.trim();
@@ -3904,10 +3911,42 @@ impl GentleEngine {
 
                 cause_chain: vec![],
             })?;
-        let sequence_url = format!(
+        if let Some(requested_assembly) = assembly.map(str::trim).filter(|value| !value.is_empty())
+        {
+            let resolved_assembly = lookup
+                .assembly_name
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Ensembl did not report an assembly for gene '{}'; cannot verify requested assembly '{}'",
+                        lookup.gene_id, requested_assembly
+                    ),
+                    cause_chain: vec![],
+                })?;
+            if !resolved_assembly.eq_ignore_ascii_case(requested_assembly) {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Ensembl resolved gene '{}' on assembly '{}', not requested assembly '{}'",
+                        lookup.gene_id, resolved_assembly, requested_assembly
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+        }
+        let mut sequence_url = format!(
             "{base_url}/sequence/id/{}?content-type=application/json;type=genomic",
             lookup.gene_id
         );
+        if flank_5prime_bp > 0 {
+            sequence_url.push_str(&format!(";expand_5prime={flank_5prime_bp}"));
+        }
+        if flank_3prime_bp > 0 {
+            sequence_url.push_str(&format!(";expand_3prime={flank_3prime_bp}"));
+        }
         let sequence_json =
             Self::fetch_ensembl_rest_text(&sequence_url, "gene genomic sequence", query)?;
         build_ensembl_gene_entry_from_rest_payloads(
@@ -3916,6 +3955,8 @@ impl GentleEngine {
             &lookup_json,
             &sequence_url,
             &sequence_json,
+            flank_5prime_bp,
+            flank_3prime_bp,
             entry_id_override,
         )
         .map_err(|e| EngineError {
@@ -4292,20 +4333,24 @@ impl GentleEngine {
         start_1based: usize,
         end_1based: usize,
     ) -> Option<(i64, i64)> {
-        let gene_start = entry.genomic_start_1based?;
-        let gene_end = entry.genomic_end_1based?;
-        if start_1based < gene_start || end_1based > gene_end || end_1based < start_1based {
+        let sequence_start = entry
+            .sequence_genomic_start_1based
+            .or(entry.genomic_start_1based)?;
+        let sequence_end = entry
+            .sequence_genomic_end_1based
+            .or(entry.genomic_end_1based)?;
+        if start_1based < sequence_start || end_1based > sequence_end || end_1based < start_1based {
             return None;
         }
         let (local_start, local_end) = if entry.strand == Some(-1) {
             (
-                gene_end.checked_sub(end_1based)?,
-                gene_end.checked_sub(start_1based)?.checked_add(1)?,
+                sequence_end.checked_sub(end_1based)?,
+                sequence_end.checked_sub(start_1based)?.checked_add(1)?,
             )
         } else {
             (
-                start_1based.checked_sub(gene_start)?,
-                end_1based.checked_sub(gene_start)?.checked_add(1)?,
+                start_1based.checked_sub(sequence_start)?,
+                end_1based.checked_sub(sequence_start)?.checked_add(1)?,
             )
         };
         if local_end <= local_start || local_end > entry.sequence_length {
@@ -4633,6 +4678,23 @@ impl GentleEngine {
             if let Some(end) = entry.genomic_end_1based {
                 qualifiers.push(("genomic_end_1based".into(), Some(end.to_string())));
             }
+            if let Some(start) = entry.sequence_genomic_start_1based {
+                qualifiers.push((
+                    "sequence_genomic_start_1based".into(),
+                    Some(start.to_string()),
+                ));
+            }
+            if let Some(end) = entry.sequence_genomic_end_1based {
+                qualifiers.push(("sequence_genomic_end_1based".into(), Some(end.to_string())));
+            }
+            qualifiers.push((
+                "flank_5prime_bp".into(),
+                Some(entry.flank_5prime_bp.to_string()),
+            ));
+            qualifiers.push((
+                "flank_3prime_bp".into(),
+                Some(entry.flank_3prime_bp.to_string()),
+            ));
             if let Some(strand) = entry.strand {
                 qualifiers.push(("strand".into(), Some(strand.to_string())));
             }
@@ -4647,9 +4709,20 @@ impl GentleEngine {
                 Some(entry.transcripts.len().to_string()),
             ));
             let dna_len = dna.len() as i64;
+            let gene_location = entry
+                .genomic_start_1based
+                .zip(entry.genomic_end_1based)
+                .and_then(|(start, end)| Self::ensembl_gene_local_range_0based(&entry, start, end))
+                .and_then(|range| {
+                    Self::ensembl_gene_feature_location(
+                        &[range],
+                        Self::ensembl_gene_relative_strand(&entry, entry.strand),
+                    )
+                })
+                .unwrap_or_else(|| gb_io::seq::Location::simple_range(0, dna_len));
             dna.features_mut().push(gb_io::seq::Feature {
                 kind: "gene".into(),
-                location: gb_io::seq::Location::simple_range(0, dna_len),
+                location: gene_location,
                 qualifiers,
             });
             Self::push_ensembl_gene_transcript_features(&mut dna, &entry);

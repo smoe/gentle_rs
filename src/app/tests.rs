@@ -1639,6 +1639,10 @@ fn synthetic_agent_fus_ensembl_gene_entry() -> EnsemblGeneEntry {
         seq_region_name: Some("16".to_string()),
         genomic_start_1based: Some(31191442),
         genomic_end_1based: Some(31200261),
+        sequence_genomic_start_1based: Some(31191442),
+        sequence_genomic_end_1based: Some(31200261),
+        flank_5prime_bp: 0,
+        flank_3prime_bp: 0,
         sequence: "GAATTCGCGGCCGCTTCTAGA".to_string(),
         sequence_length: 21,
         transcripts: vec![EnsemblGeneTranscriptSummary {

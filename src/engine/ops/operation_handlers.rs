@@ -42993,6 +42993,9 @@ impl GentleEngine {
                 Operation::FetchEnsemblGene {
                     query,
                     species,
+                    assembly,
+                    flank_5prime_bp,
+                    flank_3prime_bp,
                     entry_id,
                 } => {
                     let query_trimmed = query.trim();
@@ -43007,6 +43010,9 @@ impl GentleEngine {
                     let entry = Self::fetch_ensembl_gene_entry_from_rest(
                         query_trimmed,
                         species.as_deref(),
+                        assembly.as_deref(),
+                        flank_5prime_bp.unwrap_or(0),
+                        flank_3prime_bp.unwrap_or(0),
                         entry_id.as_deref(),
                     )?;
                     let resolved_entry_id = entry.entry_id.clone();
@@ -43014,7 +43020,7 @@ impl GentleEngine {
                     let gene_symbol = entry.gene_symbol.clone();
                     self.upsert_ensembl_gene_entry(entry)?;
                     result.messages.push(format!(
-                        "Fetched Ensembl gene '{}' (gene '{}'{}{})",
+                        "Fetched Ensembl gene '{}' (gene '{}'{}{}{}, flank_5p={} bp, flank_3p={} bp)",
                         resolved_entry_id,
                         gene_id,
                         gene_symbol
@@ -43024,7 +43030,13 @@ impl GentleEngine {
                         species
                             .as_deref()
                             .map(|value| format!(", species '{}'", value))
-                            .unwrap_or_default()
+                            .unwrap_or_default(),
+                        assembly
+                            .as_deref()
+                            .map(|value| format!(", assembly '{}'", value))
+                            .unwrap_or_default(),
+                        flank_5prime_bp.unwrap_or(0),
+                        flank_3prime_bp.unwrap_or(0)
                     ));
                 }
                 Operation::FetchEnsemblRegion {

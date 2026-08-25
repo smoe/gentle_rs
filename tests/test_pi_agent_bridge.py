@@ -35,6 +35,33 @@ def request_payload():
 
 
 class PiAgentBridgeTests(unittest.TestCase):
+    def test_render_prompt_includes_host_command_contract_and_local_first_rule(self):
+        bridge = load_bridge_module()
+        request = request_payload()
+        request["x_local_references"] = {
+            "schema": "gentle.agent_local_reference_context.v1",
+            "references": [
+                {
+                    "genome_id": "Human GRCh38 Ensembl 116",
+                    "gene_extraction_ready": True,
+                }
+            ],
+        }
+        host_contract = (
+            "Use /fetch ensembl TP73 --species homo_sapiens --assembly GRCh38 "
+            "--flank-bp 10000 --id tp73_grch38."
+        )
+        with mock.patch.dict(
+            os.environ,
+            {bridge.HOST_SYSTEM_PROMPT_ENV: host_contract},
+        ):
+            prompt = bridge.render_pi_prompt(request)
+
+        self.assertIn(host_contract, prompt)
+        self.assertIn("x_local_references", prompt)
+        self.assertIn("gene_extraction_ready local reference", prompt)
+        self.assertIn("local reference ids", prompt)
+
     def test_pi_command_is_ephemeral_and_tool_free(self):
         bridge = load_bridge_module()
         with mock.patch.dict(

@@ -21,6 +21,7 @@ from typing import Any
 REQUEST_SCHEMA = "gentle.agent_request.v1"
 RESPONSE_SCHEMA = "gentle.agent_response.v1"
 ERROR_SCHEMA = "gentle.pi_agent_bridge_error.v1"
+HOST_SYSTEM_PROMPT_ENV = "GENTLE_AGENT_HOST_SYSTEM_PROMPT"
 
 COMMON_PI_PATHS = (
     "~/.local/bin/pi",
@@ -99,6 +100,12 @@ def render_pi_prompt(request: dict[str, Any]) -> str:
     request_json = json.dumps(
         request_for_model_prompt(request), ensure_ascii=False, indent=2, sort_keys=True
     )
+    host_system_prompt = os.environ.get(HOST_SYSTEM_PROMPT_ENV, "").strip()
+    host_contract = (
+        host_system_prompt
+        if host_system_prompt
+        else "The host did not supply its command catalog. Do not guess command syntax; ask for command discovery instead."
+    )
     return f"""You are GENtle's inner Agent Assistant.
 
 Return exactly one JSON object matching {RESPONSE_SCHEMA}. Do not wrap it in
@@ -130,6 +137,10 @@ Rules:
 - Treat x_conversation as prior dialogue and reuse facts already supplied there.
 - Treat x_introspection as a bounded current-state projection. Missing open-world
   facts do not prove absence; honor its truncation metadata.
+- Treat x_local_references as the authoritative bounded inventory of
+  manifest-backed references currently available to GENtle. Prefer a compatible
+  gene_extraction_ready local reference over a network retrieval. Do not invent
+  local reference ids or infer that catalog-only rows are installed.
 - Treat x_local_documents as bounded copies of text documents explicitly named
   by the user. Use included content and provenance, do not ask the user to paste
   an included document again, and mention attachment warnings that block the
@@ -144,6 +155,9 @@ Rules:
 - Do not infer files from Pi's temporary working directory.
 - Use empty arrays for absent questions, preconditions, expected outcomes, or
   suggested commands.
+
+GENtle host command contract:
+{host_contract}
 
 GENtle agent request:
 {request_json}
