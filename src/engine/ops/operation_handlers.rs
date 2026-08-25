@@ -13884,7 +13884,7 @@ impl GentleEngine {
 
         // Build on a clone so fresh reasoning can be assembled without writing
         // graph snapshots into the caller's project metadata.
-        let mut inspection_engine = self.clone();
+        let mut inspection_engine = self.clone_without_history();
         let mut per_member_status = Vec::with_capacity(resolved_members.len());
         let mut member_reports = Vec::new();
         let mut aggregate_warnings = Vec::new();

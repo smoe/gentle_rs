@@ -151,6 +151,19 @@ mod tests {
     }
 
     #[test]
+    fn collection_construct_reasoning_inspection_excludes_inherited_history() {
+        let source = include_str!("engine/ops/operation_handlers.rs");
+        assert!(
+            !source.contains("let mut inspection_engine = self.clone();"),
+            "collection inspection must not clone complete engine history"
+        );
+        assert!(
+            source.contains("let mut inspection_engine = self.clone_without_history();"),
+            "collection inspection should use the explicit history-free clone"
+        );
+    }
+
+    #[test]
     fn detached_commit_publishes_snapshot_with_revisions() {
         let shared = Arc::new(RwLock::new(GentleEngine::new()));
         execute_on_engine_snapshot(&shared, |snapshot| {
