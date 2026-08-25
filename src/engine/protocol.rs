@@ -4928,6 +4928,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub uniprot_projection_audit: Option<Box<UniprotProjectionAuditReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uniprot_linked_transcript_inventory: Option<Box<UniprotLinkedTranscriptInventory>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub uniprot_projection_audit_parity: Option<Box<UniprotProjectionAuditParityReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lab_assistant_instructions: Option<Box<LabAssistantInstructionsExport>>,
@@ -9279,6 +9281,89 @@ pub struct UniprotProjectionAuditRow {
     pub ensembl_exon_compare: Option<UniprotEnsemblExonCompareRow>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub peptide_compare: Option<UniprotEnsemblPeptideCompareRow>,
+}
+
+pub const UNIPROT_LINKED_TRANSCRIPT_INVENTORY_SCHEMA: &str =
+    "gentle.uniprot_linked_transcript_inventory.v1";
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Resolution of one declared UniProt-to-transcript link against transcript FASTA.
+pub enum UniprotLinkedTranscriptInventoryStatus {
+    Resolved,
+    MissingTranscriptSequence,
+    AmbiguousTranscriptSequence,
+    #[default]
+    Unassessed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Explicit UniProt isoform/transcript link supplied to the inventory builder.
+pub struct UniprotLinkedTranscriptInventoryLink {
+    pub entry_id: String,
+    pub isoform_id: String,
+    pub transcript_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locus_reference_accession: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Request for a locus-independent, content-bound linked-transcript inventory.
+pub struct UniprotLinkedTranscriptInventoryRequest {
+    pub inventory_id: String,
+    pub assembly: String,
+    pub annotation_release: String,
+    pub source_resource_id: String,
+    #[serde(default)]
+    pub transcript_fasta_paths: Vec<String>,
+    #[serde(default)]
+    pub links: Vec<UniprotLinkedTranscriptInventoryLink>,
+    pub output_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct UniprotLinkedTranscriptInventorySource {
+    pub path: String,
+    pub sha256: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct UniprotLinkedTranscriptInventoryRecord {
+    pub entry_id: String,
+    pub isoform_id: String,
+    pub transcript_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locus_reference_accession: Option<String>,
+    #[serde(default)]
+    pub status: UniprotLinkedTranscriptInventoryStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mature_cdna_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mature_cdna_length_bp: Option<usize>,
+    #[serde(default)]
+    pub diagnostics: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Locus-independent transcript identity evidence for UniProt coverage claims.
+pub struct UniprotLinkedTranscriptInventory {
+    pub schema: String,
+    pub inventory_id: String,
+    pub assembly: String,
+    pub annotation_release: String,
+    pub source_resource_id: String,
+    #[serde(default)]
+    pub sources: Vec<UniprotLinkedTranscriptInventorySource>,
+    #[serde(default)]
+    pub records: Vec<UniprotLinkedTranscriptInventoryRecord>,
+    pub content_sha256: String,
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]

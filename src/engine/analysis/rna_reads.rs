@@ -13,6 +13,7 @@
 
 use super::*;
 use std::fmt::Write as _;
+use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const RNA_READ_TARGET_QUERY_COVERAGE_BIN_COUNT: usize = 101;
@@ -3084,6 +3085,175 @@ impl GentleEngine {
             cause_chain: vec![],
         })?;
         Ok(index)
+    }
+
+    pub fn build_uniprot_linked_transcript_inventory(
+        request: &UniprotLinkedTranscriptInventoryRequest,
+    ) -> Result<UniprotLinkedTranscriptInventory, EngineError> {
+        for (name, value) in [
+            ("inventory_id", request.inventory_id.trim()),
+            ("assembly", request.assembly.trim()),
+            ("annotation_release", request.annotation_release.trim()),
+            ("source_resource_id", request.source_resource_id.trim()),
+            ("output_path", request.output_path.trim()),
+        ] {
+            if value.is_empty() {
+                return Err(EngineError::invalid_input(format!(
+                    "UniProt linked-transcript inventory requires non-empty {name}"
+                )));
+            }
+        }
+        if request.transcript_fasta_paths.is_empty() || request.links.is_empty() {
+            return Err(EngineError::invalid_input(
+                "UniProt linked-transcript inventory requires transcript_fasta_paths and links",
+            ));
+        }
+
+        let mut warnings = Vec::new();
+        let mut sources = Vec::new();
+        let mut sequences = BTreeMap::<String, BTreeSet<String>>::new();
+        let mut next_feature_id = 1usize;
+        for path in &request.transcript_fasta_paths {
+            let bytes = fs::read(path).map_err(|error| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not read transcript FASTA '{path}': {error}"),
+                cause_chain: vec![],
+            })?;
+            sources.push(UniprotLinkedTranscriptInventorySource {
+                path: path.clone(),
+                sha256: crate::digest_utils::sha256_prefixed_bytes(&bytes),
+            });
+            let (templates, _, _) = Self::load_external_rna_read_concatemer_templates(
+                path,
+                8,
+                next_feature_id,
+                &mut warnings,
+            )?;
+            next_feature_id = templates
+                .iter()
+                .map(|template| template.transcript_feature_id)
+                .max()
+                .unwrap_or(next_feature_id.saturating_sub(1))
+                .saturating_add(1);
+            for template in templates {
+                sequences
+                    .entry(template.transcript_id)
+                    .or_default()
+                    .insert(String::from_utf8_lossy(&template.sequence).to_ascii_uppercase());
+            }
+        }
+        sources.sort_by(|left, right| left.path.cmp(&right.path));
+
+        let stable_id = |value: &str| {
+            value
+                .trim()
+                .rsplit_once('.')
+                .filter(|(_, suffix)| suffix.chars().all(|ch| ch.is_ascii_digit()))
+                .map(|(stable, _)| stable)
+                .unwrap_or_else(|| value.trim())
+                .to_string()
+        };
+        let mut records = Vec::new();
+        for link in &request.links {
+            if link.entry_id.trim().is_empty()
+                || link.isoform_id.trim().is_empty()
+                || link.transcript_id.trim().is_empty()
+            {
+                return Err(EngineError::invalid_input(
+                    "UniProt linked-transcript inventory links require entry_id, isoform_id, and transcript_id",
+                ));
+            }
+            let stable = stable_id(&link.transcript_id);
+            let matched = sequences
+                .get(link.transcript_id.trim())
+                .cloned()
+                .unwrap_or_else(|| {
+                    sequences
+                        .iter()
+                        .filter(|(id, _)| stable_id(id) == stable)
+                        .flat_map(|(_, values)| values.iter().cloned())
+                        .collect()
+                });
+            let (status, mature_cdna_sha256, mature_cdna_length_bp, diagnostics) = match matched
+                .len()
+            {
+                0 => (
+                    UniprotLinkedTranscriptInventoryStatus::MissingTranscriptSequence,
+                    None,
+                    None,
+                    vec![format!(
+                        "Transcript '{}' was not found in the declared transcript FASTA resources.",
+                        link.transcript_id
+                    )],
+                ),
+                1 => {
+                    let sequence = matched.iter().next().ok_or_else(|| {
+                        EngineError::internal(
+                            "UniProt inventory lost its single resolved transcript sequence",
+                        )
+                    })?;
+                    (
+                        UniprotLinkedTranscriptInventoryStatus::Resolved,
+                        Some(crate::digest_utils::sha256_prefixed_str(sequence)),
+                        Some(sequence.len()),
+                        Vec::new(),
+                    )
+                }
+                count => (
+                    UniprotLinkedTranscriptInventoryStatus::AmbiguousTranscriptSequence,
+                    None,
+                    None,
+                    vec![format!(
+                        "Transcript '{}' resolves to {count} distinct mature-cDNA sequences.",
+                        link.transcript_id
+                    )],
+                ),
+            };
+            records.push(UniprotLinkedTranscriptInventoryRecord {
+                entry_id: link.entry_id.trim().to_string(),
+                isoform_id: link.isoform_id.trim().to_string(),
+                transcript_id: link.transcript_id.trim().to_string(),
+                locus_reference_accession: link
+                    .locus_reference_accession
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string),
+                status,
+                mature_cdna_sha256,
+                mature_cdna_length_bp,
+                diagnostics,
+            });
+        }
+        records.sort_by(|left, right| {
+            left.entry_id
+                .cmp(&right.entry_id)
+                .then(left.isoform_id.cmp(&right.isoform_id))
+                .then(left.transcript_id.cmp(&right.transcript_id))
+        });
+        records.dedup_by(|left, right| {
+            left.entry_id == right.entry_id
+                && left.isoform_id == right.isoform_id
+                && left.transcript_id == right.transcript_id
+        });
+        let mut inventory = UniprotLinkedTranscriptInventory {
+            schema: UNIPROT_LINKED_TRANSCRIPT_INVENTORY_SCHEMA.to_string(),
+            inventory_id: request.inventory_id.trim().to_string(),
+            assembly: request.assembly.trim().to_string(),
+            annotation_release: request.annotation_release.trim().to_string(),
+            source_resource_id: request.source_resource_id.trim().to_string(),
+            sources,
+            records,
+            content_sha256: String::new(),
+            warnings,
+        };
+        let canonical = serde_json::to_vec(&inventory).map_err(|error| {
+            EngineError::internal(format!(
+                "Could not serialize UniProt linked-transcript inventory identity: {error}"
+            ))
+        })?;
+        inventory.content_sha256 = crate::digest_utils::sha256_prefixed_bytes(&canonical);
+        Ok(inventory)
     }
 
     fn load_external_rna_read_concatemer_templates_from_index(
@@ -14438,6 +14608,7 @@ impl GentleEngine {
             reporter_corpus_export: None,
             reporter_construct_handoff: None,
             uniprot_projection_audit: None,
+            uniprot_linked_transcript_inventory: None,
             uniprot_projection_audit_parity: None,
             lab_assistant_instructions: None,
             feature_location_edit_report: None,
@@ -14571,6 +14742,7 @@ impl GentleEngine {
             reporter_corpus_export: None,
             reporter_construct_handoff: None,
             uniprot_projection_audit: None,
+            uniprot_linked_transcript_inventory: None,
             uniprot_projection_audit_parity: None,
             lab_assistant_instructions: None,
             feature_location_edit_report: None,

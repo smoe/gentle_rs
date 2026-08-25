@@ -49694,6 +49694,87 @@ fn test_rna_read_transcript_catalog_index_roundtrip_supports_concatemer_inspecti
 }
 
 #[test]
+fn uniprot_linked_transcript_inventory_preserves_off_resource_denominator_records() {
+    let transcript_file = tempfile::NamedTempFile::new().expect("temp transcript FASTA");
+    std::fs::write(
+        transcript_file.path(),
+        ">TX_A.1 gene=GENE_X transcript=TX_A.1\nATGCCCTAA\n\
+         >TX_B.2 gene=GENE_X transcript=TX_B.2\nATGCCCTAA\n\
+         >TX_C.1 gene=GENE_X transcript=TX_C.1\nATGAAATAA\n",
+    )
+    .expect("write transcript FASTA");
+    let output_file = tempfile::NamedTempFile::new().expect("temp inventory output");
+    let request = UniprotLinkedTranscriptInventoryRequest {
+        inventory_id: "synthetic_inventory".to_string(),
+        assembly: "synthetic_assembly".to_string(),
+        annotation_release: "synthetic_release_1".to_string(),
+        source_resource_id: "synthetic_transcript_catalog".to_string(),
+        transcript_fasta_paths: vec![transcript_file.path().display().to_string()],
+        links: vec![
+            ("ISO-1", "TX_A.1"),
+            ("ISO-1", "TX_B.2"),
+            ("ISO-2", "TX_C.1"),
+            ("ISO-3", "TX_PATCH.1"),
+        ]
+        .into_iter()
+        .map(
+            |(isoform_id, transcript_id)| UniprotLinkedTranscriptInventoryLink {
+                entry_id: "ENTRY_X".to_string(),
+                isoform_id: isoform_id.to_string(),
+                transcript_id: transcript_id.to_string(),
+                locus_reference_accession: Some(format!("LOCUS_{transcript_id}")),
+            },
+        )
+        .collect(),
+        output_path: output_file.path().display().to_string(),
+    };
+
+    let first = GentleEngine::build_uniprot_linked_transcript_inventory(&request)
+        .expect("build linked-transcript inventory");
+    let second = GentleEngine::build_uniprot_linked_transcript_inventory(&request)
+        .expect("rebuild linked-transcript inventory");
+    assert_eq!(first, second, "equivalent inputs must be byte-stable");
+    assert_eq!(first.records.len(), 4);
+    assert_eq!(
+        first
+            .records
+            .iter()
+            .filter_map(|record| record.mature_cdna_sha256.as_deref())
+            .collect::<BTreeSet<_>>()
+            .len(),
+        2,
+        "two exact cDNA identities should represent three resolved records"
+    );
+    let missing = first
+        .records
+        .iter()
+        .find(|record| record.transcript_id == "TX_PATCH.1")
+        .expect("missing patch-style transcript remains in denominator");
+    assert_eq!(
+        missing.status,
+        UniprotLinkedTranscriptInventoryStatus::MissingTranscriptSequence
+    );
+    assert!(missing.mature_cdna_sha256.is_none());
+    assert!(first.content_sha256.starts_with("sha256:"));
+
+    let mut engine = GentleEngine::new();
+    let result = engine
+        .apply(Operation::BuildUniprotLinkedTranscriptInventory {
+            request: request.clone(),
+        })
+        .expect("run inventory operation");
+    let operation_inventory = result
+        .uniprot_linked_transcript_inventory
+        .expect("operation inventory");
+    assert_eq!(*operation_inventory, first);
+    let exported: UniprotLinkedTranscriptInventory = serde_json::from_slice(
+        &std::fs::read(&request.output_path).expect("read exported inventory"),
+    )
+    .expect("parse exported inventory");
+    assert_eq!(exported, first);
+}
+
+#[test]
 fn test_build_rna_read_alignment_display_reports_query_orientation_and_exact_midline() {
     let mut state = ProjectState::default();
     state

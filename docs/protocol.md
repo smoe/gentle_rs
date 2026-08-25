@@ -3869,6 +3869,16 @@ external coding agent runtime, see:
   - `uniprot transcript-accounting PROJECTION_ID [--transcript ID]`
   - `uniprot compare-ensembl-exons PROJECTION_ID [--transcript ID] [--ensembl-entry ID]`
   - `uniprot compare-ensembl-peptide PROJECTION_ID [--transcript ID] [--ensembl-entry ID]`
+  - `uniprot build-linked-transcript-inventory REQUEST_JSON_OR_@FILE`
+    emits `gentle.uniprot_linked_transcript_inventory.v1`. Its request binds
+    `inventory_id`, `assembly`, `annotation_release`, `source_resource_id`,
+    `transcript_fasta_paths[]`, explicit `links[]` (`entry_id`, `isoform_id`,
+    versioned `transcript_id`, optional locus/reference accession), and
+    `output_path`. Source files and resolved mature cDNAs are SHA-256 bound.
+    Missing and ambiguous sequences remain typed records without a cDNA digest;
+    they cannot authorize a coverage claim. Exact cDNA identity is deliberately
+    separate from locus identity and therefore does not establish genomic
+    specificity.
   - `uniprot audit-projection PROJECTION_ID [--transcript ID] [--ensembl-entry ID] [--report-id ID]`
   - `uniprot audit-parity PROJECTION_ID [--transcript ID] [--ensembl-entry ID] [--report-id ID]`
   - `uniprot audit-list|show|export ...`

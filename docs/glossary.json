@@ -1496,6 +1496,20 @@
       {
          "aliases": [],
          "engine_operations": [
+            "BuildUniprotLinkedTranscriptInventory"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "uniprot build-linked-transcript-inventory",
+         "summary": "Build a deterministic, content-bound UniProt isoform to mature-cDNA inventory from explicit links and transcript FASTA resources.",
+         "usage": "uniprot build-linked-transcript-inventory REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "AuditUniprotProjectionConsistency"
          ],
          "interfaces": [

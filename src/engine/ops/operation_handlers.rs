@@ -39151,6 +39151,7 @@ impl GentleEngine {
             reporter_corpus_export: None,
             reporter_construct_handoff: None,
             uniprot_projection_audit: None,
+            uniprot_linked_transcript_inventory: None,
             uniprot_projection_audit_parity: None,
             lab_assistant_instructions: None,
             feature_location_edit_report: None,
@@ -43558,6 +43559,28 @@ impl GentleEngine {
                         report.match_count
                     ));
                     result.protein_residue_genomic_coordinates = Some(report);
+                }
+                Operation::BuildUniprotLinkedTranscriptInventory { request } => {
+                    let inventory = Self::build_uniprot_linked_transcript_inventory(&request)?;
+                    let payload = serde_json::to_vec_pretty(&inventory).map_err(|error| {
+                        EngineError::internal(format!(
+                            "Could not serialize UniProt linked-transcript inventory: {error}"
+                        ))
+                    })?;
+                    fs::write(&request.output_path, payload).map_err(|error| EngineError {
+                        code: ErrorCode::Io,
+                        message: format!(
+                            "Could not write UniProt linked-transcript inventory '{}': {error}",
+                            request.output_path
+                        ),
+                        cause_chain: vec![],
+                    })?;
+                    result.messages.push(format!(
+                        "Built UniProt linked-transcript inventory '{}' (records={})",
+                        inventory.inventory_id,
+                        inventory.records.len()
+                    ));
+                    result.uniprot_linked_transcript_inventory = Some(Box::new(inventory));
                 }
                 Operation::AuditUniprotProjectionConsistency {
                     projection_id,

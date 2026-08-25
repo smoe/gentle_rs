@@ -1,5 +1,12 @@
 # GENtle Changelog
 
+- Added the deterministic `gentle.uniprot_linked_transcript_inventory.v1`
+  evidence layer and shared `uniprot build-linked-transcript-inventory` route.
+  Explicit UniProt isoform/transcript links are resolved against content-bound
+  transcript FASTA resources; exact mature-cDNA identities carry hashes and
+  lengths, while missing or conflicting off-locus records remain visible and
+  cannot silently shrink a primer-coverage denominator.
+
 - Kept narrowed UniProt primer panels honest about the broader annotation
   universe: assay reports now retain optional pre-narrowing exact-cDNA group
   denominators, handoffs distinguish unassessed from assessed-but-uncovered

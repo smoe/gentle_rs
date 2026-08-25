@@ -4066,6 +4066,9 @@ pub enum Operation {
         #[serde(default)]
         ensembl_entry_id: Option<String>,
     },
+    BuildUniprotLinkedTranscriptInventory {
+        request: UniprotLinkedTranscriptInventoryRequest,
+    },
     AuditUniprotProjectionParity {
         projection_id: String,
         #[serde(default)]

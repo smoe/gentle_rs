@@ -127,7 +127,8 @@ use crate::{
         TranscriptAssayPanelObjective, TranscriptAssayPanelSpecificityExecutionManifest,
         TranscriptAssayPracticalityPolicy, TranscriptAssaySpecificityRedesignRequest,
         TranscriptAssaySpecificityRequest, TranscriptAssayUseTier, TranslationSpeedMark,
-        TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode, VariantAlleleChoice,
+        TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode,
+        UniprotLinkedTranscriptInventoryRequest, VariantAlleleChoice,
         WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
         WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
         construct_reasoning_action_dotplot_request,
@@ -815,6 +816,9 @@ pub enum ShellCommand {
         transcript_id: Option<String>,
         ensembl_entry_id: Option<String>,
         report_id: Option<String>,
+    },
+    UniprotBuildLinkedTranscriptInventory {
+        request: UniprotLinkedTranscriptInventoryRequest,
     },
     UniprotAuditParity {
         projection_id: String,
@@ -11497,6 +11501,12 @@ impl ShellCommand {
                     .filter(|v| !v.trim().is_empty())
                     .unwrap_or("auto"),
             ),
+            Self::UniprotBuildLinkedTranscriptInventory { request } => format!(
+                "build UniProt linked-transcript inventory '{}' (links={}, output={})",
+                request.inventory_id,
+                request.links.len(),
+                request.output_path
+            ),
             Self::UniprotAuditParity {
                 projection_id,
                 transcript_id,
@@ -19204,6 +19214,26 @@ fn uniprot_projection_audit_descriptor(id: &str, report_kind: &str, description:
     })
 }
 
+fn uniprot_linked_transcript_inventory_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "content-bound linked-transcript inventory request"}
+        ],
+        "reads": [],
+        "effects": [
+            {"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "may_on_success", "description": "Writes a deterministic gentle.uniprot_linked_transcript_inventory.v1 artifact."}
+        ],
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn isoform_panel_read_atoms() -> Vec<Value> {
     vec![
         json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
@@ -20905,6 +20935,14 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         uniprot_projection_read_descriptor(
             "uniprot compare-ensembl-peptide",
             "Compare projected UniProt peptide sequence against an optional stored Ensembl protein entry.",
+        ),
+        uniprot_linked_transcript_inventory_descriptor(
+            "uniprot build-linked-transcript-inventory",
+            "Build a content-bound UniProt linked-transcript inventory from explicit mappings and transcript FASTA resources.",
+        ),
+        uniprot_linked_transcript_inventory_descriptor(
+            "BuildUniprotLinkedTranscriptInventory",
+            "Build a content-bound UniProt linked-transcript inventory through the shared engine operation.",
         ),
         uniprot_projection_audit_descriptor(
             "uniprot audit-projection",
@@ -28723,6 +28761,9 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "genomes blast-track" | "helpers blast-track" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}),
         ]),
+        "uniprot build-linked-transcript-inventory" | "BuildUniprotLinkedTranscriptInventory" => {
+            Some(vec![])
+        }
         "uniprot map" | "ProjectUniprotToGenome" => Some(vec![
             json!({"fact": "uniprot_entry.exists", "subject": {"arg": "ENTRY_ID"}}),
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
@@ -36140,7 +36181,7 @@ fn parse_variant_command(tokens: &[String]) -> Result<ShellCommand, String> {
 fn parse_uniprot_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "uniprot requires a subcommand: fetch, import-swissprot, list, show, map, projection-list, projection-show, feature-coding-dna, resolve-ensembl-links, transcript-accounting, compare-ensembl-exons, compare-ensembl-peptide, audit-projection, audit-parity, audit-list, audit-show, audit-export, audit-parity-list, audit-parity-show, audit-parity-export"
+            "uniprot requires a subcommand: fetch, import-swissprot, list, show, map, projection-list, projection-show, feature-coding-dna, resolve-ensembl-links, transcript-accounting, compare-ensembl-exons, compare-ensembl-peptide, build-linked-transcript-inventory, audit-projection, audit-parity, audit-list, audit-show, audit-export, audit-parity-list, audit-parity-show, audit-parity-export"
                 .to_string(),
         );
     }
@@ -36554,6 +36595,20 @@ fn parse_uniprot_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 ensembl_entry_id,
             })
         }
+        "build-linked-transcript-inventory" => {
+            if tokens.len() != 3 {
+                return Err(
+                    "uniprot build-linked-transcript-inventory requires REQUEST_JSON_OR_@FILE"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::UniprotBuildLinkedTranscriptInventory {
+                request: parse_required_json_payload(
+                    &tokens[2],
+                    "UniProt linked-transcript inventory request",
+                )?,
+            })
+        }
         "audit-projection" => {
             if tokens.len() < 3 {
                 return Err(
@@ -36753,7 +36808,7 @@ fn parse_uniprot_command(tokens: &[String]) -> Result<ShellCommand, String> {
             Ok(ShellCommand::UniprotAuditParityExport { report_id, path })
         }
         other => Err(format!(
-            "Unknown uniprot subcommand '{other}' (expected fetch, import-swissprot, list, show, map, projection-list, projection-show, feature-coding-dna, resolve-ensembl-links, transcript-accounting, compare-ensembl-exons, compare-ensembl-peptide, audit-projection, audit-parity, audit-list, audit-show, audit-export, audit-parity-list, audit-parity-show, audit-parity-export)"
+            "Unknown uniprot subcommand '{other}' (expected fetch, import-swissprot, list, show, map, projection-list, projection-show, feature-coding-dna, resolve-ensembl-links, transcript-accounting, compare-ensembl-exons, compare-ensembl-peptide, build-linked-transcript-inventory, audit-projection, audit-parity, audit-list, audit-show, audit-export, audit-parity-list, audit-parity-show, audit-parity-export)"
         )),
     }
 }
@@ -58789,6 +58844,21 @@ fn execute_protein_sequence_command(
                 })?,
             })
         }
+        ShellCommand::UniprotBuildLinkedTranscriptInventory { request } => {
+            let result = engine
+                .apply(Operation::BuildUniprotLinkedTranscriptInventory {
+                    request: request.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let inventory = result.uniprot_linked_transcript_inventory.clone();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "result": result,
+                    "inventory": inventory,
+                }),
+            })
+        }
         ShellCommand::UniprotAuditProjection {
             projection_id,
             transcript_id,
@@ -63115,6 +63185,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::UniprotTranscriptAccounting { .. }
             | ShellCommand::UniprotCompareEnsemblExons { .. }
             | ShellCommand::UniprotCompareEnsemblPeptide { .. }
+            | ShellCommand::UniprotBuildLinkedTranscriptInventory { .. }
             | ShellCommand::UniprotAuditProjection { .. }
             | ShellCommand::UniprotAuditParity { .. }
             | ShellCommand::UniprotAuditList { .. }
@@ -63419,6 +63490,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::UniprotTranscriptAccounting { .. }
         | ShellCommand::UniprotCompareEnsemblExons { .. }
         | ShellCommand::UniprotCompareEnsemblPeptide { .. }
+        | ShellCommand::UniprotBuildLinkedTranscriptInventory { .. }
         | ShellCommand::UniprotAuditProjection { .. }
         | ShellCommand::UniprotAuditParity { .. }
         | ShellCommand::UniprotAuditList { .. }

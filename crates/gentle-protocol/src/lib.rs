@@ -5377,6 +5377,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "ImportEnsemblProteinSequence",
     "ProjectUniprotToGenome",
     "QueryProteinResidueGenomicCoordinates",
+    "BuildUniprotLinkedTranscriptInventory",
     "AuditUniprotProjectionConsistency",
     "AuditUniprotProjectionParity",
     "ImportBlastHitsTrack",

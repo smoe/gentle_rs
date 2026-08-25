@@ -1150,6 +1150,14 @@ UniProt mapping capability status:
   - `uniprot transcript-accounting PROJECTION_ID [--transcript ID]`
   - `uniprot compare-ensembl-exons PROJECTION_ID [--transcript ID] [--ensembl-entry ID]`
   - `uniprot compare-ensembl-peptide PROJECTION_ID [--transcript ID] [--ensembl-entry ID]`
+  - `uniprot build-linked-transcript-inventory REQUEST_JSON_OR_@FILE`
+    - builds `gentle.uniprot_linked_transcript_inventory.v1` from explicit
+      UniProt entry/isoform/transcript links and one or more transcript FASTA
+      resources; the request declares assembly, annotation release, resource
+      identity, and output path;
+    - every resolved record carries exact mature-cDNA SHA-256 and length;
+      missing or conflicting transcript sequences remain explicit denominator
+      records and are never inferred from a gene name or protein identifier.
   - `uniprot audit-projection PROJECTION_ID [--transcript ID] [--ensembl-entry ID] [--report-id ID]`
   - `uniprot audit-parity PROJECTION_ID [--transcript ID] [--ensembl-entry ID] [--report-id ID]`
   - `uniprot audit-list [--seq SEQ_ID]`

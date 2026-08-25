@@ -38857,6 +38857,34 @@ fn parse_uniprot_commands() {
         ShellCommand::UniprotResolveEnsemblLinks { .. }
     ));
 
+    let inventory_request_file = tempfile::NamedTempFile::new().expect("inventory request file");
+    std::fs::write(
+        inventory_request_file.path(),
+        r#"{
+            "inventory_id":"inventory_x",
+            "assembly":"assembly_x",
+            "annotation_release":"release_x",
+            "source_resource_id":"resource_x",
+            "transcript_fasta_paths":["transcripts.fa"],
+            "links":[{"entry_id":"ENTRY_X","isoform_id":"ISO-1","transcript_id":"TX_A.1"}],
+            "output_path":"inventory.json"
+        }"#,
+    )
+    .expect("write inventory request");
+    let inventory = parse_shell_line(&format!(
+        "uniprot build-linked-transcript-inventory @{}",
+        inventory_request_file.path().display()
+    ))
+    .expect("parse linked-transcript inventory");
+    match inventory {
+        ShellCommand::UniprotBuildLinkedTranscriptInventory { request } => {
+            assert_eq!(request.inventory_id, "inventory_x");
+            assert_eq!(request.links.len(), 1);
+            assert_eq!(request.links[0].transcript_id, "TX_A.1");
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
     let audit = parse_shell_line(
         "uniprot audit-projection tp53_map --transcript ENST00000269305.9 --ensembl-entry ENSP00000269305 --report-id tp53_audit",
     )
