@@ -8340,14 +8340,14 @@ fn feature_tree_cache_rebuilds_when_filter_changes() {
 }
 
 #[test]
-fn ensure_full_restriction_site_catalog_current_invalidates_feature_tree_cache() {
+fn ensure_local_restriction_site_catalog_current_invalidates_feature_tree_cache() {
     let dna = restriction_ready_dna("GAATTCGAATTC");
     let mut area = MainAreaDna::new(dna, None, None);
 
     area.ensure_feature_tree_cache_current(None);
     assert!(area.feature_tree_cache.is_some());
 
-    area.ensure_full_restriction_site_catalog_current();
+    area.ensure_local_restriction_site_catalog_current();
 
     assert!(area.feature_tree_cache.is_none());
 }

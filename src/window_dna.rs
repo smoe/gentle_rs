@@ -60,6 +60,7 @@ enum DeferredAnalysisFocus {
 pub struct WindowDna {
     main_area: MainAreaDna,
     pending_dna_load: Option<Arc<Mutex<Receiver<Result<DNAsequence, String>>>>>,
+    awaiting_first_content_paint: bool,
     deferred_load_message: Option<String>,
     deferred_analysis_focus: Option<DeferredAnalysisFocus>,
     close_requested: bool,
@@ -71,6 +72,7 @@ impl WindowDna {
         Self {
             main_area: MainAreaDna::new(dna, Some(seq_id), Some(engine)),
             pending_dna_load: None,
+            awaiting_first_content_paint: true,
             deferred_load_message: None,
             deferred_analysis_focus: None,
             close_requested: false,
@@ -103,11 +105,13 @@ impl WindowDna {
             let _ = tx.send(result);
         });
         let placeholder = DNAsequence::from_sequence("").expect("valid empty sequence");
+        crate::gentle_gui_profile_scope!("WindowDna::new_lazy.placeholder");
         let mut main_area = MainAreaDna::new(placeholder, Some(seq_id), Some(engine));
         main_area.defer_feature_tree_until_interaction();
         Self {
             main_area,
             pending_dna_load: Some(Arc::new(Mutex::new(rx))),
+            awaiting_first_content_paint: true,
             deferred_load_message: None,
             deferred_analysis_focus: None,
             close_requested: false,
@@ -181,6 +185,7 @@ impl WindowDna {
                 .map_err(|_| "Deferred sequence load lock poisoned".to_string());
             match recv_result {
                 Ok(Ok(Ok(dna))) => {
+                    crate::gentle_gui_profile_scope!("WindowDna::poll_deferred_load.hydrate");
                     self.main_area.replace_loaded_sequence(dna);
                     self.pending_dna_load = None;
                     self.deferred_load_message = None;
@@ -313,6 +318,7 @@ impl WindowDna {
             } else {
                 // MainAreaDna owns the root panel layout for sequence windows.
                 self.main_area.render(ctx);
+                self.awaiting_first_content_paint = false;
             }
         }));
         if result.is_err() {
@@ -387,6 +393,7 @@ impl WindowDna {
                 );
             } else {
                 self.render_bounded_embedded_main_area(ui);
+                self.awaiting_first_content_paint = false;
             }
         }));
         if result.is_err() {
@@ -437,6 +444,34 @@ impl WindowDna {
 
     pub fn sequence_id(&self) -> Option<String> {
         self.main_area.sequence_id().map(|v| v.to_string())
+    }
+
+    pub fn is_opening(&self) -> bool {
+        self.deferred_load_message.is_none()
+            && (self.pending_dna_load.is_some() || self.awaiting_first_content_paint)
+    }
+
+    pub fn opening_phase(&self) -> &'static str {
+        if self.pending_dna_load.is_some() {
+            "payload-loading"
+        } else if self.deferred_load_message.is_some() {
+            "failed"
+        } else if self.awaiting_first_content_paint {
+            "first-paint"
+        } else {
+            "ready"
+        }
+    }
+
+    pub fn deferred_load_error(&self) -> Option<&str> {
+        self.deferred_load_message.as_deref()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn mark_first_content_painted_for_tests(&mut self) {
+        self.pending_dna_load = None;
+        self.deferred_load_message = None;
+        self.awaiting_first_content_paint = false;
     }
 
     pub fn take_close_requested(&mut self) -> bool {

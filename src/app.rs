@@ -807,6 +807,7 @@ pub struct GENtleApp {
     root_engine_summary_cache: RootEngineSummaryCache,
     runtime_status_snapshot_cache: RuntimeStatusSnapshotCache,
     pending_window_open_timestamps: HashMap<ViewportId, Instant>,
+    sequence_window_open_runtime_frames: HashMap<String, RuntimeStatusGuard>,
     pending_viewport_focus_timestamps: HashMap<ViewportId, Instant>,
     pending_project_action: Option<ProjectAction>,
     pending_app_quit: bool,
@@ -2678,6 +2679,7 @@ impl Default for GENtleApp {
             root_engine_summary_cache: RootEngineSummaryCache::default(),
             runtime_status_snapshot_cache: RuntimeStatusSnapshotCache::default(),
             pending_window_open_timestamps: HashMap::new(),
+            sequence_window_open_runtime_frames: HashMap::new(),
             pending_viewport_focus_timestamps: HashMap::new(),
             pending_project_action: None,
             pending_app_quit: false,
@@ -6231,6 +6233,14 @@ Error: `{err}`"
             .sequences
             .contains_key(seq_id);
         if exists {
+            let runtime_frame = runtime_status_registry().push_with_detail(
+                RuntimeStatusFrameKind::GuiAction,
+                "Opening DNA Sequence Viewer",
+                Some(format!("Loading sequence '{seq_id}'")),
+            );
+            runtime_frame.update_phase("queued");
+            self.sequence_window_open_runtime_frames
+                .insert(seq_id.to_string(), runtime_frame);
             let mut window = Window::new_dna_lazy(seq_id.to_string(), self.engine.clone());
             if compact_lane_layout {
                 window.enable_compact_lane_layout();
@@ -23506,10 +23516,40 @@ Error: `{err}`"
 
     fn sequence_window_open_in_progress(&self) -> bool {
         !self.new_windows.is_empty()
-            || self
-                .pending_window_open_timestamps
-                .keys()
-                .any(|viewport_id| self.windows.contains_key(viewport_id))
+            || self.windows.values().any(|window| {
+                window
+                    .read()
+                    .is_ok_and(|window| window.is_sequence_opening())
+            })
+    }
+
+    fn reconcile_sequence_window_open_state(
+        &mut self,
+        viewport_id: ViewportId,
+        window: &Arc<RwLock<Window>>,
+    ) {
+        let opening_state = window.read().ok().and_then(|window| {
+            window.sequence_id().map(|seq_id| {
+                (
+                    seq_id,
+                    window.sequence_opening_phase(),
+                    window.sequence_open_error().map(ToString::to_string),
+                )
+            })
+        });
+        let Some((seq_id, phase, error)) = opening_state else {
+            return;
+        };
+        if let Some(frame) = self.sequence_window_open_runtime_frames.get(&seq_id) {
+            frame.update_phase(phase);
+            if let Some(error) = error.as_deref() {
+                frame.fail(error);
+            }
+        }
+        if matches!(phase, "ready" | "failed") {
+            self.sequence_window_open_runtime_frames.remove(&seq_id);
+            self.finalize_viewport_open_probe(viewport_id, "Sequence");
+        }
     }
 
     fn help_content_width_requires_relayout(previous_width: f32, current_width: f32) -> bool {
@@ -25267,8 +25307,8 @@ impl GENtleApp {
                 })
                 .collect::<Vec<_>>();
             for (id, window, initial_position) in windows_to_show {
-                self.show_window(ctx, id, window, initial_position);
-                self.finalize_viewport_open_probe(id, "Sequence");
+                self.show_window(ctx, id, window.clone(), initial_position);
+                self.reconcile_sequence_window_open_state(id, &window);
             }
 
             self.render_detached_auxiliary_window_hosts(ctx);

@@ -220,12 +220,61 @@ fn sequence_window_open_status_tracks_queued_and_registered_windows() {
     assert!(app.sequence_window_open_in_progress());
 
     app.pending_window_open_timestamps.remove(&viewport_id);
+    assert!(app.sequence_window_open_in_progress());
+    assert!(
+        app.sequence_window_open_runtime_frames
+            .contains_key("opening-sequence")
+    );
+    app.pending_window_open_timestamps
+        .insert(viewport_id, Instant::now());
+
+    app.windows
+        .get(&viewport_id)
+        .expect("registered sequence window")
+        .write()
+        .expect("sequence window")
+        .mark_sequence_first_content_painted_for_tests();
+    let registered_window = app
+        .windows
+        .get(&viewport_id)
+        .expect("registered sequence window")
+        .clone();
+    app.reconcile_sequence_window_open_state(viewport_id, &registered_window);
     assert!(!app.sequence_window_open_in_progress());
+    assert!(
+        !app.sequence_window_open_runtime_frames
+            .contains_key("opening-sequence")
+    );
+    assert!(
+        !app.pending_window_open_timestamps
+            .contains_key(&viewport_id)
+    );
 
     let unrelated_viewport_id = egui::ViewportId::from_hash_of("configuration-opening");
     app.pending_window_open_timestamps
         .insert(unrelated_viewport_id, Instant::now());
     assert!(!app.sequence_window_open_in_progress());
+}
+
+#[test]
+fn opening_sequence_window_keeps_clean_project_clean() {
+    let mut app = GENtleApp::default();
+    app.engine
+        .write()
+        .expect("engine")
+        .state_mut()
+        .sequences
+        .insert(
+            "clean-opening-sequence".to_string(),
+            DNAsequence::from_sequence("GAATTCATGC").expect("sequence"),
+        );
+    app.mark_clean_snapshot();
+    let clean_revision = app.current_state_change_stamp();
+
+    app.open_sequence_window("clean-opening-sequence");
+
+    assert_eq!(app.current_state_change_stamp(), clean_revision);
+    assert!(!app.is_project_dirty());
 }
 
 #[test]

@@ -1,8 +1,12 @@
 # GENtle Changelog
 
-- Fixed the DNA-viewer opening status so unrelated pending hosted-window probes
-  cannot keep `Opening DNA Sequence Viewer…` visible after the sequence viewer
-  has completed its first render.
+- Made DNA-viewer opening truthful and non-mutating: the opening status and
+  shared runtime frame now remain active through deferred payload hydration and
+  the first real-content paint, then clear on readiness, failure, or closure.
+  Opening no longer performs an eager unbounded restriction/computed-feature
+  refresh against shared project state; eager windows retain their local
+  derived-display initialization without the GUI-thread engine write lock or a
+  false unsaved-project revision.
 
 - Kept committed tutorial assay artifacts deterministic across Git checkouts by
   normalizing their selection-audit generator revision to the package version;

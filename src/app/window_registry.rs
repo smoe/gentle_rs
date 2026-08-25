@@ -826,6 +826,9 @@ impl GENtleApp {
                 self.detached_auxiliary_window_hosts.remove(&viewport_id);
                 continue;
             };
+            if let Some(seq_id) = window.read().ok().and_then(|guard| guard.sequence_id()) {
+                self.sequence_window_open_runtime_frames.remove(&seq_id);
+            }
             let keep_auxiliary_host_alive = window
                 .read()
                 .ok()
@@ -1036,6 +1039,11 @@ impl GENtleApp {
     }
 
     pub(super) fn register_window(&mut self, mut window: Window) -> ViewportId {
+        if let Some(seq_id) = window.sequence_id()
+            && let Some(frame) = self.sequence_window_open_runtime_frames.get(&seq_id)
+        {
+            frame.update_phase("viewport-created");
+        }
         let id = format!("Viewport {}", self.viewport_id_counter);
         let id = ViewportId::from_hash_of(id);
         let position = Self::deferred_window_position(self.viewport_id_counter);

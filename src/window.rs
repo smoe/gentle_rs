@@ -153,6 +153,31 @@ impl Window {
         }
     }
 
+    pub fn is_sequence_opening(&self) -> bool {
+        match self {
+            Self::Dna(window) => window.is_opening(),
+        }
+    }
+
+    pub fn sequence_opening_phase(&self) -> &'static str {
+        match self {
+            Self::Dna(window) => window.opening_phase(),
+        }
+    }
+
+    pub fn sequence_open_error(&self) -> Option<&str> {
+        match self {
+            Self::Dna(window) => window.deferred_load_error(),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn mark_sequence_first_content_painted_for_tests(&mut self) {
+        match self {
+            Self::Dna(window) => window.mark_first_content_painted_for_tests(),
+        }
+    }
+
     pub fn selection_range_0based(&self) -> Option<(usize, usize)> {
         match self {
             Self::Dna(window) => window.selection_range_0based(),

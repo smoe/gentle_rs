@@ -99,6 +99,11 @@ Runtime status diagnostics:
   runtime-status file, and this is not a historical job log.
 - When live runtime frames exist in the GUI process, the bottom status bar
   shows a compact `Runtime: N active` indicator with a hover summary.
+- Opening a DNA sequence viewer contributes a `gui_action` frame while its
+  viewport is queued, sequence payload is loading, and real content awaits its
+  first paint. The frame is phase-only rather than displaying an invented
+  percentage or ETA, and is removed when the content is ready, loading fails,
+  or the window is closed.
 
 The GUI opens an empty project unless a project path is passed on startup.
 
@@ -212,6 +217,9 @@ macOS auxiliary-window stability note:
 - Newly opened sequence windows are queued for foreground focus after their
   viewport is registered, so opening a sequence from a project/lineage view
   should raise that DNA viewer instead of leaving it behind older windows.
+- Opening a saved sequence does not recompute or persist derived restriction
+  caches in shared project state. Restriction scans remain explicit shared
+  operations, so merely viewing a sequence does not mark its project modified.
 - Hosted auxiliary workspaces opened from a sequence window, including
   Splicing Expert, RNA-read Mapping, Dotplot, Promoter design, and Isoform /
   Protein Expert, render in a root-level hosted pass after the owning sequence

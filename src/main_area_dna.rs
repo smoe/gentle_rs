@@ -2079,6 +2079,7 @@ impl MainAreaDna {
         seq_id: Option<String>,
         engine: Option<Arc<RwLock<GentleEngine>>>,
     ) -> Self {
+        crate::gentle_gui_profile_scope!("MainAreaDna::new");
         let initial_is_circular = dna.is_circular();
         let seq_id_for_defaults = seq_id.clone();
         let dna = Arc::new(RwLock::new(dna));
@@ -2488,7 +2489,7 @@ impl MainAreaDna {
             dotplot_locked_crosshair_bp: None,
             dotplot_last_compute_status: String::new(),
         };
-        ret.ensure_full_restriction_site_catalog_current();
+        ret.ensure_local_restriction_site_catalog_current();
         ret.sync_from_engine_display();
         ret.load_engine_ops_state();
         let default_report_id = ret.sequencing_confirmation_default_report_id();
@@ -2630,15 +2631,10 @@ impl MainAreaDna {
         &self.dna
     }
 
-    fn ensure_full_restriction_site_catalog_current(&mut self) {
-        if let Some(engine) = &self.engine
-            && let Some(seq_id) = self.seq_id.as_deref()
-            && let Ok(mut guard) = engine.write()
-            && let Some(dna) = guard.state_mut().sequences.get_mut(seq_id)
-        {
-            dna.set_max_restriction_enzyme_sites(None);
-            dna.update_computed_features();
-        }
+    fn ensure_local_restriction_site_catalog_current(&mut self) {
+        crate::gentle_gui_profile_scope!(
+            "MainAreaDna::ensure_local_restriction_site_catalog_current"
+        );
         if let Ok(mut dna) = self.dna.write() {
             dna.set_max_restriction_enzyme_sites(None);
             dna.update_computed_features();
@@ -2904,6 +2900,7 @@ impl MainAreaDna {
     }
 
     fn replace_active_dna(&mut self, dna: DNAsequence, clear_feature_focus: bool) {
+        crate::gentle_gui_profile_scope!("MainAreaDna::replace_active_dna");
         let previous_is_circular = self
             .dna
             .read()
