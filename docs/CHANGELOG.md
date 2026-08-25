@@ -1,5 +1,9 @@
 # GENtle Changelog
 
+- Fixed the DNA-viewer opening status so unrelated pending hosted-window probes
+  cannot keep `Opening DNA Sequence Viewer…` visible after the sequence viewer
+  has completed its first render.
+
 - Kept committed tutorial assay artifacts deterministic across Git checkouts by
   normalizing their selection-audit generator revision to the package version;
   ordinary engine reports still retain the complete source revision.

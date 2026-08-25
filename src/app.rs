@@ -23505,7 +23505,11 @@ Error: `{err}`"
     }
 
     fn sequence_window_open_in_progress(&self) -> bool {
-        !self.new_windows.is_empty() || !self.pending_window_open_timestamps.is_empty()
+        !self.new_windows.is_empty()
+            || self
+                .pending_window_open_timestamps
+                .keys()
+                .any(|viewport_id| self.windows.contains_key(viewport_id))
     }
 
     fn help_content_width_requires_relayout(previous_width: f32, current_width: f32) -> bool {

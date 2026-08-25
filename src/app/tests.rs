@@ -211,13 +211,20 @@ fn sequence_window_open_status_tracks_queued_and_registered_windows() {
     app.open_sequence_window("opening-sequence");
     assert!(app.sequence_window_open_in_progress());
 
-    app.new_windows.clear();
+    let pending_window = app.new_windows.pop().expect("queued sequence window");
     let viewport_id = egui::ViewportId::from_hash_of("opening-sequence");
+    app.windows
+        .insert(viewport_id, Arc::new(RwLock::new(pending_window)));
     app.pending_window_open_timestamps
         .insert(viewport_id, Instant::now());
     assert!(app.sequence_window_open_in_progress());
 
     app.pending_window_open_timestamps.remove(&viewport_id);
+    assert!(!app.sequence_window_open_in_progress());
+
+    let unrelated_viewport_id = egui::ViewportId::from_hash_of("configuration-opening");
+    app.pending_window_open_timestamps
+        .insert(unrelated_viewport_id, Instant::now());
     assert!(!app.sequence_window_open_in_progress());
 }
 
