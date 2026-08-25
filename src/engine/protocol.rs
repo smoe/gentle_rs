@@ -11101,11 +11101,19 @@ pub struct TranscriptAssayCoverageTarget {
 pub struct TranscriptAssayCoverageResolution {
     pub universe: TranscriptAssayCoverageUniverse,
     pub annotated_transcript_count: usize,
+    /// Distinct exact mature-cDNA groups in the complete annotation universe.
+    /// `None` distinguishes legacy payloads from a genuine empty annotation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotated_equivalence_group_count: Option<usize>,
     pub required_target_count: usize,
     #[serde(default)]
     pub included_transcript_ids: Vec<String>,
     #[serde(default)]
     pub excluded_annotated_transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub included_equivalence_group_ids: Vec<String>,
+    #[serde(default)]
+    pub excluded_annotated_equivalence_group_ids: Vec<String>,
     #[serde(default)]
     pub unresolved_target_ids: Vec<String>,
     #[serde(default)]
@@ -12642,10 +12650,19 @@ pub struct ExperimentalAssayCoverageSummary {
     pub coverage_universe_kind: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub annotation_release: Option<String>,
+    pub broader_annotation_denominator_available: bool,
     pub annotated_transcript_record_count: usize,
     pub covered_annotated_transcript_record_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assessed_annotated_transcript_record_count: Option<usize>,
+    #[serde(default)]
+    pub unassessed_annotated_transcript_ids: Vec<String>,
     pub distinct_annotated_mature_cdna_count: usize,
     pub covered_distinct_annotated_mature_cdna_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assessed_distinct_annotated_mature_cdna_count: Option<usize>,
+    #[serde(default)]
+    pub unassessed_distinct_annotated_mature_cdna_ids: Vec<String>,
     #[serde(default)]
     pub uncovered_annotated_transcript_ids: Vec<String>,
     #[serde(default)]
@@ -12674,6 +12691,38 @@ pub struct ExperimentalAssayCoverageSummary {
     pub coverage_source_sha256s: Vec<String>,
     #[serde(default)]
     pub summary_lines: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Aggregate of one named gate across every assay card in a handoff.
+pub struct ExperimentalAssayGateAggregate {
+    pub gate: String,
+    pub total: usize,
+    pub assessed: usize,
+    pub passed: usize,
+    pub failed: usize,
+    pub incomplete: usize,
+    pub waived_by_policy: usize,
+    pub not_applicable: usize,
+    pub not_evaluated: usize,
+    #[serde(default)]
+    pub affected_assay_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Engine-owned QA/readiness totals shared by every presentation adapter.
+pub struct ExperimentalAssayQaAggregateSummary {
+    pub assay_total: usize,
+    #[serde(default)]
+    pub gate_aggregates: Vec<ExperimentalAssayGateAggregate>,
+    pub order_ready: usize,
+    pub not_order_ready: usize,
+    #[serde(default)]
+    pub order_blocker_codes: Vec<String>,
+    #[serde(default)]
+    pub blocked_assay_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
@@ -12723,6 +12772,8 @@ pub struct ExperimentalAssayHandoffReport {
     pub policy_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub coverage_summary: Option<ExperimentalAssayCoverageSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub qa_aggregate_summary: Option<ExperimentalAssayQaAggregateSummary>,
     #[serde(default)]
     pub order_readiness_table: Vec<ExperimentalAssayOrderReadinessRow>,
     #[serde(default)]

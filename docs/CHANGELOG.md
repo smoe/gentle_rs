@@ -1,5 +1,12 @@
 # GENtle Changelog
 
+- Kept narrowed UniProt primer panels honest about the broader annotation
+  universe: assay reports now retain optional pre-narrowing exact-cDNA group
+  denominators, handoffs distinguish unassessed from assessed-but-uncovered
+  records, and engine-owned aggregate specificity/QC/order-readiness totals
+  render with exact blocker identifiers. Legacy missing totals remain
+  unavailable rather than becoming zero or pass.
+
 - Added plain, provenance-bound primer coverage denominators to experimental
   assay handoffs and publication QA: broader annotation transcript records and
   distinct mature-cDNA sequences remain separate from UniProt protein targets,

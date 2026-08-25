@@ -10166,6 +10166,17 @@ Primer-pair alternative frontier:
     denominator as unavailable rather than displaying zero or inferring pass.
     Patch-locus records remain separate transcript records and may share one
     exact mature-cDNA sequence denominator.
+    `assessed_*` and `unassessed_*` fields keep annotation members outside a
+    narrowed panel distinct from members that were assessed and found
+    uncovered. Optional group-level totals on `coverage_resolution` preserve
+    the complete pre-narrowing exact-cDNA denominator; absence in a legacy
+    report means unavailable, not zero.
+  - additive `qa_aggregate_summary` derives typed totals once from the
+    handoff's assay cards and readiness rows. It reports assessed/pass/fail/
+    incomplete/not-evaluated counts separately for transcriptome specificity,
+    genomic carryover, and critical oligo QC, plus order-ready totals and exact
+    blocker/assay ids. Presentation adapters render these engine-owned totals
+    rather than recomputing readiness.
   - canonical oligo identity removes all whitespace, uppercases, and maps
     `U` to `T`; full SHA-256-derived `oligo_id` and ordered `pair_id` values are
     authoritative for joins. Existing `primer_id` and `assay_id` fields remain

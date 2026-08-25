@@ -177,7 +177,11 @@ This skill owns:
    parenthetical machine identities. Keep UniProt protein targets,
    UniProt-linked transcript records, distinct linked mature-cDNA sequences,
    and the broader annotation universe as separate denominators. Missing
-   legacy evidence is `not available`, never zero.
+    legacy evidence is `not available`, never zero.
+   Preserve GENtle's distinction between `unassessed_*` members outside a
+   narrowed panel and assessed-but-uncovered members. Use the typed
+   `qa_aggregate_summary` for specificity, oligo-QC, and order-readiness totals;
+   do not independently recount card prose.
 8. When specificity is required, prepare genomic-DNA and transcriptome/cDNA
    handoffs separately. A `specificity-plan` result is a plan, not evidence.
    An external runner may execute BLAST; GENtle must then import/finalize the

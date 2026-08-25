@@ -758,13 +758,88 @@ fn render_assay_coverage_summary(report: &serde_json::Value) -> String {
     let source_reports = json_scalar(summary.get("coverage_source_report_ids"));
     let source_hashes = json_scalar(summary.get("coverage_source_sha256s"));
     let annotation_release = json_scalar(summary.get("annotation_release"));
+    let id_rows = [
+        (
+            "Unassessed annotation transcripts",
+            "unassessed_annotated_transcript_ids",
+        ),
+        (
+            "Uncovered assessed annotation transcripts",
+            "uncovered_annotated_transcript_ids",
+        ),
+        ("Uncovered UniProt targets", "uncovered_uniprot_target_ids"),
+        (
+            "Unresolved UniProt targets",
+            "unresolved_uniprot_target_ids",
+        ),
+        ("Ambiguous UniProt targets", "ambiguous_uniprot_target_ids"),
+    ]
+    .into_iter()
+    .map(|(label, key)| {
+        let values = match summary.get(key) {
+            None => "not available".to_string(),
+            Some(value) => value
+                .as_array()
+                .map(|rows| {
+                    rows.iter()
+                        .map(|row| html_escape(&json_scalar(Some(row))))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                })
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| "none".to_string()),
+        };
+        format!(
+            "<li><b>{}:</b> <code>{}</code></li>",
+            html_escape(label),
+            values
+        )
+    })
+    .collect::<String>();
     format!(
-        "<section data-gentle-coverage-universe=\"{}\"><h4>Coverage denominators</h4><ul>{}</ul><p class=\"muted\"><b>Annotation release:</b> <code>{}</code> · <b>coverage reports:</b> <code>{}</code> · <b>source SHA-256:</b> <code>{}</code></p></section>",
+        "<section data-gentle-coverage-universe=\"{}\"><h4>Coverage denominators</h4><ul>{}</ul><h5>Coverage identifiers</h5><ul>{}</ul><p class=\"muted\"><b>Annotation release:</b> <code>{}</code> · <b>coverage reports:</b> <code>{}</code> · <b>source SHA-256:</b> <code>{}</code></p></section>",
         html_escape(&json_scalar(summary.get("coverage_universe_kind"))),
         lines,
+        id_rows,
         html_escape(&annotation_release),
         html_escape(&source_reports),
         html_escape(&source_hashes),
+    )
+}
+
+fn render_assay_qa_aggregate_summary(report: &serde_json::Value) -> String {
+    let Some(summary) = report
+        .get("qa_aggregate_summary")
+        .filter(|value| !value.is_null())
+    else {
+        return "<section><h4>Aggregate QA and readiness</h4><p class=\"status warning\">Aggregate QA counts are not available in this legacy handoff.</p></section>".to_string();
+    };
+    let gates = summary
+        .get("gate_aggregates")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|gate| {
+            format!(
+                "<tr data-gentle-qa-aggregate=\"{}\"><td>{}</td><td>{}/{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+                html_escape(&json_scalar(gate.get("gate"))),
+                html_escape(&json_scalar(gate.get("gate"))),
+                html_escape(&json_scalar(gate.get("assessed"))),
+                html_escape(&json_scalar(gate.get("total"))),
+                html_escape(&json_scalar(gate.get("passed"))),
+                html_escape(&json_scalar(gate.get("failed"))),
+                html_escape(&json_scalar(gate.get("incomplete"))),
+                html_escape(&json_scalar(gate.get("not_evaluated"))),
+            )
+        })
+        .collect::<String>();
+    format!(
+        "<section><h4>Aggregate QA and readiness</h4><table><thead><tr><th>Gate</th><th>Assessed / total</th><th>Pass</th><th>Fail</th><th>Incomplete</th><th>Not evaluated</th></tr></thead><tbody>{}</tbody></table><p><b>Order-ready:</b> {}/{} · <b>Blocked assays:</b> <code>{}</code> · <b>Blocker codes:</b> <code>{}</code></p></section>",
+        gates,
+        html_escape(&json_scalar(summary.get("order_ready"))),
+        html_escape(&json_scalar(summary.get("assay_total"))),
+        html_escape(&json_scalar(summary.get("blocked_assay_ids"))),
+        html_escape(&json_scalar(summary.get("order_blocker_codes"))),
     )
 }
 
@@ -779,6 +854,7 @@ fn render_quality_assurance(value: &serde_json::Value) -> String {
         let policy_schema = json_scalar(report.pointer("/policy/schema"));
         let policy_version = json_scalar(report.pointer("/policy/policy_version"));
         let coverage_summary = render_assay_coverage_summary(report);
+        let qa_aggregate_summary = render_assay_qa_aggregate_summary(report);
         let mut cards = String::new();
         for card in report
             .get("cards")
@@ -885,7 +961,7 @@ fn render_quality_assurance(value: &serde_json::Value) -> String {
             .map(|rows| format!("<h3>Handoff warnings</h3><ul>{rows}</ul>"))
             .unwrap_or_default();
         handoffs.push_str(&format!(
-            "<section data-gentle-qa-handoff=\"{}\"><h3>Handoff <code>{}</code></h3><p><b>Source panel:</b> <code>{}</code> · <b>panel SHA-256:</b> <code>{}</code><br><b>Readiness policy:</b> <code>{}</code> · schema <code>{}</code> · version <code>{}</code></p>{}{}{}</section>",
+            "<section data-gentle-qa-handoff=\"{}\"><h3>Handoff <code>{}</code></h3><p><b>Source panel:</b> <code>{}</code> · <b>panel SHA-256:</b> <code>{}</code><br><b>Readiness policy:</b> <code>{}</code> · schema <code>{}</code> · version <code>{}</code></p>{}{}{}{}</section>",
             html_escape(&package_id),
             html_escape(&package_id),
             html_escape(&source_panel_report_id),
@@ -894,6 +970,7 @@ fn render_quality_assurance(value: &serde_json::Value) -> String {
             html_escape(&policy_schema),
             html_escape(&policy_version),
             coverage_summary,
+            qa_aggregate_summary,
             cards,
             report_warnings,
         ));
@@ -1346,7 +1423,27 @@ mod tests {
                     "coverage_source_sha256s": ["sha256:coverage"],
                     "summary_lines": [
                         "3/3 distinct UniProt-linked mature transcript sequences are covered, corresponding by sequence to 4/4 linked transcript records."
-                    ]
+                    ],
+                    "unassessed_annotated_transcript_ids": ["TX_OUTSIDE"],
+                    "uncovered_uniprot_target_ids": ["target_2"],
+                    "unresolved_uniprot_target_ids": [],
+                    "ambiguous_uniprot_target_ids": []
+                },
+                "qa_aggregate_summary": {
+                    "assay_total": 1,
+                    "order_ready": 0,
+                    "not_order_ready": 1,
+                    "blocked_assay_ids": ["assay_1"],
+                    "order_blocker_codes": ["transcriptome_specificity"],
+                    "gate_aggregates": [{
+                        "gate": "transcriptome_specificity",
+                        "total": 1,
+                        "assessed": 1,
+                        "passed": 0,
+                        "failed": 0,
+                        "incomplete": 1,
+                        "not_evaluated": 0
+                    }]
                 },
                 "cards": [{
                     "assay_id": "assay_1",
@@ -1371,6 +1468,10 @@ mod tests {
         assert!(html.contains("data-gentle-coverage-universe=\"uniprot_supported_isoforms\""));
         assert!(html.contains("3/3 distinct UniProt-linked"));
         assert!(html.contains("uniprot_audit_1"));
+        assert!(html.contains("TX_OUTSIDE"));
+        assert!(html.contains("target_2"));
+        assert!(html.contains("data-gentle-qa-aggregate=\"transcriptome_specificity\""));
+        assert!(html.contains("Order-ready:</b> 0/1"));
         assert!(html.contains("data-gentle-qa-card=\"assay_1\""));
         assert!(html.contains("data-gentle-qa-gate=\"transcriptome_specificity\""));
         assert!(html.contains("class=\"status warning\">incomplete"));
@@ -1391,6 +1492,7 @@ mod tests {
 
         assert!(html.contains("Coverage denominator summary is not available"));
         assert!(html.contains("No zero or passing coverage is inferred"));
+        assert!(html.contains("Aggregate QA counts are not available"));
         assert!(!html.contains("0/0"));
     }
 }

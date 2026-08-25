@@ -14006,6 +14006,24 @@ fn transcript_assay_coverage_explicit_keeps_objective_and_exact_cdna_equivalence
     assert_eq!(report.transcript_count, 2);
     assert_eq!(report.equivalence_group_count, 1);
     assert_eq!(
+        report.coverage_resolution.annotated_equivalence_group_count,
+        Some(2)
+    );
+    assert_eq!(
+        report
+            .coverage_resolution
+            .included_equivalence_group_ids
+            .len(),
+        1
+    );
+    assert_eq!(
+        report
+            .coverage_resolution
+            .excluded_annotated_equivalence_group_ids
+            .len(),
+        1
+    );
+    assert_eq!(
         report.coverage_resolution.included_transcript_ids,
         vec!["TX2".to_string(), "TX3".to_string()]
     );
@@ -61457,6 +61475,19 @@ fn experimental_handoff_order_form_requires_approved_digest_and_order_ready_rows
             .iter()
             .any(|line| line.contains("UniProt-linked target coverage is not available"))
     );
+    let qa = handoff
+        .qa_aggregate_summary
+        .as_ref()
+        .expect("engine-owned QA aggregates");
+    assert_eq!(qa.assay_total, handoff.cards.len());
+    assert_eq!(qa.order_ready, handoff.cards.len());
+    assert_eq!(qa.not_order_ready, 0);
+    assert!(qa.gate_aggregates.iter().any(|gate| {
+        gate.gate == "transcriptome_specificity"
+            && gate.total == handoff.cards.len()
+            && gate.not_evaluated == handoff.cards.len()
+            && gate.passed == 0
+    }));
     assert!(
         handoff
             .order_readiness_table
@@ -61546,6 +61577,15 @@ fn experimental_handoff_coverage_summary_separates_uniprot_records_from_cdna_seq
             ..Default::default()
         },
         coverage_resolution: TranscriptAssayCoverageResolution {
+            annotated_transcript_count: 6,
+            annotated_equivalence_group_count: Some(4),
+            included_transcript_ids: transcript_ids.map(str::to_string).to_vec(),
+            excluded_annotated_transcript_ids: vec![
+                "ENST_OTHER_1".to_string(),
+                "ENST_OTHER_2".to_string(),
+            ],
+            included_equivalence_group_ids: group_ids.map(str::to_string).to_vec(),
+            excluded_annotated_equivalence_group_ids: vec!["cdna_other".to_string()],
             targets: vec![TranscriptAssayCoverageTarget {
                 target_id: "uniprot_target_1".to_string(),
                 uniprot_entry_ids: vec!["Q00000".to_string()],
@@ -61593,12 +61633,57 @@ fn experimental_handoff_coverage_summary_separates_uniprot_records_from_cdna_seq
     assert_eq!(summary.distinct_uniprot_linked_mature_cdna_count, 3);
     assert_eq!(summary.covered_uniprot_linked_transcript_record_count, 4);
     assert_eq!(summary.covered_distinct_uniprot_linked_mature_cdna_count, 3);
+    assert_eq!(summary.annotated_transcript_record_count, 6);
+    assert!(summary.broader_annotation_denominator_available);
+    assert_eq!(summary.assessed_annotated_transcript_record_count, Some(4));
+    assert_eq!(summary.distinct_annotated_mature_cdna_count, 4);
+    assert_eq!(
+        summary.assessed_distinct_annotated_mature_cdna_count,
+        Some(3)
+    );
+    assert_eq!(
+        summary.unassessed_annotated_transcript_ids,
+        vec!["ENST_OTHER_1", "ENST_OTHER_2"]
+    );
+    assert_eq!(
+        summary.unassessed_distinct_annotated_mature_cdna_ids,
+        vec!["cdna_other"]
+    );
     assert!(summary.summary_lines.iter().any(|line| {
         line.contains("3/3 distinct UniProt-linked mature transcript sequence(s)")
             && line.contains("4/4 UniProt-linked transcript record(s)")
     }));
     assert_eq!(summary.coverage_source_report_ids, vec!["uniprot_audit_1"]);
     assert_eq!(summary.coverage_source_sha256s, vec!["sha256:coverage"]);
+}
+
+#[test]
+fn experimental_handoff_coverage_summary_keeps_legacy_broader_denominator_unavailable() {
+    let panel = TranscriptAssayPanelReport {
+        transcript_rows: vec![TranscriptAssayPanelTranscriptRow {
+            transcript_id: "TX_LEGACY".to_string(),
+            covering_assay_ids: vec!["assay_1".to_string()],
+            ..Default::default()
+        }],
+        equivalence_groups: vec![TranscriptAssayEquivalenceGroup {
+            equivalence_group_id: "cdna_legacy".to_string(),
+            ..Default::default()
+        }],
+        selected_assays: vec![TranscriptAssayPanelAssay {
+            single_product_equivalence_group_ids: vec!["cdna_legacy".to_string()],
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+
+    let summary = GentleEngine::experimental_assay_coverage_summary(&panel);
+
+    assert!(!summary.broader_annotation_denominator_available);
+    assert_eq!(summary.assessed_annotated_transcript_record_count, None);
+    assert_eq!(summary.assessed_distinct_annotated_mature_cdna_count, None);
+    assert!(summary.summary_lines.iter().any(|line| {
+        line.contains("complete pre-narrowing annotation denominator is not available")
+    }));
 }
 
 #[cfg(unix)]

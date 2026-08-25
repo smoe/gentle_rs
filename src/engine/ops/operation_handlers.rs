@@ -16719,9 +16719,16 @@ impl GentleEngine {
         let universe =
             Self::normalize_transcript_assay_coverage_universe(universe, require_bound_sources)?;
         if universe.kind == TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms {
-            return Self::resolve_transcript_assay_uniprot_coverage_universe(
-                universe, seq_id, templates,
+            let (selected, mut resolution) =
+                Self::resolve_transcript_assay_uniprot_coverage_universe(
+                    universe, seq_id, templates,
+                )?;
+            Self::attach_transcript_assay_annotation_group_denominators(
+                &mut resolution,
+                templates,
+                &selected,
             );
+            return Ok((selected, resolution));
         }
         let mut resolution = TranscriptAssayCoverageResolution {
             universe: universe.clone(),
@@ -16749,6 +16756,11 @@ impl GentleEngine {
                     ..TranscriptAssayCoverageTarget::default()
                 })
                 .collect();
+            Self::attach_transcript_assay_annotation_group_denominators(
+                &mut resolution,
+                templates,
+                templates,
+            );
             return Ok((templates.to_vec(), resolution));
         }
 
@@ -16861,7 +16873,38 @@ impl GentleEngine {
             .iter()
             .map(|index| templates[*index].clone())
             .collect::<Vec<_>>();
+        Self::attach_transcript_assay_annotation_group_denominators(
+            &mut resolution,
+            templates,
+            &selected,
+        );
         Ok((selected, resolution))
+    }
+
+    fn attach_transcript_assay_annotation_group_denominators(
+        resolution: &mut TranscriptAssayCoverageResolution,
+        annotated_templates: &[TranscriptQpcrDesignTemplate],
+        selected_templates: &[TranscriptQpcrDesignTemplate],
+    ) {
+        let annotated_group_ids =
+            Self::transcript_assay_exact_equivalence_groups(annotated_templates)
+                .into_iter()
+                .map(|group| group.report.equivalence_group_id)
+                .collect::<BTreeSet<_>>();
+        let selected_group_ids =
+            Self::transcript_assay_exact_equivalence_groups(selected_templates)
+                .into_iter()
+                .map(|group| group.report.equivalence_group_id)
+                .collect::<BTreeSet<_>>();
+        resolution.annotated_equivalence_group_count = Some(annotated_group_ids.len());
+        resolution.included_equivalence_group_ids = selected_group_ids
+            .intersection(&annotated_group_ids)
+            .cloned()
+            .collect();
+        resolution.excluded_annotated_equivalence_group_ids = annotated_group_ids
+            .difference(&selected_group_ids)
+            .cloned()
+            .collect();
     }
 
     fn resolve_transcript_assay_uniprot_coverage_universe(
@@ -31886,7 +31929,7 @@ impl GentleEngine {
             .filter(|row| !row.covering_assay_ids.is_empty())
             .map(|row| row.transcript_id.clone())
             .collect::<BTreeSet<_>>();
-        let annotated_transcript_ids = panel
+        let assessed_transcript_ids = panel
             .transcript_rows
             .iter()
             .map(|row| row.transcript_id.clone())
@@ -31896,16 +31939,16 @@ impl GentleEngine {
             .iter()
             .flat_map(|assay| assay.single_product_equivalence_group_ids.iter().cloned())
             .collect::<BTreeSet<_>>();
-        let annotated_group_ids = panel
+        let assessed_group_ids = panel
             .equivalence_groups
             .iter()
             .map(|group| group.equivalence_group_id.clone())
             .collect::<BTreeSet<_>>();
-        let mut uncovered_transcript_ids = annotated_transcript_ids
+        let mut uncovered_transcript_ids = assessed_transcript_ids
             .difference(&covered_transcript_ids)
             .cloned()
             .collect::<Vec<_>>();
-        let mut uncovered_group_ids = annotated_group_ids
+        let mut uncovered_group_ids = assessed_group_ids
             .difference(&covered_group_ids)
             .cloned()
             .collect::<Vec<_>>();
@@ -31970,20 +32013,56 @@ impl GentleEngine {
         source_sha256s.sort();
         source_sha256s.dedup();
 
-        let mut summary_lines = vec![
-            format!(
-                "GENtle evaluated {} distinct annotated mature transcript sequence(s) and predicts that the panel amplifies {}.",
-                annotated_group_ids.len(),
-                covered_group_ids.intersection(&annotated_group_ids).count()
-            ),
-            format!(
-                "Those sequences represent {} annotation transcript record(s); {} record(s) have at least one covering assay.",
-                annotated_transcript_ids.len(),
-                covered_transcript_ids
-                    .intersection(&annotated_transcript_ids)
-                    .count()
-            ),
-        ];
+        let broader_transcript_count = panel.coverage_resolution.annotated_transcript_count;
+        let broader_group_count = panel.coverage_resolution.annotated_equivalence_group_count;
+        let broader_denominator_available = broader_transcript_count > 0;
+        let annotated_transcript_record_count = if broader_denominator_available {
+            broader_transcript_count
+        } else {
+            assessed_transcript_ids.len()
+        };
+        let distinct_annotated_mature_cdna_count =
+            broader_group_count.unwrap_or(assessed_group_ids.len());
+        let unassessed_transcript_ids = panel
+            .coverage_resolution
+            .excluded_annotated_transcript_ids
+            .clone();
+        let unassessed_group_ids = panel
+            .coverage_resolution
+            .excluded_annotated_equivalence_group_ids
+            .clone();
+
+        let mut summary_lines = vec![format!(
+            "GENtle assessed {} distinct annotated mature transcript sequence(s) and predicts that the panel amplifies {}.",
+            assessed_group_ids.len(),
+            covered_group_ids.intersection(&assessed_group_ids).count()
+        )];
+        if broader_denominator_available && broader_group_count.is_some() {
+            summary_lines.push(format!(
+                "The complete annotation universe contains {} transcript record(s) and {} distinct mature transcript sequence(s); this panel assessed {} record(s) and {} sequence(s).",
+                annotated_transcript_record_count,
+                distinct_annotated_mature_cdna_count,
+                assessed_transcript_ids.len(),
+                assessed_group_ids.len()
+            ));
+        } else {
+            summary_lines.push(
+                "The complete pre-narrowing annotation denominator is not available in this legacy source panel; no broader zero or complete-coverage claim is inferred."
+                    .to_string(),
+            );
+        }
+        summary_lines.push(format!(
+            "Among assessed records, {} transcript record(s) have at least one covering assay.",
+            covered_transcript_ids
+                .intersection(&assessed_transcript_ids)
+                .count()
+        ));
+        if !unassessed_transcript_ids.is_empty() {
+            summary_lines.push(format!(
+                "Annotation transcript record(s) outside this panel's assessed universe: {}. They are unassessed, not uncovered.",
+                unassessed_transcript_ids.join(", ")
+            ));
+        }
         if !uncovered_transcript_ids.is_empty() {
             summary_lines.push(format!(
                 "Annotated transcript record(s) not covered: {}.",
@@ -32013,14 +32092,22 @@ impl GentleEngine {
         ExperimentalAssayCoverageSummary {
             coverage_universe_kind: panel.coverage_universe.kind.as_str().to_string(),
             annotation_release: panel.provenance.annotation_release.clone(),
-            annotated_transcript_record_count: annotated_transcript_ids.len(),
+            broader_annotation_denominator_available: broader_denominator_available
+                && broader_group_count.is_some(),
+            annotated_transcript_record_count,
             covered_annotated_transcript_record_count: covered_transcript_ids
-                .intersection(&annotated_transcript_ids)
+                .intersection(&assessed_transcript_ids)
                 .count(),
-            distinct_annotated_mature_cdna_count: annotated_group_ids.len(),
+            assessed_annotated_transcript_record_count: broader_denominator_available
+                .then_some(assessed_transcript_ids.len()),
+            unassessed_annotated_transcript_ids: unassessed_transcript_ids,
+            distinct_annotated_mature_cdna_count,
             covered_distinct_annotated_mature_cdna_count: covered_group_ids
-                .intersection(&annotated_group_ids)
+                .intersection(&assessed_group_ids)
                 .count(),
+            assessed_distinct_annotated_mature_cdna_count: broader_group_count
+                .map(|_| assessed_group_ids.len()),
+            unassessed_distinct_annotated_mature_cdna_ids: unassessed_group_ids,
             uncovered_annotated_transcript_ids: uncovered_transcript_ids,
             uncovered_distinct_mature_cdna_ids: uncovered_group_ids,
             uniprot_coverage_available: uniprot_available,
@@ -32039,6 +32126,82 @@ impl GentleEngine {
             coverage_source_report_ids: source_report_ids,
             coverage_source_sha256s: source_sha256s,
             summary_lines,
+        }
+    }
+
+    fn experimental_assay_qa_aggregate_summary(
+        cards: &[ExperimentalAssayCard],
+        order_readiness_table: &[ExperimentalAssayOrderReadinessRow],
+    ) -> ExperimentalAssayQaAggregateSummary {
+        let gate_names = [
+            "transcriptome_specificity",
+            "genomic_carryover",
+            "critical_qc",
+        ];
+        let gate_aggregates = gate_names
+            .into_iter()
+            .map(|gate_name| {
+                let rows = cards
+                    .iter()
+                    .filter_map(|card| {
+                        card.gate_outcomes
+                            .iter()
+                            .find(|gate| gate.gate == gate_name)
+                            .map(|gate| (card.assay_id.as_str(), gate.status))
+                    })
+                    .collect::<Vec<_>>();
+                let count = |status| {
+                    rows.iter()
+                        .filter(|(_, observed)| *observed == status)
+                        .count()
+                };
+                let passed = count(ExperimentalAssayGateStatus::Pass);
+                let failed = count(ExperimentalAssayGateStatus::Fail);
+                let incomplete = count(ExperimentalAssayGateStatus::Incomplete);
+                let waived_by_policy = count(ExperimentalAssayGateStatus::WaivedByPolicy);
+                let not_applicable = count(ExperimentalAssayGateStatus::NotApplicable);
+                let not_evaluated = count(ExperimentalAssayGateStatus::NotEvaluated);
+                ExperimentalAssayGateAggregate {
+                    gate: gate_name.to_string(),
+                    total: rows.len(),
+                    assessed: passed + failed + incomplete,
+                    passed,
+                    failed,
+                    incomplete,
+                    waived_by_policy,
+                    not_applicable,
+                    not_evaluated,
+                    affected_assay_ids: rows
+                        .iter()
+                        .filter_map(|(assay_id, status)| {
+                            (*status != ExperimentalAssayGateStatus::Pass)
+                                .then_some((*assay_id).to_string())
+                        })
+                        .collect(),
+                }
+            })
+            .collect();
+        let order_ready = order_readiness_table
+            .iter()
+            .filter(|row| row.order_ready)
+            .count();
+        let mut order_blocker_codes = order_readiness_table
+            .iter()
+            .flat_map(|row| row.blocker_codes.iter().cloned())
+            .collect::<Vec<_>>();
+        order_blocker_codes.sort();
+        order_blocker_codes.dedup();
+        ExperimentalAssayQaAggregateSummary {
+            assay_total: cards.len(),
+            gate_aggregates,
+            order_ready,
+            not_order_ready: order_readiness_table.len().saturating_sub(order_ready),
+            order_blocker_codes,
+            blocked_assay_ids: order_readiness_table
+                .iter()
+                .filter(|row| !row.order_ready)
+                .map(|row| row.assay_id.clone())
+                .collect(),
         }
     }
 
@@ -32537,6 +32700,8 @@ impl GentleEngine {
                 predicted_product_lengths_bp: card.predicted_product_lengths_bp.clone(),
             })
             .collect::<Vec<_>>();
+        let qa_aggregate_summary =
+            Self::experimental_assay_qa_aggregate_summary(&cards, &order_readiness_table);
         if panel.selected_assays.is_empty() {
             package_warnings.push("The source panel contains no selected assays.".to_string());
         }
@@ -32561,6 +32726,7 @@ impl GentleEngine {
             policy,
             policy_id,
             coverage_summary: Some(coverage_summary),
+            qa_aggregate_summary: Some(qa_aggregate_summary),
             order_readiness_table,
             cards,
             assay_tests,
