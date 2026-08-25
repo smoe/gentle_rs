@@ -39,9 +39,10 @@ use super::{
 use crate::{
     agent_bridge::{
         AgentAttachmentSummary, AgentConversation, AgentConversationTurn, AgentExecutionIntent,
-        AgentInvocationOutcome, AgentResponse, AgentSuggestedCommand, AgentSystemSpec,
-        AgentSystemTransport,
+        AgentInvocationOutcome, AgentResponse, AgentScreenshotRequest, AgentSuggestedCommand,
+        AgentSystemSpec, AgentSystemTransport,
     },
+    agent_help::take_capture_events,
     agent_transport::{
         agent_system_supports_model_discovery, agent_system_supports_model_selection,
     },
@@ -1688,6 +1689,10 @@ fn synthetic_agent_fus_ensembl_gene_entry() -> EnsemblGeneEntry {
         seq_region_name: Some("16".to_string()),
         genomic_start_1based: Some(31191442),
         genomic_end_1based: Some(31200261),
+        sequence_genomic_start_1based: Some(31191442),
+        sequence_genomic_end_1based: Some(31200261),
+        flank_5prime_bp: 0,
+        flank_3prime_bp: 0,
         sequence: "GAATTCGCGGCCGCTTCTAGA".to_string(),
         sequence_length: 21,
         transcripts: vec![EnsemblGeneTranscriptSummary {
@@ -1900,6 +1905,7 @@ fn agent_response_sanity_flags_generic_placeholder_retrieval_reply() {
                 execution: AgentExecutionIntent::Ask,
             },
         ],
+        screenshot_request: None,
     };
 
     let warnings = GENtleApp::agent_response_sanity_warnings_for_prompt(
@@ -1973,6 +1979,7 @@ fn agent_response_sanity_accepts_fus_retrieval_commands() {
                 execution: AgentExecutionIntent::Ask,
             },
         ],
+        screenshot_request: None,
     };
 
     let warnings = GENtleApp::agent_response_sanity_warnings_for_prompt(
@@ -2024,6 +2031,7 @@ fn agent_response_sanity_flags_list_as_filesystem_hallucination() {
             command: "/list".to_string(),
             execution: AgentExecutionIntent::Chat,
         }],
+        screenshot_request: None,
     };
 
     let warnings = GENtleApp::agent_response_sanity_warnings_for_prompt("", &response);
@@ -2052,6 +2060,7 @@ fn agent_response_sanity_flags_auto_history_transition() {
             command: "/undo".to_string(),
             execution: AgentExecutionIntent::Auto,
         }],
+        screenshot_request: None,
     };
 
     let warnings =
@@ -10488,6 +10497,7 @@ fn agent_assistant_content_scrolls_on_small_viewport() {
                 ),
                 questions: vec![],
                 suggested_commands: vec![],
+                screenshot_request: None,
             },
             attachments: vec![],
             system_id: "builtin_echo".to_string(),
@@ -12382,6 +12392,281 @@ fn poll_agent_assistant_task_updates_phase_status() {
     );
 }
 
+fn activate_test_agent_screenshot_request(
+    app: &mut GENtleApp,
+    supports_images: bool,
+    request_id: &str,
+) {
+    let mut system = test_agent_system("image_agent", AgentSystemTransport::ExternalJsonStdio);
+    system.label = "Image Agent".to_string();
+    system.supports_image_attachments = supports_images;
+    app.agent_systems = vec![system];
+    app.agent_system_id = "image_agent".to_string();
+    let completed_at_unix_ms = 77;
+    let request = AgentScreenshotRequest {
+        id: request_id.to_string(),
+        reason: "Inspect the visible controls and feature colours.".to_string(),
+    };
+    app.agent_conversation.push_turn(AgentConversationTurn {
+        user_message: "Why is this window difficult to interpret?".to_string(),
+        response: AgentResponse {
+            schema: "gentle.agent_response.v1".to_string(),
+            assistant_message: "I need to inspect the visible window.".to_string(),
+            questions: vec![],
+            suggested_commands: vec![],
+            screenshot_request: Some(request.clone()),
+        },
+        attachments: vec![],
+        system_id: "image_agent".to_string(),
+        system_label: "Image Agent".to_string(),
+        completed_at_unix_ms,
+    });
+    app.activate_agent_screenshot_consent(
+        request,
+        "image_agent".to_string(),
+        "Image Agent".to_string(),
+        completed_at_unix_ms,
+    );
+}
+
+fn screenshot_commands(output: &egui::FullOutput) -> usize {
+    output
+        .viewport_output
+        .values()
+        .flat_map(|viewport| &viewport.commands)
+        .filter(|command| matches!(command, egui::ViewportCommand::Screenshot(_)))
+        .count()
+}
+
+#[test]
+fn agent_screenshot_request_and_auto_run_emit_no_capture() {
+    let _ = take_capture_events();
+    let mut app = GENtleApp::default();
+    app.agent_allow_auto_exec = true;
+    let ctx = egui::Context::default();
+    ctx.begin_pass(egui::RawInput::default());
+
+    activate_test_agent_screenshot_request(&mut app, true, "inspect-main-1");
+
+    let output = ctx.end_pass();
+    assert!(app.agent_screenshot_consent.is_some());
+    assert!(app.agent_screenshot_capture.is_none());
+    assert!(app.agent_pending_image_attachment.is_none());
+    assert_eq!(screenshot_commands(&output), 0);
+}
+
+#[test]
+fn declining_agent_screenshot_request_captures_nothing() {
+    let _ = take_capture_events();
+    let mut app = GENtleApp::default();
+    let ctx = egui::Context::default();
+    ctx.begin_pass(egui::RawInput::default());
+    activate_test_agent_screenshot_request(&mut app, true, "inspect-main-decline");
+
+    app.decline_agent_screenshot_request();
+
+    let output = ctx.end_pass();
+    assert!(app.agent_screenshot_consent.is_none());
+    assert!(app.agent_screenshot_capture.is_none());
+    assert!(app.agent_pending_image_attachment.is_none());
+    assert_eq!(screenshot_commands(&output), 0);
+}
+
+#[test]
+fn approved_agent_screenshot_is_one_shot_and_previews_before_transport() {
+    let _ = take_capture_events();
+    let mut app = GENtleApp::default();
+    let ctx = egui::Context::default();
+    ctx.begin_pass(egui::RawInput::default());
+    activate_test_agent_screenshot_request(&mut app, true, "inspect-main-once");
+
+    app.approve_agent_screenshot_request(&ctx);
+    app.approve_agent_screenshot_request(&ctx);
+
+    let output = ctx.end_pass();
+    assert_eq!(screenshot_commands(&output), 1);
+    assert!(app.agent_screenshot_consent.is_none());
+    assert!(app.agent_pending_image_attachment.is_none());
+    let pending = app
+        .agent_screenshot_capture
+        .clone()
+        .expect("capture should be in flight");
+    let user_data = output
+        .viewport_output
+        .get(&pending.capture_viewport_id)
+        .into_iter()
+        .flat_map(|viewport| &viewport.commands)
+        .find_map(|command| {
+            let egui::ViewportCommand::Screenshot(user_data) = command else {
+                return None;
+            };
+            Some(user_data.clone())
+        })
+        .expect("screenshot token");
+    let screenshot_event = || egui::Event::Screenshot {
+        viewport_id: pending.capture_viewport_id,
+        user_data: user_data.clone(),
+        image: Arc::new(egui::ColorImage::filled(
+            [4, 3],
+            egui::Color32::from_rgb(40, 90, 130),
+        )),
+    };
+
+    ctx.begin_pass(egui::RawInput {
+        events: vec![screenshot_event()],
+        ..Default::default()
+    });
+    app.poll_agent_help_capture_events(&ctx);
+    let _ = ctx.end_pass();
+
+    let attachment = app
+        .agent_pending_image_attachment
+        .as_ref()
+        .expect("captured image should be pending for preview");
+    assert_eq!(attachment.request.pixel_width, Some(4));
+    assert_eq!(attachment.request.pixel_height, Some(3));
+    assert_eq!(
+        attachment.request.capture_backend.as_deref(),
+        Some("egui.viewport")
+    );
+    assert!(app.agent_prompt.contains("inspect-main-once"));
+    assert!(app.agent_prompt.contains("user-approved screenshot"));
+    assert!(app.agent_task.is_none(), "preview must precede transport");
+    assert!(app.agent_screenshot_capture.is_none());
+    let stored = serde_json::to_string(&app.agent_conversation).expect("stored conversation");
+    assert!(stored.contains("inspect-main-once"));
+    assert!(!stored.contains("gentle-agent-help-"));
+    assert!(!stored.contains("/tmp/"));
+
+    let digest = attachment.request.sha256.clone();
+    ctx.begin_pass(egui::RawInput {
+        events: vec![screenshot_event()],
+        ..Default::default()
+    });
+    app.poll_agent_help_capture_events(&ctx);
+    let replay_output = ctx.end_pass();
+    assert_eq!(screenshot_commands(&replay_output), 0);
+    assert_eq!(
+        app.agent_pending_image_attachment
+            .as_ref()
+            .map(|attachment| attachment.request.sha256.as_str()),
+        Some(digest.as_str())
+    );
+}
+
+#[test]
+fn unsupported_agent_screenshot_provider_refuses_before_capture() {
+    let _ = take_capture_events();
+    let mut app = GENtleApp::default();
+    let ctx = egui::Context::default();
+    ctx.begin_pass(egui::RawInput::default());
+    activate_test_agent_screenshot_request(&mut app, false, "inspect-unsupported");
+
+    app.approve_agent_screenshot_request(&ctx);
+
+    let output = ctx.end_pass();
+    assert_eq!(screenshot_commands(&output), 0);
+    assert!(app.agent_screenshot_capture.is_none());
+    assert!(app.agent_pending_image_attachment.is_none());
+    assert!(
+        app.agent_status
+            .contains("cannot receive image attachments")
+    );
+}
+
+#[test]
+fn agent_screenshot_consent_invalidates_on_provider_project_and_window_changes() {
+    let mut provider_app = GENtleApp::default();
+    activate_test_agent_screenshot_request(&mut provider_app, true, "provider-change");
+    provider_app.agent_system_id = "another_agent".to_string();
+    provider_app.validate_agent_screenshot_state();
+    assert!(provider_app.agent_screenshot_consent.is_none());
+
+    let mut project_app = GENtleApp::default();
+    activate_test_agent_screenshot_request(&mut project_app, true, "project-change");
+    project_app
+        .engine
+        .write()
+        .expect("engine")
+        .apply(Operation::CreateSequenceFromText {
+            sequence_text: "ACGT".to_string(),
+            output_id: Some("project_changed".to_string()),
+            name: None,
+            circular: false,
+        })
+        .expect("project mutation");
+    project_app.validate_agent_screenshot_state();
+    assert!(project_app.agent_screenshot_consent.is_none());
+
+    let mut window_app = GENtleApp::default();
+    window_app.show_help_dialog = true;
+    activate_test_agent_screenshot_request(&mut window_app, true, "window-close");
+    let help_key = GENtleApp::native_menu_key_for_viewport(GENtleApp::help_viewport_id());
+    window_app
+        .agent_screenshot_consent
+        .as_mut()
+        .expect("consent")
+        .selected_window_key = Some(help_key);
+    window_app.show_help_dialog = false;
+    window_app.validate_agent_screenshot_state();
+    assert!(window_app.agent_screenshot_consent.is_none());
+}
+
+#[test]
+fn agent_screenshot_consent_invalidates_on_active_task_and_conversation_clear() {
+    let mut active_app = GENtleApp::default();
+    activate_test_agent_screenshot_request(&mut active_app, true, "active-task");
+    let (_tx, rx) = mpsc::channel::<AgentAskTaskMessage>();
+    active_app.agent_task = Some(AgentAskTask {
+        job_id: 78,
+        prompt: "new request".to_string(),
+        attachment_summaries: vec![],
+        _attachment_files: vec![],
+        started: Instant::now(),
+        runtime_frame: test_runtime_frame("agent-screenshot-active-task"),
+        receiver: rx,
+    });
+    active_app.validate_agent_screenshot_state();
+    assert!(active_app.agent_screenshot_consent.is_none());
+
+    let mut clear_app = GENtleApp::default();
+    activate_test_agent_screenshot_request(&mut clear_app, true, "conversation-clear");
+    clear_app.clear_agent_conversation();
+    assert!(clear_app.agent_screenshot_consent.is_none());
+    assert!(clear_app.agent_screenshot_capture.is_none());
+    assert!(clear_app.agent_conversation.turns.is_empty());
+}
+
+#[test]
+fn timed_out_agent_screenshot_capture_discards_late_reply_id() {
+    let _ = take_capture_events();
+    let mut app = GENtleApp::default();
+    let ctx = egui::Context::default();
+    ctx.begin_pass(egui::RawInput::default());
+    activate_test_agent_screenshot_request(&mut app, true, "capture-timeout");
+    app.approve_agent_screenshot_request(&ctx);
+    let capture_id = app
+        .agent_screenshot_capture
+        .as_ref()
+        .expect("capture")
+        .capture_request_id;
+    app.agent_screenshot_capture
+        .as_mut()
+        .expect("capture")
+        .started = Instant::now() - Duration::from_secs(20);
+
+    app.validate_agent_screenshot_state();
+
+    let _ = ctx.end_pass();
+    assert!(app.agent_screenshot_capture.is_none());
+    assert!(app.agent_pending_image_attachment.is_none());
+    assert!(
+        app.agent_discarded_screenshot_capture_ids
+            .contains(&capture_id)
+    );
+    assert!(app.agent_status.contains("timed out"));
+}
+
 #[test]
 fn poll_agent_assistant_task_stores_successful_turn_for_followup_context() {
     let mut app = GENtleApp::default();
@@ -12420,6 +12705,7 @@ fn poll_agent_assistant_task_stores_successful_turn_for_followup_context() {
                 assistant_message: "I will use homo_sapiens.".to_string(),
                 questions: vec![],
                 suggested_commands: vec![],
+                screenshot_request: None,
             },
             raw_stdout: String::new(),
             raw_stderr: String::new(),
@@ -12470,6 +12756,7 @@ fn agent_conversation_reloads_from_project_metadata_without_credentials() {
                 assistant_message: "Mouse selected.".to_string(),
                 questions: vec![],
                 suggested_commands: vec![],
+                screenshot_request: None,
             },
             attachments: vec![],
             system_id: "builtin_echo".to_string(),

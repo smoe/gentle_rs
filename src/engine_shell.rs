@@ -717,6 +717,9 @@ pub enum ShellCommand {
     EnsemblGeneFetch {
         query: String,
         species: Option<String>,
+        assembly: Option<String>,
+        flank_5prime_bp: Option<usize>,
+        flank_3prime_bp: Option<usize>,
         entry_id: Option<String>,
     },
     EnsemblRegionFetch {
@@ -7118,14 +7121,23 @@ impl ShellCommand {
             Self::EnsemblGeneFetch {
                 query,
                 species,
+                assembly,
+                flank_5prime_bp,
+                flank_3prime_bp,
                 entry_id,
             } => format!(
-                "fetch Ensembl gene '{}' (species={}, entry_id={})",
+                "fetch Ensembl gene '{}' (species={}, assembly={}, flank_5p={} bp, flank_3p={} bp, entry_id={})",
                 query,
                 species
                     .as_deref()
                     .filter(|v| !v.trim().is_empty())
                     .unwrap_or("auto"),
+                assembly
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("current endpoint"),
+                flank_5prime_bp.unwrap_or(0),
+                flank_3prime_bp.unwrap_or(0),
                 entry_id
                     .as_deref()
                     .filter(|v| !v.trim().is_empty())
@@ -20931,6 +20943,9 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             vec![
                 json!({"name": "QUERY", "required": true, "subject_kind": "other", "detail": "Ensembl gene id or symbol"}),
                 json!({"name": "SPECIES", "required": false, "subject_kind": "other", "detail": "optional Ensembl species name"}),
+                json!({"name": "ASSEMBLY", "required": false, "subject_kind": "other", "detail": "optional assembly name that must match the resolved Ensembl gene"}),
+                json!({"name": "FLANK_5PRIME_BP", "required": false, "subject_kind": "other", "detail": "optional strand-aware 5-prime flank length in bp"}),
+                json!({"name": "FLANK_3PRIME_BP", "required": false, "subject_kind": "other", "detail": "optional strand-aware 3-prime flank length in bp"}),
             ],
         ),
         metadata_entry_create_descriptor(
@@ -20940,6 +20955,9 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             vec![
                 json!({"name": "QUERY", "required": true, "subject_kind": "other", "detail": "Ensembl gene id or symbol carried by query"}),
                 json!({"name": "SPECIES", "required": false, "subject_kind": "other", "detail": "optional Ensembl species name carried by species"}),
+                json!({"name": "ASSEMBLY", "required": false, "subject_kind": "other", "detail": "optional assembly name carried by assembly and checked against the resolved gene"}),
+                json!({"name": "FLANK_5PRIME_BP", "required": false, "subject_kind": "other", "detail": "optional strand-aware 5-prime flank length carried by flank_5prime_bp"}),
+                json!({"name": "FLANK_3PRIME_BP", "required": false, "subject_kind": "other", "detail": "optional strand-aware 3-prime flank length carried by flank_3prime_bp"}),
             ],
         ),
         metadata_entry_create_descriptor(
@@ -36845,7 +36863,7 @@ fn parse_ensembl_gene_command(tokens: &[String]) -> Result<ShellCommand, String>
         "fetch" => {
             if tokens.len() < 3 {
                 return Err(
-                    "ensembl-gene fetch requires QUERY [--species NAME] [--entry-id ID] [--no-open]"
+                    "ensembl-gene fetch requires QUERY [--species NAME] [--assembly NAME] [--flank-bp N|--flank-5p-bp N --flank-3p-bp N] [--entry-id ID] [--no-open]"
                         .to_string(),
                 );
             }
@@ -36854,6 +36872,9 @@ fn parse_ensembl_gene_command(tokens: &[String]) -> Result<ShellCommand, String>
                 return Err("ensembl-gene fetch QUERY must not be empty".to_string());
             }
             let mut species: Option<String> = None;
+            let mut assembly: Option<String> = None;
+            let mut flank_5prime_bp: Option<usize> = None;
+            let mut flank_3prime_bp: Option<usize> = None;
             let mut entry_id: Option<String> = None;
             let mut idx = 3usize;
             while idx < tokens.len() {
@@ -36863,6 +36884,40 @@ fn parse_ensembl_gene_command(tokens: &[String]) -> Result<ShellCommand, String>
                             tokens,
                             &mut idx,
                             "--species",
+                            "ensembl-gene fetch",
+                        )?);
+                    }
+                    "--assembly" => {
+                        assembly = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--assembly",
+                            "ensembl-gene fetch",
+                        )?);
+                    }
+                    "--flank" | "--flank-bp" => {
+                        let value = parse_ensembl_gene_flank_bp(
+                            tokens,
+                            &mut idx,
+                            "--flank-bp",
+                            "ensembl-gene fetch",
+                        )?;
+                        flank_5prime_bp = Some(value);
+                        flank_3prime_bp = Some(value);
+                    }
+                    "--flank-5p-bp" | "--flank-5prime-bp" => {
+                        flank_5prime_bp = Some(parse_ensembl_gene_flank_bp(
+                            tokens,
+                            &mut idx,
+                            "--flank-5p-bp",
+                            "ensembl-gene fetch",
+                        )?);
+                    }
+                    "--flank-3p-bp" | "--flank-3prime-bp" => {
+                        flank_3prime_bp = Some(parse_ensembl_gene_flank_bp(
+                            tokens,
+                            &mut idx,
+                            "--flank-3p-bp",
                             "ensembl-gene fetch",
                         )?);
                     }
@@ -36885,6 +36940,9 @@ fn parse_ensembl_gene_command(tokens: &[String]) -> Result<ShellCommand, String>
             Ok(ShellCommand::EnsemblGeneFetch {
                 query,
                 species,
+                assembly,
+                flank_5prime_bp,
+                flank_3prime_bp,
                 entry_id,
             })
         }
@@ -36942,6 +37000,17 @@ fn parse_ensembl_gene_command(tokens: &[String]) -> Result<ShellCommand, String>
             "Unknown ensembl-gene subcommand '{other}' (expected fetch|list|show|import-sequence)"
         )),
     }
+}
+
+fn parse_ensembl_gene_flank_bp(
+    tokens: &[String],
+    idx: &mut usize,
+    option: &str,
+    context: &str,
+) -> Result<usize, String> {
+    let raw = parse_option_path(tokens, idx, option, context)?;
+    raw.parse::<usize>()
+        .map_err(|error| format!("Invalid {option} value '{raw}' for {context}: {error}"))
 }
 
 fn parse_ensembl_region_bound(raw: &str, label: &str) -> Result<usize, String> {
@@ -40415,7 +40484,7 @@ fn parse_slash_fetch_alias(tokens: &[String]) -> Result<ShellCommand, String> {
             if tokens.len() < 3 {
                 return Err(slash_alias_rejection(
                     "/fetch",
-                    "/fetch ensembl requires QUERY [--species NAME] [--id ID] [--no-open]",
+                    "/fetch ensembl requires QUERY [--species NAME] [--assembly NAME] [--flank-bp N|--flank-5p-bp N --flank-3p-bp N] [--id ID] [--no-open]",
                 ));
             }
             let query = tokens[2].trim().to_string();
@@ -40426,6 +40495,9 @@ fn parse_slash_fetch_alias(tokens: &[String]) -> Result<ShellCommand, String> {
                 ));
             }
             let mut species: Option<String> = None;
+            let mut assembly: Option<String> = None;
+            let mut flank_5prime_bp: Option<usize> = None;
+            let mut flank_3prime_bp: Option<usize> = None;
             let mut entry_id: Option<String> = None;
             let mut idx = 3usize;
             while idx < tokens.len() {
@@ -40435,6 +40507,40 @@ fn parse_slash_fetch_alias(tokens: &[String]) -> Result<ShellCommand, String> {
                             tokens,
                             &mut idx,
                             "--species",
+                            "/fetch ensembl",
+                        )?);
+                    }
+                    "--assembly" => {
+                        assembly = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--assembly",
+                            "/fetch ensembl",
+                        )?);
+                    }
+                    "--flank" | "--flank-bp" => {
+                        let value = parse_ensembl_gene_flank_bp(
+                            tokens,
+                            &mut idx,
+                            "--flank-bp",
+                            "/fetch ensembl",
+                        )?;
+                        flank_5prime_bp = Some(value);
+                        flank_3prime_bp = Some(value);
+                    }
+                    "--flank-5p-bp" | "--flank-5prime-bp" => {
+                        flank_5prime_bp = Some(parse_ensembl_gene_flank_bp(
+                            tokens,
+                            &mut idx,
+                            "--flank-5p-bp",
+                            "/fetch ensembl",
+                        )?);
+                    }
+                    "--flank-3p-bp" | "--flank-3prime-bp" => {
+                        flank_3prime_bp = Some(parse_ensembl_gene_flank_bp(
+                            tokens,
+                            &mut idx,
+                            "--flank-3p-bp",
                             "/fetch ensembl",
                         )?);
                     }
@@ -40459,6 +40565,9 @@ fn parse_slash_fetch_alias(tokens: &[String]) -> Result<ShellCommand, String> {
             Ok(ShellCommand::EnsemblGeneFetch {
                 query,
                 species,
+                assembly,
+                flank_5prime_bp,
+                flank_3prime_bp,
                 entry_id,
             })
         }
@@ -58399,12 +58508,18 @@ fn execute_protein_sequence_command(
         ShellCommand::EnsemblGeneFetch {
             query,
             species,
+            assembly,
+            flank_5prime_bp,
+            flank_3prime_bp,
             entry_id,
         } => {
             let op_result = engine
                 .apply(Operation::FetchEnsemblGene {
                     query: query.clone(),
                     species: species.clone(),
+                    assembly: assembly.clone(),
+                    flank_5prime_bp: *flank_5prime_bp,
+                    flank_3prime_bp: *flank_3prime_bp,
                     entry_id: entry_id.clone(),
                 })
                 .map_err(|e| e.to_string())?;

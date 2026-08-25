@@ -117,7 +117,53 @@ native GENtle window after Screen Recording permission is granted. Agent
 Assistant previews the image locally and asks for explanatory prompt text. The
 image is sent only when the user clicks `Ask agent`, and only to catalog systems
 that explicitly declare image support. Bare prompt paths are deliberately not
-treated as attachments, and agents cannot initiate screenshot capture.
+treated as attachments.
+
+An image-capable agent may return one optional `screenshot_request` containing
+only a bounded stable `id` and a human-readable `reason`. This creates a consent
+card, not a capture. The user chooses one currently registered GENtle content
+window and may allow exactly one cross-platform egui capture or decline. The
+approval is bound to the response turn, provider, project generation, and
+selected viewport; it expires on change and is never persisted. The resulting
+image enters the same local preview and still requires `Ask Agent` before
+transport. Agents cannot select arbitrary windows, paths, coordinates, native
+window ids, desktop capture, or capture commands. Auto-run cannot approve it.
+
+The separate controls do not imply that pixels are inherently more private
+than structured state. A complete project summary can expose more scientific
+context, while a screenshot is often necessary to interpret layout, colour,
+direction, and disabled controls. Both are disclosures to the selected provider
+and should be reviewed for the current professional context.
+
+### Reproducible screenshot-consent smoke
+
+Use an Agent Assistant catalog system with
+`supports_image_attachments: true`. On Linux, the same desktop flow can be run
+under Xvfb after building the GUI:
+
+```bash
+xvfb-run -a -s "-screen 0 1440x900x24" target/debug/gentle
+```
+
+Open a main/sequence content window and Agent Assistant, then ask the configured
+agent: `For this consent-flow test, request one screenshot with id
+consent-smoke-1 and explain that you need to inspect the visible controls.` The
+expected sequence is:
+
+1. The response shows a consent card with the reason, provider, and registered
+   window selector; there is no preview or pending attachment yet.
+2. `Decline` removes the card without a capture. Repeat the request, choose
+   `Main Window`, and click `Allow one screenshot` once.
+3. One local preview appears with source title, `egui.viewport` backend, pixel
+   dimensions, and digest-backed attachment metadata. A second click/replay
+   cannot create another capture.
+4. The image remains local and no agent task starts until `Ask Agent` is clicked.
+   A provider lacking image support instead keeps approval disabled.
+
+Changing provider/project, clearing the conversation, closing the selected
+window, or starting another request before approval should expire the card.
+This smoke does not use or enable `screenshot-window` and does not exercise the
+user-only native macOS context-menu capture.
 
 Local command results are presented directly beneath the prompt status. In the
 GUI, `/help` also opens the built-in Help window at `Shell Commands`; an

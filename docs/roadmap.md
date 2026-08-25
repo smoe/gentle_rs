@@ -1,10 +1,9 @@
 # GENtle Roadmap
 
-Last session: 2026-08-22 - made Agent Assistant `/help` and `/list` outcomes
-visible, added parser-validated object actions plus main-project-overview parity,
-and added explicit window-bound screenshot help with preview-before-send and
-typed image-capable provider handoff; manual GUI smoke for the unreleased
-`v0.1.0-internal.10` release remains before the tag
+Last session: 2026-08-25 - grounded Agent Assistant requests in prepared local
+reference readiness, gave Pi Local the shared parser contract, and added a
+verified-assembly, strand-aware-flank Ensembl fallback; manual GUI smoke for the
+unreleased `v0.1.0-internal.10` release remains before the tag
 
 Purpose: fast session orientation. This file answers "what next?" and should be
 readable in under two minutes. Completed work belongs in
@@ -274,6 +273,11 @@ explicit screenshot approval, and broader adapter/documentation polish. Useful
 work here validates headless MCP deployment, aligns install docs with actual
 outputs, and decides release attachments versus git-tracked assets; defer
 infrastructure expansion that does not reduce release risk.
+- Agent screenshot follow-up: run the documented consent flow on Linux/Xvfb and
+  native macOS after merge. Native child viewports should capture their exact
+  viewport; hosted/embedded fallback captures the containing GENtle root
+  viewport, so consider a content-layer crop only if manual review shows that
+  the selected hosted window is not sufficiently clear.
 
 ## Phase F: Interpretation Later
 

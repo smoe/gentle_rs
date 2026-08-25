@@ -4777,11 +4777,13 @@ Isoform architecture panel workflow:
       first-class protein import path; they do not replace transcript-native
       derivation as the authoritative product model
   - direct Ensembl gene metadata routes:
-    - `ensembl-gene fetch QUERY [--species NAME] [--entry-id ID]`
+    - `ensembl-gene fetch QUERY [--species NAME] [--assembly NAME] [--flank-bp N|--flank-5p-bp N --flank-3p-bp N] [--entry-id ID]`
       - `QUERY` is an HGNC-approved human gene symbol such as `FUS` or `TP53`
         when `--species homo_sapiens` is used, or a stable Ensembl gene id such
         as `ENSG00000089280`; `--entry-id` names the stored GENtle metadata
-        entry.
+        entry. `--assembly` verifies the assembly returned by Ensembl;
+        `--flank-bp` requests the same strand-aware genomic context at both
+        ends, while the directional options allow asymmetric context.
       - An HGNC ID such as `HGNC:11998` identifies an HGNC nomenclature record,
         not a GenBank, UniProt, or Ensembl accession. Resolve it to an approved
         symbol or linked database id before choosing a database-specific fetch.
@@ -6025,6 +6027,14 @@ project summary/facts, validates the structured response, and controls command
 execution. Each Pi invocation is ephemeral and runs without Pi tools, sessions,
 skills, extensions, prompt templates, or project-file discovery. Therefore this
 adapter helps operate GENtle; it is deliberately not an inner source-code editor.
+Every Agent Assistant request also carries bounded `x_local_references`
+readiness for prepared, manifest-backed reference genomes. Pi and other
+providers receive catalog ids and reusable-component status, but no local
+paths. They should prefer a compatible `gene_extraction_ready` reference and a
+reviewable `genomes extract-gene` plus `genomes extend-anchor` command chain
+before proposing confirmation-gated web retrieval. Merely catalogued genomes
+are not represented as installed.
+
 When an `agents ask` prompt explicitly names a supported absolute text-document
 path, the shared request builder includes bounded UTF-8 content as
 `x_local_documents` (four files maximum, 128 KiB each, 256 KiB total, with

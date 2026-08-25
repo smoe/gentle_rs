@@ -3437,13 +3437,16 @@ Sequencing-trace evidence notes:
 - `ImportEnsemblProteinSequence { entry_id, output_id? }`
   - imports one stored Ensembl protein entry as a first-class protein sequence
     with imported Ensembl protein-feature annotations.
-- `FetchEnsemblGene { query, species?, entry_id? }`
+- `FetchEnsemblGene { query, species?, assembly?, flank_5prime_bp?, flank_3prime_bp?, entry_id? }`
   - fetches one Ensembl gene entry from Ensembl REST and persists it in
     `gentle.ensembl_gene_entries.v1`.
   - for human genes, `query` may be an HGNC-approved symbol such as `FUS` or
     `TP53`, or a stable Ensembl gene id such as `ENSG00000089280`; `species`
-    should use Ensembl species names such as `homo_sapiens`; `entry_id` is the
-    local GENtle metadata key used to store the fetched entry.
+    should use Ensembl species names such as `homo_sapiens`; `assembly`, when
+    supplied, must match the assembly reported by the lookup response;
+    `flank_5prime_bp` and `flank_3prime_bp` request strand-aware genomic context
+    around the gene; `entry_id` is the local GENtle metadata key used to store
+    the fetched entry.
   - HGNC IDs such as `HGNC:11998` are nomenclature-record identifiers, not
     Ensembl, GenBank, or UniProt accessions; resolve them to an approved symbol
     or linked external accession before calling a database-specific fetch.
@@ -3899,10 +3902,13 @@ external coding agent runtime, see:
     - peptide products are materialized as first-class `peptide` sequences
       unless the shell caller passes `--predict-only`
 - shared-shell Ensembl gene routes:
-  - `ensembl-gene fetch QUERY [--species NAME] [--entry-id ID]`
+  - `ensembl-gene fetch QUERY [--species NAME] [--assembly NAME] [--flank-bp N|--flank-5p-bp N --flank-3p-bp N] [--entry-id ID]`
     - `QUERY` is an approved gene symbol for the requested species (for human,
       an HGNC-approved symbol such as `FUS` or `TP53`) or a stable Ensembl gene
-      id; `--entry-id` names the local GENtle metadata entry.
+      id; `--entry-id` names the local GENtle metadata entry. `--assembly`
+      verifies the resolved assembly rather than silently accepting a different
+      build. `--flank-bp` applies the same strand-aware flank at both gene ends;
+      the two directional options allow asymmetric context.
     - HGNC IDs such as `HGNC:11998` are stable nomenclature-record identifiers,
       not GenBank, UniProt, or Ensembl accessions. Resolve them to an approved
       symbol or linked database accession before using a database-specific fetch
@@ -4704,6 +4710,15 @@ Agent Assistant image attachment extension:
 - This is a GUI-host capability, not a capture operation callable by an agent,
   CLI, MCP, JS, or Lua adapter. Those adapters can consume explicitly supplied
   image-capable agent requests in future, but cannot initiate screen capture.
+- A validated `AgentResponse.screenshot_request` may ask the GUI to show a
+  consent card. GENtle resolves targets only from its current open-window model,
+  excludes Agent Assistant, rejects ambiguous/closed targets, and binds one
+  ephemeral approval to the originating turn, system, project generation, and
+  selected viewport. Provider/project/target changes, conversation clearing,
+  another request, decline, timeout, and replay fail closed. Approval performs
+  one egui viewport capture only; the unchanged `x_attachments[]` preview and
+  `Ask Agent` boundary remain the sole transport path. Native ScreenCaptureKit
+  capture remains available only through the user's direct context-menu action.
 
 - `agents list [--catalog PATH]`
   - Lists configured agent systems from catalog JSON.
@@ -4998,6 +5013,36 @@ Agent request payload schema (`gentle.agent_request.v1`):
       }
     ]
   },
+  "x_local_references": {
+    "schema": "gentle.agent_local_reference_context.v1",
+    "catalog_entry_count": 2,
+    "installed_reference_count": 1,
+    "included_reference_count": 1,
+    "omitted_reference_count": 0,
+    "truncated": false,
+    "references": [
+      {
+        "genome_id": "Human GRCh38 Ensembl 116",
+        "species": "homo_sapiens",
+        "description": "Human GRCh38 Ensembl 116",
+        "aliases": ["GRCh38"],
+        "tags": ["human", "grch38"],
+        "sequence_source_type": "remote",
+        "annotation_source_type": "remote",
+        "sequence_ready": true,
+        "annotation_ready": true,
+        "fasta_index_ready": true,
+        "gene_index_ready": true,
+        "transcript_index_ready": true,
+        "gene_extraction_ready": true
+      }
+    ],
+    "retrieval_routes": [
+      { "purpose": "list/filter reference catalog entries without downloading", "command": "genomes list [--filter TEXT]" },
+      { "purpose": "inspect one reference install and its reusable components", "command": "genomes status GENOME_ID" }
+    ],
+    "warnings": []
+  },
   "x_local_documents": {
     "schema": "gentle.agent_local_documents.v1",
     "max_document_count": 4,
@@ -5056,6 +5101,18 @@ the transcript (for example a species or sequence id) unless the current
 prompt changes them, rather than asking for the same value again.
 Prompt and response text are stored verbatim; provider credential fields are
 excluded, but callers must not place secrets inside the prompt itself.
+
+`x_local_references` is included on every request, independently of optional
+project-state injection. It is a bounded inventory of catalog entries with an
+existing prepared manifest, not a list of everything that could be downloaded.
+The context contains stable catalog identity and component readiness but no
+local paths. Building it performs no network request and no arbitrary filesystem
+scan. Agents should prefer a compatible `gene_extraction_ready` reference and
+compose `genomes extract-gene` followed by strand-aware `genomes extend-anchor`
+commands, then use `ui open sequence-window` when the user asked to see the
+result. They must not claim that catalog-only entries are installed. Direct
+Ensembl retrieval remains a confirmation-gated fallback when no compatible
+prepared reference is present.
 
 `x_local_documents` is an optional, backward-compatible extension generated
 when the current prompt explicitly contains an absolute path to a supported
@@ -5119,13 +5176,26 @@ Agent response payload schema (`gentle.agent_response.v1`):
       "command": "state-summary",
       "execution": "ask"
     }
-  ]
+  ],
+  "screenshot_request": {
+    "id": "inspect-visible-map-1",
+    "reason": "Inspect the visible feature lanes and disabled controls."
+  }
 }
 ```
 
+`screenshot_request` is optional and additive. It may contain only `id` and
+`reason`; the id is non-empty, ASCII-stable, and at most 128 characters, while
+the trimmed human-readable reason is non-empty and at most 512 characters. One
+object is the v1 maximum, and it counts as response content. A request does not
+name a target and does not authorize or initiate capture. Arrays, paths,
+coordinates, native window ids, capture commands, approval fields, unknown
+fields, and excessive values fail response validation.
+
 Native HTTP transports parse stochastic LLM text after provider extraction. If
 that text is already a JSON object with `assistant_message`, `questions`, or
-`suggested_commands`, GENtle may repair a missing/non-string `schema` field to
+`suggested_commands`, or `screenshot_request`, GENtle may repair a
+missing/non-string `schema` field to
 `gentle.agent_response.v1` before validation. Native HTTP transports also
 unwrap a single top-level Markdown `json` code fence before validation, because
 local chat models often add that wrapper despite a JSON-only instruction.
@@ -5213,12 +5283,15 @@ Agent command-scope declaration:
   - `/fetch uniprot QUERY [--id ID]`
     - `QUERY` is a UniProtKB/Swiss-Prot accession or entry name; `--id` names
       the local GENtle metadata entry.
-  - `/fetch ensembl QUERY [--species NAME] [--id ID] [--no-open]`
-  - `/fetch ensembl-gene QUERY [--species NAME] [--id ID] [--no-open]`
+  - `/fetch ensembl QUERY [--species NAME] [--assembly NAME] [--flank-bp N|--flank-5p-bp N --flank-3p-bp N] [--id ID] [--no-open]`
+  - `/fetch ensembl-gene QUERY [--species NAME] [--assembly NAME] [--flank-bp N|--flank-5p-bp N --flank-3p-bp N] [--id ID] [--no-open]`
     - `QUERY` is an approved gene symbol for the requested species or a stable
       Ensembl gene id; for human symbols this means HGNC-approved symbols such
       as `FUS` or `TP53`, while HGNC IDs such as `HGNC:11998` need resolution
       before database-specific fetching.
+    - `--assembly` fails closed if Ensembl resolves the gene on another or an
+      unreported assembly. Flanks are measured from the strand-aware gene ends;
+      `--flank-bp` sets both directions equally.
     - In the GUI Agent Assistant, `--no-open` suppresses the automatic DNA
       sequence viewer open after the fetched gene is imported into project
       state; headless shell fetches are unaffected.

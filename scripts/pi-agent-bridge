@@ -21,6 +21,9 @@ from typing import Any
 REQUEST_SCHEMA = "gentle.agent_request.v1"
 RESPONSE_SCHEMA = "gentle.agent_response.v1"
 ERROR_SCHEMA = "gentle.pi_agent_bridge_error.v1"
+HOST_SYSTEM_PROMPT_ENV = "GENTLE_AGENT_HOST_SYSTEM_PROMPT"
+SCREENSHOT_REQUEST_ID_MAX_CHARS = 128
+SCREENSHOT_REQUEST_REASON_MAX_CHARS = 512
 
 COMMON_PI_PATHS = (
     "~/.local/bin/pi",
@@ -99,6 +102,12 @@ def render_pi_prompt(request: dict[str, Any]) -> str:
     request_json = json.dumps(
         request_for_model_prompt(request), ensure_ascii=False, indent=2, sort_keys=True
     )
+    host_system_prompt = os.environ.get(HOST_SYSTEM_PROMPT_ENV, "").strip()
+    host_contract = (
+        host_system_prompt
+        if host_system_prompt
+        else "The host did not supply its command catalog. Do not guess command syntax; ask for command discovery instead."
+    )
     return f"""You are GENtle's inner Agent Assistant.
 
 Return exactly one JSON object matching {RESPONSE_SCHEMA}. Do not wrap it in
@@ -118,7 +127,8 @@ Required response shape:
       "command": "one GENtle shared-shell command",
       "execution": "chat|ask|auto"
     }}
-  ]
+  ],
+  "screenshot_request": null
 }}
 
 Rules:
@@ -130,6 +140,10 @@ Rules:
 - Treat x_conversation as prior dialogue and reuse facts already supplied there.
 - Treat x_introspection as a bounded current-state projection. Missing open-world
   facts do not prove absence; honor its truncation metadata.
+- Treat x_local_references as the authoritative bounded inventory of
+  manifest-backed references currently available to GENtle. Prefer a compatible
+  gene_extraction_ready local reference over a network retrieval. Do not invent
+  local reference ids or infer that catalog-only rows are installed.
 - Treat x_local_documents as bounded copies of text documents explicitly named
   by the user. Use included content and provenance, do not ask the user to paste
   an included document again, and mention attachment warnings that block the
@@ -140,10 +154,18 @@ Rules:
 - x_attachments describes images explicitly approved by the user and attached
   to this request. Distinguish visible evidence from assumptions when diagnosing
   them; never claim to have seen content outside the attached image.
+- screenshot_request is optional and may contain only id and reason. Use it only
+  when visible GUI state is genuinely needed. Do not include a path, target id,
+  coordinates, native window id, capture command, or approval state. Requesting
+  consent does not capture or send an image; never claim to have seen it until a
+  later request contains it in x_attachments.
 - Ask instead of guessing an unknown species, identifier, path, or coordinate.
 - Do not infer files from Pi's temporary working directory.
 - Use empty arrays for absent questions, preconditions, expected outcomes, or
   suggested commands.
+
+GENtle host command contract:
+{host_contract}
 
 GENtle agent request:
 {request_json}
@@ -225,7 +247,13 @@ def extension_key(key: str) -> bool:
 def validate_agent_response(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError("agent response must be a JSON object")
-    allowed_top = {"schema", "assistant_message", "questions", "suggested_commands"}
+    allowed_top = {
+        "schema",
+        "assistant_message",
+        "questions",
+        "suggested_commands",
+        "screenshot_request",
+    }
     unknown = [key for key in value if key not in allowed_top and not extension_key(key)]
     if unknown:
         raise ValueError("agent response has unsupported fields: " + ", ".join(sorted(unknown)))
@@ -273,10 +301,57 @@ def validate_agent_response(value: Any) -> dict[str, Any]:
                 raise ValueError(f"suggested_commands[{idx}].{field} must be a string array")
             item[field] = values
         item["execution"] = execution
+    screenshot_request = value.get("screenshot_request")
+    if screenshot_request is not None:
+        if not isinstance(screenshot_request, dict):
+            raise ValueError("agent response screenshot_request must be one object or null")
+        unknown_screenshot = [
+            key
+            for key in screenshot_request
+            if key not in {"id", "reason"}
+        ]
+        if unknown_screenshot:
+            raise ValueError(
+                "agent response screenshot_request has unsupported fields: "
+                + ", ".join(sorted(unknown_screenshot))
+            )
+        request_id = screenshot_request.get("id")
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise ValueError("agent response screenshot_request.id must be a non-empty string")
+        request_id = request_id.strip()
+        if len(request_id) > SCREENSHOT_REQUEST_ID_MAX_CHARS:
+            raise ValueError(
+                f"agent response screenshot_request.id exceeds {SCREENSHOT_REQUEST_ID_MAX_CHARS} characters"
+            )
+        if not request_id.isascii() or any(
+            not (character.isalnum() or character in "._:-") for character in request_id
+        ):
+            raise ValueError(
+                "agent response screenshot_request.id contains unsupported characters"
+            )
+        reason = screenshot_request.get("reason")
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError("agent response screenshot_request.reason must be a non-empty string")
+        reason = reason.strip()
+        if len(reason) > SCREENSHOT_REQUEST_REASON_MAX_CHARS:
+            raise ValueError(
+                f"agent response screenshot_request.reason exceeds {SCREENSHOT_REQUEST_REASON_MAX_CHARS} characters"
+            )
+        if any(
+            (ord(character) < 32 and character not in "\n\r\t") or ord(character) == 127
+            for character in reason
+        ):
+            raise ValueError(
+                "agent response screenshot_request.reason contains unsupported control characters"
+            )
+        screenshot_request["id"] = request_id
+        screenshot_request["reason"] = reason
     value["questions"] = questions
     value["suggested_commands"] = commands
-    if not assistant_message.strip() and not questions and not commands:
-        raise ValueError("agent response must include message, questions, or commands")
+    if not assistant_message.strip() and not questions and not commands and screenshot_request is None:
+        raise ValueError(
+            "agent response must include message, questions, commands, or screenshot_request"
+        )
     return value
 
 

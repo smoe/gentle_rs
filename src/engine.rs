@@ -3982,6 +3982,12 @@ pub enum Operation {
         query: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         species: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        assembly: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        flank_5prime_bp: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        flank_3prime_bp: Option<usize>,
         entry_id: Option<String>,
     },
     FetchEnsemblRegion {

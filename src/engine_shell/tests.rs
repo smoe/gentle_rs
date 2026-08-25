@@ -1338,14 +1338,22 @@ fn parse_local_slash_aliases_cover_gui_file_import_fetch_and_paste() {
         other => panic!("unexpected /fetch ncbi command: {other:?}"),
     }
 
-    match parse_shell_line("/fetch ensembl TP73 --species homo_sapiens --id tp73_gene") {
+    match parse_shell_line(
+        "/fetch ensembl TP73 --species homo_sapiens --assembly GRCh38 --flank-bp 10000 --id tp73_gene",
+    ) {
         Ok(ShellCommand::EnsemblGeneFetch {
             query,
             species,
+            assembly,
+            flank_5prime_bp,
+            flank_3prime_bp,
             entry_id,
         }) => {
             assert_eq!(query, "TP73");
             assert_eq!(species.as_deref(), Some("homo_sapiens"));
+            assert_eq!(assembly.as_deref(), Some("GRCh38"));
+            assert_eq!(flank_5prime_bp, Some(10_000));
+            assert_eq!(flank_3prime_bp, Some(10_000));
             assert_eq!(entry_id.as_deref(), Some("tp73_gene"));
         }
         other => panic!("unexpected /fetch ensembl command: {other:?}"),
@@ -1356,6 +1364,7 @@ fn parse_local_slash_aliases_cover_gui_file_import_fetch_and_paste() {
             query,
             species,
             entry_id,
+            ..
         }) => {
             assert_eq!(query, "FUS");
             assert_eq!(species.as_deref(), Some("homo_sapiens"));
@@ -1382,6 +1391,7 @@ fn parse_local_slash_aliases_cover_gui_file_import_fetch_and_paste() {
             query,
             species,
             entry_id,
+            ..
         }) => {
             assert_eq!(query, "FUS");
             assert_eq!(species.as_deref(), Some("HUMAN"));
@@ -38913,17 +38923,24 @@ fn parse_ensembl_protein_commands() {
 
 #[test]
 fn parse_ensembl_gene_commands() {
-    let fetch =
-        parse_shell_line("ensembl-gene fetch TP53 --species homo_sapiens --entry-id tp53_gene")
-            .expect("parse ensembl-gene fetch");
+    let fetch = parse_shell_line(
+        "ensembl-gene fetch TP53 --species homo_sapiens --assembly GRCh38 --flank-5p-bp 12000 --flank-3p-bp 3000 --entry-id tp53_gene",
+    )
+    .expect("parse ensembl-gene fetch");
     match fetch {
         ShellCommand::EnsemblGeneFetch {
             query,
             species,
+            assembly,
+            flank_5prime_bp,
+            flank_3prime_bp,
             entry_id,
         } => {
             assert_eq!(query, "TP53");
             assert_eq!(species.as_deref(), Some("homo_sapiens"));
+            assert_eq!(assembly.as_deref(), Some("GRCh38"));
+            assert_eq!(flank_5prime_bp, Some(12_000));
+            assert_eq!(flank_3prime_bp, Some(3_000));
             assert_eq!(entry_id.as_deref(), Some("tp53_gene"));
         }
         other => panic!("unexpected command: {other:?}"),
@@ -39156,6 +39173,10 @@ fn synthetic_ensembl_gene_entry() -> EnsemblGeneEntry {
         seq_region_name: Some("17".to_string()),
         genomic_start_1based: Some(7668402),
         genomic_end_1based: Some(7668513),
+        sequence_genomic_start_1based: Some(7668402),
+        sequence_genomic_end_1based: Some(7668513),
+        flank_5prime_bp: 0,
+        flank_3prime_bp: 0,
         sequence: "ACGT".repeat(28),
         sequence_length: 112,
         transcripts: vec![EnsemblGeneTranscriptSummary {

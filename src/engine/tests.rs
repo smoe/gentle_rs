@@ -2752,6 +2752,10 @@ fn synthetic_ensembl_gene_entry(
         seq_region_name: Some("17".to_string()),
         genomic_start_1based: Some(7668402),
         genomic_end_1based: Some(7668513),
+        sequence_genomic_start_1based: Some(7668402),
+        sequence_genomic_end_1based: Some(7668513),
+        flank_5prime_bp: 0,
+        flank_3prime_bp: 0,
         sequence: "ACGT".repeat(28),
         sequence_length: 112,
         transcripts: vec![EnsemblGeneTranscriptSummary {
@@ -22427,6 +22431,81 @@ fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance() {
 }
 
 #[test]
+fn test_fetch_ensembl_gene_honors_assembly_and_strand_aware_flanks() {
+    let _guard = crate::genomes::genbank_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let mock_root = td.path().join("mock_ensembl");
+    let lookup_dir = mock_root.join("lookup").join("symbol").join("homo_sapiens");
+    let sequence_dir = mock_root.join("sequence").join("id");
+    fs::create_dir_all(&lookup_dir).expect("lookup fixture directory");
+    fs::create_dir_all(&sequence_dir).expect("sequence fixture directory");
+    fs::write(
+        lookup_dir.join("TP73"),
+        r#"{
+          "id":"ENSGTESTTP73",
+          "display_name":"TP73",
+          "species":"homo_sapiens",
+          "assembly_name":"GRCh38",
+          "strand":-1,
+          "seq_region_name":"1",
+          "start":100,
+          "end":199,
+          "Transcript":[]
+        }"#,
+    )
+    .expect("write lookup fixture");
+    fs::write(
+        sequence_dir.join("ENSGTESTTP73"),
+        serde_json::json!({
+            "id": "ENSGTESTTP73",
+            "desc": "chromosome:GRCh38:1:90:209:-1",
+            "seq": "A".repeat(120),
+            "molecule": "dna"
+        })
+        .to_string(),
+    )
+    .expect("write sequence fixture");
+    let base_url = format!("file://{}", mock_root.display());
+    let _ensembl_env = EnvVarGuard::set("GENTLE_ENSEMBL_REST_BASE_URL", &base_url);
+
+    let mut engine = GentleEngine::new();
+    engine
+        .apply(Operation::FetchEnsemblGene {
+            query: "TP73".to_string(),
+            species: Some("homo_sapiens".to_string()),
+            assembly: Some("GRCh38".to_string()),
+            flank_5prime_bp: Some(10),
+            flank_3prime_bp: Some(10),
+            entry_id: Some("tp73_flanked".to_string()),
+        })
+        .expect("fetch flanked Ensembl gene fixture");
+    let entry = engine
+        .get_ensembl_gene_entry("tp73_flanked")
+        .expect("stored flanked Ensembl entry");
+    assert_eq!(entry.assembly_name.as_deref(), Some("GRCh38"));
+    assert_eq!(entry.flank_5prime_bp, 10);
+    assert_eq!(entry.flank_3prime_bp, 10);
+    assert_eq!(entry.sequence_genomic_start_1based, Some(90));
+    assert_eq!(entry.sequence_genomic_end_1based, Some(209));
+    assert!(entry.sequence_source_url.contains("expand_5prime=10"));
+    assert!(entry.sequence_source_url.contains("expand_3prime=10"));
+
+    let mismatch = engine
+        .apply(Operation::FetchEnsemblGene {
+            query: "TP73".to_string(),
+            species: Some("homo_sapiens".to_string()),
+            assembly: Some("GRCm39".to_string()),
+            flank_5prime_bp: Some(10),
+            flank_3prime_bp: Some(10),
+            entry_id: Some("tp73_wrong_assembly".to_string()),
+        })
+        .expect_err("assembly mismatch should fail closed");
+    assert!(mismatch.message.contains("not requested assembly 'GRCm39'"));
+}
+
+#[test]
 fn test_fetch_ensembl_gene_live_tp53_skips_without_internet() {
     let _guard = crate::genomes::genbank_env_lock()
         .lock()
@@ -22441,6 +22520,9 @@ fn test_fetch_ensembl_gene_live_tp53_skips_without_internet() {
     let result = match engine.apply(Operation::FetchEnsemblGene {
         query: "TP53".to_string(),
         species: Some("homo_sapiens".to_string()),
+        assembly: Some("GRCh38".to_string()),
+        flank_5prime_bp: None,
+        flank_3prime_bp: None,
         entry_id: Some("tp53_live".to_string()),
     }) {
         Ok(result) => result,
@@ -23480,9 +23562,9 @@ fn test_ensembl_gene_entry_store_and_import_sequence() {
 
 #[test]
 fn test_ensembl_gene_import_negative_strand_derives_gene_oriented_protein() {
-    let mut sequence_bytes = vec![b'A'; 80];
-    sequence_bytes[10..19].copy_from_slice(b"ATGAAACCC");
-    sequence_bytes[40..52].copy_from_slice(b"GGGTTTAAATGA");
+    let mut sequence_bytes = vec![b'A'; 130];
+    sequence_bytes[40..49].copy_from_slice(b"ATGAAACCC");
+    sequence_bytes[70..82].copy_from_slice(b"GGGTTTAAATGA");
     let sequence = String::from_utf8(sequence_bytes).expect("ascii sequence");
     let entry = EnsemblGeneEntry {
         schema: "gentle.ensembl_gene_entry.v1".to_string(),
@@ -23498,8 +23580,12 @@ fn test_ensembl_gene_import_negative_strand_derives_gene_oriented_protein() {
         seq_region_name: Some("17".to_string()),
         genomic_start_1based: Some(1000),
         genomic_end_1based: Some(1079),
+        sequence_genomic_start_1based: Some(980),
+        sequence_genomic_end_1based: Some(1109),
+        flank_5prime_bp: 30,
+        flank_3prime_bp: 20,
         sequence,
-        sequence_length: 80,
+        sequence_length: 130,
         transcripts: vec![EnsemblGeneTranscriptSummary {
             transcript_id: "ENSTTOYNEG1".to_string(),
             transcript_version: Some(1),
@@ -23563,6 +23649,18 @@ fn test_ensembl_gene_import_negative_strand_derives_gene_oriented_protein() {
         .sequences
         .get("toy_negative_locus")
         .expect("imported locus");
+    let gene = imported
+        .features()
+        .iter()
+        .find(|feature| feature.kind.eq_ignore_ascii_case("gene"))
+        .expect("imported gene feature");
+    assert_eq!(
+        gene.location,
+        gb_io::seq::Location::simple_range(30, 110),
+        "negative-strand 5-prime flank should precede the gene in the gene-oriented sequence"
+    );
+    assert_eq!(gene.qualifier_values("flank_5prime_bp").next(), Some("30"));
+    assert_eq!(gene.qualifier_values("flank_3prime_bp").next(), Some("20"));
     let mrna = imported
         .features()
         .iter()

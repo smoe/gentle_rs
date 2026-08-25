@@ -88,7 +88,12 @@ pub fn take_capture_events() -> Vec<AgentHelpCaptureEvent> {
 
 /// Collect screenshot replies for requests issued from this egui viewport.
 pub fn collect_egui_capture_events(ctx: &egui::Context) {
-    let captures = ctx.input(|input| {
+    collect_egui_capture_events_for(ctx, ctx.viewport_id());
+}
+
+/// Collect screenshot replies for a specific registered egui viewport.
+pub fn collect_egui_capture_events_for(ctx: &egui::Context, viewport_id: egui::ViewportId) {
+    let captures = ctx.input_for(viewport_id, |input| {
         input
             .events
             .iter()
@@ -111,7 +116,7 @@ pub fn collect_egui_capture_events(ctx: &egui::Context) {
             .collect::<Vec<_>>()
     });
     if !captures.is_empty() {
-        ctx.request_repaint();
+        ctx.request_repaint_of(viewport_id);
     }
     for (token, image) in captures {
         push_capture_event(AgentHelpCaptureEvent::Captured(AgentHelpCapturedImage {
@@ -123,15 +128,27 @@ pub fn collect_egui_capture_events(ctx: &egui::Context) {
     }
 }
 
-pub fn request_egui_viewport_capture(ctx: &egui::Context, window_title: impl Into<String>) {
+pub fn request_egui_viewport_capture(ctx: &egui::Context, window_title: impl Into<String>) -> u64 {
+    request_egui_viewport_capture_for(ctx, ctx.viewport_id(), window_title)
+}
+
+/// Request one screenshot from an explicitly selected registered egui viewport.
+pub fn request_egui_viewport_capture_for(
+    ctx: &egui::Context,
+    viewport_id: egui::ViewportId,
+    window_title: impl Into<String>,
+) -> u64 {
     let token = EguiCaptureToken {
         request_id: next_request_id(),
         window_title: window_title.into(),
     };
-    ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::new(
-        token,
-    )));
-    ctx.request_repaint();
+    let request_id = token.request_id;
+    ctx.send_viewport_cmd_to(
+        viewport_id,
+        egui::ViewportCommand::Screenshot(egui::UserData::new(token)),
+    );
+    ctx.request_repaint_of(viewport_id);
+    request_id
 }
 
 /// Render the common help affordance. Left-click captures the current GENtle
@@ -374,6 +391,39 @@ mod tests {
                     .unwrap_or(false)
             })
         }));
+    }
+
+    #[test]
+    fn egui_capture_command_targets_selected_viewport_once() {
+        let ctx = egui::Context::default();
+        let target = egui::ViewportId::from_hash_of("selected-content-window");
+        let mut input = egui::RawInput {
+            viewport_id: target,
+            ..Default::default()
+        };
+        input.viewports.insert(target, Default::default());
+        let _ = ctx.begin_pass(input);
+        let request_id = request_egui_viewport_capture_for(&ctx, target, "Sequence map");
+        let output = ctx.end_pass();
+
+        let screenshot_tokens = output
+            .viewport_output
+            .get(&target)
+            .into_iter()
+            .flat_map(|viewport| &viewport.commands)
+            .filter_map(|command| {
+                let egui::ViewportCommand::Screenshot(user_data) = command else {
+                    return None;
+                };
+                user_data
+                    .data
+                    .as_ref()
+                    .and_then(|data| data.downcast_ref::<EguiCaptureToken>())
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(screenshot_tokens.len(), 1);
+        assert_eq!(screenshot_tokens[0].request_id, request_id);
+        assert_eq!(screenshot_tokens[0].window_title, "Sequence map");
     }
 
     #[test]

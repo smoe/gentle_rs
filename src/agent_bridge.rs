@@ -2,8 +2,8 @@
 
 use crate::{
     engine::{
-        EngineStateSummary, FACT_EXPRESSION_SCHEMA, PROJECT_FACT_GRAPH_SCHEMA, ProjectFact,
-        ProjectFactGraph, project_fact_type_specs,
+        EngineStateSummary, FACT_EXPRESSION_SCHEMA, GentleEngine, PROJECT_FACT_GRAPH_SCHEMA,
+        ProjectFact, ProjectFactGraph, project_fact_type_specs,
     },
     runtime_status::{RuntimeStatusFrameKind, runtime_status_registry},
 };
@@ -24,12 +24,16 @@ use std::{
 pub const DEFAULT_AGENT_SYSTEM_CATALOG_PATH: &str = "assets/agent_systems.json";
 pub const PI_LOCAL_AGENT_SYSTEM_ID: &str = "pi_local_stdio";
 pub const PI_BIN_ENV: &str = "PI_BIN";
+pub const AGENT_HOST_SYSTEM_PROMPT_ENV: &str = "GENTLE_AGENT_HOST_SYSTEM_PROMPT";
 const AGENT_SYSTEMS_SCHEMA: &str = "gentle.agent_systems.v1";
 const AGENT_REQUEST_SCHEMA: &str = "gentle.agent_request.v1";
 pub const AGENT_ATTACHMENT_SCHEMA: &str = "gentle.agent_attachment.v1";
 const AGENT_RESPONSE_SCHEMA: &str = "gentle.agent_response.v1";
 pub const AGENT_INTROSPECTION_CONTEXT_SCHEMA: &str = "gentle.agent_introspection_context.v1";
 const AGENT_INTROSPECTION_FACT_LIMIT: usize = 128;
+pub const AGENT_LOCAL_REFERENCE_CONTEXT_SCHEMA: &str = "gentle.agent_local_reference_context.v1";
+const AGENT_LOCAL_REFERENCE_LIMIT: usize = 32;
+const AGENT_LOCAL_REFERENCE_WARNING_LIMIT: usize = 8;
 pub const AGENT_LOCAL_DOCUMENTS_CONTEXT_SCHEMA: &str = "gentle.agent_local_documents.v1";
 const AGENT_LOCAL_DOCUMENT_MAX_COUNT: usize = 4;
 const AGENT_LOCAL_DOCUMENT_MAX_BYTES: usize = 128 * 1024;
@@ -40,9 +44,11 @@ pub const AGENT_CONVERSATION_SCHEMA: &str = "gentle.agent_conversation.v1";
 const AGENT_SYSTEMS_SCHEMA_PREFIX: &str = "gentle.agent_systems.v";
 const AGENT_REQUEST_SCHEMA_PREFIX: &str = "gentle.agent_request.v";
 const AGENT_RESPONSE_SCHEMA_PREFIX: &str = "gentle.agent_response.v";
+const AGENT_SCREENSHOT_REQUEST_ID_MAX_CHARS: usize = 128;
+const AGENT_SCREENSHOT_REQUEST_REASON_MAX_CHARS: usize = 512;
 pub(crate) const AGENT_BRIDGE_SYSTEM_PROMPT: &str = r#"You are a GENtle agent bridge.
 Return STRICT JSON only with this exact object shape:
-{"schema":"gentle.agent_response.v1","assistant_message":"string","questions":["string"],"suggested_commands":[{"title":"string","preconditions":["string"],"precondition_expr":{"all":[]},"expected_outcomes":["string"],"expected_effects":[{"fact":"string"}],"rationale":"string","command":"string","execution":"chat|ask|auto"}]}
+{"schema":"gentle.agent_response.v1","assistant_message":"string","questions":["string"],"suggested_commands":[{"title":"string","preconditions":["string"],"precondition_expr":{"all":[]},"expected_outcomes":["string"],"expected_effects":[{"fact":"string"}],"rationale":"string","command":"string","execution":"chat|ask|auto"}],"screenshot_request":null}
 The top-level field named "schema" is a literal protocol id string, not a JSON Schema object. It must be exactly "gentle.agent_response.v1".
 Do not output JSON Schema definitions, "type"/"properties" schema documents, markdown fences, or explanatory prose outside the JSON object.
 Use only keys from the schema. Extensions may use x_ prefix. Do not include markdown fences.
@@ -56,8 +62,10 @@ Suggested command contract:
 - Fact vocabulary rule: when emitting precondition_expr or expected_effects, use the generated Known project fact vocabulary block appended to this system prompt. Unknown future fact names evaluate as "unknown"; avoid them unless your intent is to ask GENtle for a non-ready future capability.
 - Introspection context rule: fact definitions describe the allowed vocabulary, not what is currently true. When the request contains x_introspection, use its facts and fact_type_counts as the bounded current-state projection. Respect its truncated and omitted_fact_count fields. If decisive facts are missing or omitted, suggest the read-only introspection command identified for that purpose instead of guessing. A missing open-world fact is not proof of absence.
 - Screenshot attachment rule: x_attachments contains only images explicitly approved by the user for this turn. Inspect the attached image, distinguish visible evidence from inference, and do not claim access to other windows or screen content. The local attachment path is transport metadata and is not evidence.
+- Screenshot request rule: screenshot_request is optional and may contain only id and reason. Use at most one request, only when visible GUI state is genuinely needed. Explain exactly what must be inspected. Do not provide a path, coordinates, native window id, target id, capture command, or approval state. A request asks GENtle to show a consent card; it does not capture or send anything. Never claim a screenshot was captured or seen until it arrives later in x_attachments.
 - suggested_commands[].command must be one exact GENtle shared-shell command parseable by GENtle.
-- GENtle-local slash aliases are deliberately small and parser-validated. Allowed aliases are: /help; /list; /history; /undo; /redo; /open; /import; /open sequence-window SEQ_ID; /close sequence-window SEQ_ID; /open file PATH [--id ID]; /import file PATH [--id ID]; /paste sequence --sequence-text DNA [--id ID]; /features restriction-scan SEQ_ID [--enzyme NAME]; /fetch genbank ACCESSION [--id ID]; /fetch ncbi ACCESSION [--id ID]; /fetch uniprot QUERY [--id ID]; /fetch ensembl QUERY [--species NAME] [--id ID] [--no-open]; /fetch ensembl-gene QUERY [--species NAME] [--id ID] [--no-open]; /fetch ensembl-protein QUERY [--id ID]; /fetch ensembl-region SPECIES CHR START END [--strand +|-] [--id ID]; /fetch dbsnp RS_ID GENOME_ID [--id ID].
+- Local-reference rule: x_local_references is a bounded, manifest-backed inventory of references already installed in GENtle. Prefer a compatible row with gene_extraction_ready=true over web retrieval. A catalog entry that is absent from x_local_references is not known to be installed. For a local gene locus with symmetric flanks, compose genomes extract-gene GENOME_ID QUERY --output-id ID, then genomes extend-anchor ID 5p N --output-id ID_5p, then genomes extend-anchor ID_5p 3p N --output-id FINAL_ID. If the user asked to see or open the result, follow those successful mutations with ui open sequence-window FINAL_ID. Quote a catalog id that contains spaces with ordinary double quotes. For example: genomes extract-gene "Human GRCh38 Ensembl 116" TP73 --output-id tp73_grch38; genomes extend-anchor tp73_grch38 5p 10000 --output-id tp73_grch38_5p; genomes extend-anchor tp73_grch38_5p 3p 10000 --output-id tp73_grch38_context; ui open sequence-window tp73_grch38_context. Each semicolon-separated example is one separate suggestion row, never one combined command. Suggested rows must use those exact chained ids and remain execution="ask". If no compatible local reference exists, explain the network fallback rather than inventing a local id.
+- GENtle-local slash aliases are deliberately small and parser-validated. Allowed aliases are: /help; /list; /history; /undo; /redo; /open; /import; /open sequence-window SEQ_ID; /close sequence-window SEQ_ID; /open file PATH [--id ID]; /import file PATH [--id ID]; /paste sequence --sequence-text DNA [--id ID]; /features restriction-scan SEQ_ID [--enzyme NAME]; /fetch genbank ACCESSION [--id ID]; /fetch ncbi ACCESSION [--id ID]; /fetch uniprot QUERY [--id ID]; /fetch ensembl QUERY [--species NAME] [--assembly NAME] [--flank-bp N|--flank-5p-bp N --flank-3p-bp N] [--id ID] [--no-open]; /fetch ensembl-gene QUERY [--species NAME] [--assembly NAME] [--flank-bp N|--flank-5p-bp N --flank-3p-bp N] [--id ID] [--no-open]; /fetch ensembl-protein QUERY [--id ID]; /fetch ensembl-region SPECIES CHR START END [--strand +|-] [--id ID]; /fetch dbsnp RS_ID GENOME_ID [--id ID].
 - /list reports GENtle's current project state and loaded sequence/project records. It does not list operating-system files or folders.
 - History safety rule: /history is read-only. /undo and /redo are session-local state transitions and must use execution="ask". GENtle will not auto-execute an undo or redo suggestion even if it is mislabeled execution="auto".
 - Runtime status rule: if the user asks what GENtle is doing now, suggest introspect runtime. It reports the current process's live activity frames plus observed activity read from persisted genome-prepare, CUT&RUN shared-asset, and BLAST-async ledgers, with live, cross-process, and stale tagging; it does not write any status file.
@@ -67,9 +75,9 @@ Suggested command contract:
 - For simple first replies or orientation requests, prefer safe GENtle controls such as help, /help, /list, state-summary, capabilities, /open, concrete /open file examples, or confirmation-gated /fetch examples. Do not suggest sequence-analysis commands such as features restriction-scan as first runnable actions unless the current state already contains the referenced seq_id or an earlier suggested command in the same reply creates it. Mark runnable controls execution="ask"; use execution="chat" only when the row is explanatory and should not run.
 - Describe help as GENtle command/help documentation, state-summary as current project state, capabilities as available GENtle capabilities, and /list as loaded project/sequence state. Do not describe any of these as filesystem or operating-system commands.
 - Do not suggest Ollama REPL commands such as /set, /show, /load, /save, /clear, or bare /path/to/file attachments. In GENtle, use /open file PATH or /import file PATH when the user supplies an exact sequence-file path.
-- Ensembl route rule: use species names such as homo_sapiens, not HUMAN. /fetch ensembl-protein does not accept --species; for a human gene symbol such as FUS, use /fetch ensembl FUS --species homo_sapiens --id fus_live or a prepared-genome genomes genes/extract-gene workflow.
+- Ensembl route rule: use species names such as homo_sapiens, not HUMAN. /fetch ensembl-protein does not accept --species. Direct gene retrieval may verify the assembly and request gene-oriented flanks, for example /fetch ensembl TP73 --species homo_sapiens --assembly GRCh38 --flank-bp 10000 --id tp73_grch38. Prefer a compatible gene_extraction_ready x_local_references row and the local extract/extend composition when available.
 - External aliases such as /fetch genbank, /fetch ncbi, /fetch uniprot, /fetch ensembl*, and /fetch dbsnp require explicit user confirmation or network opt-in; mark them execution="ask" unless the caller has already opted into network execution.
-- Common valid non-slash examples include: state-summary; ui open sequence-window fus_live; ui focus sequence-window fus_live; ui close pcr-design; ui close sequence-window fus_live; ui selection sequence-window fus_live --range 100..250; display show tfbs; display hide restriction-enzymes; op '{"LoadFile":{"path":"PATH","as_id":"ID"}}'; sequence create --sequence-text DNA --output-id ID; genbank fetch ACCESSION --as-id ID; ensembl-gene fetch SYMBOL --species SPECIES --entry-id ID; ensembl-region fetch SPECIES CHR:START..END:+ --output-id ID.
+- Common valid non-slash examples include: state-summary; ui open sequence-window fus_live; ui focus sequence-window fus_live; ui close pcr-design; ui close sequence-window fus_live; ui selection sequence-window fus_live --range 100..250; display show tfbs; display hide restriction-enzymes; op '{"LoadFile":{"path":"PATH","as_id":"ID"}}'; sequence create --sequence-text DNA --output-id ID; genbank fetch ACCESSION --as-id ID; ensembl-gene fetch SYMBOL --species SPECIES --assembly ASSEMBLY --flank-bp N --entry-id ID; ensembl-region fetch SPECIES CHR:START..END:+ --output-id ID.
 - Do not invent OS, gateway, or OpenClaw-style commands such as fs.ls, fs.find, fs.grep, workspace.status, import.sequence, gentle.load_sequence, agent.help, sequence.new, /grep, /find, /ls, /new, or /example.
 - If the user asks you to search local files and no exact path is already known, ask the user to pick/provide the path; do not suggest filesystem discovery as a GENtle command. It is fine to explain that file discovery must happen by regular operating-system means outside GENtle. On macOS, suggest Finder search or Spotlight when appropriate.
 - Use ASCII punctuation in assistant_message, questions, titles, rationales, and commands. In particular, use the regular breakable hyphen '-' and plain quotes; avoid non-breaking hyphen, en dash, em dash, smart quotes, and mathematical minus.
@@ -82,7 +90,7 @@ GENtle Agent Control Card:
 - Empty project: do not refer to existing seq_id values. Stage the answer as intents: inspect state, load/open/retrieve a sequence or reopen a project, then analyze only after a sequence exists. Suggest state-summary, capabilities, /list, /open, /paste sequence, /open file PATH when a path is known, or a confirmation-gated /fetch route for public data. Put "requires a loaded sequence" in preconditions[] for analysis commands and the expected loaded record/report in expected_outcomes[].
 - Negative logic rule: do not infer absence from missing state. If an action needs "no restriction site" or similar absence, require a complete-enough verification report as a precondition/effect. Prefer positive proof facts such as {"fact":"restriction_site.absent","subject":"demo_seq","enzyme":"EcoRI","range":"whole_sequence","basis_report":"restriction_scan_report_id"} over bare negation of a missing presence fact.
 - Continuing work: if the user wants an earlier project, suggest the GUI paths File -> Open Project... or File -> Open Recent Project..., or tell them to launch GENtle with an exact saved project path. Do not invent a recent-project slash command.
-- Public data: ask before network retrieval. For human genes, prefer /fetch ensembl SYMBOL --species homo_sapiens --id ID or a prepared-genome genomes genes/extract-gene workflow. Add --no-open when the user wants the record loaded without opening a DNA sequence viewer.
+- Public data: ask before network retrieval. First inspect x_local_references and prefer a compatible prepared-genome genomes extract-gene/extend-anchor workflow. Otherwise use /fetch ensembl SYMBOL --species homo_sapiens --assembly ASSEMBLY --flank-bp N --id ID. Add --no-open when the user wants the record loaded without opening a DNA sequence viewer.
 - First reply examples:
   {"title":"Show GENtle help","command":"help","execution":"ask"}
   {"title":"Show project state","command":"state-summary","execution":"ask"}
@@ -1493,6 +1501,146 @@ pub fn build_agent_introspection_context(graph: &ProjectFactGraph) -> AgentIntro
     }
 }
 
+/// One manifest-backed local reference made visible to an inner agent.
+///
+/// Local paths are deliberately omitted. The model only needs stable catalog
+/// identity and component readiness to choose a local operation over a network
+/// fallback.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(default)]
+pub struct AgentLocalReference {
+    pub genome_id: String,
+    pub species: Option<String>,
+    pub description: Option<String>,
+    pub aliases: Vec<String>,
+    pub tags: Vec<String>,
+    pub sequence_source_type: String,
+    pub annotation_source_type: String,
+    pub sequence_ready: bool,
+    pub annotation_ready: bool,
+    pub fasta_index_ready: bool,
+    pub gene_index_ready: bool,
+    pub transcript_index_ready: bool,
+    pub gene_extraction_ready: bool,
+}
+
+/// Bounded local-reference inventory attached to every inner-agent request.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct AgentLocalReferenceContext {
+    pub schema: String,
+    pub catalog_entry_count: usize,
+    pub installed_reference_count: usize,
+    pub included_reference_count: usize,
+    pub omitted_reference_count: usize,
+    pub truncated: bool,
+    pub references: Vec<AgentLocalReference>,
+    pub retrieval_routes: Vec<AgentIntrospectionRoute>,
+    pub warnings: Vec<String>,
+}
+
+impl Default for AgentLocalReferenceContext {
+    fn default() -> Self {
+        Self {
+            schema: AGENT_LOCAL_REFERENCE_CONTEXT_SCHEMA.to_string(),
+            catalog_entry_count: 0,
+            installed_reference_count: 0,
+            included_reference_count: 0,
+            omitted_reference_count: 0,
+            truncated: false,
+            references: vec![],
+            retrieval_routes: vec![
+                AgentIntrospectionRoute {
+                    purpose: "list/filter reference catalog entries without downloading"
+                        .to_string(),
+                    command: "genomes list [--filter TEXT]".to_string(),
+                },
+                AgentIntrospectionRoute {
+                    purpose: "inspect one reference install and its reusable components"
+                        .to_string(),
+                    command: "genomes status GENOME_ID".to_string(),
+                },
+            ],
+            warnings: vec![],
+        }
+    }
+}
+
+/// Inspect only catalog-declared manifest locations; never scan arbitrary disk
+/// paths or download missing references while building agent context.
+pub fn build_agent_local_reference_context() -> AgentLocalReferenceContext {
+    build_agent_local_reference_context_from(None, None)
+}
+
+fn build_agent_local_reference_context_from(
+    catalog_path: Option<&str>,
+    cache_dir: Option<&str>,
+) -> AgentLocalReferenceContext {
+    let mut context = AgentLocalReferenceContext::default();
+    let entries = match GentleEngine::list_reference_catalog_entries(catalog_path, None) {
+        Ok(entries) => entries,
+        Err(error) => {
+            context.warnings.push(format!(
+                "Could not inspect the default reference catalog: {error}"
+            ));
+            return context;
+        }
+    };
+    context.catalog_entry_count = entries.len();
+
+    let mut installed = Vec::new();
+    for entry in entries {
+        match GentleEngine::inspect_reference_genome_prepared(
+            catalog_path,
+            &entry.genome_id,
+            cache_dir,
+        ) {
+            Ok(Some(inspection)) => {
+                let gene_extraction_ready = inspection.sequence_present
+                    && inspection.annotation_present
+                    && inspection.fasta_index_ready
+                    && inspection.gene_index_ready;
+                installed.push(AgentLocalReference {
+                    genome_id: entry.genome_id,
+                    species: entry.species,
+                    description: entry.description,
+                    aliases: entry.aliases,
+                    tags: entry.tags,
+                    sequence_source_type: inspection.sequence_source_type,
+                    annotation_source_type: inspection.annotation_source_type,
+                    sequence_ready: inspection.sequence_present,
+                    annotation_ready: inspection.annotation_present,
+                    fasta_index_ready: inspection.fasta_index_ready,
+                    gene_index_ready: inspection.gene_index_ready,
+                    transcript_index_ready: inspection.transcript_index_ready,
+                    gene_extraction_ready,
+                });
+            }
+            Ok(None) => {}
+            Err(error) => {
+                if context.warnings.len() < AGENT_LOCAL_REFERENCE_WARNING_LIMIT {
+                    context.warnings.push(format!(
+                        "Could not inspect local reference '{}': {error}",
+                        entry.genome_id
+                    ));
+                }
+            }
+        }
+    }
+    installed.sort_by(|left, right| left.genome_id.cmp(&right.genome_id));
+    context.installed_reference_count = installed.len();
+    context.references = installed
+        .into_iter()
+        .take(AGENT_LOCAL_REFERENCE_LIMIT)
+        .collect();
+    context.included_reference_count = context.references.len();
+    context.omitted_reference_count = context
+        .installed_reference_count
+        .saturating_sub(context.included_reference_count);
+    context.truncated = context.omitted_reference_count > 0;
+    context
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(default)]
 pub struct AgentLocalDocument {
@@ -1902,6 +2050,8 @@ struct AgentRequestPayload {
     introspection: Option<AgentIntrospectionContext>,
     #[serde(rename = "x_conversation", skip_serializing_if = "Option::is_none")]
     conversation: Option<AgentConversation>,
+    #[serde(rename = "x_local_references")]
+    local_references: AgentLocalReferenceContext,
     #[serde(rename = "x_local_documents", skip_serializing_if = "Option::is_none")]
     local_documents: Option<AgentLocalDocumentsContext>,
     #[serde(rename = "x_attachments", skip_serializing_if = "Vec::is_empty")]
@@ -1918,6 +2068,7 @@ impl Default for AgentRequestPayload {
             state_summary: None,
             introspection: None,
             conversation: None,
+            local_references: AgentLocalReferenceContext::default(),
             local_documents: None,
             attachments: vec![],
         }
@@ -1965,6 +2116,29 @@ pub struct AgentSuggestedCommand {
     pub execution: AgentExecutionIntent,
 }
 
+/// Path-free request for one user-approved screenshot of a registered GENtle viewport.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct AgentScreenshotRequest {
+    pub id: String,
+    pub reason: String,
+}
+
+fn agent_screenshot_request_is_valid(request: &AgentScreenshotRequest) -> bool {
+    let id = request.id.trim();
+    let reason = request.reason.trim();
+    !id.is_empty()
+        && id.chars().count() <= AGENT_SCREENSHOT_REQUEST_ID_MAX_CHARS
+        && id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'-'))
+        && !reason.is_empty()
+        && reason.chars().count() <= AGENT_SCREENSHOT_REQUEST_REASON_MAX_CHARS
+        && !reason
+            .chars()
+            .any(|character| character.is_control() && !matches!(character, '\n' | '\r' | '\t'))
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct AgentResponse {
@@ -1972,6 +2146,8 @@ pub struct AgentResponse {
     pub assistant_message: String,
     pub questions: Vec<String>,
     pub suggested_commands: Vec<AgentSuggestedCommand>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub screenshot_request: Option<AgentScreenshotRequest>,
 }
 
 fn agent_response_has_content(response: &AgentResponse) -> bool {
@@ -1981,6 +2157,7 @@ fn agent_response_has_content(response: &AgentResponse) -> bool {
             .iter()
             .any(|question| !question.trim().is_empty())
         || !response.suggested_commands.is_empty()
+        || response.screenshot_request.is_some()
 }
 
 /// One successful user request and its validated agent response.
@@ -2034,7 +2211,18 @@ impl AgentConversation {
                 && agent_response_has_content(&turn.response)
                 && turn.response.schema == AGENT_RESPONSE_SCHEMA
                 && !turn.system_id.trim().is_empty()
+                && turn
+                    .response
+                    .screenshot_request
+                    .as_ref()
+                    .is_none_or(agent_screenshot_request_is_valid)
         });
+        for turn in &mut self.turns {
+            if let Some(request) = turn.response.screenshot_request.as_mut() {
+                request.id = request.id.trim().to_string();
+                request.reason = request.reason.trim().to_string();
+            }
+        }
         if self.turns.len() > AGENT_CONVERSATION_STORED_MAX_TURNS {
             let drain = self.turns.len() - AGENT_CONVERSATION_STORED_MAX_TURNS;
             self.turns.drain(0..drain);
@@ -2043,13 +2231,22 @@ impl AgentConversation {
     }
 
     /// Appends one validated turn while enforcing the project retention limit.
-    pub fn push_turn(&mut self, turn: AgentConversationTurn) {
+    pub fn push_turn(&mut self, mut turn: AgentConversationTurn) {
         if turn.user_message.trim().is_empty()
             || !agent_response_has_content(&turn.response)
             || turn.response.schema != AGENT_RESPONSE_SCHEMA
             || turn.system_id.trim().is_empty()
+            || turn
+                .response
+                .screenshot_request
+                .as_ref()
+                .is_some_and(|request| !agent_screenshot_request_is_valid(request))
         {
             return;
+        }
+        if let Some(request) = turn.response.screenshot_request.as_mut() {
+            request.id = request.id.trim().to_string();
+            request.reason = request.reason.trim().to_string();
         }
         self.schema = AGENT_CONVERSATION_SCHEMA.to_string();
         self.turns.push(turn);
@@ -2145,6 +2342,7 @@ fn build_agent_request(
         state_summary: state_summary.cloned(),
         introspection: introspection.cloned(),
         conversation: conversation.and_then(AgentConversation::context_window),
+        local_references: build_agent_local_reference_context(),
         local_documents,
         attachments: attachments.to_vec(),
     };
@@ -2290,6 +2488,20 @@ fn validate_agent_request_value(value: &Value) -> Result<(), String> {
             ));
         }
     }
+    let local_references_value = object.get("x_local_references").ok_or_else(|| {
+        agent_err(
+            AgentBridgeErrorCode::SchemaValidation,
+            "agent request requires 'x_local_references'",
+        )
+    })?;
+    let local_references: AgentLocalReferenceContext =
+        serde_json::from_value(local_references_value.clone()).map_err(|err| {
+            agent_err(
+                AgentBridgeErrorCode::SchemaValidation,
+                format!("agent request 'x_local_references' is invalid: {err}"),
+            )
+        })?;
+    validate_agent_local_reference_context(&local_references)?;
     if let Some(local_documents_value) = object.get("x_local_documents") {
         let local_documents: AgentLocalDocumentsContext =
             serde_json::from_value(local_documents_value.clone()).map_err(|err| {
@@ -2310,6 +2522,62 @@ fn validate_agent_request_value(value: &Value) -> Result<(), String> {
                     )
                 })?;
         validate_agent_attachments(&attachments)?;
+    }
+    Ok(())
+}
+
+fn validate_agent_local_reference_context(
+    context: &AgentLocalReferenceContext,
+) -> Result<(), String> {
+    let invalid = |message: String| {
+        agent_err(
+            AgentBridgeErrorCode::SchemaValidation,
+            format!("agent request 'x_local_references' {message}"),
+        )
+    };
+    if context.schema != AGENT_LOCAL_REFERENCE_CONTEXT_SCHEMA {
+        return Err(invalid(format!(
+            "schema must be '{}'",
+            AGENT_LOCAL_REFERENCE_CONTEXT_SCHEMA
+        )));
+    }
+    if context.references.len() > AGENT_LOCAL_REFERENCE_LIMIT {
+        return Err(invalid(format!(
+            "exceeds the reference limit of {AGENT_LOCAL_REFERENCE_LIMIT}"
+        )));
+    }
+    if context.warnings.len() > AGENT_LOCAL_REFERENCE_WARNING_LIMIT {
+        return Err(invalid(format!(
+            "exceeds the warning limit of {AGENT_LOCAL_REFERENCE_WARNING_LIMIT}"
+        )));
+    }
+    if context.included_reference_count != context.references.len() {
+        return Err(invalid(
+            "included_reference_count does not match references length".to_string(),
+        ));
+    }
+    if context.installed_reference_count
+        != context
+            .included_reference_count
+            .saturating_add(context.omitted_reference_count)
+    {
+        return Err(invalid(
+            "installed/included/omitted counts are inconsistent".to_string(),
+        ));
+    }
+    if context.truncated != (context.omitted_reference_count > 0) {
+        return Err(invalid(
+            "truncated does not match omitted_reference_count".to_string(),
+        ));
+    }
+    if context
+        .references
+        .iter()
+        .any(|reference| reference.genome_id.trim().is_empty())
+    {
+        return Err(invalid(
+            "references require non-empty genome_id values".to_string(),
+        ));
     }
     Ok(())
 }
@@ -2864,6 +3132,106 @@ fn parse_suggested_commands_field(
     Ok(parsed)
 }
 
+fn parse_agent_screenshot_request_field(
+    value: Option<&Value>,
+) -> Result<Option<AgentScreenshotRequest>, String> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    if value.is_null() {
+        return Ok(None);
+    }
+    let Value::Object(object) = value else {
+        return Err(agent_err(
+            AgentBridgeErrorCode::ResponseValidation,
+            "agent response 'screenshot_request' must be one object or null",
+        ));
+    };
+    if let Some(key) = object
+        .keys()
+        .find(|key| !matches!(key.as_str(), "id" | "reason"))
+    {
+        return Err(agent_err(
+            AgentBridgeErrorCode::ResponseValidation,
+            format!(
+                "agent screenshot request contains unsupported field '{key}' (allowed: id, reason)"
+            ),
+        ));
+    }
+    let id = object
+        .get("id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .ok_or_else(|| {
+            agent_err(
+                AgentBridgeErrorCode::ResponseValidation,
+                "agent response 'screenshot_request.id' must be a string",
+            )
+        })?;
+    if id.is_empty() {
+        return Err(agent_err(
+            AgentBridgeErrorCode::ResponseValidation,
+            "agent response 'screenshot_request.id' cannot be empty",
+        ));
+    }
+    if id.chars().count() > AGENT_SCREENSHOT_REQUEST_ID_MAX_CHARS {
+        return Err(agent_err(
+            AgentBridgeErrorCode::ResponseValidation,
+            format!(
+                "agent response 'screenshot_request.id' exceeds {AGENT_SCREENSHOT_REQUEST_ID_MAX_CHARS} characters"
+            ),
+        ));
+    }
+    if !id
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'-'))
+    {
+        return Err(agent_err(
+            AgentBridgeErrorCode::ResponseValidation,
+            "agent response 'screenshot_request.id' may contain only ASCII letters, digits, '.', '_', ':', and '-'",
+        ));
+    }
+
+    let reason = object
+        .get("reason")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .ok_or_else(|| {
+            agent_err(
+                AgentBridgeErrorCode::ResponseValidation,
+                "agent response 'screenshot_request.reason' must be a string",
+            )
+        })?;
+    if reason.is_empty() {
+        return Err(agent_err(
+            AgentBridgeErrorCode::ResponseValidation,
+            "agent response 'screenshot_request.reason' cannot be empty",
+        ));
+    }
+    if reason.chars().count() > AGENT_SCREENSHOT_REQUEST_REASON_MAX_CHARS {
+        return Err(agent_err(
+            AgentBridgeErrorCode::ResponseValidation,
+            format!(
+                "agent response 'screenshot_request.reason' exceeds {AGENT_SCREENSHOT_REQUEST_REASON_MAX_CHARS} characters"
+            ),
+        ));
+    }
+    if reason
+        .chars()
+        .any(|character| character.is_control() && !matches!(character, '\n' | '\r' | '\t'))
+    {
+        return Err(agent_err(
+            AgentBridgeErrorCode::ResponseValidation,
+            "agent response 'screenshot_request.reason' contains unsupported control characters",
+        ));
+    }
+
+    Ok(Some(AgentScreenshotRequest {
+        id: id.to_string(),
+        reason: reason.to_string(),
+    }))
+}
+
 fn parse_agent_response_value(value: Value) -> Result<AgentResponse, String> {
     let Some(obj) = value.as_object() else {
         return Err(agent_err(
@@ -2878,6 +3246,7 @@ fn parse_agent_response_value(value: Value) -> Result<AgentResponse, String> {
             "assistant_message",
             "questions",
             "suggested_commands",
+            "screenshot_request",
         ],
         "agent response",
         AgentBridgeErrorCode::ResponseValidation,
@@ -2909,11 +3278,16 @@ fn parse_agent_response_value(value: Value) -> Result<AgentResponse, String> {
         .to_string();
     let questions = parse_questions_field(obj.get("questions"))?;
     let suggested_commands = parse_suggested_commands_field(obj.get("suggested_commands"))?;
+    let screenshot_request = parse_agent_screenshot_request_field(obj.get("screenshot_request"))?;
 
-    if assistant_message.is_empty() && questions.is_empty() && suggested_commands.is_empty() {
+    if assistant_message.is_empty()
+        && questions.is_empty()
+        && suggested_commands.is_empty()
+        && screenshot_request.is_none()
+    {
         return Err(agent_err(
             AgentBridgeErrorCode::ResponseValidation,
-            "agent response must include assistant_message, questions, or suggested_commands",
+            "agent response must include assistant_message, questions, suggested_commands, or screenshot_request",
         ));
     }
 
@@ -2922,6 +3296,7 @@ fn parse_agent_response_value(value: Value) -> Result<AgentResponse, String> {
         assistant_message,
         questions,
         suggested_commands,
+        screenshot_request,
     })
 }
 
@@ -2976,7 +3351,8 @@ fn normalize_native_agent_response_text(stdout: &str) -> String {
     };
     let looks_like_agent_response = obj.contains_key("assistant_message")
         || obj.contains_key("questions")
-        || obj.contains_key("suggested_commands");
+        || obj.contains_key("suggested_commands")
+        || obj.contains_key("screenshot_request");
     let schema_is_string = obj.get("schema").and_then(Value::as_str).is_some();
     if looks_like_agent_response && !schema_is_string {
         obj.insert(
@@ -3106,6 +3482,11 @@ fn invoke_external_json_stdio_once(
     }
     for (key, value) in &system.env {
         cmd.env(key, value);
+    }
+    if is_pi_local_agent_system(system) {
+        // Pi runs in an empty tool-free directory, so the host must supply the
+        // same parser contract that native transports receive as system text.
+        cmd.env(AGENT_HOST_SYSTEM_PROMPT_ENV, agent_bridge_system_prompt());
     }
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -3895,6 +4276,7 @@ fn builtin_echo_response(prompt: &str) -> AgentResponse {
         ),
         questions: vec![],
         suggested_commands: suggested,
+        screenshot_request: None,
     }
 }
 
@@ -4507,6 +4889,7 @@ mod tests {
                 assistant_message: format!("assistant message {index}"),
                 questions: vec![],
                 suggested_commands: vec![],
+                screenshot_request: None,
             },
             attachments: vec![],
             system_id: "codex_local_stdio".to_string(),
@@ -4552,8 +4935,67 @@ mod tests {
 
         assert!(request.get("x_conversation").is_none());
         assert!(request.get("x_introspection").is_none());
+        assert_eq!(
+            request["x_local_references"]["schema"].as_str(),
+            Some(AGENT_LOCAL_REFERENCE_CONTEXT_SCHEMA)
+        );
         assert!(request.get("x_local_documents").is_none());
         assert!(request.get("x_attachments").is_none());
+    }
+
+    #[test]
+    fn agent_local_reference_context_reports_only_prepared_catalog_entries() {
+        let temp = tempfile::tempdir().expect("temporary reference directory");
+        let fasta_path = temp.path().join("human.fa");
+        let annotation_path = temp.path().join("human.gtf");
+        let cache_dir = temp.path().join("cache");
+        let catalog_path = temp.path().join("genomes.json");
+        fs::write(&fasta_path, ">chr1\nACGTACGTACGT\n").expect("write test FASTA");
+        fs::write(
+            &annotation_path,
+            "chr1\ttest\tgene\t1\t12\t.\t+\t.\tgene_id \"ENSGTEST1\"; gene_name \"TP73\";\n",
+        )
+        .expect("write test GTF");
+        fs::write(
+            &catalog_path,
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "Human GRCh38 Ensembl test": {
+                    "description": "Human GRCh38 Ensembl synthetic test reference",
+                    "sequence_local": fasta_path,
+                    "annotations_local": annotation_path,
+                    "cache_dir": cache_dir,
+                    "aliases": ["GRCh38", "homo_sapiens"],
+                    "tags": ["human", "grch38"]
+                },
+                "Catalog only": {
+                    "description": "not prepared",
+                    "sequence_local": temp.path().join("missing.fa"),
+                    "annotations_local": temp.path().join("missing.gtf"),
+                    "cache_dir": temp.path().join("missing-cache")
+                }
+            }))
+            .expect("serialize test catalog"),
+        )
+        .expect("write test catalog");
+        let catalog_text = catalog_path.to_string_lossy().to_string();
+        GentleEngine::prepare_reference_genome_once(
+            "Human GRCh38 Ensembl test",
+            Some(&catalog_text),
+            None,
+            None,
+            &mut |_| true,
+        )
+        .expect("prepare synthetic local reference");
+
+        let context = build_agent_local_reference_context_from(Some(&catalog_text), None);
+        assert_eq!(context.catalog_entry_count, 2);
+        assert_eq!(context.installed_reference_count, 1);
+        assert_eq!(context.references.len(), 1);
+        assert_eq!(context.references[0].genome_id, "Human GRCh38 Ensembl test");
+        assert!(context.references[0].gene_extraction_ready);
+        let serialized = serde_json::to_string(&context).expect("serialize local references");
+        assert!(!serialized.contains(temp.path().to_string_lossy().as_ref()));
+        validate_agent_local_reference_context(&context).expect("validate local references");
     }
 
     #[test]
@@ -4863,6 +5305,122 @@ mod tests {
     }
 
     #[test]
+    fn legacy_agent_response_round_trips_without_screenshot_request() {
+        let response = parse_agent_response(
+            r#"{"schema":"gentle.agent_response.v1","assistant_message":"ready","questions":[],"suggested_commands":[]}"#,
+        )
+        .expect("legacy response");
+
+        assert_eq!(response.screenshot_request, None);
+        let serialized = serde_json::to_value(&response).expect("serialized response");
+        assert!(serialized.get("screenshot_request").is_none());
+    }
+
+    #[test]
+    fn agent_response_accepts_path_free_screenshot_request_as_content() {
+        let response = parse_agent_response(
+            r#"{"schema":"gentle.agent_response.v1","assistant_message":"","questions":[],"suggested_commands":[],"screenshot_request":{"id":"inspect-tp73-map-1","reason":"Please show the visible TP73 feature lanes so I can diagnose the overlap."}}"#,
+        )
+        .expect("screenshot request response");
+
+        assert!(agent_response_has_content(&response));
+        assert_eq!(
+            response.screenshot_request,
+            Some(AgentScreenshotRequest {
+                id: "inspect-tp73-map-1".to_string(),
+                reason: "Please show the visible TP73 feature lanes so I can diagnose the overlap."
+                    .to_string(),
+            })
+        );
+        let serialized = serde_json::to_string(&response).expect("serialized response");
+        assert!(serialized.contains("inspect-tp73-map-1"));
+        assert!(!serialized.contains("path"));
+        assert!(!serialized.contains("viewport"));
+    }
+
+    #[test]
+    fn agent_response_rejects_malformed_screenshot_requests() {
+        for (label, value) in [
+            (
+                "array",
+                serde_json::json!({
+                    "schema": AGENT_RESPONSE_SCHEMA,
+                    "assistant_message": "",
+                    "questions": [],
+                    "suggested_commands": [],
+                    "screenshot_request": [{"id":"one","reason":"inspect"}]
+                }),
+            ),
+            (
+                "unsafe id",
+                serde_json::json!({
+                    "schema": AGENT_RESPONSE_SCHEMA,
+                    "assistant_message": "",
+                    "questions": [],
+                    "suggested_commands": [],
+                    "screenshot_request": {"id":"../../window","reason":"inspect"}
+                }),
+            ),
+            (
+                "target field",
+                serde_json::json!({
+                    "schema": AGENT_RESPONSE_SCHEMA,
+                    "assistant_message": "",
+                    "questions": [],
+                    "suggested_commands": [],
+                    "screenshot_request": {
+                        "id":"one",
+                        "reason":"inspect",
+                        "path":"/tmp/window.png"
+                    }
+                }),
+            ),
+        ] {
+            let error = parse_agent_response_value(value).expect_err(label);
+            assert!(
+                error.starts_with("AGENT_RESPONSE_VALIDATION:"),
+                "{label}: {error}"
+            );
+        }
+
+        let error = parse_agent_response_value(serde_json::json!({
+            "schema": AGENT_RESPONSE_SCHEMA,
+            "assistant_message": "",
+            "questions": [],
+            "suggested_commands": [],
+            "screenshot_request": {
+                "id":"one",
+                "reason":"x".repeat(AGENT_SCREENSHOT_REQUEST_REASON_MAX_CHARS + 1)
+            }
+        }))
+        .expect_err("overlong reason");
+        assert!(error.contains("exceeds"), "{error}");
+    }
+
+    #[test]
+    fn stored_screenshot_requests_reject_extra_fields_and_normalize_bounds() {
+        let error = serde_json::from_value::<AgentScreenshotRequest>(serde_json::json!({
+            "id": "inspect-map",
+            "reason": "Inspect the map",
+            "path": "/tmp/problem.png"
+        }))
+        .expect_err("stored request must reject target fields");
+        assert!(error.to_string().contains("unknown field"));
+
+        let mut turn = test_conversation_turn(1);
+        turn.response.screenshot_request = Some(AgentScreenshotRequest {
+            id: "inspect-map".to_string(),
+            reason: "x".repeat(AGENT_SCREENSHOT_REQUEST_REASON_MAX_CHARS + 1),
+        });
+        let conversation = AgentConversation {
+            schema: AGENT_CONVERSATION_SCHEMA.to_string(),
+            turns: vec![turn],
+        }
+        .normalize();
+        assert!(conversation.turns.is_empty());
+    }
+
+    #[test]
     fn parse_agent_response_accepts_single_top_level_json_fence() {
         let response = parse_agent_response(
             r#"```json
@@ -4934,6 +5492,27 @@ mod tests {
         .expect("native model payload should be repaired");
         assert_eq!(response.schema, AGENT_RESPONSE_SCHEMA);
         assert_eq!(response.assistant_message, "ready");
+    }
+
+    #[test]
+    fn parse_native_agent_response_repairs_screenshot_only_payload_schema() {
+        let response = parse_native_agent_response(
+            r#"{
+  "assistant_message": "",
+  "questions": [],
+  "suggested_commands": [],
+  "screenshot_request": {
+    "id": "inspect-visible-map",
+    "reason": "Inspect the visible controls."
+  }
+}"#,
+        )
+        .expect("native screenshot request payload should be repaired");
+        assert_eq!(response.schema, AGENT_RESPONSE_SCHEMA);
+        assert_eq!(
+            response.screenshot_request.map(|request| request.id),
+            Some("inspect-visible-map".to_string())
+        );
     }
 
     #[test]
@@ -5534,6 +6113,16 @@ mod tests {
         assert!(
             AGENT_BRIDGE_SYSTEM_PROMPT.contains("/fetch ensembl-protein does not accept --species")
         );
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("x_local_references"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("gene_extraction_ready=true"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("genomes extract-gene GENOME_ID QUERY"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("genomes extend-anchor ID 5p N"));
+        assert!(
+            AGENT_BRIDGE_SYSTEM_PROMPT
+                .contains("genomes extract-gene \"Human GRCh38 Ensembl 116\" TP73")
+        );
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("ui open sequence-window tp73_grch38_context"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("--assembly GRCh38 --flank-bp 10000"));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("--no-open"));
     }
 

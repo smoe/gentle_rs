@@ -117,11 +117,16 @@ Screenshot capture policy:
 - `Agent help` is an explicit, window-bound diagnostic action. A normal click
   captures only the GENtle viewport containing that button, then opens Agent
   Assistant with a local preview and a prompt for the user's problem report.
+- An image-capable inner agent may instead return one typed screenshot request
+  with a reason. GENtle captures nothing until the user selects an open,
+  registered GENtle content window and clicks `Allow one screenshot`. The
+  resulting image is still previewed before the separate `Ask Agent` action.
 - Right-clicking `Agent help` on macOS 14 or newer offers an optional complete-
   window capture through ScreenCaptureKit. This requires Screen Recording
   permission; declining it simply leaves that optional feature unavailable.
-- No screenshot is sent until the user clicks `Ask agent`. Automatic capture,
-  desktop capture, and capture of non-GENtle windows are prohibited.
+- No screenshot is sent until the user clicks `Ask Agent`. Auto-run cannot
+  approve a screenshot; desktop capture and capture of non-GENtle windows are
+  prohibited.
 - The headless `--allow-screenshots` option and `screenshot-window` shared-shell
   command remain disabled; this narrow GUI help flow does not enable general
   screenshot automation.
@@ -2851,6 +2856,16 @@ Window screenshot help:
   The optional right-click `Capture complete macOS window` path includes native
   window chrome, is restricted to the current GENtle process, and opens a clear
   permission/settings recovery path when macOS blocks it.
+- An agent can ask for visual context by returning one validated request id and
+  reason, but it cannot name a path, window id, coordinate, or capture command.
+  The consent card lists only GENtle's current open-window registry and excludes
+  Agent Assistant itself. Approval expires when the response/provider/project
+  changes, the selected window closes, another agent request starts, or the
+  conversation is cleared; replay and double-click do not capture twice.
+- Project-state context and screenshots are separate provider disclosures, not
+  a privacy ranking. The state summary may contain richer scientific content;
+  the screenshot contributes visible layout, colour, direction, and control
+  state. Review the provider and both controls according to the project.
 
 Behavior:
 
@@ -2983,6 +2998,13 @@ Behavior:
     it needs information beyond the bounded projection
   - missing open-world facts are unknown rather than false; this context does
     not bypass shared parser/engine validation or confirmation requirements
+- every request includes a bounded `x_local_references` inventory of prepared,
+  manifest-backed reference genomes even when `Include state summary` is off
+  - only catalog identity and component readiness are exposed; local paths are
+    omitted and inventory construction performs no downloads
+  - the agent is instructed to prefer a compatible local gene extraction plus
+    strand-aware anchor-extension chain over external retrieval
+  - catalog-only rows are not presented as installed references
 - optional `Allow auto execute` only applies to suggestions marked with `auto`
 - successful conversation turns are shown in chronological order and stored as
   `gentle.agent_conversation.v1` metadata with the current project
@@ -3039,8 +3061,10 @@ Behavior:
   - `/fetch genbank`, `/fetch ncbi`, `/fetch uniprot`, `/fetch ensembl*`, and
     `/fetch dbsnp` normalize to existing external fetch routes and should be
     confirmation-gated
-  - `/fetch ensembl ... --no-open` imports the fetched Ensembl gene record
-    without automatically opening a DNA sequence viewer
+  - `/fetch ensembl ... --assembly NAME --flank-bp N` verifies the resolved
+    assembly and requests strand-aware genomic context around the gene;
+    `--no-open` imports the record without automatically opening a DNA sequence
+    viewer
   - `/grep`, `/find`, `/ls`, `/new`, `/example`, and vague file-discovery
     requests are rejected rather than treated as ClawBio/OpenClaw commands
 - response panel can include:
@@ -3148,7 +3172,10 @@ and sends its bounded recent turns with each request. It also uses `--no-tools`,
 `--no-context-files`, `--no-extensions`, `--no-skills`, and
 `--no-prompt-templates`; the Agent Assistant can therefore suggest validated
 GENtle commands but cannot edit files or run operating-system commands through
-Pi. It can return reviewable `ui ...` or `display ...` suggestions for exposed
+Pi. GENtle supplies Pi with the same shared command contract used by native
+providers, including exact local genome-extraction/anchor-extension and Ensembl
+assembly/flank syntax, so Pi does not need to guess parser routes. It can return
+reviewable `ui ...` or `display ...` suggestions for exposed
 GUI intents. Where no intent exists, it must describe one manual step and ask
 what the user sees rather than claiming to have clicked or observed it. A
 source-editing inner coding agent would be a separate future mode with a

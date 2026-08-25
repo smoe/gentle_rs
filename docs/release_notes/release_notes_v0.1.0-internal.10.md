@@ -62,7 +62,9 @@ expensive GUI work that runs safely away from the egui thread.
   surface. Explicit `Agent help` controls can attach the exact GENtle viewport
   being diagnosed with a local preview-before-send; optional macOS native
   full-window capture is permission-gated and restricted to GENtle-owned
-  windows.
+  windows. Image-capable agents may also explain why they need one screenshot;
+  GENtle then requires one-shot approval for a user-selected registered window
+  and still previews the result before the separate send action.
 - **Codex Local usability:** GENtle can discover the current macOS ChatGPT
   bundled Codex executable, presents a model selector immediately, reads the
   visible local Codex model metadata, and forwards an explicit choice through
@@ -387,6 +389,11 @@ and that no request is sent before `Ask Agent`. On macOS, right-clicking the
 same control should either capture the complete GENtle window after Screen
 Recording permission is granted or explain the missing permission without
 affecting normal viewport capture.
+Also ask an image-capable agent to request visual context. Confirm that its
+reason/provider and registered-window selector appear before any capture, that
+`Decline` produces no attachment, and that `Allow one screenshot` produces one
+local preview but sends nothing until `Ask Agent`. Change the provider or close
+the selected window before approval and confirm that the request expires.
 For the August primer tranche, open PCR Designer and confirm that Primer3
 preflight explains the selected executable, a terminal-exon RT-primer-pool
 request exposes its fixed adapter and complete selected oligos, and a bounded

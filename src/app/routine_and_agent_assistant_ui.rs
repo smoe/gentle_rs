@@ -9,6 +9,8 @@ use super::*;
 impl GENtleApp {
     const AGENT_MODEL_SELECTION_REQUIRED_MESSAGE: &'static str =
         "Connection established, please select the model to use in the drop-down box.";
+    const AGENT_SCREENSHOT_CAPTURE_TIMEOUT: Duration = Duration::from_secs(15);
+    const AGENT_DISCARDED_SCREENSHOT_CAPTURE_LIMIT: usize = 64;
 
     pub(super) fn open_routine_assistant_dialog(&mut self) {
         if self.show_routine_assistant_dialog {
@@ -118,6 +120,470 @@ impl GENtleApp {
         crate::i18n::tr("agent.help_prompt").replace("{window}", window_title)
     }
 
+    fn agent_screenshot_project_generation(&self) -> AgentScreenshotProjectGeneration {
+        AgentScreenshotProjectGeneration {
+            engine_identity: Arc::as_ptr(&self.engine) as usize,
+            structural_revision: self
+                .engine
+                .read()
+                .map(|engine| engine.structural_revision())
+                .unwrap_or(u64::MAX),
+        }
+    }
+
+    fn agent_screenshot_targets(&self) -> Vec<OpenWindowEntry> {
+        let entries = self
+            .collect_open_window_entries()
+            .into_iter()
+            .filter(|entry| entry.viewport_id != Self::agent_assistant_viewport_id())
+            .collect::<Vec<_>>();
+        let mut key_counts = HashMap::<u64, usize>::new();
+        for entry in &entries {
+            *key_counts.entry(entry.native_menu_key).or_default() += 1;
+        }
+        entries
+            .into_iter()
+            .filter(|entry| key_counts.get(&entry.native_menu_key) == Some(&1))
+            .collect()
+    }
+
+    fn resolve_agent_screenshot_target(
+        &self,
+        native_menu_key: u64,
+    ) -> Result<OpenWindowEntry, String> {
+        let mut matches = self
+            .agent_screenshot_targets()
+            .into_iter()
+            .filter(|entry| entry.native_menu_key == native_menu_key);
+        let Some(entry) = matches.next() else {
+            return Err(
+                "The selected GENtle window is closed, unavailable, or ambiguous. Ask the agent again if a new screenshot is still needed."
+                    .to_string(),
+            );
+        };
+        if matches.next().is_some() {
+            return Err(
+                "The selected GENtle window is ambiguous, so no screenshot was captured."
+                    .to_string(),
+            );
+        }
+        Ok(entry)
+    }
+
+    fn agent_screenshot_turn_is_present(
+        &self,
+        system_id: &str,
+        response_completed_at_unix_ms: u128,
+        request_id: &str,
+    ) -> bool {
+        self.agent_conversation.turns.iter().any(|turn| {
+            turn.system_id == system_id
+                && turn.completed_at_unix_ms == response_completed_at_unix_ms
+                && turn
+                    .response
+                    .screenshot_request
+                    .as_ref()
+                    .is_some_and(|request| request.id == request_id)
+        })
+    }
+
+    fn remember_discarded_agent_screenshot_capture(&mut self, request_id: u64) {
+        if !self
+            .agent_discarded_screenshot_capture_ids
+            .contains(&request_id)
+        {
+            self.agent_discarded_screenshot_capture_ids
+                .push_back(request_id);
+        }
+        while self.agent_discarded_screenshot_capture_ids.len()
+            > Self::AGENT_DISCARDED_SCREENSHOT_CAPTURE_LIMIT
+        {
+            self.agent_discarded_screenshot_capture_ids.pop_front();
+        }
+    }
+
+    fn consume_discarded_agent_screenshot_capture(&mut self, request_id: u64) -> bool {
+        let Some(position) = self
+            .agent_discarded_screenshot_capture_ids
+            .iter()
+            .position(|candidate| *candidate == request_id)
+        else {
+            return false;
+        };
+        self.agent_discarded_screenshot_capture_ids.remove(position);
+        true
+    }
+
+    fn invalidate_agent_screenshot_state(&mut self, reason: Option<&str>) {
+        let had_state = self.agent_screenshot_consent.take().is_some();
+        if let Some(capture) = self.agent_screenshot_capture.take() {
+            self.remember_discarded_agent_screenshot_capture(capture.capture_request_id);
+            if let Some(reason) = reason {
+                self.agent_help_capture_failure = Some(AgentHelpCaptureFailure {
+                    request_id: capture.capture_request_id,
+                    window_title: capture.source_window_title,
+                    kind: crate::agent_help::AgentHelpCaptureFailureKind::CaptureFailed,
+                    message: reason.to_string(),
+                });
+            }
+        }
+        if (had_state || self.agent_help_capture_failure.is_some())
+            && let Some(reason) = reason
+        {
+            self.agent_status = reason.to_string();
+        }
+    }
+
+    pub(super) fn activate_agent_screenshot_consent(
+        &mut self,
+        request: AgentScreenshotRequest,
+        system_id: String,
+        system_label: String,
+        response_completed_at_unix_ms: u128,
+    ) {
+        self.invalidate_agent_screenshot_state(None);
+        let targets = self.agent_screenshot_targets();
+        let selected_window_key = self
+            .active_window_menu_key
+            .filter(|key| targets.iter().any(|entry| entry.native_menu_key == *key))
+            .or_else(|| {
+                targets
+                    .iter()
+                    .find(|entry| entry.viewport_id == ViewportId::ROOT)
+                    .map(|entry| entry.native_menu_key)
+            })
+            .or_else(|| targets.first().map(|entry| entry.native_menu_key));
+        self.agent_screenshot_consent = Some(AgentScreenshotConsent {
+            request,
+            system_id,
+            system_label,
+            response_completed_at_unix_ms,
+            project_generation: self.agent_screenshot_project_generation(),
+            selected_window_key,
+        });
+    }
+
+    fn agent_screenshot_consent_binding_error(
+        &self,
+        consent: &AgentScreenshotConsent,
+    ) -> Option<String> {
+        if self.agent_task.is_some() {
+            return Some(
+                "A new agent request is running, so the earlier screenshot consent request expired."
+                    .to_string(),
+            );
+        }
+        if self.agent_system_id.trim() != consent.system_id {
+            return Some(
+                "The selected agent system changed, so the earlier screenshot consent request expired."
+                    .to_string(),
+            );
+        }
+        if self.agent_screenshot_project_generation() != consent.project_generation {
+            return Some(
+                "The project changed, so the earlier screenshot consent request expired."
+                    .to_string(),
+            );
+        }
+        if !self.agent_screenshot_turn_is_present(
+            &consent.system_id,
+            consent.response_completed_at_unix_ms,
+            &consent.request.id,
+        ) {
+            return Some(
+                "The originating agent response is no longer active, so its screenshot request expired."
+                    .to_string(),
+            );
+        }
+        if let Some(key) = consent.selected_window_key
+            && let Err(error) = self.resolve_agent_screenshot_target(key)
+        {
+            return Some(error);
+        }
+        None
+    }
+
+    fn agent_screenshot_capture_binding_error(
+        &self,
+        capture: &AgentScreenshotCapture,
+    ) -> Option<String> {
+        if self.agent_task.is_some() {
+            return Some(
+                "An agent request started before capture completed, so the screenshot was discarded."
+                    .to_string(),
+            );
+        }
+        if self.agent_system_id.trim() != capture.system_id {
+            return Some(
+                "The selected agent system changed before capture completed, so the screenshot was discarded."
+                    .to_string(),
+            );
+        }
+        if self.agent_screenshot_project_generation() != capture.project_generation {
+            return Some(
+                "The project changed before capture completed, so the screenshot was discarded."
+                    .to_string(),
+            );
+        }
+        if !self.agent_screenshot_turn_is_present(
+            &capture.system_id,
+            capture.response_completed_at_unix_ms,
+            &capture.agent_request_id,
+        ) {
+            return Some(
+                "The originating agent response changed before capture completed, so the screenshot was discarded."
+                    .to_string(),
+            );
+        }
+        match self.resolve_agent_screenshot_target(capture.target_window_key) {
+            Ok(entry) if entry.viewport_id == capture.target_viewport_id => {}
+            Ok(_) => {
+                return Some(
+                    "The selected GENtle window changed identity before capture completed, so the screenshot was discarded."
+                        .to_string(),
+                );
+            }
+            Err(error) => return Some(error),
+        }
+        if capture.started.elapsed() > Self::AGENT_SCREENSHOT_CAPTURE_TIMEOUT {
+            return Some(
+                "The approved screenshot capture timed out. No image was attached or sent."
+                    .to_string(),
+            );
+        }
+        None
+    }
+
+    pub(super) fn validate_agent_screenshot_state(&mut self) {
+        let invalid_reason = self
+            .agent_screenshot_consent
+            .as_ref()
+            .and_then(|consent| self.agent_screenshot_consent_binding_error(consent))
+            .or_else(|| {
+                self.agent_screenshot_capture
+                    .as_ref()
+                    .and_then(|capture| self.agent_screenshot_capture_binding_error(capture))
+            });
+        if let Some(reason) = invalid_reason {
+            self.invalidate_agent_screenshot_state(Some(&reason));
+        }
+    }
+
+    pub(super) fn decline_agent_screenshot_request(&mut self) {
+        if self.agent_screenshot_consent.take().is_some() {
+            self.agent_status =
+                "Screenshot request declined. No image was captured or attached.".to_string();
+        }
+    }
+
+    pub(super) fn approve_agent_screenshot_request(&mut self, ctx: &egui::Context) {
+        let Some(consent) = self.agent_screenshot_consent.take() else {
+            self.agent_status =
+                "This screenshot request is no longer active. No image was captured.".to_string();
+            return;
+        };
+        if let Some(error) = self.agent_screenshot_consent_binding_error(&consent) {
+            self.agent_status = error;
+            return;
+        }
+        let Some(system) = self
+            .agent_systems
+            .iter()
+            .find(|system| system.id == consent.system_id)
+        else {
+            self.agent_status =
+                "The originating agent system is unavailable. No image was captured.".to_string();
+            return;
+        };
+        if !system.supports_image_attachments {
+            self.agent_status = format!(
+                "Agent system '{}' cannot receive image attachments. No image was captured.",
+                consent.system_label
+            );
+            return;
+        }
+        let Some(target_key) = consent.selected_window_key else {
+            self.agent_status =
+                "Select one registered GENtle content window before allowing a screenshot."
+                    .to_string();
+            self.agent_screenshot_consent = Some(consent);
+            return;
+        };
+        let target = match self.resolve_agent_screenshot_target(target_key) {
+            Ok(target) => target,
+            Err(error) => {
+                self.agent_status = error;
+                return;
+            }
+        };
+        let capture_viewport_id = if ctx.embed_viewports()
+            && self
+                .embedded_window_layer_id_for_viewport(target.viewport_id)
+                .is_some()
+        {
+            ViewportId::ROOT
+        } else {
+            target.viewport_id
+        };
+        let capture_request_id = crate::agent_help::request_egui_viewport_capture_for(
+            ctx,
+            capture_viewport_id,
+            target.title.clone(),
+        );
+        self.agent_screenshot_capture = Some(AgentScreenshotCapture {
+            capture_request_id,
+            agent_request_id: consent.request.id.clone(),
+            system_id: consent.system_id,
+            system_label: consent.system_label,
+            response_completed_at_unix_ms: consent.response_completed_at_unix_ms,
+            project_generation: consent.project_generation,
+            target_window_key: target.native_menu_key,
+            target_viewport_id: target.viewport_id,
+            capture_viewport_id,
+            source_window_title: target.title.clone(),
+            started: Instant::now(),
+        });
+        self.agent_status = format!(
+            "Capturing one user-approved screenshot from '{}'. It will be previewed locally before it can be sent.",
+            target.title
+        );
+        ctx.request_repaint_after(Duration::from_millis(100));
+    }
+
+    fn agent_screenshot_followup_prompt(request_id: &str, window_title: &str) -> String {
+        let bounded_title = window_title.chars().take(200).collect::<String>();
+        format!(
+            "This is the user-approved screenshot for agent screenshot request '{request_id}' from the registered GENtle window '{bounded_title}'. Inspect only the attached image, distinguish visible evidence from inference, and answer the original visual question."
+        )
+    }
+
+    fn render_agent_screenshot_consent_card(&mut self, ui: &mut egui::Ui) {
+        self.validate_agent_screenshot_state();
+        if let Some(capture) = self.agent_screenshot_capture.clone() {
+            ui.group(|ui| {
+                ui.strong(self.tr("agent.screenshot_request.title"));
+                ui.add(egui::Spinner::new());
+                ui.label(
+                    self.tr("agent.screenshot_request.capturing")
+                        .replace("{window}", &capture.source_window_title),
+                );
+                ui.small(self.tr("agent.screenshot_request.preview_notice"));
+            });
+            return;
+        }
+
+        let Some(consent) = self.agent_screenshot_consent.clone() else {
+            return;
+        };
+        let targets = self.agent_screenshot_targets();
+        if self
+            .agent_screenshot_consent
+            .as_ref()
+            .and_then(|state| state.selected_window_key)
+            .is_some_and(|selected| {
+                !targets
+                    .iter()
+                    .any(|entry| entry.native_menu_key == selected)
+            })
+        {
+            self.invalidate_agent_screenshot_state(Some(
+                "The selected GENtle window closed, so the screenshot request expired.",
+            ));
+            return;
+        }
+
+        let supports_images = self
+            .agent_systems
+            .iter()
+            .find(|system| system.id == consent.system_id)
+            .is_some_and(|system| system.supports_image_attachments);
+        let selected_window_key = self
+            .agent_screenshot_consent
+            .as_ref()
+            .and_then(|state| state.selected_window_key);
+        let selected_text = selected_window_key
+            .and_then(|selected| {
+                targets
+                    .iter()
+                    .find(|entry| entry.native_menu_key == selected)
+            })
+            .map(|entry| entry.title.clone())
+            .unwrap_or_else(|| self.tr("agent.screenshot_request.choose_window"));
+        let mut selected_after = selected_window_key;
+        let mut allow_clicked = false;
+        let mut decline_clicked = false;
+        let can_allow = supports_images
+            && self.agent_task.is_none()
+            && selected_window_key.is_some()
+            && self
+                .agent_screenshot_consent_binding_error(&consent)
+                .is_none();
+
+        ui.group(|ui| {
+            ui.strong(self.tr("agent.screenshot_request.title"));
+            ui.horizontal_wrapped(|ui| {
+                ui.small(self.tr("agent.screenshot_request.system"));
+                ui.monospace(format!("{} ({})", consent.system_label, consent.system_id));
+            });
+            ui.label(
+                self.tr("agent.screenshot_request.reason")
+                    .replace("{reason}", &consent.request.reason),
+            );
+            ui.horizontal_wrapped(|ui| {
+                ui.label(self.tr("agent.screenshot_request.window"));
+                egui::ComboBox::from_id_salt((
+                    "agent_screenshot_target",
+                    consent.response_completed_at_unix_ms,
+                    consent.request.id.as_str(),
+                ))
+                .selected_text(selected_text)
+                .show_ui(ui, |ui| {
+                    for target in &targets {
+                        ui.selectable_value(
+                            &mut selected_after,
+                            Some(target.native_menu_key),
+                            format!("{} - {}", target.title, target.detail),
+                        );
+                    }
+                });
+            });
+            if targets.is_empty() {
+                ui.colored_label(
+                    egui::Color32::from_rgb(180, 70, 45),
+                    self.tr("agent.screenshot_request.no_windows"),
+                );
+            }
+            if !supports_images {
+                ui.colored_label(
+                    egui::Color32::from_rgb(180, 70, 45),
+                    self.tr("agent.screenshot_request.unsupported")
+                        .replace("{system}", &consent.system_label),
+                );
+            }
+            ui.small(self.tr("agent.screenshot_request.preview_notice"));
+            ui.horizontal(|ui| {
+                allow_clicked = ui
+                    .add_enabled(
+                        can_allow,
+                        egui::Button::new(self.tr("agent.screenshot_request.allow_once")),
+                    )
+                    .clicked();
+                decline_clicked = ui
+                    .button(self.tr("agent.screenshot_request.decline"))
+                    .clicked();
+            });
+        });
+
+        if let Some(state) = self.agent_screenshot_consent.as_mut() {
+            state.selected_window_key = selected_after;
+        }
+        if decline_clicked {
+            self.decline_agent_screenshot_request();
+        } else if allow_clicked {
+            self.approve_agent_screenshot_request(ui.ctx());
+        }
+    }
+
     fn render_agent_help_attachment_panel(&mut self, ui: &mut egui::Ui) {
         if let Some(attachment) = self.agent_pending_image_attachment.clone() {
             let supports_images = self
@@ -213,12 +679,73 @@ impl GENtleApp {
         }
     }
 
-    pub(super) fn poll_agent_help_capture_events(&mut self) {
+    pub(super) fn poll_agent_help_capture_events(&mut self, ctx: &egui::Context) {
+        self.validate_agent_screenshot_state();
+        if let Some(capture) = &self.agent_screenshot_capture {
+            crate::agent_help::collect_egui_capture_events_for(ctx, capture.capture_viewport_id);
+            ctx.request_repaint_after(Duration::from_millis(100));
+        }
+        self.validate_agent_screenshot_state();
         for event in take_capture_events() {
             match event {
                 AgentHelpCaptureEvent::Captured(capture) => {
                     let request_id = capture.request_id;
                     let window_title = capture.window_title.clone();
+                    if self.consume_discarded_agent_screenshot_capture(request_id) {
+                        continue;
+                    }
+                    let agent_requested = self
+                        .agent_screenshot_capture
+                        .as_ref()
+                        .is_some_and(|pending| pending.capture_request_id == request_id);
+                    if agent_requested {
+                        let pending = self
+                            .agent_screenshot_capture
+                            .take()
+                            .expect("matching screenshot capture exists");
+                        if let Some(message) = self.agent_screenshot_capture_binding_error(&pending)
+                        {
+                            self.agent_pending_image_attachment = None;
+                            self.agent_help_capture_failure = Some(AgentHelpCaptureFailure {
+                                request_id,
+                                window_title,
+                                kind: crate::agent_help::AgentHelpCaptureFailureKind::CaptureFailed,
+                                message: message.clone(),
+                            });
+                            self.agent_status = message;
+                            self.open_agent_assistant_dialog();
+                            continue;
+                        }
+                        match Self::prepare_agent_help_attachment(capture) {
+                            Ok(attachment) => {
+                                self.agent_pending_image_attachment = Some(attachment);
+                                self.agent_help_capture_failure = None;
+                                self.agent_prompt = Self::agent_screenshot_followup_prompt(
+                                    &pending.agent_request_id,
+                                    &pending.source_window_title,
+                                );
+                                self.agent_status = format!(
+                                    "One screenshot from '{}' requested by '{}' is attached locally. Review the preview and prompt, then click Ask Agent to send it.",
+                                    pending.source_window_title, pending.system_label
+                                );
+                            }
+                            Err(message) => {
+                                self.agent_pending_image_attachment = None;
+                                self.agent_help_capture_failure = Some(AgentHelpCaptureFailure {
+                                    request_id,
+                                    window_title: pending.source_window_title,
+                                    kind: crate::agent_help::AgentHelpCaptureFailureKind::CaptureFailed,
+                                    message: message.clone(),
+                                });
+                                self.agent_status = message;
+                            }
+                        }
+                        self.open_agent_assistant_dialog();
+                        continue;
+                    }
+                    self.invalidate_agent_screenshot_state(Some(
+                        "A user-invoked Agent Help capture superseded the pending agent screenshot request.",
+                    ));
                     match Self::prepare_agent_help_attachment(capture) {
                         Ok(attachment) => {
                             self.agent_pending_image_attachment = Some(attachment);
@@ -242,6 +769,20 @@ impl GENtleApp {
                     self.open_agent_assistant_dialog();
                 }
                 AgentHelpCaptureEvent::Failed(failure) => {
+                    if self.consume_discarded_agent_screenshot_capture(failure.request_id) {
+                        continue;
+                    }
+                    if self
+                        .agent_screenshot_capture
+                        .as_ref()
+                        .is_some_and(|pending| pending.capture_request_id == failure.request_id)
+                    {
+                        self.agent_screenshot_capture = None;
+                    } else {
+                        self.invalidate_agent_screenshot_state(Some(
+                            "A user-invoked Agent Help capture superseded the pending agent screenshot request.",
+                        ));
+                    }
                     self.agent_pending_image_attachment = None;
                     self.agent_status = failure.message.clone();
                     self.agent_help_capture_failure = Some(failure);
@@ -1604,6 +2145,9 @@ impl GENtleApp {
         let catalog_path = self.agent_catalog_path.trim().to_string();
         let job_id = self.alloc_background_job_id();
         let (tx, rx) = mpsc::channel::<AgentAskTaskMessage>();
+        self.invalidate_agent_screenshot_state(Some(
+            "A new agent request started, so the earlier screenshot request expired.",
+        ));
         self.agent_last_command_output = None;
         self.agent_status = if let Some(timeout) = timeout_seconds {
             format!(
@@ -1710,7 +2254,8 @@ impl GENtleApp {
         self.persist_project_metadata_values(&[(AGENT_CONVERSATION_METADATA_KEY, value)]);
     }
 
-    fn clear_agent_conversation(&mut self) {
+    pub(super) fn clear_agent_conversation(&mut self) {
+        self.invalidate_agent_screenshot_state(None);
         self.agent_conversation = AgentConversation::default();
         self.agent_last_invocation = None;
         self.agent_pending_image_attachment = None;
@@ -2547,15 +3092,24 @@ impl GENtleApp {
                         ),
                     );
                     let response = invocation.response.clone();
+                    let completed_at_unix_ms = Self::now_unix_ms();
                     self.agent_conversation.push_turn(AgentConversationTurn {
                         user_message: completed_prompt,
                         response: response.clone(),
                         attachments: completed_attachments,
                         system_id: invocation.system_id.clone(),
                         system_label: invocation.system_label.clone(),
-                        completed_at_unix_ms: Self::now_unix_ms(),
+                        completed_at_unix_ms,
                     });
                     self.persist_agent_conversation_to_state();
+                    if let Some(request) = response.screenshot_request.clone() {
+                        self.activate_agent_screenshot_consent(
+                            request,
+                            invocation.system_id.clone(),
+                            invocation.system_label.clone(),
+                            completed_at_unix_ms,
+                        );
+                    }
                     self.agent_last_invocation = Some(invocation);
                     self.agent_pending_image_attachment = None;
                     self.agent_help_capture_failure = None;
@@ -4397,6 +4951,7 @@ impl GENtleApp {
                 .on_hover_text(self.tr("agent.auto_run_suggestions.tooltip"));
         });
         self.render_agent_help_attachment_panel(ui);
+        self.render_agent_screenshot_consent_card(ui);
         if !self.agent_conversation.turns.is_empty() {
             let turns = self.agent_conversation.turns.clone();
             let mut copied_response = false;
@@ -4468,6 +5023,12 @@ impl GENtleApp {
                                     )
                                     .wrap(),
                                 );
+                            }
+                            if let Some(request) = &turn.response.screenshot_request {
+                                ui.small(format!(
+                                    "Screenshot request {}: {} (one-shot approval is not stored)",
+                                    request.id, request.reason
+                                ));
                             }
                         }
                     });
@@ -4605,6 +5166,7 @@ impl GENtleApp {
                 .map(|system| system.supports_image_attachments)
                 .unwrap_or(false);
         let can_submit_prompt = !running
+            && self.agent_screenshot_capture.is_none()
             && (selected_available || direct_prompt_command.is_some())
             && (direct_prompt_command.is_some() || selected_supports_pending_attachment);
         if prompt_submit_shortcut && can_submit_prompt {

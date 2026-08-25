@@ -1604,8 +1604,8 @@
             "cli-direct"
          ],
          "path": "ensembl-gene fetch",
-         "summary": "Fetch one Ensembl gene lookup record from Ensembl REST by HGNC-approved gene symbol or stable Ensembl gene id (for example FUS or ENSG00000089280); --species should be an Ensembl species name such as homo_sapiens; --entry-id names the local GENtle metadata entry. HGNC:n identifiers are nomenclature ids and may need resolution before use.",
-         "usage": "ensembl-gene fetch QUERY [--species NAME] [--entry-id ID]"
+         "summary": "Fetch one Ensembl gene lookup record from Ensembl REST by approved gene symbol or stable Ensembl gene id; --species uses an Ensembl species name, --assembly verifies the resolved build, and flank options request strand-aware genomic context; --entry-id names the local GENtle metadata entry.",
+         "usage": "ensembl-gene fetch QUERY [--species NAME] [--assembly NAME] [--flank-bp N|--flank-5p-bp N --flank-3p-bp N] [--entry-id ID]"
       },
       {
          "aliases": [],
