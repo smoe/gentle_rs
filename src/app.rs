@@ -109,7 +109,7 @@ mod gene_set_ui;
 
 use std::{
     collections::hash_map::DefaultHasher,
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     env, fs,
     hash::{Hash, Hasher},
     io::{Cursor, ErrorKind, Write},
@@ -132,11 +132,12 @@ use crate::{
         AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV, ANTHROPIC_API_KEY_AUTH_HINT,
         ANTHROPIC_API_KEY_ENV, AgentAttachmentSummary, AgentConversation, AgentConversationTurn,
         AgentExecutionIntent, AgentInvocationOutcome, AgentRequestAttachment, AgentResponse,
-        AgentSystemSpec, AgentSystemTransport, DEFAULT_AGENT_SYSTEM_CATALOG_PATH,
-        MISTRAL_API_KEY_AUTH_HINT, MISTRAL_API_KEY_ENV, OPENAI_API_KEY_ENV, OPENAI_BILLING_URL,
-        OPENAI_COMPAT_UNSPECIFIED_MODEL, OPENAI_USAGE_URL, agent_explicit_local_document_paths,
-        agent_path_is_supported_local_document, agent_system_availability,
-        anthropic_api_key_kind_warning, build_agent_introspection_context,
+        AgentScreenshotRequest, AgentSystemSpec, AgentSystemTransport,
+        DEFAULT_AGENT_SYSTEM_CATALOG_PATH, MISTRAL_API_KEY_AUTH_HINT, MISTRAL_API_KEY_ENV,
+        OPENAI_API_KEY_ENV, OPENAI_BILLING_URL, OPENAI_COMPAT_UNSPECIFIED_MODEL, OPENAI_USAGE_URL,
+        agent_explicit_local_document_paths, agent_path_is_supported_local_document,
+        agent_system_availability, anthropic_api_key_kind_warning,
+        build_agent_introspection_context,
         invoke_agent_support_with_request_context_and_attachments, is_pi_local_agent_system,
         load_agent_system_catalog,
     },
@@ -1152,6 +1153,9 @@ pub struct GENtleApp {
     agent_last_command_output: Option<AgentCommandOutput>,
     agent_pending_image_attachment: Option<AgentPendingImageAttachment>,
     agent_help_capture_failure: Option<AgentHelpCaptureFailure>,
+    agent_screenshot_consent: Option<AgentScreenshotConsent>,
+    agent_screenshot_capture: Option<AgentScreenshotCapture>,
+    agent_discarded_screenshot_capture_ids: VecDeque<u64>,
 }
 
 #[derive(Clone)]
@@ -2127,6 +2131,37 @@ struct AgentPendingImageAttachment {
     temp_file: Arc<tempfile::NamedTempFile>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct AgentScreenshotProjectGeneration {
+    engine_identity: usize,
+    structural_revision: u64,
+}
+
+#[derive(Clone, Debug)]
+struct AgentScreenshotConsent {
+    request: AgentScreenshotRequest,
+    system_id: String,
+    system_label: String,
+    response_completed_at_unix_ms: u128,
+    project_generation: AgentScreenshotProjectGeneration,
+    selected_window_key: Option<u64>,
+}
+
+#[derive(Clone, Debug)]
+struct AgentScreenshotCapture {
+    capture_request_id: u64,
+    agent_request_id: String,
+    system_id: String,
+    system_label: String,
+    response_completed_at_unix_ms: u128,
+    project_generation: AgentScreenshotProjectGeneration,
+    target_window_key: u64,
+    target_viewport_id: ViewportId,
+    capture_viewport_id: ViewportId,
+    source_window_title: String,
+    started: Instant,
+}
+
 #[derive(Clone)]
 struct BlastPoolOption {
     container_id: String,
@@ -3027,6 +3062,9 @@ impl Default for GENtleApp {
             agent_last_command_output: None,
             agent_pending_image_attachment: None,
             agent_help_capture_failure: None,
+            agent_screenshot_consent: None,
+            agent_screenshot_capture: None,
+            agent_discarded_screenshot_capture_ids: VecDeque::new(),
         }
     }
 }
@@ -7231,6 +7269,9 @@ Error: `{err}`"
         self.agent_last_command_output = None;
         self.agent_pending_image_attachment = None;
         self.agent_help_capture_failure = None;
+        self.agent_screenshot_consent = None;
+        self.agent_screenshot_capture = None;
+        self.agent_discarded_screenshot_capture_ids.clear();
         self.agent_discovered_models.clear();
         self.agent_discovered_model_pick.clear();
         self.agent_model_discovery_status.clear();
@@ -15632,6 +15673,9 @@ Error: `{err}`"
         self.agent_last_command_output = None;
         self.agent_pending_image_attachment = None;
         self.agent_help_capture_failure = None;
+        self.agent_screenshot_consent = None;
+        self.agent_screenshot_capture = None;
+        self.agent_discarded_screenshot_capture_ids.clear();
         self.agent_discovered_models.clear();
         self.agent_discovered_model_pick.clear();
         self.agent_model_discovery_status.clear();
@@ -25164,7 +25208,7 @@ impl GENtleApp {
             self.poll_dbsnp_fetch_task(ctx);
             self.poll_jaspar_background_task(ctx);
             self.poll_agent_assistant_task(ctx);
-            self.poll_agent_help_capture_events();
+            self.poll_agent_help_capture_events(ctx);
             self.poll_agent_model_discovery_task(ctx);
             self.poll_clawbio_task(ctx);
             self.poll_container_pool_export_task(ctx);

@@ -44,9 +44,11 @@ pub const AGENT_CONVERSATION_SCHEMA: &str = "gentle.agent_conversation.v1";
 const AGENT_SYSTEMS_SCHEMA_PREFIX: &str = "gentle.agent_systems.v";
 const AGENT_REQUEST_SCHEMA_PREFIX: &str = "gentle.agent_request.v";
 const AGENT_RESPONSE_SCHEMA_PREFIX: &str = "gentle.agent_response.v";
+const AGENT_SCREENSHOT_REQUEST_ID_MAX_CHARS: usize = 128;
+const AGENT_SCREENSHOT_REQUEST_REASON_MAX_CHARS: usize = 512;
 pub(crate) const AGENT_BRIDGE_SYSTEM_PROMPT: &str = r#"You are a GENtle agent bridge.
 Return STRICT JSON only with this exact object shape:
-{"schema":"gentle.agent_response.v1","assistant_message":"string","questions":["string"],"suggested_commands":[{"title":"string","preconditions":["string"],"precondition_expr":{"all":[]},"expected_outcomes":["string"],"expected_effects":[{"fact":"string"}],"rationale":"string","command":"string","execution":"chat|ask|auto"}]}
+{"schema":"gentle.agent_response.v1","assistant_message":"string","questions":["string"],"suggested_commands":[{"title":"string","preconditions":["string"],"precondition_expr":{"all":[]},"expected_outcomes":["string"],"expected_effects":[{"fact":"string"}],"rationale":"string","command":"string","execution":"chat|ask|auto"}],"screenshot_request":null}
 The top-level field named "schema" is a literal protocol id string, not a JSON Schema object. It must be exactly "gentle.agent_response.v1".
 Do not output JSON Schema definitions, "type"/"properties" schema documents, markdown fences, or explanatory prose outside the JSON object.
 Use only keys from the schema. Extensions may use x_ prefix. Do not include markdown fences.
@@ -60,6 +62,7 @@ Suggested command contract:
 - Fact vocabulary rule: when emitting precondition_expr or expected_effects, use the generated Known project fact vocabulary block appended to this system prompt. Unknown future fact names evaluate as "unknown"; avoid them unless your intent is to ask GENtle for a non-ready future capability.
 - Introspection context rule: fact definitions describe the allowed vocabulary, not what is currently true. When the request contains x_introspection, use its facts and fact_type_counts as the bounded current-state projection. Respect its truncated and omitted_fact_count fields. If decisive facts are missing or omitted, suggest the read-only introspection command identified for that purpose instead of guessing. A missing open-world fact is not proof of absence.
 - Screenshot attachment rule: x_attachments contains only images explicitly approved by the user for this turn. Inspect the attached image, distinguish visible evidence from inference, and do not claim access to other windows or screen content. The local attachment path is transport metadata and is not evidence.
+- Screenshot request rule: screenshot_request is optional and may contain only id and reason. Use at most one request, only when visible GUI state is genuinely needed. Explain exactly what must be inspected. Do not provide a path, coordinates, native window id, target id, capture command, or approval state. A request asks GENtle to show a consent card; it does not capture or send anything. Never claim a screenshot was captured or seen until it arrives later in x_attachments.
 - suggested_commands[].command must be one exact GENtle shared-shell command parseable by GENtle.
 - Local-reference rule: x_local_references is a bounded, manifest-backed inventory of references already installed in GENtle. Prefer a compatible row with gene_extraction_ready=true over web retrieval. A catalog entry that is absent from x_local_references is not known to be installed. For a local gene locus with symmetric flanks, compose genomes extract-gene GENOME_ID QUERY --output-id ID, then genomes extend-anchor ID 5p N --output-id ID_5p, then genomes extend-anchor ID_5p 3p N --output-id FINAL_ID. If the user asked to see or open the result, follow those successful mutations with ui open sequence-window FINAL_ID. Quote a catalog id that contains spaces with ordinary double quotes. For example: genomes extract-gene "Human GRCh38 Ensembl 116" TP73 --output-id tp73_grch38; genomes extend-anchor tp73_grch38 5p 10000 --output-id tp73_grch38_5p; genomes extend-anchor tp73_grch38_5p 3p 10000 --output-id tp73_grch38_context; ui open sequence-window tp73_grch38_context. Each semicolon-separated example is one separate suggestion row, never one combined command. Suggested rows must use those exact chained ids and remain execution="ask". If no compatible local reference exists, explain the network fallback rather than inventing a local id.
 - GENtle-local slash aliases are deliberately small and parser-validated. Allowed aliases are: /help; /list; /history; /undo; /redo; /open; /import; /open sequence-window SEQ_ID; /close sequence-window SEQ_ID; /open file PATH [--id ID]; /import file PATH [--id ID]; /paste sequence --sequence-text DNA [--id ID]; /features restriction-scan SEQ_ID [--enzyme NAME]; /fetch genbank ACCESSION [--id ID]; /fetch ncbi ACCESSION [--id ID]; /fetch uniprot QUERY [--id ID]; /fetch ensembl QUERY [--species NAME] [--assembly NAME] [--flank-bp N|--flank-5p-bp N --flank-3p-bp N] [--id ID] [--no-open]; /fetch ensembl-gene QUERY [--species NAME] [--assembly NAME] [--flank-bp N|--flank-5p-bp N --flank-3p-bp N] [--id ID] [--no-open]; /fetch ensembl-protein QUERY [--id ID]; /fetch ensembl-region SPECIES CHR START END [--strand +|-] [--id ID]; /fetch dbsnp RS_ID GENOME_ID [--id ID].
@@ -2113,6 +2116,29 @@ pub struct AgentSuggestedCommand {
     pub execution: AgentExecutionIntent,
 }
 
+/// Path-free request for one user-approved screenshot of a registered GENtle viewport.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct AgentScreenshotRequest {
+    pub id: String,
+    pub reason: String,
+}
+
+fn agent_screenshot_request_is_valid(request: &AgentScreenshotRequest) -> bool {
+    let id = request.id.trim();
+    let reason = request.reason.trim();
+    !id.is_empty()
+        && id.chars().count() <= AGENT_SCREENSHOT_REQUEST_ID_MAX_CHARS
+        && id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'-'))
+        && !reason.is_empty()
+        && reason.chars().count() <= AGENT_SCREENSHOT_REQUEST_REASON_MAX_CHARS
+        && !reason
+            .chars()
+            .any(|character| character.is_control() && !matches!(character, '\n' | '\r' | '\t'))
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct AgentResponse {
@@ -2120,6 +2146,8 @@ pub struct AgentResponse {
     pub assistant_message: String,
     pub questions: Vec<String>,
     pub suggested_commands: Vec<AgentSuggestedCommand>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub screenshot_request: Option<AgentScreenshotRequest>,
 }
 
 fn agent_response_has_content(response: &AgentResponse) -> bool {
@@ -2129,6 +2157,7 @@ fn agent_response_has_content(response: &AgentResponse) -> bool {
             .iter()
             .any(|question| !question.trim().is_empty())
         || !response.suggested_commands.is_empty()
+        || response.screenshot_request.is_some()
 }
 
 /// One successful user request and its validated agent response.
@@ -2182,7 +2211,18 @@ impl AgentConversation {
                 && agent_response_has_content(&turn.response)
                 && turn.response.schema == AGENT_RESPONSE_SCHEMA
                 && !turn.system_id.trim().is_empty()
+                && turn
+                    .response
+                    .screenshot_request
+                    .as_ref()
+                    .is_none_or(agent_screenshot_request_is_valid)
         });
+        for turn in &mut self.turns {
+            if let Some(request) = turn.response.screenshot_request.as_mut() {
+                request.id = request.id.trim().to_string();
+                request.reason = request.reason.trim().to_string();
+            }
+        }
         if self.turns.len() > AGENT_CONVERSATION_STORED_MAX_TURNS {
             let drain = self.turns.len() - AGENT_CONVERSATION_STORED_MAX_TURNS;
             self.turns.drain(0..drain);
@@ -2191,13 +2231,22 @@ impl AgentConversation {
     }
 
     /// Appends one validated turn while enforcing the project retention limit.
-    pub fn push_turn(&mut self, turn: AgentConversationTurn) {
+    pub fn push_turn(&mut self, mut turn: AgentConversationTurn) {
         if turn.user_message.trim().is_empty()
             || !agent_response_has_content(&turn.response)
             || turn.response.schema != AGENT_RESPONSE_SCHEMA
             || turn.system_id.trim().is_empty()
+            || turn
+                .response
+                .screenshot_request
+                .as_ref()
+                .is_some_and(|request| !agent_screenshot_request_is_valid(request))
         {
             return;
+        }
+        if let Some(request) = turn.response.screenshot_request.as_mut() {
+            request.id = request.id.trim().to_string();
+            request.reason = request.reason.trim().to_string();
         }
         self.schema = AGENT_CONVERSATION_SCHEMA.to_string();
         self.turns.push(turn);
@@ -3083,6 +3132,106 @@ fn parse_suggested_commands_field(
     Ok(parsed)
 }
 
+fn parse_agent_screenshot_request_field(
+    value: Option<&Value>,
+) -> Result<Option<AgentScreenshotRequest>, String> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    if value.is_null() {
+        return Ok(None);
+    }
+    let Value::Object(object) = value else {
+        return Err(agent_err(
+            AgentBridgeErrorCode::ResponseValidation,
+            "agent response 'screenshot_request' must be one object or null",
+        ));
+    };
+    if let Some(key) = object
+        .keys()
+        .find(|key| !matches!(key.as_str(), "id" | "reason"))
+    {
+        return Err(agent_err(
+            AgentBridgeErrorCode::ResponseValidation,
+            format!(
+                "agent screenshot request contains unsupported field '{key}' (allowed: id, reason)"
+            ),
+        ));
+    }
+    let id = object
+        .get("id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .ok_or_else(|| {
+            agent_err(
+                AgentBridgeErrorCode::ResponseValidation,
+                "agent response 'screenshot_request.id' must be a string",
+            )
+        })?;
+    if id.is_empty() {
+        return Err(agent_err(
+            AgentBridgeErrorCode::ResponseValidation,
+            "agent response 'screenshot_request.id' cannot be empty",
+        ));
+    }
+    if id.chars().count() > AGENT_SCREENSHOT_REQUEST_ID_MAX_CHARS {
+        return Err(agent_err(
+            AgentBridgeErrorCode::ResponseValidation,
+            format!(
+                "agent response 'screenshot_request.id' exceeds {AGENT_SCREENSHOT_REQUEST_ID_MAX_CHARS} characters"
+            ),
+        ));
+    }
+    if !id
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'-'))
+    {
+        return Err(agent_err(
+            AgentBridgeErrorCode::ResponseValidation,
+            "agent response 'screenshot_request.id' may contain only ASCII letters, digits, '.', '_', ':', and '-'",
+        ));
+    }
+
+    let reason = object
+        .get("reason")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .ok_or_else(|| {
+            agent_err(
+                AgentBridgeErrorCode::ResponseValidation,
+                "agent response 'screenshot_request.reason' must be a string",
+            )
+        })?;
+    if reason.is_empty() {
+        return Err(agent_err(
+            AgentBridgeErrorCode::ResponseValidation,
+            "agent response 'screenshot_request.reason' cannot be empty",
+        ));
+    }
+    if reason.chars().count() > AGENT_SCREENSHOT_REQUEST_REASON_MAX_CHARS {
+        return Err(agent_err(
+            AgentBridgeErrorCode::ResponseValidation,
+            format!(
+                "agent response 'screenshot_request.reason' exceeds {AGENT_SCREENSHOT_REQUEST_REASON_MAX_CHARS} characters"
+            ),
+        ));
+    }
+    if reason
+        .chars()
+        .any(|character| character.is_control() && !matches!(character, '\n' | '\r' | '\t'))
+    {
+        return Err(agent_err(
+            AgentBridgeErrorCode::ResponseValidation,
+            "agent response 'screenshot_request.reason' contains unsupported control characters",
+        ));
+    }
+
+    Ok(Some(AgentScreenshotRequest {
+        id: id.to_string(),
+        reason: reason.to_string(),
+    }))
+}
+
 fn parse_agent_response_value(value: Value) -> Result<AgentResponse, String> {
     let Some(obj) = value.as_object() else {
         return Err(agent_err(
@@ -3097,6 +3246,7 @@ fn parse_agent_response_value(value: Value) -> Result<AgentResponse, String> {
             "assistant_message",
             "questions",
             "suggested_commands",
+            "screenshot_request",
         ],
         "agent response",
         AgentBridgeErrorCode::ResponseValidation,
@@ -3128,11 +3278,16 @@ fn parse_agent_response_value(value: Value) -> Result<AgentResponse, String> {
         .to_string();
     let questions = parse_questions_field(obj.get("questions"))?;
     let suggested_commands = parse_suggested_commands_field(obj.get("suggested_commands"))?;
+    let screenshot_request = parse_agent_screenshot_request_field(obj.get("screenshot_request"))?;
 
-    if assistant_message.is_empty() && questions.is_empty() && suggested_commands.is_empty() {
+    if assistant_message.is_empty()
+        && questions.is_empty()
+        && suggested_commands.is_empty()
+        && screenshot_request.is_none()
+    {
         return Err(agent_err(
             AgentBridgeErrorCode::ResponseValidation,
-            "agent response must include assistant_message, questions, or suggested_commands",
+            "agent response must include assistant_message, questions, suggested_commands, or screenshot_request",
         ));
     }
 
@@ -3141,6 +3296,7 @@ fn parse_agent_response_value(value: Value) -> Result<AgentResponse, String> {
         assistant_message,
         questions,
         suggested_commands,
+        screenshot_request,
     })
 }
 
@@ -3195,7 +3351,8 @@ fn normalize_native_agent_response_text(stdout: &str) -> String {
     };
     let looks_like_agent_response = obj.contains_key("assistant_message")
         || obj.contains_key("questions")
-        || obj.contains_key("suggested_commands");
+        || obj.contains_key("suggested_commands")
+        || obj.contains_key("screenshot_request");
     let schema_is_string = obj.get("schema").and_then(Value::as_str).is_some();
     if looks_like_agent_response && !schema_is_string {
         obj.insert(
@@ -4119,6 +4276,7 @@ fn builtin_echo_response(prompt: &str) -> AgentResponse {
         ),
         questions: vec![],
         suggested_commands: suggested,
+        screenshot_request: None,
     }
 }
 
@@ -4731,6 +4889,7 @@ mod tests {
                 assistant_message: format!("assistant message {index}"),
                 questions: vec![],
                 suggested_commands: vec![],
+                screenshot_request: None,
             },
             attachments: vec![],
             system_id: "codex_local_stdio".to_string(),
@@ -5146,6 +5305,122 @@ mod tests {
     }
 
     #[test]
+    fn legacy_agent_response_round_trips_without_screenshot_request() {
+        let response = parse_agent_response(
+            r#"{"schema":"gentle.agent_response.v1","assistant_message":"ready","questions":[],"suggested_commands":[]}"#,
+        )
+        .expect("legacy response");
+
+        assert_eq!(response.screenshot_request, None);
+        let serialized = serde_json::to_value(&response).expect("serialized response");
+        assert!(serialized.get("screenshot_request").is_none());
+    }
+
+    #[test]
+    fn agent_response_accepts_path_free_screenshot_request_as_content() {
+        let response = parse_agent_response(
+            r#"{"schema":"gentle.agent_response.v1","assistant_message":"","questions":[],"suggested_commands":[],"screenshot_request":{"id":"inspect-tp73-map-1","reason":"Please show the visible TP73 feature lanes so I can diagnose the overlap."}}"#,
+        )
+        .expect("screenshot request response");
+
+        assert!(agent_response_has_content(&response));
+        assert_eq!(
+            response.screenshot_request,
+            Some(AgentScreenshotRequest {
+                id: "inspect-tp73-map-1".to_string(),
+                reason: "Please show the visible TP73 feature lanes so I can diagnose the overlap."
+                    .to_string(),
+            })
+        );
+        let serialized = serde_json::to_string(&response).expect("serialized response");
+        assert!(serialized.contains("inspect-tp73-map-1"));
+        assert!(!serialized.contains("path"));
+        assert!(!serialized.contains("viewport"));
+    }
+
+    #[test]
+    fn agent_response_rejects_malformed_screenshot_requests() {
+        for (label, value) in [
+            (
+                "array",
+                serde_json::json!({
+                    "schema": AGENT_RESPONSE_SCHEMA,
+                    "assistant_message": "",
+                    "questions": [],
+                    "suggested_commands": [],
+                    "screenshot_request": [{"id":"one","reason":"inspect"}]
+                }),
+            ),
+            (
+                "unsafe id",
+                serde_json::json!({
+                    "schema": AGENT_RESPONSE_SCHEMA,
+                    "assistant_message": "",
+                    "questions": [],
+                    "suggested_commands": [],
+                    "screenshot_request": {"id":"../../window","reason":"inspect"}
+                }),
+            ),
+            (
+                "target field",
+                serde_json::json!({
+                    "schema": AGENT_RESPONSE_SCHEMA,
+                    "assistant_message": "",
+                    "questions": [],
+                    "suggested_commands": [],
+                    "screenshot_request": {
+                        "id":"one",
+                        "reason":"inspect",
+                        "path":"/tmp/window.png"
+                    }
+                }),
+            ),
+        ] {
+            let error = parse_agent_response_value(value).expect_err(label);
+            assert!(
+                error.starts_with("AGENT_RESPONSE_VALIDATION:"),
+                "{label}: {error}"
+            );
+        }
+
+        let error = parse_agent_response_value(serde_json::json!({
+            "schema": AGENT_RESPONSE_SCHEMA,
+            "assistant_message": "",
+            "questions": [],
+            "suggested_commands": [],
+            "screenshot_request": {
+                "id":"one",
+                "reason":"x".repeat(AGENT_SCREENSHOT_REQUEST_REASON_MAX_CHARS + 1)
+            }
+        }))
+        .expect_err("overlong reason");
+        assert!(error.contains("exceeds"), "{error}");
+    }
+
+    #[test]
+    fn stored_screenshot_requests_reject_extra_fields_and_normalize_bounds() {
+        let error = serde_json::from_value::<AgentScreenshotRequest>(serde_json::json!({
+            "id": "inspect-map",
+            "reason": "Inspect the map",
+            "path": "/tmp/problem.png"
+        }))
+        .expect_err("stored request must reject target fields");
+        assert!(error.to_string().contains("unknown field"));
+
+        let mut turn = test_conversation_turn(1);
+        turn.response.screenshot_request = Some(AgentScreenshotRequest {
+            id: "inspect-map".to_string(),
+            reason: "x".repeat(AGENT_SCREENSHOT_REQUEST_REASON_MAX_CHARS + 1),
+        });
+        let conversation = AgentConversation {
+            schema: AGENT_CONVERSATION_SCHEMA.to_string(),
+            turns: vec![turn],
+        }
+        .normalize();
+        assert!(conversation.turns.is_empty());
+    }
+
+    #[test]
     fn parse_agent_response_accepts_single_top_level_json_fence() {
         let response = parse_agent_response(
             r#"```json
@@ -5217,6 +5492,27 @@ mod tests {
         .expect("native model payload should be repaired");
         assert_eq!(response.schema, AGENT_RESPONSE_SCHEMA);
         assert_eq!(response.assistant_message, "ready");
+    }
+
+    #[test]
+    fn parse_native_agent_response_repairs_screenshot_only_payload_schema() {
+        let response = parse_native_agent_response(
+            r#"{
+  "assistant_message": "",
+  "questions": [],
+  "suggested_commands": [],
+  "screenshot_request": {
+    "id": "inspect-visible-map",
+    "reason": "Inspect the visible controls."
+  }
+}"#,
+        )
+        .expect("native screenshot request payload should be repaired");
+        assert_eq!(response.schema, AGENT_RESPONSE_SCHEMA);
+        assert_eq!(
+            response.screenshot_request.map(|request| request.id),
+            Some("inspect-visible-map".to_string())
+        );
     }
 
     #[test]

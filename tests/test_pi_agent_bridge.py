@@ -120,6 +120,43 @@ class PiAgentBridgeTests(unittest.TestCase):
 
         self.assertEqual(parsed["assistant_message"], "ready")
 
+    def test_parse_pi_response_accepts_bounded_screenshot_request(self):
+        bridge = load_bridge_module()
+        parsed = bridge.parse_pi_response(
+            json.dumps(
+                {
+                    "schema": "gentle.agent_response.v1",
+                    "assistant_message": "",
+                    "questions": [],
+                    "suggested_commands": [],
+                    "screenshot_request": {
+                        "id": "inspect-tp73-map-1",
+                        "reason": "Inspect the visible TP73 feature lanes.",
+                    },
+                }
+            )
+        )
+
+        self.assertEqual(parsed["screenshot_request"]["id"], "inspect-tp73-map-1")
+        self.assertIn("genuinely needed", bridge.render_pi_prompt(request_payload()))
+
+    def test_parse_pi_response_rejects_screenshot_target_fields(self):
+        bridge = load_bridge_module()
+        response = {
+            "schema": "gentle.agent_response.v1",
+            "assistant_message": "",
+            "questions": [],
+            "suggested_commands": [],
+            "screenshot_request": {
+                "id": "inspect-map",
+                "reason": "Inspect the map.",
+                "path": "/tmp/problem.png",
+            },
+        }
+
+        with self.assertRaisesRegex(ValueError, "unsupported fields"):
+            bridge.validate_agent_response(response)
+
     def test_parse_pi_response_rejects_prose_around_fence(self):
         bridge = load_bridge_module()
         with self.assertRaises((json.JSONDecodeError, ValueError)):

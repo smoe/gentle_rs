@@ -777,7 +777,6 @@ impl GENtleApp {
         self.open_window_model_cache.misses = self.open_window_model_cache.misses.saturating_add(1);
     }
 
-    #[cfg(test)]
     pub(super) fn collect_open_window_entries(&self) -> Vec<OpenWindowEntry> {
         self.build_open_window_model().entries
     }

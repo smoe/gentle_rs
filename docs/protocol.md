@@ -4710,6 +4710,15 @@ Agent Assistant image attachment extension:
 - This is a GUI-host capability, not a capture operation callable by an agent,
   CLI, MCP, JS, or Lua adapter. Those adapters can consume explicitly supplied
   image-capable agent requests in future, but cannot initiate screen capture.
+- A validated `AgentResponse.screenshot_request` may ask the GUI to show a
+  consent card. GENtle resolves targets only from its current open-window model,
+  excludes Agent Assistant, rejects ambiguous/closed targets, and binds one
+  ephemeral approval to the originating turn, system, project generation, and
+  selected viewport. Provider/project/target changes, conversation clearing,
+  another request, decline, timeout, and replay fail closed. Approval performs
+  one egui viewport capture only; the unchanged `x_attachments[]` preview and
+  `Ask Agent` boundary remain the sole transport path. Native ScreenCaptureKit
+  capture remains available only through the user's direct context-menu action.
 
 - `agents list [--catalog PATH]`
   - Lists configured agent systems from catalog JSON.
@@ -5167,13 +5176,26 @@ Agent response payload schema (`gentle.agent_response.v1`):
       "command": "state-summary",
       "execution": "ask"
     }
-  ]
+  ],
+  "screenshot_request": {
+    "id": "inspect-visible-map-1",
+    "reason": "Inspect the visible feature lanes and disabled controls."
+  }
 }
 ```
 
+`screenshot_request` is optional and additive. It may contain only `id` and
+`reason`; the id is non-empty, ASCII-stable, and at most 128 characters, while
+the trimmed human-readable reason is non-empty and at most 512 characters. One
+object is the v1 maximum, and it counts as response content. A request does not
+name a target and does not authorize or initiate capture. Arrays, paths,
+coordinates, native window ids, capture commands, approval fields, unknown
+fields, and excessive values fail response validation.
+
 Native HTTP transports parse stochastic LLM text after provider extraction. If
 that text is already a JSON object with `assistant_message`, `questions`, or
-`suggested_commands`, GENtle may repair a missing/non-string `schema` field to
+`suggested_commands`, or `screenshot_request`, GENtle may repair a
+missing/non-string `schema` field to
 `gentle.agent_response.v1` before validation. Native HTTP transports also
 unwrap a single top-level Markdown `json` code fence before validation, because
 local chat models often add that wrapper despite a JSON-only instruction.

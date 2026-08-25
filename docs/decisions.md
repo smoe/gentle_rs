@@ -133,18 +133,30 @@ expansion paths.
 
 Status: active
 
-Project policy permits only user-invoked, window-bound screenshots for Agent
-Assistant help. The request must originate from an `Agent help` control in the
-GENtle viewport being diagnosed; GENtle captures that viewport before opening
-or focusing Agent Assistant, previews the image locally, and sends it only when
-the user explicitly submits the prompt. Conversation history stores path-free
-attachment provenance, not the temporary local image path.
+Project policy permits only user-approved, window-bound screenshots for Agent
+Assistant help. A direct request may originate from an `Agent help` control in
+the GENtle viewport being diagnosed. An agent response may alternatively carry
+one typed, path-free request id and human-readable reason. That response emits
+no capture command: GENtle shows a consent card, the user selects one currently
+registered GENtle content viewport, and `Allow one screenshot` consumes a
+turn/provider/project/viewport-bound approval before requesting one egui
+capture. The agent cannot choose an arbitrary target or grant approval.
+
+Both structured project-state context and screenshots disclose information to
+the selected provider; this policy does not assume that a screenshot is more
+sensitive. A project summary can be scientifically richer, while a visual
+snapshot is often more useful for layout, direction, colour, and enabled-state
+guidance. They remain separate review controls because their scope and
+diagnostic purpose differ. Captured images are previewed locally and sent only
+when the user explicitly submits the follow-up prompt. Conversation history
+stores path-free request/attachment provenance, not live approval, image bytes,
+or the temporary local image path.
 
 Native macOS full-window capture is an optional same-process enhancement. It
 must use ScreenCaptureKit, refuse windows not owned by GENtle, and remain
 unavailable when the user does not grant macOS Screen Recording permission.
 Automatic/background capture, desktop capture, capture of another application,
-and headless agent-triggered capture remain prohibited. The reserved
+agent-selected capture, and headless capture remain prohibited. The reserved
 `screenshot-window` CLI/shared-shell route therefore stays disabled;
 deterministic SVG/export routes remain preferred for reproducible artifacts.
 

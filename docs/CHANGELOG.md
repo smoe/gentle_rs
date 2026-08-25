@@ -1,5 +1,16 @@
 # GENtle Changelog
 
+- Added user-approved, agent-requested screenshots without widening GENtle's
+  headless capture boundary. `gentle.agent_response.v1` now accepts one bounded,
+  path-free screenshot request; Agent Assistant shows its reason and provider,
+  lets the user select one registered GENtle content window, and consumes a
+  turn/provider/project/viewport-bound approval exactly once. The capture reuses
+  the existing egui PNG/20 MiB/temp-file preview path and still requires `Ask
+  Agent` before transport. Provider/project/window changes, decline, clear,
+  timeout, replay, unsupported image systems, and active tasks fail closed;
+  `screenshot-window`, native agent-requested capture, and adapter capture
+  commands remain disabled.
+
 - Grounded every Agent Assistant request in a bounded, path-free inventory of
   manifest-backed local references, and supplied Pi Local with the same shared
   parser contract as native providers. Agents are now instructed to prefer a

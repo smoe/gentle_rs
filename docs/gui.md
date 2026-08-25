@@ -112,11 +112,16 @@ Screenshot capture policy:
 - `Agent help` is an explicit, window-bound diagnostic action. A normal click
   captures only the GENtle viewport containing that button, then opens Agent
   Assistant with a local preview and a prompt for the user's problem report.
+- An image-capable inner agent may instead return one typed screenshot request
+  with a reason. GENtle captures nothing until the user selects an open,
+  registered GENtle content window and clicks `Allow one screenshot`. The
+  resulting image is still previewed before the separate `Ask Agent` action.
 - Right-clicking `Agent help` on macOS 14 or newer offers an optional complete-
   window capture through ScreenCaptureKit. This requires Screen Recording
   permission; declining it simply leaves that optional feature unavailable.
-- No screenshot is sent until the user clicks `Ask agent`. Automatic capture,
-  desktop capture, and capture of non-GENtle windows are prohibited.
+- No screenshot is sent until the user clicks `Ask Agent`. Auto-run cannot
+  approve a screenshot; desktop capture and capture of non-GENtle windows are
+  prohibited.
 - The headless `--allow-screenshots` option and `screenshot-window` shared-shell
   command remain disabled; this narrow GUI help flow does not enable general
   screenshot automation.
@@ -2843,6 +2848,16 @@ Window screenshot help:
   The optional right-click `Capture complete macOS window` path includes native
   window chrome, is restricted to the current GENtle process, and opens a clear
   permission/settings recovery path when macOS blocks it.
+- An agent can ask for visual context by returning one validated request id and
+  reason, but it cannot name a path, window id, coordinate, or capture command.
+  The consent card lists only GENtle's current open-window registry and excludes
+  Agent Assistant itself. Approval expires when the response/provider/project
+  changes, the selected window closes, another agent request starts, or the
+  conversation is cleared; replay and double-click do not capture twice.
+- Project-state context and screenshots are separate provider disclosures, not
+  a privacy ranking. The state summary may contain richer scientific content;
+  the screenshot contributes visible layout, colour, direction, and control
+  state. Review the provider and both controls according to the project.
 
 Behavior:
 

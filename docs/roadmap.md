@@ -273,6 +273,11 @@ explicit screenshot approval, and broader adapter/documentation polish. Useful
 work here validates headless MCP deployment, aligns install docs with actual
 outputs, and decides release attachments versus git-tracked assets; defer
 infrastructure expansion that does not reduce release risk.
+- Agent screenshot follow-up: run the documented consent flow on Linux/Xvfb and
+  native macOS after merge. Native child viewports should capture their exact
+  viewport; hosted/embedded fallback captures the containing GENtle root
+  viewport, so consider a content-layer crop only if manual review shows that
+  the selected hosted window is not sufficiently clear.
 
 ## Phase F: Interpretation Later
 
