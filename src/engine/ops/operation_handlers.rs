@@ -16487,6 +16487,35 @@ impl GentleEngine {
             .to_string()
     }
 
+    fn validate_uniprot_linked_transcript_inventory_content(
+        path: &str,
+        inventory: &UniprotLinkedTranscriptInventory,
+    ) -> Result<(), EngineError> {
+        if inventory.schema != UNIPROT_LINKED_TRANSCRIPT_INVENTORY_SCHEMA {
+            return Err(EngineError::invalid_input(format!(
+                "UniProt linked-transcript inventory '{}' uses schema '{}'; expected '{}'",
+                path, inventory.schema, UNIPROT_LINKED_TRANSCRIPT_INVENTORY_SCHEMA
+            )));
+        }
+        let mut canonical = inventory.clone();
+        let declared = canonical.content_sha256.clone();
+        canonical.content_sha256.clear();
+        let bytes = serde_json::to_vec(&canonical).map_err(|error| {
+            EngineError::internal(format!(
+                "Could not serialize UniProt linked-transcript inventory identity '{}': {error}",
+                path
+            ))
+        })?;
+        let observed = sha256_prefixed_bytes(&bytes);
+        if declared != observed {
+            return Err(EngineError::invalid_input(format!(
+                "UniProt linked-transcript inventory '{}' declares content_sha256 '{}' but its canonical content hashes to '{}'",
+                path, declared, observed
+            )));
+        }
+        Ok(())
+    }
+
     fn normalize_transcript_assay_coverage_universe(
         mut universe: TranscriptAssayCoverageUniverse,
         require_bound_sources: bool,
@@ -16547,10 +16576,13 @@ impl GentleEngine {
                 };
             }
             if universe.kind == TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms
-                && source.source_kind != "uniprot_projection_audit"
+                && !matches!(
+                    source.source_kind.as_str(),
+                    "uniprot_projection_audit" | "uniprot_linked_transcript_inventory"
+                )
             {
                 return Err(EngineError::invalid_input(format!(
-                    "UniProt-supported coverage source '{}' has source_kind '{}'; expected uniprot_projection_audit",
+                    "UniProt-supported coverage source '{}' has source_kind '{}'; expected uniprot_projection_audit or uniprot_linked_transcript_inventory",
                     source.path, source.source_kind
                 )));
             }
@@ -16589,7 +16621,9 @@ impl GentleEngine {
                 )));
             }
             source.expected_sha256 = Some(observed);
-            if universe.kind == TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms {
+            if universe.kind == TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms
+                && source.source_kind == "uniprot_projection_audit"
+            {
                 let report: UniprotProjectionAuditReport = serde_json::from_slice(&bytes)
                     .map_err(|error| {
                         EngineError::invalid_input(format!(
@@ -16644,6 +16678,22 @@ impl GentleEngine {
                     }
                     uniprot_targets.insert(key, normalized);
                 }
+            } else if universe.kind == TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms
+                && source.source_kind == "uniprot_linked_transcript_inventory"
+            {
+                let inventory: UniprotLinkedTranscriptInventory =
+                    serde_json::from_slice(&bytes).map_err(|error| {
+                        EngineError::invalid_input(format!(
+                            "Could not parse UniProt linked-transcript inventory source '{}': {error}",
+                            source.path
+                        ))
+                    })?;
+                Self::validate_uniprot_linked_transcript_inventory_content(
+                    &source.path,
+                    &inventory,
+                )?;
+                source.report_id = Some(inventory.inventory_id.clone());
+                source.report_schema = Some(inventory.schema.clone());
             }
             normalized_sources.push(source);
         }
@@ -16672,7 +16722,11 @@ impl GentleEngine {
                 }
             }
             TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms => {
-                if universe.sources.is_empty() {
+                if !universe
+                    .sources
+                    .iter()
+                    .any(|source| source.source_kind == "uniprot_projection_audit")
+                {
                     return Err(EngineError::invalid_input(
                         "coverage_universe kind uniprot_supported_isoforms requires at least one content-bound UniProt projection-audit source",
                     ));
@@ -16709,6 +16763,8 @@ impl GentleEngine {
         seq_id: &str,
         templates: &[TranscriptQpcrDesignTemplate],
         require_bound_sources: bool,
+        expected_assembly: Option<&str>,
+        expected_annotation_release: Option<&str>,
     ) -> Result<
         (
             Vec<TranscriptQpcrDesignTemplate>,
@@ -16721,7 +16777,11 @@ impl GentleEngine {
         if universe.kind == TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms {
             let (selected, mut resolution) =
                 Self::resolve_transcript_assay_uniprot_coverage_universe(
-                    universe, seq_id, templates,
+                    universe,
+                    seq_id,
+                    templates,
+                    expected_assembly,
+                    expected_annotation_release,
                 )?;
             Self::attach_transcript_assay_annotation_group_denominators(
                 &mut resolution,
@@ -16911,6 +16971,8 @@ impl GentleEngine {
         universe: TranscriptAssayCoverageUniverse,
         seq_id: &str,
         templates: &[TranscriptQpcrDesignTemplate],
+        expected_assembly: Option<&str>,
+        expected_annotation_release: Option<&str>,
     ) -> Result<
         (
             Vec<TranscriptQpcrDesignTemplate>,
@@ -16935,6 +16997,7 @@ impl GentleEngine {
         }
 
         let mut reports = vec![];
+        let mut inventories = vec![];
         for source in &universe.sources {
             let bytes = fs::read(&source.path).map_err(|error| EngineError {
                 code: ErrorCode::Io,
@@ -16944,6 +17007,58 @@ impl GentleEngine {
                 ),
                 cause_chain: vec![],
             })?;
+            if source.source_kind == "uniprot_linked_transcript_inventory" {
+                let inventory: UniprotLinkedTranscriptInventory =
+                    serde_json::from_slice(&bytes).map_err(|error| {
+                        EngineError::invalid_input(format!(
+                            "Could not parse UniProt linked-transcript inventory source '{}': {error}",
+                            source.path
+                        ))
+                    })?;
+                Self::validate_uniprot_linked_transcript_inventory_content(
+                    &source.path,
+                    &inventory,
+                )?;
+                let assembly = expected_assembly
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .ok_or_else(|| {
+                        EngineError::invalid_input(format!(
+                            "UniProt linked-transcript inventory '{}' declares assembly '{}' but the assay sequence has no prepared genome-anchor assembly to compare",
+                            inventory.inventory_id, inventory.assembly
+                        ))
+                    })?;
+                if !inventory.assembly.trim().eq_ignore_ascii_case(assembly) {
+                    return Err(EngineError::invalid_input(format!(
+                        "UniProt linked-transcript inventory '{}' assembly '{}' does not match assay assembly '{}'",
+                        inventory.inventory_id, inventory.assembly, assembly
+                    )));
+                }
+                let annotation_release = expected_annotation_release
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .ok_or_else(|| {
+                        EngineError::invalid_input(format!(
+                            "UniProt linked-transcript inventory '{}' declares annotation release '{}' but assay design did not declare annotation_release",
+                            inventory.inventory_id, inventory.annotation_release
+                        ))
+                    })?;
+                if !inventory
+                    .annotation_release
+                    .trim()
+                    .eq_ignore_ascii_case(annotation_release)
+                {
+                    return Err(EngineError::invalid_input(format!(
+                        "UniProt linked-transcript inventory '{}' annotation release '{}' does not match assay annotation release '{}'",
+                        inventory.inventory_id, inventory.annotation_release, annotation_release
+                    )));
+                }
+                resolution
+                    .linked_transcript_inventory_ids
+                    .push(inventory.inventory_id.clone());
+                inventories.push(inventory);
+                continue;
+            }
             let report: UniprotProjectionAuditReport =
                 serde_json::from_slice(&bytes).map_err(|error| {
                     EngineError::invalid_input(format!(
@@ -16958,6 +17073,17 @@ impl GentleEngine {
                 )));
             }
             reports.push(report);
+        }
+        resolution.linked_transcript_inventory_authoritative = !inventories.is_empty();
+        resolution.linked_transcript_inventory_ids.sort();
+        resolution.linked_transcript_inventory_ids.dedup();
+
+        let mut template_indices_by_cdna_sha256 = BTreeMap::<String, Vec<usize>>::new();
+        for (index, template) in templates.iter().enumerate() {
+            template_indices_by_cdna_sha256
+                .entry(sha256_prefixed_str(&template.sequence))
+                .or_default()
+                .push(index);
         }
 
         let audit_rank = |status: UniprotProjectionAuditRowStatus| match status {
@@ -17055,9 +17181,103 @@ impl GentleEngine {
                 }
             }
 
-            if matching_template_ranks.is_empty() {
+            let mut inventory_blocked = false;
+            if !inventories.is_empty() {
+                // Audit rows remain coding-model evidence, but the inventory is
+                // authoritative for the complete linked-transcript denominator.
+                matching_template_ranks.clear();
+                let mut saw_inventory_record = false;
+                for inventory in &inventories {
+                    for record in inventory.records.iter().filter(|record| {
+                        record.entry_id.eq_ignore_ascii_case(&required.entry_id)
+                            && accepted_isoform_ids
+                                .iter()
+                                .any(|accepted| accepted.eq_ignore_ascii_case(&record.isoform_id))
+                    }) {
+                        saw_inventory_record = true;
+                        target
+                            .source_report_ids
+                            .push(inventory.inventory_id.clone());
+                        target
+                            .mapped_transcript_ids
+                            .push(record.transcript_id.clone());
+                        match record.status {
+                            UniprotLinkedTranscriptInventoryStatus::Resolved => {
+                                let Some(digest) = record.mature_cdna_sha256.as_deref() else {
+                                    inventory_blocked = true;
+                                    target
+                                        .unassessed_transcript_ids
+                                        .push(record.transcript_id.clone());
+                                    target.notes.push(format!(
+                                        "Linked transcript '{}' is marked resolved but lacks a mature-cDNA digest.",
+                                        record.transcript_id
+                                    ));
+                                    continue;
+                                };
+                                let matches = template_indices_by_cdna_sha256
+                                    .get(digest)
+                                    .cloned()
+                                    .unwrap_or_default();
+                                if matches.is_empty() {
+                                    inventory_blocked = true;
+                                    target
+                                        .unassessed_transcript_ids
+                                        .push(record.transcript_id.clone());
+                                    target.notes.push(format!(
+                                        "Linked transcript '{}' has exact cDNA digest '{}' but no current assay template has that sequence.",
+                                        record.transcript_id, digest
+                                    ));
+                                    continue;
+                                }
+                                target
+                                    .cdna_digest_matched_transcript_ids
+                                    .push(record.transcript_id.clone());
+                                let exact_local_transcript = templates
+                                    .iter()
+                                    .any(|template| template.transcript_id == record.transcript_id);
+                                if !exact_local_transcript {
+                                    target
+                                        .genomic_specificity_unassessed_transcript_ids
+                                        .push(record.transcript_id.clone());
+                                    target.notes.push(format!(
+                                        "Off-locus transcript '{}' shares an exact mature-cDNA digest with an assessed template; cDNA coverage may be inferred, but its genomic locus remains unassessed for carryover specificity.",
+                                        record.transcript_id
+                                    ));
+                                }
+                                for index in matches {
+                                    matching_template_ranks.entry(index).or_insert(0);
+                                }
+                            }
+                            UniprotLinkedTranscriptInventoryStatus::MissingTranscriptSequence
+                            | UniprotLinkedTranscriptInventoryStatus::AmbiguousTranscriptSequence
+                            | UniprotLinkedTranscriptInventoryStatus::Unassessed => {
+                                inventory_blocked = true;
+                                target
+                                    .unassessed_transcript_ids
+                                    .push(record.transcript_id.clone());
+                                target.notes.push(format!(
+                                    "Linked transcript '{}' has inventory status '{}' and cannot authorize mandatory cDNA coverage.",
+                                    record.transcript_id, record.status.as_str()
+                                ));
+                            }
+                        }
+                    }
+                }
+                if !saw_inventory_record {
+                    inventory_blocked = true;
+                    target.notes.push(format!(
+                        "No authoritative linked-transcript inventory record maps mandatory protein isoform '{}:{}'.",
+                        required.entry_id, required.isoform_id
+                    ));
+                }
+            }
+
+            if matching_template_ranks.is_empty() || inventory_blocked {
                 target.status = TranscriptAssayCoverageTargetStatus::Unresolved;
-                target.notes.push(if saw_matching_xref {
+                target.notes.push(if inventory_blocked {
+                    "At least one mandatory linked-transcript record is unassessed; Primer3 execution is refused until every record has exact cDNA identity evidence matching an assay template."
+                        .to_string()
+                } else if saw_matching_xref {
                     "The named UniProt isoform has cross-references, but none resolve to a current annotated mature-cDNA template."
                         .to_string()
                 } else {
@@ -17078,10 +17298,12 @@ impl GentleEngine {
                 })?;
                 target.resolved_transcript_id =
                     Some(templates[representative_index].transcript_id.clone());
-                target.mapped_transcript_ids = matching_template_ranks
-                    .keys()
-                    .map(|index| templates[*index].transcript_id.clone())
-                    .collect();
+                if inventories.is_empty() {
+                    target.mapped_transcript_ids = matching_template_ranks
+                        .keys()
+                        .map(|index| templates[*index].transcript_id.clone())
+                        .collect();
+                }
                 target.status = TranscriptAssayCoverageTargetStatus::Included;
                 target.notes.push(format!(
                     "Representative assay template '{}' was selected deterministically by projection-audit status then transcript id; all mapped transcripts remain listed for interpretation.",
@@ -17097,6 +17319,12 @@ impl GentleEngine {
             target.audit_statuses.dedup();
             target.mapped_transcript_ids.sort();
             target.mapped_transcript_ids.dedup();
+            target.cdna_digest_matched_transcript_ids.sort();
+            target.cdna_digest_matched_transcript_ids.dedup();
+            target.unassessed_transcript_ids.sort();
+            target.unassessed_transcript_ids.dedup();
+            target.genomic_specificity_unassessed_transcript_ids.sort();
+            target.genomic_specificity_unassessed_transcript_ids.dedup();
             target.notes.sort();
             target.notes.dedup();
             resolution.targets.push(target);
@@ -17602,12 +17830,18 @@ impl GentleEngine {
             });
         }
         let annotated_transcript_count = annotated_templates.len();
+        let source_anchor =
+            self.transcript_qpcr_panel_source_anchor(&isoform_report.seq_id, source_dna);
+        let expected_assembly =
+            Self::transcript_qpcr_panel_expected_assembly(source_dna, source_anchor.as_ref());
         let (templates, mut coverage_resolution) =
             Self::resolve_transcript_assay_coverage_universe(
                 request.coverage_universe.clone(),
                 &isoform_report.seq_id,
                 &annotated_templates,
                 true,
+                expected_assembly.as_deref(),
+                isoform_report.annotation_release.as_deref(),
             )?;
         if !coverage_resolution.unresolved_target_ids.is_empty()
             || !coverage_resolution.ambiguous_target_ids.is_empty()
@@ -22387,15 +22621,44 @@ impl GentleEngine {
             .qualifier_values("strand")
             .find_map(|value| value.trim().chars().next())
             .filter(|value| matches!(value, '+' | '-'));
+        let genome_id = source_feature
+            .qualifier_values("genome_id")
+            .chain(source_feature.qualifier_values("assembly"))
+            .chain(source_feature.qualifier_values("assembly_name"))
+            .find_map(|value| {
+                let trimmed = value.trim();
+                (!trimmed.is_empty()).then(|| trimmed.to_string())
+            })
+            .unwrap_or_else(|| "source_feature".to_string());
         Some(SequenceGenomeAnchorSummary {
             seq_id: seq_id.to_string(),
-            genome_id: "source_feature".to_string(),
+            genome_id,
             chromosome,
             start_1based,
             end_1based,
             strand,
             anchor_verified: None,
         })
+    }
+
+    pub(crate) fn transcript_qpcr_panel_expected_assembly(
+        dna: &DNAsequence,
+        anchor: Option<&SequenceGenomeAnchorSummary>,
+    ) -> Option<String> {
+        dna.features()
+            .iter()
+            .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("source"))
+            .and_then(|feature| {
+                feature
+                    .qualifier_values("assembly")
+                    .chain(feature.qualifier_values("assembly_name"))
+                    .chain(feature.qualifier_values("genome_id"))
+                    .find_map(|value| {
+                        let trimmed = value.trim();
+                        (!trimmed.is_empty()).then(|| trimmed.to_string())
+                    })
+            })
+            .or_else(|| anchor.map(|anchor| anchor.genome_id.clone()))
     }
 
     fn transcript_qpcr_panel_source_range_records(
@@ -25500,12 +25763,23 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
+        let source_anchor = self.transcript_qpcr_panel_source_anchor(seq_id, source_dna);
+        let expected_assembly =
+            Self::transcript_qpcr_panel_expected_assembly(source_dna, source_anchor.as_ref());
+        let expected_annotation_release = match operation {
+            Operation::DesignTranscriptAssayPanel {
+                annotation_release, ..
+            } => annotation_release.as_deref(),
+            _ => None,
+        };
         let (templates, mut coverage_resolution) =
             Self::resolve_transcript_assay_coverage_universe(
                 coverage_universe.clone(),
                 seq_id,
                 &annotated_templates,
                 true,
+                expected_assembly.as_deref(),
+                expected_annotation_release,
             )?;
         if templates.is_empty() {
             return Err(EngineError::invalid_input(format!(
@@ -29302,12 +29576,17 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
+        let source_anchor = self.transcript_qpcr_panel_source_anchor(&seq_id, &source_dna);
+        let expected_assembly =
+            Self::transcript_qpcr_panel_expected_assembly(&source_dna, source_anchor.as_ref());
         let (templates, mut coverage_resolution) =
             Self::resolve_transcript_assay_coverage_universe(
                 coverage_universe,
                 &seq_id,
                 &annotated_templates,
                 true,
+                expected_assembly.as_deref(),
+                annotation_release.as_deref(),
             )?;
         if !coverage_resolution.unresolved_target_ids.is_empty()
             || !coverage_resolution.ambiguous_target_ids.is_empty()
@@ -31954,7 +32233,10 @@ impl GentleEngine {
             .collect::<Vec<_>>();
 
         let uniprot_available = panel.coverage_universe.kind
-            == TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms;
+            == TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms
+            && panel
+                .coverage_resolution
+                .linked_transcript_inventory_authoritative;
         let uniprot_entry_ids = panel
             .coverage_resolution
             .targets
@@ -31973,13 +32255,35 @@ impl GentleEngine {
             .iter()
             .flat_map(|target| target.equivalence_group_ids.iter().cloned())
             .collect::<BTreeSet<_>>();
-        let covered_uniprot_linked_transcript_count = uniprot_linked_transcript_ids
-            .intersection(&covered_transcript_ids)
+        let genomic_specificity_unassessed_uniprot_linked_transcript_ids = panel
+            .coverage_resolution
+            .targets
+            .iter()
+            .flat_map(|target| {
+                target
+                    .genomic_specificity_unassessed_transcript_ids
+                    .iter()
+                    .cloned()
+            })
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let covered_uniprot_linked_transcript_ids = panel
+            .coverage_resolution
+            .targets
+            .iter()
+            .filter(|target| {
+                target.coverage_status == TranscriptAssayCoverageEvaluationStatus::Covered
+            })
+            .flat_map(|target| target.cdna_digest_matched_transcript_ids.iter().cloned())
+            .collect::<BTreeSet<_>>();
+        let covered_uniprot_linked_transcript_count = covered_uniprot_linked_transcript_ids
+            .intersection(&uniprot_linked_transcript_ids)
             .count();
         let covered_uniprot_group_count =
             uniprot_group_ids.intersection(&covered_group_ids).count();
         let uncovered_uniprot_linked_transcript_ids = uniprot_linked_transcript_ids
-            .difference(&covered_transcript_ids)
+            .difference(&covered_uniprot_linked_transcript_ids)
             .cloned()
             .collect::<Vec<_>>();
         let uncovered_uniprot_group_ids = uniprot_group_ids
@@ -32082,6 +32386,12 @@ impl GentleEngine {
                 covered_uniprot_target_count,
                 panel.coverage_resolution.targets.len()
             ));
+            if !genomic_specificity_unassessed_uniprot_linked_transcript_ids.is_empty() {
+                summary_lines.push(format!(
+                    "Exact mature-cDNA identity supports sequence coverage for linked transcript record(s) {}, but their separate genomic loci remain unassessed for carryover specificity.",
+                    genomic_specificity_unassessed_uniprot_linked_transcript_ids.join(", ")
+                ));
+            }
         } else {
             summary_lines.push(
                 "UniProt-linked target coverage is not available for this panel; no zero or pass is inferred."
@@ -32111,12 +32421,20 @@ impl GentleEngine {
             uncovered_annotated_transcript_ids: uncovered_transcript_ids,
             uncovered_distinct_mature_cdna_ids: uncovered_group_ids,
             uniprot_coverage_available: uniprot_available,
+            linked_transcript_inventory_authoritative: panel
+                .coverage_resolution
+                .linked_transcript_inventory_authoritative,
+            linked_transcript_inventory_ids: panel
+                .coverage_resolution
+                .linked_transcript_inventory_ids
+                .clone(),
             uniprot_entry_count: uniprot_entry_ids.len(),
             uniprot_protein_target_count: panel.coverage_resolution.targets.len(),
             covered_uniprot_protein_target_count: covered_uniprot_target_count,
             uniprot_linked_transcript_record_count: uniprot_linked_transcript_ids.len(),
             covered_uniprot_linked_transcript_record_count: covered_uniprot_linked_transcript_count,
             uncovered_uniprot_linked_transcript_ids,
+            genomic_specificity_unassessed_uniprot_linked_transcript_ids,
             distinct_uniprot_linked_mature_cdna_count: uniprot_group_ids.len(),
             covered_distinct_uniprot_linked_mature_cdna_count: covered_uniprot_group_count,
             uncovered_distinct_uniprot_linked_mature_cdna_ids: uncovered_uniprot_group_ids,

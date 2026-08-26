@@ -9297,6 +9297,17 @@ pub enum UniprotLinkedTranscriptInventoryStatus {
     Unassessed,
 }
 
+impl UniprotLinkedTranscriptInventoryStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Resolved => "resolved",
+            Self::MissingTranscriptSequence => "missing_transcript_sequence",
+            Self::AmbiguousTranscriptSequence => "ambiguous_transcript_sequence",
+            Self::Unassessed => "unassessed",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
 /// Explicit UniProt isoform/transcript link supplied to the inventory builder.
@@ -11154,6 +11165,17 @@ pub struct TranscriptAssayCoverageTarget {
     pub resolved_transcript_id: Option<String>,
     #[serde(default)]
     pub mapped_transcript_ids: Vec<String>,
+    /// Inventory records whose exact cDNA digest matched an assessed local
+    /// template, including off-locus records represented by the same cDNA.
+    #[serde(default)]
+    pub cdna_digest_matched_transcript_ids: Vec<String>,
+    /// Linked records that could not be assessed against a local cDNA template.
+    #[serde(default)]
+    pub unassessed_transcript_ids: Vec<String>,
+    /// Records whose cDNA coverage may be inferred by digest identity but whose
+    /// distinct genomic locus has not thereby been assessed.
+    #[serde(default)]
+    pub genomic_specificity_unassessed_transcript_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub equivalence_group_id: Option<String>,
     #[serde(default)]
@@ -11185,6 +11207,12 @@ pub struct TranscriptAssayCoverageTarget {
 /// Auditable resolution of the requested coverage universe.
 pub struct TranscriptAssayCoverageResolution {
     pub universe: TranscriptAssayCoverageUniverse,
+    /// True only when resolution consumed a validated, content-bound
+    /// `gentle.uniprot_linked_transcript_inventory.v1` source.
+    #[serde(default)]
+    pub linked_transcript_inventory_authoritative: bool,
+    #[serde(default)]
+    pub linked_transcript_inventory_ids: Vec<String>,
     pub annotated_transcript_count: usize,
     /// Distinct exact mature-cDNA groups in the complete annotation universe.
     /// `None` distinguishes legacy payloads from a genuine empty annotation.
@@ -12753,6 +12781,9 @@ pub struct ExperimentalAssayCoverageSummary {
     #[serde(default)]
     pub uncovered_distinct_mature_cdna_ids: Vec<String>,
     pub uniprot_coverage_available: bool,
+    pub linked_transcript_inventory_authoritative: bool,
+    #[serde(default)]
+    pub linked_transcript_inventory_ids: Vec<String>,
     pub uniprot_entry_count: usize,
     pub uniprot_protein_target_count: usize,
     pub covered_uniprot_protein_target_count: usize,
@@ -12760,6 +12791,10 @@ pub struct ExperimentalAssayCoverageSummary {
     pub covered_uniprot_linked_transcript_record_count: usize,
     #[serde(default)]
     pub uncovered_uniprot_linked_transcript_ids: Vec<String>,
+    /// Linked records covered by exact cDNA identity whose separate genomic
+    /// locus has not been assessed for carryover specificity.
+    #[serde(default)]
+    pub genomic_specificity_unassessed_uniprot_linked_transcript_ids: Vec<String>,
     pub distinct_uniprot_linked_mature_cdna_count: usize,
     pub covered_distinct_uniprot_linked_mature_cdna_count: usize,
     #[serde(default)]

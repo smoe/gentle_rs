@@ -13083,6 +13083,7 @@ fn transcript_qpcr_panel_test_engine() -> GentleEngine {
         location: gb_io::seq::Location::simple_range(0, source_len as i64),
         qualifiers: vec![
             ("chromosome".into(), Some("chr1".to_string())),
+            ("assembly".into(), Some("synthetic_assembly".to_string())),
             ("genomic_start_1based".into(), Some("1".to_string())),
             ("genomic_end_1based".into(), Some(source_len.to_string())),
             ("strand".into(), Some("+".to_string())),
@@ -14203,6 +14204,245 @@ fn transcript_assay_coverage_uniprot_is_content_bound_and_auditable() {
             .warnings
             .iter()
             .any(|warning| { warning.contains("PCR detects mapped mature cDNA") })
+    );
+}
+
+#[test]
+fn transcript_assay_coverage_joins_off_locus_inventory_by_exact_cdna_digest() {
+    let temp = tempdir().expect("temporary UniProt inventory coverage directory");
+    let audit_path = temp.path().join("projection_audit.json");
+    let audit_bytes = serde_json::to_vec_pretty(&serde_json::json!({
+        "schema": UNIPROT_PROJECTION_AUDIT_REPORT_SCHEMA,
+        "report_id": "synthetic_projection_audit",
+        "projection_id": "synthetic_projection",
+        "entry_id": "PTEST1",
+        "seq_id": "panel_src",
+        "protein_isoform_inventory": {
+            "entry_id": "PTEST1",
+            "declared_named_isoform_count": 2,
+            "status": "complete",
+            "targets": [
+                {"entry_id":"PTEST1","isoform_id":"PTEST1-1","name":"One","is_canonical":true},
+                {"entry_id":"PTEST1","isoform_id":"PTEST1-2","name":"Two","is_canonical":false}
+            ]
+        },
+        "rows": []
+    }))
+    .expect("serialize projection audit");
+    fs::write(&audit_path, &audit_bytes).expect("write projection audit");
+
+    let common_tail = "GCTAGTCGATCGTACCGTACGATCGTACGA";
+    let first_tx1 = format!("ATGCCGTAGCTTACGATCCGTTAGCGTACCTGATCGGATCCGATTAAC{common_tail}");
+    let first_tx2 = format!("CGTACGATTCGGAACCTGATCGATGCTTACGGTACCGATCTAGGCTTA{common_tail}");
+    let shared = "GATCGTACCGATGCTAGCTAGGATCCGATCGTACGATCCGTTACGATGCTAGCTAGGCTA\
+         CGATCGGATCCGTACGATCGATGCTAGCTACCGATGCTAGCTAGGATCGTACCGATGCTAGCTA"
+        .replace(' ', "");
+    let tx1_sequence = format!("{first_tx1}{shared}");
+    let tx2_sequence = format!("{first_tx2}{shared}");
+    let tx1 = (sha256_prefixed_str(&tx1_sequence), tx1_sequence.len());
+    let tx2 = (sha256_prefixed_str(&tx2_sequence), tx2_sequence.len());
+    let mut inventory = UniprotLinkedTranscriptInventory {
+        schema: UNIPROT_LINKED_TRANSCRIPT_INVENTORY_SCHEMA.to_string(),
+        inventory_id: "synthetic_linked_inventory".to_string(),
+        assembly: "synthetic_assembly".to_string(),
+        annotation_release: "synthetic_release_1".to_string(),
+        source_resource_id: "synthetic_transcript_resource".to_string(),
+        records: vec![
+            ("PTEST1-1", "TX1", &tx1),
+            ("PTEST1-1", "TX_PATCH.1", &tx1),
+            ("PTEST1-2", "TX2", &tx2),
+            ("PTEST1-2", "TX3", &tx2),
+        ]
+        .into_iter()
+        .map(|(isoform_id, transcript_id, (digest, length))| {
+            UniprotLinkedTranscriptInventoryRecord {
+                entry_id: "PTEST1".to_string(),
+                isoform_id: isoform_id.to_string(),
+                transcript_id: transcript_id.to_string(),
+                locus_reference_accession: Some(format!("LOCUS_{transcript_id}")),
+                status: UniprotLinkedTranscriptInventoryStatus::Resolved,
+                mature_cdna_sha256: Some(digest.clone()),
+                mature_cdna_length_bp: Some(*length),
+                diagnostics: vec![],
+            }
+        })
+        .collect(),
+        ..UniprotLinkedTranscriptInventory::default()
+    };
+    inventory.content_sha256 = sha256_prefixed_bytes(
+        &serde_json::to_vec(&inventory).expect("serialize canonical inventory"),
+    );
+    let inventory_path = temp.path().join("linked_inventory.json");
+    let inventory_bytes = serde_json::to_vec_pretty(&inventory).expect("serialize inventory");
+    let inventory_file_sha256 = sha256_prefixed_bytes(&inventory_bytes);
+    fs::write(&inventory_path, &inventory_bytes).expect("write inventory");
+
+    let mut operation = transcript_assay_panel_operation(
+        TranscriptAssayCoveragePolicy::BestEffort,
+        transcript_assay_panel_relaxed_side(),
+        0,
+        "coverage_inventory_join",
+    );
+    let Operation::DesignTranscriptAssayPanel {
+        objective,
+        coverage_universe,
+        annotation_release,
+        ..
+    } = &mut operation
+    else {
+        panic!("expected transcript assay operation");
+    };
+    *objective = TranscriptAssayPanelObjective::OnePerClass;
+    *annotation_release = Some("synthetic_release_1".to_string());
+    *coverage_universe = TranscriptAssayCoverageUniverse {
+        kind: TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms,
+        sources: vec![
+            TranscriptAssayCoverageSourceRef {
+                source_kind: "uniprot_projection_audit".to_string(),
+                path: audit_path.to_string_lossy().to_string(),
+                expected_sha256: Some(sha256_prefixed_bytes(&audit_bytes)),
+                ..TranscriptAssayCoverageSourceRef::default()
+            },
+            TranscriptAssayCoverageSourceRef {
+                source_kind: "uniprot_linked_transcript_inventory".to_string(),
+                path: inventory_path.to_string_lossy().to_string(),
+                expected_sha256: Some(inventory_file_sha256.clone()),
+                ..TranscriptAssayCoverageSourceRef::default()
+            },
+        ],
+        ..TranscriptAssayCoverageUniverse::default()
+    };
+
+    let report = transcript_qpcr_panel_test_engine()
+        .apply(operation.clone())
+        .expect("design inventory-backed panel")
+        .transcript_assay_panel
+        .expect("transcript assay report");
+    assert!(
+        report
+            .coverage_resolution
+            .linked_transcript_inventory_authoritative
+    );
+    assert_eq!(
+        report.coverage_resolution.linked_transcript_inventory_ids,
+        vec!["synthetic_linked_inventory".to_string()]
+    );
+    let first_target = report
+        .coverage_resolution
+        .targets
+        .iter()
+        .find(|target| target.uniprot_isoform_id.as_deref() == Some("PTEST1-1"))
+        .expect("first protein target");
+    assert_eq!(
+        first_target.mapped_transcript_ids,
+        vec!["TX1".to_string(), "TX_PATCH.1".to_string()]
+    );
+    assert_eq!(
+        first_target.cdna_digest_matched_transcript_ids,
+        vec!["TX1".to_string(), "TX_PATCH.1".to_string()]
+    );
+    assert_eq!(
+        first_target.genomic_specificity_unassessed_transcript_ids,
+        vec!["TX_PATCH.1".to_string()]
+    );
+    assert!(first_target.unassessed_transcript_ids.is_empty());
+    let coverage_summary = GentleEngine::experimental_assay_coverage_summary(&report);
+    assert!(coverage_summary.uniprot_coverage_available);
+    assert!(coverage_summary.linked_transcript_inventory_authoritative);
+    assert_eq!(
+        coverage_summary.linked_transcript_inventory_ids,
+        vec!["synthetic_linked_inventory".to_string()]
+    );
+    assert_eq!(coverage_summary.uniprot_linked_transcript_record_count, 4);
+    assert_eq!(
+        coverage_summary.covered_uniprot_linked_transcript_record_count,
+        4
+    );
+    assert_eq!(
+        coverage_summary.distinct_uniprot_linked_mature_cdna_count,
+        2
+    );
+    assert_eq!(
+        coverage_summary.covered_distinct_uniprot_linked_mature_cdna_count,
+        2
+    );
+    assert!(
+        coverage_summary
+            .coverage_source_report_ids
+            .contains(&"synthetic_linked_inventory".to_string())
+    );
+    assert!(
+        coverage_summary
+            .coverage_source_sha256s
+            .contains(&inventory_file_sha256)
+    );
+    assert_eq!(
+        coverage_summary.genomic_specificity_unassessed_uniprot_linked_transcript_ids,
+        vec!["TX_PATCH.1".to_string()]
+    );
+    assert!(coverage_summary.summary_lines.iter().any(|line| {
+        line.contains("TX_PATCH.1") && line.contains("genomic loci remain unassessed")
+    }));
+
+    let mut mismatched_release = operation.clone();
+    let Operation::DesignTranscriptAssayPanel {
+        annotation_release, ..
+    } = &mut mismatched_release
+    else {
+        unreachable!();
+    };
+    *annotation_release = Some("different_release".to_string());
+    let release_error = transcript_qpcr_panel_test_engine()
+        .apply(mismatched_release)
+        .expect_err("release mismatch must fail before Primer3");
+    assert!(release_error.message.contains("annotation release"));
+    assert!(release_error.message.contains("does not match"));
+
+    inventory.assembly = "different_assembly".to_string();
+    inventory.content_sha256.clear();
+    inventory.content_sha256 = sha256_prefixed_bytes(
+        &serde_json::to_vec(&inventory).expect("serialize changed inventory identity"),
+    );
+    let changed_inventory_bytes =
+        serde_json::to_vec_pretty(&inventory).expect("serialize changed inventory");
+    fs::write(&inventory_path, &changed_inventory_bytes).expect("rewrite inventory");
+    let Operation::DesignTranscriptAssayPanel {
+        coverage_universe, ..
+    } = &mut operation
+    else {
+        unreachable!();
+    };
+    coverage_universe.sources[1].expected_sha256 =
+        Some(sha256_prefixed_bytes(&changed_inventory_bytes));
+    let assembly_error = transcript_qpcr_panel_test_engine()
+        .apply(operation)
+        .expect_err("assembly mismatch must fail before Primer3");
+    assert!(assembly_error.message.contains("assembly"));
+    assert!(assembly_error.message.contains("does not match"));
+}
+
+#[test]
+fn transcript_assay_inventory_prefers_declared_assembly_over_resource_id() {
+    let engine = transcript_qpcr_panel_test_engine();
+    let dna = engine
+        .state()
+        .sequences
+        .get("panel_src")
+        .expect("synthetic panel sequence");
+    let resource_anchor = SequenceGenomeAnchorSummary {
+        seq_id: "panel_src".to_string(),
+        genome_id: "Human synthetic assembly resource".to_string(),
+        chromosome: "chr1".to_string(),
+        start_1based: 1,
+        end_1based: dna.len(),
+        strand: Some('+'),
+        anchor_verified: Some(true),
+    };
+
+    assert_eq!(
+        GentleEngine::transcript_qpcr_panel_expected_assembly(dna, Some(&resource_anchor))
+            .as_deref(),
+        Some("synthetic_assembly")
     );
 }
 
@@ -61660,6 +61900,8 @@ fn experimental_handoff_coverage_summary_separates_uniprot_records_from_cdna_seq
         coverage_resolution: TranscriptAssayCoverageResolution {
             annotated_transcript_count: 6,
             annotated_equivalence_group_count: Some(4),
+            linked_transcript_inventory_authoritative: true,
+            linked_transcript_inventory_ids: vec!["uniprot_inventory_1".to_string()],
             included_transcript_ids: transcript_ids.map(str::to_string).to_vec(),
             excluded_annotated_transcript_ids: vec![
                 "ENST_OTHER_1".to_string(),
@@ -61671,6 +61913,7 @@ fn experimental_handoff_coverage_summary_separates_uniprot_records_from_cdna_seq
                 target_id: "uniprot_target_1".to_string(),
                 uniprot_entry_ids: vec!["Q00000".to_string()],
                 mapped_transcript_ids: transcript_ids.map(str::to_string).to_vec(),
+                cdna_digest_matched_transcript_ids: transcript_ids.map(str::to_string).to_vec(),
                 equivalence_group_ids: group_ids.map(str::to_string).to_vec(),
                 coverage_status: TranscriptAssayCoverageEvaluationStatus::Covered,
                 ..Default::default()

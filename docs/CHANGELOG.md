@@ -1,5 +1,13 @@
 # GENtle Changelog
 
+- Joined content-bound UniProt linked-transcript inventories into transcript
+  assay coverage resolution. Primer panels now retain off-locus denominator
+  records, permit cDNA coverage inference only through exact mature-cDNA
+  digests, keep genomic specificity separate, and reject assembly, annotation-
+  release, missing-sequence, ambiguity, and unmatched-digest problems before
+  Primer3. Audit-only requests remain compatible but do not produce an
+  authoritative linked-record coverage claim.
+
 - Added the deterministic `gentle.uniprot_linked_transcript_inventory.v1`
   evidence layer and shared `uniprot build-linked-transcript-inventory` route.
   Explicit UniProt isoform/transcript links are resolved against content-bound

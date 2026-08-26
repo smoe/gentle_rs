@@ -177,7 +177,11 @@ This skill owns:
    parenthetical machine identities. Keep UniProt protein targets,
    UniProt-linked transcript records, distinct linked mature-cDNA sequences,
    and the broader annotation universe as separate denominators. Missing
-    legacy evidence is `not available`, never zero.
+   legacy evidence is `not available`, never zero. Treat linked-transcript
+   coverage as authoritative only when GENtle reports that it consumed a
+   content-bound linked-transcript inventory. Preserve off-locus records and
+   GENtle's distinction between exact-digest cDNA coverage and unassessed
+   genomic carryover specificity; never promote the former into the latter.
    Preserve GENtle's distinction between `unassessed_*` members outside a
    narrowed panel and assessed-but-uncovered members. Use the typed
    `qa_aggregate_summary` for specificity, oligo-QC, and order-readiness totals;

@@ -4185,8 +4185,19 @@ Shared shell command:
         A named isoform with no current annotation mapping stops before
         Primer3, including under `best-effort`; an entry with no named
         alternative products contributes one canonical protein target
+      - for authoritative linked-transcript accounting, include both source
+        kinds in the UniProt universe: the projection audit defines the
+        protein-isoform targets and a
+        `gentle.uniprot_linked_transcript_inventory.v1` preserves every linked
+        transcript across primary, patch, and alternate loci. GENtle validates
+        both the file hash and the inventory's internal content hash, then
+        rejects assembly or annotation-release mismatches before Primer3.
+        Exact mature-cDNA digest identity can establish cDNA coverage for an
+        off-locus record, but its genomic carryover specificity remains
+        unassessed until that locus is searched. Audit-only requests remain
+        compatible but cannot claim an authoritative linked-record denominator
       - example UniProt universe file:
-        `{"kind":"uniprot_supported_isoforms","sources":[{"source_kind":"uniprot_projection_audit","path":"reports/G1.uniprot_projection_audit.json","expected_sha256":"sha256:..."}]}`.
+        `{"kind":"uniprot_supported_isoforms","sources":[{"source_kind":"uniprot_projection_audit","path":"reports/G1.uniprot_projection_audit.json","expected_sha256":"sha256:..."},{"source_kind":"uniprot_linked_transcript_inventory","path":"reports/G1.uniprot_linked_transcript_inventory.json","expected_sha256":"sha256:..."}]}`.
         Study-request normalization fills and binds the observed hash and the
         exact `required_uniprot_isoforms` list; direct design execution requires
         both. Regenerate legacy projection audits that lack

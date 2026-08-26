@@ -9701,6 +9701,18 @@ Primer-pair alternative frontier:
     under its protein target, while GENtle deterministically chooses one
     representative assay template by audit status and transcript id. This
     prevents one protein isoform from becoming many mandatory Primer3 searches.
+  - Add a content-bound `gentle.uniprot_linked_transcript_inventory.v1` source
+    to make the linked-transcript denominator authoritative across primary,
+    patch, and alternate loci. Resolution verifies the inventory's canonical
+    content hash and requires its assembly and annotation release to match the
+    assay request before Primer3 runs. Every linked record remains in the
+    denominator. A record outside the loaded locus may inherit cDNA coverage
+    only when its exact mature-cDNA SHA-256 matches an assessed local template;
+    that identity does not assess the record's distinct genomic locus for
+    carryover specificity. Missing, ambiguous, stale, or unmatched mandatory
+    records stop before Primer3 rather than silently shrinking the denominator.
+    Audit-only legacy requests remain executable, but their linked-transcript
+    coverage summary is unavailable rather than authoritative.
   - Normalization records each audit SHA-256 plus the exact protein-target
     inventory in `required_uniprot_isoforms`; execution requires those hashes
     and rejects changed content. An old audit without the inventory must be
