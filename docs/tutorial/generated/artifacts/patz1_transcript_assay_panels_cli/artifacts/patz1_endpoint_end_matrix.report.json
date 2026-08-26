@@ -32,7 +32,10 @@
       "required_transcript_ids": [],
       "sources": []
     },
+    "linked_transcript_inventory_authoritative": false,
+    "linked_transcript_inventory_ids": [],
     "annotated_transcript_count": 3,
+    "annotated_equivalence_group_count": 3,
     "required_target_count": 3,
     "included_transcript_ids": [
       "PATZ1-201",
@@ -40,6 +43,12 @@
       "PATZ1-203"
     ],
     "excluded_annotated_transcript_ids": [],
+    "included_equivalence_group_ids": [
+      "cdna_eq_6c73e2052bd828f3",
+      "cdna_eq_bf8de0081e092d6f",
+      "cdna_eq_da6a2f3dbe1d4447"
+    ],
+    "excluded_annotated_equivalence_group_ids": [],
     "unresolved_target_ids": [],
     "ambiguous_target_ids": [],
     "targets": [
@@ -49,6 +58,9 @@
         "is_canonical_uniprot_target": false,
         "resolved_transcript_id": "PATZ1-201",
         "mapped_transcript_ids": [],
+        "cdna_digest_matched_transcript_ids": [],
+        "unassessed_transcript_ids": [],
+        "genomic_specificity_unassessed_transcript_ids": [],
         "equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447",
         "equivalence_group_ids": [
           "cdna_eq_da6a2f3dbe1d4447"
@@ -70,6 +82,9 @@
         "is_canonical_uniprot_target": false,
         "resolved_transcript_id": "PATZ1-202",
         "mapped_transcript_ids": [],
+        "cdna_digest_matched_transcript_ids": [],
+        "unassessed_transcript_ids": [],
+        "genomic_specificity_unassessed_transcript_ids": [],
         "equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
         "equivalence_group_ids": [
           "cdna_eq_6c73e2052bd828f3"
@@ -91,6 +106,9 @@
         "is_canonical_uniprot_target": false,
         "resolved_transcript_id": "PATZ1-203",
         "mapped_transcript_ids": [],
+        "cdna_digest_matched_transcript_ids": [],
+        "unassessed_transcript_ids": [],
+        "genomic_specificity_unassessed_transcript_ids": [],
         "equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
         "equivalence_group_ids": [
           "cdna_eq_bf8de0081e092d6f"
@@ -1394,7 +1412,10 @@
         "required_transcript_ids": [],
         "sources": []
       },
+      "linked_transcript_inventory_authoritative": false,
+      "linked_transcript_inventory_ids": [],
       "annotated_transcript_count": 3,
+      "annotated_equivalence_group_count": 3,
       "required_target_count": 3,
       "included_transcript_ids": [
         "PATZ1-201",
@@ -1402,6 +1423,12 @@
         "PATZ1-203"
       ],
       "excluded_annotated_transcript_ids": [],
+      "included_equivalence_group_ids": [
+        "cdna_eq_6c73e2052bd828f3",
+        "cdna_eq_bf8de0081e092d6f",
+        "cdna_eq_da6a2f3dbe1d4447"
+      ],
+      "excluded_annotated_equivalence_group_ids": [],
       "unresolved_target_ids": [],
       "ambiguous_target_ids": [],
       "targets": [
@@ -1411,6 +1438,9 @@
           "is_canonical_uniprot_target": false,
           "resolved_transcript_id": "PATZ1-201",
           "mapped_transcript_ids": [],
+          "cdna_digest_matched_transcript_ids": [],
+          "unassessed_transcript_ids": [],
+          "genomic_specificity_unassessed_transcript_ids": [],
           "equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447",
           "equivalence_group_ids": [
             "cdna_eq_da6a2f3dbe1d4447"
@@ -1432,6 +1462,9 @@
           "is_canonical_uniprot_target": false,
           "resolved_transcript_id": "PATZ1-202",
           "mapped_transcript_ids": [],
+          "cdna_digest_matched_transcript_ids": [],
+          "unassessed_transcript_ids": [],
+          "genomic_specificity_unassessed_transcript_ids": [],
           "equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
           "equivalence_group_ids": [
             "cdna_eq_6c73e2052bd828f3"
@@ -1453,6 +1486,9 @@
           "is_canonical_uniprot_target": false,
           "resolved_transcript_id": "PATZ1-203",
           "mapped_transcript_ids": [],
+          "cdna_digest_matched_transcript_ids": [],
+          "unassessed_transcript_ids": [],
+          "genomic_specificity_unassessed_transcript_ids": [],
           "equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
           "equivalence_group_ids": [
             "cdna_eq_bf8de0081e092d6f"
