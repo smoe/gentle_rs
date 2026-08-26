@@ -26163,7 +26163,7 @@ impl MainAreaDna {
 
             Frame::NONE.show(ui, |ui| {
                 ui.set_min_height(side_panel_height);
-                const FEATURE_PANE_SPLIT_HANDLE_WIDTH_PX: f32 = 8.0;
+                const FEATURE_PANE_SPLIT_HANDLE_WIDTH_PX: f32 = 12.0;
                 const MAP_MIN_WIDTH_PX: f32 = 220.0;
                 let total_available_width = ui.available_width().max(
                     FEATURE_TREE_MIN_WIDTH_PX + FEATURE_PANE_SPLIT_HANDLE_WIDTH_PX + MAP_MIN_WIDTH_PX,

@@ -788,7 +788,8 @@ Feature tree grouping:
 - `gene` entries remain ungrouped (flat rows), even in grouped modes, because
   identifiers are expected to be unique.
 - `mRNA` rows are grouped by their associated gene (when gene qualifiers are
-  available), while transcript identifiers are shown on individual mRNA entries.
+  available), while transcript identifiers, spliced nucleotide lengths, and the
+  best available transcript/isoform names are shown on individual mRNA entries.
 - Regulatory entries (`enhancer`/`silencer`) are grouped in nested branches:
   - primary branch: regulatory class buckets (`enhancer`, `silencer`, `other`)
   - secondary branch:
@@ -829,6 +830,10 @@ Feature tree grouping:
   - `Focus feature (current zoom)`
   - `Fit feature in view` (linear map mode)
   - `Copy identifier`, `Copy description`, and `Copy tooltip text`
+  - `Copy spliced mRNA sequence`, `Copy spliced mRNA as FASTA`, and
+    `Export spliced mRNA FASTA...` for `mRNA`/`transcript` rows; these use the
+    same strand-aware exon assembly as the shared transcript derivation engine
+    without adding a derived sequence to the project
   - `Use as promoter anchor (Engine Ops)` for `mRNA`/`transcript` rows
     (seeds anchored extraction defaults with strand-aware boundary/direction)
   - `Open Splicing Window`, `Open RNA-read Mapping`, and `Derive + Dotplot`

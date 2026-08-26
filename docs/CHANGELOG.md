@@ -1,5 +1,12 @@
 # GENtle Changelog
 
+- Made individual mRNA records directly usable from the DNA viewer: cached
+  feature-tree rows now show spliced length and available transcript/isoform
+  names, and their context menus copy raw or FASTA sequence or export FASTA
+  through the shared strand-aware transcript derivation path. Medium-sized
+  feature groups are virtualized earlier and the pane resize handle is easier
+  to grab, reducing stalls while browsing transcript-rich annotations.
+
 - Corrected authoritative UniProt-linked transcript coverage so every inventory
   record is evaluated through its own mature-cDNA digest and exact panel
   equivalence group rather than inheriting the enclosing protein target's

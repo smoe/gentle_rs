@@ -91,6 +91,7 @@ pub(super) struct FeatureTreeEntry {
     pub(super) feature_label_full: String,
     pub(super) feature_label: String,
     pub(super) range_label: String,
+    pub(super) transcript_summary: Option<String>,
     pub(super) subgroup_key: Option<String>,
     pub(super) subgroup_label: Option<String>,
     pub(super) prefer_grouped_label: bool,
@@ -111,6 +112,13 @@ pub(super) struct FeatureTreeEntry {
     pub(super) regulatory_primary_group_label: Option<String>,
     pub(super) regulatory_secondary_group_key: Option<String>,
     pub(super) regulatory_secondary_group_label: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum TranscriptSequenceAction {
+    CopySequence,
+    CopyFasta,
+    ExportFasta,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -286,7 +294,7 @@ impl MainAreaDna {
         show_range_only_when_grouped: bool,
         render_entry: &mut impl FnMut(&mut egui::Ui, &FeatureTreeEntry, bool, bool),
     ) {
-        const VIRTUALIZE_THRESHOLD: usize = 120;
+        const VIRTUALIZE_THRESHOLD: usize = 12;
         let pending_is_here = pending_scroll_to
             .is_some_and(|feature_id| indices.iter().any(|index| entries[*index].id == feature_id));
         if indices.len() < VIRTUALIZE_THRESHOLD || pending_is_here {
@@ -654,6 +662,149 @@ impl MainAreaDna {
             return base_label.to_string();
         }
         format!("{base_label} [{discriminator}]")
+    }
+
+    pub(super) fn feature_tree_transcript_summary(feature: &gb_io::seq::Feature) -> Option<String> {
+        let kind = feature.kind.to_string().to_ascii_uppercase();
+        if !matches!(kind.as_str(), "MRNA" | "TRANSCRIPT") {
+            return None;
+        }
+        let mut ranges = Vec::new();
+        collect_location_ranges_usize(&feature.location, &mut ranges);
+        ranges.sort_unstable();
+        ranges.dedup();
+        let spliced_length = ranges
+            .iter()
+            .map(|(start, end)| end.saturating_sub(*start))
+            .sum::<usize>();
+        let transcript_name = Self::feature_tree_first_nonempty_qualifier(
+            feature,
+            &[
+                "transcript_name",
+                "isoform",
+                "standard_name",
+                "label",
+                "name",
+                "product",
+                "transcript_variant",
+                "variant",
+            ],
+        );
+        let mut parts = Vec::new();
+        if spliced_length > 0 {
+            parts.push(format!("{spliced_length} nt"));
+        }
+        if let Some(name) = transcript_name {
+            parts.push(name);
+        }
+        (!parts.is_empty()).then(|| parts.join(" · "))
+    }
+
+    fn derive_feature_transcript_sequence(
+        &self,
+        feature_id: usize,
+    ) -> Result<(String, String, String), String> {
+        let seq_id = self.seq_id.as_deref().unwrap_or("sequence");
+        let dna = self
+            .dna
+            .read()
+            .map_err(|_| "DNA lock poisoned".to_string())?;
+        let feature = dna
+            .features()
+            .get(feature_id)
+            .ok_or_else(|| format!("Feature #{} is no longer available", feature_id + 1))?;
+        if !matches!(
+            feature.kind.to_string().to_ascii_uppercase().as_str(),
+            "MRNA" | "TRANSCRIPT"
+        ) {
+            return Err(format!(
+                "Feature #{} is not an mRNA/transcript",
+                feature_id + 1
+            ));
+        }
+        let source = dna.get_forward_string().to_ascii_uppercase();
+        let (derived, transcript_id, transcript_label, _, _, _) =
+            GentleEngine::derive_transcript_sequence_from_feature(
+                source.as_bytes(),
+                feature,
+                dna.features(),
+                feature_id,
+                seq_id,
+            )
+            .map_err(|error| error.message)?;
+        Ok((
+            derived.get_forward_string().to_ascii_uppercase(),
+            transcript_id,
+            transcript_label,
+        ))
+    }
+
+    pub(super) fn handle_transcript_sequence_action(
+        &mut self,
+        ctx: &egui::Context,
+        feature_id: usize,
+        action: TranscriptSequenceAction,
+    ) {
+        let (sequence, transcript_id, transcript_label) =
+            match self.derive_feature_transcript_sequence(feature_id) {
+                Ok(result) => result,
+                Err(message) => {
+                    self.op_status = message.clone();
+                    self.op_error_popup = Some(message);
+                    return;
+                }
+            };
+        let fasta_label = if transcript_label.trim().is_empty() {
+            transcript_id.as_str()
+        } else {
+            transcript_label.as_str()
+        };
+        let fasta = format!(">{transcript_id} {fasta_label}\n{sequence}\n");
+        match action {
+            TranscriptSequenceAction::CopySequence => {
+                ctx.copy_text(sequence.clone());
+                self.op_status = format!(
+                    "Copied spliced mRNA sequence '{transcript_id}' ({} nt)",
+                    sequence.len()
+                );
+            }
+            TranscriptSequenceAction::CopyFasta => {
+                ctx.copy_text(fasta);
+                self.op_status = format!(
+                    "Copied spliced mRNA FASTA '{transcript_id}' ({} nt)",
+                    sequence.len()
+                );
+            }
+            TranscriptSequenceAction::ExportFasta => {
+                let default_name = format!(
+                    "{}.fasta",
+                    Self::sanitize_export_name_component(&transcript_id, "transcript")
+                );
+                let Some(path) = rfd::FileDialog::new()
+                    .add_filter("FASTA", &["fasta", "fa", "fna"])
+                    .set_file_name(default_name)
+                    .save_file()
+                else {
+                    self.op_status = "mRNA FASTA export canceled".to_string();
+                    return;
+                };
+                match std::fs::write(&path, fasta) {
+                    Ok(()) => {
+                        self.op_status = format!(
+                            "Exported spliced mRNA FASTA '{}' ({} nt) to {}",
+                            transcript_id,
+                            sequence.len(),
+                            path.display()
+                        );
+                    }
+                    Err(error) => {
+                        let message = format!("Could not export mRNA FASTA: {error}");
+                        self.op_status = message.clone();
+                        self.op_error_popup = Some(message);
+                    }
+                }
+            }
+        }
     }
 
     pub(super) fn trim_feature_tree_prefix_separators(value: &str) -> String {
@@ -1498,6 +1649,7 @@ impl MainAreaDna {
                             feature_label_full: full_display_label,
                             feature_label: display_label,
                             range_label,
+                            transcript_summary: Self::feature_tree_transcript_summary(feature),
                             subgroup_key,
                             subgroup_label,
                             prefer_grouped_label: kind_upper.contains("RNA"),
@@ -1938,6 +2090,7 @@ impl MainAreaDna {
         let mut open_rna_read_mapping_feature: Option<usize> = None;
         let mut open_dotplot_feature: Option<usize> = None;
         let mut copy_feature_payload: Option<(usize, FeatureCopyPayloadKind)> = None;
+        let mut transcript_sequence_action: Option<(usize, TranscriptSequenceAction)> = None;
         let mut focus_matching_array_feature: Option<usize> = None;
         let mut edit_feature_location: Option<usize> = None;
         let mut delete_feature_record: Option<usize> = None;
@@ -2000,6 +2153,13 @@ impl MainAreaDna {
                             ui.horizontal(|ui| {
                                 let button = egui::Button::new(button_text).selected(selected);
                                 let mut response = ui.add(button);
+                                if let Some(summary) = &entry.transcript_summary {
+                                    ui.label(
+                                        egui::RichText::new(summary)
+                                            .size((feature_font_size - 1.0).max(8.0))
+                                            .color(egui::Color32::from_gray(105)),
+                                    );
+                                }
                                 let tail_width = ui.available_width().max(0.0);
                                 if tail_width > 1.0 {
                                     let tail_height =
@@ -2098,6 +2258,33 @@ impl MainAreaDna {
                                         {
                                             clicked_feature = Some((entry.id, false));
                                             focus_matching_array_feature = Some(entry.id);
+                                            ui.close();
+                                            return;
+                                        }
+                                        ui.separator();
+                                    }
+                                    if entry.transcript_summary.is_some() {
+                                        if ui.button("Copy spliced mRNA sequence").clicked() {
+                                            transcript_sequence_action = Some((
+                                                entry.id,
+                                                TranscriptSequenceAction::CopySequence,
+                                            ));
+                                            ui.close();
+                                            return;
+                                        }
+                                        if ui.button("Copy spliced mRNA as FASTA").clicked() {
+                                            transcript_sequence_action = Some((
+                                                entry.id,
+                                                TranscriptSequenceAction::CopyFasta,
+                                            ));
+                                            ui.close();
+                                            return;
+                                        }
+                                        if ui.button("Export spliced mRNA FASTA...").clicked() {
+                                            transcript_sequence_action = Some((
+                                                entry.id,
+                                                TranscriptSequenceAction::ExportFasta,
+                                            ));
                                             ui.close();
                                             return;
                                         }
@@ -2343,6 +2530,9 @@ impl MainAreaDna {
         }
         if let Some((feature_id, kind)) = copy_feature_payload {
             self.copy_feature_payload_to_clipboard(ui.ctx(), feature_id, kind);
+        }
+        if let Some((feature_id, action)) = transcript_sequence_action {
+            self.handle_transcript_sequence_action(ui.ctx(), feature_id, action);
         }
         if let Some((id, additive)) = clicked_feature {
             if additive {

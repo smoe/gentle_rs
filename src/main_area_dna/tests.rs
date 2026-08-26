@@ -7481,6 +7481,37 @@ fn feature_tree_display_label_disambiguates_rna_by_range_fallback() {
 }
 
 #[test]
+fn feature_tree_transcript_summary_reports_spliced_length_and_name() {
+    let feature = gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(10, 30),
+            gb_io::seq::Location::simple_range(100, 135),
+        ]),
+        qualifiers: vec![
+            ("transcript_id".into(), Some("NM_TEST.1".to_string())),
+            ("transcript_name".into(), Some("TAp73alpha".to_string())),
+        ],
+    };
+
+    assert_eq!(
+        MainAreaDna::feature_tree_transcript_summary(&feature).as_deref(),
+        Some("55 nt · TAp73alpha")
+    );
+}
+
+#[test]
+fn feature_tree_transcript_summary_ignores_non_transcript_features() {
+    let feature = gb_io::seq::Feature {
+        kind: "gene".into(),
+        location: gb_io::seq::Location::simple_range(10, 30),
+        qualifiers: vec![("name".into(), Some("TP73".to_string()))],
+    };
+
+    assert_eq!(MainAreaDna::feature_tree_transcript_summary(&feature), None);
+}
+
+#[test]
 fn feature_tree_subgroup_label_does_not_group_gene_features() {
     let feature = make_feature("gene", vec![("gene", "TP73")]);
     assert_eq!(
