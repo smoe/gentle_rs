@@ -1764,6 +1764,9 @@ MCP tool result envelope behavior:
 - UI-intent structured payloads match shared shell schemas:
   - `gentle.ui_intents.v1`
   - `gentle.ui_intent.v1`
+  - `gentle.ui_recent_project_intent.v1`
+  - `gentle.ui_tutorial_project_intent.v1`
+  - `gentle.ui_configuration_intent.v1`
   - `gentle.ui_prepared_genomes.v1`
   - `gentle.ui_latest_prepared.v1`
 - `gentle.ui_intents.v1` now includes per-target `target_details[]` rows with
@@ -2912,6 +2915,11 @@ Shared shell command:
     - `facts eval FACT_EXPR_JSON_OR_@FILE [--evidence SCAN.json ...]`
     - `ui open TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]`
     - `ui focus TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]`
+    - `ui open recent-project ITEM_ID`
+    - `ui open tutorial-project CHAPTER_ID`
+    - `ui open configuration [external-applications|agent-systems|microarrays|graphics|language]`
+    - `ui focus configuration [external-applications|agent-systems|microarrays|graphics|language]`
+    - `ui close configuration`
     - `ui open sequence-window SEQ_ID`
     - `ui focus sequence-window SEQ_ID`
     - `ui close TARGET`
@@ -6053,6 +6061,15 @@ paths. They should prefer a compatible `gene_extraction_ready` reference and a
 reviewable `genomes extract-gene` plus `genomes extend-anchor` command chain
 before proposing confirmation-gated web retrieval. Merely catalogued genomes
 are not represented as installed.
+
+GUI-originated Agent Assistant requests additionally carry a bounded
+`x_gui_context` with the live recent-project list, generated tutorial catalog,
+and Configuration sections. The CLI parser and MCP expose the corresponding
+UI-intent commands, but a headless `agents ask` process has no private GUI
+recent-project list and therefore cannot resolve an opaque recent item id by
+itself. Tutorial chapter ids and Configuration section names remain stable;
+the actual open/focus action is applied only when a GUI host receives the
+intent.
 
 When an `agents ask` prompt explicitly names a supported absolute text-document
 path, the shared request builder includes bounded UTF-8 content as

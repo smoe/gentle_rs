@@ -4350,11 +4350,15 @@ Shell/engine quick-install contracts:
 - `ui_intent`
   - arguments:
     - required: `action` (`open|focus|close`), `target`
-    - optional: `state_path`, `seq_id`, `genome_id`, `helpers`, `catalog_path`,
-      `cache_dir`, `filter`, `species`, `latest`
+    - optional: `state_path`, `seq_id`, `item_id`, `section`, `genome_id`,
+      `helpers`, `catalog_path`, `cache_dir`, `filter`, `species`, `latest`
   - current stable targets:
     - `sequence-window` (requires `seq_id`; controls a loaded DNA sequence
       viewer without mutating the sequence record)
+    - `recent-project` (requires the opaque GUI-host `item_id`; open only)
+    - `tutorial-project` (requires the catalog `item_id`/chapter id; open only)
+    - `configuration` (optional `section`: `external-applications`,
+      `agent-systems`, `microarrays`, `graphics`, or `language`)
     - `prepared-references`
     - `prepare-reference-genome`
     - `retrieve-genome-sequence`
@@ -4369,6 +4373,9 @@ Shell/engine quick-install contracts:
   - behavior:
     - executes shared shell command:
       - `ui open TARGET ...`, `ui focus TARGET ...`,
+        `ui open recent-project ITEM_ID`,
+        `ui open tutorial-project CHAPTER_ID`,
+        `ui open|focus configuration [SECTION]`,
         `ui open sequence-window SEQ_ID`, `ui focus sequence-window SEQ_ID`,
         `ui close TARGET`, or `ui close sequence-window SEQ_ID`
     - for `target = prepared-references`, optional query flags can resolve
@@ -4379,7 +4386,10 @@ Shell/engine quick-install contracts:
         `--species`, `--latest`) are rejected for non-`prepared-references`
         targets
   - result:
-    - structured payload schema: `gentle.ui_intent.v1`
+    - generic structured payload schema: `gentle.ui_intent.v1`
+    - specialized schemas: `gentle.ui_recent_project_intent.v1`,
+      `gentle.ui_tutorial_project_intent.v1`, and
+      `gentle.ui_configuration_intent.v1`
     - fields include `ui_intent`, `selected_genome_id`, optional
       `prepared_query`, `applied=false`, and deterministic `message`
 
@@ -5053,6 +5063,54 @@ Agent request payload schema (`gentle.agent_request.v1`):
     ],
     "warnings": []
   },
+  "x_gui_context": {
+    "schema": "gentle.agent_gui_context.v1",
+    "host_available": true,
+    "recent_project_count": 1,
+    "recent_projects": [
+      {
+        "item_id": "recent-91a8f94b0dc2778a",
+        "display_label": "tp73_project.gentle.json (projects)",
+        "file_name": "tp73_project.gentle.json",
+        "parent_label": "projects",
+        "list_position": 1,
+        "exists": true,
+        "byte_count": 45210,
+        "modified_at_unix_ms": 1787740200000,
+        "current_project": false,
+        "open_command": "ui open recent-project recent-91a8f94b0dc2778a"
+      }
+    ],
+    "tutorial_project_count": 1,
+    "included_tutorial_project_count": 1,
+    "omitted_tutorial_project_count": 0,
+    "tutorial_projects_truncated": false,
+    "tutorial_projects": [
+      {
+        "chapter_id": "simple_pcr_selection_gui",
+        "decimal_id": "04.01",
+        "display_label": "04.01 Simple PCR selection",
+        "title": "Simple PCR selection",
+        "summary": "Open a worked PCR-selection project.",
+        "group": "Primers, PCR & qPCR",
+        "tier": "core",
+        "example_id": "simple_pcr_selection_gui",
+        "online": false,
+        "review_status": "reviewed",
+        "review_stale": false,
+        "open_command": "ui open tutorial-project simple_pcr_selection_gui"
+      }
+    ],
+    "configuration_sections": [
+      {
+        "section_id": "agent-systems",
+        "title": "Agent Systems",
+        "detail": "Configure agent providers, endpoints, credentials, models, and runtime limits.",
+        "open_command": "ui open configuration agent-systems"
+      }
+    ],
+    "warnings": []
+  },
   "x_local_documents": {
     "schema": "gentle.agent_local_documents.v1",
     "max_document_count": 4,
@@ -5123,6 +5181,26 @@ commands, then use `ui open sequence-window` when the user asked to see the
 result. They must not claim that catalog-only entries are installed. Direct
 Ensembl retrieval remains a confirmation-gated fallback when no compatible
 prepared reference is present.
+
+`x_gui_context` is an optional, backward-compatible extension attached by the
+live GUI Agent Assistant even when project-state injection is disabled. It
+mirrors the current recent-project menu, generated executable tutorial catalog,
+and global Configuration sections. Recent rows expose a deterministic opaque
+`item_id`, filename and parent label, 1-based menu position, existence,
+size/time metadata, current-project status, and an exact `open_command`.
+Absolute recent-project paths are not sent. Only the live GUI host can resolve
+`ui open recent-project ITEM_ID`, and it rechecks both the current list and file
+existence before opening. Stale or unknown ids fail closed.
+
+Tutorial rows carry chapter/example identity, title/summary, group/tier,
+online status, review metadata, and exact chapter-opening commands. Total,
+included, omitted, and truncation fields prevent a provider from interpreting
+a bounded list as complete. Configuration rows use the shared five-section
+vocabulary. Their commands only navigate to the existing tab; credentials,
+executable paths, and other global values continue through GENtle's visible
+Apply/Cancel model. Headless/CLI requests omit `x_gui_context` because they have
+no live private GUI host catalog, while the same commands remain parser-valid
+intent records for CLI and MCP.
 
 `x_local_documents` is an optional, backward-compatible extension generated
 when the current prompt explicitly contains an absolute path to a supported

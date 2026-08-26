@@ -1,9 +1,10 @@
 # GENtle Roadmap
 
-Last session: 2026-08-26 - corrected UniProt linked-record coverage to use each
-inventory record's mature-cDNA equivalence group and normalized Ensembl stable
-ids for local-locus identity; copied-state IRF9 acceptance and manual GUI smoke
-for the unreleased `v0.1.0-internal.10` release remain before the tag
+Last session: 2026-08-26 - aligned the inner Agent Assistant with the live GUI
+recent-project, tutorial-project, and Configuration catalogs through bounded
+host context plus parser-validated UI intents; copied-state IRF9 acceptance and
+manual GUI smoke for the unreleased `v0.1.0-internal.10` release remain before
+the tag
 
 Purpose: fast session orientation. This file answers "what next?" and should be
 readable in under two minutes. Completed work belongs in

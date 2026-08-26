@@ -307,6 +307,8 @@ Output wanted:
 - When you know the structured fact-graph logic, include precondition_expr and expected_effects alongside the prose; otherwise omit them rather than guessing.
 - For negative requirements such as "no EcoRI site", require or produce a positive proof fact such as restriction_site.absent based on a complete scan; do not infer absence from missing features.
 - On an empty or unknown project, prefer orientation/open/retrieve commands first; do not suggest feature scans as runnable first actions.
+- Include Configuration among useful starting actions when x_gui_context is available.
+- Use x_gui_context as the authoritative list of recent projects, tutorial projects, and Configuration sections; use exact open_command values from its rows.
 - Mark runnable suggestions execution="ask"; use execution="chat" only for purely explanatory rows that should not run.
 - Mention that external database/network actions require explicit confirmation.
 
@@ -327,8 +329,10 @@ Follow-up demo command after a sequence exists:
   expected_effects[] may include restriction_site.absent only when the scan proves zero matching sites over the stated range.
 
 Continuing earlier work:
-- If the user wants to continue an earlier project, suggest GUI path `File -> Open Project...` or `File -> Open Recent Project...`.
-- Do not invent a shell/slash command for recent projects until GENtle exposes one.
+- If x_gui_context contains recent_projects, list those rows and use the selected row's exact `ui open recent-project ITEM_ID` command.
+- If x_gui_context contains tutorial_projects, list those rows instead of claiming that no tutorial projects are known.
+- Use `ui open configuration SECTION` from configuration_sections to put the user on the relevant settings tab; opening it does not itself change credentials or paths.
+- If no recent row matches, suggest GUI path `File -> Open Project...` or `File -> Open Recent Project...` and report any x_gui_context warning.
 - If the user supplies an exact saved project path, tell them to open it through `File -> Open Project...` or by launching GENtle with that project path.
 
 Do not describe /list as a directory listing. Do not suggest placeholder commands such as /open file PATH [--id ID] unless the user supplied a real PATH."#
@@ -604,8 +608,11 @@ mod tests {
             agent_prompt_template_text("compact_intro").contains("File -> Open Recent Project...")
         );
         assert!(
-            agent_prompt_template_text("compact_intro")
-                .contains("Do not invent a shell/slash command for recent projects")
+            agent_prompt_template_text("compact_intro").contains("ui open recent-project ITEM_ID")
+        );
+        assert!(agent_prompt_template_text("compact_intro").contains("tutorial_projects"));
+        assert!(
+            agent_prompt_template_text("compact_intro").contains("ui open configuration SECTION")
         );
         assert!(agent_prompt_template_text("compact_intro").contains("docs/glossary.json"));
         assert!(agent_prompt_template_text("candidate_anchors").contains("candidates"));

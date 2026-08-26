@@ -7,6 +7,15 @@
   feature groups are virtualized earlier and the pane resize handle is easier
   to grab, reducing stalls while browsing transcript-rich annotations.
 
+- Grounded the inner GUI Agent Assistant in the same recent-project, executable
+  tutorial, and Configuration catalogs visible in GENtle. GUI requests now
+  carry bounded `gentle.agent_gui_context.v1` rows with path-free recent-file
+  metadata, opaque host-resolved ids, tutorial provenance/review fields, and
+  exact parser-validated open commands. Added shared shell/MCP intents for
+  opening a known recent project, building a tutorial project, and focusing one
+  of the five Configuration tabs; stale/missing recent items fail closed and
+  opening Configuration never silently mutates global settings.
+
 - Corrected authoritative UniProt-linked transcript coverage so every inventory
   record is evaluated through its own mature-cDNA digest and exact panel
   equivalence group rather than inheriting the enclosing protein target's

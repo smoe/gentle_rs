@@ -3015,6 +3015,23 @@ Behavior:
   - the agent is instructed to prefer a compatible local gene extraction plus
     strand-aware anchor-extension chain over external retrieval
   - catalog-only rows are not presented as installed references
+- GUI requests also include `gentle.agent_gui_context.v1`, independently of
+  `Include state summary`
+  - `recent_projects[]` mirrors the current `File -> Open Recent Project...`
+    list with an opaque item id, path-free filename/parent label, existence,
+    size, modification time, current-project flag, and exact `open_command`
+  - `tutorial_projects[]` comes from the same generated tutorial manifest used
+    by `File -> Open Tutorial Project...`, including chapter/example identity,
+    title/summary, group/tier, online status, review status, and explicit
+    truncation counts
+  - `configuration_sections[]` covers External Applications, Agent Systems,
+    Microarrays, Graphics, and Language with exact `ui open configuration
+    SECTION` commands
+  - `ui open recent-project ITEM_ID` resolves only against the live host list;
+    missing files and stale ids fail closed, and no absolute saved-project path
+    is sent to the provider
+  - opening a Configuration section is navigation, not a silent settings
+    mutation; existing Apply/Cancel and credential handling remain in force
 - optional `Allow auto execute` only applies to suggestions marked with `auto`
 - suggestion cards with `precondition_expr` are evaluated against the live
   engine fact graph on every frame; an unmet or unknown precondition dims the

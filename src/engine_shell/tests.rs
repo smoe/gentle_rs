@@ -37851,6 +37851,40 @@ fn execute_genomes_prepare_running_message_reports_effective_activity_path() {
 
 #[test]
 fn parse_ui_open_and_prepared_commands() {
+    match parse_shell_line("ui open recent-project recent-a1b2c3")
+        .expect("parse ui open recent project")
+    {
+        ShellCommand::UiRecentProject { item_id } => assert_eq!(item_id, "recent-a1b2c3"),
+        other => panic!("unexpected command: {other:?}"),
+    }
+    match parse_shell_line("ui open tutorial-project 08-08-promoter-orthologs")
+        .expect("parse ui open tutorial project")
+    {
+        ShellCommand::UiTutorialProject { chapter_id } => {
+            assert_eq!(chapter_id, "08-08-promoter-orthologs")
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+    match parse_shell_line("ui open configuration agent-systems")
+        .expect("parse ui open configuration")
+    {
+        ShellCommand::UiConfiguration { action, section } => {
+            assert_eq!(action, UiIntentAction::Open);
+            assert_eq!(section, UiConfigurationSection::AgentSystems);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+    match parse_shell_line("ui close configuration").expect("parse ui close configuration") {
+        ShellCommand::UiConfiguration { action, section } => {
+            assert_eq!(action, UiIntentAction::Close);
+            assert_eq!(section, UiConfigurationSection::ExternalApplications);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+    assert!(parse_shell_line("ui focus recent-project recent-a1b2c3").is_err());
+    assert!(parse_shell_line("ui open tutorial-project").is_err());
+    assert!(parse_shell_line("ui close configuration graphics").is_err());
+
     let open = parse_shell_line("ui open prepared-references --genome-id \"Human GRCh38\"")
         .expect("parse ui open");
     match open {
@@ -38061,27 +38095,19 @@ fn execute_ui_intents_lists_shared_target_metadata() {
         assert_eq!(row["detail"].as_str(), Some(target.detail()));
         assert_eq!(row["keywords"].as_str(), Some(target.keywords()));
         let actions = row["actions"].as_array().expect("actions array");
-        assert!(
-            actions
-                .iter()
-                .any(|value| value.as_str() == Some(UiIntentAction::Open.as_str()))
-        );
-        assert!(
-            actions
-                .iter()
-                .any(|value| value.as_str() == Some(UiIntentAction::Focus.as_str()))
-        );
-        if row["target"].as_str() == Some(UiIntentTarget::OpenSequence.as_str()) {
-            assert!(
-                !actions
-                    .iter()
-                    .any(|value| value.as_str() == Some(UiIntentAction::Close.as_str()))
-            );
-        } else {
-            assert!(
+        for action in [
+            UiIntentAction::Open,
+            UiIntentAction::Focus,
+            UiIntentAction::Close,
+        ] {
+            assert_eq!(
                 actions
                     .iter()
-                    .any(|value| value.as_str() == Some(UiIntentAction::Close.as_str()))
+                    .any(|value| value.as_str() == Some(action.as_str())),
+                target.actions().contains(&action.as_str()),
+                "action metadata mismatch for {} {}",
+                target.as_str(),
+                action.as_str()
             );
         }
     }
@@ -38266,6 +38292,50 @@ fn execute_ui_intents_catalog_includes_target_details() {
             .as_str()
             .is_some_and(|detail| !detail.trim().is_empty())
     }));
+}
+
+#[test]
+fn execute_gui_host_catalog_intents_preserves_stable_item_ids_and_sections() {
+    let mut engine = GentleEngine::new();
+    let recent = execute_shell_command(
+        &mut engine,
+        &ShellCommand::UiRecentProject {
+            item_id: "recent-a1b2c3".to_string(),
+        },
+    )
+    .expect("execute recent-project intent");
+    assert!(!recent.state_changed);
+    assert_eq!(
+        recent.output["ui_intent"]["item_id"].as_str(),
+        Some("recent-a1b2c3")
+    );
+
+    let tutorial = execute_shell_command(
+        &mut engine,
+        &ShellCommand::UiTutorialProject {
+            chapter_id: "08-08-promoter-orthologs".to_string(),
+        },
+    )
+    .expect("execute tutorial-project intent");
+    assert!(!tutorial.state_changed);
+    assert_eq!(
+        tutorial.output["ui_intent"]["chapter_id"].as_str(),
+        Some("08-08-promoter-orthologs")
+    );
+
+    let configuration = execute_shell_command(
+        &mut engine,
+        &ShellCommand::UiConfiguration {
+            action: UiIntentAction::Open,
+            section: UiConfigurationSection::Microarrays,
+        },
+    )
+    .expect("execute configuration intent");
+    assert!(!configuration.state_changed);
+    assert_eq!(
+        configuration.output["ui_intent"]["section"].as_str(),
+        Some("microarrays")
+    );
 }
 
 #[test]

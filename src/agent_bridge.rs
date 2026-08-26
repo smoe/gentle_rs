@@ -34,6 +34,12 @@ const AGENT_INTROSPECTION_FACT_LIMIT: usize = 128;
 pub const AGENT_LOCAL_REFERENCE_CONTEXT_SCHEMA: &str = "gentle.agent_local_reference_context.v1";
 const AGENT_LOCAL_REFERENCE_LIMIT: usize = 32;
 const AGENT_LOCAL_REFERENCE_WARNING_LIMIT: usize = 8;
+pub const AGENT_GUI_CONTEXT_SCHEMA: &str = "gentle.agent_gui_context.v1";
+pub const AGENT_GUI_RECENT_PROJECT_LIMIT: usize = 32;
+pub const AGENT_GUI_TUTORIAL_PROJECT_LIMIT: usize = 64;
+pub const AGENT_GUI_CONFIGURATION_SECTION_LIMIT: usize = 16;
+const AGENT_GUI_WARNING_LIMIT: usize = 8;
+const AGENT_GUI_CONTEXT_MAX_SERIALIZED_BYTES: usize = 256 * 1024;
 pub const AGENT_LOCAL_DOCUMENTS_CONTEXT_SCHEMA: &str = "gentle.agent_local_documents.v1";
 const AGENT_LOCAL_DOCUMENT_MAX_COUNT: usize = 4;
 const AGENT_LOCAL_DOCUMENT_MAX_BYTES: usize = 128 * 1024;
@@ -65,6 +71,7 @@ Suggested command contract:
 - Screenshot request rule: screenshot_request is optional and may contain only id and reason. Use at most one request, only when visible GUI state is genuinely needed. Explain exactly what must be inspected. Do not provide a path, coordinates, native window id, target id, capture command, or approval state. A request asks GENtle to show a consent card; it does not capture or send anything. Never claim a screenshot was captured or seen until it arrives later in x_attachments.
 - suggested_commands[].command must be one exact GENtle shared-shell command parseable by GENtle.
 - Local-reference rule: x_local_references is a bounded, manifest-backed inventory of references already installed in GENtle. Prefer a compatible row with gene_extraction_ready=true over web retrieval. A catalog entry that is absent from x_local_references is not known to be installed. For a local gene locus with symmetric flanks, compose genomes extract-gene GENOME_ID QUERY --output-id ID, then genomes extend-anchor ID 5p N --output-id ID_5p, then genomes extend-anchor ID_5p 3p N --output-id FINAL_ID. If the user asked to see or open the result, follow those successful mutations with ui open sequence-window FINAL_ID. Quote a catalog id that contains spaces with ordinary double quotes. For example: genomes extract-gene "Human GRCh38 Ensembl 116" TP73 --output-id tp73_grch38; genomes extend-anchor tp73_grch38 5p 10000 --output-id tp73_grch38_5p; genomes extend-anchor tp73_grch38_5p 3p 10000 --output-id tp73_grch38_context; ui open sequence-window tp73_grch38_context. Each semicolon-separated example is one separate suggestion row, never one combined command. Suggested rows must use those exact chained ids and remain execution="ask". If no compatible local reference exists, explain the network fallback rather than inventing a local id.
+- GUI-host catalog rule: when x_gui_context is present with host_available=true, treat its recent_projects, tutorial_projects, and configuration_sections as the authoritative bounded catalogs visible to this GENtle GUI session. Answer list questions from those rows instead of claiming that no projects or tutorials are known. Use each row's exact open_command; never invent or reconstruct a private project path from item_id. A recent-project row with exists=false is known but unavailable and must not be offered as runnable. Respect tutorial_projects_truncated and warnings. Configuration commands open the exact confirmed GUI section; do not claim that credentials, executable paths, or other global settings changed merely because the section opened.
 - GENtle-local slash aliases are deliberately small and parser-validated. Allowed aliases are: /help; /list; /history; /undo; /redo; /open; /import; /open sequence-window SEQ_ID; /close sequence-window SEQ_ID; /open file PATH [--id ID]; /import file PATH [--id ID]; /paste sequence --sequence-text DNA [--id ID]; /features restriction-scan SEQ_ID [--enzyme NAME]; /fetch genbank ACCESSION [--id ID]; /fetch ncbi ACCESSION [--id ID]; /fetch uniprot QUERY [--id ID]; /fetch ensembl QUERY [--species NAME] [--assembly NAME] [--flank-bp N|--flank-5p-bp N --flank-3p-bp N] [--id ID] [--no-open]; /fetch ensembl-gene QUERY [--species NAME] [--assembly NAME] [--flank-bp N|--flank-5p-bp N --flank-3p-bp N] [--id ID] [--no-open]; /fetch ensembl-protein QUERY [--id ID]; /fetch ensembl-region SPECIES CHR START END [--strand +|-] [--id ID]; /fetch dbsnp RS_ID GENOME_ID [--id ID].
 - /list reports GENtle's current project state and loaded sequence/project records. It does not list operating-system files or folders.
 - History safety rule: /history is read-only. /undo and /redo are session-local state transitions and must use execution="ask". GENtle will not auto-execute an undo or redo suggestion even if it is mislabeled execution="auto".
@@ -72,7 +79,7 @@ Suggested command contract:
 - Window-management safety rule: close, hide, dismiss, focus, and open viewer-window requests are GUI intents, not project mutations. Never suggest deleting, removing, discarding, or clearing a sequence record to close a DNA sequence viewer. For catalogued dialogs/tools, use ui open TARGET, ui focus TARGET, or ui close TARGET. For a loaded sequence id such as fus_live, suggest ui open sequence-window fus_live, ui focus sequence-window fus_live, ui close sequence-window fus_live, /open sequence-window fus_live, or /close sequence-window fus_live. Use /delete, /remove, or lineage removal only when the user explicitly asks to delete project data.
 - Selection/display rule: to control a DNA viewer selection, use ui selection sequence-window SEQ_ID --range START..END (0-based, end-exclusive) or ui selection sequence-window SEQ_ID to inspect the current selection. To toggle feature display classes, use display show TARGET or display hide TARGET with targets such as features, gene-features, mrna-features, cds-features, repeat-features, array-features, tfbs, restriction-enzymes, gc-contents, open-reading-frames, and methylation-sites.
 - GUI walkthrough rule: when helping with a GUI checklist, use parser-valid ui/display commands for controls that GENtle exposes, one reviewable step at a time. For a control without a registered GUI intent, describe the exact manual action and ask the user what is visible afterward. Never claim that a button was pressed or a visual result was observed unless GENtle supplied that result.
-- For simple first replies or orientation requests, prefer safe GENtle controls such as help, /help, /list, state-summary, capabilities, /open, concrete /open file examples, or confirmation-gated /fetch examples. Do not suggest sequence-analysis commands such as features restriction-scan as first runnable actions unless the current state already contains the referenced seq_id or an earlier suggested command in the same reply creates it. Mark runnable controls execution="ask"; use execution="chat" only when the row is explanatory and should not run.
+- For simple first replies or orientation requests, prefer safe GENtle controls such as help, /help, /list, state-summary, capabilities, /open, concrete /open file examples, or confirmation-gated /fetch examples. When x_gui_context is available, also mention Configuration as a valid starting action and use its recent/tutorial catalogs when relevant. Do not suggest sequence-analysis commands such as features restriction-scan as first runnable actions unless the current state already contains the referenced seq_id or an earlier suggested command in the same reply creates it. Mark runnable controls execution="ask"; use execution="chat" only when the row is explanatory and should not run.
 - Describe help as GENtle command/help documentation, state-summary as current project state, capabilities as available GENtle capabilities, and /list as loaded project/sequence state. Do not describe any of these as filesystem or operating-system commands.
 - Do not suggest Ollama REPL commands such as /set, /show, /load, /save, /clear, or bare /path/to/file attachments. In GENtle, use /open file PATH or /import file PATH when the user supplies an exact sequence-file path.
 - Ensembl route rule: use species names such as homo_sapiens, not HUMAN. /fetch ensembl-protein does not accept --species. Direct gene retrieval may verify the assembly and request gene-oriented flanks, for example /fetch ensembl TP73 --species homo_sapiens --assembly GRCh38 --flank-bp 10000 --id tp73_grch38. Prefer a compatible gene_extraction_ready x_local_references row and the local extract/extend composition when available.
@@ -84,17 +91,19 @@ Suggested command contract:
 
 GENtle Agent Control Card:
 - Local controls: help or /help show GENtle help; /help TOPIC shows topic help; /list shows loaded GENtle project/sequence state; /history shows undo/redo availability; /undo and /redo perform explicitly confirmed session-local history transitions; state-summary returns current project state; capabilities lists available GENtle capabilities.
+- GUI-host catalogs: when x_gui_context is present, its recent_projects, tutorial_projects, and configuration_sections mirror the current GUI host. List those rows on request and use their exact open_command values. Recent-project item ids are opaque and must never be guessed.
 - File inputs: never use bare /path/to/file. If the user gave an exact local sequence-file path, suggest /open file PATH or /import file PATH with execution="ask".
 - Viewer windows: ui open TARGET, ui focus TARGET, and ui close TARGET control catalogued GENtle tool/dialog windows; ui open/focus/close sequence-window SEQ_ID controls only the DNA sequence viewer for that loaded sequence. Slash aliases /open sequence-window SEQ_ID and /close sequence-window SEQ_ID are also available. These commands keep the sequence record in the current project. Do not use deletion commands for window-close requests.
 - Viewer selection/display: ui selection sequence-window SEQ_ID --range START..END sets the DNA viewer selection; ui selection sequence-window SEQ_ID reports it. display show/hide TARGET toggles project display settings for feature classes and tracks.
-- Empty project: do not refer to existing seq_id values. Stage the answer as intents: inspect state, load/open/retrieve a sequence or reopen a project, then analyze only after a sequence exists. Suggest state-summary, capabilities, /list, /open, /paste sequence, /open file PATH when a path is known, or a confirmation-gated /fetch route for public data. Put "requires a loaded sequence" in preconditions[] for analysis commands and the expected loaded record/report in expected_outcomes[].
+- Empty project: do not refer to existing seq_id values. Stage the answer as intents: inspect state, configure GENtle, load/open/retrieve a sequence, reopen a recent project, or open a tutorial, then analyze only after a sequence exists. Suggest state-summary, capabilities, /list, /open, /paste sequence, /open file PATH when a path is known, a matching x_gui_context open_command, or a confirmation-gated /fetch route for public data. Put "requires a loaded sequence" in preconditions[] for analysis commands and the expected loaded record/report in expected_outcomes[].
 - Negative logic rule: do not infer absence from missing state. If an action needs "no restriction site" or similar absence, require a complete-enough verification report as a precondition/effect. Prefer positive proof facts such as {"fact":"restriction_site.absent","subject":"demo_seq","enzyme":"EcoRI","range":"whole_sequence","basis_report":"restriction_scan_report_id"} over bare negation of a missing presence fact.
-- Continuing work: if the user wants an earlier project, suggest the GUI paths File -> Open Project... or File -> Open Recent Project..., or tell them to launch GENtle with an exact saved project path. Do not invent a recent-project slash command.
+- Continuing work: if x_gui_context contains recent_projects, list the matching rows with their useful metadata and use the selected row's exact ui open recent-project ITEM_ID command. Otherwise suggest File -> Open Project... and explain any x_gui_context warning. Tutorial questions must use tutorial_projects rather than infer availability from the empty current project.
 - Public data: ask before network retrieval. First inspect x_local_references and prefer a compatible prepared-genome genomes extract-gene/extend-anchor workflow. Otherwise use /fetch ensembl SYMBOL --species homo_sapiens --assembly ASSEMBLY --flank-bp N --id ID. Add --no-open when the user wants the record loaded without opening a DNA sequence viewer.
 - First reply examples:
   {"title":"Show GENtle help","command":"help","execution":"ask"}
   {"title":"Show project state","command":"state-summary","execution":"ask"}
   {"title":"List loaded GENtle records","command":"/list","execution":"ask"}
+  {"title":"Configure agent providers","preconditions":["GENtle GUI host is available"],"command":"ui open configuration agent-systems","execution":"ask"}
   {"title":"Open a sequence file","preconditions":["GUI host is available"],"precondition_expr":{"all":[{"fact":"ui.host_available"}]},"expected_outcomes":["A user-selected sequence file is loaded into the current GENtle project if parsing succeeds."],"expected_effects":[{"fact":"sequence.exists","source":"user_selected_file"}],"command":"/open","execution":"ask"}
   {"title":"Retrieve human FUS from Ensembl","expected_outcomes":["A new local sequence record with id fus_live is available if Ensembl retrieval succeeds."],"expected_effects":[{"fact":"sequence.exists","id":"fus_live"}],"command":"/fetch ensembl FUS --species homo_sapiens --id fus_live","execution":"ask"}"#;
 const AGENT_INTROSPECTION_CONTROL_CARD: &str = r#"GENtle Agent Introspection Card:
@@ -1641,6 +1650,88 @@ fn build_agent_local_reference_context_from(
     context
 }
 
+/// One saved-project row mirrored from the GUI's Open Recent Project menu.
+///
+/// `item_id` is an opaque host token. The provider receives enough metadata to
+/// identify a row, but only the live GUI host can resolve it back to a path.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(default)]
+pub struct AgentGuiRecentProject {
+    pub item_id: String,
+    pub display_label: String,
+    pub file_name: String,
+    pub parent_label: String,
+    pub list_position: usize,
+    pub exists: bool,
+    pub byte_count: Option<u64>,
+    pub modified_at_unix_ms: Option<u64>,
+    pub current_project: bool,
+    pub open_command: String,
+}
+
+/// One executable tutorial row mirrored from GENtle's generated tutorial catalog.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(default)]
+pub struct AgentGuiTutorialProject {
+    pub chapter_id: String,
+    pub decimal_id: Option<String>,
+    pub display_label: String,
+    pub title: String,
+    pub summary: String,
+    pub group: Option<String>,
+    pub tier: String,
+    pub example_id: String,
+    pub online: bool,
+    pub review_status: Option<String>,
+    pub review_stale: bool,
+    pub open_command: String,
+}
+
+/// One directly addressable section of GENtle's global Configuration window.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(default)]
+pub struct AgentGuiConfigurationSection {
+    pub section_id: String,
+    pub title: String,
+    pub detail: String,
+    pub open_command: String,
+}
+
+/// Bounded GUI-host catalog attached only to requests made from the inner GUI agent.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct AgentGuiContext {
+    pub schema: String,
+    pub host_available: bool,
+    pub recent_project_count: usize,
+    pub recent_projects: Vec<AgentGuiRecentProject>,
+    pub tutorial_project_count: usize,
+    pub included_tutorial_project_count: usize,
+    pub omitted_tutorial_project_count: usize,
+    pub tutorial_projects_truncated: bool,
+    pub tutorial_projects: Vec<AgentGuiTutorialProject>,
+    pub configuration_sections: Vec<AgentGuiConfigurationSection>,
+    pub warnings: Vec<String>,
+}
+
+impl Default for AgentGuiContext {
+    fn default() -> Self {
+        Self {
+            schema: AGENT_GUI_CONTEXT_SCHEMA.to_string(),
+            host_available: false,
+            recent_project_count: 0,
+            recent_projects: vec![],
+            tutorial_project_count: 0,
+            included_tutorial_project_count: 0,
+            omitted_tutorial_project_count: 0,
+            tutorial_projects_truncated: false,
+            tutorial_projects: vec![],
+            configuration_sections: vec![],
+            warnings: vec![],
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(default)]
 pub struct AgentLocalDocument {
@@ -2052,6 +2143,8 @@ struct AgentRequestPayload {
     conversation: Option<AgentConversation>,
     #[serde(rename = "x_local_references")]
     local_references: AgentLocalReferenceContext,
+    #[serde(rename = "x_gui_context", skip_serializing_if = "Option::is_none")]
+    gui_context: Option<AgentGuiContext>,
     #[serde(rename = "x_local_documents", skip_serializing_if = "Option::is_none")]
     local_documents: Option<AgentLocalDocumentsContext>,
     #[serde(rename = "x_attachments", skip_serializing_if = "Vec::is_empty")]
@@ -2069,6 +2162,7 @@ impl Default for AgentRequestPayload {
             introspection: None,
             conversation: None,
             local_references: AgentLocalReferenceContext::default(),
+            gui_context: None,
             local_documents: None,
             attachments: vec![],
         }
@@ -2325,12 +2419,33 @@ fn now_unix_ms() -> u128 {
         .unwrap_or(0)
 }
 
+#[cfg(test)]
 fn build_agent_request(
     system_id: &str,
     prompt: &str,
     state_summary: Option<&EngineStateSummary>,
     introspection: Option<&AgentIntrospectionContext>,
     conversation: Option<&AgentConversation>,
+    attachments: &[AgentRequestAttachment],
+) -> Result<(AgentRequestPayload, Value, String), String> {
+    build_agent_request_with_gui_context(
+        system_id,
+        prompt,
+        state_summary,
+        introspection,
+        conversation,
+        None,
+        attachments,
+    )
+}
+
+fn build_agent_request_with_gui_context(
+    system_id: &str,
+    prompt: &str,
+    state_summary: Option<&EngineStateSummary>,
+    introspection: Option<&AgentIntrospectionContext>,
+    conversation: Option<&AgentConversation>,
+    gui_context: Option<&AgentGuiContext>,
     attachments: &[AgentRequestAttachment],
 ) -> Result<(AgentRequestPayload, Value, String), String> {
     let local_documents = build_agent_local_documents_context(prompt);
@@ -2343,6 +2458,7 @@ fn build_agent_request(
         introspection: introspection.cloned(),
         conversation: conversation.and_then(AgentConversation::context_window),
         local_references: build_agent_local_reference_context(),
+        gui_context: gui_context.cloned(),
         local_documents,
         attachments: attachments.to_vec(),
     };
@@ -2502,6 +2618,16 @@ fn validate_agent_request_value(value: &Value) -> Result<(), String> {
             )
         })?;
     validate_agent_local_reference_context(&local_references)?;
+    if let Some(gui_context_value) = object.get("x_gui_context") {
+        let gui_context: AgentGuiContext = serde_json::from_value(gui_context_value.clone())
+            .map_err(|err| {
+                agent_err(
+                    AgentBridgeErrorCode::SchemaValidation,
+                    format!("agent request 'x_gui_context' is invalid: {err}"),
+                )
+            })?;
+        validate_agent_gui_context(&gui_context)?;
+    }
     if let Some(local_documents_value) = object.get("x_local_documents") {
         let local_documents: AgentLocalDocumentsContext =
             serde_json::from_value(local_documents_value.clone()).map_err(|err| {
@@ -2522,6 +2648,114 @@ fn validate_agent_request_value(value: &Value) -> Result<(), String> {
                     )
                 })?;
         validate_agent_attachments(&attachments)?;
+    }
+    Ok(())
+}
+
+fn validate_agent_gui_context(context: &AgentGuiContext) -> Result<(), String> {
+    let invalid = |message: String| {
+        agent_err(
+            AgentBridgeErrorCode::SchemaValidation,
+            format!("agent request 'x_gui_context' {message}"),
+        )
+    };
+    if context.schema != AGENT_GUI_CONTEXT_SCHEMA {
+        return Err(invalid(format!(
+            "schema must be '{AGENT_GUI_CONTEXT_SCHEMA}'"
+        )));
+    }
+    let serialized_bytes = serde_json::to_vec(context)
+        .map_err(|err| invalid(format!("could not be size-checked: {err}")))?;
+    if serialized_bytes.len() > AGENT_GUI_CONTEXT_MAX_SERIALIZED_BYTES {
+        return Err(invalid(format!(
+            "exceeds the serialized size limit of {AGENT_GUI_CONTEXT_MAX_SERIALIZED_BYTES} bytes"
+        )));
+    }
+    if context.recent_projects.len() > AGENT_GUI_RECENT_PROJECT_LIMIT {
+        return Err(invalid(format!(
+            "exceeds the recent-project limit of {AGENT_GUI_RECENT_PROJECT_LIMIT}"
+        )));
+    }
+    if context.recent_project_count != context.recent_projects.len() {
+        return Err(invalid(
+            "recent_project_count must equal recent_projects length".to_string(),
+        ));
+    }
+    if context.tutorial_projects.len() > AGENT_GUI_TUTORIAL_PROJECT_LIMIT {
+        return Err(invalid(format!(
+            "exceeds the tutorial-project limit of {AGENT_GUI_TUTORIAL_PROJECT_LIMIT}"
+        )));
+    }
+    if context.included_tutorial_project_count != context.tutorial_projects.len()
+        || context.tutorial_project_count
+            != context
+                .included_tutorial_project_count
+                .saturating_add(context.omitted_tutorial_project_count)
+        || context.tutorial_projects_truncated != (context.omitted_tutorial_project_count > 0)
+    {
+        return Err(invalid(
+            "tutorial project counts/truncation metadata are inconsistent".to_string(),
+        ));
+    }
+    if context.configuration_sections.len() > AGENT_GUI_CONFIGURATION_SECTION_LIMIT {
+        return Err(invalid(format!(
+            "exceeds the Configuration-section limit of {AGENT_GUI_CONFIGURATION_SECTION_LIMIT}"
+        )));
+    }
+    if context.warnings.len() > AGENT_GUI_WARNING_LIMIT {
+        return Err(invalid(format!(
+            "exceeds the warning limit of {AGENT_GUI_WARNING_LIMIT}"
+        )));
+    }
+
+    let mut item_ids = HashSet::new();
+    for row in &context.recent_projects {
+        if row.item_id.trim().is_empty()
+            || row.item_id.chars().any(char::is_whitespace)
+            || row.display_label.trim().is_empty()
+            || row.file_name.trim().is_empty()
+            || row.list_position == 0
+            || row.open_command != format!("ui open recent-project {}", row.item_id.trim())
+            || !item_ids.insert(row.item_id.trim())
+        {
+            return Err(invalid(
+                "recent-project rows require unique non-empty ids/labels, 1-based positions, and matching open commands"
+                    .to_string(),
+            ));
+        }
+    }
+
+    let mut chapter_ids = HashSet::new();
+    for row in &context.tutorial_projects {
+        if row.chapter_id.trim().is_empty()
+            || row.chapter_id.chars().any(char::is_whitespace)
+            || row.display_label.trim().is_empty()
+            || row.title.trim().is_empty()
+            || row.example_id.trim().is_empty()
+            || row.open_command != format!("ui open tutorial-project {}", row.chapter_id.trim())
+            || !chapter_ids.insert(row.chapter_id.trim())
+        {
+            return Err(invalid(
+                "tutorial-project rows require unique non-empty ids/titles and matching open commands"
+                    .to_string(),
+            ));
+        }
+    }
+
+    let mut section_ids = HashSet::new();
+    for row in &context.configuration_sections {
+        if row.section_id.trim().is_empty()
+            || row.section_id.chars().any(char::is_whitespace)
+            || row.title.trim().is_empty()
+            || row.detail.trim().is_empty()
+            || row.open_command != format!("ui open configuration {}", row.section_id.trim())
+            || !section_ids.insert(row.section_id.trim())
+        {
+            return Err(invalid(
+                "Configuration rows require unique non-empty sections and matching open commands"
+                    .to_string(),
+            ));
+        }
     }
     Ok(())
 }
@@ -4321,6 +4555,31 @@ pub fn invoke_agent_support_with_request_context_and_attachments(
     attachments: &[AgentRequestAttachment],
     env_overrides: Option<&HashMap<String, String>>,
 ) -> Result<AgentInvocationOutcome, String> {
+    invoke_agent_support_with_gui_context_and_attachments(
+        catalog_path,
+        system_id,
+        prompt,
+        state_summary,
+        introspection,
+        conversation,
+        None,
+        attachments,
+        env_overrides,
+    )
+}
+
+/// Invokes an agent with the bounded catalogs known only to the live GUI host.
+pub fn invoke_agent_support_with_gui_context_and_attachments(
+    catalog_path: Option<&str>,
+    system_id: &str,
+    prompt: &str,
+    state_summary: Option<&EngineStateSummary>,
+    introspection: Option<&AgentIntrospectionContext>,
+    conversation: Option<&AgentConversation>,
+    gui_context: Option<&AgentGuiContext>,
+    attachments: &[AgentRequestAttachment],
+    env_overrides: Option<&HashMap<String, String>>,
+) -> Result<AgentInvocationOutcome, String> {
     if prompt.trim().is_empty() {
         return Err(agent_err(
             AgentBridgeErrorCode::InvalidInput,
@@ -4357,12 +4616,13 @@ pub fn invoke_agent_support_with_request_context_and_attachments(
             ),
         ));
     }
-    let (_payload, request_value, request_json) = build_agent_request(
+    let (_payload, request_value, request_json) = build_agent_request_with_gui_context(
         &system.id,
         prompt,
         state_summary,
         introspection,
         conversation,
+        gui_context,
         attachments,
     )?;
     let remote_request_json = redacted_remote_request_json(&request_value)?;
@@ -4939,8 +5199,76 @@ mod tests {
             request["x_local_references"]["schema"].as_str(),
             Some(AGENT_LOCAL_REFERENCE_CONTEXT_SCHEMA)
         );
+        assert!(request.get("x_gui_context").is_none());
         assert!(request.get("x_local_documents").is_none());
         assert!(request.get("x_attachments").is_none());
+    }
+
+    #[test]
+    fn agent_request_carries_validated_gui_host_catalogs() {
+        let gui_context = AgentGuiContext {
+            host_available: true,
+            recent_project_count: 1,
+            recent_projects: vec![AgentGuiRecentProject {
+                item_id: "recent-deadbeef".to_string(),
+                display_label: "tp73.json (projects)".to_string(),
+                file_name: "tp73.json".to_string(),
+                parent_label: "projects".to_string(),
+                list_position: 1,
+                exists: true,
+                byte_count: Some(1024),
+                modified_at_unix_ms: Some(42),
+                current_project: false,
+                open_command: "ui open recent-project recent-deadbeef".to_string(),
+            }],
+            tutorial_project_count: 1,
+            included_tutorial_project_count: 1,
+            tutorial_projects: vec![AgentGuiTutorialProject {
+                chapter_id: "01-01-agent-interfaces".to_string(),
+                display_label: "01.01 Agent interfaces".to_string(),
+                title: "Agent interfaces".to_string(),
+                summary: "Learn the agent surfaces.".to_string(),
+                tier: "offline".to_string(),
+                example_id: "agent_interfaces".to_string(),
+                open_command: "ui open tutorial-project 01-01-agent-interfaces".to_string(),
+                ..AgentGuiTutorialProject::default()
+            }],
+            configuration_sections: vec![AgentGuiConfigurationSection {
+                section_id: "agent-systems".to_string(),
+                title: "Agent Systems".to_string(),
+                detail: "Configure providers.".to_string(),
+                open_command: "ui open configuration agent-systems".to_string(),
+            }],
+            ..AgentGuiContext::default()
+        };
+
+        let (_, request, _) = build_agent_request_with_gui_context(
+            "builtin_echo",
+            "What can I do?",
+            None,
+            None,
+            None,
+            Some(&gui_context),
+            &[],
+        )
+        .expect("request with GUI context");
+
+        assert_eq!(
+            request["x_gui_context"]["schema"].as_str(),
+            Some(AGENT_GUI_CONTEXT_SCHEMA)
+        );
+        assert_eq!(
+            request["x_gui_context"]["recent_projects"][0]["item_id"].as_str(),
+            Some("recent-deadbeef")
+        );
+        assert_eq!(
+            request["x_gui_context"]["tutorial_projects"][0]["chapter_id"].as_str(),
+            Some("01-01-agent-interfaces")
+        );
+        assert_eq!(
+            request["x_gui_context"]["configuration_sections"][0]["open_command"].as_str(),
+            Some("ui open configuration agent-systems")
+        );
     }
 
     #[test]
@@ -6076,9 +6404,10 @@ mod tests {
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("expected_effects"));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("restriction_site.absent"));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("Intent/precondition/outcome rule"));
-        assert!(
-            AGENT_BRIDGE_SYSTEM_PROMPT.contains("Do not invent a recent-project slash command")
-        );
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("GUI-host catalog rule"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("x_gui_context"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("ui open recent-project ITEM_ID"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("ui open configuration agent-systems"));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("First reply examples"));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("\"command\":\"state-summary\""));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("op '{\"LoadFile\""));

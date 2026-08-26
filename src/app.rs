@@ -128,18 +128,19 @@ use crate::{
     about,
     agent_bridge::{
         AGENT_ATTACHMENT_SCHEMA, AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV,
-        AGENT_MAX_RESPONSE_BYTES_ENV, AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV,
-        AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV, ANTHROPIC_API_KEY_AUTH_HINT,
-        ANTHROPIC_API_KEY_ENV, AgentAttachmentSummary, AgentConversation, AgentConversationTurn,
-        AgentExecutionIntent, AgentInvocationOutcome, AgentRequestAttachment, AgentResponse,
+        AGENT_GUI_TUTORIAL_PROJECT_LIMIT, AGENT_MAX_RESPONSE_BYTES_ENV, AGENT_MAX_RETRIES_ENV,
+        AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV,
+        ANTHROPIC_API_KEY_AUTH_HINT, ANTHROPIC_API_KEY_ENV, AgentAttachmentSummary,
+        AgentConversation, AgentConversationTurn, AgentExecutionIntent,
+        AgentGuiConfigurationSection, AgentGuiContext, AgentGuiRecentProject,
+        AgentGuiTutorialProject, AgentInvocationOutcome, AgentRequestAttachment, AgentResponse,
         AgentScreenshotRequest, AgentSystemSpec, AgentSystemTransport,
         DEFAULT_AGENT_SYSTEM_CATALOG_PATH, MISTRAL_API_KEY_AUTH_HINT, MISTRAL_API_KEY_ENV,
         OPENAI_API_KEY_ENV, OPENAI_BILLING_URL, OPENAI_COMPAT_UNSPECIFIED_MODEL, OPENAI_USAGE_URL,
         agent_explicit_local_document_paths, agent_path_is_supported_local_document,
         agent_system_availability, anthropic_api_key_kind_warning,
-        build_agent_introspection_context,
-        invoke_agent_support_with_request_context_and_attachments, is_pi_local_agent_system,
-        load_agent_system_catalog,
+        build_agent_introspection_context, invoke_agent_support_with_gui_context_and_attachments,
+        is_pi_local_agent_system, load_agent_system_catalog,
     },
     agent_help::{AgentHelpCaptureEvent, AgentHelpCaptureFailure, take_capture_events},
     agent_transport::{
@@ -178,7 +179,7 @@ use crate::{
     },
     engine_shell::{
         AGENT_HISTORY_CONFIRMATION_REQUIRED, ShellCommand, ShellExecutionOptions, ShellRunResult,
-        UiIntentAction, UiIntentTarget, execute_shell_command_with_options,
+        UiConfigurationSection, UiIntentAction, UiIntentTarget, execute_shell_command_with_options,
         normalize_pasted_iupac_sequence, parse_shell_line, split_shell_words,
     },
     ensembl_protein::{EnsemblProteinEntry, EnsemblProteinEntrySummary},
@@ -5650,6 +5651,12 @@ Error: `{err}`"
             UiIntentTarget::all()
                 .iter()
                 .copied()
+                .filter(|target| {
+                    !matches!(
+                        target,
+                        UiIntentTarget::RecentProject | UiIntentTarget::TutorialProject
+                    )
+                })
                 .map(CommandPaletteEntry::ui_intent),
         );
         self.refresh_root_engine_summary_cache();

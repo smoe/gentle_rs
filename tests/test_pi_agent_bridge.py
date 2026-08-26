@@ -47,6 +47,18 @@ class PiAgentBridgeTests(unittest.TestCase):
                 }
             ],
         }
+        request["x_gui_context"] = {
+            "schema": "gentle.agent_gui_context.v1",
+            "host_available": True,
+            "recent_projects": [
+                {
+                    "item_id": "recent-deadbeef",
+                    "open_command": "ui open recent-project recent-deadbeef",
+                }
+            ],
+            "tutorial_projects": [],
+            "configuration_sections": [],
+        }
         host_contract = (
             "Use /fetch ensembl TP73 --species homo_sapiens --assembly GRCh38 "
             "--flank-bp 10000 --id tp73_grch38."
@@ -61,6 +73,9 @@ class PiAgentBridgeTests(unittest.TestCase):
         self.assertIn("x_local_references", prompt)
         self.assertIn("gene_extraction_ready local reference", prompt)
         self.assertIn("local reference ids", prompt)
+        self.assertIn("x_gui_context", prompt)
+        self.assertIn("authoritative GUI-host catalogs", prompt)
+        self.assertIn("ui open recent-project recent-deadbeef", prompt)
 
     def test_pi_command_is_ephemeral_and_tool_free(self):
         bridge = load_bridge_module()

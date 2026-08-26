@@ -35,10 +35,96 @@ impl UiIntentAction {
     }
 }
 
+/// Stable subsection vocabulary for GENtle's global Configuration window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum UiConfigurationSection {
+    #[default]
+    ExternalApplications,
+    AgentSystems,
+    Microarrays,
+    Graphics,
+    Language,
+}
+
+const UI_CONFIGURATION_SECTIONS: [UiConfigurationSection; UiConfigurationSection::COUNT] = [
+    UiConfigurationSection::ExternalApplications,
+    UiConfigurationSection::AgentSystems,
+    UiConfigurationSection::Microarrays,
+    UiConfigurationSection::Graphics,
+    UiConfigurationSection::Language,
+];
+
+impl UiConfigurationSection {
+    /// Number of stable global configuration sections.
+    pub const COUNT: usize = 5;
+
+    /// Stable section order shared by GUI and agent discoverability.
+    pub fn all() -> &'static [Self] {
+        &UI_CONFIGURATION_SECTIONS
+    }
+
+    /// Parse stable shell spellings and common user-facing aliases.
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "external-applications" | "external_applications" | "applications" | "tools" => {
+                Some(Self::ExternalApplications)
+            }
+            "agent-systems" | "agent_systems" | "agents" | "providers" => Some(Self::AgentSystems),
+            "microarrays" | "microarray" | "arrays" => Some(Self::Microarrays),
+            "graphics" | "display" => Some(Self::Graphics),
+            "language" | "locale" => Some(Self::Language),
+            _ => None,
+        }
+    }
+
+    /// Stable machine-readable spelling used in shell commands and payloads.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ExternalApplications => "external-applications",
+            Self::AgentSystems => "agent-systems",
+            Self::Microarrays => "microarrays",
+            Self::Graphics => "graphics",
+            Self::Language => "language",
+        }
+    }
+
+    /// Short human-facing section title.
+    pub fn title(self) -> &'static str {
+        match self {
+            Self::ExternalApplications => "External Applications",
+            Self::AgentSystems => "Agent Systems",
+            Self::Microarrays => "Microarrays",
+            Self::Graphics => "Graphics",
+            Self::Language => "Language",
+        }
+    }
+
+    /// Bounded help text suitable for agent and command-catalog contexts.
+    pub fn detail(self) -> &'static str {
+        match self {
+            Self::ExternalApplications => {
+                "Configure external executables used by local analysis workflows."
+            }
+            Self::AgentSystems => {
+                "Configure agent providers, endpoints, credentials, models, and runtime limits."
+            }
+            Self::Microarrays => {
+                "Configure microarray annotation libraries and local analysis defaults."
+            }
+            Self::Graphics => "Configure display, track, and window appearance defaults.",
+            Self::Language => "Choose the visible GENtle interface language.",
+        }
+    }
+}
+
 /// GUI-facing UI-intent destination understood by adapter shells.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UiIntentTarget {
     OpenSequence,
+    RecentProject,
+    TutorialProject,
+    Configuration,
     PreparedReferences,
     PrepareReferenceGenome,
     RetrieveGenomeSequence,
@@ -55,6 +141,9 @@ pub enum UiIntentTarget {
 
 const UI_INTENT_TARGETS: [UiIntentTarget; UiIntentTarget::COUNT] = [
     UiIntentTarget::OpenSequence,
+    UiIntentTarget::RecentProject,
+    UiIntentTarget::TutorialProject,
+    UiIntentTarget::Configuration,
     UiIntentTarget::PreparedReferences,
     UiIntentTarget::PrepareReferenceGenome,
     UiIntentTarget::RetrieveGenomeSequence,
@@ -70,6 +159,7 @@ const UI_INTENT_TARGETS: [UiIntentTarget; UiIntentTarget::COUNT] = [
 ];
 
 const UI_INTENT_ACTION_NAMES: [&str; 3] = ["open", "focus", "close"];
+const UI_INTENT_OPEN_ACTION_NAMES: [&str; 1] = ["open"];
 const UI_INTENT_FILE_PICKER_ACTION_NAMES: [&str; 2] = ["open", "focus"];
 const UI_INTENT_ARGUMENT_GENOME_ID: UiIntentArgument = UiIntentArgument {
     name: "genome_id",
@@ -106,8 +196,19 @@ const UI_INTENT_ARGUMENT_LATEST: UiIntentArgument = UiIntentArgument {
     required: false,
     detail: "Prefer the latest matching prepared reference when deterministic selection is available.",
 };
+const UI_INTENT_ARGUMENT_ITEM_ID: UiIntentArgument = UiIntentArgument {
+    name: "item_id",
+    required: true,
+    detail: "Opaque recent-project id or stable tutorial chapter id supplied by the GUI host context.",
+};
+const UI_INTENT_ARGUMENT_CONFIGURATION_SECTION: UiIntentArgument = UiIntentArgument {
+    name: "section",
+    required: false,
+    detail: "Configuration section: external-applications, agent-systems, microarrays, graphics, or language.",
+};
 const UI_INTENT_OPTIONAL_ARGUMENTS_DEFAULT: [&str; 1] = ["genome_id"];
 const UI_INTENT_OPTIONAL_ARGUMENTS_NONE: [&str; 0] = [];
+const UI_INTENT_OPTIONAL_ARGUMENTS_CONFIGURATION: [&str; 1] = ["section"];
 const UI_INTENT_OPTIONAL_ARGUMENTS_PREPARED_REFERENCES: [&str; 7] = [
     "genome_id",
     "helpers",
@@ -119,6 +220,9 @@ const UI_INTENT_OPTIONAL_ARGUMENTS_PREPARED_REFERENCES: [&str; 7] = [
 ];
 const UI_INTENT_ARGUMENTS_DEFAULT: [UiIntentArgument; 1] = [UI_INTENT_ARGUMENT_GENOME_ID];
 const UI_INTENT_ARGUMENTS_NONE: [UiIntentArgument; 0] = [];
+const UI_INTENT_ARGUMENTS_ITEM_ID: [UiIntentArgument; 1] = [UI_INTENT_ARGUMENT_ITEM_ID];
+const UI_INTENT_ARGUMENTS_CONFIGURATION: [UiIntentArgument; 1] =
+    [UI_INTENT_ARGUMENT_CONFIGURATION_SECTION];
 const UI_INTENT_ARGUMENTS_PREPARED_REFERENCES: [UiIntentArgument; 7] = [
     UI_INTENT_ARGUMENT_GENOME_ID,
     UI_INTENT_ARGUMENT_HELPERS,
@@ -154,7 +258,7 @@ pub struct UiIntentTargetCatalogRow {
 
 impl UiIntentTarget {
     /// Number of stable UI-intent destinations.
-    pub const COUNT: usize = 13;
+    pub const COUNT: usize = 16;
 
     /// Stable catalog order used by shell, MCP, and GUI discoverability.
     pub fn all() -> &'static [Self] {
@@ -167,6 +271,11 @@ impl UiIntentTarget {
             "open-sequence" | "open_sequence" | "sequence-file" | "sequence_file" => {
                 Some(Self::OpenSequence)
             }
+            "recent-project" | "recent_project" | "previous-project" | "previous_project" => {
+                Some(Self::RecentProject)
+            }
+            "tutorial-project" | "tutorial_project" | "tutorial" => Some(Self::TutorialProject),
+            "configuration" | "settings" | "preferences" => Some(Self::Configuration),
             "prepared-references" | "prepared_references" | "prepared" => {
                 Some(Self::PreparedReferences)
             }
@@ -216,6 +325,9 @@ impl UiIntentTarget {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::OpenSequence => "open-sequence",
+            Self::RecentProject => "recent-project",
+            Self::TutorialProject => "tutorial-project",
+            Self::Configuration => "configuration",
             Self::PreparedReferences => "prepared-references",
             Self::PrepareReferenceGenome => "prepare-reference-genome",
             Self::RetrieveGenomeSequence => "retrieve-genome-sequence",
@@ -235,6 +347,9 @@ impl UiIntentTarget {
     pub fn discoverability_title(self) -> &'static str {
         match self {
             Self::OpenSequence => "Open Sequence",
+            Self::RecentProject => "Open Recent Project",
+            Self::TutorialProject => "Open Tutorial Project",
+            Self::Configuration => "Configuration",
             Self::PreparedReferences => "Prepared References",
             Self::PrepareReferenceGenome => "Prepare Reference Genome",
             Self::RetrieveGenomeSequence => "Retrieve Genomic Sequence",
@@ -259,6 +374,11 @@ impl UiIntentTarget {
     pub fn discoverability_detail(self) -> &'static str {
         match self {
             Self::OpenSequence => "Open a FASTA, GenBank, EMBL, SnapGene, or XML sequence file.",
+            Self::RecentProject => {
+                "Open one project from the GUI host's bounded recent-project list."
+            }
+            Self::TutorialProject => "Build and open one chapter from GENtle's tutorial catalog.",
+            Self::Configuration => "Open or focus a specific global Configuration section.",
             Self::PreparedReferences => "Inspect prepared reference/helper genome installations.",
             Self::PrepareReferenceGenome => "Download/index the selected reference genome.",
             Self::RetrieveGenomeSequence => {
@@ -291,6 +411,11 @@ impl UiIntentTarget {
     pub fn discoverability_keywords(self) -> &'static str {
         match self {
             Self::OpenSequence => "open sequence import file fasta genbank snapgene embl xml",
+            Self::RecentProject => "open recent previous saved project continue",
+            Self::TutorialProject => "open tutorial example demo chapter project",
+            Self::Configuration => {
+                "configuration settings preferences tools agents arrays graphics language"
+            }
             Self::PreparedReferences => "genome prepared references helpers inspector",
             Self::PrepareReferenceGenome => "genome prepare reference",
             Self::RetrieveGenomeSequence => "genome retrieve extract anchor region gene",
@@ -318,7 +443,11 @@ impl UiIntentTarget {
     /// Primary GUI menu location for the target.
     pub fn menu_path(self) -> &'static str {
         match self {
-            Self::OpenSequence | Self::AgentAssistant => "File",
+            Self::OpenSequence
+            | Self::RecentProject
+            | Self::TutorialProject
+            | Self::AgentAssistant => "File",
+            Self::Configuration => "Settings",
             Self::FeatureLocationEditor => "Edit",
             Self::PcrDesign | Self::SequencingConfirmation => "Patterns",
             Self::PreparedReferences
@@ -336,6 +465,8 @@ impl UiIntentTarget {
     pub fn actions(self) -> &'static [&'static str] {
         match self {
             Self::OpenSequence => &UI_INTENT_FILE_PICKER_ACTION_NAMES,
+            Self::RecentProject | Self::TutorialProject => &UI_INTENT_OPEN_ACTION_NAMES,
+            Self::Configuration => &UI_INTENT_ACTION_NAMES,
             Self::PreparedReferences
             | Self::PrepareReferenceGenome
             | Self::RetrieveGenomeSequence
@@ -355,6 +486,8 @@ impl UiIntentTarget {
     pub fn optional_arguments(self) -> &'static [&'static str] {
         match self {
             Self::PreparedReferences => &UI_INTENT_OPTIONAL_ARGUMENTS_PREPARED_REFERENCES,
+            Self::Configuration => &UI_INTENT_OPTIONAL_ARGUMENTS_CONFIGURATION,
+            Self::RecentProject | Self::TutorialProject => &UI_INTENT_OPTIONAL_ARGUMENTS_NONE,
             Self::FeatureLocationEditor => &UI_INTENT_OPTIONAL_ARGUMENTS_NONE,
             _ => &UI_INTENT_OPTIONAL_ARGUMENTS_DEFAULT,
         }
@@ -364,6 +497,8 @@ impl UiIntentTarget {
     pub fn arguments(self) -> &'static [UiIntentArgument] {
         match self {
             Self::PreparedReferences => &UI_INTENT_ARGUMENTS_PREPARED_REFERENCES,
+            Self::RecentProject | Self::TutorialProject => &UI_INTENT_ARGUMENTS_ITEM_ID,
+            Self::Configuration => &UI_INTENT_ARGUMENTS_CONFIGURATION,
             Self::FeatureLocationEditor => &UI_INTENT_ARGUMENTS_NONE,
             Self::OpenSequence
             | Self::PrepareReferenceGenome
@@ -413,6 +548,12 @@ mod tests {
         ("open_sequence", UiIntentTarget::OpenSequence),
         ("sequence-file", UiIntentTarget::OpenSequence),
         ("sequence_file", UiIntentTarget::OpenSequence),
+        ("recent-project", UiIntentTarget::RecentProject),
+        ("previous_project", UiIntentTarget::RecentProject),
+        ("tutorial-project", UiIntentTarget::TutorialProject),
+        ("tutorial", UiIntentTarget::TutorialProject),
+        ("configuration", UiIntentTarget::Configuration),
+        ("settings", UiIntentTarget::Configuration),
         ("prepared-references", UiIntentTarget::PreparedReferences),
         ("prepared_references", UiIntentTarget::PreparedReferences),
         ("prepared", UiIntentTarget::PreparedReferences),
@@ -517,6 +658,9 @@ mod tests {
     fn assert_exhaustive_target_match(target: UiIntentTarget) {
         match target {
             UiIntentTarget::OpenSequence
+            | UiIntentTarget::RecentProject
+            | UiIntentTarget::TutorialProject
+            | UiIntentTarget::Configuration
             | UiIntentTarget::PreparedReferences
             | UiIntentTarget::PrepareReferenceGenome
             | UiIntentTarget::RetrieveGenomeSequence
@@ -551,6 +695,9 @@ mod tests {
     fn ui_intent_targets_match_explicit_variant_list() {
         let expected = [
             UiIntentTarget::OpenSequence,
+            UiIntentTarget::RecentProject,
+            UiIntentTarget::TutorialProject,
+            UiIntentTarget::Configuration,
             UiIntentTarget::PreparedReferences,
             UiIntentTarget::PrepareReferenceGenome,
             UiIntentTarget::RetrieveGenomeSequence,
@@ -611,7 +758,7 @@ mod tests {
 
     #[test]
     fn ui_intent_catalog_rows_are_complete() {
-        let known_menus = BTreeSet::from(["Edit", "File", "Genome", "Patterns"]);
+        let known_menus = BTreeSet::from(["Edit", "File", "Genome", "Patterns", "Settings"]);
         for target in UiIntentTarget::all() {
             let row = target.catalog_row();
             assert!(!row.title.trim().is_empty());
@@ -629,13 +776,42 @@ mod tests {
                     "unknown action {action}"
                 );
             }
-            assert_eq!(row.optional_arguments.len(), row.arguments.len());
-            for (optional_name, argument) in row.optional_arguments.iter().zip(row.arguments) {
-                assert_eq!(*optional_name, argument.name);
+            let optional_names = row
+                .optional_arguments
+                .iter()
+                .copied()
+                .collect::<BTreeSet<_>>();
+            for argument in row.arguments {
                 assert!(!argument.name.trim().is_empty());
                 assert!(!argument.detail.trim().is_empty());
-                assert!(!argument.required);
+                assert_eq!(
+                    optional_names.contains(argument.name),
+                    !argument.required,
+                    "optional argument compatibility metadata disagrees for {}.{}",
+                    row.target,
+                    argument.name
+                );
             }
         }
+    }
+
+    #[test]
+    fn configuration_sections_round_trip() {
+        for section in UiConfigurationSection::all() {
+            assert_eq!(
+                UiConfigurationSection::parse(section.as_str()),
+                Some(*section)
+            );
+            assert!(!section.title().trim().is_empty());
+            assert!(!section.detail().trim().is_empty());
+        }
+        assert_eq!(
+            UiConfigurationSection::parse("providers"),
+            Some(UiConfigurationSection::AgentSystems)
+        );
+        assert_eq!(
+            UiConfigurationSection::parse("arrays"),
+            Some(UiConfigurationSection::Microarrays)
+        );
     }
 }

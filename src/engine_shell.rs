@@ -209,8 +209,8 @@ use std::{
 
 pub use gentle_shell::{
     BatchEmitMode, BatchManifestDelimiter, BatchStateMode, CacheCleanupScope, CandidateSetOperator,
-    ShellRunResult, UiIntentAction, UiIntentTarget, UiIntentTargetCatalogRow, split_shell_words,
-    ui_intent_target_catalog,
+    ShellRunResult, UiConfigurationSection, UiIntentAction, UiIntentTarget,
+    UiIntentTargetCatalogRow, split_shell_words, ui_intent_target_catalog,
 };
 
 // Private parser slices for large command families. Shared public command and
@@ -1555,6 +1555,16 @@ pub enum ShellCommand {
         filter: Option<String>,
         species: Option<String>,
         latest: bool,
+    },
+    UiRecentProject {
+        item_id: String,
+    },
+    UiTutorialProject {
+        chapter_id: String,
+    },
+    UiConfiguration {
+        action: UiIntentAction,
+        section: UiConfigurationSection,
     },
     UiSequenceWindow {
         action: UiIntentAction,
@@ -8827,6 +8837,17 @@ impl ShellCommand {
                     target.as_str()
                 )
             }
+            Self::UiRecentProject { item_id } => {
+                format!("request GUI open for recent project '{item_id}'")
+            }
+            Self::UiTutorialProject { chapter_id } => {
+                format!("request GUI open for tutorial project '{chapter_id}'")
+            }
+            Self::UiConfiguration { action, section } => format!(
+                "request GUI {} for Configuration section '{}'",
+                action.as_str(),
+                section.as_str()
+            ),
             Self::UiSequenceWindow { action, seq_id } => {
                 format!(
                     "request GUI {} for sequence window '{seq_id}'",
@@ -37846,6 +37867,97 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
             }
             Ok(ShellCommand::UiSequenceWindow { action, seq_id })
         }
+        action_raw
+            if tokens.len() >= 3
+                && UiIntentAction::parse(action_raw).is_some()
+                && UiIntentTarget::parse(&tokens[2]) == Some(UiIntentTarget::RecentProject) =>
+        {
+            let action = UiIntentAction::parse(action_raw)
+                .expect("checked ui intent action before parsing recent-project intent");
+            if !UiIntentTarget::RecentProject
+                .actions()
+                .iter()
+                .any(|candidate| *candidate == action.as_str())
+            {
+                return Err(format!(
+                    "ui {} does not support target recent-project",
+                    action.as_str()
+                ));
+            }
+            if tokens.len() != 4 {
+                return Err(format!("ui {action_raw} recent-project requires ITEM_ID"));
+            }
+            let item_id = tokens[3].trim().to_string();
+            if item_id.is_empty() {
+                return Err(format!(
+                    "ui {action_raw} recent-project ITEM_ID must not be empty"
+                ));
+            }
+            Ok(ShellCommand::UiRecentProject { item_id })
+        }
+        action_raw
+            if tokens.len() >= 3
+                && UiIntentAction::parse(action_raw).is_some()
+                && UiIntentTarget::parse(&tokens[2]) == Some(UiIntentTarget::TutorialProject) =>
+        {
+            let action = UiIntentAction::parse(action_raw)
+                .expect("checked ui intent action before parsing tutorial-project intent");
+            if !UiIntentTarget::TutorialProject
+                .actions()
+                .iter()
+                .any(|candidate| *candidate == action.as_str())
+            {
+                return Err(format!(
+                    "ui {} does not support target tutorial-project",
+                    action.as_str()
+                ));
+            }
+            if tokens.len() != 4 {
+                return Err(format!(
+                    "ui {action_raw} tutorial-project requires CHAPTER_ID"
+                ));
+            }
+            let chapter_id = tokens[3].trim().to_string();
+            if chapter_id.is_empty() {
+                return Err(format!(
+                    "ui {action_raw} tutorial-project CHAPTER_ID must not be empty"
+                ));
+            }
+            Ok(ShellCommand::UiTutorialProject { chapter_id })
+        }
+        action_raw
+            if tokens.len() >= 3
+                && UiIntentAction::parse(action_raw).is_some()
+                && UiIntentTarget::parse(&tokens[2]) == Some(UiIntentTarget::Configuration) =>
+        {
+            let action = UiIntentAction::parse(action_raw)
+                .expect("checked ui intent action before parsing configuration intent");
+            if tokens.len() > 4 {
+                return Err(format!(
+                    "ui {action_raw} configuration accepts at most one SECTION"
+                ));
+            }
+            if matches!(action, UiIntentAction::Close) && tokens.len() == 4 {
+                return Err("ui close configuration does not take a SECTION".to_string());
+            }
+            let section = tokens
+                .get(3)
+                .map(|raw| {
+                    UiConfigurationSection::parse(raw).ok_or_else(|| {
+                        let expected = UiConfigurationSection::all()
+                            .iter()
+                            .map(|section| section.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        format!(
+                            "Unknown Configuration section '{raw}'. Expected one of: {expected}"
+                        )
+                    })
+                })
+                .transpose()?
+                .unwrap_or_default();
+            Ok(ShellCommand::UiConfiguration { action, section })
+        }
         action_raw if UiIntentAction::parse(action_raw).is_some() => {
             if tokens.len() < 3 {
                 return Err(
@@ -62335,6 +62447,11 @@ fn execute_ui_command(
                         "ui open TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]",
                         "ui focus TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]",
                         "ui close TARGET",
+                        "ui open recent-project ITEM_ID",
+                        "ui open tutorial-project CHAPTER_ID",
+                        "ui open configuration [SECTION]",
+                        "ui focus configuration [SECTION]",
+                        "ui close configuration",
                         "ui open sequence-window SEQ_ID",
                         "ui focus sequence-window SEQ_ID",
                         "ui close sequence-window SEQ_ID",
@@ -62346,6 +62463,9 @@ fn execute_ui_command(
                         "UI intent commands are host-application intents and require GUI host integration to apply.",
                         "CLI execution returns deterministic intent/query payloads for agents/automation.",
                         "prepared-references target accepts query flags to resolve selected_genome_id; explicit --genome-id overrides query selection.",
+                        "recent-project ITEM_ID values are opaque GUI-host tokens; CLI/MCP can record the intent but cannot discover private recent-project paths.",
+                        "tutorial-project CHAPTER_ID values come from the GUI-host tutorial catalog.",
+                        "configuration SECTION values are external-applications, agent-systems, microarrays, graphics, or language.",
                         "target_details rows carry stable titles, menu paths, keywords, and optional arguments for discoverability surfaces such as the GUI command palette and MCP clients.",
                         "target_metadata is retained as a compatibility alias for older command-catalog clients."
                     ]
@@ -62375,6 +62495,52 @@ fn execute_ui_command(
             *latest,
             options,
         ),
+        ShellCommand::UiRecentProject { item_id } => Ok(ShellRunResult {
+            state_changed: false,
+            output: json!({
+                "schema": "gentle.ui_recent_project_intent.v1",
+                "ui_intent": {
+                    "action": "open",
+                    "target": "recent-project",
+                    "item_id": item_id
+                },
+                "applied": false,
+                "message": "UI intent recorded; resolving an opaque recent-project id requires GUI host integration."
+            }),
+        }),
+        ShellCommand::UiTutorialProject { chapter_id } => Ok(ShellRunResult {
+            state_changed: false,
+            output: json!({
+                "schema": "gentle.ui_tutorial_project_intent.v1",
+                "ui_intent": {
+                    "action": "open",
+                    "target": "tutorial-project",
+                    "chapter_id": chapter_id
+                },
+                "applied": false,
+                "message": "UI intent recorded; building a tutorial project requires GUI host integration."
+            }),
+        }),
+        ShellCommand::UiConfiguration { action, section } => {
+            let message = if matches!(action, UiIntentAction::Close) {
+                "UI intent recorded; closing Configuration requires GUI host integration."
+            } else {
+                "UI intent recorded; opening or focusing Configuration requires GUI host integration."
+            };
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.ui_configuration_intent.v1",
+                    "ui_intent": {
+                        "action": action.as_str(),
+                        "target": "configuration",
+                        "section": section.as_str()
+                    },
+                    "applied": false,
+                    "message": message
+                }),
+            })
+        }
         ShellCommand::UiSequenceWindow { action, seq_id } => Ok(ShellRunResult {
             state_changed: false,
             output: json!({
@@ -63264,6 +63430,9 @@ fn execute_shell_command_with_options_dispatch_inner(
         command,
         ShellCommand::UiListIntents
             | ShellCommand::UiIntent { .. }
+            | ShellCommand::UiRecentProject { .. }
+            | ShellCommand::UiTutorialProject { .. }
+            | ShellCommand::UiConfiguration { .. }
             | ShellCommand::UiSequenceWindow { .. }
             | ShellCommand::UiSequenceSelection { .. }
             | ShellCommand::UiPreparedGenomes { .. }
@@ -63919,6 +64088,9 @@ fn execute_shell_command_with_options_inner(
         )?,
         ShellCommand::UiListIntents
         | ShellCommand::UiIntent { .. }
+        | ShellCommand::UiRecentProject { .. }
+        | ShellCommand::UiTutorialProject { .. }
+        | ShellCommand::UiConfiguration { .. }
         | ShellCommand::UiSequenceWindow { .. }
         | ShellCommand::UiSequenceSelection { .. }
         | ShellCommand::UiPreparedGenomes { .. }

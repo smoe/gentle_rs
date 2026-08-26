@@ -69,8 +69,8 @@ use crate::{
         construct_reasoning_dotplot_inspection_provenance,
     },
     engine_shell::{
-        AGENT_HISTORY_CONFIRMATION_REQUIRED, ShellCommand, ShellRunResult, UiIntentTarget,
-        parse_shell_line,
+        AGENT_HISTORY_CONFIRMATION_REQUIRED, ShellCommand, ShellRunResult, UiConfigurationSection,
+        UiIntentAction, UiIntentTarget, parse_shell_line,
     },
     ensembl_gene::{
         EnsemblGeneEntry, EnsemblGeneExonSummary, EnsemblGeneTranscriptSummary,
@@ -6516,6 +6516,19 @@ fn command_palette_includes_shared_ui_intent_entries() {
     let entries = app.collect_command_palette_entries();
 
     for target in UiIntentTarget::all() {
+        if matches!(
+            target,
+            UiIntentTarget::RecentProject | UiIntentTarget::TutorialProject
+        ) {
+            assert!(
+                !entries.iter().any(|entry| {
+                    matches!(entry.action, CommandPaletteAction::UiIntent(entry_target) if entry_target == *target)
+                }),
+                "item-specific target {} must not appear without an item id",
+                target.as_str()
+            );
+            continue;
+        }
         assert!(
                 entries.iter().any(|entry| {
                     entry.title == target.discoverability_title()
@@ -6639,7 +6652,12 @@ fn assert_command_palette_ui_intent_side_effect(app: &GENtleApp, target: UiInten
             assert!(app.show_sequencing_confirmation_dialog);
             assert_eq!(app.sequencing_confirmation_seq_id, "seq1");
         }
+        UiIntentTarget::Configuration => {
+            assert!(app.show_configuration_dialog);
+        }
         UiIntentTarget::OpenSequence
+        | UiIntentTarget::RecentProject
+        | UiIntentTarget::TutorialProject
         | UiIntentTarget::PreparedReferences
         | UiIntentTarget::AgentAssistant => {
             panic!(
@@ -8056,6 +8074,98 @@ fn recent_project_menu_label_shows_name_and_parent() {
     let project_path = temp.path().join("my_project.gentle.json");
     let label = GENtleApp::recent_project_menu_label(project_path.to_string_lossy().as_ref());
     assert!(label.starts_with("my_project.gentle.json ("));
+}
+
+#[test]
+fn agent_gui_context_mirrors_recent_tutorial_and_configuration_catalogs() {
+    let temp = tempdir().unwrap();
+    let project_path = temp.path().join("tp73_project.gentle.json");
+    ProjectState::default()
+        .save_to_path(project_path.to_string_lossy().as_ref())
+        .expect("save recent project fixture");
+    let missing_path = temp.path().join("missing_project.gentle.json");
+    let mut app = GENtleApp::default();
+    app.recent_project_paths = vec![
+        project_path.to_string_lossy().to_string(),
+        missing_path.to_string_lossy().to_string(),
+    ];
+    app.current_project_path = Some(project_path.to_string_lossy().to_string());
+
+    let context = GENtleApp::build_agent_gui_context_from(
+        &app.recent_project_paths,
+        app.current_project_path.as_deref(),
+    );
+
+    assert!(context.host_available);
+    assert_eq!(context.recent_project_count, 2);
+    assert_eq!(
+        context.recent_projects[0].file_name,
+        "tp73_project.gentle.json"
+    );
+    assert!(context.recent_projects[0].exists);
+    assert!(context.recent_projects[0].current_project);
+    assert!(context.recent_projects[0].byte_count.is_some());
+    assert!(!context.recent_projects[1].exists);
+    assert!(
+        context.recent_projects[0]
+            .open_command
+            .starts_with("ui open recent-project recent-")
+    );
+    let serialized = serde_json::to_string(&context).expect("serialize GUI context");
+    assert!(
+        !serialized.contains(temp.path().to_string_lossy().as_ref()),
+        "provider context must not reveal the absolute recent-project path"
+    );
+    assert!(context.tutorial_project_count > 0);
+    assert!(
+        context
+            .tutorial_projects
+            .iter()
+            .any(|entry| entry.chapter_id == "tp63_anchor_extension_online")
+    );
+    assert_eq!(
+        context.configuration_sections.len(),
+        UiConfigurationSection::all().len()
+    );
+    assert!(context.configuration_sections.iter().any(|section| {
+        section.section_id == "agent-systems"
+            && section.open_command == "ui open configuration agent-systems"
+    }));
+}
+
+#[test]
+fn agent_gui_intents_open_recent_project_and_exact_configuration_section() {
+    let temp = tempdir().unwrap();
+    let project_path = temp.path().join("previous.gentle.json");
+    ProjectState::default()
+        .save_to_path(project_path.to_string_lossy().as_ref())
+        .expect("save recent project fixture");
+    let mut app = GENtleApp::default();
+    let path = project_path.to_string_lossy().to_string();
+    app.recent_project_paths = vec![path.clone()];
+    let item_id = GENtleApp::recent_project_agent_item_id(&path);
+
+    let recent_summary = app
+        .try_apply_shell_ui_intent(&ShellCommand::UiRecentProject { item_id })
+        .expect("recent project is a GUI intent");
+    assert!(recent_summary.contains("recent-project"));
+    assert_eq!(
+        app.current_project_path.as_deref(),
+        Some(GENtleApp::normalize_project_path(&path).as_str())
+    );
+
+    let configuration_summary = app
+        .try_apply_shell_ui_intent(&ShellCommand::UiConfiguration {
+            action: UiIntentAction::Open,
+            section: UiConfigurationSection::Microarrays,
+        })
+        .expect("Configuration is a GUI intent");
+    assert!(configuration_summary.contains("microarrays"));
+    assert!(app.show_configuration_dialog);
+    assert!(matches!(
+        app.configuration_tab,
+        ConfigurationTab::Microarrays
+    ));
 }
 
 #[test]

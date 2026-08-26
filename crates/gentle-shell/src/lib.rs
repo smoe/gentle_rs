@@ -19,5 +19,6 @@ pub use shell_docs::{
     shell_help_text, shell_topic_help_json, shell_topic_help_markdown, shell_topic_help_text,
 };
 pub use ui_intent::{
-    UiIntentAction, UiIntentTarget, UiIntentTargetCatalogRow, ui_intent_target_catalog,
+    UiConfigurationSection, UiIntentAction, UiIntentTarget, UiIntentTargetCatalogRow,
+    ui_intent_target_catalog,
 };

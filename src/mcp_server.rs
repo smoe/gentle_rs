@@ -12,8 +12,9 @@ use crate::{
         DEFAULT_HOST_PROFILE_CATALOG_PATH, Engine, GentleEngine, Operation, ProjectState, Workflow,
     },
     engine_shell::{
-        ShellExecutionOptions, UiIntentAction, UiIntentTarget, execute_shell_command_with_options,
-        parse_shell_tokens, runtime_status_payload_with_observed_activities,
+        ShellExecutionOptions, UiConfigurationSection, UiIntentAction, UiIntentTarget,
+        execute_shell_command_with_options, parse_shell_tokens,
+        runtime_status_payload_with_observed_activities,
     },
     gene_set_publication::generate_gene_isoform_assay_publication,
     genomes::{
@@ -189,6 +190,10 @@ fn tool_list() -> Value {
         UiIntentAction::Focus.as_str(),
         UiIntentAction::Close.as_str(),
     ];
+    let ui_configuration_section_enum = UiConfigurationSection::all()
+        .iter()
+        .map(|section| section.as_str())
+        .collect::<Vec<_>>();
     let mut tools = json!([
         {
             "name": "capabilities",
@@ -644,6 +649,15 @@ fn tool_list() -> Value {
                     "seq_id": {
                         "type": "string",
                         "description": "Loaded sequence id, required when target is sequence-window."
+                    },
+                    "item_id": {
+                        "type": "string",
+                        "description": "Opaque recent-project id or tutorial chapter id, required for those GUI-host targets."
+                    },
+                    "section": {
+                        "type": "string",
+                        "enum": ui_configuration_section_enum,
+                        "description": "Optional Configuration section when target is configuration."
                     },
                     "genome_id": {
                         "type": "string"
@@ -3069,6 +3083,31 @@ fn ui_intent_tool_result(default_state_path: &str, arguments: &Value) -> Value {
             Err(err) => tool_result_text(err, "text", true),
         };
     }
+    if matches!(target.as_str(), "recent-project" | "tutorial-project") {
+        let item_id = match required_string_arg(&args, "item_id") {
+            Ok(value) => value,
+            Err(err) => return tool_result_text(err, "text", true),
+        };
+        let tokens = vec!["ui".to_string(), action, target, item_id];
+        return match run_non_mutating_shell_tool(default_state_path, &args, tokens, "ui_intent") {
+            Ok(output) => tool_result_json(output, false),
+            Err(err) => tool_result_text(err, "text", true),
+        };
+    }
+    if target == "configuration" {
+        let section = match optional_string_arg(&args, "section") {
+            Ok(value) => value,
+            Err(err) => return tool_result_text(err, "text", true),
+        };
+        let mut tokens = vec!["ui".to_string(), action, target];
+        if let Some(section) = section {
+            tokens.push(section);
+        }
+        return match run_non_mutating_shell_tool(default_state_path, &args, tokens, "ui_intent") {
+            Ok(output) => tool_result_json(output, false),
+            Err(err) => tool_result_text(err, "text", true),
+        };
+    }
     let helper_mode = match optional_bool_arg(&args, "helpers") {
         Ok(value) => value.unwrap_or(false),
         Err(err) => return tool_result_text(err, "text", true),
@@ -3932,6 +3971,14 @@ mod tests {
             .map(|value| value.as_str().expect("enum string").to_string())
             .collect::<Vec<_>>();
         assert_eq!(actual_actions, vec!["open", "focus", "close"]);
+        assert_eq!(
+            ui_intent["inputSchema"]["properties"]["item_id"]["type"].as_str(),
+            Some("string")
+        );
+        let sections = ui_intent["inputSchema"]["properties"]["section"]["enum"]
+            .as_array()
+            .expect("Configuration section enum");
+        assert_eq!(sections.len(), UiConfigurationSection::all().len());
     }
 
     #[test]
@@ -4848,6 +4895,63 @@ mod tests {
         assert_eq!(
             mcp_sequence_intent["result"]["structuredContent"],
             expected_sequence_intent
+        );
+
+        for (target, item_id) in [
+            ("recent-project", "recent-deadbeef"),
+            ("tutorial-project", "simple_pcr_selection_gui"),
+        ] {
+            let mcp_host_item_intent = run_tool(
+                DEFAULT_MCP_STATE_PATH,
+                "ui_intent",
+                json!({
+                    "action": "open",
+                    "target": target,
+                    "item_id": item_id
+                }),
+            );
+            assert_eq!(
+                mcp_host_item_intent
+                    .pointer("/result/isError")
+                    .and_then(Value::as_bool),
+                Some(false)
+            );
+            let expected = run_shared_ui_command(vec![
+                "ui".to_string(),
+                "open".to_string(),
+                target.to_string(),
+                item_id.to_string(),
+            ]);
+            assert_eq!(
+                mcp_host_item_intent["result"]["structuredContent"],
+                expected
+            );
+        }
+
+        let mcp_configuration_intent = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "ui_intent",
+            json!({
+                "action": "open",
+                "target": "configuration",
+                "section": "microarrays"
+            }),
+        );
+        assert_eq!(
+            mcp_configuration_intent
+                .pointer("/result/isError")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        let expected_configuration_intent = run_shared_ui_command(vec![
+            "ui".to_string(),
+            "open".to_string(),
+            "configuration".to_string(),
+            "microarrays".to_string(),
+        ]);
+        assert_eq!(
+            mcp_configuration_intent["result"]["structuredContent"],
+            expected_configuration_intent
         );
     }
 

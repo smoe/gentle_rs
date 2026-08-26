@@ -1110,6 +1110,11 @@ Current baseline:
   - `ui intents`
   - `ui open TARGET ...`
   - `ui focus TARGET ...`
+  - `ui open recent-project ITEM_ID`
+  - `ui open tutorial-project CHAPTER_ID`
+  - `ui open configuration [SECTION]`
+  - `ui focus configuration [SECTION]`
+  - `ui close configuration`
   - `ui open sequence-window SEQ_ID`
   - `ui focus sequence-window SEQ_ID`
   - `ui close TARGET`
@@ -1121,6 +1126,12 @@ Current baseline:
   intents to existing dialog openers/closers (Prepared References,
   prepare/retrieve/blast, track import, agent assistant, helper-genome dialogs)
   and close individual DNA sequence windows through an explicit `SEQ_ID`.
+- Recent-project ids are opaque, path-free GUI-host tokens. The shared shell and
+  MCP can parse and report them, but only the live GUI host resolves a token
+  against its current Open Recent Project list. Tutorial chapter ids resolve
+  through the same generated catalog used by the File menu. Configuration
+  sections use the shared `UiConfigurationSection` vocabulary and route to the
+  existing Apply/Cancel window rather than mutating global settings silently.
 - GUI-side selection handlers set or report an active DNA sequence-window
   selection through the same shared command plane; feature-layer display
   visibility stays an engine-owned `SetDisplayVisibility` operation exposed by
@@ -1323,6 +1334,15 @@ GENtle now provides a shared agent-assistance bridge across GUI and CLI shell:
       tree and within the same limits,
     - missing/unreadable documents become typed request warnings rather than
       silent omissions or filesystem searches.
+  - an optional GUI-only `x_gui_context` extension containing bounded mirrors
+    of the live host's recent-project rows, executable tutorial catalog, and
+    Configuration sections:
+    - recent projects expose an opaque id, path-free display metadata, file
+      availability/size/time, and an exact host intent command,
+    - tutorial rows retain chapter/example identity, summary, tier, online and
+      review status, with explicit truncation metadata,
+    - Configuration rows provide exact tab-opening commands; opening a tab does
+      not itself change credentials, executable paths, or other global state.
 - The system prompt embeds an engine-generated fact vocabulary and a compact
   introspection control card. It does not rely on the provider being able to
   open repository documentation files; remote HTTP models and the isolated

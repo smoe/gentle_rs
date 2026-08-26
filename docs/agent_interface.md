@@ -1,6 +1,6 @@
 # GENtle Agent Interface
 
-Last updated: 2026-06-21
+Last updated: 2026-08-26
 
 This guide explains how agents can control GENtle and how the available
 interfaces differ.
@@ -84,6 +84,29 @@ contacting the model: `/...` Agent Assistant slash commands plus bare `help`,
 instead of being reinterpreted as prose. Ollama REPL paths are not a biological
 sequence-import command here; use `/open file PATH`, `/import file PATH`, or
 the GUI import path for local sequence files.
+
+Requests made from the GUI also receive `gentle.agent_gui_context.v1`. This is
+the authoritative bounded mirror of the same Open Recent Project and Open
+Tutorial Project catalogs visible in the File menu, plus the five global
+Configuration sections. Consequently, questions such as "Which previous
+projects are known?" or "Which tutorial projects are known?" should return the
+actual rows rather than infer an empty list from an empty current project.
+Recent-project rows contain path-free display metadata, file availability,
+size/time, and an opaque id; only the live GUI can resolve that id:
+
+```text
+ui open recent-project RECENT_ITEM_ID
+ui open tutorial-project CHAPTER_ID
+ui open configuration agent-systems
+ui open configuration microarrays
+```
+
+These remain reviewed UI intents. A missing recent file is listed as
+unavailable, a stale id fails closed, and opening Configuration only navigates
+to the selected tab. The user still applies credentials, executable paths, and
+other global settings through the existing Configuration confirmation model.
+Headless `agents ask` calls do not invent a GUI recent-project catalog; they can
+still parse and report the same intent commands for a future GUI host.
 
 For textual guidance documents, use the separate bounded document-context
 route. Click `Attach text document...`, or include an exact absolute path such

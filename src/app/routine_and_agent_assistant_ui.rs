@@ -2188,6 +2188,8 @@ impl GENtleApp {
             .map(|attachment| attachment.temp_file.clone())
             .collect::<Vec<_>>();
         let worker_attachment_files = attachment_files.clone();
+        let recent_project_paths = self.recent_project_paths.clone();
+        let current_project_path = self.current_project_path.clone();
         let engine = self.engine.clone();
         let catalog_path = self.agent_catalog_path.trim().to_string();
         let job_id = self.alloc_background_job_id();
@@ -2228,6 +2230,14 @@ impl GENtleApp {
         });
         std::thread::spawn(move || {
             let _attachment_files = worker_attachment_files;
+            let _ = tx.send(AgentAskTaskMessage::Status {
+                job_id,
+                message: "Building recent-project, tutorial, and Configuration context".to_string(),
+            });
+            let gui_context = GENtleApp::build_agent_gui_context_from(
+                &recent_project_paths,
+                current_project_path.as_deref(),
+            );
             let request_context = if include_state_summary {
                 let _ = tx.send(AgentAskTaskMessage::Status {
                     job_id,
@@ -2251,7 +2261,7 @@ impl GENtleApp {
                 job_id,
                 message: format!("Contacting agent system '{}'", system_id),
             });
-            let result = invoke_agent_support_with_request_context_and_attachments(
+            let result = invoke_agent_support_with_gui_context_and_attachments(
                 Some(catalog_path.as_str()),
                 &system_id,
                 &prompt,
@@ -2260,6 +2270,7 @@ impl GENtleApp {
                     .as_ref()
                     .map(|(_, introspection)| introspection),
                 Some(&conversation),
+                Some(&gui_context),
                 &attachments,
                 if env_overrides.is_empty() {
                     None
@@ -2699,6 +2710,15 @@ impl GENtleApp {
     }
 
     pub(super) fn try_apply_shell_ui_intent(&mut self, command: &ShellCommand) -> Option<String> {
+        if let ShellCommand::UiRecentProject { item_id } = command {
+            return Some(self.apply_recent_project_intent(item_id));
+        }
+        if let ShellCommand::UiTutorialProject { chapter_id } = command {
+            return Some(self.apply_tutorial_project_intent(chapter_id));
+        }
+        if let ShellCommand::UiConfiguration { action, section } = command {
+            return Some(self.apply_configuration_intent(*action, *section));
+        }
         if let ShellCommand::UiSequenceWindow { action, seq_id } = command {
             return Some(self.apply_sequence_window_intent(*action, seq_id));
         }
@@ -2769,6 +2789,17 @@ impl GENtleApp {
         }
         match target {
             UiIntentTarget::OpenSequence => self.prompt_open_sequence(),
+            UiIntentTarget::RecentProject => {
+                self.app_status =
+                    "Recent-project UI intent requires an item id from the current GUI host context"
+                        .to_string();
+            }
+            UiIntentTarget::TutorialProject => {
+                self.app_status =
+                    "Tutorial-project UI intent requires a chapter id from the tutorial catalog"
+                        .to_string();
+            }
+            UiIntentTarget::Configuration => self.open_configuration_dialog(),
             UiIntentTarget::PreparedReferences => self.open_reference_genome_inspector_dialog(),
             UiIntentTarget::PrepareReferenceGenome => self.open_reference_genome_prepare_dialog(),
             UiIntentTarget::RetrieveGenomeSequence => self.open_reference_genome_retrieve_dialog(),
@@ -2789,10 +2820,208 @@ impl GENtleApp {
         Some(summary)
     }
 
+    pub(super) fn recent_project_agent_item_id(path: &str) -> String {
+        let normalized = Self::normalize_project_path(path);
+        let digest = Self::digest_hex(&normalized);
+        format!("recent-{}", &digest[..16.min(digest.len())])
+    }
+
+    pub(super) fn build_agent_gui_context_from(
+        recent_project_paths: &[String],
+        current_project_path: Option<&str>,
+    ) -> AgentGuiContext {
+        let current_project_path = current_project_path.map(Self::normalize_project_path);
+        let recent_projects = recent_project_paths
+            .iter()
+            .take(crate::agent_bridge::AGENT_GUI_RECENT_PROJECT_LIMIT)
+            .enumerate()
+            .map(|(index, path)| {
+                let parsed = Path::new(path);
+                let file_name = parsed
+                    .file_name()
+                    .map(|value| value.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "saved project".to_string());
+                let parent_label = parsed
+                    .parent()
+                    .and_then(Path::file_name)
+                    .map(|value| value.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                let display_label = if parent_label.is_empty() {
+                    file_name.clone()
+                } else {
+                    format!("{file_name} ({parent_label})")
+                };
+                let metadata = fs::metadata(parsed).ok();
+                let modified_at_unix_ms = metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.modified().ok())
+                    .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+                    .map(|duration| duration.as_millis().min(u64::MAX as u128) as u64);
+                let item_id = Self::recent_project_agent_item_id(path);
+                AgentGuiRecentProject {
+                    item_id: item_id.clone(),
+                    display_label,
+                    file_name,
+                    parent_label,
+                    list_position: index + 1,
+                    exists: parsed.is_file(),
+                    byte_count: metadata.as_ref().map(std::fs::Metadata::len),
+                    modified_at_unix_ms,
+                    current_project: current_project_path
+                        .as_deref()
+                        .is_some_and(|current| current == Self::normalize_project_path(path)),
+                    open_command: format!("ui open recent-project {item_id}"),
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let mut context = AgentGuiContext {
+            host_available: true,
+            recent_project_count: recent_projects.len(),
+            recent_projects,
+            ..AgentGuiContext::default()
+        };
+        match Self::load_tutorial_project_entries() {
+            Ok(entries) => {
+                context.tutorial_project_count = entries.len();
+                context.tutorial_projects = entries
+                    .into_iter()
+                    .take(AGENT_GUI_TUTORIAL_PROJECT_LIMIT)
+                    .map(|entry| {
+                        let display_label = Self::tutorial_display_label(
+                            entry.decimal_id.as_deref(),
+                            Some(entry.chapter_order),
+                            &entry.chapter_title,
+                        );
+                        let chapter_id = entry.chapter_id;
+                        AgentGuiTutorialProject {
+                            open_command: format!("ui open tutorial-project {chapter_id}"),
+                            chapter_id,
+                            decimal_id: entry.decimal_id,
+                            display_label,
+                            title: entry.chapter_title,
+                            summary: entry.chapter_summary,
+                            group: entry.group_label,
+                            tier: entry.tier.as_str().to_string(),
+                            example_id: entry.example.id,
+                            online: entry.example.test_mode == ExampleTestMode::Online,
+                            review_status: entry.review_status,
+                            review_stale: entry.review_stale,
+                        }
+                    })
+                    .collect();
+                context.included_tutorial_project_count = context.tutorial_projects.len();
+                context.omitted_tutorial_project_count = context
+                    .tutorial_project_count
+                    .saturating_sub(context.included_tutorial_project_count);
+                context.tutorial_projects_truncated = context.omitted_tutorial_project_count > 0;
+            }
+            Err(err) => context
+                .warnings
+                .push(format!("Could not load the GUI tutorial catalog: {err}")),
+        }
+        context.configuration_sections = UiConfigurationSection::all()
+            .iter()
+            .copied()
+            .map(|section| AgentGuiConfigurationSection {
+                section_id: section.as_str().to_string(),
+                title: section.title().to_string(),
+                detail: section.detail().to_string(),
+                open_command: format!("ui open configuration {}", section.as_str()),
+            })
+            .collect();
+        context
+    }
+
+    fn apply_recent_project_intent(&mut self, item_id: &str) -> String {
+        let item_id = item_id.trim();
+        let Some(path) = self
+            .recent_project_paths
+            .iter()
+            .find(|path| Self::recent_project_agent_item_id(path) == item_id)
+            .cloned()
+        else {
+            return format!(
+                "ui intent open 'recent-project' found no current recent-project item '{item_id}'; ask the agent to list the current GUI context again"
+            );
+        };
+        if !Path::new(&path).is_file() {
+            return format!(
+                "ui intent open 'recent-project' found item '{item_id}', but its saved project file is missing"
+            );
+        }
+        let label = Self::recent_project_menu_label(&path);
+        self.request_project_action(ProjectAction::OpenPath(path));
+        format!("ui intent open 'recent-project' ({label})")
+    }
+
+    fn apply_tutorial_project_intent(&mut self, chapter_id: &str) -> String {
+        let chapter_id = chapter_id.trim();
+        let entries = match Self::load_tutorial_project_entries() {
+            Ok(entries) => entries,
+            Err(err) => {
+                return format!(
+                    "ui intent open 'tutorial-project' could not load the tutorial catalog: {err}"
+                );
+            }
+        };
+        let Some(entry) = entries.iter().find(|entry| entry.chapter_id == chapter_id) else {
+            return format!(
+                "ui intent open 'tutorial-project' found no current chapter '{chapter_id}'"
+            );
+        };
+        let title = entry.chapter_title.clone();
+        self.request_project_action(ProjectAction::OpenTutorialChapter(chapter_id.to_string()));
+        format!("ui intent open 'tutorial-project' '{title}' ({chapter_id})")
+    }
+
+    fn apply_configuration_intent(
+        &mut self,
+        action: UiIntentAction,
+        section: UiConfigurationSection,
+    ) -> String {
+        if matches!(action, UiIntentAction::Close) {
+            let was_open = self.show_configuration_dialog;
+            self.show_configuration_dialog = false;
+            return if was_open {
+                "ui intent close 'configuration'".to_string()
+            } else {
+                "ui intent close 'configuration' requested; target was already closed".to_string()
+            };
+        }
+        let tab = match section {
+            UiConfigurationSection::ExternalApplications => ConfigurationTab::ExternalApplications,
+            UiConfigurationSection::AgentSystems => ConfigurationTab::AgentSystems,
+            UiConfigurationSection::Microarrays => ConfigurationTab::Microarrays,
+            UiConfigurationSection::Graphics => ConfigurationTab::Graphics,
+            UiConfigurationSection::Language => ConfigurationTab::Language,
+        };
+        if matches!(section, UiConfigurationSection::AgentSystems) {
+            self.refresh_agent_token_file_credentials();
+        }
+        self.open_configuration_dialog_for_tab(tab);
+        format!(
+            "ui intent {} 'configuration' section '{}'",
+            action.as_str(),
+            section.as_str()
+        )
+    }
+
     fn apply_close_ui_intent_target(&mut self, target: UiIntentTarget) -> String {
         let was_open = match target {
             UiIntentTarget::OpenSequence => {
                 return "ui intent close 'open-sequence' is not applicable; use ui close sequence-window SEQ_ID for DNA viewers".to_string();
+            }
+            UiIntentTarget::RecentProject | UiIntentTarget::TutorialProject => {
+                return format!(
+                    "ui intent close '{}' is not applicable; opening a project is an action, not a persistent dialog",
+                    target.as_str()
+                );
+            }
+            UiIntentTarget::Configuration => {
+                let was_open = self.show_configuration_dialog;
+                self.show_configuration_dialog = false;
+                was_open
             }
             UiIntentTarget::PreparedReferences => {
                 let was_open = self.show_reference_genome_inspector_dialog;

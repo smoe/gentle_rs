@@ -144,6 +144,11 @@ Rules:
   manifest-backed references currently available to GENtle. Prefer a compatible
   gene_extraction_ready local reference over a network retrieval. Do not invent
   local reference ids or infer that catalog-only rows are installed.
+- When x_gui_context is present, treat its recent_projects, tutorial_projects,
+  and configuration_sections as the authoritative GUI-host catalogs. Answer
+  list questions from those rows and use only their exact open_command values.
+  Recent-project item ids are opaque; do not invent or reconstruct local paths.
+  Opening Configuration navigates to a tab and does not itself change settings.
 - Treat x_local_documents as bounded copies of text documents explicitly named
   by the user. Use included content and provenance, do not ask the user to paste
   an included document again, and mention attachment warnings that block the
