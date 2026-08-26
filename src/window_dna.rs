@@ -27,6 +27,9 @@ use std::sync::{
     mpsc::{self, Receiver, TryRecvError},
 };
 use std::thread;
+use std::time::Duration;
+
+const DEFERRED_LOAD_REPAINT_INTERVAL: Duration = Duration::from_millis(100);
 
 #[derive(Clone, Debug)]
 enum DeferredAnalysisFocus {
@@ -67,6 +70,21 @@ pub struct WindowDna {
 }
 
 impl WindowDna {
+    fn render_deferred_load_indicator(ui: &mut egui::Ui) {
+        let phase = ((ui.input(|input| input.time) * 10.0) as usize) % 4;
+        let marker = match phase {
+            0 => "[   ]",
+            1 => "[.  ]",
+            2 => "[.. ]",
+            _ => "[...]",
+        };
+        ui.monospace(marker);
+        ui.add_space(6.0);
+        ui.label(crate::i18n::tr("sequence.loading"));
+        ui.ctx()
+            .request_repaint_after(DEFERRED_LOAD_REPAINT_INTERVAL);
+    }
+
     /// Construct an eager sequence window when sequence content is already in hand.
     pub fn new(dna: DNAsequence, seq_id: String, engine: Arc<RwLock<GentleEngine>>) -> Self {
         Self {
@@ -296,14 +314,11 @@ impl WindowDna {
                         with_window_content_inset(ui, |ui| {
                             ui.vertical_centered(|ui| {
                                 ui.add_space(48.0);
-                                ui.add(egui::Spinner::new());
-                                ui.add_space(6.0);
-                                ui.label(crate::i18n::tr("sequence.loading"));
+                                Self::render_deferred_load_indicator(ui);
                             });
                         });
                     },
                 );
-                ctx.request_repaint();
             } else if let Some(message) = self.deferred_load_message.as_deref() {
                 crate::egui_compat::show_central_panel(
                     ctx,
@@ -372,14 +387,11 @@ impl WindowDna {
                         with_window_content_inset(ui, |ui| {
                             ui.vertical_centered(|ui| {
                                 ui.add_space(48.0);
-                                ui.add(egui::Spinner::new());
-                                ui.add_space(6.0);
-                                ui.label(crate::i18n::tr("sequence.loading"));
+                                Self::render_deferred_load_indicator(ui);
                             });
                         });
                     },
                 );
-                ui.ctx().request_repaint();
             } else if let Some(message) = self.deferred_load_message.as_deref() {
                 crate::egui_compat::show_central_panel_inside(
                     ui,
@@ -754,5 +766,16 @@ impl WindowDna {
     pub fn refresh_from_engine_state(&mut self) {
         self.main_area.refresh_from_engine_sequence_state();
         self.main_area.refresh_from_engine_settings();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deferred_sequence_loading_uses_bounded_repaint_polling() {
+        assert!(DEFERRED_LOAD_REPAINT_INTERVAL >= Duration::from_millis(50));
+        assert!(DEFERRED_LOAD_REPAINT_INTERVAL <= Duration::from_millis(250));
     }
 }

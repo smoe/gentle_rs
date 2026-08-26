@@ -5,6 +5,7 @@
 //! close to `GENtleApp` while reducing the top-level app monolith.
 
 use super::*;
+use crate::agent_bridge::AgentSuggestedCommand;
 
 impl GENtleApp {
     const AGENT_MODEL_SELECTION_REQUIRED_MESSAGE: &'static str =
@@ -35,6 +36,10 @@ impl GENtleApp {
         let was_open = self.show_agent_assistant_dialog;
         self.show_agent_assistant_dialog = true;
         self.mark_window_open_or_focus(Self::agent_assistant_viewport_id(), was_open);
+    }
+
+    pub(super) fn agent_initial_actions_visible(&self) -> bool {
+        self.agent_conversation.turns.is_empty() && self.agent_last_invocation.is_none()
     }
 
     fn encode_agent_help_png(image: &egui::ColorImage) -> Result<Vec<u8>, String> {
@@ -1508,6 +1513,48 @@ impl GENtleApp {
         })
     }
 
+    pub(super) fn agent_suggestion_precondition_blocker(
+        &self,
+        expr: Option<&serde_json::Value>,
+    ) -> Option<String> {
+        let expr = expr?;
+        let expression = match serde_json::from_value::<crate::engine::FactExpression>(expr.clone())
+        {
+            Ok(expression) => expression,
+            Err(err) => {
+                return Some(format!(
+                    "Cannot verify preconditions: invalid fact expression ({err})."
+                ));
+            }
+        };
+        let evaluation = match self.engine.read() {
+            Ok(engine) => engine.evaluate_fact_expression(&expression, &[]),
+            Err(_) => {
+                return Some(
+                    "Cannot verify preconditions while the project state is unavailable."
+                        .to_string(),
+                );
+            }
+        };
+        if evaluation.truth == crate::engine::FactTruth::Satisfied {
+            None
+        } else {
+            Some(format!(
+                "Waiting for preconditions: {}.",
+                crate::agent_bridge::agent_fact_readiness_label(&evaluation)
+            ))
+        }
+    }
+
+    pub(super) fn agent_suggestion_live_blocker(
+        &self,
+        suggestion: &AgentSuggestedCommand,
+    ) -> Option<String> {
+        Self::agent_suggestion_run_blocker(&suggestion.command, suggestion.execution).or_else(
+            || self.agent_suggestion_precondition_blocker(suggestion.precondition_expr.as_ref()),
+        )
+    }
+
     pub(super) fn compact_agent_validation_message(message: &str) -> String {
         let cutoff = [
             " Supported GENtle-local alternatives:",
@@ -2279,6 +2326,33 @@ impl GENtleApp {
         );
     }
 
+    pub(super) fn execute_agent_suggestion(
+        &mut self,
+        index_1based: usize,
+        suggestion: &AgentSuggestedCommand,
+        trigger: &str,
+    ) {
+        if let Some(reason) = self.agent_suggestion_live_blocker(suggestion) {
+            let source_label = format!("Suggestion #{index_1based}");
+            self.agent_status = format!("{source_label} not run: {reason}");
+            self.agent_execution_log.push(AgentCommandExecutionRecord {
+                index_1based,
+                command: suggestion.command.trim().to_string(),
+                trigger: trigger.to_string(),
+                ok: false,
+                state_changed: false,
+                summary: reason,
+                executed_at_unix_ms: Self::now_unix_ms(),
+            });
+            if self.agent_execution_log.len() > 100 {
+                let drain = self.agent_execution_log.len() - 100;
+                self.agent_execution_log.drain(0..drain);
+            }
+            return;
+        }
+        self.execute_agent_suggested_command(index_1based, &suggestion.command, trigger);
+    }
+
     pub(super) fn execute_agent_prompt_command(&mut self, command_text: &str) {
         self.execute_agent_shell_command_from_ui(0, "Prompt command", command_text, "prompt");
     }
@@ -2806,11 +2880,29 @@ impl GENtleApp {
                 action.as_str()
             );
         }
+        let existing_viewport = self.find_open_sequence_viewport_id(seq_id);
+        let existing_is_opening = existing_viewport
+            .and_then(|viewport_id| self.windows.get(&viewport_id))
+            .and_then(|window| window.read().ok())
+            .is_some_and(|window| window.is_sequence_opening());
+        let pending_is_opening = self
+            .new_windows
+            .iter()
+            .any(|window| window.sequence_id().as_deref() == Some(seq_id));
         self.open_sequence_window(seq_id);
-        format!(
-            "ui intent {} 'sequence-window' (seq_id={seq_id}; sequence record kept loaded)",
-            action.as_str()
-        )
+        if existing_is_opening || pending_is_opening {
+            format!(
+                "DNA Sequence Viewer for '{seq_id}' is still opening (sequence record kept loaded)"
+            )
+        } else if existing_viewport.is_some() {
+            format!(
+                "Focused the existing DNA Sequence Viewer for '{seq_id}' (sequence record kept loaded)"
+            )
+        } else {
+            format!(
+                "Opening DNA Sequence Viewer for '{seq_id}' (queued; sequence record kept loaded)"
+            )
+        }
     }
 
     fn apply_close_sequence_window_intent(&mut self, seq_id: &str) -> String {
@@ -3017,7 +3109,7 @@ impl GENtleApp {
     pub(super) fn execute_agent_auto_suggestions(&mut self, response: &AgentResponse) {
         for (idx, suggestion) in response.suggested_commands.iter().enumerate() {
             if suggestion.execution == AgentExecutionIntent::Auto {
-                self.execute_agent_suggested_command(idx + 1, &suggestion.command, "auto");
+                self.execute_agent_suggestion(idx + 1, suggestion, "auto");
             }
         }
     }
@@ -4952,6 +5044,36 @@ impl GENtleApp {
         });
         self.render_agent_help_attachment_panel(ui);
         self.render_agent_screenshot_consent_card(ui);
+        if self.agent_initial_actions_visible() {
+            let mut open_document = false;
+            let mut open_configuration = false;
+            ui.group(|ui| {
+                ui.strong(self.tr("agent.initial_actions.title"));
+                ui.small(self.tr("agent.initial_actions.description"));
+                ui.horizontal_wrapped(|ui| {
+                    if ui
+                        .button(self.tr("agent.initial_actions.open_previous"))
+                        .on_hover_text(self.tr("agent.initial_actions.open_previous.tooltip"))
+                        .clicked()
+                    {
+                        open_document = true;
+                    }
+                    if ui
+                        .button(self.tr("agent.initial_actions.configure"))
+                        .on_hover_text(self.tr("agent.initial_actions.configure.tooltip"))
+                        .clicked()
+                    {
+                        open_configuration = true;
+                    }
+                });
+            });
+            if open_document {
+                self.prompt_open_sequence();
+            }
+            if open_configuration {
+                self.open_configuration_dialog();
+            }
+        }
         if !self.agent_conversation.turns.is_empty() {
             let turns = self.agent_conversation.turns.clone();
             let mut copied_response = false;
@@ -5241,6 +5363,16 @@ impl GENtleApp {
         if stop_agent_request {
             self.request_agent_task_cancel("agent assistant");
         }
+        if self.sequence_window_open_in_progress() {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(
+                    egui::RichText::new(self.tr("sequence.window.opening"))
+                        .strong()
+                        .color(egui::Color32::from_rgb(40, 120, 170)),
+                );
+                ui.small(self.tr("agent.sequence_window.opening.detail"));
+            });
+        }
         if !self.agent_status.is_empty() {
             ui.separator();
             self.render_agent_status_message(ui, &self.agent_status, true);
@@ -5338,14 +5470,23 @@ impl GENtleApp {
             } else {
                 ui.separator();
                 ui.strong("Suggested commands");
-                let mut run_request: Option<(usize, String)> = None;
+                let mut run_request: Option<(usize, AgentSuggestedCommand)> = None;
                 for (idx, suggestion) in invocation.response.suggested_commands.iter().enumerate() {
                     let index_1based = idx + 1;
-                    let run_blocker = Self::agent_suggestion_run_blocker(
+                    let command_blocker = Self::agent_suggestion_run_blocker(
                         &suggestion.command,
                         suggestion.execution,
                     );
+                    let precondition_blocker = self.agent_suggestion_precondition_blocker(
+                        suggestion.precondition_expr.as_ref(),
+                    );
+                    let run_blocker = command_blocker
+                        .clone()
+                        .or_else(|| precondition_blocker.clone());
                     ui.group(|ui| {
+                        if precondition_blocker.is_some() {
+                            ui.disable();
+                        }
                         ui.horizontal_wrapped(|ui| {
                             ui.strong(format!("#{index_1based}"));
                             let run_response = ui
@@ -5354,7 +5495,7 @@ impl GENtleApp {
                                     "Execute this suggestion through GENtle's shared shell parser/executor",
                                 ));
                             if run_response.clicked() {
-                                run_request = Some((index_1based, suggestion.command.clone()));
+                                run_request = Some((index_1based, suggestion.clone()));
                             }
                             ui.strong(
                                 suggestion
@@ -5365,8 +5506,8 @@ impl GENtleApp {
                             ui.small(format!("mode: {}", suggestion.execution.as_str()));
                         });
                         if let Some(reason) = &run_blocker {
-                            let reason_color = if suggestion.execution
-                                == AgentExecutionIntent::Chat
+                            let reason_color = if precondition_blocker.is_some()
+                                || suggestion.execution == AgentExecutionIntent::Chat
                             {
                                 ui.visuals().weak_text_color()
                             } else {
@@ -5381,7 +5522,7 @@ impl GENtleApp {
                         }
                         let command_text = egui::RichText::new(suggestion.command.trim())
                             .monospace()
-                            .color(if run_blocker.is_some()
+                            .color(if command_blocker.is_some()
                                 && suggestion.execution != AgentExecutionIntent::Chat
                             {
                                 egui::Color32::from_rgb(190, 70, 70)
@@ -5429,8 +5570,8 @@ impl GENtleApp {
                         }
                     });
                 }
-                if let Some((index_1based, command)) = run_request {
-                    self.execute_agent_suggested_command(index_1based, &command, "manual");
+                if let Some((index_1based, suggestion)) = run_request {
+                    self.execute_agent_suggestion(index_1based, &suggestion, "manual");
                 }
             }
             if !invocation.raw_stderr.trim().is_empty() {

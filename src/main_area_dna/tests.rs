@@ -1,10 +1,11 @@
 use super::{
-    DnaPresentationMode, FeatureCopyPayloadKind, LINEAR_TOPOLOGY_SWITCH_MAX_INITIAL_SPAN_BP,
-    MainAreaDna, PcrDesignerMode, PcrPaintRole, PrimaryMapMode, QpcrTranscriptIntentUiMode,
-    RnaReadConcatemerSubsetMode, RnaReadInterpretOpsUiState, RnaReadTask, RnaReadTaskMessage,
-    RnaReadTaskOutcome, SPLICING_ATTRACT_EAGER_BOUNDARY_THRESHOLD,
-    SequencingConfirmationOverviewSelection, SequencingConfirmationReviewFocusKind,
-    SplicingIntronSignalKey, SplicingIntronSignalRow, ViewSvgExportProfile,
+    DnaPresentationMode, FEATURE_TREE_DEFERRED_AUTO_LOAD_MAX_FEATURES, FeatureCopyPayloadKind,
+    LINEAR_TOPOLOGY_SWITCH_MAX_INITIAL_SPAN_BP, MainAreaDna, PcrDesignerMode, PcrPaintRole,
+    PrimaryMapMode, QpcrTranscriptIntentUiMode, RnaReadConcatemerSubsetMode,
+    RnaReadInterpretOpsUiState, RnaReadTask, RnaReadTaskMessage, RnaReadTaskOutcome,
+    SPLICING_ATTRACT_EAGER_BOUNDARY_THRESHOLD, SequencingConfirmationOverviewSelection,
+    SequencingConfirmationReviewFocusKind, SplicingIntronSignalKey, SplicingIntronSignalRow,
+    ViewSvgExportProfile,
     auxiliary_workspaces::LocusEvidenceResourceReadiness,
     feature_location_editor_ui::{FeatureEditorMode, FeatureRecordQualifierUiRow},
 };
@@ -4050,6 +4051,16 @@ fn auto_enable_deferred_feature_tree_flips_flag_once() {
     assert!(area.maybe_auto_enable_deferred_feature_tree());
     assert!(!area.feature_tree_deferred_until_interaction);
     assert!(!area.maybe_auto_enable_deferred_feature_tree());
+}
+
+#[test]
+fn annotation_rich_deferred_feature_tree_requires_explicit_load() {
+    assert!(!MainAreaDna::deferred_feature_tree_requires_explicit_load(
+        FEATURE_TREE_DEFERRED_AUTO_LOAD_MAX_FEATURES
+    ));
+    assert!(MainAreaDna::deferred_feature_tree_requires_explicit_load(
+        FEATURE_TREE_DEFERRED_AUTO_LOAD_MAX_FEATURES + 1
+    ));
 }
 
 #[test]

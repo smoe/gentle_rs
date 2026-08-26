@@ -878,6 +878,7 @@ const EXTENDED_TOP_PANEL_DEFAULT_HEIGHT_PX: f32 = 420.0;
 const EXTENDED_TOP_PANEL_MIN_HEIGHT_PX: f32 = 180.0;
 const FEATURE_TREE_DEFAULT_WIDTH_PX: f32 = 320.0;
 const FEATURE_TREE_MIN_WIDTH_PX: f32 = 180.0;
+const FEATURE_TREE_DEFERRED_AUTO_LOAD_MAX_FEATURES: usize = 300;
 // The map pane already has its own minimum width; avoid an extra small absolute
 // cap that makes the splitter feel stuck on wide windows.
 const FEATURE_TREE_MAX_WIDTH_PX: f32 = UI_SIZE_MAX_PX;
@@ -2865,6 +2866,10 @@ impl MainAreaDna {
         } else {
             false
         }
+    }
+
+    fn deferred_feature_tree_requires_explicit_load(feature_count: usize) -> bool {
+        feature_count > FEATURE_TREE_DEFERRED_AUTO_LOAD_MAX_FEATURES
     }
 
     pub fn refresh_from_engine_sequence_state(&mut self) {
@@ -26192,6 +26197,11 @@ impl MainAreaDna {
                                     .read()
                                     .map(|dna| dna.features().len())
                                     .unwrap_or(0);
+                                let requires_explicit_load =
+                                    Self::deferred_feature_tree_requires_explicit_load(
+                                        feature_count,
+                                    );
+                                let mut load_requested = false;
                                 ui.group(|ui| {
                                     ui.label(
                                         "Feature tree/details deferred to speed up initial window opening.",
@@ -26199,11 +26209,28 @@ impl MainAreaDna {
                                     ui.small(format!(
                                         "{feature_count} feature(s) available for this sequence."
                                     ));
-                                    ui.small(
-                                        "Auto-loading feature tree/details on the next frame.",
-                                    );
+                                    if requires_explicit_load {
+                                        ui.small(
+                                            "This annotation-rich document stays responsive until you load the feature browser.",
+                                        );
+                                        if ui
+                                            .button("Load feature tree/details")
+                                            .on_hover_text(
+                                                "Build the complete grouped feature browser for this sequence",
+                                            )
+                                            .clicked()
+                                        {
+                                            load_requested = true;
+                                        }
+                                    } else {
+                                        ui.small(
+                                            "Auto-loading feature tree/details on the next frame.",
+                                        );
+                                    }
                                 });
-                                if self.maybe_auto_enable_deferred_feature_tree() {
+                                if (!requires_explicit_load || load_requested)
+                                    && self.maybe_auto_enable_deferred_feature_tree()
+                                {
                                     ui.ctx().request_repaint();
                                 }
                             } else {

@@ -1,5 +1,16 @@
 # GENtle Changelog
 
+- Added a fresh-session Agent Assistant start card for opening an existing
+  sequence document or general Configuration. Suggested commands now apply
+  their typed fact preconditions as live execution gates: blocked rows are
+  dimmed, manual and automatic execution fail closed, and rows become runnable
+  when an earlier action creates the required object. DNA-viewer UI intents now
+  report queued/opening/focused state explicitly in Agent Assistant, while the
+  deferred loader uses bounded repaint polling rather than an unthrottled
+  spinner loop. Lazy-opened documents with more than 300 features now keep the
+  expensive grouped feature browser behind an explicit load button instead of
+  building it automatically in the second frame.
+
 - Added plain, provenance-bound primer coverage denominators to experimental
   assay handoffs and publication QA: broader annotation transcript records and
   distinct mature-cDNA sequences remain separate from UniProt protein targets,

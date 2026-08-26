@@ -59,7 +59,12 @@ expensive GUI work that runs safely away from the egui thread.
   intents, local OpenAI-compatible providers, Ollama/Msty guidance, Codex Local
   discovery, visible local `/help` and `/list` results, and ClawBio/OpenClaw
   request paths were hardened without creating a second biology command
-  surface. Explicit `Agent help` controls can attach the exact GENtle viewport
+  surface. Fresh sessions offer direct open-document and Configuration actions;
+  typed suggestion preconditions now dim and block dependent rows until the
+  live project fact exists, including a fail-closed check for automatic runs.
+  DNA-window intents also expose their queued/opening state in Agent Assistant;
+  annotation-rich lazy windows postpone their feature browser until requested.
+  Explicit `Agent help` controls can attach the exact GENtle viewport
   being diagnosed with a local preview-before-send; optional macOS native
   full-window capture is permission-gated and restricted to GENtle-owned
   windows. Image-capable agents may also explain why they need one screenshot;
