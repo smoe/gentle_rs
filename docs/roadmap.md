@@ -1,9 +1,9 @@
 # GENtle Roadmap
 
-Last session: 2026-08-25 - grounded Agent Assistant requests in prepared local
-reference readiness, gave Pi Local the shared parser contract, and added a
-verified-assembly, strand-aware-flank Ensembl fallback; manual GUI smoke for the
-unreleased `v0.1.0-internal.10` release remains before the tag
+Last session: 2026-08-26 - corrected UniProt linked-record coverage to use each
+inventory record's mature-cDNA equivalence group and normalized Ensembl stable
+ids for local-locus identity; copied-state IRF9 acceptance and manual GUI smoke
+for the unreleased `v0.1.0-internal.10` release remain before the tag
 
 Purpose: fast session orientation. This file answers "what next?" and should be
 readable in under two minutes. Completed work belongs in
@@ -69,6 +69,9 @@ Pre-release finishing scope:
 
 - Run the manual GUI smoke from the TP73 and PATZ1 runbooks and fix only
   evidence-inspection or composition problems supported by that review.
+- Repeat the copied-state IRF9/Q00978 acceptance and require the one-assay panel
+  to report one of three linked cDNAs and two of four linked records covered,
+  with only the true patch record genomically unassessed.
 - Discuss the deprecated ClawBio shell-normalizer modes before their earliest
   possible removal in `v0.1.0-internal.11`.
 
@@ -291,6 +294,11 @@ wet-lab conclusions or unconfirmed mutations.
 
 ## Parking Lot
 
+- Replace whole-transcriptome FASTA materialization in UniProt linked-transcript
+  inventory construction with indexed/streaming retrieval, and expose bounded
+  progress during large specificity finalization joins.
+- Add stable semantic GUI test identifiers so acceptance automation can target
+  windows, controls, rows, and state transitions without screen coordinates.
 - Pilot the context-labelled tutorial-action graph over one existing tutorial:
   canonical capability references, semantic context labels, outcome roles, and
   GUI/CLI/agent projections first; forward skill activation and inverse

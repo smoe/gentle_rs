@@ -1,5 +1,12 @@
 # GENtle Changelog
 
+- Corrected authoritative UniProt-linked transcript coverage so every inventory
+  record is evaluated through its own mature-cDNA digest and exact panel
+  equivalence group rather than inheriting the enclosing protein target's
+  coverage. Versioned inventory transcript ids now match versionless local
+  annotation by normalized Ensembl stable id while preserving exact source ids;
+  legacy reports without the record-level join fail closed to unavailable.
+
 - Joined content-bound UniProt linked-transcript inventories into transcript
   assay coverage resolution. Primer panels now retain off-locus denominator
   records, permit cDNA coverage inference only through exact mature-cDNA

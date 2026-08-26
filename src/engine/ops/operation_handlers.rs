@@ -17232,10 +17232,17 @@ impl GentleEngine {
                                 target
                                     .cdna_digest_matched_transcript_ids
                                     .push(record.transcript_id.clone());
-                                let exact_local_transcript = templates
+                                let matched_local_transcript_ids = matches
                                     .iter()
-                                    .any(|template| template.transcript_id == record.transcript_id);
-                                if !exact_local_transcript {
+                                    .map(|index| templates[*index].transcript_id.clone())
+                                    .collect::<Vec<_>>();
+                                let stable_transcript_id =
+                                    Self::transcript_assay_stable_transcript_id(
+                                        &record.transcript_id,
+                                    );
+                                let local_transcript_is_same_stable_id =
+                                    template_indices_by_stable.contains_key(&stable_transcript_id);
+                                if !local_transcript_is_same_stable_id {
                                     target
                                         .genomic_specificity_unassessed_transcript_ids
                                         .push(record.transcript_id.clone());
@@ -17244,6 +17251,18 @@ impl GentleEngine {
                                         record.transcript_id
                                     ));
                                 }
+                                resolution.linked_transcript_resolutions.push(
+                                    TranscriptAssayLinkedTranscriptResolution {
+                                        inventory_id: inventory.inventory_id.clone(),
+                                        target_id: target_id.clone(),
+                                        entry_id: record.entry_id.clone(),
+                                        isoform_id: record.isoform_id.clone(),
+                                        transcript_id: record.transcript_id.clone(),
+                                        mature_cdna_sha256: digest.to_string(),
+                                        matched_local_transcript_ids,
+                                        equivalence_group_id: None,
+                                    },
+                                );
                                 for index in matches {
                                     matching_template_ranks.entry(index).or_insert(0);
                                 }
@@ -17343,6 +17362,8 @@ impl GentleEngine {
         resolution.included_transcript_ids.sort();
         resolution.excluded_annotated_transcript_ids.sort();
         resolution.unresolved_target_ids.sort();
+        resolution.linked_transcript_resolutions.sort();
+        resolution.linked_transcript_resolutions.dedup();
         resolution
             .targets
             .sort_by(|left, right| left.target_id.cmp(&right.target_id));
@@ -17376,18 +17397,49 @@ impl GentleEngine {
                 })
             })
             .collect::<HashMap<_, _>>();
+        for record in &mut resolution.linked_transcript_resolutions {
+            let group_ids = record
+                .matched_local_transcript_ids
+                .iter()
+                .filter_map(|transcript_id| group_by_transcript.get(transcript_id.as_str()))
+                .copied()
+                .collect::<BTreeSet<_>>();
+            record.equivalence_group_id = (group_ids.len() == 1)
+                .then(|| (*group_ids.first().expect("one linked cDNA group")).to_string());
+        }
+        let linked_group_ids_by_target = resolution
+            .linked_transcript_resolutions
+            .iter()
+            .filter_map(|record| {
+                record
+                    .equivalence_group_id
+                    .as_ref()
+                    .map(|group_id| (record.target_id.clone(), group_id.clone()))
+            })
+            .fold(
+                BTreeMap::<String, BTreeSet<String>>::new(),
+                |mut groups, (target_id, group_id)| {
+                    groups.entry(target_id).or_default().insert(group_id);
+                    groups
+                },
+            );
         for target in &mut resolution.targets {
             target.equivalence_group_id = target
                 .resolved_transcript_id
                 .as_deref()
                 .and_then(|transcript_id| group_by_transcript.get(transcript_id).copied())
                 .map(str::to_string);
-            target.equivalence_group_ids = target
-                .mapped_transcript_ids
-                .iter()
-                .filter_map(|transcript_id| group_by_transcript.get(transcript_id.as_str()))
-                .map(|value| (*value).to_string())
-                .collect();
+            target.equivalence_group_ids = linked_group_ids_by_target
+                .get(&target.target_id)
+                .map(|group_ids| group_ids.iter().cloned().collect())
+                .unwrap_or_else(|| {
+                    target
+                        .mapped_transcript_ids
+                        .iter()
+                        .filter_map(|transcript_id| group_by_transcript.get(transcript_id.as_str()))
+                        .map(|value| (*value).to_string())
+                        .collect()
+                });
             if target.equivalence_group_ids.is_empty()
                 && let Some(group_id) = target.equivalence_group_id.clone()
             {
@@ -32232,11 +32284,6 @@ impl GentleEngine {
             .cloned()
             .collect::<Vec<_>>();
 
-        let uniprot_available = panel.coverage_universe.kind
-            == TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms
-            && panel
-                .coverage_resolution
-                .linked_transcript_inventory_authoritative;
         let uniprot_entry_ids = panel
             .coverage_resolution
             .targets
@@ -32249,12 +32296,45 @@ impl GentleEngine {
             .iter()
             .flat_map(|target| target.mapped_transcript_ids.iter().cloned())
             .collect::<BTreeSet<_>>();
-        let uniprot_group_ids = panel
-            .coverage_resolution
-            .targets
-            .iter()
-            .flat_map(|target| target.equivalence_group_ids.iter().cloned())
-            .collect::<BTreeSet<_>>();
+        let mut linked_record_mappings = BTreeMap::<String, (String, String)>::new();
+        let mut linked_record_mapping_conflict = false;
+        for record in &panel.coverage_resolution.linked_transcript_resolutions {
+            if !uniprot_linked_transcript_ids.contains(&record.transcript_id) {
+                continue;
+            }
+            let Some(group_id) = record.equivalence_group_id.as_ref() else {
+                linked_record_mapping_conflict = true;
+                continue;
+            };
+            if record.mature_cdna_sha256.trim().is_empty() {
+                linked_record_mapping_conflict = true;
+                continue;
+            }
+            let mapping = (record.mature_cdna_sha256.clone(), group_id.clone());
+            if linked_record_mappings
+                .insert(record.transcript_id.clone(), mapping.clone())
+                .is_some_and(|previous| previous != mapping)
+            {
+                linked_record_mapping_conflict = true;
+            }
+        }
+        let mut linked_digest_groups = BTreeMap::<String, String>::new();
+        for (digest, group_id) in linked_record_mappings.values() {
+            if linked_digest_groups
+                .insert(digest.clone(), group_id.clone())
+                .is_some_and(|previous| previous != *group_id)
+            {
+                linked_record_mapping_conflict = true;
+            }
+        }
+        let uniprot_available = panel.coverage_universe.kind
+            == TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms
+            && panel
+                .coverage_resolution
+                .linked_transcript_inventory_authoritative
+            && !uniprot_linked_transcript_ids.is_empty()
+            && linked_record_mappings.len() == uniprot_linked_transcript_ids.len()
+            && !linked_record_mapping_conflict;
         let genomic_specificity_unassessed_uniprot_linked_transcript_ids = panel
             .coverage_resolution
             .targets
@@ -32268,28 +32348,48 @@ impl GentleEngine {
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect::<Vec<_>>();
-        let covered_uniprot_linked_transcript_ids = panel
-            .coverage_resolution
-            .targets
-            .iter()
-            .filter(|target| {
-                target.coverage_status == TranscriptAssayCoverageEvaluationStatus::Covered
+        let covered_uniprot_linked_transcript_ids = uniprot_available
+            .then(|| {
+                linked_record_mappings
+                    .iter()
+                    .filter_map(|(transcript_id, (_, group_id))| {
+                        covered_group_ids
+                            .contains(group_id)
+                            .then_some(transcript_id.clone())
+                    })
+                    .collect::<BTreeSet<_>>()
             })
-            .flat_map(|target| target.cdna_digest_matched_transcript_ids.iter().cloned())
-            .collect::<BTreeSet<_>>();
-        let covered_uniprot_linked_transcript_count = covered_uniprot_linked_transcript_ids
-            .intersection(&uniprot_linked_transcript_ids)
-            .count();
-        let covered_uniprot_group_count =
-            uniprot_group_ids.intersection(&covered_group_ids).count();
-        let uncovered_uniprot_linked_transcript_ids = uniprot_linked_transcript_ids
-            .difference(&covered_uniprot_linked_transcript_ids)
-            .cloned()
-            .collect::<Vec<_>>();
-        let uncovered_uniprot_group_ids = uniprot_group_ids
-            .difference(&covered_group_ids)
-            .cloned()
-            .collect::<Vec<_>>();
+            .unwrap_or_default();
+        let covered_uniprot_linked_transcript_count = covered_uniprot_linked_transcript_ids.len();
+        let covered_uniprot_digest_ids = uniprot_available
+            .then(|| {
+                linked_digest_groups
+                    .iter()
+                    .filter_map(|(digest, group_id)| {
+                        covered_group_ids
+                            .contains(group_id)
+                            .then_some(digest.clone())
+                    })
+                    .collect::<BTreeSet<_>>()
+            })
+            .unwrap_or_default();
+        let uncovered_uniprot_linked_transcript_ids = uniprot_available
+            .then(|| {
+                uniprot_linked_transcript_ids
+                    .difference(&covered_uniprot_linked_transcript_ids)
+                    .cloned()
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let uncovered_uniprot_digest_ids = uniprot_available
+            .then(|| {
+                linked_digest_groups
+                    .keys()
+                    .filter(|digest| !covered_uniprot_digest_ids.contains(*digest))
+                    .cloned()
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
         let covered_uniprot_target_count = panel
             .coverage_resolution
             .targets
@@ -32376,8 +32476,8 @@ impl GentleEngine {
         if uniprot_available {
             summary_lines.push(format!(
                 "{}/{} distinct UniProt-linked mature transcript sequence(s) are covered, corresponding by sequence to {}/{} UniProt-linked transcript record(s).",
-                covered_uniprot_group_count,
-                uniprot_group_ids.len(),
+                covered_uniprot_digest_ids.len(),
+                linked_digest_groups.len(),
                 covered_uniprot_linked_transcript_count,
                 uniprot_linked_transcript_ids.len()
             ));
@@ -32435,9 +32535,9 @@ impl GentleEngine {
             covered_uniprot_linked_transcript_record_count: covered_uniprot_linked_transcript_count,
             uncovered_uniprot_linked_transcript_ids,
             genomic_specificity_unassessed_uniprot_linked_transcript_ids,
-            distinct_uniprot_linked_mature_cdna_count: uniprot_group_ids.len(),
-            covered_distinct_uniprot_linked_mature_cdna_count: covered_uniprot_group_count,
-            uncovered_distinct_uniprot_linked_mature_cdna_ids: uncovered_uniprot_group_ids,
+            distinct_uniprot_linked_mature_cdna_count: linked_digest_groups.len(),
+            covered_distinct_uniprot_linked_mature_cdna_count: covered_uniprot_digest_ids.len(),
+            uncovered_distinct_uniprot_linked_mature_cdna_ids: uncovered_uniprot_digest_ids,
             uncovered_uniprot_target_ids: panel.coverage_resolution.uncovered_target_ids.clone(),
             unresolved_uniprot_target_ids: panel.coverage_resolution.unresolved_target_ids.clone(),
             ambiguous_uniprot_target_ids: panel.coverage_resolution.ambiguous_target_ids.clone(),

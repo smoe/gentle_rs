@@ -9713,6 +9713,13 @@ Primer-pair alternative frontier:
     records stop before Primer3 rather than silently shrinking the denominator.
     Audit-only legacy requests remain executable, but their linked-transcript
     coverage summary is unavailable rather than authoritative.
+  - Successful inventory resolution now persists one
+    `linked_transcript_resolutions[]` row per linked record. Each row keeps the
+    exact versioned source transcript id and mature-cDNA SHA-256, records the
+    digest-matched local transcript ids, and joins that digest to exactly one
+    assessed panel equivalence group. Local-locus identity compares normalized
+    Ensembl stable ids while retaining exact versions in provenance; digest-
+    identical records with another stable id remain genomically unassessed.
   - Normalization records each audit SHA-256 plus the exact protein-target
     inventory in `required_uniprot_isoforms`; execution requires those hashes
     and rejects changed content. An old audit without the inventory must be
@@ -10193,6 +10200,12 @@ Primer-pair alternative frontier:
     uncovered. Optional group-level totals on `coverage_resolution` preserve
     the complete pre-narrowing exact-cDNA denominator; absence in a legacy
     report means unavailable, not zero.
+    Linked-record numerators are evaluated independently from protein-target
+    coverage: a record is covered only when its own digest-linked equivalence
+    group is covered, and a distinct linked cDNA is covered only when the group
+    assigned to that digest is covered. Legacy panel payloads without the
+    record-level join report linked coverage as unavailable instead of
+    promoting every record through a covered protein target.
   - additive `qa_aggregate_summary` derives typed totals once from the
     handoff's assay cards and readiness rows. It reports assessed/pass/fail/
     incomplete/not-evaluated counts separately for transcriptome specificity,

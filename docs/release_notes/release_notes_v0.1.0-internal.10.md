@@ -173,6 +173,11 @@ expensive GUI work that runs safely away from the egui thread.
 - Added explicit transcript-coverage universes, including content-bound UniProt
   isoform inventories. Coverage and isoform distinction remain separate, and
   unresolved mandatory targets stop strict searches before Primer3.
+- UniProt-linked transcript coverage now evaluates each inventory record through
+  its own mature-cDNA digest and panel equivalence group. Protein-target,
+  linked-record, and distinct-linked-cDNA numerators therefore remain separate;
+  versioned Ensembl ids match versionless local annotation by stable id without
+  discarding exact provenance.
 - Added content-bound whole-cDNA resources and similarity maps that guide
   Primer3 toward lower-risk intervals. Variant, repeat, and cDNA-similarity
   evidence can be reviewed as hard or soft design constraints without replacing

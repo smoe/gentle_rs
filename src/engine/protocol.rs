@@ -11202,6 +11202,27 @@ pub struct TranscriptAssayCoverageTarget {
     pub notes: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(default)]
+/// One authoritative linked-transcript inventory record projected onto the
+/// exact mature-cDNA equivalence groups assessed by a panel.
+pub struct TranscriptAssayLinkedTranscriptResolution {
+    pub inventory_id: String,
+    pub target_id: String,
+    pub entry_id: String,
+    pub isoform_id: String,
+    /// Exact versioned identifier from the inventory source.
+    pub transcript_id: String,
+    pub mature_cdna_sha256: String,
+    /// Local annotation records with the same exact mature-cDNA digest.
+    #[serde(default)]
+    pub matched_local_transcript_ids: Vec<String>,
+    /// Exact mature-cDNA group in the assessed panel. Absence means the
+    /// inventory record cannot support a linked-sequence coverage claim.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub equivalence_group_id: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
 /// Auditable resolution of the requested coverage universe.
@@ -11213,6 +11234,11 @@ pub struct TranscriptAssayCoverageResolution {
     pub linked_transcript_inventory_authoritative: bool,
     #[serde(default)]
     pub linked_transcript_inventory_ids: Vec<String>,
+    /// Record-level digest-to-panel joins for authoritative linked-transcript
+    /// inventories. Legacy payloads omit this and therefore cannot establish
+    /// linked-record or distinct-linked-cDNA coverage.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub linked_transcript_resolutions: Vec<TranscriptAssayLinkedTranscriptResolution>,
     pub annotated_transcript_count: usize,
     /// Distinct exact mature-cDNA groups in the complete annotation universe.
     /// `None` distinguishes legacy payloads from a genuine empty annotation.
@@ -12780,6 +12806,8 @@ pub struct ExperimentalAssayCoverageSummary {
     pub uncovered_annotated_transcript_ids: Vec<String>,
     #[serde(default)]
     pub uncovered_distinct_mature_cdna_ids: Vec<String>,
+    /// True only when an authoritative inventory has a complete, conflict-free
+    /// record-level mature-cDNA-to-panel-equivalence-group join.
     pub uniprot_coverage_available: bool,
     pub linked_transcript_inventory_authoritative: bool,
     #[serde(default)]
@@ -12797,6 +12825,7 @@ pub struct ExperimentalAssayCoverageSummary {
     pub genomic_specificity_unassessed_uniprot_linked_transcript_ids: Vec<String>,
     pub distinct_uniprot_linked_mature_cdna_count: usize,
     pub covered_distinct_uniprot_linked_mature_cdna_count: usize,
+    /// SHA-256 mature-cDNA identities not covered by the selected panel.
     #[serde(default)]
     pub uncovered_distinct_uniprot_linked_mature_cdna_ids: Vec<String>,
     #[serde(default)]

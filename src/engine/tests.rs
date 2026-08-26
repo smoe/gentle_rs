@@ -14248,10 +14248,10 @@ fn transcript_assay_coverage_joins_off_locus_inventory_by_exact_cdna_digest() {
         annotation_release: "synthetic_release_1".to_string(),
         source_resource_id: "synthetic_transcript_resource".to_string(),
         records: vec![
-            ("PTEST1-1", "TX1", &tx1),
-            ("PTEST1-1", "TX_PATCH.1", &tx1),
-            ("PTEST1-2", "TX2", &tx2),
-            ("PTEST1-2", "TX3", &tx2),
+            ("PTEST1-1", "ENST00000443914.8", &tx1),
+            ("PTEST1-1", "ENST00000999999.1", &tx1),
+            ("PTEST1-2", "ENST00000699071.2", &tx2),
+            ("PTEST1-2", "ENST00000907730.1", &tx2),
         ]
         .into_iter()
         .map(|(isoform_id, transcript_id, (digest, length))| {
@@ -14313,7 +14313,29 @@ fn transcript_assay_coverage_joins_off_locus_inventory_by_exact_cdna_digest() {
         ..TranscriptAssayCoverageUniverse::default()
     };
 
-    let report = transcript_qpcr_panel_test_engine()
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let local_transcript_ids = BTreeMap::from([
+        ("TX1", "ENST00000443914"),
+        ("TX2", "ENST00000699071"),
+        ("TX3", "ENST00000907730"),
+    ]);
+    for feature in engine
+        .state_mut()
+        .sequences
+        .get_mut("panel_src")
+        .expect("panel source")
+        .features_mut()
+    {
+        for (key, value) in &mut feature.qualifiers {
+            if key == "transcript_id"
+                && let Some(transcript_id) = value.as_mut()
+                && let Some(versionless) = local_transcript_ids.get(transcript_id.as_str())
+            {
+                *transcript_id = (*versionless).to_string();
+            }
+        }
+    }
+    let report = engine
         .apply(operation.clone())
         .expect("design inventory-backed panel")
         .transcript_assay_panel
@@ -14327,6 +14349,31 @@ fn transcript_assay_coverage_joins_off_locus_inventory_by_exact_cdna_digest() {
         report.coverage_resolution.linked_transcript_inventory_ids,
         vec!["synthetic_linked_inventory".to_string()]
     );
+    assert_eq!(
+        report
+            .coverage_resolution
+            .linked_transcript_resolutions
+            .len(),
+        4
+    );
+    let primary_record = report
+        .coverage_resolution
+        .linked_transcript_resolutions
+        .iter()
+        .find(|record| record.transcript_id == "ENST00000443914.8")
+        .expect("versioned primary inventory record");
+    assert_eq!(
+        primary_record.matched_local_transcript_ids,
+        vec!["ENST00000443914".to_string()]
+    );
+    assert!(primary_record.equivalence_group_id.is_some());
+    assert!(
+        report
+            .coverage_resolution
+            .linked_transcript_resolutions
+            .iter()
+            .all(|record| record.equivalence_group_id.is_some())
+    );
     let first_target = report
         .coverage_resolution
         .targets
@@ -14335,15 +14382,21 @@ fn transcript_assay_coverage_joins_off_locus_inventory_by_exact_cdna_digest() {
         .expect("first protein target");
     assert_eq!(
         first_target.mapped_transcript_ids,
-        vec!["TX1".to_string(), "TX_PATCH.1".to_string()]
+        vec![
+            "ENST00000443914.8".to_string(),
+            "ENST00000999999.1".to_string()
+        ]
     );
     assert_eq!(
         first_target.cdna_digest_matched_transcript_ids,
-        vec!["TX1".to_string(), "TX_PATCH.1".to_string()]
+        vec![
+            "ENST00000443914.8".to_string(),
+            "ENST00000999999.1".to_string()
+        ]
     );
     assert_eq!(
         first_target.genomic_specificity_unassessed_transcript_ids,
-        vec!["TX_PATCH.1".to_string()]
+        vec!["ENST00000999999.1".to_string()]
     );
     assert!(first_target.unassessed_transcript_ids.is_empty());
     let coverage_summary = GentleEngine::experimental_assay_coverage_summary(&report);
@@ -14378,10 +14431,10 @@ fn transcript_assay_coverage_joins_off_locus_inventory_by_exact_cdna_digest() {
     );
     assert_eq!(
         coverage_summary.genomic_specificity_unassessed_uniprot_linked_transcript_ids,
-        vec!["TX_PATCH.1".to_string()]
+        vec!["ENST00000999999.1".to_string()]
     );
     assert!(coverage_summary.summary_lines.iter().any(|line| {
-        line.contains("TX_PATCH.1") && line.contains("genomic loci remain unassessed")
+        line.contains("ENST00000999999.1") && line.contains("genomic loci remain unassessed")
     }));
 
     let mut mismatched_release = operation.clone();
@@ -61884,9 +61937,20 @@ fn experimental_handoff_order_form_requires_approved_digest_and_order_ready_rows
 }
 
 #[test]
-fn experimental_handoff_coverage_summary_separates_uniprot_records_from_cdna_sequences() {
-    let transcript_ids = ["ENST_A", "ENST_PATCH", "ENST_B", "ENST_C"];
+fn experimental_handoff_coverage_summary_uses_each_inventory_record_cdna_group() {
+    let local_transcript_ids = ["ENST00000443914", "ENST00000699071", "ENST00000907730"];
+    let inventory_transcript_ids = [
+        "ENST00000443914.8",
+        "ENST00000999999.1",
+        "ENST00000699071.2",
+        "ENST00000907730.1",
+    ];
     let group_ids = ["cdna_1", "cdna_2", "cdna_3"];
+    let cdna_digests = [
+        "sha256:irf9_cdna_1",
+        "sha256:irf9_cdna_2",
+        "sha256:irf9_cdna_3",
+    ];
     let panel = TranscriptAssayPanelReport {
         coverage_universe: TranscriptAssayCoverageUniverse {
             kind: TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms,
@@ -61898,22 +61962,64 @@ fn experimental_handoff_coverage_summary_separates_uniprot_records_from_cdna_seq
             ..Default::default()
         },
         coverage_resolution: TranscriptAssayCoverageResolution {
-            annotated_transcript_count: 6,
-            annotated_equivalence_group_count: Some(4),
+            annotated_transcript_count: 3,
+            annotated_equivalence_group_count: Some(3),
             linked_transcript_inventory_authoritative: true,
             linked_transcript_inventory_ids: vec!["uniprot_inventory_1".to_string()],
-            included_transcript_ids: transcript_ids.map(str::to_string).to_vec(),
-            excluded_annotated_transcript_ids: vec![
-                "ENST_OTHER_1".to_string(),
-                "ENST_OTHER_2".to_string(),
+            linked_transcript_resolutions: vec![
+                TranscriptAssayLinkedTranscriptResolution {
+                    inventory_id: "uniprot_inventory_1".to_string(),
+                    target_id: "uniprot_target_1".to_string(),
+                    entry_id: "Q00978".to_string(),
+                    isoform_id: "Q00978-1".to_string(),
+                    transcript_id: inventory_transcript_ids[0].to_string(),
+                    mature_cdna_sha256: cdna_digests[0].to_string(),
+                    matched_local_transcript_ids: vec![local_transcript_ids[0].to_string()],
+                    equivalence_group_id: Some(group_ids[0].to_string()),
+                },
+                TranscriptAssayLinkedTranscriptResolution {
+                    inventory_id: "uniprot_inventory_1".to_string(),
+                    target_id: "uniprot_target_1".to_string(),
+                    entry_id: "Q00978".to_string(),
+                    isoform_id: "Q00978-1".to_string(),
+                    transcript_id: inventory_transcript_ids[1].to_string(),
+                    mature_cdna_sha256: cdna_digests[0].to_string(),
+                    matched_local_transcript_ids: vec![local_transcript_ids[0].to_string()],
+                    equivalence_group_id: Some(group_ids[0].to_string()),
+                },
+                TranscriptAssayLinkedTranscriptResolution {
+                    inventory_id: "uniprot_inventory_1".to_string(),
+                    target_id: "uniprot_target_1".to_string(),
+                    entry_id: "Q00978".to_string(),
+                    isoform_id: "Q00978-1".to_string(),
+                    transcript_id: inventory_transcript_ids[2].to_string(),
+                    mature_cdna_sha256: cdna_digests[1].to_string(),
+                    matched_local_transcript_ids: vec![local_transcript_ids[1].to_string()],
+                    equivalence_group_id: Some(group_ids[1].to_string()),
+                },
+                TranscriptAssayLinkedTranscriptResolution {
+                    inventory_id: "uniprot_inventory_1".to_string(),
+                    target_id: "uniprot_target_1".to_string(),
+                    entry_id: "Q00978".to_string(),
+                    isoform_id: "Q00978-1".to_string(),
+                    transcript_id: inventory_transcript_ids[3].to_string(),
+                    mature_cdna_sha256: cdna_digests[2].to_string(),
+                    matched_local_transcript_ids: vec![local_transcript_ids[2].to_string()],
+                    equivalence_group_id: Some(group_ids[2].to_string()),
+                },
             ],
+            included_transcript_ids: local_transcript_ids.map(str::to_string).to_vec(),
             included_equivalence_group_ids: group_ids.map(str::to_string).to_vec(),
-            excluded_annotated_equivalence_group_ids: vec!["cdna_other".to_string()],
             targets: vec![TranscriptAssayCoverageTarget {
                 target_id: "uniprot_target_1".to_string(),
-                uniprot_entry_ids: vec!["Q00000".to_string()],
-                mapped_transcript_ids: transcript_ids.map(str::to_string).to_vec(),
-                cdna_digest_matched_transcript_ids: transcript_ids.map(str::to_string).to_vec(),
+                uniprot_entry_ids: vec!["Q00978".to_string()],
+                mapped_transcript_ids: inventory_transcript_ids.map(str::to_string).to_vec(),
+                cdna_digest_matched_transcript_ids: inventory_transcript_ids
+                    .map(str::to_string)
+                    .to_vec(),
+                genomic_specificity_unassessed_transcript_ids: vec![
+                    inventory_transcript_ids[1].to_string(),
+                ],
                 equivalence_group_ids: group_ids.map(str::to_string).to_vec(),
                 coverage_status: TranscriptAssayCoverageEvaluationStatus::Covered,
                 ..Default::default()
@@ -61928,16 +62034,18 @@ fn experimental_handoff_coverage_summary_separates_uniprot_records_from_cdna_seq
             })
             .collect(),
         selected_assays: vec![TranscriptAssayPanelAssay {
-            single_product_equivalence_group_ids: group_ids.map(str::to_string).to_vec(),
+            single_product_equivalence_group_ids: vec![group_ids[0].to_string()],
             ..Default::default()
         }],
-        transcript_rows: transcript_ids
+        transcript_rows: local_transcript_ids
             .iter()
             .enumerate()
             .map(|(index, id)| TranscriptAssayPanelTranscriptRow {
                 transcript_id: (*id).to_string(),
-                equivalence_group_id: group_ids[index.min(2)].to_string(),
-                covering_assay_ids: vec!["assay_1".to_string()],
+                equivalence_group_id: group_ids[index].to_string(),
+                covering_assay_ids: (index == 0)
+                    .then(|| vec!["assay_1".to_string()])
+                    .unwrap_or_default(),
                 ..Default::default()
             })
             .collect(),
@@ -61953,32 +62061,77 @@ fn experimental_handoff_coverage_summary_separates_uniprot_records_from_cdna_seq
     assert!(summary.uniprot_coverage_available);
     assert_eq!(summary.uniprot_entry_count, 1);
     assert_eq!(summary.uniprot_protein_target_count, 1);
+    assert_eq!(summary.covered_uniprot_protein_target_count, 1);
     assert_eq!(summary.uniprot_linked_transcript_record_count, 4);
     assert_eq!(summary.distinct_uniprot_linked_mature_cdna_count, 3);
-    assert_eq!(summary.covered_uniprot_linked_transcript_record_count, 4);
-    assert_eq!(summary.covered_distinct_uniprot_linked_mature_cdna_count, 3);
-    assert_eq!(summary.annotated_transcript_record_count, 6);
+    assert_eq!(summary.covered_uniprot_linked_transcript_record_count, 2);
+    assert_eq!(summary.covered_distinct_uniprot_linked_mature_cdna_count, 1);
+    assert_eq!(summary.annotated_transcript_record_count, 3);
     assert!(summary.broader_annotation_denominator_available);
-    assert_eq!(summary.assessed_annotated_transcript_record_count, Some(4));
-    assert_eq!(summary.distinct_annotated_mature_cdna_count, 4);
+    assert_eq!(summary.assessed_annotated_transcript_record_count, Some(3));
+    assert_eq!(summary.distinct_annotated_mature_cdna_count, 3);
     assert_eq!(
         summary.assessed_distinct_annotated_mature_cdna_count,
         Some(3)
     );
     assert_eq!(
-        summary.unassessed_annotated_transcript_ids,
-        vec!["ENST_OTHER_1", "ENST_OTHER_2"]
+        summary.uncovered_uniprot_linked_transcript_ids,
+        vec!["ENST00000699071.2", "ENST00000907730.1"]
     );
     assert_eq!(
-        summary.unassessed_distinct_annotated_mature_cdna_ids,
-        vec!["cdna_other"]
+        summary.uncovered_distinct_uniprot_linked_mature_cdna_ids,
+        vec!["sha256:irf9_cdna_2", "sha256:irf9_cdna_3"]
     );
     assert!(summary.summary_lines.iter().any(|line| {
-        line.contains("3/3 distinct UniProt-linked mature transcript sequence(s)")
-            && line.contains("4/4 UniProt-linked transcript record(s)")
+        line.contains("1/3 distinct UniProt-linked mature transcript sequence(s)")
+            && line.contains("2/4 UniProt-linked transcript record(s)")
     }));
+    assert_eq!(
+        summary.genomic_specificity_unassessed_uniprot_linked_transcript_ids,
+        vec!["ENST00000999999.1"]
+    );
     assert_eq!(summary.coverage_source_report_ids, vec!["uniprot_audit_1"]);
     assert_eq!(summary.coverage_source_sha256s, vec!["sha256:coverage"]);
+}
+
+#[test]
+fn experimental_handoff_legacy_inventory_join_does_not_claim_linked_coverage() {
+    let panel = TranscriptAssayPanelReport {
+        coverage_universe: TranscriptAssayCoverageUniverse {
+            kind: TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms,
+            ..Default::default()
+        },
+        coverage_resolution: TranscriptAssayCoverageResolution {
+            linked_transcript_inventory_authoritative: true,
+            targets: vec![TranscriptAssayCoverageTarget {
+                target_id: "legacy_target".to_string(),
+                mapped_transcript_ids: vec!["ENST00000443914.8".to_string()],
+                cdna_digest_matched_transcript_ids: vec!["ENST00000443914.8".to_string()],
+                equivalence_group_ids: vec!["cdna_1".to_string()],
+                coverage_status: TranscriptAssayCoverageEvaluationStatus::Covered,
+                ..Default::default()
+            }],
+            ..Default::default()
+        },
+        selected_assays: vec![TranscriptAssayPanelAssay {
+            single_product_equivalence_group_ids: vec!["cdna_1".to_string()],
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+
+    let summary = GentleEngine::experimental_assay_coverage_summary(&panel);
+
+    assert!(!summary.uniprot_coverage_available);
+    assert_eq!(summary.uniprot_linked_transcript_record_count, 1);
+    assert_eq!(summary.covered_uniprot_linked_transcript_record_count, 0);
+    assert!(summary.uncovered_uniprot_linked_transcript_ids.is_empty());
+    assert!(
+        summary
+            .summary_lines
+            .iter()
+            .any(|line| { line.contains("UniProt-linked target coverage is not available") })
+    );
 }
 
 #[test]
