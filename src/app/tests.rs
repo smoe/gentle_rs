@@ -1335,7 +1335,7 @@ fn agent_assistant_open_sequence_window_intent_reopens_loaded_sequence_state() {
     );
     assert!(
         app.agent_status
-            .contains("ui intent open 'sequence-window'"),
+            .contains("Opening DNA Sequence Viewer for 'fus_live'"),
         "unexpected status: {}",
         app.agent_status
     );
@@ -1345,6 +1345,21 @@ fn agent_assistant_open_sequence_window_intent_reopens_loaded_sequence_state() {
         .expect("open intent should be logged");
     assert!(entry.ok);
     assert!(!entry.state_changed);
+
+    app.execute_agent_suggested_command(2, "ui open sequence-window fus_live", "manual");
+    assert!(
+        app.agent_status.contains("is still opening"),
+        "unexpected repeated-open status: {}",
+        app.agent_status
+    );
+    assert_eq!(
+        app.new_windows
+            .iter()
+            .filter(|window| window.sequence_id().as_deref() == Some("fus_live"))
+            .count(),
+        1,
+        "repeated open must not queue a duplicate DNA viewer"
+    );
 }
 
 #[test]
@@ -1863,6 +1878,62 @@ fn agent_suggestion_fact_readiness_uses_loaded_project_state() {
         blocked.contains("blocked"),
         "unexpected readiness: {blocked}"
     );
+}
+
+#[test]
+fn agent_suggestion_preconditions_block_execution_until_project_fact_is_ready() {
+    let mut app = GENtleApp::default();
+    let suggestion = AgentSuggestedCommand {
+        title: Some("Open TP63 sequence window".to_string()),
+        preconditions: vec!["The TP63 sequence exists.".to_string()],
+        precondition_expr: Some(serde_json::json!({
+            "fact": "sequence.exists",
+            "id": "tp63_grch38"
+        })),
+        expected_outcomes: vec![],
+        expected_effects: vec![],
+        rationale: None,
+        command: "ui open sequence-window tp63_grch38".to_string(),
+        execution: AgentExecutionIntent::Auto,
+    };
+
+    let blocker = app
+        .agent_suggestion_live_blocker(&suggestion)
+        .expect("missing sequence should block suggestion");
+    assert!(blocker.contains("Waiting for preconditions"));
+    app.execute_agent_suggestion(2, &suggestion, "auto");
+    assert!(app.new_windows.is_empty());
+    assert!(!app.agent_execution_log.last().expect("blocked log").ok);
+
+    app.engine
+        .write()
+        .expect("engine")
+        .state_mut()
+        .sequences
+        .insert(
+            "tp63_grch38".to_string(),
+            DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+        );
+
+    assert_eq!(app.agent_suggestion_live_blocker(&suggestion), None);
+    app.execute_agent_suggestion(2, &suggestion, "auto");
+    assert!(
+        app.new_windows
+            .iter()
+            .any(|window| window.sequence_id().as_deref() == Some("tp63_grch38"))
+    );
+    assert!(app.agent_execution_log.last().expect("executed log").ok);
+}
+
+#[test]
+fn agent_initial_actions_only_show_before_conversation_starts() {
+    let mut app = GENtleApp::default();
+    assert!(app.agent_initial_actions_visible());
+
+    app.agent_conversation
+        .turns
+        .push(AgentConversationTurn::default());
+    assert!(!app.agent_initial_actions_visible());
 }
 
 #[test]

@@ -808,9 +808,11 @@ Feature tree grouping:
 - In hosted windows, the feature tree and its split/scroll widgets use
   per-window ids so temporary relayouts such as toggling the sequence text
   panel do not collide with another hosted view of the same sequence.
-- For large/feature-dense sequences, initial feature-tree/detail rendering can
-  be deferred to improve window-open responsiveness and is then auto-loaded on
-  the next frame (no manual button click required).
+- Lazy-opened sequence windows defer initial feature-tree/detail rendering to
+  improve window-open responsiveness. Documents with at most 300 features load
+  that browser automatically on the next frame; annotation-rich documents stay
+  on the lightweight placeholder until `Load feature tree/details` is clicked,
+  while the DNA map remains usable.
 - Once the feature tree is visible, its derived grouping/filter/visibility
   model is cached across frames and only rebuilt when the sequence, feature
   visibility settings, viewport span, or filter/grouping inputs change,
@@ -2869,6 +2871,9 @@ Window screenshot help:
 
 Behavior:
 
+- before the first conversation, a small `Start here` card offers two direct
+  GUI actions: open one or more existing sequence documents, or open GENtle's
+  general Configuration window; neither action is sent to an agent
 - provider setup is separated from conversation:
   - `Configuration -> Agent Systems` contains catalog, provider, key, endpoint,
     model, timeout/retry, model-discovery, and `Test Setup` controls
@@ -3006,6 +3011,14 @@ Behavior:
     strand-aware anchor-extension chain over external retrieval
   - catalog-only rows are not presented as installed references
 - optional `Allow auto execute` only applies to suggestions marked with `auto`
+- suggestion cards with `precondition_expr` are evaluated against the live
+  engine fact graph on every frame; an unmet or unknown precondition dims the
+  complete card and disables `Run` until it becomes satisfied
+  - the same fact gate is checked again immediately before manual or automatic
+    execution, so stale UI state and `execution=auto` cannot bypass it
+  - a downstream card can therefore remain visible while an earlier command
+    creates its required sequence/report, then become runnable without asking
+    the agent for a replacement response
 - successful conversation turns are shown in chronological order and stored as
   `gentle.agent_conversation.v1` metadata with the current project
   - the next request receives the 12 most recent turns, so ephemeral transports
@@ -3018,6 +3031,10 @@ Behavior:
     before closing it without saving
   - `Clear Conversation` removes the stored turns and latest response
 - `Ask Agent` runs in background and reports status in `Background Jobs`
+- when an accepted UI intent is opening a DNA Sequence Viewer, Agent Assistant
+  shows that opening state until deferred sequence loading and the first
+  content paint complete; the sequence loading placeholder polls at a bounded
+  rate instead of forcing an unbounded repaint loop
 - `Ctrl+Return` while the prompt editor is focused is equivalent to clicking
   `Ask Agent`; plain `Return` still inserts a new line
 - GENtle-local slash aliases are deliberately small and parser-validated:
