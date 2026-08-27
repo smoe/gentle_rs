@@ -784,10 +784,58 @@ impl WindowDna {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::Engine;
 
     #[test]
     fn deferred_sequence_loading_uses_bounded_repaint_polling() {
         assert!(DEFERRED_LOAD_REPAINT_INTERVAL >= Duration::from_millis(50));
         assert!(DEFERRED_LOAD_REPAINT_INTERVAL <= Duration::from_millis(250));
+    }
+
+    #[test]
+    fn deferred_sequence_loading_preserves_populated_restriction_site_catalog() {
+        let mut engine = GentleEngine::default();
+        let result = engine
+            .apply(crate::engine::Operation::CreateSequenceFromText {
+                sequence_text: "GAATTC".to_string(),
+                output_id: Some("lazy_restriction_sites".to_string()),
+                name: None,
+                circular: false,
+            })
+            .expect("create prepared engine sequence");
+        let seq_id = result
+            .created_seq_ids
+            .first()
+            .expect("created sequence id")
+            .clone();
+        assert!(
+            !engine
+                .state()
+                .sequences
+                .get(&seq_id)
+                .expect("created engine sequence")
+                .restriction_enzyme_sites()
+                .is_empty(),
+            "the shared create operation must prepare the restriction-site catalog"
+        );
+        let engine = Arc::new(RwLock::new(engine));
+        let mut window = WindowDna::new_lazy(seq_id, engine);
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while window.pending_dna_load.is_some() && std::time::Instant::now() < deadline {
+            window.poll_deferred_load();
+            thread::sleep(Duration::from_millis(1));
+        }
+
+        assert!(
+            window.pending_dna_load.is_none(),
+            "deferred sequence load did not complete before the test deadline"
+        );
+        assert!(window.deferred_load_message.is_none());
+        let loaded = window.main_area.dna().read().expect("loaded DNA");
+        assert_eq!(loaded.get_forward_string(), "GAATTC");
+        assert!(
+            !loaded.restriction_enzyme_sites().is_empty(),
+            "replace_loaded_sequence must leave the lazy window with the engine sequence's populated restriction-site catalog"
+        );
     }
 }

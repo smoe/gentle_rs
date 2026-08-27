@@ -14207,6 +14207,239 @@ fn transcript_assay_coverage_uniprot_is_content_bound_and_auditable() {
     );
 }
 
+fn transcript_assay_inventory_rejection_fixture(
+    directory: &Path,
+) -> (Operation, UniprotLinkedTranscriptInventory, PathBuf) {
+    let audit_path = directory.join("projection_audit.json");
+    let audit_bytes = serde_json::to_vec_pretty(&serde_json::json!({
+        "schema": UNIPROT_PROJECTION_AUDIT_REPORT_SCHEMA,
+        "report_id": "inventory_rejection_projection_audit",
+        "projection_id": "inventory_rejection_projection",
+        "entry_id": "PTEST1",
+        "seq_id": "panel_src",
+        "protein_isoform_inventory": {
+            "entry_id": "PTEST1",
+            "declared_named_isoform_count": 1,
+            "status": "complete",
+            "targets": [{
+                "entry_id": "PTEST1",
+                "isoform_id": "PTEST1-1",
+                "name": "Isoform 1",
+                "is_canonical": true
+            }]
+        },
+        "rows": [{
+            "transcript_id": "TX1",
+            "status": "consistent",
+            "link_resolution": {
+                "matched_xrefs": [{
+                    "transcript_id": "TX1",
+                    "isoform_id": "PTEST1-1"
+                }]
+            }
+        }]
+    }))
+    .expect("serialize rejection-fixture projection audit");
+    fs::write(&audit_path, &audit_bytes).expect("write rejection-fixture projection audit");
+
+    let common_tail = "GCTAGTCGATCGTACCGTACGATCGTACGA";
+    let first_tx1 = format!("ATGCCGTAGCTTACGATCCGTTAGCGTACCTGATCGGATCCGATTAAC{common_tail}");
+    let shared = "GATCGTACCGATGCTAGCTAGGATCCGATCGTACGATCCGTTACGATGCTAGCTAGGCTA\
+         CGATCGGATCCGTACGATCGATGCTAGCTACCGATGCTAGCTAGGATCGTACCGATGCTAGCTA"
+        .replace(' ', "");
+    let tx1_sequence = format!("{first_tx1}{shared}");
+    let mut inventory = UniprotLinkedTranscriptInventory {
+        schema: UNIPROT_LINKED_TRANSCRIPT_INVENTORY_SCHEMA.to_string(),
+        inventory_id: "inventory_rejection_fixture".to_string(),
+        assembly: "synthetic_assembly".to_string(),
+        annotation_release: "synthetic_release_1".to_string(),
+        source_resource_id: "synthetic_transcript_resource".to_string(),
+        records: vec![UniprotLinkedTranscriptInventoryRecord {
+            entry_id: "PTEST1".to_string(),
+            isoform_id: "PTEST1-1".to_string(),
+            transcript_id: "TX1".to_string(),
+            locus_reference_accession: Some("LOCUS_TX1".to_string()),
+            status: UniprotLinkedTranscriptInventoryStatus::Resolved,
+            mature_cdna_sha256: Some(sha256_prefixed_str(&tx1_sequence)),
+            mature_cdna_length_bp: Some(tx1_sequence.len()),
+            diagnostics: vec![],
+        }],
+        ..UniprotLinkedTranscriptInventory::default()
+    };
+    refresh_transcript_assay_inventory_content_digest(&mut inventory);
+    let inventory_path = directory.join("linked_inventory.json");
+    let inventory_file_sha256 =
+        write_transcript_assay_inventory_fixture(&inventory_path, &inventory);
+
+    let mut operation = transcript_assay_panel_operation(
+        TranscriptAssayCoveragePolicy::BestEffort,
+        transcript_assay_panel_relaxed_side(),
+        0,
+        "inventory_rejection",
+    );
+    let Operation::DesignTranscriptAssayPanel {
+        objective,
+        coverage_universe,
+        annotation_release,
+        ..
+    } = &mut operation
+    else {
+        unreachable!();
+    };
+    *objective = TranscriptAssayPanelObjective::OnePerClass;
+    *annotation_release = Some("synthetic_release_1".to_string());
+    *coverage_universe = TranscriptAssayCoverageUniverse {
+        kind: TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms,
+        sources: vec![
+            TranscriptAssayCoverageSourceRef {
+                source_kind: "uniprot_projection_audit".to_string(),
+                path: audit_path.to_string_lossy().to_string(),
+                expected_sha256: Some(sha256_prefixed_bytes(&audit_bytes)),
+                ..TranscriptAssayCoverageSourceRef::default()
+            },
+            TranscriptAssayCoverageSourceRef {
+                source_kind: "uniprot_linked_transcript_inventory".to_string(),
+                path: inventory_path.to_string_lossy().to_string(),
+                expected_sha256: Some(inventory_file_sha256),
+                ..TranscriptAssayCoverageSourceRef::default()
+            },
+        ],
+        ..TranscriptAssayCoverageUniverse::default()
+    };
+    (operation, inventory, inventory_path)
+}
+
+fn refresh_transcript_assay_inventory_content_digest(
+    inventory: &mut UniprotLinkedTranscriptInventory,
+) {
+    inventory.content_sha256.clear();
+    inventory.content_sha256 = sha256_prefixed_bytes(
+        &serde_json::to_vec(inventory).expect("serialize canonical inventory fixture"),
+    );
+}
+
+fn write_transcript_assay_inventory_fixture(
+    path: &Path,
+    inventory: &UniprotLinkedTranscriptInventory,
+) -> String {
+    let bytes = serde_json::to_vec_pretty(inventory).expect("serialize inventory fixture");
+    fs::write(path, &bytes).expect("write inventory fixture");
+    sha256_prefixed_bytes(&bytes)
+}
+
+fn transcript_assay_inventory_source_mut(
+    operation: &mut Operation,
+) -> &mut TranscriptAssayCoverageSourceRef {
+    let Operation::DesignTranscriptAssayPanel {
+        coverage_universe, ..
+    } = operation
+    else {
+        unreachable!();
+    };
+    coverage_universe
+        .sources
+        .iter_mut()
+        .find(|source| source.source_kind == "uniprot_linked_transcript_inventory")
+        .expect("linked-transcript inventory source")
+}
+
+#[test]
+fn transcript_assay_inventory_rejects_assembly_mismatch_independently() {
+    let temp = tempdir().expect("temporary inventory rejection directory");
+    let (mut operation, mut inventory, inventory_path) =
+        transcript_assay_inventory_rejection_fixture(temp.path());
+    inventory.assembly = "different_assembly".to_string();
+    refresh_transcript_assay_inventory_content_digest(&mut inventory);
+    let source_sha256 = write_transcript_assay_inventory_fixture(&inventory_path, &inventory);
+    transcript_assay_inventory_source_mut(&mut operation).expected_sha256 = Some(source_sha256);
+
+    let error = transcript_qpcr_panel_test_engine()
+        .apply(operation)
+        .expect_err("assembly mismatch must fail before Primer3");
+    assert!(error.message.contains("assembly 'different_assembly'"));
+    assert!(error.message.contains("does not match assay assembly"));
+}
+
+#[test]
+fn transcript_assay_inventory_rejects_annotation_release_mismatch_independently() {
+    let temp = tempdir().expect("temporary inventory rejection directory");
+    let (mut operation, mut inventory, inventory_path) =
+        transcript_assay_inventory_rejection_fixture(temp.path());
+    inventory.annotation_release = "different_release".to_string();
+    refresh_transcript_assay_inventory_content_digest(&mut inventory);
+    let source_sha256 = write_transcript_assay_inventory_fixture(&inventory_path, &inventory);
+    transcript_assay_inventory_source_mut(&mut operation).expected_sha256 = Some(source_sha256);
+
+    let error = transcript_qpcr_panel_test_engine()
+        .apply(operation)
+        .expect_err("annotation-release mismatch must fail before Primer3");
+    assert!(
+        error
+            .message
+            .contains("annotation release 'different_release'")
+    );
+    assert!(
+        error
+            .message
+            .contains("does not match assay annotation release")
+    );
+}
+
+#[test]
+fn transcript_assay_inventory_rejects_source_file_digest_mismatch_independently() {
+    let temp = tempdir().expect("temporary inventory rejection directory");
+    let (mut operation, _inventory, _inventory_path) =
+        transcript_assay_inventory_rejection_fixture(temp.path());
+    transcript_assay_inventory_source_mut(&mut operation).expected_sha256 =
+        Some(format!("sha256:{}", "0".repeat(64)));
+
+    let error = transcript_qpcr_panel_test_engine()
+        .apply(operation)
+        .expect_err("source-file digest mismatch must fail before Primer3");
+    assert!(error.message.contains("Transcript assay coverage source"));
+    assert!(error.message.contains("but 'sha256:000000"));
+    assert!(error.message.contains("was required"));
+}
+
+#[test]
+fn transcript_assay_inventory_rejects_declared_content_digest_mismatch_independently() {
+    let temp = tempdir().expect("temporary inventory rejection directory");
+    let (mut operation, mut inventory, inventory_path) =
+        transcript_assay_inventory_rejection_fixture(temp.path());
+    inventory.source_resource_id = "drifted_resource_without_rebinding_content".to_string();
+    let source_sha256 = write_transcript_assay_inventory_fixture(&inventory_path, &inventory);
+    transcript_assay_inventory_source_mut(&mut operation).expected_sha256 = Some(source_sha256);
+
+    let error = transcript_qpcr_panel_test_engine()
+        .apply(operation)
+        .expect_err("canonical content-digest mismatch must fail before Primer3");
+    assert!(error.message.contains("declares content_sha256"));
+    assert!(error.message.contains("canonical content hashes to"));
+}
+
+#[test]
+fn transcript_assay_inventory_same_id_different_cdna_digest_is_not_covered() {
+    let temp = tempdir().expect("temporary inventory rejection directory");
+    let (mut operation, mut inventory, inventory_path) =
+        transcript_assay_inventory_rejection_fixture(temp.path());
+    inventory.records[0].mature_cdna_sha256 =
+        Some(sha256_prefixed_str("different mature cDNA content"));
+    refresh_transcript_assay_inventory_content_digest(&mut inventory);
+    let source_sha256 = write_transcript_assay_inventory_fixture(&inventory_path, &inventory);
+    transcript_assay_inventory_source_mut(&mut operation).expected_sha256 = Some(source_sha256);
+
+    let error = transcript_qpcr_panel_test_engine()
+        .apply(operation)
+        .expect_err("same transcript id with a different cDNA digest must fail closed");
+    assert!(error.message.contains("unresolved before Primer3"));
+    assert!(error.message.contains("Linked transcript 'TX1'"));
+    assert!(
+        error
+            .message
+            .contains("no current assay template has that sequence")
+    );
+}
+
 #[test]
 fn transcript_assay_coverage_joins_off_locus_inventory_by_exact_cdna_digest() {
     let temp = tempdir().expect("temporary UniProt inventory coverage directory");
