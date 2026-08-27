@@ -56130,6 +56130,271 @@ fn derive_promoter_window_records_support_reverse_and_forward_tss_geometry() {
 }
 
 #[test]
+fn promoter_window_tss_clusters_retain_membership_and_first_exon_structure() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(6000)).expect("sequence");
+    for (transcript_id, ranges) in [
+        ("CD44-201", vec![(1000, 1100), (1500, 1600)]),
+        ("CD44-202", vec![(1020, 1100), (1500, 1650)]),
+        ("CD44-203", vec![(1300, 1400), (1700, 1800)]),
+    ] {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::Join(
+                ranges
+                    .into_iter()
+                    .map(|(start, end)| gb_io::seq::Location::simple_range(start, end))
+                    .collect(),
+            ),
+            qualifiers: vec![
+                ("gene".into(), Some("CD44".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(transcript_id.to_string())),
+            ],
+        });
+    }
+    let engine = GentleEngine::from_state(ProjectState {
+        sequences: HashMap::from([("cd44".to_string(), dna.clone())]),
+        ..ProjectState::default()
+    });
+
+    let clustered = engine.derive_promoter_window_records(
+        &dna,
+        Some("CD44"),
+        None,
+        1000,
+        200,
+        PromoterWindowCollapseMode::TssCluster { tolerance_bp: 25 },
+    );
+    assert_eq!(clustered.len(), 2);
+    assert_eq!(
+        clustered[0].transcript_ids,
+        vec!["CD44-201".to_string(), "CD44-202".to_string()]
+    );
+    assert_eq!(clustered[0].transcript_count, 2);
+    assert_eq!(clustered[0].tss_local_0based, 1000);
+    assert_eq!(clustered[0].tss_cluster_tolerance_bp, Some(25));
+    assert_eq!(
+        clustered[0].grouping_reason.as_deref(),
+        Some("same_gene_and_strand_with_overlapping_first_exon_and_tss_within_tolerance")
+    );
+    assert!(clustered[0].promoter_class_id.is_some());
+    assert_eq!(clustered[1].transcript_ids, vec!["CD44-203".to_string()]);
+
+    let stricter = engine.derive_promoter_window_records(
+        &dna,
+        Some("CD44"),
+        None,
+        1000,
+        200,
+        PromoterWindowCollapseMode::TssCluster { tolerance_bp: 10 },
+    );
+    assert_eq!(stricter.len(), 3);
+}
+
+#[test]
+fn promoter_window_tss_clusters_support_reverse_strand_first_exons() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(7000)).expect("sequence");
+    for (transcript_id, ranges) in [
+        ("REV-201", vec![(4000, 4100), (4500, 4601)]),
+        ("REV-202", vec![(4000, 4110), (4520, 4581)]),
+        ("REV-203", vec![(4000, 4100), (4700, 4801)]),
+    ] {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::Join(
+                ranges
+                    .into_iter()
+                    .map(|(start, end)| gb_io::seq::Location::simple_range(start, end))
+                    .collect(),
+            ))),
+            qualifiers: vec![
+                ("gene".into(), Some("REVGENE".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(transcript_id.to_string())),
+            ],
+        });
+    }
+    let engine = GentleEngine::from_state(ProjectState {
+        sequences: HashMap::from([("reverse_gene".to_string(), dna.clone())]),
+        ..ProjectState::default()
+    });
+
+    let clustered = engine.derive_promoter_window_records(
+        &dna,
+        Some("REVGENE"),
+        None,
+        1000,
+        200,
+        PromoterWindowCollapseMode::TssCluster { tolerance_bp: 20 },
+    );
+    assert_eq!(clustered.len(), 2);
+    assert_eq!(clustered[0].strand, "-");
+    assert_eq!(
+        clustered[0].transcript_ids,
+        vec!["REV-201".to_string(), "REV-202".to_string()]
+    );
+    assert_eq!(clustered[0].tss_local_0based, 4580);
+    assert_eq!(clustered[1].transcript_ids, vec!["REV-203".to_string()]);
+}
+
+fn promoter_reporter_motif_anchor_engine(strand: &str) -> GentleEngine {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(5000)).expect("sequence");
+    let transcript_location = if strand == "-" {
+        gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::simple_range(2400, 3001)))
+    } else {
+        gb_io::seq::Location::simple_range(2000, 2600)
+    };
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: transcript_location,
+        qualifiers: vec![
+            ("gene".into(), Some("TGFB1".to_string())),
+            ("transcript_id".into(), Some("TGFB1-201".to_string())),
+            ("label".into(), Some("TGFB1-201".to_string())),
+        ],
+    });
+    let motif_range = if strand == "-" {
+        (3500, 3510)
+    } else {
+        (1300, 1310)
+    };
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "TFBS".into(),
+        location: gb_io::seq::Location::simple_range(motif_range.0, motif_range.1),
+        qualifiers: vec![
+            ("label".into(), Some("TP73 response element".to_string())),
+            ("bound_moiety".into(), Some("TP73".to_string())),
+            ("matrix_id".into(), Some("MA0861.1".to_string())),
+        ],
+    });
+    GentleEngine::from_state(ProjectState {
+        sequences: HashMap::from([("tgfb1_promoter".to_string(), dna)]),
+        ..ProjectState::default()
+    })
+}
+
+fn promoter_reporter_motif_policy(max_fragment_length_bp: usize) -> PromoterReporterFragmentPolicy {
+    PromoterReporterFragmentPolicy {
+        anchor: Some(PromoterReporterAnchorRequest::MotifHit {
+            label_or_id: "TP73".to_string(),
+            occurrence: 1,
+        }),
+        collapse_mode: PromoterWindowCollapseMode::TssCluster { tolerance_bp: 50 },
+        promoter_upstream_baseline_bp: 500,
+        anchor_flank_bp: 150,
+        max_fragment_length_bp,
+    }
+}
+
+#[test]
+fn suggest_promoter_reporter_fragments_uses_both_strand_motif_anchor_geometry() {
+    let forward = promoter_reporter_motif_anchor_engine("+")
+        .suggest_promoter_reporter_fragments(
+            "tgfb1_promoter",
+            None,
+            Some("TGFB1"),
+            None,
+            200,
+            500,
+            5,
+            &promoter_reporter_motif_policy(5000),
+        )
+        .expect("forward motif-anchored candidate set");
+    assert_eq!(forward.candidates.len(), 1);
+    assert_eq!(forward.candidates[0].start_0based, 1150);
+    assert_eq!(forward.candidates[0].end_0based_exclusive, 2201);
+    assert_eq!(forward.candidates[0].length_bp, 1051);
+    assert_eq!(
+        forward.anchor.as_ref().map(|anchor| anchor.kind.as_str()),
+        Some("motif_hit")
+    );
+    assert!(forward.anchor.as_ref().is_some_and(|anchor| {
+        anchor
+            .interpretation_tags
+            .iter()
+            .any(|tag| tag == "occupancy_not_inferred")
+    }));
+
+    let reverse = promoter_reporter_motif_anchor_engine("-")
+        .suggest_promoter_reporter_fragments(
+            "tgfb1_promoter",
+            None,
+            Some("TGFB1"),
+            None,
+            200,
+            500,
+            5,
+            &promoter_reporter_motif_policy(5000),
+        )
+        .expect("reverse motif-anchored candidate set");
+    assert_eq!(reverse.candidates.len(), 1);
+    assert_eq!(reverse.candidates[0].start_0based, 2800);
+    assert_eq!(reverse.candidates[0].end_0based_exclusive, 3660);
+    assert_eq!(reverse.candidates[0].length_bp, 860);
+}
+
+#[test]
+fn suggest_promoter_reporter_fragments_reports_overlength_rejection() {
+    let report = promoter_reporter_motif_anchor_engine("+")
+        .suggest_promoter_reporter_fragments(
+            "tgfb1_promoter",
+            None,
+            Some("TGFB1"),
+            None,
+            200,
+            500,
+            5,
+            &promoter_reporter_motif_policy(1000),
+        )
+        .expect("typed overlength rejection report");
+
+    assert!(report.candidates.is_empty());
+    assert!(report.recommended_candidate_id.is_empty());
+    assert_eq!(report.rejected_candidates.len(), 1);
+    assert_eq!(
+        report.rejected_candidates[0].reason_kind,
+        "max_fragment_length_exceeded"
+    );
+    assert_eq!(report.rejected_candidates[0].length_bp, 1051);
+    assert_eq!(report.rejected_candidates[0].max_fragment_length_bp, 1000);
+}
+
+#[test]
+fn suggest_promoter_reporter_fragments_accepts_explicit_interval_anchor() {
+    let policy = PromoterReporterFragmentPolicy {
+        anchor: Some(PromoterReporterAnchorRequest::ExplicitInterval {
+            label: "reviewed TP73 interval".to_string(),
+            start_0based: 1800,
+            end_0based_exclusive: 1810,
+        }),
+        collapse_mode: PromoterWindowCollapseMode::Transcript,
+        promoter_upstream_baseline_bp: 500,
+        anchor_flank_bp: 150,
+        max_fragment_length_bp: 5000,
+    };
+    let report = promoter_reporter_motif_anchor_engine("+")
+        .suggest_promoter_reporter_fragments(
+            "tgfb1_promoter",
+            None,
+            Some("TGFB1"),
+            None,
+            200,
+            500,
+            5,
+            &policy,
+        )
+        .expect("explicit-interval candidate set");
+
+    let anchor = report.anchor.expect("resolved explicit anchor");
+    assert_eq!(anchor.kind, PromoterReporterAnchorKind::ExplicitInterval);
+    assert_eq!(anchor.start_0based, 1800);
+    assert_eq!(anchor.end_0based_exclusive, 1810);
+    assert_eq!(anchor.evidence_kind, "caller_declared_interval");
+    assert_eq!(report.candidates[0].start_0based, 1500);
+    assert_eq!(report.candidates[0].end_0based_exclusive, 2201);
+}
+
+#[test]
 fn summarize_variant_promoter_context_derives_promoter_candidate_from_transcript_tss() {
     let mut dna = DNAsequence::from_sequence(&"A".repeat(6001)).expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {
@@ -56829,6 +57094,7 @@ fn suggest_promoter_reporter_fragments_keeps_tss_context_and_sequence_beyond_var
             200,
             500,
             5,
+            &PromoterReporterFragmentPolicy::default(),
         )
         .expect("candidate set");
 
@@ -56841,6 +57107,46 @@ fn suggest_promoter_reporter_fragments_keeps_tss_context_and_sequence_beyond_var
     assert_eq!(report.candidates[0].end_0based_exclusive, 3501);
     assert!(report.candidates[0].recommended);
     assert!(report.candidates[0].promoter_overlap);
+
+    let legacy_shape = serde_json::to_value(&report).expect("serialize legacy candidate set");
+    assert!(legacy_shape.get("anchor").is_none());
+    assert!(legacy_shape.get("fragment_policy").is_none());
+    assert!(legacy_shape.get("rejected_candidates").is_none());
+    let candidate = &legacy_shape["candidates"][0];
+    assert!(candidate.get("anchor").is_none());
+    assert!(candidate.get("promoter_class_id").is_none());
+    let reparsed: PromoterReporterCandidateSet =
+        serde_json::from_value(legacy_shape).expect("parse legacy candidate payload");
+    assert!(reparsed.fragment_policy.is_default());
+    assert!(reparsed.rejected_candidates.is_empty());
+}
+
+#[test]
+fn promoter_reporter_fragment_policy_defaults_from_legacy_operation_json() {
+    let legacy = serde_json::json!({
+        "SuggestPromoterReporterFragments": {
+            "input": "vkorc1_demo",
+            "variant_label_or_id": "rs9923231",
+            "retain_downstream_from_tss_bp": 200,
+            "retain_upstream_beyond_variant_bp": 500,
+            "max_candidates": 5
+        }
+    });
+    let operation: Operation =
+        serde_json::from_value(legacy).expect("parse legacy promoter-reporter operation");
+    let Operation::SuggestPromoterReporterFragments {
+        fragment_policy, ..
+    } = &operation
+    else {
+        panic!("expected promoter-reporter operation");
+    };
+    assert!(fragment_policy.is_default());
+    let serialized = serde_json::to_value(operation).expect("serialize default policy operation");
+    assert!(
+        serialized["SuggestPromoterReporterFragments"]
+            .get("fragment_policy")
+            .is_none()
+    );
 }
 
 #[test]

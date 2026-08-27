@@ -9948,6 +9948,41 @@ fn parse_variant_reporter_fragments_with_context_options() {
 }
 
 #[test]
+fn parse_variant_annotate_promoters_tss_cluster_tolerance() {
+    let cmd = parse_shell_line(
+        "variant annotate-promoters seq_a --gene-label CD44 --collapse tss-cluster:25",
+    )
+    .expect("parse TSS-cluster promoter annotation");
+    match cmd {
+        ShellCommand::VariantAnnotatePromoterWindows {
+            seq_id,
+            gene_label,
+            collapse_mode,
+            ..
+        } => {
+            assert_eq!(seq_id, "seq_a");
+            assert_eq!(gene_label.as_deref(), Some("CD44"));
+            assert_eq!(
+                collapse_mode,
+                PromoterWindowCollapseMode::TssCluster { tolerance_bp: 25 }
+            );
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let default_tolerance =
+        parse_shell_line("variant annotate-promoters seq_a --collapse tss_cluster")
+            .expect("parse default TSS-cluster tolerance");
+    assert!(matches!(
+        default_tolerance,
+        ShellCommand::VariantAnnotatePromoterWindows {
+            collapse_mode: PromoterWindowCollapseMode::TssCluster { tolerance_bp: 50 },
+            ..
+        }
+    ));
+}
+
+#[test]
 fn parse_variant_materialize_allele_command() {
     let cmd = parse_shell_line(
         "variant materialize-allele seq_a --allele alternate --variant rs9923231 --output-id seq_alt",

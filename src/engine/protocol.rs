@@ -3276,6 +3276,9 @@ pub enum PromoterWindowCollapseMode {
     #[default]
     Transcript,
     Gene,
+    TssCluster {
+        tolerance_bp: usize,
+    },
 }
 
 impl PromoterWindowCollapseMode {
@@ -3283,7 +3286,12 @@ impl PromoterWindowCollapseMode {
         match self {
             Self::Transcript => "transcript",
             Self::Gene => "gene",
+            Self::TssCluster { .. } => "tss_cluster",
         }
+    }
+
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
     }
 }
 
@@ -3324,6 +3332,16 @@ pub struct PromoterWindowRecord {
     pub upstream_bp: usize,
     pub downstream_bp: usize,
     pub source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_class_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grouping_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tss_cluster_tolerance_bp: Option<usize>,
+    #[serde(skip)]
+    pub first_exon_start_0based: Option<usize>,
+    #[serde(skip)]
+    pub first_exon_end_0based_exclusive: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -3822,10 +3840,139 @@ pub struct VariantPromoterContextReport {
     pub rationale: String,
 }
 
+/// Typed anchor kinds accepted by promoter-reporter fragment planning.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PromoterReporterAnchorKind {
+    #[default]
+    Variant,
+    MotifHit,
+    ExplicitInterval,
+}
+
+impl PromoterReporterAnchorKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Variant => "variant",
+            Self::MotifHit => "motif_hit",
+            Self::ExplicitInterval => "explicit_interval",
+        }
+    }
+}
+
+fn promoter_reporter_default_occurrence() -> usize {
+    1
+}
+
+fn promoter_reporter_occurrence_is_one(value: &usize) -> bool {
+    *value == 1
+}
+
+/// Anchor selection supplied to the existing promoter-reporter candidate
+/// operation. Motif hits resolve only against local sequence annotations.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PromoterReporterAnchorRequest {
+    Variant {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label_or_id: Option<String>,
+    },
+    MotifHit {
+        label_or_id: String,
+        #[serde(
+            default = "promoter_reporter_default_occurrence",
+            skip_serializing_if = "promoter_reporter_occurrence_is_one"
+        )]
+        occurrence: usize,
+    },
+    ExplicitInterval {
+        label: String,
+        start_0based: usize,
+        end_0based_exclusive: usize,
+    },
+}
+
+/// Resolved, provenance-bearing anchor copied into non-legacy candidate
+/// reports. A motif annotation is sequence evidence, not occupancy evidence.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(default)]
+pub struct PromoterReporterAnchor {
+    pub kind: PromoterReporterAnchorKind,
+    pub label: String,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_feature_id: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strand: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub motif_id: Option<String>,
+    pub evidence_kind: String,
+    #[serde(default)]
+    pub interpretation_tags: Vec<String>,
+}
+
+/// Additive policy for generalizing the legacy variant-anchored fragment
+/// operation without changing default VKORC1 request bytes or behavior.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct PromoterReporterFragmentPolicy {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor: Option<PromoterReporterAnchorRequest>,
+    #[serde(
+        default,
+        skip_serializing_if = "PromoterWindowCollapseMode::is_default"
+    )]
+    pub collapse_mode: PromoterWindowCollapseMode,
+    pub promoter_upstream_baseline_bp: usize,
+    pub anchor_flank_bp: usize,
+    pub max_fragment_length_bp: usize,
+}
+
+impl PromoterReporterFragmentPolicy {
+    pub const DEFAULT_PROMOTER_UPSTREAM_BASELINE_BP: usize = 500;
+    pub const DEFAULT_ANCHOR_FLANK_BP: usize = 150;
+    pub const DEFAULT_MAX_FRAGMENT_LENGTH_BP: usize = 5_000;
+    pub const DEFAULT_TSS_CLUSTER_TOLERANCE_BP: usize = 50;
+
+    pub fn is_default(&self) -> bool {
+        self == &Self::default()
+    }
+}
+
+impl Default for PromoterReporterFragmentPolicy {
+    fn default() -> Self {
+        Self {
+            anchor: None,
+            collapse_mode: PromoterWindowCollapseMode::Transcript,
+            promoter_upstream_baseline_bp: Self::DEFAULT_PROMOTER_UPSTREAM_BASELINE_BP,
+            anchor_flank_bp: Self::DEFAULT_ANCHOR_FLANK_BP,
+            max_fragment_length_bp: Self::DEFAULT_MAX_FRAGMENT_LENGTH_BP,
+        }
+    }
+}
+
+/// One fragment geometry rejected by the explicit maximum-length policy.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(default)]
+pub struct PromoterReporterFragmentRejection {
+    pub candidate_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_class_id: Option<String>,
+    #[serde(default)]
+    pub transcript_ids: Vec<String>,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub length_bp: usize,
+    pub max_fragment_length_bp: usize,
+    pub reason_kind: String,
+    pub detail: String,
+}
+
+/// One deterministic promoter-reporter fragment candidate derived from one
+/// transcript/TSS class and one variant, motif hit, or explicit interval.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
-/// One deterministic promoter-reporter fragment candidate derived from one
-/// transcript/TSS and one variant.
 pub struct PromoterReporterFragmentCandidate {
     pub candidate_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -3834,6 +3981,18 @@ pub struct PromoterReporterFragmentCandidate {
     pub transcript_label: String,
     pub strand: String,
     pub tss_local_0based: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_class_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_count: Option<usize>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub transcript_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grouping_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor: Option<PromoterReporterAnchor>,
+    /// Legacy coordinate aliases retained for v1 consumers. For non-variant
+    /// reports they carry the resolved anchor interval.
     pub variant_start_0based: usize,
     pub variant_end_0based_exclusive: usize,
     pub start_0based: usize,
@@ -3861,6 +4020,13 @@ pub struct PromoterReporterCandidateSet {
     pub op_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor: Option<PromoterReporterAnchor>,
+    #[serde(
+        default,
+        skip_serializing_if = "PromoterReporterFragmentPolicy::is_default"
+    )]
+    pub fragment_policy: PromoterReporterFragmentPolicy,
     pub variant_label: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chosen_gene_label: Option<String>,
@@ -3877,6 +4043,8 @@ pub struct PromoterReporterCandidateSet {
     pub suggested_assay_ids: Vec<String>,
     #[serde(default)]
     pub candidates: Vec<PromoterReporterFragmentCandidate>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rejected_candidates: Vec<PromoterReporterFragmentRejection>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]

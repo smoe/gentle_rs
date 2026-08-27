@@ -1,9 +1,9 @@
 # GENtle Roadmap
 
-Last session: 2026-08-27 - added external-auditor-ready Criterion targets led
-by DNA-window construction/hydration/first/steady frame proxies, with
-specificity finalization as a secondary target; copied-state IRF9 acceptance
-and manual GUI smoke for unreleased `v0.1.0-internal.10` remain before the tag
+Last session: 2026-08-27 - generalized promoter-reporter planning with local
+motif/interval anchors, first-exon-aware TSS classes, strand-aware flank
+geometry, and typed overlength rejection; copied-state IRF9 acceptance and
+manual GUI smoke for unreleased `v0.1.0-internal.10` remain before the tag
 
 Purpose: fast session orientation. This file answers "what next?" and should be
 readable in under two minutes. Completed work belongs in
@@ -299,6 +299,11 @@ wet-lab conclusions or unconfirmed mutations.
 
 ## Parking Lot
 
+- Complete the motif-anchored multi-promoter reporter-panel arc after the landed
+  engine anchor/TSS-class slice: exact pGL4.10 acquisition validation,
+  panel-wide directional enzyme ranking with stated Gibson fallback,
+  stated-rule p53-family motif disruption, and proposal-digest-gated command,
+  parity, GUI, and offline tutorial surfaces.
 - Replace whole-transcriptome FASTA materialization in UniProt linked-transcript
   inventory construction with indexed/streaming retrieval, and expose bounded
   progress during large specificity finalization joins.

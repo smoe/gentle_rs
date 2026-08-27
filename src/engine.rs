@@ -5455,6 +5455,11 @@ pub enum Operation {
         retain_upstream_beyond_variant_bp: usize,
         #[serde(default = "default_promoter_reporter_max_candidates")]
         max_candidates: usize,
+        #[serde(
+            default,
+            skip_serializing_if = "PromoterReporterFragmentPolicy::is_default"
+        )]
+        fragment_policy: PromoterReporterFragmentPolicy,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },

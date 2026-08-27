@@ -49751,6 +49751,7 @@ impl GentleEngine {
                     retain_downstream_from_tss_bp,
                     retain_upstream_beyond_variant_bp,
                     max_candidates,
+                    fragment_policy,
                     path,
                 } => {
                     let mut report = self.suggest_promoter_reporter_fragments(
@@ -49761,6 +49762,7 @@ impl GentleEngine {
                         retain_downstream_from_tss_bp,
                         retain_upstream_beyond_variant_bp,
                         max_candidates,
+                        &fragment_policy,
                     )?;
                     report.op_id = Some(result.op_id.clone());
                     report.run_id = Some(run_id.to_string());
@@ -49771,12 +49773,19 @@ impl GentleEngine {
                             report.seq_id, path
                         ));
                     }
-                    result.messages.push(format!(
-                    "Suggested {} promoter-reporter candidate(s) on '{}' with recommended candidate '{}'",
-                    report.candidates.len(),
-                    report.seq_id,
-                    report.recommended_candidate_id
-                ));
+                    if report.recommended_candidate_id.is_empty() {
+                        result.messages.push(format!(
+                            "Rejected {} promoter-reporter candidate geometry/geometries on '{}' under the explicit fragment policy",
+                            report.rejected_candidates.len(), report.seq_id
+                        ));
+                    } else {
+                        result.messages.push(format!(
+                            "Suggested {} promoter-reporter candidate(s) on '{}' with recommended candidate '{}'",
+                            report.candidates.len(),
+                            report.seq_id,
+                            report.recommended_candidate_id
+                        ));
+                    }
                     result.promoter_reporter_candidates = Some(report);
                 }
                 Operation::ListReporterCatalog {

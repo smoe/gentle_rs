@@ -1329,7 +1329,7 @@
          ],
          "path": "variant annotate-promoters",
          "summary": "Derive transcript-TSS-centered promoter windows and write them back as generated promoter features.",
-         "usage": "variant annotate-promoters SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--upstream-bp N] [--downstream-bp N] [--collapse transcript|gene]"
+         "usage": "variant annotate-promoters SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--upstream-bp N] [--downstream-bp N] [--collapse transcript|gene|tss-cluster[:TOLERANCE_BP]]"
       },
       {
          "aliases": [],

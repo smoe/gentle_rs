@@ -187,6 +187,152 @@ impl GentleEngine {
         collapsed
     }
 
+    fn promoter_window_first_exons_overlap(
+        left: &PromoterWindowRecord,
+        right: &PromoterWindowRecord,
+    ) -> bool {
+        match (
+            left.first_exon_start_0based,
+            left.first_exon_end_0based_exclusive,
+            right.first_exon_start_0based,
+            right.first_exon_end_0based_exclusive,
+        ) {
+            (Some(left_start), Some(left_end), Some(right_start), Some(right_end)) => {
+                left_end > right_start && left_start < right_end
+            }
+            _ => false,
+        }
+    }
+
+    fn collapse_promoter_window_records_by_tss_cluster(
+        records: Vec<PromoterWindowRecord>,
+        tolerance_bp: usize,
+    ) -> Vec<PromoterWindowRecord> {
+        let mut grouped: BTreeMap<(String, String), Vec<PromoterWindowRecord>> = BTreeMap::new();
+        for record in records {
+            let gene_key = record
+                .gene_id
+                .clone()
+                .or_else(|| record.gene_label.clone())
+                .unwrap_or_else(|| record.transcript_id.clone())
+                .to_ascii_lowercase();
+            grouped
+                .entry((gene_key, record.strand.clone()))
+                .or_default()
+                .push(record);
+        }
+
+        let mut collapsed = vec![];
+        for mut gene_records in grouped.into_values() {
+            gene_records.sort_by(|left, right| {
+                left.tss_local_0based
+                    .cmp(&right.tss_local_0based)
+                    .then_with(|| {
+                        left.transcript_id
+                            .to_ascii_lowercase()
+                            .cmp(&right.transcript_id.to_ascii_lowercase())
+                    })
+            });
+            let mut clusters: Vec<Vec<PromoterWindowRecord>> = vec![];
+            for record in gene_records {
+                let matching_cluster = clusters.iter().position(|cluster| {
+                    let Some(seed) = cluster.first() else {
+                        return false;
+                    };
+                    let min_tss = cluster
+                        .iter()
+                        .map(|member| member.tss_local_0based)
+                        .min()
+                        .unwrap_or(record.tss_local_0based)
+                        .min(record.tss_local_0based);
+                    let max_tss = cluster
+                        .iter()
+                        .map(|member| member.tss_local_0based)
+                        .max()
+                        .unwrap_or(record.tss_local_0based)
+                        .max(record.tss_local_0based);
+                    max_tss.saturating_sub(min_tss) <= tolerance_bp
+                        && Self::promoter_window_first_exons_overlap(seed, &record)
+                });
+                if let Some(index) = matching_cluster {
+                    clusters[index].push(record);
+                } else {
+                    clusters.push(vec![record]);
+                }
+            }
+
+            for mut cluster in clusters {
+                cluster.sort_by(|left, right| {
+                    left.tss_local_0based
+                        .cmp(&right.tss_local_0based)
+                        .then_with(|| {
+                            left.transcript_id
+                                .to_ascii_lowercase()
+                                .cmp(&right.transcript_id.to_ascii_lowercase())
+                        })
+                });
+                let mut representative = cluster.remove(0);
+                let mut transcript_ids = representative.transcript_ids.clone();
+                let mut transcript_labels = representative.transcript_labels.clone();
+                for member in cluster {
+                    transcript_ids.extend(member.transcript_ids);
+                    transcript_labels.extend(member.transcript_labels);
+                }
+                transcript_ids.sort_by_key(|value| value.to_ascii_lowercase());
+                transcript_ids.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+                transcript_labels.sort_by_key(|value| value.to_ascii_lowercase());
+                transcript_labels.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+                let class_subject = representative
+                    .gene_id
+                    .as_deref()
+                    .or(representative.gene_label.as_deref())
+                    .unwrap_or(representative.transcript_id.as_str());
+                let first_exon_start = representative.first_exon_start_0based.unwrap_or(0);
+                let first_exon_end = representative.first_exon_end_0based_exclusive.unwrap_or(0);
+                representative.promoter_class_id = Some(format!(
+                    "{}_{}_tss_{}_first_exon_{}_{}_tol_{}",
+                    Self::normalize_id_token(class_subject),
+                    if representative.strand == "-" {
+                        "minus"
+                    } else {
+                        "plus"
+                    },
+                    representative.tss_local_0based.saturating_add(1),
+                    first_exon_start.saturating_add(1),
+                    first_exon_end,
+                    tolerance_bp
+                ));
+                representative.grouping_reason = Some(
+                    "same_gene_and_strand_with_overlapping_first_exon_and_tss_within_tolerance"
+                        .to_string(),
+                );
+                representative.tss_cluster_tolerance_bp = Some(tolerance_bp);
+                representative.transcript_count = transcript_ids.len().max(1);
+                representative.transcript_ids = transcript_ids;
+                representative.transcript_labels = transcript_labels;
+                representative.source = "transcript_tss_cluster".to_string();
+                collapsed.push(representative);
+            }
+        }
+        collapsed.sort_by(|left, right| {
+            left.gene_label
+                .clone()
+                .unwrap_or_else(|| left.transcript_label.clone())
+                .to_ascii_lowercase()
+                .cmp(
+                    &right
+                        .gene_label
+                        .clone()
+                        .unwrap_or_else(|| right.transcript_label.clone())
+                        .to_ascii_lowercase(),
+                )
+                .then_with(|| left.tss_local_0based.cmp(&right.tss_local_0based))
+                .then_with(|| left.strand.cmp(&right.strand))
+                .then_with(|| left.transcript_id.cmp(&right.transcript_id))
+        });
+        collapsed
+    }
+
     fn collapse_promoter_window_records_by_exact_span(
         records: Vec<PromoterWindowRecord>,
     ) -> Vec<PromoterWindowRecord> {
@@ -336,6 +482,11 @@ impl GentleEngine {
                     left.0.cmp(&right.0).then(left.1.cmp(&right.1))
                 });
                 let is_reverse = feature_is_reverse(feature);
+                let first_exon = if is_reverse {
+                    ranges.last().copied()
+                } else {
+                    ranges.first().copied()
+                };
                 let tss_local_0based = if is_reverse {
                     ranges
                         .iter()
@@ -387,6 +538,11 @@ impl GentleEngine {
                     upstream_bp,
                     downstream_bp,
                     source: "transcript_tss".to_string(),
+                    promoter_class_id: None,
+                    grouping_reason: None,
+                    tss_cluster_tolerance_bp: None,
+                    first_exon_start_0based: first_exon.map(|(start, _)| start),
+                    first_exon_end_0based_exclusive: first_exon.map(|(_, end)| end),
                 })
             })
             .collect::<Vec<_>>();
@@ -421,6 +577,9 @@ impl GentleEngine {
             PromoterWindowCollapseMode::Transcript => records,
             PromoterWindowCollapseMode::Gene => {
                 Self::collapse_promoter_window_records_by_gene(records)
+            }
+            PromoterWindowCollapseMode::TssCluster { tolerance_bp } => {
+                Self::collapse_promoter_window_records_by_tss_cluster(records, tolerance_bp)
             }
         }
     }
@@ -506,6 +665,18 @@ impl GentleEngine {
         }
         if let Some(gene_id) = record.gene_id.as_ref() {
             qualifiers.push(("gene_id".into(), Some(gene_id.clone())));
+        }
+        if let Some(promoter_class_id) = record.promoter_class_id.as_ref() {
+            qualifiers.push(("promoter_class_id".into(), Some(promoter_class_id.clone())));
+        }
+        if let Some(grouping_reason) = record.grouping_reason.as_ref() {
+            qualifiers.push(("grouping_reason".into(), Some(grouping_reason.clone())));
+        }
+        if let Some(tolerance_bp) = record.tss_cluster_tolerance_bp {
+            qualifiers.push((
+                "tss_cluster_tolerance_bp".into(),
+                Some(tolerance_bp.to_string()),
+            ));
         }
         gb_io::seq::Feature {
             kind: "promoter".into(),
@@ -2538,6 +2709,279 @@ impl GentleEngine {
         })
     }
 
+    fn select_promoter_reporter_motif_feature<'a>(
+        dna: &'a DNAsequence,
+        label_or_id: &str,
+        occurrence: usize,
+    ) -> Result<(usize, &'a gb_io::seq::Feature), EngineError> {
+        let query = label_or_id.trim();
+        if query.is_empty() {
+            return Err(EngineError::invalid_input(
+                "Promoter-reporter motif anchors require a non-empty label_or_id",
+            ));
+        }
+        if occurrence == 0 {
+            return Err(EngineError::invalid_input(
+                "Promoter-reporter motif anchor occurrence must be >= 1",
+            ));
+        }
+        let mut candidates = dna
+            .features()
+            .iter()
+            .enumerate()
+            .filter(|(_, feature)| Self::is_tfbs_feature(feature))
+            .filter(|(feature_id, feature)| {
+                Self::feature_matches_identifier(
+                    feature,
+                    *feature_id,
+                    query,
+                    &["bound_moiety", "matrix_id", "motif_id", "jaspar_id"],
+                )
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_by(|left, right| {
+            let left_span = Self::feature_span_bounds(left.1).unwrap_or((usize::MAX, usize::MAX));
+            let right_span = Self::feature_span_bounds(right.1).unwrap_or((usize::MAX, usize::MAX));
+            left_span
+                .cmp(&right_span)
+                .then_with(|| {
+                    Self::feature_display_label(left.1, left.0)
+                        .to_ascii_lowercase()
+                        .cmp(&Self::feature_display_label(right.1, right.0).to_ascii_lowercase())
+                })
+                .then_with(|| left.0.cmp(&right.0))
+        });
+        candidates.into_iter().nth(occurrence - 1).ok_or_else(|| {
+            EngineError::new(
+                ErrorCode::NotFound,
+                format!(
+                    "No local TFBS/motif feature matching '{}' has occurrence {}",
+                    query, occurrence
+                ),
+            )
+        })
+    }
+
+    fn resolve_promoter_reporter_anchor(
+        dna: &DNAsequence,
+        legacy_variant_label_or_id: Option<&str>,
+        request: Option<&PromoterReporterAnchorRequest>,
+    ) -> Result<PromoterReporterAnchor, EngineError> {
+        match request {
+            None => {
+                let (feature_id, feature) =
+                    Self::select_variant_feature(dna, legacy_variant_label_or_id)?;
+                let (start_0based, end_0based_exclusive) = Self::feature_span_bounds(feature)
+                    .ok_or_else(|| {
+                        EngineError::invalid_input(
+                            "Selected promoter-reporter variant has no usable coordinates",
+                        )
+                    })?;
+                Ok(PromoterReporterAnchor {
+                    kind: PromoterReporterAnchorKind::Variant,
+                    label: Self::feature_display_label(feature, feature_id),
+                    start_0based,
+                    end_0based_exclusive,
+                    source_feature_id: Some(feature_id),
+                    strand: Some(
+                        if feature_is_reverse(feature) {
+                            "-"
+                        } else {
+                            "+"
+                        }
+                        .to_string(),
+                    ),
+                    motif_id: None,
+                    evidence_kind: "variant_annotation".to_string(),
+                    interpretation_tags: vec!["variant_anchor".to_string()],
+                })
+            }
+            Some(PromoterReporterAnchorRequest::Variant { label_or_id }) => {
+                let request_label = label_or_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty());
+                let legacy_label = legacy_variant_label_or_id
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty());
+                if let (Some(request_label), Some(legacy_label)) = (request_label, legacy_label)
+                    && !request_label.eq_ignore_ascii_case(legacy_label)
+                {
+                    return Err(EngineError::invalid_input(format!(
+                        "Promoter-reporter variant anchor '{}' conflicts with legacy variant_label_or_id '{}'",
+                        request_label, legacy_label
+                    )));
+                }
+                let (feature_id, feature) =
+                    Self::select_variant_feature(dna, request_label.or(legacy_label))?;
+                let (start_0based, end_0based_exclusive) = Self::feature_span_bounds(feature)
+                    .ok_or_else(|| {
+                        EngineError::invalid_input(
+                            "Selected promoter-reporter variant has no usable coordinates",
+                        )
+                    })?;
+                Ok(PromoterReporterAnchor {
+                    kind: PromoterReporterAnchorKind::Variant,
+                    label: Self::feature_display_label(feature, feature_id),
+                    start_0based,
+                    end_0based_exclusive,
+                    source_feature_id: Some(feature_id),
+                    strand: Some(
+                        if feature_is_reverse(feature) {
+                            "-"
+                        } else {
+                            "+"
+                        }
+                        .to_string(),
+                    ),
+                    motif_id: None,
+                    evidence_kind: "variant_annotation".to_string(),
+                    interpretation_tags: vec!["variant_anchor".to_string()],
+                })
+            }
+            Some(PromoterReporterAnchorRequest::MotifHit {
+                label_or_id,
+                occurrence,
+            }) => {
+                let (feature_id, feature) =
+                    Self::select_promoter_reporter_motif_feature(dna, label_or_id, *occurrence)?;
+                let (start_0based, end_0based_exclusive) = Self::feature_span_bounds(feature)
+                    .ok_or_else(|| {
+                        EngineError::invalid_input(
+                            "Selected promoter-reporter motif hit has no usable coordinates",
+                        )
+                    })?;
+                Ok(PromoterReporterAnchor {
+                    kind: PromoterReporterAnchorKind::MotifHit,
+                    label: Self::feature_display_label(feature, feature_id),
+                    start_0based,
+                    end_0based_exclusive,
+                    source_feature_id: Some(feature_id),
+                    strand: Some(
+                        if feature_is_reverse(feature) {
+                            "-"
+                        } else {
+                            "+"
+                        }
+                        .to_string(),
+                    ),
+                    motif_id: Self::first_nonempty_feature_qualifier(
+                        feature,
+                        &["matrix_id", "motif_id", "jaspar_id", "bound_moiety"],
+                    ),
+                    evidence_kind: "sequence_motif_annotation".to_string(),
+                    interpretation_tags: vec![
+                        "sequence_motif_only".to_string(),
+                        "occupancy_not_inferred".to_string(),
+                        "functional_effect_not_inferred".to_string(),
+                    ],
+                })
+            }
+            Some(PromoterReporterAnchorRequest::ExplicitInterval {
+                label,
+                start_0based,
+                end_0based_exclusive,
+            }) => {
+                let label = label.trim();
+                if label.is_empty() {
+                    return Err(EngineError::invalid_input(
+                        "Promoter-reporter explicit-interval anchors require a non-empty label",
+                    ));
+                }
+                if *end_0based_exclusive <= *start_0based || *end_0based_exclusive > dna.len() {
+                    return Err(EngineError::invalid_input(format!(
+                        "Promoter-reporter explicit interval {}..{} is invalid for a {} bp sequence",
+                        start_0based,
+                        end_0based_exclusive,
+                        dna.len()
+                    )));
+                }
+                Ok(PromoterReporterAnchor {
+                    kind: PromoterReporterAnchorKind::ExplicitInterval,
+                    label: label.to_string(),
+                    start_0based: *start_0based,
+                    end_0based_exclusive: *end_0based_exclusive,
+                    source_feature_id: None,
+                    strand: None,
+                    motif_id: None,
+                    evidence_kind: "caller_declared_interval".to_string(),
+                    interpretation_tags: vec![
+                        "explicit_interval".to_string(),
+                        "biological_role_not_inferred".to_string(),
+                    ],
+                })
+            }
+        }
+    }
+
+    fn promoter_reporter_fragment_bounds(
+        record: &PromoterWindowRecord,
+        anchor: &PromoterReporterAnchor,
+        retain_downstream_from_tss_bp: usize,
+        retain_upstream_beyond_variant_bp: usize,
+        policy: &PromoterReporterFragmentPolicy,
+        sequence_length_bp: usize,
+        legacy_variant_geometry: bool,
+    ) -> (usize, usize) {
+        if legacy_variant_geometry {
+            return if record.strand == "-" {
+                (
+                    record
+                        .tss_local_0based
+                        .saturating_sub(retain_downstream_from_tss_bp),
+                    anchor
+                        .end_0based_exclusive
+                        .saturating_add(retain_upstream_beyond_variant_bp)
+                        .min(sequence_length_bp),
+                )
+            } else {
+                (
+                    anchor
+                        .start_0based
+                        .saturating_sub(retain_upstream_beyond_variant_bp),
+                    record
+                        .tss_local_0based
+                        .saturating_add(retain_downstream_from_tss_bp)
+                        .saturating_add(1)
+                        .min(sequence_length_bp),
+                )
+            };
+        }
+
+        let (tss_window_start, tss_window_end) = if record.strand == "-" {
+            (
+                record
+                    .tss_local_0based
+                    .saturating_sub(retain_downstream_from_tss_bp),
+                record
+                    .tss_local_0based
+                    .saturating_add(policy.promoter_upstream_baseline_bp)
+                    .saturating_add(1)
+                    .min(sequence_length_bp),
+            )
+        } else {
+            (
+                record
+                    .tss_local_0based
+                    .saturating_sub(policy.promoter_upstream_baseline_bp),
+                record
+                    .tss_local_0based
+                    .saturating_add(retain_downstream_from_tss_bp)
+                    .saturating_add(1)
+                    .min(sequence_length_bp),
+            )
+        };
+        let anchor_window_start = anchor.start_0based.saturating_sub(policy.anchor_flank_bp);
+        let anchor_window_end = anchor
+            .end_0based_exclusive
+            .saturating_add(policy.anchor_flank_bp)
+            .min(sequence_length_bp);
+        (
+            tss_window_start.min(anchor_window_start),
+            tss_window_end.max(anchor_window_end),
+        )
+    }
+
     pub(crate) fn suggest_promoter_reporter_fragments(
         &self,
         input: &str,
@@ -2547,6 +2991,7 @@ impl GentleEngine {
         retain_downstream_from_tss_bp: usize,
         retain_upstream_beyond_variant_bp: usize,
         max_candidates: usize,
+        fragment_policy: &PromoterReporterFragmentPolicy,
     ) -> Result<PromoterReporterCandidateSet, EngineError> {
         if max_candidates == 0 {
             return Err(EngineError {
@@ -2556,93 +3001,215 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
-        let context = self.summarize_variant_promoter_context(
-            input,
+        if fragment_policy.max_fragment_length_bp == 0 {
+            return Err(EngineError::invalid_input(
+                "Promoter-reporter max_fragment_length_bp must be >= 1",
+            ));
+        }
+        let dna = self.state.sequences.get(input).ok_or_else(|| EngineError {
+            code: ErrorCode::NotFound,
+            message: format!("Sequence '{}' not found", input),
+            cause_chain: vec![],
+        })?;
+        let legacy_variant_geometry = fragment_policy.is_default();
+        let anchor = Self::resolve_promoter_reporter_anchor(
+            dna,
             variant_label_or_id,
-            gene_label,
-            transcript_id,
-            DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
-            DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
-            DEFAULT_VARIANT_PROMOTER_TFBS_FOCUS_HALF_WINDOW_BP,
+            fragment_policy.anchor.as_ref(),
         )?;
-        let mut candidates = context
-            .promoter_windows_considered
-            .iter()
-            .map(|record| {
-                let signed_tss_distance_bp =
-                    Self::promoter_window_signed_tss_distance(record, context.variant_start_0based);
-                let promoter_overlap = Self::promoter_window_overlaps_variant(
-                    record,
-                    context.variant_start_0based,
-                    context.variant_end_0based_exclusive,
-                );
-                let (start_0based, end_0based_exclusive) = if record.strand == "-" {
-                    (
-                        record
-                            .tss_local_0based
-                            .saturating_sub(retain_downstream_from_tss_bp),
-                        context
-                            .variant_end_0based_exclusive
-                            .saturating_add(retain_upstream_beyond_variant_bp)
-                            .min(context.sequence_length_bp),
-                    )
-                } else {
-                    (
-                        context
-                            .variant_start_0based
-                            .saturating_sub(retain_upstream_beyond_variant_bp),
-                        record
-                            .tss_local_0based
-                            .saturating_add(retain_downstream_from_tss_bp)
-                            .saturating_add(1)
-                            .min(context.sequence_length_bp),
-                    )
-                };
-                let length_bp = end_0based_exclusive.saturating_sub(start_0based);
-                let candidate_id = format!(
+        let variant_context = if anchor.kind == PromoterReporterAnchorKind::Variant {
+            Some(self.summarize_variant_promoter_context(
+                input,
+                Some(anchor.label.as_str()),
+                gene_label,
+                transcript_id,
+                DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
+                DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
+                DEFAULT_VARIANT_PROMOTER_TFBS_FOCUS_HALF_WINDOW_BP,
+            )?)
+        } else {
+            None
+        };
+        let promoter_windows =
+            if fragment_policy.collapse_mode == PromoterWindowCollapseMode::Transcript {
+                variant_context
+                    .as_ref()
+                    .map(|context| context.promoter_windows_considered.clone())
+                    .unwrap_or_else(|| {
+                        self.derive_promoter_window_records(
+                            dna,
+                            gene_label,
+                            transcript_id,
+                            DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
+                            DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
+                            PromoterWindowCollapseMode::Transcript,
+                        )
+                    })
+            } else {
+                self.derive_promoter_window_records(
+                    dna,
+                    gene_label,
+                    transcript_id,
+                    DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
+                    DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
+                    fragment_policy.collapse_mode,
+                )
+            };
+        if promoter_windows.is_empty() {
+            return Err(EngineError::new(
+                ErrorCode::NotFound,
+                format!(
+                    "No transcript-derived promoter windows matched the requested filters on '{}'",
+                    input
+                ),
+            ));
+        }
+        let (chosen_record, derived_transcript_status, _, _) = Self::choose_promoter_context_record(
+            &promoter_windows,
+            anchor.start_0based,
+            anchor.end_0based_exclusive,
+            transcript_id.is_some(),
+        );
+        let transcript_ambiguity_status = variant_context
+            .as_ref()
+            .filter(|_| fragment_policy.collapse_mode == PromoterWindowCollapseMode::Transcript)
+            .map(|context| context.transcript_ambiguity_status.clone())
+            .unwrap_or(derived_transcript_status);
+        let mut rejected_candidates = vec![];
+        let mut candidates = vec![];
+        for record in &promoter_windows {
+            let signed_tss_distance_bp =
+                Self::promoter_window_signed_tss_distance(record, anchor.start_0based);
+            let promoter_overlap = Self::promoter_window_overlaps_variant(
+                record,
+                anchor.start_0based,
+                anchor.end_0based_exclusive,
+            );
+            let (start_0based, end_0based_exclusive) = Self::promoter_reporter_fragment_bounds(
+                record,
+                &anchor,
+                retain_downstream_from_tss_bp,
+                retain_upstream_beyond_variant_bp,
+                fragment_policy,
+                dna.len(),
+                legacy_variant_geometry,
+            );
+            let length_bp = end_0based_exclusive.saturating_sub(start_0based);
+            if length_bp == 0 {
+                continue;
+            }
+            let candidate_id = if legacy_variant_geometry {
+                format!(
                     "{}_{}_{}_{}_promoter_fragment",
                     Self::normalize_id_token(input),
                     Self::normalize_id_token(&record.transcript_id),
                     start_0based.saturating_add(1),
                     end_0based_exclusive
-                );
-                let rationale = if promoter_overlap {
-                    format!(
-                        "Keeps {} bp downstream of the TSS and {} bp beyond the SNP on the biologically upstream side while retaining promoter overlap for transcript '{}'.",
-                        retain_downstream_from_tss_bp,
-                        retain_upstream_beyond_variant_bp,
-                        record.transcript_id
-                    )
-                } else {
-                    format!(
-                        "Transcript '{}' is the nearest deterministic promoter-context candidate even though the SNP does not lie inside the derived promoter window.",
-                        record.transcript_id
-                    )
-                };
-                PromoterReporterFragmentCandidate {
+                )
+            } else {
+                format!(
+                    "{}_{}_{}_{}_{}_promoter_fragment",
+                    Self::normalize_id_token(input),
+                    Self::normalize_id_token(&anchor.label),
+                    Self::normalize_id_token(&record.transcript_id),
+                    start_0based.saturating_add(1),
+                    end_0based_exclusive
+                )
+            };
+            if length_bp > fragment_policy.max_fragment_length_bp {
+                rejected_candidates.push(PromoterReporterFragmentRejection {
                     candidate_id,
-                    gene_label: record.gene_label.clone(),
-                    transcript_id: record.transcript_id.clone(),
-                    transcript_label: record.transcript_label.clone(),
-                    strand: record.strand.clone(),
-                    tss_local_0based: record.tss_local_0based,
-                    variant_start_0based: context.variant_start_0based,
-                    variant_end_0based_exclusive: context.variant_end_0based_exclusive,
+                    promoter_class_id: record.promoter_class_id.clone(),
+                    transcript_ids: record.transcript_ids.clone(),
                     start_0based,
                     end_0based_exclusive,
                     length_bp,
+                    max_fragment_length_bp: fragment_policy.max_fragment_length_bp,
+                    reason_kind: "max_fragment_length_exceeded".to_string(),
+                    detail: format!(
+                        "Proposed promoter fragment is {} bp, exceeding the explicit {} bp maximum; GENtle does not silently emit an oversized cloning candidate.",
+                        length_bp, fragment_policy.max_fragment_length_bp
+                    ),
+                });
+                continue;
+            }
+            let rationale = if legacy_variant_geometry && promoter_overlap {
+                format!(
+                    "Keeps {} bp downstream of the TSS and {} bp beyond the SNP on the biologically upstream side while retaining promoter overlap for transcript '{}'.",
                     retain_downstream_from_tss_bp,
                     retain_upstream_beyond_variant_bp,
-                    promoter_overlap,
-                    signed_tss_distance_bp,
-                    rank: 0,
-                    recommended: false,
-                    rationale,
-                }
-            })
-            .filter(|row| row.end_0based_exclusive > row.start_0based)
-            .collect::<Vec<_>>();
-        if candidates.is_empty() {
+                    record.transcript_id
+                )
+            } else if legacy_variant_geometry {
+                format!(
+                    "Transcript '{}' is the nearest deterministic promoter-context candidate even though the SNP does not lie inside the derived promoter window.",
+                    record.transcript_id
+                )
+            } else if promoter_overlap {
+                format!(
+                    "Unions the strand-aware TSS window ({} bp biologically upstream, {} bp downstream) with {} bp on both sides of the '{}' {} anchor for promoter class '{}'. The anchor is {} and does not establish occupancy or functional regulation.",
+                    fragment_policy.promoter_upstream_baseline_bp,
+                    retain_downstream_from_tss_bp,
+                    fragment_policy.anchor_flank_bp,
+                    anchor.label,
+                    anchor.kind.as_str(),
+                    record
+                        .promoter_class_id
+                        .as_deref()
+                        .unwrap_or(record.transcript_id.as_str()),
+                    anchor.evidence_kind
+                )
+            } else {
+                format!(
+                    "Promoter class '{}' is a deterministic candidate near the '{}' {} anchor, which lies outside the default promoter-overlap window. Fragment bounds still retain the requested TSS baseline and anchor flank; occupancy and function are not inferred.",
+                    record
+                        .promoter_class_id
+                        .as_deref()
+                        .unwrap_or(record.transcript_id.as_str()),
+                    anchor.label,
+                    anchor.kind.as_str()
+                )
+            };
+            candidates.push(PromoterReporterFragmentCandidate {
+                candidate_id,
+                gene_label: record.gene_label.clone(),
+                transcript_id: record.transcript_id.clone(),
+                transcript_label: record.transcript_label.clone(),
+                strand: record.strand.clone(),
+                tss_local_0based: record.tss_local_0based,
+                promoter_class_id: if legacy_variant_geometry {
+                    None
+                } else {
+                    record.promoter_class_id.clone()
+                },
+                transcript_count: (!legacy_variant_geometry)
+                    .then_some(record.transcript_count.max(record.transcript_ids.len())),
+                transcript_ids: if legacy_variant_geometry {
+                    vec![]
+                } else {
+                    record.transcript_ids.clone()
+                },
+                grouping_reason: if legacy_variant_geometry {
+                    None
+                } else {
+                    record.grouping_reason.clone()
+                },
+                anchor: (!legacy_variant_geometry).then_some(anchor.clone()),
+                variant_start_0based: anchor.start_0based,
+                variant_end_0based_exclusive: anchor.end_0based_exclusive,
+                start_0based,
+                end_0based_exclusive,
+                length_bp,
+                retain_downstream_from_tss_bp,
+                retain_upstream_beyond_variant_bp,
+                promoter_overlap,
+                signed_tss_distance_bp,
+                rank: 0,
+                recommended: false,
+                rationale,
+            });
+        }
+        if candidates.is_empty() && rejected_candidates.is_empty() {
             return Err(EngineError {
                 code: ErrorCode::NotFound,
                 message: format!(
@@ -2686,33 +3253,40 @@ impl GentleEngine {
             candidate.rank = idx + 1;
             candidate.recommended = idx == 0;
         }
-        let recommended = candidates.first().cloned().ok_or_else(|| EngineError {
-            code: ErrorCode::NotFound,
-            message: format!(
-                "No promoter-reporter fragment candidates could be derived for '{}'",
-                input
-            ),
-
-            cause_chain: vec![],
-        })?;
+        let recommended = candidates.first();
         Ok(PromoterReporterCandidateSet {
             schema: PROMOTER_REPORTER_CANDIDATES_SCHEMA.to_string(),
             seq_id: input.to_string(),
-            sequence_length_bp: context.sequence_length_bp,
+            sequence_length_bp: dna.len(),
             generated_at_unix_ms: Self::now_unix_ms(),
             op_id: None,
             run_id: None,
-            variant_label: context.variant_label,
-            chosen_gene_label: recommended.gene_label.clone(),
-            chosen_transcript_id: Some(recommended.transcript_id.clone()),
-            chosen_transcript_label: Some(recommended.transcript_label.clone()),
-            transcript_ambiguity_status: context.transcript_ambiguity_status,
+            anchor: (!legacy_variant_geometry).then_some(anchor.clone()),
+            fragment_policy: fragment_policy.clone(),
+            variant_label: (anchor.kind == PromoterReporterAnchorKind::Variant)
+                .then(|| anchor.label.clone())
+                .unwrap_or_default(),
+            chosen_gene_label: recommended
+                .and_then(|candidate| candidate.gene_label.clone())
+                .or_else(|| chosen_record.and_then(|record| record.gene_label.clone())),
+            chosen_transcript_id: recommended
+                .map(|candidate| candidate.transcript_id.clone())
+                .or_else(|| chosen_record.map(|record| record.transcript_id.clone())),
+            chosen_transcript_label: recommended
+                .map(|candidate| candidate.transcript_label.clone())
+                .or_else(|| chosen_record.map(|record| record.transcript_label.clone())),
+            transcript_ambiguity_status,
             retain_downstream_from_tss_bp,
             retain_upstream_beyond_variant_bp,
             max_candidates,
-            recommended_candidate_id: recommended.candidate_id.clone(),
-            suggested_assay_ids: context.suggested_assay_ids,
+            recommended_candidate_id: recommended
+                .map(|candidate| candidate.candidate_id.clone())
+                .unwrap_or_default(),
+            suggested_assay_ids: variant_context
+                .map(|context| context.suggested_assay_ids)
+                .unwrap_or_default(),
             candidates,
+            rejected_candidates,
         })
     }
 
