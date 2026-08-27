@@ -730,3 +730,21 @@ Primer reports may additionally project accepted candidates onto a bounded
 Pareto frontier. This is an explanation of non-dominated tradeoffs after hard
 constraints, not a second acceptance rule. The declared design objective and
 final specificity/readiness gates remain authoritative.
+
+## DEC-039: External Auditor Owns The Performance Verdict
+
+Status: active
+
+GENtle developers provide deterministic benchmark targets, fixture provenance,
+source-revision binding, and compile/smoke evidence. They do not certify the
+performance of their own implementation from a development machine. A named
+external auditor runs timed benchmarks on a stable host, retains the raw
+Criterion artifacts and environment metadata, compares only compatible
+baselines, and owns the release-facing performance verdict.
+
+Criterion is a CPU-side characterization tool, not proof that the GUI is
+responsive. GUI acceptance also requires the real application, representative
+project state, window creation, repaint and resize behavior, and profiler
+evidence where needed. Shared CI runners may compile or smoke benchmark targets
+but do not establish strict timing gates without repeated stable-host evidence
+and an auditor-approved threshold.

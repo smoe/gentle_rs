@@ -212,6 +212,54 @@ Recommended CI gate (minimum):
 
 If snapshot output changes, require reviewer approval and explicit snapshot update.
 
+### 5.1 External performance audit
+
+Criterion benchmarks characterize CPU-bound, in-process GENtle algorithms;
+they do not replace functional assertions or end-to-end acceptance. The
+primary target exercises the actual eager DNA-window constructor, deferred
+UI-thread hydration boundary, and first and steady embedded egui frames over a
+feature-free control and the public TP73 locus:
+
+```bash
+cargo bench --bench gui_operations --features benchmark-support
+```
+
+Implementation-side verification stops at the non-statistical smoke path:
+
+```bash
+cargo test --bench gui_operations --features benchmark-support
+cargo test --bench specificity_finalization --features benchmark-support
+```
+
+This is a CPU-side proxy for GUI-critical preparation and painting. It cannot
+measure native viewport creation, GPU/compositor behavior, event delivery, or
+perceived interaction stalls. Glen is the named external auditor for the
+current release assessment and therefore combines those results with an
+exact-revision GUI run using the existing `gui-profiler` feature/Puffin scopes
+and the DNA-viewer resize/repaint harness. The auditor, not the implementation
+author, retains baselines and assigns the performance verdict.
+
+The secondary target covers complete-query BLAST HSP parsing and
+primer-specificity interpretation at 100, 1,000, and 6,600 total rows:
+
+```bash
+cargo bench --bench specificity_finalization --features benchmark-support
+```
+
+The benchmark constructs its synthetic input outside timed loops, verifies the
+expected hit, pairing, intended-product, and off-target counts once, reports
+throughput in HSP rows, and includes a fixture SHA-256 token in every benchmark
+ID. It launches no BLAST process and reads no real reference dataset. Criterion
+results should only be compared for the same runner, toolchain, fixture hash,
+and optimized profile. Pull-request CI may compile or smoke the targets, but
+strict timing thresholds belong to repeated external-auditor runs on a stable
+host after several baselines exist. The exact commands and retained evidence
+are documented in [`../benches/README.md`](../benches/README.md).
+
+Full Ensembl FASTA retrieval, peak RSS, real BLAST/Primer3 execution, GUI frame
+behavior, and Xvfb/macOS acceptance remain system-level measurements rather
+than Criterion microbenchmarks.
+
 ## 6. Practical implementation order
 
 1. Keep extending engine tests alongside new operations
