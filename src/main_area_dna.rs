@@ -200,7 +200,7 @@ use crate::{
     },
     render_dna::{RenderDna, RestrictionEnzymePosition},
     render_export::{export_circular_svg, export_linear_svg},
-    render_feature_expert::render_feature_expert_svg,
+    render_feature_expert::{render_cryptic_splicing_screen, render_feature_expert_svg},
     render_sequence::RenderSequence,
     scroll_input_policy::{self, WheelIntent, ZoomDirection},
     tf_motifs,
@@ -211,6 +211,8 @@ use crate::{
 use eframe::egui::{self, Frame, PointerState, Vec2};
 use gentle_gui::theme;
 use gentle_protocol::{
+    CrypticSplicingModelStatus, CrypticSplicingScreenRequest, CrypticSplicingScreenView,
+    CrypticSplicingSignalStatus, CrypticSplicingSpan, CrypticSplicingStrand,
     GeneSetCohortRelationship, OrthologAmbiguityPolicy, OrthologCutRunNormalizationInput,
     OrthologCutRunQuantitativeComparisonStatus, OrthologCutRunSupportStatus,
     OrthologPromoterCohortReport, OrthologPromoterComparisonReport,
@@ -1083,6 +1085,7 @@ enum SplicingExpertTab {
     Structure,
     Evidence,
     LocusFigure,
+    CrypticScreen,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1326,6 +1329,18 @@ struct PrimerDesignTask {
     progress: Option<PrimerDesignProgress>,
     batch_progress: Option<PrimerDesignBatchProgress>,
     receiver: Arc<Mutex<Receiver<PrimerDesignTaskMessage>>>,
+}
+
+#[derive(Clone, Debug)]
+struct CrypticSplicingTask {
+    started: Instant,
+    receiver: Arc<Mutex<Receiver<Result<CrypticSplicingScreenView, EngineError>>>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct CrypticSplicingCacheKey {
+    request_sha256: String,
+    source_digest: String,
 }
 
 #[derive(Clone, Debug)]
@@ -1693,6 +1708,21 @@ pub struct MainAreaDna {
     splicing_locus_preview_png: Option<Arc<[u8]>>,
     splicing_locus_preview_generation: u64,
     splicing_locus_status: String,
+    cryptic_splicing_start_1based: String,
+    cryptic_splicing_end_1based: String,
+    cryptic_splicing_reverse: bool,
+    cryptic_splicing_insert_start_1based: String,
+    cryptic_splicing_insert_end_1based: String,
+    cryptic_splicing_cds_feature_id: String,
+    cryptic_splicing_min_intron_bp: String,
+    cryptic_splicing_max_intron_bp: String,
+    cryptic_splicing_max_candidates: String,
+    cryptic_splicing_svg_path: String,
+    cryptic_splicing_task: Option<CrypticSplicingTask>,
+    cryptic_splicing_cache_key: Option<CrypticSplicingCacheKey>,
+    cryptic_splicing_report: Option<Arc<CrypticSplicingScreenView>>,
+    cryptic_splicing_status: String,
+    cryptic_splicing_focus_requested: bool,
     cached_splicing_expert_presentations: Vec<CachedSplicingExpertPresentation>,
     splicing_expert_presentation_cache_hits: u64,
     splicing_expert_presentation_cache_misses: u64,
@@ -2082,6 +2112,7 @@ impl MainAreaDna {
     ) -> Self {
         crate::gentle_gui_profile_scope!("MainAreaDna::new");
         let initial_is_circular = dna.is_circular();
+        let initial_sequence_len = dna.len();
         let seq_id_for_defaults = seq_id.clone();
         let dna = Arc::new(RwLock::new(dna));
         let dna_display = Arc::new(RwLock::new(DnaDisplay::default()));
@@ -2449,6 +2480,21 @@ impl MainAreaDna {
             splicing_locus_preview_png: None,
             splicing_locus_preview_generation: 0,
             splicing_locus_status: String::new(),
+            cryptic_splicing_start_1based: "1".to_string(),
+            cryptic_splicing_end_1based: initial_sequence_len.to_string(),
+            cryptic_splicing_reverse: false,
+            cryptic_splicing_insert_start_1based: String::new(),
+            cryptic_splicing_insert_end_1based: String::new(),
+            cryptic_splicing_cds_feature_id: String::new(),
+            cryptic_splicing_min_intron_bp: "50".to_string(),
+            cryptic_splicing_max_intron_bp: "5000".to_string(),
+            cryptic_splicing_max_candidates: "1000".to_string(),
+            cryptic_splicing_svg_path: "cryptic-splicing-screen.svg".to_string(),
+            cryptic_splicing_task: None,
+            cryptic_splicing_cache_key: None,
+            cryptic_splicing_report: None,
+            cryptic_splicing_status: String::new(),
+            cryptic_splicing_focus_requested: false,
             cached_splicing_expert_presentations: Vec::new(),
             splicing_expert_presentation_cache_hits: 0,
             splicing_expert_presentation_cache_misses: 0,
@@ -2682,6 +2728,13 @@ impl MainAreaDna {
         self.invalidate_dotplot_cache();
         self.ensure_dotplot_cache_current();
         self.open_dotplot_window();
+    }
+
+    pub fn focus_cryptic_splicing_screen(&mut self) {
+        self.show_engine_ops = true;
+        self.cryptic_splicing_focus_requested = true;
+        self.op_status = "Opened cryptic-splicing structural screen".to_string();
+        self.save_engine_ops_state();
     }
 
     pub fn focus_primer_design_report(&mut self, report_id: &str) {
@@ -4115,6 +4168,7 @@ impl MainAreaDna {
         self.poll_tfbs_task(ctx);
         self.poll_primer_design_task(ctx);
         self.poll_rna_read_task(ctx);
+        self.poll_cryptic_splicing_task(ctx);
         self.sync_from_engine_display();
         let backdrop_kind = if self.opened_from_pool_context {
             WindowBackdropKind::Pool
@@ -4286,6 +4340,7 @@ impl MainAreaDna {
         self.poll_tfbs_task(ctx);
         self.poll_primer_design_task(ctx);
         self.poll_rna_read_task(ctx);
+        self.poll_cryptic_splicing_task(ctx);
         self.sync_from_engine_display();
         self.render_dotplot_window(ctx);
         self.render_splicing_expert_window(ctx);
@@ -6471,6 +6526,18 @@ impl MainAreaDna {
                     if self.show_engine_ops && self.dna_presentation_mode.allows_engine_shell_panels()
                     {
                         self.render_sequence_context_tools(ui);
+                        ui.separator();
+                        egui::CollapsingHeader::new("Cryptic-splicing structural screen")
+                            .open(self.cryptic_splicing_focus_requested.then_some(true))
+                            .default_open(false)
+                            .show(ui, |ui| {
+                                self.render_cryptic_splicing_screen_ui(
+                                    ui,
+                                    None,
+                                    "sequence_tools",
+                                );
+                            });
+                        self.cryptic_splicing_focus_requested = false;
                         ui.separator();
                         egui::CollapsingHeader::new(Self::tr("sequence.tools.engine_operations"))
                             .default_open(true)
@@ -18737,6 +18804,11 @@ impl MainAreaDna {
                 SplicingExpertTab::LocusFigure,
                 "Locus figure",
             );
+            ui.selectable_value(
+                &mut self.splicing_expert_tab,
+                SplicingExpertTab::CrypticScreen,
+                "Cryptic screen",
+            );
         });
         ui.separator();
         if self.splicing_expert_tab == SplicingExpertTab::Evidence {
@@ -18745,6 +18817,13 @@ impl MainAreaDna {
         }
         if self.splicing_expert_tab == SplicingExpertTab::LocusFigure {
             self.render_splicing_locus_evidence_tab(ui, view);
+            return;
+        }
+        if self.splicing_expert_tab == SplicingExpertTab::CrypticScreen {
+            let suggested_span = (view.region_start_1based > 0
+                && view.region_end_1based >= view.region_start_1based)
+                .then_some((view.region_start_1based, view.region_end_1based));
+            self.render_cryptic_splicing_screen_ui(ui, suggested_span, "splicing_expert");
             return;
         }
         self.render_splicing_expert_transcript_quick_actions(ui, view);

@@ -1,11 +1,11 @@
 //! Feature expert-view SVG renderer.
 
 use gentle_protocol::{
-    FeatureExpertView, GeneIsoformEvidenceReport, GeneLocusCodonKind,
-    GeneLocusEvidenceDisplayReport, GeneLocusOccupancyLaneRole, GeneLocusOccupancyScaleMode,
-    GeneLocusProbeClass, GeneLocusProbeEffectContrast, IsoformArchitectureExpertView,
-    RestrictionSiteExpertView, SplicingExonSummary, SplicingExpertView, SplicingJunctionArc,
-    TfbsExpertView,
+    CrypticSplicingScreenView, CrypticSplicingSignalStatus, FeatureExpertView,
+    GeneIsoformEvidenceReport, GeneLocusCodonKind, GeneLocusEvidenceDisplayReport,
+    GeneLocusOccupancyLaneRole, GeneLocusOccupancyScaleMode, GeneLocusProbeClass,
+    GeneLocusProbeEffectContrast, IsoformArchitectureExpertView, RestrictionSiteExpertView,
+    SplicingExonSummary, SplicingExpertView, SplicingJunctionArc, TfbsExpertView,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use svg::Document;
@@ -2636,6 +2636,245 @@ fn render_splicing(view: &SplicingExpertView) -> String {
         );
     }
 
+    doc.to_string()
+}
+
+/// Render a deterministic cryptic-splicing structural screen as SVG.
+pub fn render_cryptic_splicing_screen(view: &CrypticSplicingScreenView) -> String {
+    let rendered_candidates = view.candidates.iter().take(80).collect::<Vec<_>>();
+    let track_top = 120.0_f32;
+    let track_left = 90.0_f32;
+    let track_right = W - 70.0;
+    let track_width = track_right - track_left;
+    let row_top = 245.0_f32;
+    let row_height = 17.0_f32;
+    let warning_lines = view
+        .warnings
+        .iter()
+        .flat_map(|warning| wrap_text(warning, 142))
+        .collect::<Vec<_>>();
+    let warning_top = row_top + rendered_candidates.len() as f32 * row_height + 42.0;
+    let dyn_h = (warning_top + warning_lines.len() as f32 * 14.0 + 45.0).max(520.0);
+    let scanned_len = view.scanned_sequence_length_bp.max(1) as f32;
+    let x_for = |position_1based: usize| {
+        track_left + position_1based.saturating_sub(1) as f32 / scanned_len.max(1.0) * track_width
+    };
+
+    let mut doc = Document::new()
+        .set("viewBox", (0, 0, W, dyn_h))
+        .set("width", W)
+        .set("height", dyn_h)
+        .set("data-gentle-schema", view.schema.as_str())
+        .set("data-gentle-source-digest", view.source_digest.as_str())
+        .add(
+            Rectangle::new()
+                .set("x", 0)
+                .set("y", 0)
+                .set("width", W)
+                .set("height", dyn_h)
+                .set("fill", "#ffffff"),
+        )
+        .add(
+            Text::new(format!(
+                "Cryptic-splicing structural screen: {}:{}..{} ({})",
+                view.request.seq_id,
+                view.request.start_1based,
+                view.request.end_1based,
+                view.request.strand.as_str()
+            ))
+            .set("x", 52)
+            .set("y", 38)
+            .set("font-family", "monospace")
+            .set("font-size", 18)
+            .set("fill", "#111827"),
+        )
+        .add(
+            Text::new(format!(
+                "{} donors | {} acceptors | {} admissible pairs | model {}",
+                view.budget.donor_site_count,
+                view.budget.acceptor_site_count,
+                view.budget.admissible_pair_count,
+                match view.model.status {
+                    gentle_protocol::CrypticSplicingModelStatus::Absent => "absent",
+                    gentle_protocol::CrypticSplicingModelStatus::Present => "present",
+                    gentle_protocol::CrypticSplicingModelStatus::Failed => "failed",
+                }
+            ))
+            .set("x", 52)
+            .set("y", 62)
+            .set("font-family", "monospace")
+            .set("font-size", 11)
+            .set("fill", "#475569"),
+        )
+        .add(
+            Text::new("Structural candidates are hypotheses, not evidence that splicing occurs.")
+                .set("x", 52)
+                .set("y", 82)
+                .set("font-family", "sans-serif")
+                .set("font-size", 11)
+                .set("fill", "#9a3412"),
+        )
+        .add(
+            Line::new()
+                .set("x1", track_left)
+                .set("y1", track_top)
+                .set("x2", track_right)
+                .set("y2", track_top)
+                .set("stroke", "#64748b")
+                .set("stroke-width", 1.5),
+        );
+
+    for site in &view.donor_sites {
+        let x = x_for(site.scanned_position_1based);
+        doc = doc.add(
+            Line::new()
+                .set("x1", x)
+                .set("y1", track_top - 4.0)
+                .set("x2", x)
+                .set("y2", track_top + 8.0)
+                .set("stroke", "#dc2626")
+                .set("stroke-width", 1.1)
+                .set("data-gentle-cryptic-site", site.site_id.as_str())
+                .set("data-gentle-site-kind", "donor"),
+        );
+    }
+    for site in &view.acceptor_sites {
+        let x = x_for(site.scanned_position_1based);
+        doc = doc.add(
+            Line::new()
+                .set("x1", x)
+                .set("y1", track_top - 8.0)
+                .set("x2", x)
+                .set("y2", track_top + 4.0)
+                .set("stroke", "#2563eb")
+                .set("stroke-width", 1.1)
+                .set("data-gentle-cryptic-site", site.site_id.as_str())
+                .set("data-gentle-site-kind", "acceptor"),
+        );
+    }
+    for (index, candidate) in rendered_candidates.iter().take(24).enumerate() {
+        let donor_x = x_for(candidate.donor_scanned_position_1based);
+        let acceptor_x = x_for(candidate.acceptor_scanned_position_1based);
+        let apex_y = track_top - 16.0 - (index % 6) as f32 * 10.0;
+        let path = Data::new()
+            .move_to((donor_x, track_top - 1.0))
+            .quadratic_curve_to((
+                (donor_x + acceptor_x) * 0.5,
+                apex_y,
+                acceptor_x,
+                track_top - 1.0,
+            ));
+        doc = doc.add(
+            Path::new()
+                .set("d", path)
+                .set("fill", "none")
+                .set("stroke", "#c2410c")
+                .set("stroke-opacity", 0.55)
+                .set("stroke-width", 1.0)
+                .set(
+                    "data-gentle-cryptic-candidate",
+                    candidate.candidate_id.as_str(),
+                ),
+        );
+    }
+    doc = doc
+        .add(
+            Text::new("1")
+                .set("x", track_left)
+                .set("y", track_top + 25.0)
+                .set("font-family", "monospace")
+                .set("font-size", 9)
+                .set("fill", "#64748b"),
+        )
+        .add(
+            Text::new(format!("{} nt", view.scanned_sequence_length_bp))
+                .set("x", track_right)
+                .set("y", track_top + 25.0)
+                .set("text-anchor", "end")
+                .set("font-family", "monospace")
+                .set("font-size", 9)
+                .set("fill", "#64748b"),
+        )
+        .add(
+            Text::new("candidate       donor -> acceptor  removed  BP       PPT      boundary              CDS consequence")
+                .set("x", 52)
+                .set("y", row_top - 12.0)
+                .set("font-family", "monospace")
+                .set("font-size", 10)
+                .set("font-weight", "bold")
+                .set("fill", "#1f2937"),
+        );
+
+    for (index, candidate) in rendered_candidates.iter().enumerate() {
+        let bp = match candidate.branchpoint.status {
+            CrypticSplicingSignalStatus::Detected => "detected",
+            CrypticSplicingSignalStatus::NotDetected => "not_found",
+            CrypticSplicingSignalStatus::NotEvaluable => "n/e",
+        };
+        let ppt = match candidate.polypyrimidine_tract.status {
+            CrypticSplicingSignalStatus::Detected => "detected",
+            CrypticSplicingSignalStatus::NotDetected => "not_found",
+            CrypticSplicingSignalStatus::NotEvaluable => "n/e",
+        };
+        let cds = candidate
+            .cds_consequence
+            .as_ref()
+            .map(|value| value.status.as_str())
+            .unwrap_or("unavailable");
+        let compact_id = candidate
+            .candidate_id
+            .strip_prefix("cryptic_pair_")
+            .unwrap_or(candidate.candidate_id.as_str());
+        doc = doc.add(
+            Text::new(format!(
+                "{:<16} {:>6} -> {:<6} {:>6}bp  {:<8} {:<8} {:<21} {}",
+                compact_id,
+                candidate.donor_scanned_position_1based,
+                candidate.acceptor_scanned_position_1based,
+                candidate.pseudo_intron_length_bp,
+                bp,
+                ppt,
+                candidate.boundary_class,
+                cds
+            ))
+            .set("x", 52)
+            .set("y", row_top + index as f32 * row_height)
+            .set("font-family", "monospace")
+            .set("font-size", 9)
+            .set("fill", if index % 2 == 0 { "#111827" } else { "#334155" })
+            .set(
+                "data-gentle-cryptic-candidate-row",
+                candidate.candidate_id.as_str(),
+            ),
+        );
+    }
+    if view.candidates.len() > rendered_candidates.len() {
+        doc = doc.add(
+            Text::new(format!(
+                "SVG table shows the first {} of {} report rows; JSON remains authoritative.",
+                rendered_candidates.len(),
+                view.candidates.len()
+            ))
+            .set("x", 52)
+            .set(
+                "y",
+                row_top + rendered_candidates.len() as f32 * row_height + 12.0,
+            )
+            .set("font-family", "monospace")
+            .set("font-size", 9)
+            .set("fill", "#64748b"),
+        );
+    }
+    for (index, warning) in warning_lines.iter().enumerate() {
+        doc = doc.add(
+            Text::new(warning.as_str())
+                .set("x", 52)
+                .set("y", warning_top + index as f32 * 14.0)
+                .set("font-family", "sans-serif")
+                .set("font-size", 9)
+                .set("fill", "#7c2d12"),
+        );
+    }
     doc.to_string()
 }
 

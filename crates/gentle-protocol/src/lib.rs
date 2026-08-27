@@ -8,6 +8,7 @@
 pub mod biological_context;
 pub mod collection_subjects;
 pub mod construct_reasoning;
+pub mod cryptic_splicing;
 pub mod dna_ladder;
 pub mod feature_location_edit;
 pub mod feature_record_curation;
@@ -63,6 +64,14 @@ pub use construct_reasoning::{
     HOST_PROFILE_CATALOG_SCHEMA, HelperConstructProfile, HostLifecycleRole, HostProfileCatalog,
     HostProfileRecord, HostRouteStep, ProteinToDnaHandoffCandidate, ProteinToDnaHandoffCoverage,
     ProteinToDnaHandoffRankingGoal, ProteinToDnaHandoffStrategy,
+};
+pub use cryptic_splicing::{
+    CRYPTIC_SPLICING_SCREEN_SCHEMA, CrypticSplicingBranchpointSignal, CrypticSplicingBudgetSummary,
+    CrypticSplicingCandidateRow, CrypticSplicingCdsConsequence, CrypticSplicingEvidenceClass,
+    CrypticSplicingGenomicProvenanceRow, CrypticSplicingModelProvenance,
+    CrypticSplicingModelStatus, CrypticSplicingPolypyrimidineSignal, CrypticSplicingScreenRequest,
+    CrypticSplicingScreenView, CrypticSplicingSignalStatus, CrypticSplicingSiteKind,
+    CrypticSplicingSiteRow, CrypticSplicingSpan, CrypticSplicingStrand,
 };
 pub use dna_ladder::{
     DNALadder, DNALadderBand, DNALadders, Ladder, LadderBand, LadderCatalog, LadderMolecule,

@@ -35,6 +35,7 @@ const DEFERRED_LOAD_REPAINT_INTERVAL: Duration = Duration::from_millis(100);
 enum DeferredAnalysisFocus {
     Dotplot(String),
     FlexibilityTrack(String),
+    CrypticSplicing,
     RnaReadReport(String),
     PrimerDesign(String),
     PrimerSpecificity(String),
@@ -146,6 +147,9 @@ impl WindowDna {
             }
             DeferredAnalysisFocus::FlexibilityTrack(track_id) => {
                 self.main_area.focus_flexibility_track_analysis(&track_id);
+            }
+            DeferredAnalysisFocus::CrypticSplicing => {
+                self.main_area.focus_cryptic_splicing_screen();
             }
             DeferredAnalysisFocus::RnaReadReport(report_id) => {
                 self.main_area.focus_rna_read_report(&report_id);
@@ -630,6 +634,14 @@ impl WindowDna {
             return;
         }
         self.main_area.focus_flexibility_track_analysis(track_id);
+    }
+
+    pub fn focus_cryptic_splicing_screen(&mut self) {
+        if self.pending_dna_load.is_some() {
+            self.deferred_analysis_focus = Some(DeferredAnalysisFocus::CrypticSplicing);
+            return;
+        }
+        self.main_area.focus_cryptic_splicing_screen();
     }
 
     pub fn focus_primer_design_report(&mut self, report_id: &str) {

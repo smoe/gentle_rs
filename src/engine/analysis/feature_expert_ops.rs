@@ -8621,7 +8621,7 @@ impl GentleEngine {
         }
     }
 
-    fn detect_branchpoint_like_site(
+    pub(super) fn detect_branchpoint_like_site(
         oriented_intron: &str,
     ) -> Option<(usize, String, f32, &'static str)> {
         let bases = oriented_intron.as_bytes();
@@ -8676,7 +8676,7 @@ impl GentleEngine {
         best
     }
 
-    fn detect_polypyrimidine_tract(
+    pub(super) fn detect_polypyrimidine_tract(
         oriented_intron: &str,
     ) -> Option<(usize, usize, f32, &'static str)> {
         let bases = oriented_intron.as_bytes();

@@ -44676,3 +44676,83 @@ fn execute_features_split_then_merge_uses_shared_curation_operations() {
         gb_io::seq::Location::simple_range(5, 25)
     );
 }
+
+#[test]
+fn splicing_cryptic_screen_and_render_share_the_typed_report() {
+    let sequence = "AAAGTCCCCCTACTAACCCCCCCCCCCCCCCCCCCAGAAA";
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "cassette".to_string(),
+        DNAsequence::from_sequence(sequence).expect("synthetic cassette"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let temp = tempdir().expect("tempdir");
+    let request_path = temp.path().join("cryptic_request.json");
+    let svg_path = temp.path().join("cryptic.svg");
+    let request = gentle_protocol::CrypticSplicingScreenRequest {
+        seq_id: "cassette".to_string(),
+        start_1based: 1,
+        end_1based: sequence.len(),
+        min_pseudo_intron_bp: 20,
+        max_pseudo_intron_bp: 200,
+        max_candidate_pairs: 10,
+        ..gentle_protocol::CrypticSplicingScreenRequest::default()
+    };
+    fs::write(
+        &request_path,
+        serde_json::to_vec_pretty(&request).expect("request JSON"),
+    )
+    .expect("write request");
+
+    let screen = parse_shell_line(&format!(
+        "splicing cryptic-screen @{}",
+        request_path.display()
+    ))
+    .expect("parse cryptic screen");
+    let screened = execute_shell_command(&mut engine, &screen).expect("execute cryptic screen");
+    assert!(!screened.state_changed);
+    assert_eq!(
+        screened.output["schema"],
+        gentle_protocol::CRYPTIC_SPLICING_SCREEN_SCHEMA
+    );
+    assert!(
+        screened.output["candidates"]
+            .as_array()
+            .is_some_and(|rows| !rows.is_empty())
+    );
+
+    let render = parse_shell_line(&format!(
+        "splicing cryptic-render @{} {}",
+        request_path.display(),
+        svg_path.display()
+    ))
+    .expect("parse cryptic render");
+    let rendered = execute_shell_command(&mut engine, &render).expect("render cryptic SVG");
+    assert!(!rendered.state_changed);
+    assert_eq!(
+        rendered.output["source_digest"],
+        screened.output["source_digest"]
+    );
+    let svg = fs::read_to_string(svg_path).expect("read SVG");
+    assert!(svg.contains("data-gentle-schema=\"gentle.cryptic_splicing_screen.v1\""));
+    assert!(svg.contains("data-gentle-cryptic-candidate-row"));
+
+    let capabilities = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect capabilities").expect("parse introspection"),
+    )
+    .expect("inspect capabilities");
+    let descriptors = capabilities.output["capabilities"]
+        .as_array()
+        .expect("capability rows");
+    for capability_id in ["splicing cryptic-screen", "splicing cryptic-render"] {
+        let descriptor = descriptors
+            .iter()
+            .find(|descriptor| descriptor["id"].as_str() == Some(capability_id))
+            .unwrap_or_else(|| panic!("missing descriptor for {capability_id}"));
+        assert_eq!(
+            descriptor["annotation_status"].as_str(),
+            Some("fact_annotated")
+        );
+    }
+}

@@ -4712,6 +4712,42 @@ Screenshot bridge:
 - `--allow-screenshots` is rejected by argument parsing.
 - Manual documentation updates remain the current approach for image artifacts.
 
+Cryptic-splicing structural screen:
+
+- `splicing cryptic-screen REQUEST_JSON_OR_@FILE`
+- `splicing cryptic-render REQUEST_JSON_OR_@FILE OUTPUT.svg`
+- The request identifies exactly one loaded-sequence span using 1-based
+  inclusive coordinates and a forward/reverse orientation. Optional
+  `insert_span` labels vector-versus-insert boundaries, while optional
+  `cds_feature_id` asks GENtle to project sequence-removal consequences against
+  one CDS feature.
+- The v1 implementation deterministically enumerates bounded `GT...AG`
+  configurations and applies `min_pseudo_intron_bp`,
+  `max_pseudo_intron_bp`, and `max_candidate_pairs`. The report records both
+  the total admissible count and whether the materialized rows were truncated.
+- A successful v1 report normally has `model.status = "absent"` and null
+  MaxEnt fields: structural motif detection is available without an external
+  splice-scoring installation. This is not a splice prediction or observed RNA
+  junction claim.
+- Example request file:
+
+  ```json
+  {
+    "seq_id": "tap73alpha_cdna",
+    "start_1based": 1,
+    "end_1based": 1908,
+    "strand": "forward",
+    "insert_span": {"start_1based": 1, "end_1based": 1908},
+    "cds_feature_id": 0,
+    "min_pseudo_intron_bp": 50,
+    "max_pseudo_intron_bp": 1500,
+    "max_candidate_pairs": 1000
+  }
+  ```
+
+  Then run `gentle_cli shell 'splicing cryptic-screen @request.json'` or
+  `gentle_cli shell 'splicing cryptic-render @request.json output.svg'`.
+
 Isoform architecture panel workflow:
 
 - canonical panel resource:

@@ -10971,6 +10971,42 @@ Dotplot + flexibility operation contract (implemented baseline):
 
 Splicing-reference derivation + pairwise alignment operation contract (implemented baseline):
 
+Cryptic-splicing structural screen (implemented):
+
+- schema: `gentle.cryptic_splicing_screen.v1`
+- shell routes:
+  - `splicing cryptic-screen REQUEST_JSON_OR_@FILE`
+  - `splicing cryptic-render REQUEST_JSON_OR_@FILE OUTPUT.svg`
+- `CrypticSplicingScreenRequest` identifies one source sequence, a 1-based
+  inclusive non-wrapping span, and scan orientation. `insert_span` and
+  `cds_feature_id` are optional annotations on that same source coordinate
+  system; min/max pseudo-intron lengths and a materialized-candidate cap are
+  explicit inputs.
+- `CrypticSplicingScreenView` records request and oriented-source digests,
+  coordinate convention, projected genomic provenance where available,
+  donor/acceptor rows, deterministic candidate pairs, pair-budget/truncation
+  accounting, optional CDS consequences, model provenance, and warnings.
+- Evidence classes are not interchangeable:
+  - `structural_candidate` means only that the bounded sequence has a compatible
+    donor/acceptor configuration
+  - `model_scored` requires an identified scoring model/resource
+  - `observed_junction` is reserved for RNA evidence and is not produced by the
+    v1 structural scan
+- The dependency-free v1 engine scans `GT...AG` pairs and reuses conservative
+  branchpoint-like and polypyrimidine-tract heuristics. Windows too short for a
+  heuristic are `not_evaluable`, not negative. MaxEnt fields remain null with
+  `model.status = absent`; absence of an external model does not fail the
+  structural report.
+- Candidate enumeration is stable in oriented coordinate order. If admissible
+  pairs exceed `max_candidate_pairs`, the report preserves the full count,
+  materializes the deterministic prefix, and names the truncation rule.
+- CDS projection reports removed coding bases, frame delta, first altered amino
+  acid, predicted translated length, and native-stop removal when evaluable.
+  Protein-domain effects are intentionally not inferred without a separate
+  domain-mapping contract.
+- Reports are computed on demand and are not persisted in project metadata.
+  The SVG renderer is a projection of the same typed report.
+
 - Splicing-reference derivation operation:
   - `DeriveSplicingReferences { seq_id, span_start_0based, span_end_0based, seed_feature_id?, scope?, output_prefix? }`
   - emits multiple derived sequence outputs from one genomic window:

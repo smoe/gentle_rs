@@ -177,6 +177,481 @@ impl Default for DotplotOpsUiState {
     }
 }
 
+impl MainAreaDna {
+    fn cryptic_splicing_parse_usize(label: &str, value: &str) -> Result<usize, String> {
+        value
+            .trim()
+            .parse::<usize>()
+            .map_err(|_| format!("{label} must be a non-negative integer"))
+    }
+
+    pub(super) fn cryptic_splicing_request_from_controls(
+        &self,
+    ) -> Result<CrypticSplicingScreenRequest, String> {
+        let seq_id = self
+            .seq_id
+            .clone()
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| "No active sequence is available".to_string())?;
+        let start_1based =
+            Self::cryptic_splicing_parse_usize("Scan start", &self.cryptic_splicing_start_1based)?;
+        let end_1based =
+            Self::cryptic_splicing_parse_usize("Scan end", &self.cryptic_splicing_end_1based)?;
+        let min_pseudo_intron_bp = Self::cryptic_splicing_parse_usize(
+            "Minimum pseudo-intron length",
+            &self.cryptic_splicing_min_intron_bp,
+        )?;
+        let max_pseudo_intron_bp = Self::cryptic_splicing_parse_usize(
+            "Maximum pseudo-intron length",
+            &self.cryptic_splicing_max_intron_bp,
+        )?;
+        let max_candidate_pairs = Self::cryptic_splicing_parse_usize(
+            "Candidate budget",
+            &self.cryptic_splicing_max_candidates,
+        )?;
+        let insert_start = self.cryptic_splicing_insert_start_1based.trim();
+        let insert_end = self.cryptic_splicing_insert_end_1based.trim();
+        let insert_span = match (insert_start.is_empty(), insert_end.is_empty()) {
+            (true, true) => None,
+            (false, false) => Some(CrypticSplicingSpan {
+                start_1based: Self::cryptic_splicing_parse_usize("Insert start", insert_start)?,
+                end_1based: Self::cryptic_splicing_parse_usize("Insert end", insert_end)?,
+            }),
+            _ => {
+                return Err(
+                    "Provide both insert boundaries or leave both insert fields blank".to_string(),
+                );
+            }
+        };
+        let cds_feature_id = if self.cryptic_splicing_cds_feature_id.trim().is_empty() {
+            None
+        } else {
+            Some(Self::cryptic_splicing_parse_usize(
+                "CDS feature id",
+                &self.cryptic_splicing_cds_feature_id,
+            )?)
+        };
+        Ok(CrypticSplicingScreenRequest {
+            seq_id,
+            start_1based,
+            end_1based,
+            strand: if self.cryptic_splicing_reverse {
+                CrypticSplicingStrand::Reverse
+            } else {
+                CrypticSplicingStrand::Forward
+            },
+            insert_span,
+            cds_feature_id,
+            min_pseudo_intron_bp,
+            max_pseudo_intron_bp,
+            max_candidate_pairs,
+        })
+    }
+
+    pub(super) fn start_cryptic_splicing_screen(&mut self) {
+        if self.cryptic_splicing_task.is_some() {
+            self.cryptic_splicing_status =
+                "A cryptic-splicing structural screen is already running".to_string();
+            return;
+        }
+        let request = match self.cryptic_splicing_request_from_controls() {
+            Ok(request) => request,
+            Err(error) => {
+                self.cryptic_splicing_status = error;
+                return;
+            }
+        };
+        let Some(engine) = self.engine.clone() else {
+            self.cryptic_splicing_status = "No engine is attached".to_string();
+            return;
+        };
+        let (sender, receiver) = mpsc::channel();
+        self.cryptic_splicing_status = format!(
+            "Screening {}:{}..{} ({}) on an immutable project snapshot...",
+            request.seq_id,
+            request.start_1based,
+            request.end_1based,
+            request.strand.as_str()
+        );
+        self.cryptic_splicing_task = Some(CrypticSplicingTask {
+            started: Instant::now(),
+            receiver: Arc::new(Mutex::new(receiver)),
+        });
+        std::thread::spawn(move || {
+            let result = crate::background_engine::execute_read_only_on_engine_snapshot(
+                &engine,
+                |snapshot| snapshot.inspect_cryptic_splicing_screen(&request),
+            );
+            let _ = sender.send(result);
+        });
+    }
+
+    pub(super) fn poll_cryptic_splicing_task(&mut self, ctx: &egui::Context) {
+        let Some(task) = self.cryptic_splicing_task.as_ref() else {
+            return;
+        };
+        let started = task.started;
+        let receiver = Arc::clone(&task.receiver);
+        let outcome = match receiver.lock() {
+            Ok(receiver) => match receiver.try_recv() {
+                Ok(result) => Some(result),
+                Err(TryRecvError::Empty) => None,
+                Err(TryRecvError::Disconnected) => Some(Err(EngineError {
+                    code: ErrorCode::Internal,
+                    message: "Cryptic-splicing worker disconnected unexpectedly".to_string(),
+                    cause_chain: vec![],
+                })),
+            },
+            Err(_) => Some(Err(EngineError {
+                code: ErrorCode::Internal,
+                message: "Cryptic-splicing result channel lock is poisoned".to_string(),
+                cause_chain: vec![],
+            })),
+        };
+        let Some(outcome) = outcome else {
+            self.cryptic_splicing_status = format!(
+                "Cryptic-splicing structural screen running... {:.1}s elapsed",
+                started.elapsed().as_secs_f32()
+            );
+            ctx.request_repaint_after(Duration::from_millis(100));
+            return;
+        };
+
+        self.cryptic_splicing_task = None;
+        match outcome {
+            Ok(report) => {
+                self.cryptic_splicing_cache_key = Some(CrypticSplicingCacheKey {
+                    request_sha256: report.request_sha256.clone(),
+                    source_digest: report.source_digest.clone(),
+                });
+                self.cryptic_splicing_status = format!(
+                    "Screened {} candidate pair(s) in {:.1}s{}",
+                    report.candidates.len(),
+                    started.elapsed().as_secs_f32(),
+                    if report.budget.truncated {
+                        "; result was deterministically truncated at the configured budget"
+                    } else {
+                        ""
+                    }
+                );
+                self.cryptic_splicing_report = Some(Arc::new(report));
+            }
+            Err(error) => {
+                self.cryptic_splicing_report = None;
+                self.cryptic_splicing_cache_key = None;
+                self.cryptic_splicing_status = format!(
+                    "Cryptic-splicing screen failed after {:.1}s: {}",
+                    started.elapsed().as_secs_f32(),
+                    error.message
+                );
+            }
+        }
+        ctx.request_repaint();
+    }
+
+    fn export_cryptic_splicing_json_dialog(&mut self) {
+        let Some(report) = self.cryptic_splicing_report.as_ref() else {
+            self.cryptic_splicing_status = "Run the structural screen before exporting".into();
+            return;
+        };
+        let default_name = format!(
+            "{}-cryptic-splicing-screen.json",
+            report.request.seq_id.replace(['/', '\\'], "_")
+        );
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .add_filter("JSON", &["json"])
+            .save_file()
+        else {
+            return;
+        };
+        self.cryptic_splicing_status = match serde_json::to_vec_pretty(report.as_ref())
+            .map_err(|error| format!("Could not serialize report: {error}"))
+            .and_then(|bytes| {
+                std::fs::write(&path, bytes)
+                    .map_err(|error| format!("Could not write '{}': {error}", path.display()))
+            }) {
+            Ok(()) => format!("Wrote {}", path.display()),
+            Err(error) => error,
+        };
+    }
+
+    fn export_cryptic_splicing_svg(&mut self) {
+        let Some(report) = self.cryptic_splicing_report.as_ref() else {
+            self.cryptic_splicing_status = "Run the structural screen before exporting".into();
+            return;
+        };
+        let path = self.cryptic_splicing_svg_path.trim();
+        if path.is_empty() {
+            self.cryptic_splicing_status = "Provide an SVG output path".into();
+            return;
+        }
+        let svg = render_cryptic_splicing_screen(report.as_ref());
+        self.cryptic_splicing_status = match std::fs::write(path, svg) {
+            Ok(()) => format!("Wrote {path}"),
+            Err(error) => format!("Could not write '{path}': {error}"),
+        };
+    }
+
+    fn cryptic_splicing_signal_label(status: CrypticSplicingSignalStatus) -> &'static str {
+        match status {
+            CrypticSplicingSignalStatus::Detected => "detected",
+            CrypticSplicingSignalStatus::NotDetected => "not detected",
+            CrypticSplicingSignalStatus::NotEvaluable => "not evaluable",
+        }
+    }
+
+    fn cryptic_splicing_model_label(status: CrypticSplicingModelStatus) -> &'static str {
+        match status {
+            CrypticSplicingModelStatus::Absent => "model absent",
+            CrypticSplicingModelStatus::Present => "model present",
+            CrypticSplicingModelStatus::Failed => "model failed",
+        }
+    }
+
+    pub(super) fn render_cryptic_splicing_screen_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        suggested_span_1based: Option<(usize, usize)>,
+        id_namespace: &str,
+    ) {
+        ui.heading("Cryptic-splicing structural screen");
+        ui.label(
+            egui::RichText::new(
+                "Find bounded GT...AG sequence configurations that could merit experimental follow-up. Candidates are hypotheses, not observed splicing events.",
+            )
+            .color(egui::Color32::from_rgb(71, 85, 105)),
+        );
+        ui.horizontal_wrapped(|ui| {
+            if ui.button("Use full sequence").clicked() {
+                self.cryptic_splicing_start_1based = "1".to_string();
+                self.cryptic_splicing_end_1based = self
+                    .dna
+                    .read()
+                    .map(|dna| dna.len().to_string())
+                    .unwrap_or_else(|_| "0".to_string());
+            }
+            if let Some((start, end)) = suggested_span_1based
+                && ui.button("Use splicing-group span").clicked()
+            {
+                self.cryptic_splicing_start_1based = start.to_string();
+                self.cryptic_splicing_end_1based = end.to_string();
+            }
+        });
+        egui::Grid::new(("cryptic_splicing_inputs", id_namespace))
+            .num_columns(4)
+            .spacing([10.0, 5.0])
+            .show(ui, |ui| {
+                ui.label("Scan span");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.cryptic_splicing_start_1based)
+                        .desired_width(80.0),
+                );
+                ui.label("through");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.cryptic_splicing_end_1based)
+                        .desired_width(80.0),
+                );
+                ui.end_row();
+
+                ui.label("Orientation");
+                ui.checkbox(&mut self.cryptic_splicing_reverse, "reverse complement");
+                ui.label("Coordinates");
+                ui.label("1-based inclusive");
+                ui.end_row();
+
+                ui.label("Pseudo-intron bp");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.cryptic_splicing_min_intron_bp)
+                        .desired_width(80.0),
+                );
+                ui.label("through");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.cryptic_splicing_max_intron_bp)
+                        .desired_width(80.0),
+                );
+                ui.end_row();
+
+                ui.label("Candidate budget");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.cryptic_splicing_max_candidates)
+                        .desired_width(80.0),
+                );
+                ui.label("CDS feature id");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.cryptic_splicing_cds_feature_id)
+                        .desired_width(80.0),
+                )
+                .on_hover_text("Optional zero-based feature index used for CDS consequences");
+                ui.end_row();
+
+                ui.label("Insert span (optional)");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.cryptic_splicing_insert_start_1based)
+                        .desired_width(80.0),
+                );
+                ui.label("through");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.cryptic_splicing_insert_end_1based)
+                        .desired_width(80.0),
+                );
+                ui.end_row();
+            });
+
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .add_enabled(
+                    self.cryptic_splicing_task.is_none(),
+                    egui::Button::new("Run structural screen"),
+                )
+                .clicked()
+            {
+                self.start_cryptic_splicing_screen();
+            }
+            if ui
+                .add_enabled(
+                    self.cryptic_splicing_report.is_some(),
+                    egui::Button::new("Copy report JSON"),
+                )
+                .clicked()
+                && let Some(report) = self.cryptic_splicing_report.as_ref()
+                && let Ok(json) = serde_json::to_string_pretty(report.as_ref())
+            {
+                ui.ctx().copy_text(json);
+                self.cryptic_splicing_status = "Copied report JSON".to_string();
+            }
+            if ui
+                .add_enabled(
+                    self.cryptic_splicing_report.is_some(),
+                    egui::Button::new("Save JSON..."),
+                )
+                .clicked()
+            {
+                self.export_cryptic_splicing_json_dialog();
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.label("SVG path");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.cryptic_splicing_svg_path)
+                    .desired_width(300.0),
+            );
+            if ui
+                .add_enabled(
+                    self.cryptic_splicing_report.is_some(),
+                    egui::Button::new("Render SVG"),
+                )
+                .clicked()
+            {
+                self.export_cryptic_splicing_svg();
+            }
+        });
+        if !self.cryptic_splicing_status.is_empty() {
+            ui.label(
+                egui::RichText::new(&self.cryptic_splicing_status)
+                    .monospace()
+                    .color(egui::Color32::from_rgb(51, 65, 85)),
+            );
+        }
+        ui.separator();
+
+        let Some(report) = self.cryptic_splicing_report.clone() else {
+            ui.label(
+                egui::RichText::new("No cryptic-splicing report is cached for this window.")
+                    .italics()
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            return;
+        };
+        ui.horizontal_wrapped(|ui| {
+            ui.strong(format!("{} candidate(s)", report.candidates.len()));
+            ui.label(format!(
+                "{} donor(s), {} acceptor(s), {} admissible pair(s)",
+                report.budget.donor_site_count,
+                report.budget.acceptor_site_count,
+                report.budget.admissible_pair_count
+            ));
+            let model_color = if report.model.status == CrypticSplicingModelStatus::Present {
+                egui::Color32::from_rgb(22, 101, 52)
+            } else {
+                egui::Color32::from_rgb(180, 83, 9)
+            };
+            ui.colored_label(
+                model_color,
+                Self::cryptic_splicing_model_label(report.model.status),
+            )
+            .on_hover_text(&report.model.note);
+            if report.budget.truncated {
+                ui.colored_label(egui::Color32::from_rgb(180, 83, 9), "truncated");
+            }
+        });
+        ui.small(format!(
+            "Request {} | source {}",
+            report.request_sha256, report.source_digest
+        ));
+        if !report.warnings.is_empty() {
+            egui::CollapsingHeader::new(format!("Warnings ({})", report.warnings.len()))
+                .default_open(true)
+                .show(ui, |ui| {
+                    for warning in &report.warnings {
+                        ui.label(format!("- {warning}"));
+                    }
+                });
+        }
+
+        let row_height = 26.0;
+        let available_height = (ui.available_height() - 20.0).clamp(160.0, 420.0);
+        egui::ScrollArea::both()
+            .id_salt(("cryptic_splicing_candidates", id_namespace))
+            .max_height(available_height)
+            .auto_shrink([false, false])
+            .show_rows(ui, row_height, report.candidates.len() + 1, |ui, rows| {
+                egui::Grid::new(("cryptic_splicing_candidate_grid", id_namespace))
+                    .num_columns(8)
+                    .striped(true)
+                    .spacing([10.0, 4.0])
+                    .show(ui, |ui| {
+                        for row_index in rows {
+                            if row_index == 0 {
+                                ui.strong("candidate");
+                                ui.strong("donor");
+                                ui.strong("acceptor");
+                                ui.strong("removed bp");
+                                ui.strong("branchpoint");
+                                ui.strong("PPT");
+                                ui.strong("model");
+                                ui.strong("CDS consequence");
+                                ui.end_row();
+                                continue;
+                            }
+                            let Some(candidate) = report.candidates.get(row_index - 1) else {
+                                continue;
+                            };
+                            ui.label(&candidate.candidate_id);
+                            ui.label(candidate.donor_source_position_1based.to_string());
+                            ui.label(candidate.acceptor_source_position_1based.to_string());
+                            ui.label(candidate.pseudo_intron_length_bp.to_string());
+                            ui.label(Self::cryptic_splicing_signal_label(
+                                candidate.branchpoint.status,
+                            ));
+                            ui.label(Self::cryptic_splicing_signal_label(
+                                candidate.polypyrimidine_tract.status,
+                            ));
+                            ui.label(Self::cryptic_splicing_model_label(candidate.model_status));
+                            ui.label(
+                                candidate
+                                    .cds_consequence
+                                    .as_ref()
+                                    .map(|value| value.interpretation.as_str())
+                                    .unwrap_or("not requested"),
+                            );
+                            ui.end_row();
+                        }
+                    });
+            });
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(super) struct DotplotComputeDiagnostics {
     pub(super) seq_id: String,

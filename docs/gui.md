@@ -1056,7 +1056,8 @@ Feature tree grouping:
     `Junction-targeting array probes` preview before the full geometry table
   - this is a review-only array design/alignment constraint layer, separate
     from RNA-read evidence; it does not infer isoform support by itself
-- The Splicing Expert has `Structure`, `Evidence`, and `Locus figure` tabs.
+- The Splicing Expert has `Structure`, `Evidence`, `Locus figure`, and
+  `Cryptic screen` tabs.
   `Evidence` is a thin GUI over `FeatureExpertTarget::IsoformEvidence`:
   - choose an imported isoform panel and optionally supply annotation-release
     text, persisted RNA-read/qPCR report ids, probe-evidence JSON, cDNA/EST
@@ -1108,6 +1109,20 @@ Feature tree grouping:
   - the offline PATZ1 example is generated from
     `docs/examples/workflows/patz1_gene_locus_evidence_offline.json`; its tiny
     committed tracks are synthetic and are not experimental PATZ1 evidence
+- `Cryptic screen` is a thin background adapter over
+  `gentle.cryptic_splicing_screen.v1`:
+  - choose a 1-based inclusive source span and orientation, or copy the current
+    splicing-group span; optional insert boundaries classify vector/insert
+    context and an optional CDS feature id enables coding-consequence projection
+  - the scan runs on an immutable engine snapshot, so the DNA viewer remains
+    responsive and project state is not mutated
+  - candidate rows distinguish structural GT-AG configuration,
+    branchpoint/polypyrimidine heuristics, optional model status, and optional
+    CDS consequences. `model absent` is displayed explicitly and candidates are
+    never labelled as observed junctions
+  - the same compact controls are available under Sequence Tools; both surfaces
+    share one request/result cache keyed by request and source-content digests
+  - JSON copy/save and SVG rendering preserve the shared typed report
 - The Splicing Expert now also includes an `ATtRACT / RBP evidence` section:
   - engine-owned, splice-aware motif interpretation over the selected splicing
     group; the GUI is only a viewer/filter for the shared payload

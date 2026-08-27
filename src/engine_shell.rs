@@ -156,7 +156,9 @@ use crate::{
         PrimerBankSpeciesMatchStatus,
     },
     protocol_cartoon::{ProtocolCartoonKind, protocol_cartoon_catalog_rows},
-    publication_resources, resource_status, resource_sync,
+    publication_resources,
+    render_feature_expert::render_cryptic_splicing_screen,
+    resource_status, resource_sync,
     runtime_status::{
         RuntimeStatusActivity, RuntimeStatusActivityObservation, RuntimeStatusActivityScope,
         RuntimeStatusActivitySource, RuntimeStatusFrameKind, RuntimeStatusTrigger,
@@ -174,10 +176,10 @@ use crate::{
     tf_motifs, ucsc_rmsk,
 };
 use gentle_protocol::{
-    CapabilityDescriptor, EXTERNAL_SERVICE_DELIVERY_ROUTE_REQUEST_SCHEMA,
-    EXTERNAL_SERVICE_REQUEST_SCHEMA, ExternalServiceDeliveryRouteReport,
-    ExternalServiceDeliveryRouteRequest, ExternalServiceRequest,
-    GENE_SET_CO_REGULATED_CACHE_SCHEMA, GENE_SET_DIRECT_LIST_CACHE_SCHEMA,
+    CapabilityDescriptor, CrypticSplicingScreenRequest,
+    EXTERNAL_SERVICE_DELIVERY_ROUTE_REQUEST_SCHEMA, EXTERNAL_SERVICE_REQUEST_SCHEMA,
+    ExternalServiceDeliveryRouteReport, ExternalServiceDeliveryRouteRequest,
+    ExternalServiceRequest, GENE_SET_CO_REGULATED_CACHE_SCHEMA, GENE_SET_DIRECT_LIST_CACHE_SCHEMA,
     GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA, SharedAssetActivityStatus, capability_registry,
 };
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
@@ -667,6 +669,13 @@ pub enum ShellCommand {
         seq_id: String,
         feature_id: usize,
         settings: AttractSplicingEvidenceSettings,
+    },
+    SplicingCrypticScreen {
+        request: CrypticSplicingScreenRequest,
+    },
+    SplicingCrypticRender {
+        request: CrypticSplicingScreenRequest,
+        output: String,
     },
     MirnaExplainSeed {
         mirna: String,
@@ -7076,6 +7085,21 @@ impl ShellCommand {
                 settings.requested_organism.as_deref().unwrap_or("auto"),
                 settings.boundary_flank_bp,
                 settings.transcript_strand_only
+            ),
+            Self::SplicingCrypticScreen { request } => format!(
+                "screen cryptic-splicing candidates on '{}':{}..{} ({})",
+                request.seq_id,
+                request.start_1based,
+                request.end_1based,
+                request.strand.as_str()
+            ),
+            Self::SplicingCrypticRender { request, output } => format!(
+                "render cryptic-splicing screen for '{}':{}..{} ({}) to '{}'",
+                request.seq_id,
+                request.start_1based,
+                request.end_1based,
+                request.strand.as_str(),
+                output
             ),
             Self::RenderFeatureExpertSvg {
                 seq_id,
@@ -15977,6 +16001,48 @@ where
         .map_err(|e| format!("Invalid {context} JSON payload: {e}"))
 }
 
+fn parse_splicing_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 3 {
+        return Err(
+            "splicing requires: cryptic-screen REQUEST_JSON_OR_@FILE | cryptic-render REQUEST_JSON_OR_@FILE OUTPUT.svg"
+                .to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "cryptic-screen" => {
+            let payload = tokens[2..].join(" ");
+            let request = parse_required_json_payload::<CrypticSplicingScreenRequest>(
+                &payload,
+                "cryptic-splicing screen request",
+            )?;
+            Ok(ShellCommand::SplicingCrypticScreen { request })
+        }
+        "cryptic-render" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "splicing cryptic-render requires REQUEST_JSON_OR_@FILE OUTPUT.svg".to_string(),
+                );
+            }
+            let output = tokens
+                .last()
+                .cloned()
+                .ok_or_else(|| "splicing cryptic-render requires OUTPUT.svg".to_string())?;
+            if output.trim().is_empty() {
+                return Err("splicing cryptic-render OUTPUT.svg must not be empty".to_string());
+            }
+            let payload = tokens[2..tokens.len() - 1].join(" ");
+            let request = parse_required_json_payload::<CrypticSplicingScreenRequest>(
+                &payload,
+                "cryptic-splicing render request",
+            )?;
+            Ok(ShellCommand::SplicingCrypticRender { request, output })
+        }
+        other => Err(format!(
+            "Unknown splicing subcommand '{other}'; expected cryptic-screen or cryptic-render"
+        )),
+    }
+}
+
 fn parse_facts_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err("facts requires a subcommand: graph or eval".to_string());
@@ -21893,6 +21959,43 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "description": "Inspect one feature-expert target on a loaded sequence.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("inspect-feature-expert")
+        }),
+        json!({
+            "id": "splicing cryptic-screen",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "gentle.cryptic_splicing_screen.v1 request source and deterministic search bounds"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Inspect bounded structural GT-AG cryptic-splicing candidates; model scores and observed RNA junctions remain distinct evidence layers.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("splicing cryptic-screen")
+        }),
+        json!({
+            "id": "splicing cryptic-render",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "gentle.cryptic_splicing_screen.v1 request source and deterministic search bounds"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path"}
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Render the typed bounded cryptic-splicing structural screen as a provenance-marked SVG.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("splicing cryptic-render")
         }),
         json!({
             "id": "restriction_site_detail",
@@ -41227,6 +41330,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
             }
         }
         "sequence" | "sequences" => parse_sequence_command(tokens),
+        "splicing" => parse_splicing_command(tokens),
         "mirna" | "mirnas" => parse_mirna_command(tokens),
         "screenshot-window" => {
             let _ = tokens;
@@ -57842,6 +57946,34 @@ fn execute_feature_expert_command(
                     .map_err(|e| format!("Could not serialize ATtRACT splicing view: {e}"))?,
             })
         }
+        ShellCommand::SplicingCrypticScreen { request } => {
+            let view = engine
+                .inspect_cryptic_splicing_screen(request)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(view)
+                    .map_err(|e| format!("Could not serialize cryptic-splicing screen: {e}"))?,
+            })
+        }
+        ShellCommand::SplicingCrypticRender { request, output } => {
+            let view = engine
+                .inspect_cryptic_splicing_screen(request)
+                .map_err(|e| e.to_string())?;
+            let svg = render_cryptic_splicing_screen(&view);
+            fs::write(output, svg.as_bytes())
+                .map_err(|e| format!("Could not write cryptic-splicing SVG '{}': {e}", output))?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": view.schema,
+                    "request_sha256": view.request_sha256,
+                    "source_digest": view.source_digest,
+                    "candidate_count": view.candidates.len(),
+                    "output": output,
+                }),
+            })
+        }
         ShellCommand::RenderFeatureExpertSvg {
             seq_id,
             target,
@@ -63248,6 +63380,8 @@ fn execute_shell_command_with_options_dispatch_inner(
         command,
         ShellCommand::InspectFeatureExpert { .. }
             | ShellCommand::InspectSplicingAttract { .. }
+            | ShellCommand::SplicingCrypticScreen { .. }
+            | ShellCommand::SplicingCrypticRender { .. }
             | ShellCommand::RenderFeatureExpertSvg { .. }
             | ShellCommand::PanelsImportIsoform { .. }
             | ShellCommand::PanelsInspectIsoform { .. }
@@ -63582,6 +63716,8 @@ fn execute_shell_command_with_options_inner(
         }
         ShellCommand::InspectFeatureExpert { .. }
         | ShellCommand::InspectSplicingAttract { .. }
+        | ShellCommand::SplicingCrypticScreen { .. }
+        | ShellCommand::SplicingCrypticRender { .. }
         | ShellCommand::RenderFeatureExpertSvg { .. }
         | ShellCommand::PanelsImportIsoform { .. }
         | ShellCommand::PanelsInspectIsoform { .. }

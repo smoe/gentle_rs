@@ -262,6 +262,11 @@ unrelated to the next release aim.
 - Evidence-viewer follow-up: keep the Splicing Expert evidence ledger readable
   on large real loci and add direct report-store selectors if probe/expression
   reports become persisted project objects.
+- Cryptic-splicing follow-up: add an optional, resource-fingerprinted MaxEnt or
+  equivalent splice-site scorer and observed RNA-junction overlay without
+  changing the structural-candidate meaning of
+  `gentle.cryptic_splicing_screen.v1`. Keep domain effects in a separate mapped
+  protein-evidence layer.
 - External-services GUI follow-up: keep the window a thin inspector over the
   shared provider/preflight/quote contracts, then improve product-specific
   starter templates, validation previews, and exported-bundle review affordances

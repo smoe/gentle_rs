@@ -12,7 +12,8 @@ pub mod protocol_cartoon;
 
 pub use feature_expert::{
     SplicingExonTransition, SplicingExonTransitionMatrix, compute_splicing_exon_transition_matrix,
-    compute_supported_splicing_exon_transitions, render_feature_expert_svg,
+    compute_supported_splicing_exon_transitions, render_cryptic_splicing_screen,
+    render_feature_expert_svg,
 };
 pub use gene_set_publication::{
     render_gene_isoform_assay_publication_gene, render_gene_isoform_assay_publication_index,

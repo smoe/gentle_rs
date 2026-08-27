@@ -225,6 +225,18 @@ const GUI_PROMINENT_GLOSSARY_ENTRIES: &[GuiProminentGlossaryEntry] = &[
         palette_title: "microRNA Target Scan",
         ui_intent_target: None,
     },
+    GuiProminentGlossaryEntry {
+        glossary_path: "splicing cryptic-screen",
+        menu_path: "DNA Sequence Viewer > Sequence Tools > Cryptic-splicing structural screen",
+        palette_title: "Cryptic-splicing Structural Screen",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "splicing cryptic-render",
+        menu_path: "Splicing Expert > Cryptic screen > Render SVG",
+        palette_title: "Cryptic-splicing Structural Screen",
+        ui_intent_target: None,
+    },
 ];
 
 pub fn gui_prominent_glossary_entries() -> &'static [GuiProminentGlossaryEntry] {

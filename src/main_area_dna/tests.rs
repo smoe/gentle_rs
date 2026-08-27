@@ -1,11 +1,11 @@
 use super::{
-    DnaPresentationMode, FEATURE_TREE_DEFERRED_AUTO_LOAD_MAX_FEATURES, FeatureCopyPayloadKind,
-    LINEAR_TOPOLOGY_SWITCH_MAX_INITIAL_SPAN_BP, MainAreaDna, PcrDesignerMode, PcrPaintRole,
-    PrimaryMapMode, QpcrTranscriptIntentUiMode, RnaReadConcatemerSubsetMode,
-    RnaReadInterpretOpsUiState, RnaReadTask, RnaReadTaskMessage, RnaReadTaskOutcome,
-    SPLICING_ATTRACT_EAGER_BOUNDARY_THRESHOLD, SequencingConfirmationOverviewSelection,
-    SequencingConfirmationReviewFocusKind, SplicingIntronSignalKey, SplicingIntronSignalRow,
-    ViewSvgExportProfile,
+    CrypticSplicingStrand, DnaPresentationMode, FEATURE_TREE_DEFERRED_AUTO_LOAD_MAX_FEATURES,
+    FeatureCopyPayloadKind, LINEAR_TOPOLOGY_SWITCH_MAX_INITIAL_SPAN_BP, MainAreaDna,
+    PcrDesignerMode, PcrPaintRole, PrimaryMapMode, QpcrTranscriptIntentUiMode,
+    RnaReadConcatemerSubsetMode, RnaReadInterpretOpsUiState, RnaReadTask, RnaReadTaskMessage,
+    RnaReadTaskOutcome, SPLICING_ATTRACT_EAGER_BOUNDARY_THRESHOLD,
+    SequencingConfirmationOverviewSelection, SequencingConfirmationReviewFocusKind,
+    SplicingIntronSignalKey, SplicingIntronSignalRow, ViewSvgExportProfile,
     auxiliary_workspaces::LocusEvidenceResourceReadiness,
     feature_location_editor_ui::{FeatureEditorMode, FeatureRecordQualifierUiRow},
 };
@@ -96,6 +96,86 @@ fn cutrun_tfbs_confirmation_label_covers_occupancy_support_statuses() {
             CutRunRegulatoryTfbsConfirmationStatus::Unconfirmed
         ),
         "unconfirmed"
+    );
+}
+
+#[test]
+fn cryptic_splicing_gui_builds_one_typed_source_request() {
+    let dna = DNAsequence::from_sequence(&"A".repeat(200)).expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("screen_source".to_string()), None);
+    area.cryptic_splicing_start_1based = "11".to_string();
+    area.cryptic_splicing_end_1based = "180".to_string();
+    area.cryptic_splicing_reverse = true;
+    area.cryptic_splicing_insert_start_1based = "21".to_string();
+    area.cryptic_splicing_insert_end_1based = "170".to_string();
+    area.cryptic_splicing_cds_feature_id = "3".to_string();
+    area.cryptic_splicing_min_intron_bp = "40".to_string();
+    area.cryptic_splicing_max_intron_bp = "120".to_string();
+    area.cryptic_splicing_max_candidates = "75".to_string();
+
+    let request = area
+        .cryptic_splicing_request_from_controls()
+        .expect("typed request");
+    assert_eq!(request.seq_id, "screen_source");
+    assert_eq!((request.start_1based, request.end_1based), (11, 180));
+    assert_eq!(request.strand, CrypticSplicingStrand::Reverse);
+    assert_eq!(
+        request
+            .insert_span
+            .map(|span| (span.start_1based, span.end_1based)),
+        Some((21, 170))
+    );
+    assert_eq!(request.cds_feature_id, Some(3));
+    assert_eq!(
+        (request.min_pseudo_intron_bp, request.max_pseudo_intron_bp),
+        (40, 120)
+    );
+    assert_eq!(request.max_candidate_pairs, 75);
+}
+
+#[test]
+fn cryptic_splicing_gui_worker_is_read_only_and_caches_content_identity() {
+    let dna = DNAsequence::from_sequence(
+        "AAAGTCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCAGAAA",
+    )
+    .expect("sequence");
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("screen_source".to_string(), dna.clone());
+    let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let revision_before = engine.read().expect("engine").mutation_revision();
+    let mut area = MainAreaDna::new(
+        dna,
+        Some("screen_source".to_string()),
+        Some(Arc::clone(&engine)),
+    );
+    area.cryptic_splicing_min_intron_bp = "20".to_string();
+    area.cryptic_splicing_max_intron_bp = "100".to_string();
+    area.start_cryptic_splicing_screen();
+    assert!(area.cryptic_splicing_task.is_some());
+
+    let ctx = egui::Context::default();
+    for _ in 0..100 {
+        area.poll_cryptic_splicing_task(&ctx);
+        if area.cryptic_splicing_task.is_none() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let report = area
+        .cryptic_splicing_report
+        .as_ref()
+        .expect("cached report");
+    let cache_key = area
+        .cryptic_splicing_cache_key
+        .as_ref()
+        .expect("content cache key");
+    assert_eq!(cache_key.request_sha256, report.request_sha256);
+    assert_eq!(cache_key.source_digest, report.source_digest);
+    assert_eq!(
+        engine.read().expect("engine").mutation_revision(),
+        revision_before
     );
 }
 

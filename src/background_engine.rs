@@ -34,6 +34,24 @@ pub(crate) fn execute_on_engine_snapshot<T>(
     Ok(result)
 }
 
+/// Execute a pure inspection on a detached engine snapshot without entering
+/// the guarded commit path.
+pub(crate) fn execute_read_only_on_engine_snapshot<T>(
+    shared: &Arc<RwLock<GentleEngine>>,
+    work: impl FnOnce(&GentleEngine) -> Result<T, EngineError>,
+) -> Result<T, EngineError> {
+    let detached = {
+        let guard = shared.read().map_err(|_| EngineError {
+            code: ErrorCode::Internal,
+            message: "Engine lock poisoned while snapshotting read-only background work"
+                .to_string(),
+            cause_chain: vec![],
+        })?;
+        guard.fork_detached_execution()
+    };
+    work(detached.engine())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -130,6 +148,29 @@ mod tests {
         );
         assert!(snapshot.state().sequences.contains_key("existing"));
         assert!(!snapshot.state().sequences.contains_key("redoable"));
+    }
+
+    #[test]
+    fn read_only_snapshot_returns_data_without_committing_state() {
+        let mut live = GentleEngine::new();
+        live.apply(Operation::CreateSequenceFromText {
+            sequence_text: "ATGC".to_string(),
+            output_id: Some("existing".to_string()),
+            name: None,
+            circular: false,
+        })
+        .expect("create existing sequence");
+        let revision_before = live.mutation_revision();
+        let shared = Arc::new(RwLock::new(live));
+        let observed = execute_read_only_on_engine_snapshot(&shared, |snapshot| {
+            Ok(snapshot.state().sequences["existing"].len())
+        })
+        .expect("read-only snapshot");
+        assert_eq!(observed, 4);
+        assert_eq!(
+            shared.read().expect("live engine").mutation_revision(),
+            revision_before
+        );
     }
 
     #[test]

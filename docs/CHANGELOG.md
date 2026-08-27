@@ -1,5 +1,14 @@
 # GENtle Changelog
 
+- Added a dependency-free, engine-owned cryptic-splicing structural screen for
+  loaded sequence spans. The new `gentle.cryptic_splicing_screen.v1` report
+  keeps GT-AG structural candidates, optional splice-model scores, observed
+  junction evidence, and CDS consequences as separate evidence layers; applies
+  deterministic pair budgets; and records content hashes and coordinate
+  provenance. Shared shell JSON/SVG routes and one background Splicing Expert /
+  Sequence Tools adapter expose the same read-only report without persisting
+  candidate rows or treating a sequence motif as observed splicing.
+
 - Added external-auditor-ready Criterion targets with GUI responsiveness as the
   primary concern. The real eager DNA-window constructor, deferred UI-thread
   hydration boundary, first embedded frame, and steady embedded frame now run

@@ -1204,6 +1204,8 @@ struct ResolvedGenomePromoterSlice {
 mod candidate_guides;
 #[path = "engine/analysis/candidate_metrics.rs"]
 mod candidate_metrics;
+#[path = "engine/analysis/cryptic_splicing.rs"]
+mod cryptic_splicing;
 #[path = "engine/cutrun.rs"]
 mod cutrun;
 #[path = "engine/ops/external_primer_pairs.rs"]

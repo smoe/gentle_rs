@@ -2525,6 +2525,7 @@ enum CommandPaletteAction {
     OpenGeneSetInspector,
     OpenGibson,
     OpenMirnaTargetScan,
+    OpenCrypticSplicingScreen,
     OpenEvidencePreparation,
     OpenPlanning,
     OpenRoutineAssistant,
@@ -5574,6 +5575,15 @@ Error: `{err}`"
                 action: CommandPaletteAction::OpenMirnaTargetScan,
             },
             CommandPaletteEntry {
+                title: "Cryptic-splicing Structural Screen".to_string(),
+                detail: "Inspect bounded GT-AG pseudo-intron candidates in a project sequence"
+                    .to_string(),
+                keywords:
+                    "splicing cryptic splice donor acceptor pseudo-intron cds structural screen"
+                        .to_string(),
+                action: CommandPaletteAction::OpenCrypticSplicingScreen,
+            },
+            CommandPaletteEntry {
                 title: "Evidence Preparation".to_string(),
                 detail: "Prepare the TP73 evidence-viewer proof material through shared GENtle operations and copyable handoff commands".to_string(),
                 keywords: "tp73 evidence preparation array clariom repeat rmsk cutrun bed tfbs proof".to_string(),
@@ -5695,6 +5705,7 @@ Error: `{err}`"
             CommandPaletteAction::OpenGeneSetInspector => self.open_gene_set_inspector_dialog(),
             CommandPaletteAction::OpenGibson => self.open_gibson_dialog(),
             CommandPaletteAction::OpenMirnaTargetScan => self.open_mirna_target_scan_dialog(),
+            CommandPaletteAction::OpenCrypticSplicingScreen => self.open_cryptic_splicing_screen(),
             CommandPaletteAction::OpenEvidencePreparation => {
                 self.open_evidence_preparation_dialog()
             }
@@ -8579,6 +8590,48 @@ Error: `{err}`"
         let window = self.windows.get(&viewport_id)?;
         let guard = window.read().ok()?;
         Some((guard.sequence_id()?, guard.selection_range_0based()))
+    }
+
+    fn open_cryptic_splicing_screen(&mut self) {
+        let target_seq_id = self
+            .active_dna_window_context()
+            .map(|(seq_id, _)| seq_id)
+            .or_else(|| self.project_sequence_ids_for_blast().first().cloned());
+        let Some(seq_id) = target_seq_id else {
+            self.app_status =
+                "Cannot open cryptic-splicing screen: no project sequence is available".to_string();
+            return;
+        };
+        if let Some(viewport_id) = self.find_open_sequence_viewport_id(&seq_id) {
+            let opened = self
+                .windows
+                .get(&viewport_id)
+                .cloned()
+                .and_then(|window| {
+                    let mut window = window.write().ok()?;
+                    window.focus_cryptic_splicing_screen();
+                    Some(())
+                })
+                .is_some();
+            if opened {
+                self.queue_focus_viewport(viewport_id);
+                self.app_status =
+                    format!("Opened cryptic-splicing structural screen for sequence '{seq_id}'");
+                return;
+            }
+        }
+        if let Some(window) = self.find_pending_sequence_window_mut(&seq_id) {
+            window.focus_cryptic_splicing_screen();
+            self.app_status =
+                format!("Queued cryptic-splicing structural screen for sequence '{seq_id}'");
+            return;
+        }
+        self.open_sequence_window(&seq_id);
+        if let Some(window) = self.find_pending_sequence_window_mut(&seq_id) {
+            window.focus_cryptic_splicing_screen();
+        }
+        self.app_status =
+            format!("Opening sequence '{seq_id}' for the cryptic-splicing structural screen");
     }
 
     fn open_feature_location_editor(&mut self) {

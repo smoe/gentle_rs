@@ -72,6 +72,12 @@ impl Window {
         }
     }
 
+    pub fn focus_cryptic_splicing_screen(&mut self) {
+        match self {
+            Self::Dna(window) => window.focus_cryptic_splicing_screen(),
+        }
+    }
+
     pub fn focus_primer_design_report(&mut self, report_id: &str) {
         match self {
             Self::Dna(window) => window.focus_primer_design_report(report_id),
