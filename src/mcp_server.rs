@@ -1310,6 +1310,7 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
             "primers transcript-assay-specificity-redesign",
             "primers compose-gene-assay-routine",
             "primers plan-gene-isoform-study",
+            "uniprot build-linked-transcript-inventory",
         ],
         "workflow" => &["workflow"],
         "gene_isoform_assay_publication" => &["primers publish-gene-isoform-study"],

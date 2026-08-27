@@ -753,6 +753,8 @@ an agent has selected a deterministic operation.
 - `services route-project-source`
 - `services status`
 - `set-param`
+- `splicing cryptic-render`
+- `splicing cryptic-screen`
 - `splicing-refs derive`
 - `tracks import-bed`
 - `tracks import-bigwig`
