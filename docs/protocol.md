@@ -3527,7 +3527,7 @@ Sequencing-trace evidence notes:
 - `Branch { input, output_id? }`
 - `SetDisplayVisibility { target, visible }`
 - `SetLinearViewport { start_bp, span_bp }`
-- `AnnotatePromoterWindows { input, gene_label?, transcript_id?, upstream_bp=1000, downstream_bp=200, collapse_mode=transcript|gene }`
+- `AnnotatePromoterWindows { input, gene_label?, transcript_id?, upstream_bp=1000, downstream_bp=200, collapse_mode=transcript|gene|tss_cluster }`
   - derives strand-aware promoter windows from transcript TSS geometry
   - writes them back as ordinary `promoter` features with explicit generated
     qualifiers (`generated_by`, `promoter_source`, `gene`, `transcript_id`,
@@ -3535,6 +3535,11 @@ Sequencing-trace evidence notes:
   - exact duplicate promoter spans that differ only by downstream splice
     variation are collapsed at write-back time; the shared feature label keeps
     one promoter symbol and annotates how many transcripts contributed
+  - `tss_cluster { tolerance_bp }` groups records only when they have the same
+    gene and strand, their transcript-oriented first exons overlap, and the
+    cluster's complete TSS span remains within the requested tolerance; each
+    class retains all transcript ids, a deterministic representative
+    transcript/TSS, `promoter_class_id`, `grouping_reason`, and the tolerance
   - generated promoter windows render distinctly from imported promoter
     features
 - `SummarizeVariantPromoterContext { input, variant_label_or_id?, gene_label?, transcript_id?, promoter_upstream_bp=1000, promoter_downstream_bp=200, tfbs_focus_half_window_bp=100, path? }`
@@ -3553,10 +3558,27 @@ Sequencing-trace evidence notes:
     representative transcript/TSS for GUI retargeting back into Promoter design
   - warnings make the transcript-level to DNA-level collapse explicit when
     several transcript TSS interpretations reduce to one genomic promoter span
-- `SuggestPromoterReporterFragments { input, variant_label_or_id?, gene_label?, transcript_id?, retain_downstream_from_tss_bp=200, retain_upstream_beyond_variant_bp=500, max_candidates=5, path? }`
+- `SuggestPromoterReporterFragments { input, variant_label_or_id?, gene_label?, transcript_id?, retain_downstream_from_tss_bp=200, retain_upstream_beyond_variant_bp=500, max_candidates=5, fragment_policy?, path? }`
   - emits portable record schema `gentle.promoter_reporter_candidates.v1`
   - ranks transcript-aware, strand-aware promoter fragment candidates and marks
     one deterministic default recommendation
+  - an omitted `fragment_policy` preserves the original variant-anchored
+    request, geometry, and serialized v1 shape used by the VKORC1 workflow
+  - `fragment_policy.anchor` accepts a local annotated `variant`, a local
+    annotated `motif_hit` (with deterministic occurrence selection), or an
+    `explicit_interval`; motif hits are reported as sequence-motif evidence and
+    never imply occupancy or functional regulation
+  - non-legacy geometry unions a strand-aware TSS window with the requested
+    flank on both sides of the resolved anchor; the policy defaults are 500 bp
+    upstream of the representative TSS, 150 bp per anchor side, and a 5,000 bp
+    maximum fragment length
+  - proposals beyond `max_fragment_length_bp` are retained as typed
+    `rejected_candidates` with `max_fragment_length_exceeded`, not emitted as
+    silently oversized cloning candidates
+  - existing `variant_start_0based` / `variant_end_0based_exclusive` fields
+    remain v1 coordinate aliases; for a non-variant request they contain the
+    resolved anchor interval, while additive `anchor` provenance identifies
+    its actual kind
 - `ListReporterCatalog { catalog_path?, filter?, limit?, path? }`
   - emits `gentle.reporter_catalog_report.v1`
   - validates the local reporter catalog, quarantines rows with missing

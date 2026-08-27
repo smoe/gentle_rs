@@ -1,5 +1,16 @@
 # GENtle Changelog
 
+- Generalized the existing promoter-reporter candidate operation without
+  adding a new operation or schema family. Transcript promoter windows can now
+  form deterministic same-gene/same-strand TSS classes when first exons overlap;
+  class rows retain transcript membership, representative TSS provenance, and
+  a machine-readable grouping reason. Reporter-fragment policy can resolve a
+  local variant, local motif annotation, or explicit interval, union the anchor
+  flank with strand-aware TSS geometry, and report overlength proposals as
+  typed rejections. The omitted-policy VKORC1 variant path keeps its prior v1
+  serialization and behavior, and motif annotations remain sequence evidence
+  rather than occupancy or functional claims.
+
 - Added a dependency-free, engine-owned cryptic-splicing structural screen for
   loaded sequence spans. The new `gentle.cryptic_splicing_screen.v1` report
   keeps GT-AG structural candidates, optional splice-model scores, observed

@@ -1934,6 +1934,7 @@ impl MainAreaDna {
                 retain_downstream_from_tss_bp,
                 retain_upstream_beyond_variant_bp,
                 max_candidates,
+                fragment_policy: Default::default(),
                 path,
             },
         );

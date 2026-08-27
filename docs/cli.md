@@ -3089,7 +3089,7 @@ Shared shell command:
         can use aliases, family-style queries, or functional groups
     - `features restriction-scan SEQ_ID [--range START..END|--start N --end N] [--enzyme NAME] [--max-sites-per-enzyme N] [--no-cut-geometry] [--path FILE.json]`
     - `features restriction-scan --sequence-text DNA [--topology linear|circular] [--id-hint TEXT] [--range START..END|--start N --end N] [--enzyme NAME] [--max-sites-per-enzyme N] [--no-cut-geometry] [--path FILE.json]`
-    - `variant annotate-promoters SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--upstream-bp N] [--downstream-bp N] [--collapse transcript|gene]`
+    - `variant annotate-promoters SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--upstream-bp N] [--downstream-bp N] [--collapse transcript|gene|tss-cluster[:TOLERANCE_BP]]`
     - `variant promoter-context SEQ_ID [--variant ID] [--gene-label LABEL] [--transcript-id ID] [--promoter-upstream-bp N] [--promoter-downstream-bp N] [--tfbs-focus-half-window-bp N] [--path FILE.json]`
     - `variant reporter-fragments SEQ_ID [--variant ID] [--gene-label LABEL] [--transcript-id ID] [--retain-downstream-from-tss-bp N] [--retain-upstream-beyond-variant-bp N] [--max-candidates N] [--path FILE.json]`
     - `reporters list [--catalog PATH] [--filter TEXT] [--limit N] [--output FILE.json]`
@@ -7158,6 +7158,24 @@ cargo run --quiet --bin gentle_cli -- \
 These direct shell/CLI routes keep the promoter classification, fragment
 suggestion, and allele materialization on the same shared engine contracts used
 by operation JSON, workflows, and the updated tutorial path.
+
+`variant annotate-promoters --collapse tss-cluster` uses a 50 bp tolerance;
+append a tolerance such as `tss-cluster:25` to make it explicit. A TSS class
+requires the same gene and strand plus overlapping transcript-oriented first
+exons, and retains its complete transcript membership and grouping reason.
+
+The dedicated `variant reporter-fragments` route remains the compatibility
+surface for variant-anchored designs in this engine-first slice. Local
+motif-anchored or explicit-interval planning is available through the same
+`SuggestPromoterReporterFragments` operation contract, for example:
+
+```json
+{"SuggestPromoterReporterFragments":{"input":"tgfb1_promoter_context","gene_label":"TGFB1","retain_downstream_from_tss_bp":200,"retain_upstream_beyond_variant_bp":500,"max_candidates":5,"fragment_policy":{"anchor":{"kind":"motif_hit","label_or_id":"TP73","occurrence":1},"collapse_mode":{"tss_cluster":{"tolerance_bp":50}},"promoter_upstream_baseline_bp":500,"anchor_flank_bp":150,"max_fragment_length_bp":5000}}}
+```
+
+Motif selection uses only local TFBS annotations. Its report is explicitly
+sequence-motif evidence, not evidence of occupancy or functional regulation;
+overlength geometries remain visible as typed rejections.
 
 Select one candidate in-silico (explicit provenance step):
 

@@ -89,8 +89,8 @@ use crate::{
         PrimerSpecificityCollectionMemberBinding, PrimerSpecificityPolicy,
         PrimerVariantScreenRequest, ProbeRegionRequest, ProjectFact, ProjectFactDomain,
         ProjectFactGraph, ProjectFactTypeSpec, ProjectState, PromoterArtifactManifestEntry,
-        PromoterCohortKind, PromoterExpressionEvidenceInput, PromoterTfbsGeneQuery,
-        PromoterWindowCollapseMode, ProteinExpressionCdsAssessment,
+        PromoterCohortKind, PromoterExpressionEvidenceInput, PromoterReporterFragmentPolicy,
+        PromoterTfbsGeneQuery, PromoterWindowCollapseMode, ProteinExpressionCdsAssessment,
         ProteinExpressionFeatureSummary, ProteinExpressionHandoffReport,
         ProteinExpressionHostChassisCandidate, ProteinExpressionProductDefinition,
         ProteinExpressionProductReadiness, ProteinExpressionRequirements,
@@ -22415,7 +22415,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 {"name": "--transcript-id", "required": false, "detail": "optional transcript-id filter"},
                 {"name": "--upstream-bp", "required": false, "detail": "promoter window upstream length"},
                 {"name": "--downstream-bp", "required": false, "detail": "promoter window downstream length"},
-                {"name": "--collapse", "required": false, "detail": "transcript or gene promoter-window collapse mode"}
+                {"name": "--collapse", "required": false, "detail": "transcript, gene, or tss-cluster[:TOLERANCE_BP] promoter-window collapse mode"}
             ],
             "reads": [
                 {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
@@ -22441,7 +22441,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 {"name": "TRANSCRIPT_ID", "required": false, "detail": "optional transcript-id filter carried by transcript_id"},
                 {"name": "UPSTREAM_BP", "required": false, "detail": "promoter window upstream length carried by upstream_bp"},
                 {"name": "DOWNSTREAM_BP", "required": false, "detail": "promoter window downstream length carried by downstream_bp"},
-                {"name": "COLLAPSE_MODE", "required": false, "detail": "transcript or gene promoter-window collapse mode carried by collapse_mode"}
+                {"name": "COLLAPSE_MODE", "required": false, "detail": "transcript, gene, or tss-cluster[:TOLERANCE_BP] promoter-window collapse mode carried by collapse_mode"}
             ],
             "reads": [
                 {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
@@ -35916,12 +35916,27 @@ fn parse_dbsnp_command(tokens: &[String]) -> Result<ShellCommand, String> {
 }
 
 fn parse_promoter_window_collapse_mode(raw: &str) -> Result<PromoterWindowCollapseMode, String> {
-    match raw.trim().to_ascii_lowercase().as_str() {
+    let normalized = raw.trim().to_ascii_lowercase();
+    match normalized.as_str() {
         "transcript" => Ok(PromoterWindowCollapseMode::Transcript),
         "gene" => Ok(PromoterWindowCollapseMode::Gene),
-        other => Err(format!(
-            "Invalid promoter collapse mode '{other}' (expected transcript or gene)"
-        )),
+        "tss_cluster" | "tss-cluster" => Ok(PromoterWindowCollapseMode::TssCluster {
+            tolerance_bp: PromoterReporterFragmentPolicy::DEFAULT_TSS_CLUSTER_TOLERANCE_BP,
+        }),
+        other => {
+            let tolerance = other
+                .strip_prefix("tss_cluster:")
+                .or_else(|| other.strip_prefix("tss-cluster:"));
+            if let Some(tolerance) = tolerance {
+                let tolerance_bp = tolerance
+                    .parse::<usize>()
+                    .map_err(|e| format!("Invalid TSS-cluster tolerance '{tolerance}': {e}"))?;
+                return Ok(PromoterWindowCollapseMode::TssCluster { tolerance_bp });
+            }
+            Err(format!(
+                "Invalid promoter collapse mode '{other}' (expected transcript, gene, or tss-cluster[:TOLERANCE_BP])"
+            ))
+        }
     }
 }
 
@@ -57600,6 +57615,7 @@ fn execute_sequence_analysis_command(
                     retain_downstream_from_tss_bp: *retain_downstream_from_tss_bp,
                     retain_upstream_beyond_variant_bp: *retain_upstream_beyond_variant_bp,
                     max_candidates: *max_candidates,
+                    fragment_policy: Default::default(),
                     path: path.clone(),
                 })
                 .map_err(|e| e.to_string())?;
