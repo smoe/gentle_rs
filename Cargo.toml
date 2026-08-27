@@ -204,6 +204,12 @@ lto = "thin"
 codegen-units = 16
 opt-level = 2
 
+[profile.bench-audit]
+inherits = "release"
+lto = "thin"
+codegen-units = 16
+panic = "unwind"
+
 [patch.crates-io]
 egui_commonmark = { path = "vendor/egui_commonmark" }
 egui_commonmark_backend = { path = "vendor/egui_commonmark_backend" }
