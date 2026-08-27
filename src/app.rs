@@ -23599,6 +23599,8 @@ Error: `{err}`"
             }
         }
         if matches!(phase, "ready" | "failed") {
+            // Runtime introspection reports active opens only; a terminal load
+            // error remains visible in the sequence window itself.
             self.sequence_window_open_runtime_frames.remove(&seq_id);
             self.finalize_viewport_open_probe(viewport_id, "Sequence");
         }

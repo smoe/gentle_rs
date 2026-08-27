@@ -32419,6 +32419,8 @@ impl GentleEngine {
 
         let broader_transcript_count = panel.coverage_resolution.annotated_transcript_count;
         let broader_group_count = panel.coverage_resolution.annotated_equivalence_group_count;
+        // The transcript count predates the optional legacy-presence marker;
+        // the complete-denominator claim below therefore still requires both.
         let broader_denominator_available = broader_transcript_count > 0;
         let annotated_transcript_record_count = if broader_denominator_available {
             broader_transcript_count
