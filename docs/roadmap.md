@@ -1,10 +1,9 @@
 # GENtle Roadmap
 
-Last session: 2026-08-26 - aligned the inner Agent Assistant with the live GUI
-recent-project, tutorial-project, and Configuration catalogs through bounded
-host context plus parser-validated UI intents; copied-state IRF9 acceptance and
-manual GUI smoke for the unreleased `v0.1.0-internal.10` release remain before
-the tag
+Last session: 2026-08-27 - added external-auditor-ready Criterion targets led
+by DNA-window construction/hydration/first/steady frame proxies, with
+specificity finalization as a secondary target; copied-state IRF9 acceptance
+and manual GUI smoke for unreleased `v0.1.0-internal.10` remain before the tag
 
 Purpose: fast session orientation. This file answers "what next?" and should be
 readable in under two minutes. Completed work belongs in

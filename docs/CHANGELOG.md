@@ -1,5 +1,16 @@
 # GENtle Changelog
 
+- Added external-auditor-ready Criterion targets with GUI responsiveness as the
+  primary concern. The real eager DNA-window constructor, deferred UI-thread
+  hydration boundary, first embedded frame, and steady embedded frame now run
+  against a feature-free control and the public TP73 locus with hash-bound
+  benchmark identities. A secondary deterministic
+  target exercises primer-specificity parsing and in-memory finalization at
+  100, 1,000, and 6,600 HSPs. Criterion remains benchmark-only; GENtle authors
+  provide compile/smoke evidence while Glen, the named external auditor for
+  the current release assessment, owns stable-host baselines, real GUI/Puffin
+  review, and the performance verdict.
+
 - Made individual mRNA records directly usable from the DNA viewer: cached
   feature-tree rows now show spliced length and available transcript/isoform
   names, and their context menus copy raw or FASTA sequence or export FASTA

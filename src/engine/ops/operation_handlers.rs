@@ -16028,6 +16028,14 @@ impl GentleEngine {
         Ok(report)
     }
 
+    /// Benchmark-only entry point for the deterministic BLAST tabular parser.
+    #[cfg(feature = "benchmark-support")]
+    #[doc(hidden)]
+    pub fn benchmark_parse_primer_specificity_blast_output(output: &str) -> (usize, usize) {
+        let (hits, warnings) = parse_blastn_tabular_hits(output);
+        (hits.len(), warnings.len())
+    }
+
     pub fn import_primer_pair_specificity_handoff(
         &self,
         handoff_path: &str,
@@ -16323,6 +16331,17 @@ impl GentleEngine {
                 .then(left.source_path.cmp(&right.source_path))
         });
         Ok(report)
+    }
+
+    /// Benchmark-only entry point that avoids process launch and output-file I/O.
+    #[cfg(feature = "benchmark-support")]
+    #[doc(hidden)]
+    pub fn benchmark_primer_specificity_report_from_handoff_outputs(
+        &self,
+        handoff: &PrimerSpecificityHandoff,
+        validated_outputs: &BTreeMap<String, String>,
+    ) -> Result<PrimerSpecificityReport, EngineError> {
+        self.primer_specificity_report_from_handoff_outputs(handoff, Some(validated_outputs))
     }
 
     pub(super) fn transcript_assay_panel_specificity_digest(

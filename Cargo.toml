@@ -90,6 +90,7 @@ name = "gentle"
 default = ["screenshot-capture"]
 screenshot-capture = ["dep:screencapturekit"]
 gui-profiler = ["dep:puffin", "dep:puffin_http"]
+benchmark-support = []
 snapshot-tests = ["gentle-render/snapshot-tests"]
 js-interface = [
     "dep:deno_core",
@@ -165,6 +166,19 @@ screencapturekit = { version = "8.0.1", optional = true, features = ["macos_14_0
 
 [build-dependencies]
 winres = "0.1"
+
+[dev-dependencies]
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "specificity_finalization"
+harness = false
+required-features = ["benchmark-support"]
+
+[[bench]]
+name = "gui_operations"
+harness = false
+required-features = ["benchmark-support"]
 
 [profile.dev]
 # Favor faster local iteration for the large GUI crate. Keep line-table debug
