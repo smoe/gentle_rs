@@ -3582,6 +3582,15 @@ Sequencing-trace evidence notes:
     remain v1 coordinate aliases; for a non-variant request they contain the
     resolved anchor interval, while additive `anchor` provenance identifies
     its actual kind
+- Promoter-reporter panel support reports remain engine-owned and portable:
+  - `gentle.promoter_reporter_panel_cloning_strategy.v1` checks one ordered
+    vector-derived directional restriction pair against every insert and
+    records an explicit Gibson fallback when no pair is clear panel-wide
+  - `gentle.p53_family_motif_disruption.v1` applies a fixed, reported core-base
+    substitution rule to one or two oriented p53-family half-sites, then audits
+    local TP73/TP53/TP63 PWM scores and selected restriction-site changes
+  - both are sequence-planning evidence only; they do not establish TF
+    occupancy, functional motif ablation, expression change, or reporter output
 - `ListReporterCatalog { catalog_path?, filter?, limit?, path? }`
   - emits `gentle.reporter_catalog_report.v1`
   - validates the local reporter catalog, quarantines rows with missing

@@ -878,6 +878,7 @@ const RESTRICTION_CLONING_PCR_HANDOFF_REPORT_SCHEMA: &str =
     "gentle.restriction_cloning_pcr_handoff.v1";
 pub const PROMOTER_REPORTER_PANEL_CLONING_STRATEGY_SCHEMA: &str =
     "gentle.promoter_reporter_panel_cloning_strategy.v1";
+pub const P53_FAMILY_MOTIF_DISRUPTION_SCHEMA: &str = "gentle.p53_family_motif_disruption.v1";
 pub const PROTEIN_DERIVATION_REPORTS_METADATA_KEY: &str = "protein_derivation_reports";
 const PROTEIN_DERIVATION_REPORTS_SCHEMA: &str = "gentle.protein_derivation_reports.v1";
 pub const PROTEIN_DERIVATION_REPORT_SCHEMA: &str = "gentle.protein_derivation_report.v1";

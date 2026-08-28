@@ -9087,6 +9087,78 @@ pub struct PromoterReporterPanelCloningStrategyReport {
     pub warnings: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One stated-rule nucleotide substitution in a p53-family response element.
+pub struct P53FamilyMotifBaseChange {
+    pub source_position_0based: usize,
+    pub oriented_position_0based: usize,
+    pub half_site_index_1based: usize,
+    pub original_base: char,
+    pub replacement_base: char,
+    pub rule: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// JASPAR score comparison around the bases changed by the stated rule.
+pub struct P53FamilyMotifPwmAudit {
+    pub tf_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tf_name: Option<String>,
+    pub windows_compared: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wild_type_max_llr_bits: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mutant_max_llr_bits: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_llr_delta_bits: Option<f64>,
+    pub stronger_mutant_window_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(default)]
+/// Zero-based half-open restriction-site interval.
+pub struct P53FamilyRestrictionSiteInterval {
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Before/after restriction-site inventory for one selected enzyme.
+pub struct P53FamilyRestrictionSiteAudit {
+    pub enzyme: String,
+    pub wild_type_site_count: usize,
+    pub mutant_site_count: usize,
+    pub newly_created_sites: Vec<P53FamilyRestrictionSiteInterval>,
+    pub lost_sites: Vec<P53FamilyRestrictionSiteInterval>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Auditable sequence-only p53-family motif-disruption proposal.
+pub struct P53FamilyMotifDisruptionReport {
+    pub schema: String,
+    pub stated_rule: String,
+    pub source_sequence_sha256: String,
+    pub motif_start_0based: usize,
+    pub motif_end_0based_exclusive: usize,
+    pub motif_forward_strand: bool,
+    pub original_motif_source: String,
+    pub original_motif_oriented: String,
+    pub mutant_motif_source: String,
+    pub mutant_motif_oriented: String,
+    pub mutant_sequence: String,
+    pub changes: Vec<P53FamilyMotifBaseChange>,
+    pub length_preserved: bool,
+    pub pwm_audits: Vec<P53FamilyMotifPwmAudit>,
+    pub no_stronger_p53_family_hit_near_edit: bool,
+    pub restriction_site_audits: Vec<P53FamilyRestrictionSiteAudit>,
+    pub creates_selected_restriction_site: bool,
+    pub warnings: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RestrictionCloningPcrHandoffSeedRequest {
     pub schema: String,

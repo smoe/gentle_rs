@@ -16,6 +16,14 @@
   inspectable; no candidate is treated as observed splicing without bound RNA
   support.
 
+- Added a stated-rule p53-family response-element disruption report for
+  promoter-reporter design. V1 changes only the conserved oriented C/G core
+  positions in one or two contiguous 10-bp half-sites, preserves sequence
+  length, and separately audits TP73/TP53/TP63 JASPAR score windows plus newly
+  created or lost sites for the selected cloning enzymes. The PWM audit does
+  not optimize substitutions, and the report explicitly avoids functional
+  ablation or occupancy claims.
+
 - Added a deterministic promoter-reporter panel cloning strategy report that
   composes the existing vector MCS ordering and restriction-site scanner. It
   selects the first directional enzyme pair without an internal recognition

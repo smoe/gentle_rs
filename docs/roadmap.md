@@ -300,8 +300,8 @@ wet-lab conclusions or unconfirmed mutations.
 ## Parking Lot
 
 - Complete the motif-anchored multi-promoter reporter-panel arc after the landed
-  engine anchor/TSS-class, exact-vector-validation, and shared-cloning-strategy
-  slices: stated-rule p53-family motif disruption and proposal-digest-gated
+  engine anchor/TSS-class, exact-vector-validation, shared-cloning-strategy,
+  and stated-rule p53-family motif-disruption slices: proposal-digest-gated
   command, parity, GUI, and offline tutorial surfaces.
 - Replace whole-transcriptome FASTA materialization in UniProt linked-transcript
   inventory construction with indexed/streaming retrieval, and expose bounded
