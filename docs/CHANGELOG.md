@@ -16,6 +16,13 @@
   inspectable; no candidate is treated as observed splicing without bound RNA
   support.
 
+- Added a deterministic promoter-reporter panel cloning strategy report that
+  composes the existing vector MCS ordering and restriction-site scanner. It
+  selects the first directional enzyme pair without an internal recognition
+  site in any panel insert, records every blocking insert/site count, and falls
+  back explicitly to Gibson when the vector has no ordered pair or every pair
+  is blocked.
+
 - Added catalog-owned exact reporter-vector identity validation to the existing
   reporter construct handoff. The built-in pGL4.10[luc2] helper entry now pins
   Promega E6651 / GenBank AY738222.1 metadata and required MCS/luc2 annotation

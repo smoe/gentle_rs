@@ -9032,6 +9032,61 @@ pub struct RestrictionCloningVectorEnzymeSuggestions {
     pub recommended_directed_pairs: Vec<RestrictionCloningDirectedPairSuggestion>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Panel-wide cloning route selected after checking every insert.
+pub enum PromoterReporterPanelCloningStrategy {
+    #[default]
+    DirectionalRestriction,
+    Gibson,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Internal restriction-site counts for one prospective panel insert.
+pub struct PromoterReporterPanelInsertSiteSummary {
+    pub insert_seq_id: String,
+    pub insert_length_bp: usize,
+    pub site_count_by_enzyme: BTreeMap<String, usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One insert/enzyme conflict that prevents a shared directional pair.
+pub struct PromoterReporterPanelCloningBlocker {
+    pub insert_seq_id: String,
+    pub enzyme: String,
+    pub site_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One vector-ranked directional pair evaluated against the full panel.
+pub struct PromoterReporterPanelPairEvaluation {
+    pub rank_1based: usize,
+    pub pair: RestrictionCloningDirectedPairSuggestion,
+    pub compatible: bool,
+    pub blockers: Vec<PromoterReporterPanelCloningBlocker>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Deterministic shared-cloning decision for a promoter-reporter panel.
+pub struct PromoterReporterPanelCloningStrategyReport {
+    pub schema: String,
+    pub destination_vector_seq_id: String,
+    pub insert_seq_ids: Vec<String>,
+    pub vector_suggestions: RestrictionCloningVectorEnzymeSuggestions,
+    pub insert_site_summaries: Vec<PromoterReporterPanelInsertSiteSummary>,
+    pub pair_evaluations: Vec<PromoterReporterPanelPairEvaluation>,
+    pub strategy: PromoterReporterPanelCloningStrategy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_pair: Option<RestrictionCloningDirectedPairSuggestion>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_reason: Option<String>,
+    pub warnings: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RestrictionCloningPcrHandoffSeedRequest {
     pub schema: String,

@@ -876,6 +876,8 @@ pub const GENE_TRANSCRIPT_ASSAY_ROUTINE_SCHEMA: &str = "gentle.gene_transcript_a
 pub const PRIMER_PAIR_SUMMARY_SCHEMA: &str = "gentle.primer_pair_summary.v2";
 const RESTRICTION_CLONING_PCR_HANDOFF_REPORT_SCHEMA: &str =
     "gentle.restriction_cloning_pcr_handoff.v1";
+pub const PROMOTER_REPORTER_PANEL_CLONING_STRATEGY_SCHEMA: &str =
+    "gentle.promoter_reporter_panel_cloning_strategy.v1";
 pub const PROTEIN_DERIVATION_REPORTS_METADATA_KEY: &str = "protein_derivation_reports";
 const PROTEIN_DERIVATION_REPORTS_SCHEMA: &str = "gentle.protein_derivation_reports.v1";
 pub const PROTEIN_DERIVATION_REPORT_SCHEMA: &str = "gentle.protein_derivation_report.v1";
@@ -1256,6 +1258,8 @@ mod read_acquisition;
 mod repeat_cohort;
 #[path = "engine/ops/reporter_ops.rs"]
 mod reporter_ops;
+#[path = "engine/analysis/reporter_panel.rs"]
+mod reporter_panel;
 #[path = "engine/analysis/rna_reads.rs"]
 mod rna_reads;
 #[path = "engine/state/sequence_ops.rs"]
