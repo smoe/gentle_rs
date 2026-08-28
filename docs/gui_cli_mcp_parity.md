@@ -19,7 +19,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 |---|---:|---:|---:|
 | GUI | 37 | 664 | 0 |
 | gentle_cli | 423 | 302 | 0 |
-| MCP | 98 | 471 | 57 |
+| MCP | 99 | 470 | 57 |
 | JS | 78 | 473 | 62 |
 | Lua | 77 | 474 | 62 |
 | ClawBio | 0 | 0 | 0 |
@@ -146,7 +146,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | uniprot transcript-accounting | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Expert/report inspection currently remains a shell workflow until a portable operation is defined.<br>JS: Expert/report inspection currently remains a shell workflow until a portable operation is defined.<br>Lua: Expert/report inspection currently remains a shell workflow until a portable operation is defined.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | uniprot compare-ensembl-exons | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Expert/report inspection currently remains a shell workflow until a portable operation is defined.<br>JS: Expert/report inspection currently remains a shell workflow until a portable operation is defined.<br>Lua: Expert/report inspection currently remains a shell workflow until a portable operation is defined.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | uniprot compare-ensembl-peptide | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Expert/report inspection currently remains a shell workflow until a portable operation is defined.<br>JS: Expert/report inspection currently remains a shell workflow until a portable operation is defined.<br>Lua: Expert/report inspection currently remains a shell workflow until a portable operation is defined.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
-| uniprot build-linked-transcript-inventory | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| uniprot build-linked-transcript-inventory | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | uniprot audit-projection | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | uniprot audit-parity | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | uniprot audit-list | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Expert/report inspection currently remains a shell workflow until a portable operation is defined.<br>JS: Expert/report inspection currently remains a shell workflow until a portable operation is defined.<br>Lua: Expert/report inspection currently remains a shell workflow until a portable operation is defined.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |

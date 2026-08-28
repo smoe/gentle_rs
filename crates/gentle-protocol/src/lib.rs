@@ -5806,6 +5806,7 @@ const MCP_PROMINENT_GLOSSARY_COMMAND_PATHS: &[&str] = &[
     "primers build-transcript-assay-cdna-similarity-map",
     "primers design-group-target",
     "primers transcript-assay-specificity-redesign",
+    "uniprot build-linked-transcript-inventory",
     "workflow",
     "help",
     "genomes list",
