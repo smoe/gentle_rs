@@ -12109,6 +12109,7 @@ Error: `{err}`"
                 reporter_recommendation: None,
                 reporter_corpus_export: None,
                 reporter_construct_handoff: None,
+                reporter_vector_validation: None,
                 uniprot_projection_audit: None,
                 uniprot_linked_transcript_inventory: None,
                 uniprot_projection_audit_parity: None,

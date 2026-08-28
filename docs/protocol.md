@@ -3603,7 +3603,7 @@ Sequencing-trace evidence notes:
   - writes the annotated, provenance-bearing reporter corpus for local
     retrieval or local AI training/evaluation prep; GENtle does not train a
     model in this V1
-- `PlanReporterConstructHandoff { candidate_set_path, candidate_id?, catalog_path?, reporter_constraints?, reporter_backbone_seq_id?, reporter_backbone_load_path?, reference_fragment_seq_id?, alternate_fragment_seq_id?, output_prefix?, path? }`
+- `PlanReporterConstructHandoff { candidate_set_path, candidate_id?, catalog_path?, reporter_constraints?, reporter_backbone_seq_id?, reporter_backbone_load_path?, reporter_backbone_catalog_id?, helper_catalog_path?, reference_fragment_seq_id?, alternate_fragment_seq_id?, output_prefix?, path? }`
   - emits `gentle.reporter_construct_handoff.v1`
   - consumes a saved `gentle.promoter_reporter_candidates.v1` JSON report
     rather than re-running promoter-fragment selection
@@ -3616,6 +3616,14 @@ Sequencing-trace evidence notes:
   - reports typed macro-port readiness plus reporter-backbone resolution, and
     emits explicit follow-up commands for manual extraction, allele
     materialization, backbone loading, macro import, validation, and macro run
+  - when `reporter_backbone_catalog_id` is supplied, `backbone.validation`
+    carries `gentle.reporter_vector_validation.v1`: catalog-owned expected and
+    observed accession/version, sequence length, topology, required feature
+    intervals, derived unique restriction sites, and enzyme-equivalence notes
+  - exact-vector status is `verified`, `rejected`, or `unavailable`; rejected
+    and unavailable identities fail closed and suppress construct commands.
+    Verification supports sequence planning but does not establish physical
+    stock identity
   - does not create constructs, fetch live registries, optimize codons, or make
     wet-lab claims
 - `MaterializeVariantAllele { input, variant_label_or_id?, allele=reference|alternate, output_id? }`

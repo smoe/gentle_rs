@@ -7465,6 +7465,28 @@ impl GentleEngine {
         }
 
         result.created_seq_ids.push(seq_id.clone());
+        match self.validate_known_helper_vector_accession(&seq_id, accession_trimmed) {
+            Ok(Some(validation)) => {
+                if validation.status == ReporterVectorValidationStatus::Verified {
+                    result.messages.push(format!(
+                        "Verified fetched helper vector '{}' as exact catalog identity '{}'",
+                        seq_id, validation.helper_catalog_id
+                    ));
+                } else {
+                    result.warnings.push(format!(
+                        "Fetched helper vector '{}' failed exact catalog identity validation for '{}'",
+                        seq_id, validation.helper_catalog_id
+                    ));
+                }
+                result.warnings.extend(validation.warnings.iter().cloned());
+                result.reporter_vector_validation = Some(validation);
+            }
+            Ok(None) => {}
+            Err(error) => result.warnings.push(format!(
+                "Could not evaluate fetched GenBank accession '{}' against helper-vector expectations: {}",
+                accession_trimmed, error
+            )),
+        }
         result.messages.push(format!(
             "Fetched GenBank accession '{}' from '{}' as '{}'",
             accession_trimmed, source_url, seq_id
@@ -39592,6 +39614,7 @@ impl GentleEngine {
             reporter_recommendation: None,
             reporter_corpus_export: None,
             reporter_construct_handoff: None,
+            reporter_vector_validation: None,
             uniprot_projection_audit: None,
             uniprot_linked_transcript_inventory: None,
             uniprot_projection_audit_parity: None,
@@ -49973,6 +49996,8 @@ impl GentleEngine {
                     reporter_constraints,
                     reporter_backbone_seq_id,
                     reporter_backbone_load_path,
+                    reporter_backbone_catalog_id,
+                    helper_catalog_path,
                     reference_fragment_seq_id,
                     alternate_fragment_seq_id,
                     output_prefix,
@@ -49985,6 +50010,8 @@ impl GentleEngine {
                         reporter_constraints,
                         reporter_backbone_seq_id.as_deref(),
                         reporter_backbone_load_path.as_deref(),
+                        reporter_backbone_catalog_id.as_deref(),
+                        helper_catalog_path.as_deref(),
                         reference_fragment_seq_id.as_deref(),
                         alternate_fragment_seq_id.as_deref(),
                         output_prefix.as_deref(),

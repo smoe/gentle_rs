@@ -762,9 +762,103 @@
     "cache_dir": "data/helper_genomes"
   },
   "Reporter Promega Luciferase AY738222 (online)": {
-    "description": "Promega luciferase reporter backbone fetched from NCBI GenBank accession AY738222",
-    "genbank_accession": "AY738222",
-    "genbank_reference": "https://www.ncbi.nlm.nih.gov/nuccore/AY738222",
+    "description": "Promega pGL4.10[luc2] promoterless luciferase reporter vector; sequence is fetched explicitly from NCBI and is not bundled",
+    "summary": "Exact commercial reporter identity: Promega pGL4.10[luc2], catalogue E6651, GenBank AY738222.1, 4242 bp circular",
+    "genbank_accession": "AY738222.1",
+    "genbank_reference": "https://www.ncbi.nlm.nih.gov/nuccore/AY738222.1",
+    "sequence_availability": "public GenBank record; explicit network fetch required",
+    "redistribution_status": "sequence not bundled; retrieve from NCBI under source terms",
+    "biological_safety_note": "Sequence design aid only; local institutional review remains required before experimental use.",
+    "usable_as_empty_backbone": true,
+    "helper_kind": "plasmid_vector",
+    "host_system": "mammalian",
+    "aliases": [
+      "pGL4.10[luc2]",
+      "pGL4.10",
+      "AY738222.1",
+      "Promega E6651"
+    ],
+    "tags": [
+      "luciferase",
+      "promoterless",
+      "reporter-vector",
+      "exact-sequence-validation"
+    ],
+    "procurement": {
+      "vendor_name": "Promega",
+      "catalog_number": "E6651",
+      "order_url": "https://www.promega.com/products/reporter-assays-and-detection/reporter-vectors-and-cell-lines/pgl4-luciferase-reporter-vectors/",
+      "reference_url": "https://www.ncbi.nlm.nih.gov/nuccore/AY738222.1",
+      "notes": "Product and catalogue metadata identify pGL4.10[luc2]; GENtle does not place orders."
+    },
+    "sequence_expectation": {
+      "schema": "gentle.helper_vector_sequence_expectation.v1",
+      "provider": "Promega",
+      "product_name": "pGL4.10[luc2]",
+      "catalog_number": "E6651",
+      "accession_version": "AY738222.1",
+      "expected_length_bp": 4242,
+      "expected_topology": "circular",
+      "required_features": [
+        {
+          "id": "multiple_cloning_region",
+          "feature_kinds": ["misc_feature"],
+          "qualifier_terms": ["multiple cloning site region"],
+          "expected_start_1based": 1,
+          "expected_end_1based": 70
+        },
+        {
+          "id": "luc2",
+          "feature_kinds": ["CDS"],
+          "qualifier_terms": ["luciferase luc2"],
+          "expected_start_1based": 100,
+          "expected_end_1based": 1752
+        }
+      ],
+      "restriction_site_equivalences": [
+        {
+          "detected_enzyme": "KpnI",
+          "equivalent_enzyme": "Acc65I",
+          "note": "KpnI and Acc65I recognize the same site but use different cleavage geometry; the bundled enzyme catalog currently reports KpnI."
+        },
+        {
+          "detected_enzyme": "SacI",
+          "equivalent_enzyme": "EcoICRI",
+          "note": "SacI and EcoICRI recognize the same site but use different cleavage geometry; the bundled enzyme catalog currently reports SacI."
+        }
+      ],
+      "provenance": [
+        {
+          "source_id": "NCBI:AY738222.1",
+          "source_url": "https://www.ncbi.nlm.nih.gov/nuccore/AY738222.1",
+          "asserted_on": "2026-08-27",
+          "note": "Accession version, length, topology, multiple-cloning-region interval, and luc2 CDS boundary are taken from the versioned GenBank record."
+        },
+        {
+          "source_id": "Promega:pGL4-E6651",
+          "source_url": "https://www.promega.com/products/reporter-assays-and-detection/reporter-vectors-and-cell-lines/pgl4-luciferase-reporter-vectors/",
+          "asserted_on": "2026-08-27",
+          "note": "Provider, product, and catalogue identity."
+        }
+      ]
+    },
+    "semantics": {
+      "schema": "gentle.helper_semantics.v1",
+      "affordances": ["promoter_reporter_backbone", "luciferase_reporter"],
+      "constraints": ["requires_exact_sequence_validation", "explicit_fetch_only"],
+      "components": [
+        {
+          "id": "multiple_cloning_region",
+          "kind": "cloning_site",
+          "label": "Multiple cloning site region"
+        },
+        {
+          "id": "luc2",
+          "kind": "reporter_coding_sequence",
+          "label": "luc2"
+        }
+      ]
+    },
     "cache_dir": "data/helper_genomes"
   }
 }

@@ -2509,6 +2509,7 @@ impl GentleEngine {
                 candidate_set_path,
                 catalog_path,
                 reporter_backbone_load_path,
+                helper_catalog_path,
                 path,
                 ..
             } => {
@@ -2517,6 +2518,9 @@ impl GentleEngine {
                     Self::push_unique_token(&mut summary.file_paths, path);
                 }
                 if let Some(path) = reporter_backbone_load_path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+                if let Some(path) = helper_catalog_path.as_deref() {
                     Self::push_unique_token(&mut summary.file_paths, path);
                 }
                 if let Some(path) = path.as_deref() {

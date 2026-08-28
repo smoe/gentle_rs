@@ -3101,10 +3101,19 @@ Shared shell command:
         `sequence_sha1` values are accepted for older catalogs but are not
         recomputed by GENtle
     - `reporters export-corpus OUTPUT.json|OUTPUT.jsonl [--catalog PATH] [--format json|jsonl]`
-    - `reporters plan-handoff CANDIDATE_SET.json [--candidate-id ID] [--catalog PATH] [--backbone-seq-id ID] [--backbone-path PATH] [--reference-fragment-seq-id ID] [--alternate-fragment-seq-id ID] [--output-prefix PREFIX] [--output FILE.json]`
+    - `reporters plan-handoff CANDIDATE_SET.json [--candidate-id ID] [--catalog PATH] [--backbone-seq-id ID] [--backbone-path PATH] [--backbone-catalog-id ID] [--helper-catalog PATH] [--reference-fragment-seq-id ID] [--alternate-fragment-seq-id ID] [--output-prefix PREFIX] [--output FILE.json]`
       - handoff JSON includes `biological_intent =
         allele_paired_promoter_luciferase_reporter_handoff` for the V1
         promoter-luciferase bridge
+      - `--backbone-catalog-id` requests an exact helper-vector identity. GENtle
+        compares the loaded or path-supplied sequence with catalog-owned
+        accession/version, length, topology, and required annotation bounds;
+        failed or unavailable validation emits no construct commands
+      - the built-in pGL4.10[luc2] entry identifies Promega E6651 as
+        `AY738222.1` (4,242 bp, circular) but bundles no commercial-vector
+        sequence. Retrieval remains an explicit `FetchGenBankAccession`
+        operation. KpnI/Acc65I and SacI/EcoICRI equivalence is reported without
+        pretending the absent names are loaded in the active enzyme catalog
     - `variant materialize-allele SEQ_ID --allele reference|alternate [--variant ID] [--output-id ID]`
     - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers design-terminal-exon-rt-pool REQUEST_JSON_OR_@FILE`

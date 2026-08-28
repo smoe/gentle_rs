@@ -300,8 +300,8 @@ wet-lab conclusions or unconfirmed mutations.
 ## Parking Lot
 
 - Complete the motif-anchored multi-promoter reporter-panel arc after the landed
-  engine anchor/TSS-class slice: exact pGL4.10 acquisition validation,
-  panel-wide directional enzyme ranking with stated Gibson fallback,
+  engine anchor/TSS-class and exact-vector-validation slices: panel-wide
+  directional enzyme ranking with stated Gibson fallback,
   stated-rule p53-family motif disruption, and proposal-digest-gated command,
   parity, GUI, and offline tutorial surfaces.
 - Replace whole-transcriptome FASTA materialization in UniProt linked-transcript

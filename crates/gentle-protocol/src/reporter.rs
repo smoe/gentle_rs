@@ -13,6 +13,8 @@ pub const REPORTER_RECOMMENDATION_SCHEMA: &str = "gentle.reporter_recommendation
 pub const REPORTER_CORPUS_EXPORT_SCHEMA: &str = "gentle.reporter_corpus_export.v1";
 /// Reporter-backed construct handoff plan schema.
 pub const REPORTER_CONSTRUCT_HANDOFF_SCHEMA: &str = "gentle.reporter_construct_handoff.v1";
+/// Exact reporter-vector identity validation schema.
+pub const REPORTER_VECTOR_VALIDATION_SCHEMA: &str = "gentle.reporter_vector_validation.v1";
 
 /// Supported corpus export shapes for local AI retrieval/training prep.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -278,8 +280,64 @@ pub enum PortBindingStatus {
 pub enum ReporterBackboneResolutionStatus {
     ResolvedInState,
     UnresolvedSeqIdProvided,
+    /// An exact catalog vector was requested, but no sequence was available to validate.
+    ExactIdentityUnavailable,
+    /// The supplied sequence failed at least one required exact-identity check.
+    ExactIdentityRejected,
     #[default]
     RequiresManualLoad,
+}
+
+/// Outcome of validating one sequence against an exact reporter-vector catalog identity.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ReporterVectorValidationStatus {
+    Verified,
+    Rejected,
+    #[default]
+    Unavailable,
+}
+
+/// One expected-versus-observed exact-vector validation check.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct ReporterVectorValidationCheck {
+    pub check_id: String,
+    pub required: bool,
+    pub passed: bool,
+    pub expected: String,
+    pub observed: String,
+    pub detail: String,
+}
+
+/// Exact-vector validation report used to gate construct planning.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct ReporterVectorValidationReport {
+    pub schema: String,
+    pub helper_catalog_id: String,
+    pub helper_catalog_path: String,
+    pub seq_id: String,
+    pub status: ReporterVectorValidationStatus,
+    pub expected_accession_version: String,
+    pub observed_accession: Option<String>,
+    pub observed_version: Option<String>,
+    pub expected_length_bp: usize,
+    pub observed_length_bp: Option<usize>,
+    pub expected_topology: String,
+    pub observed_topology: Option<String>,
+    pub expected_luc2_start_1based: Option<usize>,
+    pub observed_luc2_start_1based: Option<usize>,
+    pub expected_multiple_cloning_region: Option<String>,
+    pub observed_multiple_cloning_region: Option<String>,
+    #[serde(default)]
+    pub unique_restriction_sites: Vec<String>,
+    #[serde(default)]
+    pub restriction_site_equivalence_notes: Vec<String>,
+    #[serde(default)]
+    pub checks: Vec<ReporterVectorValidationCheck>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 /// Provenance for a reporter construct handoff plan.
@@ -349,6 +407,12 @@ pub struct ReporterBackboneResolution {
     pub load_path: Option<String>,
     pub status: ReporterBackboneResolutionStatus,
     pub note: String,
+    /// Exact helper-catalog identity requested by the caller, when any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub helper_catalog_id: Option<String>,
+    /// Exact sequence validation that gates construct commands when requested.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub validation: Option<ReporterVectorValidationReport>,
 }
 
 /// One explicit command a user or agent may run after inspecting the handoff.
@@ -379,4 +443,24 @@ pub struct ReporterConstructHandoffPlan {
     pub port_bindings: Vec<ReporterConstructPortBinding>,
     pub commands: Vec<ReporterConstructHandoffCommand>,
     pub warnings: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_handoff_backbone_defaults_without_exact_vector_validation() {
+        let plan: ReporterConstructHandoffPlan = serde_json::from_str(
+            r#"{"schema":"gentle.reporter_construct_handoff.v1","backbone":{"seq_id":"legacy"}}"#,
+        )
+        .expect("deserialize legacy reporter handoff");
+
+        assert_eq!(
+            plan.backbone.status,
+            ReporterBackboneResolutionStatus::RequiresManualLoad
+        );
+        assert!(plan.backbone.helper_catalog_id.is_none());
+        assert!(plan.backbone.validation.is_none());
+    }
 }

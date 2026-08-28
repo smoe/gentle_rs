@@ -1659,6 +1659,12 @@ Sequence-linked construct reasoning graph direction:
   - helper/vector semantics should normalize into engine-owned portable records
     (affordances, constraints, functional components, and typed relationships)
     rather than living only in adapter prompts or free-text notes
+  - exact commercial-vector planning must use catalog-owned, versioned sequence
+    expectations rather than product-specific constants in engine code. A
+    supplied or explicitly fetched sequence is checked against those portable
+    expectations, and unresolved or rejected identity fails closed before
+    construct commands are emitted; sequence validation is not a claim about
+    physical stock identity
   - helper list/status surfaces now carry the first normalized helper
     `interpretation` record; new adapters and future planner routes should
     extend that shared record instead of inventing parallel helper-meaning

@@ -174,14 +174,16 @@ pub use orthologs::{
 pub use reporter::{
     PortBindingStatus, REPORTER_CATALOG_REPORT_SCHEMA, REPORTER_CATALOG_SCHEMA,
     REPORTER_CONSTRUCT_HANDOFF_SCHEMA, REPORTER_CORPUS_EXPORT_SCHEMA,
-    REPORTER_RECOMMENDATION_SCHEMA, ReporterAnnotatedRecord, ReporterBackboneResolution,
-    ReporterBackboneResolutionStatus, ReporterCatalog, ReporterCatalogReport,
-    ReporterComputedAnnotation, ReporterConstraints, ReporterConstructHandoffCommand,
-    ReporterConstructHandoffPlan, ReporterConstructHandoffProvenance, ReporterConstructPortBinding,
+    REPORTER_RECOMMENDATION_SCHEMA, REPORTER_VECTOR_VALIDATION_SCHEMA, ReporterAnnotatedRecord,
+    ReporterBackboneResolution, ReporterBackboneResolutionStatus, ReporterCatalog,
+    ReporterCatalogReport, ReporterComputedAnnotation, ReporterConstraints,
+    ReporterConstructHandoffCommand, ReporterConstructHandoffPlan,
+    ReporterConstructHandoffProvenance, ReporterConstructPortBinding,
     ReporterConstructSelectedFragment, ReporterConstructSelectedReporter, ReporterCorpusExport,
     ReporterCorpusExportFormat, ReporterPreferenceWeights, ReporterQuarantinedRecord,
     ReporterRecommendation, ReporterRecommendationResult, ReporterRecord,
     ReporterRejectedCandidate, ReporterSourceRef, ReporterSpectralProfile,
+    ReporterVectorValidationCheck, ReporterVectorValidationReport, ReporterVectorValidationStatus,
 };
 
 /// Stable identifier for one sequence entry stored in project state.

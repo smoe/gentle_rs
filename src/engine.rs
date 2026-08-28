@@ -45,10 +45,12 @@ use crate::{
         GenomeCatalogEntryRemovalReport, GenomeCatalogListEntry, GenomeGeneRecord,
         GenomeSourcePlan, GenomeTranscriptRecord, HelperConstructInterpretation,
         HelperConstructVocabularyDoctorReport, HelperConstructVocabularyTerm,
-        HelperVectorCardReport, HelperVectorCatalogDoctorReport, PrepareGenomeActivityStatus,
-        PrepareGenomePlan, PrepareGenomeProgress, PrepareGenomeReport, PreparedCacheCleanupReport,
-        PreparedCacheInspectionReport, PreparedGenomeCompatibilityInspection,
-        PreparedGenomeFallbackPolicy, PreparedGenomeInspection, PreparedGenomeRemovalReport,
+        HelperVectorCardReport, HelperVectorCatalogDoctorReport,
+        HelperVectorRequiredFeatureExpectation, HelperVectorSequenceExpectation,
+        PrepareGenomeActivityStatus, PrepareGenomePlan, PrepareGenomeProgress, PrepareGenomeReport,
+        PreparedCacheCleanupReport, PreparedCacheInspectionReport,
+        PreparedGenomeCompatibilityInspection, PreparedGenomeFallbackPolicy,
+        PreparedGenomeInspection, PreparedGenomeRemovalReport,
         blast_external_binary_preflight_report, build_genbank_efetch_url,
         clear_prepared_cache_roots, default_helper_semantics_vocabulary_discovery_label,
         doctor_helper_construct_vocabulary, inspect_prepared_cache_roots,
@@ -5524,6 +5526,12 @@ pub enum Operation {
         reporter_backbone_seq_id: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reporter_backbone_load_path: Option<String>,
+        /// Exact helper-vector catalog identity to validate before commands are enabled.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reporter_backbone_catalog_id: Option<String>,
+        /// Optional helper/vector catalog override for exact identity validation.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        helper_catalog_path: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reference_fragment_seq_id: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]

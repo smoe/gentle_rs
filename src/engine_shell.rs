@@ -25988,11 +25988,13 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         optional_artifact_resource_report_descriptor(
             "PlanReporterConstructHandoff",
             "optional external reporter-construct handoff JSON output path carried by path",
-            "Plan a reporter-construct handoff from an external candidate set; optional loaded backbone/reference/alternate sequence ids are validated during execution when supplied.",
+            "Plan a reporter-construct handoff from an external candidate set; an optional exact helper-catalog vector identity is validated fail-closed before construct commands are enabled.",
             vec![
                 json!({"name": "CANDIDATE_SET_PATH", "required": true, "subject_kind": "other", "detail": "external reporter candidate-set path carried by candidate_set_path"}),
                 json!({"name": "CANDIDATE_ID", "required": false, "subject_kind": "other", "detail": "optional candidate id carried by candidate_id"}),
                 json!({"name": "REPORTER_BACKBONE_SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "optional loaded reporter backbone sequence id"}),
+                json!({"name": "REPORTER_BACKBONE_CATALOG_ID", "required": false, "subject_kind": "other", "detail": "optional exact helper-vector identity carried by reporter_backbone_catalog_id"}),
+                json!({"name": "HELPER_CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional helper/vector catalog override carried by helper_catalog_path"}),
                 json!({"name": "REFERENCE_FRAGMENT_SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "optional loaded reference fragment sequence id"}),
                 json!({"name": "ALTERNATE_FRAGMENT_SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "optional loaded alternate fragment sequence id"}),
             ],

@@ -60,6 +60,8 @@ pub const DEFAULT_HELPER_GENOME_CATALOG_PATH: &str = "assets/helper_genomes.json
 pub const DEFAULT_HELPER_SEMANTICS_VOCABULARY_PATH: &str =
     "assets/helper_semantics_vocabulary.json";
 pub const HELPER_SEMANTICS_VOCABULARY_SCHEMA: &str = "gentle.helper_semantics_vocabulary.v1";
+pub const HELPER_VECTOR_SEQUENCE_EXPECTATION_SCHEMA: &str =
+    "gentle.helper_vector_sequence_expectation.v1";
 pub const DEFAULT_REFERENCE_CATALOG_DISCOVERY_TOKEN: &str = "gentle://catalog/reference/default";
 pub const DEFAULT_HELPER_CATALOG_DISCOVERY_TOKEN: &str = "gentle://catalog/helper/default";
 pub const DEFAULT_GENOME_CACHE_DIR: &str = "data/genomes";
@@ -539,6 +541,9 @@ pub struct GenomeCatalogEntry {
     pub host_system: Option<String>,
     #[serde(default)]
     pub procurement: Option<CatalogProcurementInfo>,
+    /// Optional exact sequence identity used to validate acquired helper vectors.
+    #[serde(default)]
+    pub sequence_expectation: Option<HelperVectorSequenceExpectation>,
     #[serde(default)]
     pub semantics: Option<HelperConstructSemantics>,
     #[serde(skip)]
@@ -572,6 +577,8 @@ pub struct GenomeCatalogListEntry {
     pub metadata_only_candidate: bool,
     #[serde(default)]
     pub procurement: Option<CatalogProcurementInfo>,
+    #[serde(default)]
+    pub sequence_expectation: Option<HelperVectorSequenceExpectation>,
     #[serde(default)]
     pub semantics: Option<HelperConstructSemantics>,
     #[serde(default)]
@@ -629,6 +636,8 @@ pub struct HelperVectorCard {
     #[serde(default)]
     pub procurement: Option<CatalogProcurementInfo>,
     #[serde(default)]
+    pub sequence_expectation: Option<HelperVectorSequenceExpectation>,
+    #[serde(default)]
     pub affordances: Vec<String>,
     #[serde(default)]
     pub constraints: Vec<String>,
@@ -659,6 +668,60 @@ pub struct CatalogProcurementInfo {
     pub order_url: Option<String>,
     pub reference_url: Option<String>,
     pub notes: Option<String>,
+}
+
+/// Catalog-owned exact identity expected for an acquired helper-vector sequence.
+///
+/// Expected values live in catalog data rather than vector-specific Rust code so
+/// validation remains reusable and updates remain reviewable as metadata.
+#[derive(Default, Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+#[serde(default)]
+pub struct HelperVectorSequenceExpectation {
+    pub schema: String,
+    pub provider: String,
+    pub product_name: String,
+    pub catalog_number: String,
+    pub accession_version: String,
+    pub expected_length_bp: usize,
+    pub expected_topology: String,
+    #[serde(default)]
+    pub required_features: Vec<HelperVectorRequiredFeatureExpectation>,
+    #[serde(default)]
+    pub restriction_site_equivalences: Vec<HelperVectorRestrictionSiteEquivalence>,
+    #[serde(default)]
+    pub provenance: Vec<HelperVectorSequenceExpectationProvenance>,
+}
+
+/// One required annotated feature used during exact helper-vector validation.
+#[derive(Default, Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+#[serde(default)]
+pub struct HelperVectorRequiredFeatureExpectation {
+    pub id: String,
+    #[serde(default)]
+    pub feature_kinds: Vec<String>,
+    #[serde(default)]
+    pub qualifier_terms: Vec<String>,
+    pub expected_start_1based: Option<usize>,
+    pub expected_end_1based: Option<usize>,
+}
+
+/// Explicit isoschizomer note for names absent from the active enzyme catalog.
+#[derive(Default, Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+#[serde(default)]
+pub struct HelperVectorRestrictionSiteEquivalence {
+    pub detected_enzyme: String,
+    pub equivalent_enzyme: String,
+    pub note: String,
+}
+
+/// Source assertion backing one catalog-owned exact helper-vector expectation.
+#[derive(Default, Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+#[serde(default)]
+pub struct HelperVectorSequenceExpectationProvenance {
+    pub source_id: String,
+    pub source_url: String,
+    pub asserted_on: String,
+    pub note: String,
 }
 
 /// One functional element inside a helper-construct semantic description.
@@ -3414,6 +3477,7 @@ impl GenomeCatalog {
                 usable_as_empty_backbone: entry.usable_as_empty_backbone,
                 metadata_only_candidate: is_metadata_only_catalog_entry(entry),
                 procurement: entry.procurement.clone(),
+                sequence_expectation: entry.sequence_expectation.clone(),
                 semantics: entry.semantics.clone(),
                 interpretation,
             });
@@ -3494,6 +3558,7 @@ impl GenomeCatalog {
             usable_as_empty_backbone: entry.usable_as_empty_backbone,
             metadata_only_candidate: entry.metadata_only_candidate,
             procurement: entry.procurement,
+            sequence_expectation: entry.sequence_expectation,
             affordances,
             constraints,
             components,
@@ -3644,6 +3709,37 @@ impl GenomeCatalog {
             &self.entry_aliases(entry),
             &self.helper_semantics_vocabulary,
         ))
+    }
+
+    /// Return the exact sequence expectation for one helper/vector catalog id.
+    pub fn helper_vector_sequence_expectation(
+        &self,
+        helper_id: &str,
+    ) -> Result<Option<HelperVectorSequenceExpectation>, String> {
+        Ok(self.entry(helper_id)?.sequence_expectation.clone())
+    }
+
+    /// Resolve an exact helper/vector expectation by accession. A caller may
+    /// omit the version, but validation still uses the catalog's versioned id.
+    pub fn helper_vector_sequence_expectation_for_accession(
+        &self,
+        accession: &str,
+    ) -> Option<(String, HelperVectorSequenceExpectation)> {
+        let requested = accession.trim().to_ascii_uppercase();
+        let requested_base = requested.split('.').next().unwrap_or(requested.as_str());
+        self.list_genomes_unfiltered()
+            .into_iter()
+            .find_map(|helper_id| {
+                let expectation = self
+                    .entries
+                    .get(&helper_id)?
+                    .sequence_expectation
+                    .as_ref()?;
+                let expected = expectation.accession_version.trim().to_ascii_uppercase();
+                let expected_base = expected.split('.').next().unwrap_or(expected.as_str());
+                (requested == expected || requested_base == expected_base)
+                    .then(|| (helper_id, expectation.clone()))
+            })
     }
 
     fn list_genomes_unfiltered(&self) -> Vec<String> {
@@ -3814,6 +3910,7 @@ impl GenomeCatalog {
         entry.helper_kind.is_some()
             || entry.host_system.is_some()
             || entry.procurement.is_some()
+            || entry.sequence_expectation.is_some()
             || entry.semantics.is_some()
             || entry.local_variant_unpublished.unwrap_or(false)
     }
@@ -3966,6 +4063,16 @@ impl GenomeCatalog {
             {
                 values.push(value.clone());
             }
+        }
+        if let Some(expectation) = entry.sequence_expectation.as_ref() {
+            values.extend([
+                expectation.schema.clone(),
+                expectation.provider.clone(),
+                expectation.product_name.clone(),
+                expectation.catalog_number.clone(),
+                expectation.accession_version.clone(),
+                expectation.expected_topology.clone(),
+            ]);
         }
         if let Some(semantics) = entry.semantics.as_ref() {
             if let Some(schema) = semantics.schema.as_ref() {
@@ -9450,6 +9557,13 @@ fn validate_catalog_entries(
                 );
             }
         }
+        if let Some(expectation) = entry.sequence_expectation.as_ref() {
+            validate_helper_vector_sequence_expectation(
+                genbank_accession,
+                expectation,
+                &mut entry_errors,
+            );
+        }
 
         for err in entry_errors {
             errors.push(format!("{genome_id}: {err}"));
@@ -9462,6 +9576,86 @@ fn validate_catalog_entries(
             "Could not validate genome catalog '{catalog_path}':\n- {}",
             errors.join("\n- ")
         ))
+    }
+}
+
+fn validate_helper_vector_sequence_expectation(
+    catalog_accession: Option<&str>,
+    expectation: &HelperVectorSequenceExpectation,
+    errors: &mut Vec<String>,
+) {
+    if expectation.schema != HELPER_VECTOR_SEQUENCE_EXPECTATION_SCHEMA {
+        errors.push(format!(
+            "'sequence_expectation.schema' must be '{}'",
+            HELPER_VECTOR_SEQUENCE_EXPECTATION_SCHEMA
+        ));
+    }
+    for (field, value) in [
+        ("provider", expectation.provider.as_str()),
+        ("product_name", expectation.product_name.as_str()),
+        ("catalog_number", expectation.catalog_number.as_str()),
+        ("accession_version", expectation.accession_version.as_str()),
+    ] {
+        if value.trim().is_empty() {
+            errors.push(format!("'sequence_expectation.{field}' must be non-empty"));
+        }
+    }
+    if expectation.expected_length_bp == 0 {
+        errors.push("'sequence_expectation.expected_length_bp' must be positive".to_string());
+    }
+    if !matches!(
+        expectation
+            .expected_topology
+            .trim()
+            .to_ascii_lowercase()
+            .as_str(),
+        "linear" | "circular"
+    ) {
+        errors.push(
+            "'sequence_expectation.expected_topology' must be 'linear' or 'circular'".to_string(),
+        );
+    }
+    if let Some(catalog_accession) = catalog_accession
+        && !catalog_accession
+            .trim()
+            .eq_ignore_ascii_case(expectation.accession_version.trim())
+    {
+        errors.push(format!(
+            "'genbank_accession' '{}' must match sequence expectation accession_version '{}'",
+            catalog_accession, expectation.accession_version
+        ));
+    }
+    if expectation.required_features.is_empty() {
+        errors.push("'sequence_expectation.required_features' must not be empty".to_string());
+    }
+    for feature in &expectation.required_features {
+        if feature.id.trim().is_empty() {
+            errors.push("sequence expectation feature id must be non-empty".to_string());
+        }
+        if feature.feature_kinds.is_empty() && feature.qualifier_terms.is_empty() {
+            errors.push(format!(
+                "sequence expectation feature '{}' needs feature_kinds or qualifier_terms",
+                feature.id
+            ));
+        }
+        if feature.expected_start_1based == Some(0) || feature.expected_end_1based == Some(0) {
+            errors.push(format!(
+                "sequence expectation feature '{}' coordinates are 1-based and must be positive",
+                feature.id
+            ));
+        }
+        if let (Some(start), Some(end)) =
+            (feature.expected_start_1based, feature.expected_end_1based)
+            && start > end
+        {
+            errors.push(format!(
+                "sequence expectation feature '{}' start exceeds end",
+                feature.id
+            ));
+        }
+    }
+    if expectation.provenance.is_empty() {
+        errors.push("'sequence_expectation.provenance' must not be empty".to_string());
     }
 }
 

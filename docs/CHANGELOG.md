@@ -16,6 +16,16 @@
   inspectable; no candidate is treated as observed splicing without bound RNA
   support.
 
+- Added catalog-owned exact reporter-vector identity validation to the existing
+  reporter construct handoff. The built-in pGL4.10[luc2] helper entry now pins
+  Promega E6651 / GenBank AY738222.1 metadata and required MCS/luc2 annotation
+  bounds without bundling the commercial sequence. Explicit fetches and
+  handoffs report observed values, derived unique sites, and enzyme-name
+  equivalence notes; absent or rejected exact identity suppresses construct
+  commands. Deterministic offline tests use a provenance-labelled synthetic MCS
+  fixture that is explicitly refused as pGL4.10, while real retrieval remains
+  opt-in.
+
 - Generalized the existing promoter-reporter candidate operation without
   adding a new operation or schema family. Transcript promoter windows can now
   form deterministic same-gene/same-strand TSS classes when first exons overlap;
