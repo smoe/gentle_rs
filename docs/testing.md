@@ -258,6 +258,43 @@ are documented in [`../benches/README.md`](../benches/README.md).
 
 Full Ensembl FASTA retrieval, peak RSS, real BLAST/Primer3 execution, GUI frame
 behavior, and Xvfb/macOS acceptance remain system-level measurements rather
+than unit-test claims.
+
+## 6. Semantic GUI acceptance identifiers
+
+GENtle exposes a bounded, read-only semantic widget snapshot only when built
+with `--features gui-test-support`. The feature is disabled by default. Set
+`GENTLE_GUI_TEST_SNAPSHOT` to an explicit output path when launching `gentle`;
+the app atomically replaces that JSON file after each root frame. There is no
+listener, input-injection API, screenshot permission bypass, or command route.
+
+Semantic IDs are lowercase dotted purpose names such as
+`dna.splitter.info_width` and do not derive from translated labels or screen
+position. Repeated domain rows share one semantic ID and carry an opaque
+`subject_scope` hash derived from stable domain fields rather than list index.
+Snapshots never include visible labels, sequence strings, paths, credentials,
+or arbitrary user text. Rectangles are screen-relative egui logical points,
+including the native viewport origin; multiply them by the item's
+`pixels_per_point` for physical pixels.
+
+Example launch:
+
+```bash
+cargo build --locked --features gui-test-support --bin gentle
+GENTLE_GUI_TEST_SNAPSHOT=/tmp/gentle-gui.json \
+  target/debug/gentle --project /path/to/tp73-proof.project.gentle.json
+jq '.generation, .settled, .items[] | select(.semantic_id == "dna.splitter.info_width")' \
+  /tmp/gentle-gui.json
+```
+
+The snapshot schema is `gentle.gui_semantic_snapshot.v1`. `generation`
+advances monotonically and `settled` is false while known deferred GUI work,
+including initial feature-tree hydration, is pending. Harnesses should wait on
+those fields rather than a fixed sleep. Semantic IDs locate GUI affordances;
+scientific correctness still comes from the typed project state and reports.
+The Linux example [`../scripts/gui_semantic_xvfb_smoke.sh`](../scripts/gui_semantic_xvfb_smoke.sh)
+self-skips when X11 tools or a display are unavailable and accepts explicit
+opaque repeat/array row scopes plus a typed-state verification command.
 than Criterion microbenchmarks.
 
 ## 6. Practical implementation order

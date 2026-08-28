@@ -25262,6 +25262,22 @@ impl eframe::App for GENtleApp {
 impl GENtleApp {
     fn render_root_ui(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         crate::gui_profiler::begin_frame();
+        #[cfg(feature = "gui-test-support")]
+        {
+            crate::gui_test_support::begin_frame(ctx);
+            crate::gui_test_support::register_rect(
+                ctx.clone(),
+                "window.main",
+                "window.main",
+                None,
+                crate::gui_test_support::GuiTestWidgetKind::Window,
+                ctx.content_rect(),
+                true,
+                true,
+                true,
+                Some("ready"),
+            );
+        }
         let update_result = catch_unwind(AssertUnwindSafe(|| {
             crate::gentle_gui_profile_scope!("GENtleApp::render_root_ui");
             Self::configure_platform_viewport_mode(ctx);
@@ -25429,6 +25445,10 @@ impl GENtleApp {
         }));
         if update_result.is_err() {
             eprintln!("E GENtleApp: recovered from panic in app update");
+        }
+        #[cfg(feature = "gui-test-support")]
+        if let Err(error) = crate::gui_test_support::finish_frame(ctx) {
+            eprintln!("W GENtleApp: {error}");
         }
     }
 }

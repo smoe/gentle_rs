@@ -159,6 +159,25 @@ pub fn render_agent_help_button(ui: &mut egui::Ui, window_title: impl Into<Strin
     let response = ui
         .button(crate::i18n::tr("agent.help_button"))
         .on_hover_text(crate::i18n::tr("agent.help_button.tooltip"));
+    #[cfg(feature = "gui-test-support")]
+    {
+        let semantic_window = if window_title.starts_with("Splicing Expert") {
+            "window.splicing_expert"
+        } else if window_title.starts_with("Agent Assistant") {
+            "window.agent_assistant"
+        } else {
+            "window.dna_viewer"
+        };
+        let subject_scope = crate::gui_test_support::opaque_subject_scope(&[&window_title]);
+        crate::gui_test_support::register_response(
+            &response,
+            "agent.help.open",
+            semantic_window,
+            Some(&subject_scope),
+            crate::gui_test_support::GuiTestWidgetKind::Button,
+            false,
+        );
+    }
     if response.clicked() {
         request_egui_viewport_capture(ui.ctx(), window_title.clone());
     }
