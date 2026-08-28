@@ -299,6 +299,8 @@ impl MainAreaDna {
             reporter_backbone_path:
                 "data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb".to_string(),
             reporter_output_prefix: format!("{token}_reporter"),
+            promoter_reporter_panel_request_json: String::new(),
+            promoter_reporter_panel_approval_digest: String::new(),
             cached_score_tracks: None,
             cached_tfbs_track_similarity: None,
             cached_report: None,
@@ -323,6 +325,8 @@ impl MainAreaDna {
             cached_ortholog_promoter_cohort: None,
             cached_ortholog_promoter_comparison: None,
             cached_candidates: None,
+            cached_promoter_reporter_panel_proposal: None,
+            cached_promoter_reporter_panel_receipt: None,
         };
         Ok(())
     }
@@ -1949,6 +1953,78 @@ impl MainAreaDna {
 
     fn suggest_variant_followup_reporter_fragments(&mut self) {
         let _ = self.run_variant_followup_reporter_fragment_suggestion(None);
+    }
+
+    pub(super) fn variant_followup_promoter_reporter_panel_plan_operation(
+        &self,
+        path: Option<String>,
+    ) -> Result<Operation, String> {
+        let raw = self
+            .variant_followup_ui
+            .promoter_reporter_panel_request_json
+            .trim();
+        if raw.is_empty() {
+            return Err(
+                "Promoter reporter panel planning requires a request JSON payload".to_string(),
+            );
+        }
+        let request = serde_json::from_str::<PromoterReporterPanelRequest>(raw)
+            .map_err(|error| format!("Could not parse promoter panel request JSON: {error}"))?;
+        Ok(Operation::PlanPromoterReporterPanel {
+            request: Box::new(request),
+            path,
+        })
+    }
+
+    pub(super) fn plan_variant_followup_promoter_reporter_panel(&mut self) {
+        let operation = match self.variant_followup_promoter_reporter_panel_plan_operation(None) {
+            Ok(operation) => operation,
+            Err(error) => {
+                self.op_status = error;
+                return;
+            }
+        };
+        let result = self.apply_operation_with_feedback_and_result(operation);
+        if let Some(proposal) = result.and_then(|row| row.promoter_reporter_panel_proposal) {
+            self.variant_followup_ui
+                .cached_promoter_reporter_panel_receipt = None;
+            self.variant_followup_ui
+                .promoter_reporter_panel_approval_digest
+                .clear();
+            self.variant_followup_ui
+                .cached_promoter_reporter_panel_proposal = Some(*proposal);
+        }
+    }
+
+    pub(super) fn materialize_variant_followup_promoter_reporter_panel(&mut self) {
+        let Some(proposal) = self
+            .variant_followup_ui
+            .cached_promoter_reporter_panel_proposal
+            .clone()
+        else {
+            self.op_status = "No promoter reporter panel proposal is cached".to_string();
+            return;
+        };
+        let approval_digest = self
+            .variant_followup_ui
+            .promoter_reporter_panel_approval_digest
+            .trim()
+            .to_string();
+        if approval_digest != proposal.proposal_digest {
+            self.op_status =
+                "Typed approval digest does not exactly match the cached proposal".to_string();
+            return;
+        }
+        let result = self.apply_operation_with_feedback_and_result(
+            Operation::MaterializePromoterReporterPanel {
+                proposal: Box::new(proposal),
+                approval_digest,
+            },
+        );
+        if let Some(receipt) = result.and_then(|row| row.promoter_reporter_panel_receipt) {
+            self.variant_followup_ui
+                .cached_promoter_reporter_panel_receipt = Some(*receipt);
+        }
     }
 
     fn variant_followup_recommended_candidate(
@@ -4873,6 +4949,195 @@ impl MainAreaDna {
         }
     }
 
+    fn render_variant_followup_promoter_reporter_panel(&mut self, ui: &mut egui::Ui) {
+        let mut plan_requested = false;
+        let mut materialize_requested = false;
+        egui::CollapsingHeader::new("Promoter reporter panel")
+            .default_open(false)
+            .show(ui, |ui| {
+                ui.label("Panel request JSON");
+                if ui
+                    .add(
+                        egui::TextEdit::multiline(
+                            &mut self
+                                .variant_followup_ui
+                                .promoter_reporter_panel_request_json,
+                        )
+                        .desired_rows(6)
+                        .code_editor(),
+                    )
+                    .changed()
+                {
+                    self.variant_followup_ui.cached_promoter_reporter_panel_proposal = None;
+                    self.variant_followup_ui.cached_promoter_reporter_panel_receipt = None;
+                    self.variant_followup_ui
+                        .promoter_reporter_panel_approval_digest
+                        .clear();
+                }
+                if ui
+                    .add_enabled(
+                        self.engine.is_some()
+                            && !self
+                                .variant_followup_ui
+                                .promoter_reporter_panel_request_json
+                                .trim()
+                                .is_empty(),
+                        egui::Button::new("Plan panel"),
+                    )
+                    .clicked()
+                {
+                    plan_requested = true;
+                }
+
+                if let Some(proposal) = self
+                    .variant_followup_ui
+                    .cached_promoter_reporter_panel_proposal
+                    .clone()
+                {
+                    ui.separator();
+                    egui::Grid::new((
+                        "promoter_reporter_panel_proposal",
+                        proposal.proposal_id.as_str(),
+                    ))
+                    .num_columns(2)
+                    .spacing([12.0, 4.0])
+                    .show(ui, |ui| {
+                        ui.label("Proposal");
+                        ui.monospace(&proposal.proposal_id);
+                        ui.end_row();
+                        ui.label("Vector");
+                        ui.label(format!(
+                            "{} / {} ({:?})",
+                            proposal.request.vector_seq_id,
+                            proposal.request.vector_catalog_id,
+                            proposal.vector_validation.status
+                        ));
+                        ui.end_row();
+                        ui.label("MCS");
+                        ui.monospace(format!(
+                            "{}..{}",
+                            proposal.mcs_start_0based, proposal.mcs_end_0based_exclusive
+                        ));
+                        ui.end_row();
+                        ui.label("Assembly");
+                        ui.label(format!("{:?}", proposal.cloning_strategy.strategy));
+                        ui.end_row();
+                        ui.label("Products");
+                        ui.label(proposal.products.len().to_string());
+                        ui.end_row();
+                    });
+
+                    for member in &proposal.members {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.strong(&member.label);
+                            ui.label(format!(
+                                "{:?} | {} bp | {} / {}",
+                                member.fragment_role,
+                                member.fragment_length_bp,
+                                member.wild_type_seq_id,
+                                member.mutant_seq_id
+                            ));
+                        });
+                        ui.small(format!(
+                            "motif {}..{} | {} stated base changes | p53-family local maximum audit: {}",
+                            member.motif_start_in_fragment_0based,
+                            member.motif_end_in_fragment_0based_exclusive,
+                            member.mutation.changes.len(),
+                            if member.mutation.no_stronger_p53_family_hit_near_edit {
+                                "pass"
+                            } else {
+                                "review"
+                            }
+                        ));
+                    }
+                    for product in &proposal.products {
+                        ui.small(format!(
+                            "{} | {} bp circular | {} | {} primer(s) | luc2 annotation {} | {} final restriction site(s)",
+                            product.product_seq_id,
+                            product.length_bp,
+                            product.assembly_model,
+                            product.primer_seq_ids.len(),
+                            if product.luc2_annotation_preserved {
+                                "preserved"
+                            } else {
+                                "missing"
+                            },
+                            product.final_product_audit.matched_site_count,
+                        ));
+                        ui.small(format!(
+                            "junctions: {} | unexpected site-count excess: {}",
+                            product.final_product_audit.junction_validation,
+                            if product
+                                .final_product_audit
+                                .unexpected_count_excess_by_enzyme
+                                .is_empty()
+                            {
+                                "none".to_string()
+                            } else {
+                                product
+                                    .final_product_audit
+                                    .unexpected_count_excess_by_enzyme
+                                    .iter()
+                                    .map(|(enzyme, count)| format!("{enzyme} (+{count})"))
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            }
+                        ));
+                    }
+                    for warning in &proposal.warnings {
+                        ui.colored_label(egui::Color32::from_rgb(180, 83, 9), warning);
+                    }
+                    for nonclaim in &proposal.nonclaims {
+                        ui.small(
+                            egui::RichText::new(nonclaim)
+                                .color(egui::Color32::from_rgb(100, 116, 139)),
+                        );
+                    }
+                    ui.label("Approval digest");
+                    ui.monospace(&proposal.proposal_digest);
+                    ui.text_edit_singleline(
+                        &mut self
+                            .variant_followup_ui
+                            .promoter_reporter_panel_approval_digest,
+                    );
+                    let approval_matches = self
+                        .variant_followup_ui
+                        .promoter_reporter_panel_approval_digest
+                        .trim()
+                        == proposal.proposal_digest;
+                    if ui
+                        .add_enabled(
+                            self.engine.is_some() && approval_matches,
+                            egui::Button::new("Materialize approved panel"),
+                        )
+                        .clicked()
+                    {
+                        materialize_requested = true;
+                    }
+                }
+
+                if let Some(receipt) = self
+                    .variant_followup_ui
+                    .cached_promoter_reporter_panel_receipt
+                    .as_ref()
+                {
+                    ui.separator();
+                    ui.label(format!(
+                        "Materialized {} sequence(s); wrote {} artifact(s)",
+                        receipt.created_seq_ids.len(),
+                        receipt.artifact_paths.len()
+                    ));
+                    ui.monospace(&receipt.manifest_path);
+                }
+            });
+        if plan_requested {
+            self.plan_variant_followup_promoter_reporter_panel();
+        }
+        if materialize_requested {
+            self.materialize_variant_followup_promoter_reporter_panel();
+        }
+    }
+
     fn render_variant_followup_window_contents(&mut self, ui: &mut egui::Ui) {
         let engine_available = self.engine.is_some();
         let source_seq_id = self.variant_followup_ui.source_seq_id.clone();
@@ -5880,6 +6145,8 @@ impl MainAreaDna {
         self.render_variant_followup_report_summary(ui);
         ui.add_space(8.0);
         self.render_variant_followup_candidate_summary(ui);
+        ui.add_space(8.0);
+        self.render_variant_followup_promoter_reporter_panel(ui);
     }
 
     pub(super) fn render_variant_followup_window(&mut self, ctx: &egui::Context) {

@@ -1,0 +1,64 @@
+{
+  "Synthetic panel vector": {
+    "description": "Repository-owned synthetic MCS-layout vector for offline promoter-panel tutorial planning; not pGL4.10",
+    "summary": "Synthetic 240 bp circular sequence with an annotated MCS and short luc2_demo marker",
+    "sequence_local": "test_files/fixtures/reporter_vectors/synthetic_mcs_backbone.gb",
+    "annotations_local": "test_files/fixtures/reporter_vectors/synthetic_mcs_backbone.gb",
+    "genbank_accession": "GENTLE_SYNTHETIC_MCS.1",
+    "sequence_availability": "bundled synthetic tutorial/test fixture",
+    "redistribution_status": "repository-owned synthetic sequence",
+    "biological_safety_note": "In-silico tutorial construct only; not a functional reporter vector.",
+    "usable_as_empty_backbone": true,
+    "helper_kind": "plasmid_vector",
+    "aliases": [
+      "GENTLE_SYNTHETIC_MCS.1"
+    ],
+    "tags": [
+      "synthetic",
+      "tutorial",
+      "not-pgl4"
+    ],
+    "sequence_expectation": {
+      "schema": "gentle.helper_vector_sequence_expectation.v1",
+      "provider": "GENtle tutorials",
+      "product_name": "synthetic MCS backbone",
+      "catalog_number": "SYNTH-MCS-1",
+      "accession_version": "GENTLE_SYNTHETIC_MCS.1",
+      "expected_length_bp": 240,
+      "expected_topology": "circular",
+      "required_features": [
+        {
+          "id": "multiple_cloning_region",
+          "feature_kinds": [
+            "misc_feature"
+          ],
+          "qualifier_terms": [
+            "multiple cloning site region"
+          ],
+          "expected_start_1based": 1,
+          "expected_end_1based": 70
+        },
+        {
+          "id": "luc2",
+          "feature_kinds": [
+            "CDS"
+          ],
+          "qualifier_terms": [
+            "luciferase luc2 marker"
+          ],
+          "expected_start_1based": 100,
+          "expected_end_1based": 180
+        }
+      ],
+      "restriction_site_equivalences": [],
+      "provenance": [
+        {
+          "source_id": "GENtle:test_files/fixtures/reporter_vectors/synthetic_mcs_backbone.gb",
+          "source_url": "test_files/fixtures/reporter_vectors/synthetic_mcs_backbone.gb",
+          "asserted_on": "2026-08-28",
+          "note": "Repository-owned deterministic fixture; explicitly not Promega pGL4.10."
+        }
+      ]
+    }
+  }
+}

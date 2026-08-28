@@ -501,6 +501,8 @@ fn usage_text() -> String {
   gentle_cli reporters recommend [--assay NAME] [--chassis HOST] [--color COLOR] [--class CLASS] [--max-length-bp N]\n  \
   gentle_cli reporters export-corpus OUTPUT.json|OUTPUT.jsonl [--format json|jsonl]\n\n  \
   gentle_cli reporters plan-handoff CANDIDATE_SET.json [--candidate-id ID] [--catalog PATH] [--backbone-seq-id ID] [--backbone-path PATH] [--backbone-catalog-id ID] [--helper-catalog PATH] [--reference-fragment-seq-id ID] [--alternate-fragment-seq-id ID] [--output-prefix PREFIX] [--output FILE.json]\n\n  \
+  gentle_cli [--state PATH|--project PATH] promoters panel-plan REQUEST_JSON_OR_@FILE [--path PROPOSAL.json]\n  \
+  gentle_cli [--state PATH|--project PATH] promoters panel-materialize PROPOSAL_JSON_OR_@FILE --approve DIGEST\n\n  \
   gentle_cli rescue-screen --transcript-fasta PATH [--transcript-fasta PATH ...] --genes SYM[,SYM,...] [--gene SYM ...] (--reads PATH [--reads PATH ...] | --read-pair R1,R2 [--read-pair R1,R2 ...]) [--exon-fasta PATH] [--junction-fasta PATH] [--exon-intron-boundary-fasta PATH] [--intron-fasta PATH] [--genomic-region-fasta PATH] [--read-id-allowlist PATH] [--salmon-unmapped-names PATH] [--salmon-mappings-sam PATH] [--kmer-len N] [--min-kmer-hits N] [--gene-symbol-tag KEY ...] --output-prefix PREFIX\n\n  \
   gentle_cli [--state PATH|--project PATH] allele-hash-screen --gene GENE --transcript-fasta PATH (--variant-table PATH | --vcf PATH --transcript-map PATH [--vcf-sample SAMPLE]) [--from-rna-report REPORT_ID] [--read-file PATH ...] [--read-pair R1,R2 ...] [--salmon-unmapped-names PATH] [--salmon-mappings-sam PATH] [--read-id-allowlist PATH] [--kmer-len N] [--min-unique-kmer-hits N] [--min-informative-reads N] [--balanced-band-lo F] [--balanced-band-hi F] [--max-inline-read-calls N] --out OUT_DIR\n\n  \
   Tip: pass @file.json instead of inline JSON\n  \
@@ -525,6 +527,7 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "routines",
     "gene-groups",
     "gene-sets",
+    "promoters",
     "collections",
     "planning",
     "gibson",

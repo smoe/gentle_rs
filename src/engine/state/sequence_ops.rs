@@ -2527,6 +2527,32 @@ impl GentleEngine {
                     Self::push_unique_token(&mut summary.file_paths, path);
                 }
             }
+            Operation::PlanPromoterReporterPanel { request, path } => {
+                Self::push_unique_token(&mut summary.sequence_ids, &request.vector_seq_id);
+                if let Some(path) = request.helper_catalog_path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+                for member in &request.members {
+                    Self::push_unique_token(&mut summary.file_paths, &member.candidate_set_path);
+                }
+                Self::push_unique_token(&mut summary.file_paths, &request.output_dir);
+                if let Some(path) = path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+            }
+            Operation::MaterializePromoterReporterPanel { proposal, .. } => {
+                Self::push_unique_token(&mut summary.sequence_ids, &proposal.request.vector_seq_id);
+                if let Some(path) = proposal.request.helper_catalog_path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+                for member in &proposal.members {
+                    Self::push_unique_token(&mut summary.sequence_ids, &member.source_seq_id);
+                    Self::push_unique_token(&mut summary.file_paths, &member.candidate_set.path);
+                }
+                for artifact in &proposal.artifacts {
+                    Self::push_unique_token(&mut summary.file_paths, &artifact.path);
+                }
+            }
             Operation::ValidateProtocolCartoonTemplate { template_path } => {
                 Self::push_unique_token(&mut summary.file_paths, template_path);
             }
@@ -2841,6 +2867,14 @@ impl GentleEngine {
             | Operation::PlanReporterConstructHandoff {
                 path: Some(path), ..
             } => push(path),
+            Operation::PlanPromoterReporterPanel {
+                path: Some(path), ..
+            } => push(path),
+            Operation::MaterializePromoterReporterPanel { proposal, .. } => {
+                for artifact in &proposal.artifacts {
+                    push(&artifact.path);
+                }
+            }
             _ => {}
         }
         paths
@@ -9573,28 +9607,6 @@ impl GentleEngine {
         ))
     }
 
-    pub(super) fn right_end_overhangs(dna: &DNAsequence) -> Vec<Vec<u8>> {
-        let mut ret = Vec::new();
-        if !dna.overhang().forward_3.is_empty() {
-            ret.push(dna.overhang().forward_3.clone());
-        }
-        if !dna.overhang().reverse_5.is_empty() {
-            ret.push(dna.overhang().reverse_5.clone());
-        }
-        ret
-    }
-
-    pub(super) fn left_end_overhangs(dna: &DNAsequence) -> Vec<Vec<u8>> {
-        let mut ret = Vec::new();
-        if !dna.overhang().forward_5.is_empty() {
-            ret.push(dna.overhang().forward_5.clone());
-        }
-        if !dna.overhang().reverse_3.is_empty() {
-            ret.push(dna.overhang().reverse_3.clone());
-        }
-        ret
-    }
-
     pub(super) fn right_end_is_blunt(dna: &DNAsequence) -> bool {
         dna.overhang().forward_3.is_empty() && dna.overhang().reverse_5.is_empty()
     }
@@ -9604,19 +9616,41 @@ impl GentleEngine {
     }
 
     pub(super) fn sticky_compatible(left: &DNAsequence, right: &DNAsequence) -> bool {
-        let right_opts = Self::right_end_overhangs(left);
-        let left_opts = Self::left_end_overhangs(right);
-        if right_opts.is_empty() || left_opts.is_empty() {
+        Self::sticky_ligation_junction_sequence(left, right).is_some()
+    }
+
+    pub(super) fn sticky_ligation_junction_sequence(
+        left: &DNAsequence,
+        right: &DNAsequence,
+    ) -> Option<Vec<u8>> {
+        let compatible = |a: &[u8], b: &[u8]| {
+            !a.is_empty()
+                && !b.is_empty()
+                && (b == Self::complement_bytes(a) || b == Self::reverse_complement_bytes(a))
+        };
+        if compatible(&left.overhang().forward_3, &right.overhang().reverse_3) {
+            return Some(left.overhang().forward_3.clone());
+        }
+        if compatible(&left.overhang().reverse_5, &right.overhang().forward_5) {
+            return Some(right.overhang().forward_5.clone());
+        }
+        None
+    }
+
+    pub(super) fn circular_sequences_are_rotations(left: &str, right: &str) -> bool {
+        if left.len() != right.len() {
             return false;
         }
-        for r in &right_opts {
-            let rc_r = Self::reverse_complement_bytes(r);
-            let c_r = Self::complement_bytes(r);
-            if left_opts.iter().any(|l| *l == rc_r || *l == c_r) {
-                return true;
-            }
+        if left.is_empty() {
+            return true;
         }
-        false
+        let mut doubled = Vec::with_capacity(left.len() * 2);
+        doubled.extend_from_slice(left.as_bytes());
+        doubled.extend_from_slice(left.as_bytes());
+        doubled
+            .windows(right.len())
+            .take(left.len())
+            .any(|window| window == right.as_bytes())
     }
 
     pub(super) fn find_anneal_sites(

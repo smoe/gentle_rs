@@ -1,0 +1,128 @@
+{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "promoter_reporter_panel_planning_offline",
+  "title": "Promoter-Reporter Panel Planning (Offline Approval-Gated Demo)",
+  "graphics": [
+    {
+      "kind": "generated",
+      "path": "docs/tutorial/generated/artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.synthetic_vector.svg",
+      "caption": "Circular map of the explicitly synthetic MCS-layout vector used to exercise exact-vector validation; this is not pGL4.10.",
+      "illustrates_step": 3,
+      "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+    },
+    {
+      "kind": "generated",
+      "path": "docs/tutorial/generated/artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.source.svg",
+      "caption": "Linear map of the 151 bp synthetic promoter-fragment input.",
+      "illustrates_step": 4,
+      "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+    }
+  ],
+  "catalog": {
+    "order": 51,
+    "path": "docs/tutorial/generated/chapters/08-09_promoter_reporter_panel_planning_offline.md",
+    "type": "executable_chapter",
+    "status": "generated+checked/human-pending",
+    "source": "generated_from_tutorial_sources",
+    "audiences": [
+      "cli_first",
+      "cloning_planning",
+      "contributors"
+    ],
+    "notes": "Machine-checked offline planning chapter; exact digest approval remains a separate, explicit user action.",
+    "group": "08",
+    "group_position": 9
+  },
+  "generated_chapter": {
+    "order": 29,
+    "example_id": "promoter_reporter_panel_planning_offline",
+    "tier": "core",
+    "summary": "Build a read-only, content-addressed promoter-reporter panel proposal from one synthetic motif-anchored fragment and an exactly validated synthetic vector, inspect its evidence and non-claims, then materialize only the exact approved digest.",
+    "narrative": "A reporter-panel design is not one opaque cloning command. GENtle first binds the selected promoter candidate, source sequence, exact vector identity, motif-disruption rule, shared cloning strategy, primers, predicted circular products, and export paths into one proposal digest. Planning runs the full workflow on a detached project state and writes no constructs. A separate materialization request must repeat that exact digest; any changed project sequence, candidate file, helper catalog, or proposal field makes the approval stale.\n\nThis chapter stays offline by using a repository-owned 240 bp synthetic MCS-layout vector and a 151 bp synthetic promoter fragment. The vector is deliberately not pGL4.10 and the fragment is not real TP73 regulatory DNA. The candidate response element is sequence-motif evidence only, and its stated-rule mutant is a testable sequence proposal rather than proof of lost occupancy or reporter function.",
+    "use_cases": [
+      "You want to inspect every construct, primer, warning, and output path before a panel changes project state.",
+      "You want a deterministic offline example of exact-vector validation and shared panel cloning strategy selection.",
+      "You want scripts to fail closed when a proposal or any bound input drifts after review.",
+      "You want wild-type and stated-rule motif-mutant products without treating a PWM score change as functional proof."
+    ],
+    "gui_steps": [
+      "Open the synthetic MCS vector fixture and synthetic panel source sequence in GENtle.",
+      "Open `Promoter design` for the synthetic source and expand `Promoter-reporter panel`.",
+      "Paste the request JSON from `docs/examples/assets/promoter_reporter_panel_demo_request.json`, adjusting only the loaded sequence IDs or output directory when needed.",
+      "Click `Plan panel`; confirm the vector validation is verified, the selected motif interval is `88..108`, and both wild-type and mutant circular products are listed.",
+      "Review the shared cloning strategy, primer readiness, exact output paths, warnings, and the non-claims that motif evidence is not occupancy or functional proof.",
+      "Type the displayed full proposal digest into the approval field. The materialization button remains disabled for a missing or different digest.",
+      "Click `Materialize approved panel` only after review; confirm the receipt lists project sequence IDs, GenBank/SVG outputs, and the construct/primer manifest.",
+      "Change a bound candidate or vector input and confirm the old digest is rejected as stale rather than silently reused."
+    ],
+    "cli_steps": [
+      "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/promoter_reporter_panel_planning_offline.json",
+      "cargo run --bin gentle_cli -- --state /tmp/gentle-promoter-panel-state.json op '{\"LoadFile\":{\"path\":\"test_files/fixtures/reporter_vectors/synthetic_mcs_backbone.gb\",\"as_id\":\"synthetic_panel_vector\"}}'",
+      "cargo run --bin gentle_cli -- --state /tmp/gentle-promoter-panel-state.json op '{\"LoadFile\":{\"path\":\"docs/examples/assets/promoter_reporter_panel_demo_source.fasta\",\"as_id\":\"synthetic_panel_source\"}}'",
+      "cargo run --bin gentle_cli -- --state /tmp/gentle-promoter-panel-state.json shell 'promoters panel-plan @docs/examples/assets/promoter_reporter_panel_demo_request.json --path /tmp/gentle-promoter-panel-proposal.json'",
+      "jq '{proposal_id,proposal_digest,vector_validation,cloning_strategy,members,products,artifacts,warnings,nonclaims}' /tmp/gentle-promoter-panel-proposal.json",
+      "DIGEST=$(jq -r .proposal_digest /tmp/gentle-promoter-panel-proposal.json); cargo run --bin gentle_cli -- --state /tmp/gentle-promoter-panel-state.json shell \"promoters panel-materialize @/tmp/gentle-promoter-panel-proposal.json --approve $DIGEST\""
+    ],
+    "step_expectations": [
+      "The canonical workflow executes entirely offline and completes the read-only panel plan.",
+      "The exact 240 bp circular synthetic vector is loaded under the ID required by the request.",
+      "The 151 bp candidate source is loaded under the candidate set's pinned sequence ID.",
+      "Planning writes one proposal JSON but does not add the proposed fragments, primers, or constructs to project state.",
+      "The proposal exposes the vector hash/validation, candidate binding, stated-rule mutation audit, shared strategy, primers, circular product hashes, artifact paths, warnings, and non-claims.",
+      "Materialization succeeds only when the supplied digest exactly matches a freshly recomputed proposal; it then writes GenBank/SVG files and a tabular construct/primer manifest."
+    ],
+    "prerequisites": [
+      "promoter_design_artifact_slice_offline"
+    ],
+    "learning_objectives": [
+      "Distinguish read-only panel planning from digest-approved project mutation and file export.",
+      "Explain which source, vector, workflow, product, and path facts are bound by the proposal digest.",
+      "Inspect a fixed p53-family core-edit rule and its PWM/restriction-site audits without turning either into a functional claim.",
+      "Recognize why the synthetic MCS fixture validates only against its own catalog identity and must be rejected as pGL4.10.",
+      "Use the same engine contract from the Promoter design GUI and the `promoters panel-*` shell routes."
+    ],
+    "concepts": [
+      "shared_engine_contract",
+      "deterministic_workflows",
+      "promoter_motif_controls",
+      "artifact_exports",
+      "tutorial_drift_checks"
+    ],
+    "parameter_notes": [
+      {
+        "parameter": "approval digest",
+        "where_used": "promoters panel-materialize --approve",
+        "why_it_matters": "It binds the complete normalized plan rather than merely recording a yes/no confirmation.",
+        "how_to_derive": "Copy the exact `proposal_digest` emitted by `promoters panel-plan` after reviewing the proposal."
+      },
+      {
+        "parameter": "candidate interval 0..151; motif interval 88..108",
+        "where_used": "fragment extraction and stated-rule motif mutation",
+        "why_it_matters": "The motif interval must remain inside the selected fragment and is reported in source and fragment coordinates.",
+        "how_to_derive": "Use the pinned synthetic candidate set; real panels should consume already-reviewed promoter candidate reports."
+      },
+      {
+        "parameter": "output_dir",
+        "where_used": "planned GenBank, SVG, and manifest paths",
+        "why_it_matters": "Artifact paths are part of the approval basis and existing files are never overwritten.",
+        "how_to_derive": "Choose a new empty directory before planning; re-plan if the destination changes."
+      }
+    ],
+    "follow_up_commands": [
+      "jq '.products[] | {member_id,allele,assembly_model,length_bp,sequence_sha256,primer_seq_ids}' /tmp/gentle-promoter-panel-proposal.json",
+      "jq '.members[] | {label,fragment_role,motif_start_in_fragment_0based,motif_end_in_fragment_0based_exclusive,mutation}' /tmp/gentle-promoter-panel-proposal.json",
+      "cat /tmp/gentle-promoter-reporter-panel-demo-products/synthetic_tp73_demo_panel.construct_primer_manifest.tsv"
+    ],
+    "retain_outputs": [
+      "artifacts/promoter_reporter_panel_demo.synthetic_vector.svg",
+      "artifacts/promoter_reporter_panel_demo.source.svg"
+    ],
+    "checkpoints": [
+      "The tutorial workflow executes offline and leaves the engine state free of planned fragments, primers, and assembled products.",
+      "Both retained SVGs are deterministic renderings of explicitly synthetic sequences.",
+      "The planned proposal contains two products for the one selected member: wild type and stated-rule motif mutant.",
+      "The proposal carries a non-empty primer list and preserves the synthetic luc2_demo annotation in both circular predicted products.",
+      "A wrong digest and a changed candidate file are rejected before state or output files change."
+    ]
+  }
+}

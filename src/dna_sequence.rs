@@ -937,14 +937,15 @@ impl DNAsequence {
                 .or_default()
                 .push(re_site.enzyme.name.to_owned());
         }
+        for names in self.restriction_enzyme_groups.values_mut() {
+            names.sort();
+        }
         self.bump_restriction_enzyme_group_generation();
     }
 
     fn split_at_restriction_enzyme_site_circular(&self, site: &RestrictionEnzymeSite) -> Self {
-        let pos1 = site.offset;
-        let pos2 = site.offset + site.enzyme.overlap;
-        let pos2 = pos2 % self.len() as isize;
-        let right = pos1.max(pos2) + 1;
+        let (forward_cut, reverse_cut) = site.enzyme.strand_cut_offsets();
+        let right = (site.offset + forward_cut.max(reverse_cut)).rem_euclid(self.len() as isize);
 
         // Rotate so that position 0 is now the sequence after the cut
         let seq = self.seq.set_origin(right as i64);
@@ -977,13 +978,19 @@ impl DNAsequence {
     }
 
     fn split_at_restriction_enzyme_site_linear(&self, site: &RestrictionEnzymeSite) -> Vec<Self> {
-        let pos1 = site.offset + 1;
-        let pos2 = site.offset + site.enzyme.overlap;
-        let pos2 = pos2 % self.len() as isize;
-        let left = pos1;
-        let right = pos1.max(pos2) + 1;
+        let (forward_cut, reverse_cut) = site.enzyme.strand_cut_offsets();
+        let strand_cut_1 = site.offset + forward_cut;
+        let strand_cut_2 = site.offset + reverse_cut;
+        let left = usize::try_from(strand_cut_1.min(strand_cut_2))
+            .expect("restriction cut must start within the linear sequence");
+        let right = usize::try_from(strand_cut_1.max(strand_cut_2))
+            .expect("restriction cut must end within the linear sequence");
+        assert!(
+            right <= self.len(),
+            "restriction cut exceeds linear sequence"
+        );
 
-        let overhang = self.seq.seq[pos1 as usize..(pos2 + 1) as usize].to_owned();
+        let overhang = self.seq.seq[left..right].to_owned();
         let overhang_rc: Vec<u8> = overhang
             .iter()
             .map(|c| IupacCode::letter_complement(*c))
@@ -1004,7 +1011,6 @@ impl DNAsequence {
             seq2.overhang.forward_5 = overhang;
             seq2.overhang.reverse_3 = vec![];
         } else {
-            // TODO test this
             seq1.overhang.forward_3 = overhang;
             seq1.overhang.reverse_5 = vec![];
             seq2.overhang.forward_5 = vec![];
@@ -1289,6 +1295,38 @@ mod tests {
     use tempfile::Builder;
 
     #[test]
+    fn restriction_enzyme_group_aliases_are_sorted() {
+        let mut sequence = DNAsequence::from_sequence("GATATC").unwrap();
+        let template = Enzymes::default()
+            .restriction_enzymes()
+            .iter()
+            .find(|enzyme| enzyme.name == "EcoRV")
+            .expect("EcoRV in built-in catalog")
+            .clone();
+        sequence.restriction_enzyme_sites = ["Zeta", "Alpha"]
+            .into_iter()
+            .map(|name| {
+                let mut enzyme = template.clone();
+                enzyme.name = name.to_string();
+                RestrictionEnzymeSite {
+                    offset: 0,
+                    enzyme,
+                    forward_strand: true,
+                }
+            })
+            .collect();
+
+        sequence.update_restriction_enzyme_groups();
+
+        let names = sequence
+            .restriction_enzyme_groups()
+            .values()
+            .next()
+            .expect("one shared restriction group");
+        assert_eq!(names, &["Alpha".to_string(), "Zeta".to_string()]);
+    }
+
+    #[test]
     fn test_get_forward_string_handles_non_utf8_bases_lossy() {
         let seq = DNAsequence::from_u8(&[b'A', 0xFF, b'C']);
         assert_eq!(seq.get_forward_string(), "A\u{FFFD}C");
@@ -1347,6 +1385,27 @@ mod tests {
     }
 
     #[test]
+    fn test_split_at_restriction_enzyme_site_circular_with_three_prime_overhang() {
+        let mut orig_seq = DNAsequence::from_sequence("ATGGTACCGC").unwrap();
+        orig_seq.seq.topology = Topology::Circular;
+        let kpn_i = Enzymes::default()
+            .restriction_enzymes()
+            .iter()
+            .find(|enzyme| enzyme.name == "KpnI")
+            .unwrap()
+            .to_owned();
+        let sites = kpn_i.get_sites(&orig_seq, None);
+        assert_eq!(sites.len(), 1);
+
+        let seq = orig_seq.split_at_restriction_enzyme_site_circular(&sites[0]);
+        assert_eq!(seq.get_forward_string(), "CGCATG");
+        assert_eq!(seq.overhang.forward_3, "GTAC".as_bytes());
+        assert_eq!(seq.overhang.reverse_3, "CATG".as_bytes());
+        assert!(seq.overhang.forward_5.is_empty());
+        assert!(seq.overhang.reverse_5.is_empty());
+    }
+
+    #[test]
     fn test_split_at_restriction_enzyme_site_linear() {
         // Create circular test sequence
         let mut orig_seq = DNAsequence::from_sequence("ATGGATCCGC").unwrap();
@@ -1373,6 +1432,50 @@ mod tests {
         assert_eq!(seqs[0].overhang.reverse_5, "CTAG".as_bytes());
         assert_eq!(seqs[1].overhang.forward_5, "GATC".as_bytes());
         assert_eq!(seqs[1].overhang.reverse_3, "".as_bytes());
+    }
+
+    #[test]
+    fn test_split_at_restriction_enzyme_site_linear_with_three_prime_overhang() {
+        let mut orig_seq = DNAsequence::from_sequence("ATGGTACCGC").unwrap();
+        orig_seq.seq.topology = Topology::Linear;
+        let kpn_i = Enzymes::default()
+            .restriction_enzymes()
+            .iter()
+            .find(|enzyme| enzyme.name == "KpnI")
+            .unwrap()
+            .to_owned();
+        let sites = kpn_i.get_sites(&orig_seq, None);
+        assert_eq!(sites.len(), 1);
+
+        let seqs = orig_seq.split_at_restriction_enzyme_site_linear(&sites[0]);
+        assert_eq!(seqs[0].get_forward_string(), "ATG");
+        assert_eq!(seqs[1].get_forward_string(), "CGC");
+        assert_eq!(seqs[0].overhang.forward_3, "GTAC".as_bytes());
+        assert_eq!(seqs[0].overhang.reverse_5, "".as_bytes());
+        assert_eq!(seqs[1].overhang.forward_5, "".as_bytes());
+        assert_eq!(seqs[1].overhang.reverse_3, "CATG".as_bytes());
+    }
+
+    #[test]
+    fn test_split_at_restriction_enzyme_site_linear_with_blunt_cut() {
+        let mut orig_seq = DNAsequence::from_sequence("ATGGATATCGC").unwrap();
+        orig_seq.seq.topology = Topology::Linear;
+        let eco_rv = Enzymes::default()
+            .restriction_enzymes()
+            .iter()
+            .find(|enzyme| enzyme.name == "EcoRV")
+            .unwrap()
+            .to_owned();
+        let sites = eco_rv.get_sites(&orig_seq, None);
+        assert_eq!(sites.len(), 1);
+
+        let seqs = orig_seq.split_at_restriction_enzyme_site_linear(&sites[0]);
+        assert_eq!(seqs[0].get_forward_string(), "ATGGAT");
+        assert_eq!(seqs[1].get_forward_string(), "ATCGC");
+        assert!(seqs[0].overhang.forward_3.is_empty());
+        assert!(seqs[0].overhang.reverse_5.is_empty());
+        assert!(seqs[1].overhang.forward_5.is_empty());
+        assert!(seqs[1].overhang.reverse_3.is_empty());
     }
 
     #[test]

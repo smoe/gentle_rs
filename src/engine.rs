@@ -879,6 +879,12 @@ const RESTRICTION_CLONING_PCR_HANDOFF_REPORT_SCHEMA: &str =
 pub const PROMOTER_REPORTER_PANEL_CLONING_STRATEGY_SCHEMA: &str =
     "gentle.promoter_reporter_panel_cloning_strategy.v1";
 pub const P53_FAMILY_MOTIF_DISRUPTION_SCHEMA: &str = "gentle.p53_family_motif_disruption.v1";
+pub const PROMOTER_REPORTER_PANEL_REQUEST_SCHEMA: &str =
+    "gentle.promoter_reporter_panel_request.v1";
+pub const PROMOTER_REPORTER_PANEL_PROPOSAL_SCHEMA: &str =
+    "gentle.promoter_reporter_panel_proposal.v1";
+pub const PROMOTER_REPORTER_PANEL_RECEIPT_SCHEMA: &str =
+    "gentle.promoter_reporter_panel_receipt.v1";
 pub const PROTEIN_DERIVATION_REPORTS_METADATA_KEY: &str = "protein_derivation_reports";
 const PROTEIN_DERIVATION_REPORTS_SCHEMA: &str = "gentle.protein_derivation_reports.v1";
 pub const PROTEIN_DERIVATION_REPORT_SCHEMA: &str = "gentle.protein_derivation_report.v1";
@@ -5546,6 +5552,15 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    PlanPromoterReporterPanel {
+        request: Box<PromoterReporterPanelRequest>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    MaterializePromoterReporterPanel {
+        proposal: Box<PromoterReporterPanelProposal>,
+        approval_digest: String,
+    },
     MaterializeVariantAllele {
         input: SeqId,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -9659,6 +9674,7 @@ impl GentleEngine {
                 | Operation::RecommendReporters { .. }
                 | Operation::ExportReporterCorpus { .. }
                 | Operation::PlanReporterConstructHandoff { .. }
+                | Operation::PlanPromoterReporterPanel { .. }
                 | Operation::ExportRnaReadReport { .. }
                 | Operation::ExportRnaReadHitsFasta { .. }
                 | Operation::ExportRnaReadSampleSheet { .. }
@@ -10593,12 +10609,10 @@ impl GentleEngine {
         if Self::is_generated_helper_mcs_feature(feature) {
             return true;
         }
-        let text = Self::first_nonempty_feature_qualifier(
-            feature,
-            &["label", "note", "gene", "name", "standard_name"],
-        )
-        .unwrap_or_default();
-        Self::text_mentions_mcs(&text)
+        ["label", "note", "gene", "name", "standard_name"]
+            .into_iter()
+            .flat_map(|key| feature.qualifier_values(key))
+            .any(Self::text_mentions_mcs)
     }
 
     fn restriction_cloning_cut_positions_0based(dna: &DNAsequence) -> BTreeMap<String, Vec<usize>> {

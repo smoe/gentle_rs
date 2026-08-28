@@ -1,9 +1,9 @@
 # GENtle Roadmap
 
-Last session: 2026-08-28 - added a release-derived thin-LTO `bench-audit`
-profile with a unified unwind panic strategy for practical external performance
-sampling, plus worktree-local Git build invalidation, while preserving exact
-fat-LTO `cargo bench`; copied-state IRF9 acceptance and manual GUI smoke for
+Last session: 2026-08-28 - completed the motif-anchored promoter-reporter panel
+arc through digest-gated shared operations, CLI/shell/introspection parity,
+thin Promoter design GUI review, exact product/manifest tests, and an offline
+synthetic tutorial; copied-state IRF9 acceptance and manual GUI smoke for
 unreleased `v0.1.0-internal.10` remain before the tag
 
 Purpose: fast session orientation. This file answers "what next?" and should be
@@ -299,10 +299,6 @@ wet-lab conclusions or unconfirmed mutations.
 
 ## Parking Lot
 
-- Complete the motif-anchored multi-promoter reporter-panel arc after the landed
-  engine anchor/TSS-class, exact-vector-validation, shared-cloning-strategy,
-  and stated-rule p53-family motif-disruption slices: proposal-digest-gated
-  command, parity, GUI, and offline tutorial surfaces.
 - Replace whole-transcriptome FASTA materialization in UniProt linked-transcript
   inventory construction with indexed/streaming retrieval, and expose bounded
   progress during large specificity finalization joins.

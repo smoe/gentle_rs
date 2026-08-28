@@ -63,3 +63,35 @@ Used by: offline gene-set promoter cohort and ortholog promoter cohort tutorial
 generation. The fixtures are intentionally artificial and demonstrate
 relationship-flag mechanics only; they do not make claims about real TP73
 regulation or orthology evidence.
+
+## Promoter-reporter panel tutorial fixtures
+
+Files:
+
+- `promoter_reporter_panel_demo_source.fasta`
+- `promoter_reporter_panel_demo_candidates.json`
+- `promoter_reporter_panel_demo_helper_vectors.json`
+- `promoter_reporter_panel_demo_request.json`
+
+Origin: synthetic, hand-crafted offline tutorial fixtures. The vector sequence
+itself is the existing repository-owned
+`test_files/fixtures/reporter_vectors/synthetic_mcs_backbone.gb` fixture and is
+explicitly not Promega pGL4.10.
+
+Recreation: concatenate the 52 bp prefix
+`ATCGTACGATGCTAGCTACGTTAGCGATCGTACCTGACTGATCGTAGCTAGC`, the 36 bp spacer
+`TCGATGACCTAGTCGATCGTAGCATGCTACGATCGT`, the canonical synthetic p53-family
+response-element sequence `GGGCATGCCCGGGCATGCCC`, and the 43 bp suffix
+`CTAGTCGATGCTAGCATCGATCGTACGATGCTAGCTACGATCG`. The resulting 151 bp FASTA is
+selected as one whole-fragment candidate with its motif at zero-based interval
+`88..108`. The helper catalog repeats the synthetic vector's exact 240 bp,
+circular, MCS `1..70`, and `luc2_demo` `100..180` fixture assertions. The
+insert deliberately omits those MCS restriction sites so the panel exercises
+one shared directional strategy. The request file selects those records and
+uses a disposable `/tmp` output path so the CLI tutorial can plan, inspect, and
+then explicitly approve the exact proposal digest.
+
+Used by: `promoter_reporter_panel_planning_offline`, which exercises read-only
+proposal generation and exact-vector validation. These records demonstrate
+workflow and approval mechanics only; they are not biological TP73 promoter
+evidence, a functional reporter design, or a substitute for pGL4.10.

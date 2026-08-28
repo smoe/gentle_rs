@@ -112,7 +112,24 @@ impl PartialOrd for RestrictionEnzymeKey {
 
 impl Ord for RestrictionEnzymeKey {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        (self.cut_bounds(), self.pos).cmp(&(other.cut_bounds(), other.pos))
+        (
+            self.cut_bounds(),
+            self.pos,
+            self.mate_pos,
+            self.cut_size,
+            self.number_of_cuts,
+            self.from,
+            self.to,
+        )
+            .cmp(&(
+                other.cut_bounds(),
+                other.pos,
+                other.mate_pos,
+                other.cut_size,
+                other.number_of_cuts,
+                other.from,
+                other.to,
+            ))
     }
 }
 
@@ -280,6 +297,15 @@ impl RestrictionEnzymeSite {
 mod tests {
     use super::*;
     use crate::dna_sequence::DNAsequence;
+
+    #[test]
+    fn restriction_enzyme_key_order_distinguishes_shared_cut_coordinates() {
+        let short_site = RestrictionEnzymeKey::new(41, 41, 0, 1, 38, 44);
+        let long_site = RestrictionEnzymeKey::new(41, 41, 0, 1, 35, 47);
+
+        assert_ne!(short_site, long_site);
+        assert_ne!(short_site.cmp(&long_site), std::cmp::Ordering::Equal);
+    }
 
     #[test]
     fn test_restriction_enzyme() {

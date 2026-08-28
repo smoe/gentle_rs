@@ -1,0 +1,16 @@
+{
+  "schema": "gentle.promoter_reporter_panel_request.v1",
+  "panel_id": "synthetic_tp73_demo_panel",
+  "vector_seq_id": "synthetic_panel_vector",
+  "vector_catalog_id": "Synthetic panel vector",
+  "helper_catalog_path": "docs/examples/assets/promoter_reporter_panel_demo_helper_vectors.json",
+  "members": [
+    {
+      "candidate_set_path": "docs/examples/assets/promoter_reporter_panel_demo_candidates.json",
+      "candidate_id": "tp73_demo_core",
+      "fragment_role": "core",
+      "label": "TP73 demo core"
+    }
+  ],
+  "output_dir": "/tmp/gentle-promoter-reporter-panel-demo-products"
+}

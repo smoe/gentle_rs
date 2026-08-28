@@ -1083,6 +1083,44 @@
       "notes": "Offline synthetic walkthrough for separating structural candidates, optional model ranking, observed RNA junction evidence, and projected protein-feature context.",
       "review_status": "codex_reviewed",
       "codex_reviewed_at": "2026-08-27"
+    },
+    {
+      "id": "promoter_reporter_panel_planning_offline",
+      "title": "Promoter-Reporter Panel Planning (Offline Approval-Gated Demo)",
+      "path": "docs/tutorial/generated/chapters/08-09_promoter_reporter_panel_planning_offline.md",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 9,
+      "decimal_id": "08.09",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "cli_first",
+        "cloning_planning",
+        "contributors"
+      ],
+      "notes": "Machine-checked offline planning chapter; exact digest approval remains a separate, explicit user action.",
+      "review_status": "missing_review_manifest_entry",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "graphics": [
+        {
+          "kind": "generated",
+          "path": "docs/tutorial/generated/artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.synthetic_vector.svg",
+          "caption": "Circular map of the explicitly synthetic MCS-layout vector used to exercise exact-vector validation; this is not pGL4.10.",
+          "illustrates_step": 3,
+          "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+        },
+        {
+          "kind": "generated",
+          "path": "docs/tutorial/generated/artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.source.svg",
+          "caption": "Linear map of the 151 bp synthetic promoter-fragment input.",
+          "illustrates_step": 4,
+          "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+        }
+      ]
     }
   ]
 }

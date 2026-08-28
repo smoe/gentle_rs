@@ -90,7 +90,8 @@ use crate::{
         PrimerVariantScreenRequest, ProbeRegionRequest, ProjectFact, ProjectFactDomain,
         ProjectFactGraph, ProjectFactTypeSpec, ProjectState, PromoterArtifactManifestEntry,
         PromoterCohortKind, PromoterExpressionEvidenceInput, PromoterReporterFragmentPolicy,
-        PromoterTfbsGeneQuery, PromoterWindowCollapseMode, ProteinExpressionCdsAssessment,
+        PromoterReporterPanelProposal, PromoterReporterPanelRequest, PromoterTfbsGeneQuery,
+        PromoterWindowCollapseMode, ProteinExpressionCdsAssessment,
         ProteinExpressionFeatureSummary, ProteinExpressionHandoffReport,
         ProteinExpressionHostChassisCandidate, ProteinExpressionProductDefinition,
         ProteinExpressionProductReadiness, ProteinExpressionRequirements,
@@ -1079,6 +1080,14 @@ pub enum ShellCommand {
         catalog_path: Option<String>,
         output: String,
         format: ReporterCorpusExportFormat,
+    },
+    PromotersPanelPlan {
+        request: PromoterReporterPanelRequest,
+        output: Option<String>,
+    },
+    PromotersPanelMaterialize {
+        proposal: PromoterReporterPanelProposal,
+        approval_digest: String,
     },
     ExportPool {
         inputs: Vec<String>,
@@ -8348,6 +8357,20 @@ impl ShellCommand {
                     .unwrap_or("assets/reporter_catalog.json"),
                 format,
                 output,
+            ),
+            Self::PromotersPanelPlan { request, output } => format!(
+                "plan promoter-reporter panel '{}' from {} selected candidate(s) into vector '{}' (output='{}')",
+                request.panel_id,
+                request.members.len(),
+                request.vector_seq_id,
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::PromotersPanelMaterialize {
+                proposal,
+                approval_digest,
+            } => format!(
+                "materialize promoter-reporter panel proposal '{}' with approval digest '{}'",
+                proposal.proposal_id, approval_digest
             ),
             Self::ResourcesListPublicationDatasets {
                 filter,
@@ -25999,6 +26022,153 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "ALTERNATE_FRAGMENT_SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "optional loaded alternate fragment sequence id"}),
             ],
         ),
+        json!({
+            "id": "promoters panel-plan",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "gentle.promoter_reporter_panel_request.v1 selecting loaded vector and already-ranked candidate reports"},
+                {"name": "VECTOR_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded exact vector id carried inside the request"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional proposal JSON output path supplied by --path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}}
+            ],
+            "effects": [
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}}
+            ]},
+            "description": "Build a read-only, content-addressed promoter-reporter panel proposal on a detached engine clone.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("promoters panel-plan")
+        }),
+        json!({
+            "id": "PlanPromoterReporterPanel",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "gentle.promoter_reporter_panel_request.v1"},
+                {"name": "VECTOR_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded exact vector id carried inside request.vector_seq_id"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional proposal JSON output path carried by path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}}
+            ],
+            "effects": [
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}}
+            ]},
+            "description": "Build the shared read-only promoter-reporter panel proposal through the engine contract.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("PlanPromoterReporterPanel")
+        }),
+        json!({
+            "id": "promoter_reporter_panel_plan",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "exact gentle.promoter_reporter_panel_request.v1 object or JSON string"},
+                {"name": "VECTOR_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded exact vector id carried inside the request"},
+                {"name": "STATE_PATH", "required": false, "subject_kind": "other", "detail": "optional persisted project-state path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {"all": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}}
+            ]},
+            "description": "Build a read-only, content-addressed promoter-reporter panel proposal through the MCP projection.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("promoter_reporter_panel_plan")
+        }),
+        json!({
+            "id": "promoters panel-materialize",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "PROPOSAL_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "unchanged gentle.promoter_reporter_panel_proposal.v1"},
+                {"name": "--approve", "required": true, "subject_kind": "other", "detail": "exact proposal_digest reviewed by the caller"},
+                {"name": "VECTOR_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded exact vector id bound inside the proposal"},
+                {"name": "PRODUCT_SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "product ids bound inside the proposal"},
+                {"name": "OUTPUT_DIR", "required": false, "subject_kind": "other", "detail": "artifact directory bound inside the proposal"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}}
+            ],
+            "effects": [
+                {"fact": "sequence.exists", "subject": {"arg": "PRODUCT_SEQ_ID"}, "effect_kind": "must_on_success"},
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_DIR"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}}
+            ]},
+            "description": "Recompute and materialize only the exactly approved promoter-reporter panel proposal; reject state, source, vector, or output drift.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("promoters panel-materialize")
+        }),
+        json!({
+            "id": "MaterializePromoterReporterPanel",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "PROPOSAL", "required": true, "subject_kind": "other", "detail": "unchanged gentle.promoter_reporter_panel_proposal.v1"},
+                {"name": "APPROVAL_DIGEST", "required": true, "subject_kind": "other", "detail": "exact embedded proposal_digest"},
+                {"name": "VECTOR_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded exact vector id bound inside the proposal"},
+                {"name": "PRODUCT_SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "product ids bound inside the proposal"},
+                {"name": "OUTPUT_DIR", "required": false, "subject_kind": "other", "detail": "artifact directory bound inside the proposal"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}}
+            ],
+            "effects": [
+                {"fact": "sequence.exists", "subject": {"arg": "PRODUCT_SEQ_ID"}, "effect_kind": "must_on_success"},
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_DIR"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}}
+            ]},
+            "description": "Materialize a content-addressed promoter-reporter panel proposal through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("MaterializePromoterReporterPanel")
+        }),
+        json!({
+            "id": "promoter_reporter_panel_materialize",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "CONFIRM", "required": true, "subject_kind": "other", "detail": "must be true before project state or approved artifacts may change"},
+                {"name": "PROPOSAL", "required": true, "subject_kind": "other", "detail": "exact unchanged gentle.promoter_reporter_panel_proposal.v1 object or JSON string"},
+                {"name": "APPROVAL_DIGEST", "required": true, "subject_kind": "other", "detail": "exact proposal_digest presented for approval"},
+                {"name": "VECTOR_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded exact vector id bound inside the proposal"},
+                {"name": "PRODUCT_SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "product ids bound inside the proposal"},
+                {"name": "OUTPUT_DIR", "required": false, "subject_kind": "other", "detail": "artifact directory bound inside the proposal"},
+                {"name": "STATE_PATH", "required": false, "subject_kind": "other", "detail": "optional persisted project-state path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}}
+            ],
+            "effects": [
+                {"fact": "sequence.exists", "subject": {"arg": "PRODUCT_SEQ_ID"}, "effect_kind": "must_on_success"},
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_DIR"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}}
+            ]},
+            "description": "Materialize an unchanged, exactly approved promoter-reporter panel proposal through the MCP projection.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("promoter_reporter_panel_materialize")
+        }),
         no_project_inspection_operation_descriptor(
             "services status",
             "Inspect combined GENtle service/resource readiness without project-state preconditions.",
@@ -40280,6 +40450,85 @@ fn parse_gene_groups_command(tokens: &[String]) -> Result<ShellCommand, String> 
     }
 }
 
+fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err("promoters requires a subcommand: panel-plan or panel-materialize".to_string());
+    }
+    match tokens[1].as_str() {
+        "panel-plan" => {
+            if tokens.len() < 3 || tokens[2].starts_with("--") {
+                return Err(
+                    "promoters panel-plan requires REQUEST_JSON_OR_@FILE [--path PROPOSAL.json]"
+                        .to_string(),
+                );
+            }
+            let request = parse_required_json_payload::<PromoterReporterPanelRequest>(
+                &tokens[2],
+                "promoter-reporter panel request",
+            )?;
+            let mut output = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--path" | "--output" => {
+                        output = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--path",
+                            "promoters panel-plan",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for promoters panel-plan"));
+                    }
+                }
+            }
+            Ok(ShellCommand::PromotersPanelPlan { request, output })
+        }
+        "panel-materialize" => {
+            if tokens.len() < 3 || tokens[2].starts_with("--") {
+                return Err(
+                    "promoters panel-materialize requires PROPOSAL_JSON_OR_@FILE --approve DIGEST"
+                        .to_string(),
+                );
+            }
+            let proposal = parse_required_json_payload::<PromoterReporterPanelProposal>(
+                &tokens[2],
+                "promoter-reporter panel proposal",
+            )?;
+            let mut approval_digest = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--approve" => {
+                        approval_digest = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--approve",
+                            "promoters panel-materialize",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for promoters panel-materialize"
+                        ));
+                    }
+                }
+            }
+            let approval_digest = approval_digest.ok_or_else(|| {
+                "promoters panel-materialize requires --approve DIGEST".to_string()
+            })?;
+            Ok(ShellCommand::PromotersPanelMaterialize {
+                proposal,
+                approval_digest,
+            })
+        }
+        other => Err(format!(
+            "Unknown promoters subcommand '{other}' (expected panel-plan or panel-materialize)"
+        )),
+    }
+}
+
 fn parse_reporters_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
@@ -43389,6 +43638,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "gene-sets" | "gene_sets" | "genesets" => parse_gene_sets_command(tokens),
         "collections" | "collection" => parse_collections_command(tokens),
         "gene-groups" | "gene_groups" | "genegroups" => parse_gene_groups_command(tokens),
+        "promoters" => parse_promoters_command(tokens),
         "reporters" => parse_reporters_command(tokens),
         "resources" => {
             if tokens.len() < 2 {
@@ -50548,6 +50798,39 @@ fn execute_export_import_and_resource_command(
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({ "result": export }),
+            })
+        }
+        ShellCommand::PromotersPanelPlan { request, output } => {
+            let op_result = engine
+                .apply(Operation::PlanPromoterReporterPanel {
+                    request: Box::new(request.clone()),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let proposal = op_result.promoter_reporter_panel_proposal.ok_or_else(|| {
+                "Promoter-reporter panel planning returned no proposal".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": proposal }),
+            })
+        }
+        ShellCommand::PromotersPanelMaterialize {
+            proposal,
+            approval_digest,
+        } => {
+            let op_result = engine
+                .apply(Operation::MaterializePromoterReporterPanel {
+                    proposal: Box::new(proposal.clone()),
+                    approval_digest: approval_digest.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let receipt = op_result.promoter_reporter_panel_receipt.ok_or_else(|| {
+                "Promoter-reporter panel materialization returned no receipt".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": receipt }),
             })
         }
         ShellCommand::ResourcesListPublicationDatasets {
@@ -63681,6 +63964,8 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::ReportersList { .. }
             | ShellCommand::ReportersRecommend { .. }
             | ShellCommand::ReportersExportCorpus { .. }
+            | ShellCommand::PromotersPanelPlan { .. }
+            | ShellCommand::PromotersPanelMaterialize { .. }
             | ShellCommand::ResourcesListPublicationDatasets { .. }
             | ShellCommand::ResourcesPublicationDatasetStatus { .. }
             | ShellCommand::ResourcesPreparePublicationDataset { .. }
@@ -64486,6 +64771,8 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ReportersList { .. }
         | ShellCommand::ReportersRecommend { .. }
         | ShellCommand::ReportersExportCorpus { .. }
+        | ShellCommand::PromotersPanelPlan { .. }
+        | ShellCommand::PromotersPanelMaterialize { .. }
         | ShellCommand::ResourcesListPublicationDatasets { .. }
         | ShellCommand::ResourcesPublicationDatasetStatus { .. }
         | ShellCommand::ResourcesPreparePublicationDataset { .. }

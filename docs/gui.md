@@ -5628,8 +5628,22 @@ Tutorial projects:
       CUT&RUN support, `support_status`, and distance without inventing a GUI
       verdict
     - the engine report still preserves the legacy confirmed/unconfirmed row
-      vectors while displaying additive four-state `support_status`
+    vectors while displaying additive four-state `support_status`
       (`confirmed`, `nearby`, `absent`, `motif-poor`)
+  - the same window now also exposes `Promoter-reporter panel` as a thin client
+    of the shared `PlanPromoterReporterPanel` and
+    `MaterializePromoterReporterPanel` operations:
+    - request JSON selects already-reviewed promoter candidates and one loaded,
+      exactly catalog-validated vector; the GUI does not resolve or rerank them
+    - `Plan panel` is read-only and displays member boundaries/roles, candidate
+      motif coordinates, the stated-rule mutation audit, shared restriction or
+      Gibson strategy, primer readiness, predicted circular products, exact
+      artifact paths, warnings, and biological non-claims
+    - planning clears any previous approval text, and materialization remains
+      disabled until the user types the complete displayed proposal digest
+    - approved materialization still recomputes the proposal through the engine
+      and displays the resulting sequence IDs, artifact paths, and manifest;
+      drift or an existing output path is reported rather than bypassed
   - the same window now also exposes `Export TF score tracks SVG...`, which
     goes through the shared `RenderTfbsScoreTracksSvg` engine route instead of a
     GUI-only painter and can therefore reproduce the same stacked figure style

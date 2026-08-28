@@ -2,7 +2,7 @@
   "schema": "gentle.tutorial_generation_report.v1",
   "manifest": "docs/tutorial/manifest.json",
   "source_examples": "docs/examples/workflows",
-  "chapter_count": 24,
+  "chapter_count": 25,
   "online_enabled": false,
   "generated_files": [
     "README.md",
@@ -30,6 +30,8 @@
     "artifacts/promoter_gene_set_ortholog_cohort_offline/artifacts/promoter_cohort_ortholog_demo/gene_set_promoter_cohort_comparison.json",
     "artifacts/promoter_gene_set_ortholog_cohort_offline/artifacts/promoter_cohort_ortholog_demo/ortholog_promoter_cohort.json",
     "artifacts/promoter_gene_set_ortholog_cohort_offline/artifacts/promoter_cohort_ortholog_demo/ortholog_promoter_comparison.json",
+    "artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.source.svg",
+    "artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.synthetic_vector.svg",
     "chapters/01-02_contribute_to_gentle_development.md",
     "chapters/02-01_load_branch_reverse_complement_pgex_fasta.md",
     "chapters/02-04_tp73_cdna_genomic_dotplot_online.md",
@@ -54,10 +56,11 @@
     "chapters/08-03_promoter_design_artifact_slice_offline.md",
     "chapters/08-07_promoter_gene_set_ortholog_cohort_offline.md",
     "chapters/08-08_gene_set_ortholog_promoter_cohorts_offline.md",
+    "chapters/08-09_promoter_reporter_panel_planning_offline.md",
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "28a4e5376843419159dcc5727cefa863e130b3e30814cfa9d815570a4805bf81",
+    "README.md": "e63a5c6cea528c8785a746167dea6f67e5fdcb694ec65ef04638193d2c3230cf",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_cohort.json": "a3a9093760934082e5e9ea8c06b2528978908de49e59a6142766d90f8baad5a5",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_comparison.json": "f324456edd43ceb5f6c0f263e085844cddb27da1a454b40b63a68e8d69bc9a0e",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json": "e415893e3a32ed0ed4fc75d5e637bb7f19ac0552d0f671d5a5d0421db17f079d",
@@ -82,6 +85,8 @@
     "artifacts/promoter_gene_set_ortholog_cohort_offline/artifacts/promoter_cohort_ortholog_demo/gene_set_promoter_cohort_comparison.json": "82ab37feab9f0902b75744da4d7647e97a75d627befd297146c13a60b83a82f5",
     "artifacts/promoter_gene_set_ortholog_cohort_offline/artifacts/promoter_cohort_ortholog_demo/ortholog_promoter_cohort.json": "00a42a06ba81c4a2992c7f8726b6401084e168e40805e3ebcb513b367428b142",
     "artifacts/promoter_gene_set_ortholog_cohort_offline/artifacts/promoter_cohort_ortholog_demo/ortholog_promoter_comparison.json": "a5d70dc4825f1cc610b7df692b5dca972140ff8cce1b5b1245d67ec05cadde47",
+    "artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.source.svg": "13eb95f7b9afbb4f7a6c1f10af53c803d59676e6cea5a61121309cde05aa9216",
+    "artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.synthetic_vector.svg": "c6425417640b6cedbea7f885a6662f908103717aecbc9af293879c7d2428fb07",
     "chapters/01-02_contribute_to_gentle_development.md": "af1a3a79267e801651bd639af531acee1fd23ae6c14c80c295324a57df3bf3f6",
     "chapters/02-01_load_branch_reverse_complement_pgex_fasta.md": "25a848b3cc13035a9711dbb7f378c4a103178ec314dc934ff83908b9b016d4cf",
     "chapters/02-04_tp73_cdna_genomic_dotplot_online.md": "432ba5870f9fff57f983e2df06445248c4bb3be45f9b9c8e7e8d46809e548b7c",
@@ -105,9 +110,11 @@
     "chapters/07-02_tp53_multi_gene_sparse_mapping_online.md": "9def3fb7d79ccf23e05f994bd738cf248e379c185f4eb8ce4cca15672bacdb5c",
     "chapters/08-03_promoter_design_artifact_slice_offline.md": "4b637cae27975403c10a6b298d9f9163a1f4c28e5b6860e37ad0afc0cb859166",
     "chapters/08-07_promoter_gene_set_ortholog_cohort_offline.md": "1d5c822a6427c7237f839b55642501224e37119aaac21112a9d3800e77feacc8",
-    "chapters/08-08_gene_set_ortholog_promoter_cohorts_offline.md": "fb334f0f59d7795cb89f872570f7d3200e7e6ec125349bdee0155fd80e4540f3"
+    "chapters/08-08_gene_set_ortholog_promoter_cohorts_offline.md": "fb334f0f59d7795cb89f872570f7d3200e7e6ec125349bdee0155fd80e4540f3",
+    "chapters/08-09_promoter_reporter_panel_planning_offline.md": "0009e3fe296a0a063176204699d1f5561a52006c8a04277a13208b72bb26527c"
   },
   "warnings": [
+    "Tutorial review manifest 'docs/tutorial/review_manifest.json' is missing entry for tutorial id 'promoter_reporter_panel_planning_offline'",
     "Tutorial 'load_branch_reverse_complement_pgex_fasta' review is stale because source JSON 'docs/tutorial/sources/02-01_load_branch_reverse_complement_pgex_fasta.json' changed after human review date 2026-05-18",
     "Tutorial 'promoter_design_artifact_slice_offline' review is stale because source JSON 'docs/tutorial/sources/08-03_promoter_design_artifact_slice_offline.json' changed after human review date 2026-05-18"
   ],
@@ -735,6 +742,50 @@
         "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_endpoint_end_matrix.report.json",
         "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_routine_common_region_screen.report.json",
         "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_sybr_juc_panel.report.json"
+      ]
+    },
+    {
+      "id": "promoter_reporter_panel_planning_offline",
+      "order": 29,
+      "title": "Promoter-Reporter Panel Planning (Offline Approval-Gated Demo)",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 9,
+      "decimal_id": "08.09",
+      "tier": "core",
+      "example_id": "promoter_reporter_panel_planning_offline",
+      "example_source": "docs/examples/workflows/promoter_reporter_panel_planning_offline.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "promoter_motif_controls",
+        "artifact_exports",
+        "tutorial_drift_checks"
+      ],
+      "executed": true,
+      "review_status": "missing_review_manifest_entry",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "graphics": [
+        {
+          "kind": "generated",
+          "path": "docs/tutorial/generated/artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.synthetic_vector.svg",
+          "caption": "Circular map of the explicitly synthetic MCS-layout vector used to exercise exact-vector validation; this is not pGL4.10.",
+          "illustrates_step": 3,
+          "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+        },
+        {
+          "kind": "generated",
+          "path": "docs/tutorial/generated/artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.source.svg",
+          "caption": "Linear map of the 151 bp synthetic promoter-fragment input.",
+          "illustrates_step": 4,
+          "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+        }
+      ],
+      "retained_artifacts": [
+        "artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.source.svg",
+        "artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.synthetic_vector.svg"
       ]
     }
   ]

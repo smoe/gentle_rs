@@ -1956,6 +1956,36 @@
       {
          "aliases": [],
          "engine_operations": [
+            "PlanPromoterReporterPanel"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "promoters panel-plan",
+         "summary": "Build a read-only, content-addressed proposal for selected promoter fragments, their stated-rule mutants, shared cloning strategy, exact products, primers, and exports.",
+         "usage": "promoters panel-plan REQUEST_JSON_OR_@FILE [--path PROPOSAL.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "MaterializePromoterReporterPanel"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "promoters panel-materialize",
+         "summary": "Recompute and materialize an unchanged promoter-reporter panel proposal after exact digest approval, refusing input drift and artifact overwrites.",
+         "usage": "promoters panel-materialize PROPOSAL_JSON_OR_@FILE --approve DIGEST"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "ListReporterCatalog"
          ],
          "interfaces": [

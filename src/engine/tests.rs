@@ -7582,6 +7582,64 @@ fn test_ligation_protocol_sticky_uses_overhang_compatibility() {
 }
 
 #[test]
+fn test_sticky_ligation_restores_junction_sequence_and_transfers_features() {
+    let mut source = seq("ATGGATCCGC");
+    source.features_mut().extend([
+        gb_io::seq::Feature {
+            kind: "misc_feature".into(),
+            location: gb_io::seq::Location::simple_range(0, 2),
+            qualifiers: vec![("label".into(), Some("left_marker".to_string()))],
+        },
+        gb_io::seq::Feature {
+            kind: "misc_feature".into(),
+            location: gb_io::seq::Location::simple_range(8, 10),
+            qualifiers: vec![("label".into(), Some("right_marker".to_string()))],
+        },
+    ]);
+    let mut state = ProjectState::default();
+    state.sequences.insert("source".to_string(), source);
+    let mut engine = GentleEngine::from_state(state);
+    let digest = engine
+        .apply(Operation::Digest {
+            input: "source".to_string(),
+            enzymes: vec!["BamHI".to_string()],
+            output_prefix: Some("digest".to_string()),
+        })
+        .expect("digest source");
+    assert_eq!(digest.created_seq_ids.len(), 2);
+
+    let ligation = engine
+        .apply(Operation::Ligation {
+            inputs: digest.created_seq_ids,
+            circularize_if_possible: false,
+            output_id: Some("rejoined".to_string()),
+            protocol: LigationProtocol::Sticky,
+            output_prefix: None,
+            unique: Some(true),
+        })
+        .expect("re-ligate compatible digest fragments");
+    assert_eq!(ligation.created_seq_ids, vec!["rejoined".to_string()]);
+    let product = engine
+        .state()
+        .sequences
+        .get("rejoined")
+        .expect("rejoined product");
+    assert_eq!(product.get_forward_string(), "ATGGATCCGC");
+    let marker_bounds = product
+        .features()
+        .iter()
+        .filter_map(|feature| {
+            feature
+                .qualifier_values("label")
+                .next()
+                .map(|label| (label.to_string(), feature.location.find_bounds().unwrap()))
+        })
+        .collect::<BTreeMap<_, _>>();
+    assert_eq!(marker_bounds.get("left_marker"), Some(&(0, 2)));
+    assert_eq!(marker_bounds.get("right_marker"), Some(&(8, 10)));
+}
+
+#[test]
 fn test_workflow_digest_merge_ligation_is_deterministic() {
     let mut base = ProjectState::default();
     base.sequences

@@ -3589,6 +3589,23 @@ Sequencing-trace evidence notes:
   - `gentle.p53_family_motif_disruption.v1` applies a fixed, reported core-base
     substitution rule to one or two oriented p53-family half-sites, then audits
     local TP73/TP53/TP63 PWM scores and selected restriction-site changes
+  - `gentle.promoter_reporter_panel_request.v1` selects already-ranked
+    promoter candidates, one exact catalog-owned vector identity, and an output
+    directory without re-resolving promoter biology in an adapter
+  - `gentle.promoter_reporter_panel_proposal.v1` binds normalized inputs and
+    hashes, exact vector validation, wild-type/mutant members, the complete
+    ordered child-operation workflow, cloning strategy, primer sequences,
+    predicted circular product hashes, junction-validation basis, final
+    restriction-site scans with conservative count-excess warnings, artifact
+    paths, warnings, and non-claims under one approval digest
+  - `gentle.promoter_reporter_panel_receipt.v1` records the approved digest,
+    committed sequence/product ids, artifact paths, manifest path, and final
+    project-state hash
+  - `PlanPromoterReporterPanel { request, path? }` is read-only and performs its
+    complete construct simulation in detached state
+  - `MaterializePromoterReporterPanel { proposal, approval_digest }` recomputes
+    the proposal and rejects altered state, source/catalog bytes, proposal
+    content, mismatched approval, duplicate paths, and overwrites before commit
   - both are sequence-planning evidence only; they do not establish TF
     occupancy, functional motif ablation, expression change, or reporter output
 - `ListReporterCatalog { catalog_path?, filter?, limit?, path? }`
@@ -4133,6 +4150,11 @@ external coding agent runtime, see:
     - `exon_skip_plan` (shared `transcripts exon-skip-plan` contract)
     - `exon_skip_materialize` (shared `transcripts exon-skip-materialize`
       contract; requires explicit `confirm=true`)
+    - `promoter_reporter_panel_plan` (read-only shared `promoters panel-plan`
+      contract)
+    - `promoter_reporter_panel_materialize` (shared
+      `promoters panel-materialize` contract; requires explicit `confirm=true`
+      plus the exact approved proposal digest)
     - `op` (apply one `Operation`; requires explicit `confirm=true`)
     - `workflow` (apply one `Workflow`; requires explicit `confirm=true`)
     - `help`

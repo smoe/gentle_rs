@@ -1562,6 +1562,10 @@ Current tools:
 - `exon_skip_plan` (shared `transcripts exon-skip-plan` contract)
 - `exon_skip_materialize` (shared `transcripts exon-skip-materialize`
   contract; requires `confirm=true` and accepts requested return payloads)
+- `promoter_reporter_panel_plan` (read-only shared `promoters panel-plan`
+  contract; accepts the exact request object)
+- `promoter_reporter_panel_materialize` (shared `promoters panel-materialize`
+  contract; requires `confirm=true` and the exact approved proposal digest)
 - `op` (apply one operation; requires `confirm=true`)
 - `workflow` (apply one workflow; requires `confirm=true`)
 - `help`
@@ -7214,6 +7218,43 @@ motif-anchored or explicit-interval planning is available through the same
 Motif selection uses only local TFBS annotations. Its report is explicitly
 sequence-motif evidence, not evidence of occupancy or functional regulation;
 overlength geometries remain visible as typed rejections.
+
+Build and inspect a complete promoter-reporter panel proposal through the
+distinct `promoters` command family (`reporters` remains the reporter-gene
+catalog family):
+
+```bash
+cargo run --quiet --bin gentle_cli -- --state STATE.json \
+  promoters panel-plan @panel_request.json --path panel_proposal.json
+```
+
+The request names one loaded, exactly catalog-validated vector and one or more
+saved `gentle.promoter_reporter_candidates.v1` members. Planning is read-only:
+GENtle simulates fragment extraction, the stated-rule p53-family motif mutant,
+shared directional restriction selection or explicit Gibson fallback, cloning
+primers, circular products, feature transfer, and GenBank/SVG/manifest paths in
+a detached engine. Each product also carries the assembly junction-validation
+basis and a final scan from the shared restriction-enzyme machinery; any site
+count exceeding the combined vector-plus-insert count is flagged for review.
+The proposal binds those results and every source/state hash under
+`proposal_digest`.
+
+After reviewing the proposal, materialize only that exact digest:
+
+```bash
+DIGEST=$(jq -r .proposal_digest panel_proposal.json)
+cargo run --quiet --bin gentle_cli -- --state STATE.json \
+  promoters panel-materialize @panel_proposal.json --approve "$DIGEST"
+```
+
+Materialization recomputes the proposal before writing. A changed project,
+candidate file, helper-vector catalog, vector sequence, proposal field, output
+path, or approval digest fails closed; existing artifacts are not overwritten.
+Successful runs commit the simulated sequences and write one GenBank and SVG
+per circular product plus a construct/primer TSV manifest. Planning does not
+order oligos or execute an experiment, and motif/PWM changes are not occupancy
+or functional-ablation evidence. See the executable offline synthetic tutorial
+`08-09_promoter_reporter_panel_planning_offline`.
 
 Select one candidate in-silico (explicit provenance step):
 

@@ -1283,6 +1283,8 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
         reporter_corpus_export: None,
         reporter_construct_handoff: None,
         reporter_vector_validation: None,
+        promoter_reporter_panel_proposal: None,
+        promoter_reporter_panel_receipt: None,
         uniprot_projection_audit: None,
         uniprot_linked_transcript_inventory: None,
         uniprot_projection_audit_parity: None,
@@ -5269,6 +5271,8 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
             reporter_corpus_export: None,
             reporter_construct_handoff: None,
             reporter_vector_validation: None,
+            promoter_reporter_panel_proposal: None,
+            promoter_reporter_panel_receipt: None,
             uniprot_projection_audit: None,
             uniprot_linked_transcript_inventory: None,
             uniprot_projection_audit_parity: None,
@@ -11010,6 +11014,115 @@ fn variant_followup_promoter_expression_evidence_runs_shared_op_and_caches_repor
     assert_eq!(row.unit.as_deref(), Some("TPM"));
     assert_eq!(row.records[0].matched_by, vec!["transcript_id"]);
     assert_eq!(row.records[0].source, "synthetic RNA-seq");
+}
+
+#[test]
+fn variant_followup_promoter_reporter_panel_runs_shared_plan_and_caches_proposal() {
+    std::thread::Builder::new()
+        .name("promoter-reporter-panel-gui-test".to_string())
+        .stack_size(16 * 1024 * 1024)
+        .spawn(variant_followup_promoter_reporter_panel_runs_on_expanded_stack)
+        .expect("spawn promoter panel GUI test")
+        .join()
+        .expect("promoter panel GUI test thread");
+}
+
+fn variant_followup_promoter_reporter_panel_runs_on_expanded_stack() {
+    let temp = tempdir().expect("panel GUI tempdir");
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let vector_path = repo_root
+        .join("test_files/fixtures/reporter_vectors/synthetic_mcs_backbone.gb")
+        .to_string_lossy()
+        .to_string();
+    let source_path = repo_root
+        .join("docs/examples/assets/promoter_reporter_panel_demo_source.fasta")
+        .to_string_lossy()
+        .to_string();
+    let mut panel_engine = GentleEngine::default();
+    panel_engine
+        .apply(Operation::LoadFile {
+            path: vector_path,
+            as_id: Some("synthetic_panel_vector".to_string()),
+        })
+        .expect("load panel vector through shared operation");
+    panel_engine
+        .apply(Operation::LoadFile {
+            path: source_path,
+            as_id: Some("synthetic_panel_source".to_string()),
+        })
+        .expect("load panel source through shared operation");
+    let source = panel_engine
+        .state()
+        .sequences
+        .get("synthetic_panel_source")
+        .expect("loaded panel source")
+        .clone();
+    let engine = Arc::new(RwLock::new(panel_engine));
+    let mut area = MainAreaDna::new(
+        source,
+        Some("synthetic_panel_source".to_string()),
+        Some(engine.clone()),
+    );
+    let mut request = serde_json::from_str::<crate::engine::PromoterReporterPanelRequest>(
+        include_str!("../../docs/examples/assets/promoter_reporter_panel_demo_request.json"),
+    )
+    .expect("panel request");
+    request.helper_catalog_path = Some(
+        repo_root
+            .join("docs/examples/assets/promoter_reporter_panel_demo_helper_vectors.json")
+            .to_string_lossy()
+            .to_string(),
+    );
+    request.members[0].candidate_set_path = repo_root
+        .join("docs/examples/assets/promoter_reporter_panel_demo_candidates.json")
+        .to_string_lossy()
+        .to_string();
+    request.output_dir = temp
+        .path()
+        .join("gui_panel_products")
+        .to_string_lossy()
+        .to_string();
+    area.variant_followup_ui
+        .promoter_reporter_panel_request_json =
+        serde_json::to_string(&request).expect("request JSON");
+    area.variant_followup_ui
+        .promoter_reporter_panel_approval_digest = "stale prior digest".to_string();
+
+    area.plan_variant_followup_promoter_reporter_panel();
+
+    let proposal = area
+        .variant_followup_ui
+        .cached_promoter_reporter_panel_proposal
+        .as_ref()
+        .expect("cached promoter panel proposal");
+    assert_eq!(
+        proposal.schema,
+        crate::engine::PROMOTER_REPORTER_PANEL_PROPOSAL_SCHEMA
+    );
+    assert_eq!(proposal.products.len(), 2);
+    assert!(proposal.proposal_digest.starts_with("sha256:"));
+    assert!(
+        proposal
+            .products
+            .iter()
+            .all(|product| product.circular && product.luc2_annotation_preserved)
+    );
+    assert!(
+        area.variant_followup_ui
+            .promoter_reporter_panel_approval_digest
+            .is_empty()
+    );
+    assert!(
+        area.variant_followup_ui
+            .cached_promoter_reporter_panel_receipt
+            .is_none()
+    );
+    assert_eq!(
+        engine.read().expect("engine read").state().sequences.len(),
+        2,
+        "read-only planning must not materialize simulated panel sequences"
+    );
+    assert!(!Path::new(&proposal.request.output_dir).exists());
 }
 
 #[test]

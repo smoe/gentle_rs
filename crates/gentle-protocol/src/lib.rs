@@ -5499,6 +5499,8 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "RecommendReporters",
     "ExportReporterCorpus",
     "PlanReporterConstructHandoff",
+    "PlanPromoterReporterPanel",
+    "MaterializePromoterReporterPanel",
     "ScanTfbsHits",
     "InspectJasparEntry",
     "SummarizeJasparEntries",
@@ -5605,6 +5607,18 @@ const MCP_TOOL_NAMES: &[(&str, &str, &str, CapabilityMutation)] = &[
         "Transcript Assay Feasibility",
         "Inspect deterministic endpoint isoform-matrix geometry for an exact DesignTranscriptAssayPanel operation without running Primer3.",
         CapabilityMutation::ReadOnly,
+    ),
+    (
+        "promoter_reporter_panel_plan",
+        "Promoter Reporter Panel Plan",
+        "Build a read-only, content-addressed promoter-reporter panel proposal through the shared `promoters panel-plan` shell contract.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
+        "promoter_reporter_panel_materialize",
+        "Promoter Reporter Panel Materialize",
+        "Materialize an unchanged promoter-reporter panel proposal through the shared `promoters panel-materialize` shell contract after exact digest approval.",
+        CapabilityMutation::Mutating,
     ),
     (
         "agent_systems",
@@ -7077,6 +7091,7 @@ fn infer_engine_operation_mutation(operation: &str) -> CapabilityMutation {
         || operation == "TestCdnaQpcrFasta"
         || operation == "SuggestSequencingPrimers"
         || operation == "SuggestPromoterReporterFragments"
+        || operation == "PlanPromoterReporterPanel"
         || operation == "BuildRepeatEnvironmentCohort"
         || operation == "BuildProteinToDnaHandoffReasoning"
         || operation == "DesignPrimerGroupTarget"

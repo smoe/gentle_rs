@@ -1,0 +1,71 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "promoter_reporter_panel_planning_offline",
+  "title": "Promoter-reporter panel planning (offline synthetic approval demo)",
+  "summary": "Loads a synthetic promoter fragment and exact synthetic vector, then creates a read-only, content-addressed wild-type/motif-mutant panel proposal without materializing constructs or ordering oligos.",
+  "test_mode": "always",
+  "required_files": [
+    "test_files/fixtures/reporter_vectors/synthetic_mcs_backbone.gb",
+    "docs/examples/assets/promoter_reporter_panel_demo_source.fasta",
+    "docs/examples/assets/promoter_reporter_panel_demo_candidates.json",
+    "docs/examples/assets/promoter_reporter_panel_demo_helper_vectors.json"
+  ],
+  "tags": [
+    "tutorial",
+    "offline",
+    "promoter-reporter",
+    "approval-digest",
+    "synthetic"
+  ],
+  "workflow": {
+    "run_id": "example_promoter_reporter_panel_planning_offline",
+    "ops": [
+      {
+        "LoadFile": {
+          "path": "test_files/fixtures/reporter_vectors/synthetic_mcs_backbone.gb",
+          "as_id": "synthetic_panel_vector"
+        }
+      },
+      {
+        "LoadFile": {
+          "path": "docs/examples/assets/promoter_reporter_panel_demo_source.fasta",
+          "as_id": "synthetic_panel_source"
+        }
+      },
+      {
+        "RenderSequenceSvg": {
+          "seq_id": "synthetic_panel_vector",
+          "mode": "Circular",
+          "path": "artifacts/promoter_reporter_panel_demo.synthetic_vector.svg"
+        }
+      },
+      {
+        "RenderSequenceSvg": {
+          "seq_id": "synthetic_panel_source",
+          "mode": "Linear",
+          "path": "artifacts/promoter_reporter_panel_demo.source.svg"
+        }
+      },
+      {
+        "PlanPromoterReporterPanel": {
+          "request": {
+            "schema": "gentle.promoter_reporter_panel_request.v1",
+            "panel_id": "synthetic_tp73_demo_panel",
+            "vector_seq_id": "synthetic_panel_vector",
+            "vector_catalog_id": "Synthetic panel vector",
+            "helper_catalog_path": "docs/examples/assets/promoter_reporter_panel_demo_helper_vectors.json",
+            "members": [
+              {
+                "candidate_set_path": "docs/examples/assets/promoter_reporter_panel_demo_candidates.json",
+                "candidate_id": "tp73_demo_core",
+                "fragment_role": "core",
+                "label": "TP73 demo core"
+              }
+            ],
+            "output_dir": "artifacts/promoter_reporter_panel_demo_products"
+          }
+        }
+      }
+    ]
+  }
+}

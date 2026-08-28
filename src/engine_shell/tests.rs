@@ -79,6 +79,57 @@ fn reporter_catalog_path() -> String {
         .to_string()
 }
 
+#[test]
+fn promoters_panel_routes_parse_typed_request_and_exact_approval() {
+    let request = PromoterReporterPanelRequest {
+        schema: crate::engine::PROMOTER_REPORTER_PANEL_REQUEST_SCHEMA.to_string(),
+        panel_id: "tp73_panel".to_string(),
+        vector_seq_id: "pgl4".to_string(),
+        vector_catalog_id: "promega_pgl4_10_luc2".to_string(),
+        members: vec![crate::engine::PromoterReporterPanelMemberRequest {
+            candidate_set_path: "/tmp/tp73_candidates.json".to_string(),
+            ..crate::engine::PromoterReporterPanelMemberRequest::default()
+        }],
+        output_dir: "/tmp/tp73_panel".to_string(),
+        ..PromoterReporterPanelRequest::default()
+    };
+    let request_json = serde_json::to_string(&request).expect("request JSON");
+    let plan = parse_shell_line(&format!(
+        "promoters panel-plan '{request_json}' --path /tmp/tp73_panel.json"
+    ))
+    .expect("parse panel plan");
+    match plan {
+        ShellCommand::PromotersPanelPlan { request, output } => {
+            assert_eq!(request.panel_id, "tp73_panel");
+            assert_eq!(output.as_deref(), Some("/tmp/tp73_panel.json"));
+        }
+        other => panic!("unexpected panel plan command: {other:?}"),
+    }
+
+    let proposal = PromoterReporterPanelProposal {
+        schema: crate::engine::PROMOTER_REPORTER_PANEL_PROPOSAL_SCHEMA.to_string(),
+        proposal_id: "panel_1".to_string(),
+        proposal_digest: "sha256:approved".to_string(),
+        request,
+        ..PromoterReporterPanelProposal::default()
+    };
+    let proposal_json = serde_json::to_string(&proposal).expect("proposal JSON");
+    let materialize = parse_shell_line(&format!(
+        "promoters panel-materialize '{proposal_json}' --approve sha256:approved"
+    ))
+    .expect("parse panel materialization");
+    match materialize {
+        ShellCommand::PromotersPanelMaterialize {
+            proposal,
+            approval_digest,
+        } => {
+            assert_eq!(proposal.proposal_id, "panel_1");
+            assert_eq!(approval_digest, "sha256:approved");
+        }
+        other => panic!("unexpected panel materialization command: {other:?}"),
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct GlossaryFixture {
     commands: Vec<GlossaryCommandFixture>,

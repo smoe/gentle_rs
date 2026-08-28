@@ -2616,6 +2616,19 @@ fn rewrite_example_paths_for_execution(
             }
             continue;
         }
+        if let Operation::PlanPromoterReporterPanel { request, path } = op {
+            rewrite_optional_input_path(&mut request.helper_catalog_path, repo_root);
+            for member in &mut request.members {
+                member.candidate_set_path =
+                    resolve_input_path(&member.candidate_set_path, repo_root);
+            }
+            request.output_dir = resolve_output_path(&request.output_dir, run_dir);
+            rewrite_optional_output_path(path, run_dir);
+            if let Some(path) = path.as_deref() {
+                ensure_parent_exists(path)?;
+            }
+            continue;
+        }
         if let Operation::RenderTfbsScoreTracksSvg { path, .. } = op {
             *path = resolve_output_path(path, run_dir);
             ensure_parent_exists(path)?;

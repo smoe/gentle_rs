@@ -938,7 +938,7 @@ impl GentleEngine {
             .join("_")
     }
 
-    fn read_promoter_reporter_candidate_set(
+    pub(crate) fn read_promoter_reporter_candidate_set(
         path: &str,
     ) -> Result<PromoterReporterCandidateSet, EngineError> {
         let text = std::fs::read_to_string(path).map_err(|e| EngineError {
@@ -953,7 +953,7 @@ impl GentleEngine {
         })
     }
 
-    fn resolve_reporter_backbone(
+    pub(crate) fn resolve_reporter_backbone(
         &self,
         seq_id: &str,
         load_path: Option<&str>,
@@ -1381,7 +1381,7 @@ impl GentleEngine {
         }
     }
 
-    fn find_reporter_vector_feature(
+    pub(crate) fn find_reporter_vector_feature(
         dna: &DNAsequence,
         expectation: &HelperVectorRequiredFeatureExpectation,
     ) -> Option<(usize, usize, String)> {

@@ -122,10 +122,11 @@ use crate::{
         ProbeRegionEvidenceMappingRow, ProbeRegionEvidenceSvgExport,
         ProbeRegionEvidenceTranscriptMapping, ProbeRegionOutputInspection,
         PromoterEvidenceMatrixReport, PromoterEvidenceMatrixRow, PromoterExpressionEvidenceInput,
-        PromoterExpressionEvidenceReport, PromoterReporterCandidateSet, PromoterWindowCollapseMode,
-        ProtocolCartoonPreviewTelemetry, QpcrDesignReport, QpcrTranscriptSpecificityEvidence,
-        QpcrTranscriptTargeting, QpcrTranscriptTargetingMode, RenderSvgMode,
-        RestrictionCloningPcrHandoffMode, RestrictionCloningPcrHandoffReport,
+        PromoterExpressionEvidenceReport, PromoterReporterCandidateSet,
+        PromoterReporterPanelProposal, PromoterReporterPanelReceipt, PromoterReporterPanelRequest,
+        PromoterWindowCollapseMode, ProtocolCartoonPreviewTelemetry, QpcrDesignReport,
+        QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
+        RenderSvgMode, RestrictionCloningPcrHandoffMode, RestrictionCloningPcrHandoffReport,
         RestrictionCloningPcrHandoffSeedRequest, RestrictionCloningVectorEnzymeSuggestions,
         RestrictionEnzymeDisplayMode, RestrictionSiteScanReport, RnaReadAlignConfig,
         RnaReadAlignmentDisplay, RnaReadAlignmentEffect, RnaReadAlignmentInspection,
@@ -1928,6 +1929,8 @@ struct VariantFollowupUiState {
     reporter_backbone_seq_id: String,
     reporter_backbone_path: String,
     reporter_output_prefix: String,
+    promoter_reporter_panel_request_json: String,
+    promoter_reporter_panel_approval_digest: String,
     cached_score_tracks: Option<TfbsScoreTrackReport>,
     cached_tfbs_track_similarity: Option<TfbsTrackSimilarityReport>,
     cached_report: Option<VariantPromoterContextReport>,
@@ -1938,6 +1941,8 @@ struct VariantFollowupUiState {
     cached_ortholog_promoter_cohort: Option<OrthologPromoterCohortReport>,
     cached_ortholog_promoter_comparison: Option<OrthologPromoterComparisonReport>,
     cached_candidates: Option<PromoterReporterCandidateSet>,
+    cached_promoter_reporter_panel_proposal: Option<PromoterReporterPanelProposal>,
+    cached_promoter_reporter_panel_receipt: Option<PromoterReporterPanelReceipt>,
 }
 
 impl Default for VariantFollowupUiState {
@@ -1977,6 +1982,8 @@ impl Default for VariantFollowupUiState {
             reporter_backbone_path:
                 "data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb".to_string(),
             reporter_output_prefix: String::new(),
+            promoter_reporter_panel_request_json: String::new(),
+            promoter_reporter_panel_approval_digest: String::new(),
             cached_score_tracks: None,
             cached_tfbs_track_similarity: None,
             cached_report: None,
@@ -2001,6 +2008,8 @@ impl Default for VariantFollowupUiState {
             cached_ortholog_promoter_cohort: None,
             cached_ortholog_promoter_comparison: None,
             cached_candidates: None,
+            cached_promoter_reporter_panel_proposal: None,
+            cached_promoter_reporter_panel_receipt: None,
         }
     }
 }

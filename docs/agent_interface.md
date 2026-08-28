@@ -358,6 +358,9 @@ Current MCP tool families include:
   - `ensembl_installable_genomes`
   - `exon_skip_plan`
   - `exon_skip_materialize`
+  - `promoter_reporter_panel_plan`
+  - `promoter_reporter_panel_materialize` (requires `confirm=true` and the exact
+    approved proposal digest)
   - `construct_reasoning_graphs`
   - `construct_reasoning_graph`
   - `construct_reasoning_set_annotation_status`

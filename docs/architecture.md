@@ -713,6 +713,19 @@ This enables:
 - machine-to-machine use
 - operation-level undo/redo and replay support
 
+Scientific workflows that need human review before mutation may compose these
+operations through a content-addressed proposal. Promoter-reporter panel
+planning, for example, runs extraction, stated-rule motif mutation, primer
+design, cloning, product validation, and export planning in a detached engine;
+the live project and planned construct-artifact paths remain unchanged. An
+adapter may write the proposal JSON itself when the caller supplies an explicit
+proposal path. The separate materialization operation recomputes the complete
+proposal against current project state and bound input files, requires the
+exact proposal digest, refuses existing output paths, and commits the detached
+state only after every artifact is written.
+Adapters may present or transport that contract but must not reconstruct the
+biology or reduce approval to a boolean.
+
 Progress/cancellation contract:
 
 - Engine progress callbacks are cooperative and return `bool`.

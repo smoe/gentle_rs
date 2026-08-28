@@ -16,11 +16,26 @@
   inspectable; no candidate is treated as observed splicing without bound RNA
   support.
 
+- Completed the approval-gated promoter-reporter panel arc with shared
+  `PlanPromoterReporterPanel` and `MaterializePromoterReporterPanel` operations,
+  `promoters panel-plan|panel-materialize` shell/direct-CLI routes, fact-aware
+  introspection, and a thin Promoter design GUI. Read-only planning now composes
+  selected promoter candidates, exact vector identity, stated-rule
+  wild-type/mutant pairs, shared restriction or Gibson strategy, cloning
+  primers, sequence-accurate circular products, feature checks, and planned
+  GenBank/SVG/manifest exports under one content digest. Materialization
+  requires that exact digest, recomputes all bound state and file inputs,
+  refuses drift and overwrites, commits atomically, and returns a state-bound
+  receipt. A synthetic offline tutorial demonstrates the review boundary
+  without bundling or impersonating pGL4.10, and behavioral tests cover
+  deterministic planning, wrong/stale approval rejection, product/manifest
+  creation, and GUI cache parity.
+
 - Added a stated-rule p53-family response-element disruption report for
   promoter-reporter design. V1 changes only the conserved oriented C/G core
   positions in one or two contiguous 10-bp half-sites, preserves sequence
-  length, and separately audits TP73/TP53/TP63 JASPAR score windows plus newly
-  created or lost sites for the selected cloning enzymes. The PWM audit does
+  length, and separately audits TP73/TP53/TP63 JASPAR local score maxima plus
+  newly created or lost sites for the selected cloning enzymes. The PWM audit does
   not optimize substitutions, and the report explicitly avoids functional
   ablation or occupancy claims.
 

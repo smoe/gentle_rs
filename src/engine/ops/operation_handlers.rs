@@ -39615,6 +39615,8 @@ impl GentleEngine {
             reporter_corpus_export: None,
             reporter_construct_handoff: None,
             reporter_vector_validation: None,
+            promoter_reporter_panel_proposal: None,
+            promoter_reporter_panel_receipt: None,
             uniprot_projection_audit: None,
             uniprot_linked_transcript_inventory: None,
             uniprot_projection_audit_parity: None,
@@ -44645,7 +44647,13 @@ impl GentleEngine {
                             cause_chain: vec![],
                         });
                     }
-                    let mut accepted: Vec<(String, String, String)> = vec![];
+                    let mut accepted: Vec<(
+                        String,
+                        String,
+                        String,
+                        bool,
+                        Vec<gb_io::seq::Feature>,
+                    )> = vec![];
                     for (i, left_id) in inputs.iter().enumerate() {
                         for (j, right_id) in inputs.iter().enumerate() {
                             if i == j {
@@ -44682,12 +44690,69 @@ impl GentleEngine {
                                 continue;
                             }
 
-                            let product = format!(
-                                "{}{}",
-                                left.get_forward_string(),
-                                right.get_forward_string()
-                            );
-                            accepted.push((left_id.clone(), right_id.clone(), product));
+                            let internal_junction = match protocol {
+                                LigationProtocol::Sticky => {
+                                    Self::sticky_ligation_junction_sequence(left, right)
+                                        .unwrap_or_default()
+                                }
+                                LigationProtocol::Blunt => vec![],
+                            };
+                            let outer_junction = if circularize_if_possible {
+                                match protocol {
+                                    LigationProtocol::Sticky => {
+                                        Self::sticky_ligation_junction_sequence(right, left)
+                                    }
+                                    LigationProtocol::Blunt => (Self::right_end_is_blunt(right)
+                                        && Self::left_end_is_blunt(left))
+                                    .then(Vec::new),
+                                }
+                            } else {
+                                None
+                            };
+                            let product_is_circular = outer_junction.is_some();
+                            let mut product = left.get_forward_string();
+                            product.push_str(&String::from_utf8_lossy(&internal_junction));
+                            product.push_str(&right.get_forward_string());
+                            if let Some(outer_junction) = &outer_junction {
+                                product.push_str(&String::from_utf8_lossy(outer_junction));
+                            }
+
+                            let mut features = left.features().clone();
+                            let right_feature_shift = left.len() + internal_junction.len();
+                            let right_record = right.clone_seq_record();
+                            for feature in right.features() {
+                                let shifted = right_record
+                                    .relocate_feature(feature.clone(), right_feature_shift as i64)
+                                    .map_err(|error| EngineError {
+                                        code: ErrorCode::InvalidInput,
+                                        message: format!(
+                                            "Could not transfer a feature from ligation input '{}': {error}",
+                                            right_id
+                                        ),
+                                        cause_chain: vec![],
+                                    })?;
+                                features.push(shifted);
+                            }
+                            if product_is_circular
+                                && accepted.iter().any(
+                                    |(_, _, accepted_product, accepted_circular, _)| {
+                                        *accepted_circular
+                                            && Self::circular_sequences_are_rotations(
+                                                accepted_product,
+                                                &product,
+                                            )
+                                    },
+                                )
+                            {
+                                continue;
+                            }
+                            accepted.push((
+                                left_id.clone(),
+                                right_id.clone(),
+                                product,
+                                product_is_circular,
+                                features,
+                            ));
                             if accepted.len() > self.max_fragments_per_container() {
                                 return Err(EngineError {
                                     code: ErrorCode::InvalidInput,
@@ -44735,7 +44800,9 @@ impl GentleEngine {
                     }
 
                     let prefix = output_prefix.unwrap_or_else(|| "ligation".to_string());
-                    for (idx, (left_id, right_id, merged)) in accepted.into_iter().enumerate() {
+                    for (idx, (left_id, right_id, merged, is_circular, features)) in
+                        accepted.into_iter().enumerate()
+                    {
                         let mut product =
                             DNAsequence::from_sequence(&merged).map_err(|e| EngineError {
                                 code: ErrorCode::Internal,
@@ -44743,7 +44810,8 @@ impl GentleEngine {
 
                                 cause_chain: vec![],
                             })?;
-                        product.set_circular(circularize_if_possible);
+                        *product.features_mut() = features;
+                        product.set_circular(is_circular);
                         Self::prepare_sequence(&mut product);
 
                         let seq_id = if idx == 0 {
@@ -50033,6 +50101,42 @@ impl GentleEngine {
                     ));
                     result.warnings.extend(plan.warnings.iter().cloned());
                     result.reporter_construct_handoff = Some(plan);
+                }
+                Operation::PlanPromoterReporterPanel { request, path } => {
+                    let proposal = self.plan_promoter_reporter_panel(*request)?;
+                    if let Some(path) = path.as_deref() {
+                        self.write_pretty_json_file(
+                            &proposal,
+                            path,
+                            "promoter-reporter panel proposal",
+                        )?;
+                        result.messages.push(format!(
+                            "Wrote promoter-reporter panel proposal '{}' to '{}'",
+                            proposal.proposal_id, path
+                        ));
+                    }
+                    result.messages.push(format!(
+                        "Planned {} promoter-reporter product(s); approve digest '{}' to materialize",
+                        proposal.products.len(), proposal.proposal_digest
+                    ));
+                    result.warnings.extend(proposal.warnings.iter().cloned());
+                    result.promoter_reporter_panel_proposal = Some(Box::new(proposal));
+                }
+                Operation::MaterializePromoterReporterPanel {
+                    proposal,
+                    approval_digest,
+                } => {
+                    let receipt =
+                        self.materialize_promoter_reporter_panel(*proposal, &approval_digest)?;
+                    result.created_seq_ids = receipt.created_seq_ids.clone();
+                    result.messages.push(format!(
+                        "Materialized promoter-reporter panel '{}' with {} sequence(s) and {} artifact(s)",
+                        receipt.proposal_id,
+                        receipt.created_seq_ids.len(),
+                        receipt.artifact_paths.len()
+                    ));
+                    result.warnings.extend(receipt.warnings.iter().cloned());
+                    result.promoter_reporter_panel_receipt = Some(Box::new(receipt));
                 }
                 Operation::MaterializeVariantAllele {
                     input,

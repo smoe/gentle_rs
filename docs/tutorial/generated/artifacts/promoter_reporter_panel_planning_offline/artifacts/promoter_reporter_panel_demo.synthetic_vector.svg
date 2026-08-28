@@ -1,0 +1,167 @@
+<svg height="700" viewBox="0 0 1200 700" width="1200" xmlns="http://www.w3.org/2000/svg">
+<text fill="#111111" font-family="monospace" font-size="18" x="20" y="34">
+GENTLE_SYNTHETIC_MCS (GENTLE_SYNTHETIC_MCS.1)
+</text>
+<text fill="#444444" font-family="monospace" font-size="14" x="20" y="54">
+240 bp
+</text>
+<circle cx="672" cy="364" fill="none" r="231.00002" stroke="#000000" stroke-width="2"/>
+<line stroke="#6e9100" stroke-width="6" x1="672" x2="755.16003" y1="197.67998" y2="508.03735"/>
+<line stroke="#24db00" stroke-width="6" x1="755.16003" x2="527.96265" y1="508.03735" y2="280.84003"/>
+<line stroke="#7f8000" stroke-width="6" x1="527.96265" x2="672" y1="280.84003" y2="197.67998"/>
+<path d="M 672.000 106.400 A 257.600 257.600 0 0 1 920.822 430.672" data-gentle-feature-kind="misc_feature" data-gentle-role="feature-block" fill="none" stroke="#6e6e6e" stroke-width="6"/>
+<text data-gentle-feature-kind="misc_feature" data-gentle-role="feature-label" fill="#111111" font-family="monospace" font-size="12" text-anchor="start" x="922.8618" y="179.1802">
+MCS
+</text>
+<path d="M 806.131 582.882 A 256.710 256.710 0 0 1 415.290 364.000" data-gentle-feature-kind="cds" data-gentle-role="feature-block" fill="none" stroke="#1f4fcc" stroke-width="6"/>
+<path d="M806.13074,582.88153 L811.3557,591.40796 L805.68365,594.7825" data-gentle-feature-kind="cds" data-gentle-role="transcription-start-arrow-shaft" fill="none" stroke="#1f4fcc" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+<path d="M804.1367,595.7028 L812.41437,595.43207 L808.23444,588.6109 z" data-gentle-feature-kind="cds" data-gentle-role="transcription-start-arrow" fill="#1f4fcc" stroke="none"/>
+<text data-gentle-feature-kind="cds" data-gentle-role="feature-label" fill="#111111" font-family="monospace" font-size="12" text-anchor="end" x="530.9196" y="605.42017">
+luc2_demo
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="725.92584" x2="734.0148" y1="139.38254" y2="105.68991"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="734.0148" x2="739.40735" y1="105.68991" y2="105.68991"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="741.02515" y="105.68991">
+9 BsrI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="737.60754" x2="747.44867" y1="142.51262" y2="109.289505"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="747.44867" x2="754.00946" y1="109.289505" y2="116.68991"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="755.97766" y="116.68991">
+11 HapII, MnoI, MspI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="743.38293" x2="754.09033" y1="144.30592" y2="111.35181"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="754.09033" x2="761.22864" y1="111.35181" y2="127.68991"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="763.3701" y="127.68991">
+12 HpaII
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="749.1094" x2="760.6758" y1="146.2498" y2="113.587265"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="760.6758" x2="768.3867" y1="113.587265" y2="138.68991"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="770.7" y="138.68991">
+13 SthI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="754.78296" x2="767.20044" y1="148.3429" y2="115.99432"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="767.20044" x2="775.47876" y1="115.99432" y2="149.68991"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="777.9622" y="149.68991">
+14 Asp718
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="776.8718" x2="792.6026" y1="158.17747" y2="127.30409"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="792.6026" x2="803.0898" y1="127.30409" y2="160.68991"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="806.23596" y="160.68991">
+18 KpnI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="807.7784" x2="828.14514" y1="177.11707" y2="149.08461"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="828.14514" x2="841.723" y1="149.08461" y2="171.68991"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="845.7964" y="171.68991">
+24 SstI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="812.6239" x2="833.71747" y1="180.73535" y2="153.24565"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="833.71747" x2="847.77985" y1="153.24565" y2="182.68991"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="851.9986" y="182.68991">
+25 SacI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="822.0225" x2="844.5259" y1="188.34619" y2="161.99812"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="844.5259" x2="859.52814" y1="161.99812" y2="193.68991"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="864.0288" y="193.68991">
+27 NheI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="826.56915" x2="849.7545" y1="192.33353" y2="166.58354"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="849.7545" x2="865.2115" y1="166.58354" y2="204.68991"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="869.8485" y="204.68991">
+28 MaeI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="843.6665" x2="869.41644" y1="209.43083" y2="186.24545"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="869.41644" x2="886.5831" y1="186.24545" y2="215.68991"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="891.7331" y="215.68991">
+32 AbrI, BluI, CcrI, PaeR7, PanI, Sau3239, SexI, SlaI, XpaI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="847.6538" x2="874.00183" y1="213.9775" y2="191.4741"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="874.00183" x2="891.56726" y1="191.4741" y2="226.68991"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="896.83685" y="226.68991">
+33 TthHB
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="847.6538" x2="874.00183" y1="213.9775" y2="191.4741"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="874.00183" x2="891.56726" y1="191.4741" y2="237.68991"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="896.83685" y="237.68991">
+33 XhoI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="851.52075" x2="878.44885" y1="218.62698" y2="196.82103"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="878.44885" x2="896.4009" y1="196.82103" y2="248.68991"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="901.7865" y="248.68991">
+34 TaqI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="855.26465" x2="882.75433" y1="223.37608" y2="202.2825"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="882.75433" x2="901.0808" y1="202.2825" y2="259.6899"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="906.57874" y="259.6899">
+35 SciI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="875.0068" x2="905.45776" y1="253.7763" y2="237.24277"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="905.45776" x2="925.7584" y1="237.24277" y2="270.6899"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="931.84863" y="270.6899">
+41 CeqI, Eco32, NsiCI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="875.0068" x2="905.45776" y1="253.7763" y2="237.24277"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="905.45776" x2="925.7584" y1="237.24277" y2="281.6899"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="931.84863" y="281.6899">
+41 EcoRV
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="885.4162" x2="917.4286" y1="275.6001" y2="262.34015"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="917.4286" x2="938.77026" y1="262.34015" y2="292.6899"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="945.1727" y="292.6899">
+45 NspMACI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="887.6571" x2="920.0057" y1="281.21698" y2="268.79953"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="920.0057" x2="941.5714" y1="268.79953" y2="303.6899"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="948.0411" y="303.6899">
+46 Bce243I, Bsp105I, Bsp67I, BspAI, CpfI, CviAI, FnuCI, FnuEI, HacI, MboI, NdeII, NlaII, NmeCI, NphI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="887.6571" x2="920.0057" y1="281.21698" y2="268.79953"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="920.0057" x2="941.5714" y1="268.79953" y2="314.6899"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="948.0411" y="314.6899">
+46 BglII
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="889.7502" x2="922.4127" y1="286.89063" y2="275.32422"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="922.4127" x2="944.18774" y1="275.32422" y2="325.6899"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="950.7202" y="325.6899">
+47 Sau3A
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="891.6941" x2="924.6482" y1="292.61707" y2="281.9096"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="924.6482" x2="946.6176" y1="281.9096" y2="336.6899"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="953.20844" y="336.6899">
+48 CfuI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="891.6941" x2="924.6482" y1="292.61707" y2="281.9096"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="924.6482" x2="946.6176" y1="281.9096" y2="347.6899"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="953.20844" y="347.6899">
+48 DpnI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="901.73456" x2="936.19476" y1="388.14612" y2="391.768"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="936.19476" x2="959.1682" y1="391.768" y2="391.768"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="966.06024" y="391.768">
+64 BstFI, Eco8, EcoVIII, HsuI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="901.0238" x2="935.3773" y1="394.15158" y2="398.67432"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="935.3773" x2="958.2797" y1="398.67432" y2="402.768"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="965.1504" y="402.768">
+65 HindIII
+</text>
+<text fill="#222222" font-family="monospace" font-size="13" x="20" y="92">
+Annotated parts
+</text>
+<rect fill="#6e6e6e" height="10" width="10" x="20" y="101"/>
+<text fill="#222222" font-family="monospace" font-size="11" x="38" y="110">
+Multiple cloning site (MCS):
+</text>
+<text fill="#222222" font-family="monospace" font-size="11" x="38" y="124">
+unique cloning sites for insert
+</text>
+<text fill="#222222" font-family="monospace" font-size="11" x="38" y="138">
+design
+</text>
+<rect fill="#1f4fcc" height="10" width="10" x="20" y="151"/>
+<text fill="#222222" font-family="monospace" font-size="11" x="38" y="160">
+synthetic luciferase luc2 marker
+</text>
+<text fill="#222222" font-family="monospace" font-size="11" x="38" y="174">
+(luc2_demo)
+</text>
+</svg>

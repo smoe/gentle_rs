@@ -5106,6 +5106,10 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reporter_vector_validation: Option<ReporterVectorValidationReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_reporter_panel_proposal: Option<Box<PromoterReporterPanelProposal>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_reporter_panel_receipt: Option<Box<PromoterReporterPanelReceipt>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub uniprot_projection_audit: Option<Box<UniprotProjectionAuditReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub uniprot_linked_transcript_inventory: Option<Box<UniprotLinkedTranscriptInventory>>,
@@ -9156,6 +9160,191 @@ pub struct P53FamilyMotifDisruptionReport {
     pub no_stronger_p53_family_hit_near_edit: bool,
     pub restriction_site_audits: Vec<P53FamilyRestrictionSiteAudit>,
     pub creates_selected_restriction_site: bool,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Experimental role of one selected promoter fragment in a panel.
+pub enum PromoterReporterPanelFragmentRole {
+    #[default]
+    Core,
+    Extended,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One already-ranked promoter candidate selected for panel planning.
+pub struct PromoterReporterPanelMemberRequest {
+    pub candidate_set_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub candidate_id: Option<String>,
+    #[serde(default)]
+    pub fragment_role: PromoterReporterPanelFragmentRole,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Normalized input for one read-only promoter-reporter panel proposal.
+pub struct PromoterReporterPanelRequest {
+    pub schema: String,
+    pub panel_id: String,
+    pub vector_seq_id: String,
+    pub vector_catalog_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub helper_catalog_path: Option<String>,
+    pub members: Vec<PromoterReporterPanelMemberRequest>,
+    pub output_dir: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Stable external input bound into a panel proposal digest.
+pub struct PromoterReporterPanelSourceBinding {
+    pub path: String,
+    pub sha256: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One wild-type/mutant promoter-fragment pair in a proposal.
+pub struct PromoterReporterPanelMemberProposal {
+    pub member_id: String,
+    pub label: String,
+    pub fragment_role: PromoterReporterPanelFragmentRole,
+    pub candidate_set: PromoterReporterPanelSourceBinding,
+    pub candidate_id: String,
+    pub source_seq_id: String,
+    pub source_sequence_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_class_id: Option<String>,
+    pub transcript_ids: Vec<String>,
+    pub strand: String,
+    pub fragment_start_0based: usize,
+    pub fragment_end_0based_exclusive: usize,
+    pub fragment_length_bp: usize,
+    pub motif_start_in_fragment_0based: usize,
+    pub motif_end_in_fragment_0based_exclusive: usize,
+    pub motif_forward_strand: bool,
+    pub wild_type_seq_id: String,
+    pub wild_type_sha256: String,
+    pub mutant_seq_id: String,
+    pub mutant_sha256: String,
+    pub mutation: P53FamilyMotifDisruptionReport,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One final restriction-site row projected from the shared scanner.
+pub struct PromoterReporterPanelRestrictionSiteRow {
+    pub enzyme_name: String,
+    pub recognition_start_0based: usize,
+    pub recognition_end_0based_exclusive: usize,
+    pub forward_strand: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Final-product junction and restriction-site checks included in the
+/// proposal approval basis.
+pub struct PromoterReporterPanelFinalProductAudit {
+    pub junction_validation: String,
+    pub restriction_scan_schema: String,
+    pub comparison_vector_seq_id: String,
+    pub comparison_insert_seq_id: String,
+    pub enzymes_scanned: Vec<String>,
+    pub matched_site_count: usize,
+    pub site_count_by_enzyme: BTreeMap<String, usize>,
+    pub sites: Vec<PromoterReporterPanelRestrictionSiteRow>,
+    pub unexpected_count_excess_by_enzyme: BTreeMap<String, usize>,
+    pub comparison_basis: String,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One final circular construct predicted by the approved workflow.
+pub struct PromoterReporterPanelProductProposal {
+    pub member_id: String,
+    pub allele: String,
+    pub insert_seq_id: String,
+    pub product_seq_id: String,
+    pub sequence_sha256: String,
+    pub length_bp: usize,
+    pub circular: bool,
+    pub luc2_annotation_preserved: bool,
+    pub assembly_model: String,
+    pub primer_seq_ids: Vec<String>,
+    pub primer_sequences_5prime_to_3prime: Vec<String>,
+    pub final_product_audit: PromoterReporterPanelFinalProductAudit,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One exact ordered child action included in the approval basis.
+pub struct PromoterReporterPanelWorkflowStep {
+    pub ordinal: usize,
+    pub stage: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub member_id: Option<String>,
+    pub operation: serde_json::Value,
+    pub operation_sha256: String,
+    pub expected_created_seq_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One file written only by approved materialization.
+pub struct PromoterReporterPanelArtifactProposal {
+    pub artifact_kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub product_seq_id: Option<String>,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Content-addressed, reviewable panel proposal. The digest is the approval token.
+pub struct PromoterReporterPanelProposal {
+    pub schema: String,
+    pub proposal_id: String,
+    pub proposal_digest: String,
+    pub request: PromoterReporterPanelRequest,
+    pub request_sha256: String,
+    pub baseline_state_sha256: String,
+    pub helper_catalog: PromoterReporterPanelSourceBinding,
+    pub vector_sequence_sha256: String,
+    pub vector_validation: ReporterVectorValidationReport,
+    pub mcs_start_0based: usize,
+    pub mcs_end_0based_exclusive: usize,
+    pub members: Vec<PromoterReporterPanelMemberProposal>,
+    pub cloning_strategy: PromoterReporterPanelCloningStrategyReport,
+    pub workflow: Vec<PromoterReporterPanelWorkflowStep>,
+    pub workflow_sha256: String,
+    pub products: Vec<PromoterReporterPanelProductProposal>,
+    pub artifacts: Vec<PromoterReporterPanelArtifactProposal>,
+    pub approval_required: bool,
+    pub warnings: Vec<String>,
+    pub nonclaims: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Receipt for one digest-approved, atomically committed panel materialization.
+pub struct PromoterReporterPanelReceipt {
+    pub schema: String,
+    pub proposal_id: String,
+    pub approved_proposal_digest: String,
+    pub completed_state_sha256: String,
+    pub created_seq_ids: Vec<String>,
+    pub product_seq_ids: Vec<String>,
+    pub artifact_paths: Vec<String>,
+    pub manifest_path: String,
     pub warnings: Vec<String>,
 }
 
