@@ -66,10 +66,18 @@ pub use construct_reasoning::{
     ProteinToDnaHandoffRankingGoal, ProteinToDnaHandoffStrategy,
 };
 pub use cryptic_splicing::{
+    CRYPTIC_SPLICING_EVIDENCE_OVERLAY_SCHEMA, CRYPTIC_SPLICING_PROTEIN_PROJECTION_SCHEMA,
     CRYPTIC_SPLICING_SCREEN_SCHEMA, CrypticSplicingBranchpointSignal, CrypticSplicingBudgetSummary,
-    CrypticSplicingCandidateRow, CrypticSplicingCdsConsequence, CrypticSplicingEvidenceClass,
-    CrypticSplicingGenomicProvenanceRow, CrypticSplicingModelProvenance,
-    CrypticSplicingModelStatus, CrypticSplicingPolypyrimidineSignal, CrypticSplicingScreenRequest,
+    CrypticSplicingCandidateEvidenceOverlayRow, CrypticSplicingCandidateProteinProjectionRow,
+    CrypticSplicingCandidateRow, CrypticSplicingCdsConsequence,
+    CrypticSplicingEvidenceBindingStatus, CrypticSplicingEvidenceClass,
+    CrypticSplicingEvidenceOverlayReport, CrypticSplicingEvidenceOverlayRequest,
+    CrypticSplicingGenomicProvenanceRow, CrypticSplicingModelPolicy,
+    CrypticSplicingModelProvenance, CrypticSplicingModelStatus, CrypticSplicingModelTableDigest,
+    CrypticSplicingPolypyrimidineSignal, CrypticSplicingProjectedProteinFeatureRow,
+    CrypticSplicingProteinProjectionReport, CrypticSplicingProteinProjectionRequest,
+    CrypticSplicingProteinProjectionStatus, CrypticSplicingRnaEvidenceStatus,
+    CrypticSplicingRnaJunctionMatch, CrypticSplicingRnaReportBinding, CrypticSplicingScreenRequest,
     CrypticSplicingScreenView, CrypticSplicingSignalStatus, CrypticSplicingSiteKind,
     CrypticSplicingSiteRow, CrypticSplicingSpan, CrypticSplicingStrand,
 };
@@ -5311,6 +5319,10 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "RenderTfbsScoreTracksSvg",
     "RenderTfbsScoreTrackCorrelationSvg",
     "RenderFeatureExpertSvg",
+    "InspectCrypticSplicingScreen",
+    "RenderCrypticSplicingScreenSvg",
+    "InspectCrypticSplicingEvidenceOverlay",
+    "InspectCrypticSplicingProteinProjection",
     "RenderIsoformArchitectureSvg",
     "RenderRnaStructureSvg",
     "RenderLineageSvg",
@@ -9884,6 +9896,9 @@ pub struct RnaReadInterpretProgress {
 
 /// Persisted RNA-read interpretation report shared across GUI, CLI, and shell
 /// inspection/export flows.
+pub const RNA_READ_LOADED_SEQUENCE_COORDINATE_SPACE: &str = "loaded_sequence_local";
+pub const RNA_READ_LOADED_SEQUENCE_COORDINATE_CONVENTION: &str = "one_based_inclusive; junction boundaries are normalized to ascending loaded-sequence coordinates";
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct RnaReadInterpretationReport {
@@ -9892,6 +9907,17 @@ pub struct RnaReadInterpretationReport {
     #[serde(default)]
     pub report_mode: RnaReadReportMode,
     pub seq_id: String,
+    /// SHA-256 of the exact loaded sequence whose local coordinates are used
+    /// by this report. Legacy reports leave this absent and are not suitable
+    /// for coordinate-bound evidence joins.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_sequence_sha256: Option<String>,
+    /// Coordinate space used by exon and junction positions.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub coordinate_space: String,
+    /// Human- and machine-readable convention for positions in this report.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub coordinate_convention: String,
     pub seed_feature_id: usize,
     pub generated_at_unix_ms: u128,
     #[serde(default, skip_serializing_if = "Option::is_none")]

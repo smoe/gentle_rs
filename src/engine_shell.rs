@@ -156,9 +156,7 @@ use crate::{
         PrimerBankSpeciesMatchStatus,
     },
     protocol_cartoon::{ProtocolCartoonKind, protocol_cartoon_catalog_rows},
-    publication_resources,
-    render_feature_expert::render_cryptic_splicing_screen,
-    resource_status, resource_sync,
+    publication_resources, resource_status, resource_sync,
     runtime_status::{
         RuntimeStatusActivity, RuntimeStatusActivityObservation, RuntimeStatusActivityScope,
         RuntimeStatusActivitySource, RuntimeStatusFrameKind, RuntimeStatusTrigger,
@@ -176,7 +174,8 @@ use crate::{
     tf_motifs, ucsc_rmsk,
 };
 use gentle_protocol::{
-    CapabilityDescriptor, CrypticSplicingScreenRequest,
+    CapabilityDescriptor, CrypticSplicingEvidenceOverlayRequest,
+    CrypticSplicingProteinProjectionRequest, CrypticSplicingScreenRequest,
     EXTERNAL_SERVICE_DELIVERY_ROUTE_REQUEST_SCHEMA, EXTERNAL_SERVICE_REQUEST_SCHEMA,
     ExternalServiceDeliveryRouteReport, ExternalServiceDeliveryRouteRequest,
     ExternalServiceRequest, GENE_SET_CO_REGULATED_CACHE_SCHEMA, GENE_SET_DIRECT_LIST_CACHE_SCHEMA,
@@ -677,6 +676,18 @@ pub enum ShellCommand {
         request: CrypticSplicingScreenRequest,
         output: String,
     },
+    SplicingCrypticExport {
+        request: CrypticSplicingScreenRequest,
+        output: String,
+    },
+    SplicingCrypticOverlay {
+        request: CrypticSplicingEvidenceOverlayRequest,
+        output: Option<String>,
+    },
+    SplicingCrypticProtein {
+        request: CrypticSplicingProteinProjectionRequest,
+        output: Option<String>,
+    },
     MirnaExplainSeed {
         mirna: String,
         mature_sequence: Option<String>,
@@ -1098,6 +1109,13 @@ pub enum ShellCommand {
     ResourcesSyncAttract {
         input: String,
         output: Option<String>,
+    },
+    ResourcesSyncMaxent {
+        input: String,
+        output: Option<String>,
+        source_url: Option<String>,
+        retrieved_on: Option<String>,
+        redistribution_status: Option<String>,
     },
     ResourcesSyncRebase {
         input: String,
@@ -7101,6 +7119,26 @@ impl ShellCommand {
                 request.strand.as_str(),
                 output
             ),
+            Self::SplicingCrypticExport { request, output } => format!(
+                "export cryptic-splicing screen for '{}':{}..{} ({}) to '{}'",
+                request.seq_id,
+                request.start_1based,
+                request.end_1based,
+                request.strand.as_str(),
+                output
+            ),
+            Self::SplicingCrypticOverlay { request, output } => format!(
+                "join cryptic-splicing screen for '{}' with {} RNA-read report(s) (output='{}')",
+                request.screen_request.seq_id,
+                request.rna_read_report_ids.len(),
+                output.as_deref().unwrap_or("-")
+            ),
+            Self::SplicingCrypticProtein { request, output } => format!(
+                "project cryptic-splicing screen for '{}' onto UniProt projection '{}' (output='{}')",
+                request.screen_request.seq_id,
+                request.uniprot_projection_id,
+                output.as_deref().unwrap_or("-")
+            ),
             Self::RenderFeatureExpertSvg {
                 seq_id,
                 target,
@@ -8372,6 +8410,22 @@ impl ShellCommand {
                 });
                 format!("sync ATtRACT from '{input}' to '{output}'")
             }
+            Self::ResourcesSyncMaxent {
+                input,
+                output,
+                source_url,
+                retrieved_on,
+                redistribution_status,
+            } => format!(
+                "sync user-supplied MaxEnt model from '{}' to '{}' (source_url='{}', retrieved_on='{}', redistribution='{}')",
+                input,
+                output
+                    .as_deref()
+                    .unwrap_or(crate::maxent_splicing::DEFAULT_MAXENT_SPLICE_MODEL_PATH),
+                source_url.as_deref().unwrap_or("-"),
+                retrieved_on.as_deref().unwrap_or("-"),
+                redistribution_status.as_deref().unwrap_or("not_recorded")
+            ),
             Self::ResourcesInspectJaspar {
                 motif,
                 random_sequence_length_bp,
@@ -8387,7 +8441,7 @@ impl ShellCommand {
                 output.as_deref().unwrap_or("-"),
             ),
             Self::ResourcesStatus => {
-                "inspect active REBASE/JASPAR/ATtRACT resource status".to_string()
+                "inspect active REBASE/JASPAR/ATtRACT/MaxEnt resource status".to_string()
             }
             Self::ServicesStatus => {
                 "inspect combined service readiness for canonical references/helpers/resources"
@@ -16004,7 +16058,7 @@ where
 fn parse_splicing_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 3 {
         return Err(
-            "splicing requires: cryptic-screen REQUEST_JSON_OR_@FILE | cryptic-render REQUEST_JSON_OR_@FILE OUTPUT.svg"
+            "splicing requires: cryptic-screen REQUEST_JSON_OR_@FILE | cryptic-render REQUEST_JSON_OR_@FILE OUTPUT.svg | cryptic-export REQUEST_JSON_OR_@FILE OUTPUT.json | cryptic-overlay REQUEST_JSON_OR_@FILE [--output OUTPUT.json] | cryptic-protein REQUEST_JSON_OR_@FILE [--output OUTPUT.json]"
                 .to_string(),
         );
     }
@@ -16037,8 +16091,59 @@ fn parse_splicing_command(tokens: &[String]) -> Result<ShellCommand, String> {
             )?;
             Ok(ShellCommand::SplicingCrypticRender { request, output })
         }
+        "cryptic-export" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "splicing cryptic-export requires REQUEST_JSON_OR_@FILE OUTPUT.json"
+                        .to_string(),
+                );
+            }
+            let output = tokens
+                .last()
+                .cloned()
+                .ok_or_else(|| "splicing cryptic-export requires OUTPUT.json".to_string())?;
+            if output.trim().is_empty() {
+                return Err("splicing cryptic-export OUTPUT.json must not be empty".to_string());
+            }
+            let payload = tokens[2..tokens.len() - 1].join(" ");
+            let request = parse_required_json_payload::<CrypticSplicingScreenRequest>(
+                &payload,
+                "cryptic-splicing export request",
+            )?;
+            Ok(ShellCommand::SplicingCrypticExport { request, output })
+        }
+        "cryptic-overlay" => {
+            let mut payload_end = tokens.len();
+            let output = if tokens.len() >= 5 && tokens[tokens.len() - 2] == "--output" {
+                payload_end -= 2;
+                Some(tokens[tokens.len() - 1].clone())
+            } else {
+                None
+            };
+            let payload = tokens[2..payload_end].join(" ");
+            let request = parse_required_json_payload::<CrypticSplicingEvidenceOverlayRequest>(
+                &payload,
+                "cryptic-splicing evidence-overlay request",
+            )?;
+            Ok(ShellCommand::SplicingCrypticOverlay { request, output })
+        }
+        "cryptic-protein" => {
+            let mut payload_end = tokens.len();
+            let output = if tokens.len() >= 5 && tokens[tokens.len() - 2] == "--output" {
+                payload_end -= 2;
+                Some(tokens[tokens.len() - 1].clone())
+            } else {
+                None
+            };
+            let payload = tokens[2..payload_end].join(" ");
+            let request = parse_required_json_payload::<CrypticSplicingProteinProjectionRequest>(
+                &payload,
+                "cryptic-splicing protein-projection request",
+            )?;
+            Ok(ShellCommand::SplicingCrypticProtein { request, output })
+        }
         other => Err(format!(
-            "Unknown splicing subcommand '{other}'; expected cryptic-screen or cryptic-render"
+            "Unknown splicing subcommand '{other}'; expected cryptic-screen, cryptic-render, cryptic-export, cryptic-overlay, or cryptic-protein"
         )),
     }
 }
@@ -21998,6 +22103,72 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "registry": registry_metadata_for_introspection("splicing cryptic-render")
         }),
         json!({
+            "id": "splicing cryptic-export",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "gentle.cryptic_splicing_screen.v1 request source and deterministic search bounds"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external JSON output path"}
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Export the typed bounded cryptic-splicing report as canonical JSON through the shared operation path.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("splicing cryptic-export")
+        }),
+        json!({
+            "id": "splicing cryptic-overlay",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "gentle.cryptic_splicing_evidence_overlay.v1 request source"},
+                {"name": "--output", "required": false, "subject_kind": "other", "detail": "optional external JSON output path"}
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "--output"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Join a structural cryptic-splicing screen with digest- and coordinate-bound RNA junction evidence without treating missing support as absence.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("splicing cryptic-overlay")
+        }),
+        json!({
+            "id": "splicing cryptic-protein",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "gentle.cryptic_splicing_protein_projection.v1 request source"},
+                {"name": "--output", "required": false, "subject_kind": "other", "detail": "optional external JSON output path"}
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "--output"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Project candidate removals onto a digest-bound UniProt feature projection as a separate annotation-evidence layer.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("splicing cryptic-protein")
+        }),
+        json!({
             "id": "restriction_site_detail",
             "kind": "operation",
             "mutating": "false",
@@ -23206,6 +23377,118 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "description": "Render one feature-expert target from a loaded sequence to an external SVG file through the shared engine operation.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("RenderFeatureExpertSvg")
+        }),
+        json!({
+            "id": "InspectCrypticSplicingScreen",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id carried by request.seq_id"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external JSON output path carried by path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Inspect or export one bounded cryptic-splicing screen through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("InspectCrypticSplicingScreen")
+        }),
+        json!({
+            "id": "RenderCrypticSplicingScreenSvg",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id carried by request.seq_id"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path carried by path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Render one bounded cryptic-splicing screen to an external SVG through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("RenderCrypticSplicingScreenSvg")
+        }),
+        json!({
+            "id": "InspectCrypticSplicingEvidenceOverlay",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id carried by request.screen_request.seq_id"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external JSON output path carried by path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Inspect a cryptic-splicing screen plus content-bound RNA junction evidence through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("InspectCrypticSplicingEvidenceOverlay")
+        }),
+        json!({
+            "id": "InspectCrypticSplicingProteinProjection",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id carried by request.screen_request.seq_id"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external JSON output path carried by path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Inspect a cryptic-splicing screen plus a digest-bound UniProt feature projection through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("InspectCrypticSplicingProteinProjection")
         }),
         isoform_panel_import_descriptor(
             "panels import-isoform",
@@ -25946,6 +26229,17 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "Normalize a JASPAR source file or URL into GENtle's local TF-motif resource format without project-state preconditions.",
             vec![
                 json!({"name": "INPUT", "required": true, "subject_kind": "other", "detail": "JASPAR source path or URL"}),
+            ],
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "resources sync-maxent",
+            "external normalized MaxEnt splice-model JSON output path; default path is used when omitted",
+            "Normalize a user-supplied MaxEntScan directory or ZIP into a provenance-bound local model snapshot without downloading or redistributing upstream tables.",
+            vec![
+                json!({"name": "INPUT", "required": true, "subject_kind": "other", "detail": "user-supplied local MaxEntScan directory or ZIP path"}),
+                json!({"name": "--source-url", "required": false, "subject_kind": "other", "detail": "recorded upstream source URL"}),
+                json!({"name": "--retrieved-on", "required": false, "subject_kind": "other", "detail": "recorded retrieval date"}),
+                json!({"name": "--redistribution-status", "required": false, "subject_kind": "other", "detail": "caller-supplied redistribution/licensing status note"}),
             ],
         ),
         optional_artifact_inspection_operation_descriptor(
@@ -28955,9 +29249,19 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "features export-bed" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
-        "inspect-feature-expert" | "restriction_site_detail" => Some(vec![
+        "inspect-feature-expert"
+        | "restriction_site_detail"
+        | "InspectCrypticSplicingScreen"
+        | "RenderCrypticSplicingScreenSvg"
+        | "InspectCrypticSplicingEvidenceOverlay"
+        | "InspectCrypticSplicingProteinProjection" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
+        "splicing cryptic-screen"
+        | "splicing cryptic-render"
+        | "splicing cryptic-export"
+        | "splicing cryptic-overlay"
+        | "splicing cryptic-protein" => Some(vec![]),
         "render-feature-expert-svg" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
@@ -29282,6 +29586,7 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "resources sync-rebase"
         | "sync_rebase"
         | "resources sync-jaspar"
+        | "resources sync-maxent"
         | "sync_jaspar"
         | "resources sync-ucsc-rmsk"
         | "resources import-gene-list-cache"
@@ -43086,7 +43391,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "resources" => {
             if tokens.len() < 2 {
                 return Err(
-                    "resources requires a subcommand: sync-rebase, sync-jaspar, sync-ucsc-rmsk, install-ucsc-rmsk, prepare-ucsc-rmsk-index, suggest-ucsc-rmsk-index, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar, list-publication-datasets, status-publication-dataset, prepare-publication-dataset, inspect-jaspar, sync-attract, or status".to_string(),
+                    "resources requires a subcommand: sync-rebase, sync-jaspar, sync-ucsc-rmsk, install-ucsc-rmsk, prepare-ucsc-rmsk-index, suggest-ucsc-rmsk-index, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar, list-publication-datasets, status-publication-dataset, prepare-publication-dataset, inspect-jaspar, sync-attract, sync-maxent, or status".to_string(),
                 );
             }
             match tokens[1].as_str() {
@@ -44047,6 +44352,68 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     }
                     Ok(ShellCommand::ResourcesSyncAttract { input, output })
                 }
+                "sync-maxent" => {
+                    if tokens.len() < 3 {
+                        return Err(
+                            "resources sync-maxent requires INPUT.directory_or_zip".to_string()
+                        );
+                    }
+                    let input = tokens[2].clone();
+                    let mut output = None;
+                    let mut source_url = None;
+                    let mut retrieved_on = None;
+                    let mut redistribution_status = None;
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--source-url" => {
+                                source_url = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--source-url",
+                                    "resources sync-maxent",
+                                )?);
+                            }
+                            "--retrieved-on" => {
+                                retrieved_on = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--retrieved-on",
+                                    "resources sync-maxent",
+                                )?);
+                            }
+                            "--redistribution-status" => {
+                                redistribution_status = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--redistribution-status",
+                                    "resources sync-maxent",
+                                )?);
+                            }
+                            value if value.starts_with("--") => {
+                                return Err(format!(
+                                    "Unknown option '{value}' for resources sync-maxent"
+                                ));
+                            }
+                            value => {
+                                if output.is_some() {
+                                    return Err(format!(
+                                        "Unexpected extra positional argument '{value}' for resources sync-maxent"
+                                    ));
+                                }
+                                output = Some(value.to_string());
+                                idx += 1;
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ResourcesSyncMaxent {
+                        input,
+                        output,
+                        source_url,
+                        retrieved_on,
+                        redistribution_status,
+                    })
+                }
                 "inspect-jaspar" => {
                     if tokens.len() < 3 {
                         return Err(
@@ -44363,7 +44730,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     Ok(ShellCommand::ResourcesStatus)
                 }
                 other => Err(format!(
-                    "Unknown resources subcommand '{other}' (expected status, sync-rebase, sync-jaspar, sync-ucsc-rmsk, install-ucsc-rmsk, prepare-ucsc-rmsk-index, suggest-ucsc-rmsk-index, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar, list-publication-datasets, status-publication-dataset, prepare-publication-dataset, resolve-tf-query, inspect-jaspar or sync-attract)"
+                    "Unknown resources subcommand '{other}' (expected status, sync-rebase, sync-jaspar, sync-ucsc-rmsk, install-ucsc-rmsk, prepare-ucsc-rmsk-index, suggest-ucsc-rmsk-index, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar, list-publication-datasets, status-publication-dataset, prepare-publication-dataset, resolve-tf-query, inspect-jaspar, sync-attract or sync-maxent)"
                 )),
             }
         }
@@ -50251,6 +50618,30 @@ fn execute_export_import_and_resource_command(
                 output: json!({
                     "message": format!("Synced {} {} entries to '{}'", report.item_count, report.resource, report.output),
                     "report": report,
+                }),
+            })
+        }
+        ShellCommand::ResourcesSyncMaxent {
+            input,
+            output,
+            source_url,
+            retrieved_on,
+            redistribution_status,
+        } => {
+            let report = resource_sync::sync_maxent_splice_model(
+                input,
+                output.as_deref(),
+                source_url.as_deref(),
+                retrieved_on.as_deref(),
+                redistribution_status.as_deref(),
+            )?;
+            let status = crate::maxent_splicing::reload_from_path(Some(&report.output));
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "message": format!("Synced user-supplied MaxEnt splice model to '{}'", report.output),
+                    "report": report,
+                    "model_fingerprint_sha256": status.model.as_ref().map(|model| model.snapshot().model_fingerprint_sha256.clone()),
                 }),
             })
         }
@@ -57963,22 +58354,31 @@ fn execute_feature_expert_command(
             })
         }
         ShellCommand::SplicingCrypticScreen { request } => {
-            let view = engine
-                .inspect_cryptic_splicing_screen(request)
+            let result = engine
+                .apply(Operation::InspectCrypticSplicingScreen {
+                    request: request.clone(),
+                    path: None,
+                })
                 .map_err(|e| e.to_string())?;
+            let view = result
+                .cryptic_splicing_screen
+                .ok_or_else(|| "Cryptic-splicing operation returned no typed report".to_string())?;
             Ok(ShellRunResult {
                 state_changed: false,
-                output: serde_json::to_value(view)
+                output: serde_json::to_value(&view)
                     .map_err(|e| format!("Could not serialize cryptic-splicing screen: {e}"))?,
             })
         }
         ShellCommand::SplicingCrypticRender { request, output } => {
-            let view = engine
-                .inspect_cryptic_splicing_screen(request)
+            let result = engine
+                .apply(Operation::RenderCrypticSplicingScreenSvg {
+                    request: request.clone(),
+                    path: output.clone(),
+                })
                 .map_err(|e| e.to_string())?;
-            let svg = render_cryptic_splicing_screen(&view);
-            fs::write(output, svg.as_bytes())
-                .map_err(|e| format!("Could not write cryptic-splicing SVG '{}': {e}", output))?;
+            let view = result
+                .cryptic_splicing_screen
+                .ok_or_else(|| "Cryptic-splicing render returned no typed report".to_string())?;
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({
@@ -57988,6 +58388,61 @@ fn execute_feature_expert_command(
                     "candidate_count": view.candidates.len(),
                     "output": output,
                 }),
+            })
+        }
+        ShellCommand::SplicingCrypticExport { request, output } => {
+            let result = engine
+                .apply(Operation::InspectCrypticSplicingScreen {
+                    request: request.clone(),
+                    path: Some(output.clone()),
+                })
+                .map_err(|e| e.to_string())?;
+            let view = result
+                .cryptic_splicing_screen
+                .ok_or_else(|| "Cryptic-splicing export returned no typed report".to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": view.schema,
+                    "request_sha256": view.request_sha256,
+                    "source_digest": view.source_digest,
+                    "candidate_count": view.candidates.len(),
+                    "output": output,
+                }),
+            })
+        }
+        ShellCommand::SplicingCrypticOverlay { request, output } => {
+            let result = engine
+                .apply(Operation::InspectCrypticSplicingEvidenceOverlay {
+                    request: request.clone(),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = result.cryptic_splicing_evidence_overlay.ok_or_else(|| {
+                "Cryptic-splicing evidence operation returned no typed report".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&report).map_err(|error| {
+                    format!("Could not serialize cryptic-splicing evidence overlay: {error}")
+                })?,
+            })
+        }
+        ShellCommand::SplicingCrypticProtein { request, output } => {
+            let result = engine
+                .apply(Operation::InspectCrypticSplicingProteinProjection {
+                    request: request.clone(),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = result.cryptic_splicing_protein_projection.ok_or_else(|| {
+                "Cryptic-splicing protein operation returned no typed report".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&report).map_err(|error| {
+                    format!("Could not serialize cryptic-splicing protein projection: {error}")
+                })?,
             })
         }
         ShellCommand::RenderFeatureExpertSvg {
@@ -63230,6 +63685,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::ResourcesInspectJaspar { .. }
             | ShellCommand::ResourcesSummarizeJaspar { .. }
             | ShellCommand::ResourcesSyncAttract { .. }
+            | ShellCommand::ResourcesSyncMaxent { .. }
     ) {
         return execute_export_import_and_resource_command(engine, command);
     }
@@ -63398,6 +63854,9 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::InspectSplicingAttract { .. }
             | ShellCommand::SplicingCrypticScreen { .. }
             | ShellCommand::SplicingCrypticRender { .. }
+            | ShellCommand::SplicingCrypticExport { .. }
+            | ShellCommand::SplicingCrypticOverlay { .. }
+            | ShellCommand::SplicingCrypticProtein { .. }
             | ShellCommand::RenderFeatureExpertSvg { .. }
             | ShellCommand::PanelsImportIsoform { .. }
             | ShellCommand::PanelsInspectIsoform { .. }
@@ -63734,6 +64193,9 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::InspectSplicingAttract { .. }
         | ShellCommand::SplicingCrypticScreen { .. }
         | ShellCommand::SplicingCrypticRender { .. }
+        | ShellCommand::SplicingCrypticExport { .. }
+        | ShellCommand::SplicingCrypticOverlay { .. }
+        | ShellCommand::SplicingCrypticProtein { .. }
         | ShellCommand::RenderFeatureExpertSvg { .. }
         | ShellCommand::PanelsImportIsoform { .. }
         | ShellCommand::PanelsInspectIsoform { .. }
@@ -64027,7 +64489,8 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ResourcesPreparePublicationDataset { .. }
         | ShellCommand::ResourcesInspectJaspar { .. }
         | ShellCommand::ResourcesSummarizeJaspar { .. }
-        | ShellCommand::ResourcesSyncAttract { .. } => {
+        | ShellCommand::ResourcesSyncAttract { .. }
+        | ShellCommand::ResourcesSyncMaxent { .. } => {
             execute_export_import_and_resource_command(engine, command)?
         }
         ShellCommand::RoutinesList { .. }

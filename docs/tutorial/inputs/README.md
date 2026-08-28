@@ -3,6 +3,37 @@
 This folder contains small committed local inputs used by GUI tutorials and
 manual contributor checks.
 
+## Cryptic-Splicing Structural-Screen Demo
+
+File:
+
+- `cryptic_splicing_demo.fa`
+
+Purpose:
+
+- Tiny intronless sequence containing one deliberately obvious `GT...AG`
+  configuration, an acceptor-proximal pyrimidine-rich stretch, and a
+  branchpoint-like teaching motif.
+- Demonstrates structural screening, explicit model absence, deterministic
+  JSON/SVG export, and the boundary between a sequence hypothesis and observed
+  RNA junction evidence.
+
+Provenance:
+
+- Hand-crafted synthetic sequence created directly in this repository on
+  2026-08-27.
+- Exact sequence:
+  `AAAGTCCCCCTACTAACCCCCCCCCCCCCCCCCCCAGAAA`
+- It is not derived from a biological gene, accession, patient, or experiment.
+
+Current intended use in GENtle:
+
+- Load it in
+  [`docs/tutorial/07-03_cryptic_splicing_evidence_cli_gui.md`](../07-03_cryptic_splicing_evidence_cli_gui.md).
+- Run the shared `splicing cryptic-screen`, `cryptic-export`, and
+  `cryptic-render` routes, then inspect the same report in Splicing Expert.
+- Do not cite it as validation data for MaxEntScan or biological splicing.
+
 ## Gibson Synthetic Sanity-Check Pair
 
 Files:

@@ -5345,11 +5345,16 @@ impl GentleEngine {
             .map(|value| value.to_string())
             .unwrap_or_else(|| format!("{}@{}", entry.entry_id, seq_id));
         let projection_id = Self::normalize_uniprot_projection_id(&projection_id)?;
+        let source_sequence_sha256 =
+            self.state.sequences.get(seq_id).map(|sequence| {
+                crate::digest_utils::sha256_prefixed_bytes(sequence.forward_bytes())
+            });
         Ok(UniprotGenomeProjection {
             schema: UNIPROT_GENOME_PROJECTION_SCHEMA.to_string(),
             projection_id,
             entry_id: entry.entry_id.clone(),
             seq_id: seq_id.to_string(),
+            source_sequence_sha256,
             created_at_unix_ms: Self::now_unix_ms(),
             op_id: None,
             run_id: None,

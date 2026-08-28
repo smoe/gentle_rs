@@ -2666,6 +2666,10 @@ pub fn render_cryptic_splicing_screen(view: &CrypticSplicingScreenView) -> Strin
         .set("height", dyn_h)
         .set("data-gentle-schema", view.schema.as_str())
         .set("data-gentle-source-digest", view.source_digest.as_str())
+        .set(
+            "data-gentle-effective-input-sha256",
+            view.effective_input_sha256.as_str(),
+        )
         .add(
             Rectangle::new()
                 .set("x", 0)
@@ -2690,10 +2694,13 @@ pub fn render_cryptic_splicing_screen(view: &CrypticSplicingScreenView) -> Strin
         )
         .add(
             Text::new(format!(
-                "{} donors | {} acceptors | {} admissible pairs | model {}",
+                "{} donors | {} acceptors | evaluated {}/{} pairs | reported {} | ranking {} | model {}",
                 view.budget.donor_site_count,
                 view.budget.acceptor_site_count,
+                view.budget.evaluated_pair_count,
                 view.budget.admissible_pair_count,
+                view.budget.reported_pair_count,
+                if view.budget.ranking_complete { "complete" } else { "incomplete" },
                 match view.model.status {
                     gentle_protocol::CrypticSplicingModelStatus::Absent => "absent",
                     gentle_protocol::CrypticSplicingModelStatus::Present => "present",
@@ -2796,7 +2803,7 @@ pub fn render_cryptic_splicing_screen(view: &CrypticSplicingScreenView) -> Strin
                 .set("fill", "#64748b"),
         )
         .add(
-            Text::new("candidate       donor -> acceptor  removed  BP       PPT      boundary              CDS consequence")
+            Text::new("candidate       donor -> acceptor  removed  BP       PPT      MaxEnt D/A       boundary              CDS consequence")
                 .set("x", 52)
                 .set("y", row_top - 12.0)
                 .set("font-family", "monospace")
@@ -2825,15 +2832,21 @@ pub fn render_cryptic_splicing_screen(view: &CrypticSplicingScreenView) -> Strin
             .candidate_id
             .strip_prefix("cryptic_pair_")
             .unwrap_or(candidate.candidate_id.as_str());
+        let maxent = candidate
+            .donor_maxent_score
+            .zip(candidate.acceptor_maxent_score)
+            .map(|(donor, acceptor)| format!("{donor:>5.2}/{acceptor:<5.2}"))
+            .unwrap_or_else(|| "n/a        ".to_string());
         doc = doc.add(
             Text::new(format!(
-                "{:<16} {:>6} -> {:<6} {:>6}bp  {:<8} {:<8} {:<21} {}",
+                "{:<16} {:>6} -> {:<6} {:>6}bp  {:<8} {:<8} {:<14} {:<21} {}",
                 compact_id,
                 candidate.donor_scanned_position_1based,
                 candidate.acceptor_scanned_position_1based,
                 candidate.pseudo_intron_length_bp,
                 bp,
                 ppt,
+                maxent,
                 candidate.boundary_class,
                 cds
             ))

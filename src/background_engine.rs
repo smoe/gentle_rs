@@ -5,7 +5,7 @@
 //! swap. Inherited undo/redo snapshots stay in the live engine. A concurrent
 //! edit makes the result stale and leaves the live project untouched.
 
-use crate::engine::{EngineError, ErrorCode, GentleEngine};
+use crate::engine::{Engine, EngineError, ErrorCode, GentleEngine, OpResult, Operation};
 use std::sync::{Arc, RwLock};
 
 pub(crate) fn execute_on_engine_snapshot<T>(
@@ -34,22 +34,21 @@ pub(crate) fn execute_on_engine_snapshot<T>(
     Ok(result)
 }
 
-/// Execute a pure inspection on a detached engine snapshot without entering
-/// the guarded commit path.
-pub(crate) fn execute_read_only_on_engine_snapshot<T>(
+/// Apply a portable inspection operation to a detached snapshot and discard
+/// its private journal/state after returning the typed result.
+pub(crate) fn execute_read_only_operation_on_engine_snapshot(
     shared: &Arc<RwLock<GentleEngine>>,
-    work: impl FnOnce(&GentleEngine) -> Result<T, EngineError>,
-) -> Result<T, EngineError> {
-    let detached = {
+    operation: Operation,
+) -> Result<OpResult, EngineError> {
+    let mut detached = {
         let guard = shared.read().map_err(|_| EngineError {
             code: ErrorCode::Internal,
-            message: "Engine lock poisoned while snapshotting read-only background work"
-                .to_string(),
+            message: "Engine lock poisoned while snapshotting a read-only operation".to_string(),
             cause_chain: vec![],
         })?;
         guard.fork_detached_execution()
     };
-    work(detached.engine())
+    detached.engine_mut().apply(operation)
 }
 
 #[cfg(test)]
@@ -151,26 +150,39 @@ mod tests {
     }
 
     #[test]
-    fn read_only_snapshot_returns_data_without_committing_state() {
+    fn read_only_operation_returns_data_without_committing_state() {
+        let sequence = "AAAGTCCCCCTACTAACCCCCCCCCCCCCCCCCCCAGAAA";
         let mut live = GentleEngine::new();
         live.apply(Operation::CreateSequenceFromText {
-            sequence_text: "ATGC".to_string(),
+            sequence_text: sequence.to_string(),
             output_id: Some("existing".to_string()),
             name: None,
             circular: false,
         })
         .expect("create existing sequence");
         let revision_before = live.mutation_revision();
+        let journal_len_before = live.operation_log().len();
         let shared = Arc::new(RwLock::new(live));
-        let observed = execute_read_only_on_engine_snapshot(&shared, |snapshot| {
-            Ok(snapshot.state().sequences["existing"].len())
-        })
-        .expect("read-only snapshot");
-        assert_eq!(observed, 4);
-        assert_eq!(
-            shared.read().expect("live engine").mutation_revision(),
-            revision_before
-        );
+        let result = execute_read_only_operation_on_engine_snapshot(
+            &shared,
+            Operation::InspectCrypticSplicingScreen {
+                request: gentle_protocol::CrypticSplicingScreenRequest {
+                    seq_id: "existing".to_string(),
+                    start_1based: 1,
+                    end_1based: sequence.len(),
+                    min_pseudo_intron_bp: 20,
+                    max_pseudo_intron_bp: 100,
+                    max_candidate_pairs: 10,
+                    ..gentle_protocol::CrypticSplicingScreenRequest::default()
+                },
+                path: None,
+            },
+        )
+        .expect("read-only operation");
+        assert!(result.cryptic_splicing_screen.is_some());
+        let guard = shared.read().expect("live engine");
+        assert_eq!(guard.mutation_revision(), revision_before);
+        assert_eq!(guard.operation_log().len(), journal_len_before);
     }
 
     #[test]

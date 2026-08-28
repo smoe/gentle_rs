@@ -5,6 +5,13 @@ use crate::attract_motifs::{
     ATTRACT_MOTIF_SNAPSHOT_SCHEMA, AttractMotifRecord, AttractMotifSnapshot, AttractPfmRows,
     DEFAULT_ATTRACT_RESOURCE_PATH,
 };
+use crate::{
+    digest_utils::sha256_prefixed_bytes,
+    maxent_splicing::{
+        DEFAULT_MAXENT_SPLICE_MODEL_PATH, MAXENT_SPLICE_MODEL_SCHEMA, MaxEntSpliceModelSnapshot,
+    },
+};
+use gentle_protocol::CrypticSplicingModelTableDigest;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeSet, HashMap},
@@ -1137,6 +1144,188 @@ pub fn sync_attract(input: &str, output: Option<&str>) -> Result<SyncReport, Str
     })
 }
 
+fn parse_maxent_value_table(name: &str, text: &str) -> Result<Vec<f64>, String> {
+    text.lines()
+        .enumerate()
+        .filter_map(|(index, raw)| {
+            let value = raw.trim();
+            (!value.is_empty()).then_some((index, value))
+        })
+        .map(|(index, value)| {
+            value.parse::<f64>().map_err(|error| {
+                format!(
+                    "Could not parse MaxEnt table '{name}' row {} value '{value}': {error}",
+                    index + 1
+                )
+            })
+        })
+        .collect()
+}
+
+fn maxent_directory_table_text(directory: &Path, name: &str) -> Result<String, String> {
+    for candidate in [
+        directory.join("splicemodels").join(name),
+        directory.join(name),
+    ] {
+        if candidate.is_file() {
+            return fs::read_to_string(&candidate).map_err(|error| {
+                format!(
+                    "Could not read MaxEnt table '{}': {error}",
+                    candidate.display()
+                )
+            });
+        }
+    }
+    Err(format!(
+        "MaxEnt input directory '{}' does not contain splicemodels/{name} or {name}",
+        directory.display()
+    ))
+}
+
+fn maxent_archive_table_text(
+    archive_path: &Path,
+    members: &[String],
+    name: &str,
+) -> Result<String, String> {
+    let member = members
+        .iter()
+        .find(|member| {
+            Path::new(member.as_str())
+                .file_name()
+                .and_then(|value| value.to_str())
+                .is_some_and(|value| value == name)
+        })
+        .ok_or_else(|| {
+            format!(
+                "MaxEnt archive '{}' does not contain required table '{name}'",
+                archive_path.display()
+            )
+        })?;
+    read_zip_member_text(archive_path, member)
+}
+
+fn build_maxent_snapshot(
+    input: &str,
+    source_url: Option<&str>,
+    retrieved_on: Option<&str>,
+    redistribution_status: Option<&str>,
+    mut read_table: impl FnMut(&str) -> Result<String, String>,
+) -> Result<MaxEntSpliceModelSnapshot, String> {
+    let mut table_sha256 = Vec::new();
+    let mut read_bound = |name: &str| -> Result<String, String> {
+        let text = read_table(name)?;
+        let row_count = text.lines().filter(|line| !line.trim().is_empty()).count();
+        table_sha256.push(CrypticSplicingModelTableDigest {
+            table_name: name.to_string(),
+            sha256: sha256_prefixed_bytes(text.as_bytes()),
+            row_count,
+        });
+        Ok(text)
+    };
+
+    let donor_sequence_text = read_bound("splice5sequences")?;
+    let donor_score_text = read_bound("me2x5")?;
+    let donor_sequences = donor_sequence_text
+        .lines()
+        .filter_map(|line| {
+            let normalized = line
+                .split_whitespace()
+                .collect::<String>()
+                .to_ascii_uppercase();
+            (!normalized.is_empty()).then_some(normalized)
+        })
+        .collect::<Vec<_>>();
+    let donor_scores = parse_maxent_value_table("me2x5", &donor_score_text)?;
+    let mut acceptor_tables = Vec::with_capacity(9);
+    for ordinal in 1..=9 {
+        let name = format!("me2x3acc{ordinal}");
+        let text = read_bound(&name)?;
+        acceptor_tables.push(parse_maxent_value_table(&name, &text)?);
+    }
+    let mut snapshot = MaxEntSpliceModelSnapshot {
+        schema: MAXENT_SPLICE_MODEL_SCHEMA.to_string(),
+        source: input.to_string(),
+        source_url: source_url
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
+        retrieved_on: retrieved_on
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
+        redistribution_status: redistribution_status
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("not_recorded")
+            .to_string(),
+        model_fingerprint_sha256: String::new(),
+        table_sha256,
+        donor_sequences,
+        donor_scores,
+        acceptor_tables,
+    };
+    snapshot.finalize_fingerprint()?;
+    snapshot.validate()?;
+    Ok(snapshot)
+}
+
+/// Normalize a user-supplied MaxEntScan directory or ZIP archive.
+///
+/// GENtle deliberately does not download or redistribute these tables.
+pub fn sync_maxent_splice_model(
+    input: &str,
+    output: Option<&str>,
+    source_url: Option<&str>,
+    retrieved_on: Option<&str>,
+    redistribution_status: Option<&str>,
+) -> Result<SyncReport, String> {
+    if input.starts_with("http://") || input.starts_with("https://") {
+        return Err(
+            "MaxEnt synchronization accepts only a user-supplied local directory or ZIP archive; download and review the upstream resource separately, then pass its local path."
+                .to_string(),
+        );
+    }
+    let input_path = Path::new(input);
+    let snapshot = if input_path.is_dir() {
+        build_maxent_snapshot(
+            input,
+            source_url,
+            retrieved_on,
+            redistribution_status,
+            |name| maxent_directory_table_text(input_path, name),
+        )?
+    } else {
+        with_local_binary_input_path(input, |archive_path| {
+            let members = list_zip_members(archive_path)?;
+            build_maxent_snapshot(
+                input,
+                source_url,
+                retrieved_on,
+                redistribution_status,
+                |name| maxent_archive_table_text(archive_path, &members, name),
+            )
+        })?
+    };
+    let output = output
+        .unwrap_or(DEFAULT_MAXENT_SPLICE_MODEL_PATH)
+        .to_string();
+    ensure_parent_dir(&output)?;
+    let bytes = serde_json::to_vec_pretty(&snapshot)
+        .map_err(|error| format!("Could not serialize MaxEnt snapshot: {error}"))?;
+    fs::write(&output, bytes)
+        .map_err(|error| format!("Could not write MaxEnt output '{output}': {error}"))?;
+    Ok(SyncReport {
+        source: input.to_string(),
+        output,
+        item_count: snapshot
+            .table_sha256
+            .iter()
+            .map(|table| table.row_count)
+            .sum(),
+        resource: "maxent-splice-model".to_string(),
+    })
+}
+
 pub fn sync_ucsc_rmsk(
     input: &str,
     output: Option<&str>,
@@ -1265,6 +1454,45 @@ mod tests {
             ],
         );
         archive_path
+    }
+
+    fn base4_sequence(mut index: usize, len: usize) -> String {
+        let mut bases = vec![b'A'; len];
+        for position in (0..len).rev() {
+            bases[position] = match index % 4 {
+                0 => b'A',
+                1 => b'C',
+                2 => b'G',
+                _ => b'T',
+            };
+            index /= 4;
+        }
+        String::from_utf8(bases).expect("base4 DNA")
+    }
+
+    fn write_synthetic_maxent_directory(root: &Path) {
+        let models = root.join("splicemodels");
+        fs::create_dir_all(&models).expect("model directory");
+        let donor_sequences = (0..16_384)
+            .map(|index| base4_sequence(index, 7))
+            .collect::<Vec<_>>()
+            .join("\n");
+        fs::write(
+            models.join("splice5sequences"),
+            format!("{donor_sequences}\n"),
+        )
+        .expect("donor sequences");
+        fs::write(models.join("me2x5"), "1\n".repeat(16_384)).expect("donor scores");
+        for (ordinal, row_count) in [16_384, 16_384, 16_384, 16_384, 16_384, 64, 256, 64, 256]
+            .into_iter()
+            .enumerate()
+        {
+            fs::write(
+                models.join(format!("me2x3acc{}", ordinal + 1)),
+                "1\n".repeat(row_count),
+            )
+            .expect("acceptor table");
+        }
     }
 
     #[test]
@@ -1468,5 +1696,38 @@ T [0 0 0]
         assert_eq!(pfm.c, vec![0.01, 0.97, 0.01]);
         assert_eq!(pfm.g, vec![0.01, 0.01, 0.97]);
         assert_eq!(pfm.t, vec![0.01, 0.01, 0.01]);
+    }
+
+    #[test]
+    fn syncs_local_user_supplied_maxent_tables_with_provenance() {
+        let temp = tempdir().expect("tempdir");
+        let input = temp.path().join("maxent");
+        let output = temp.path().join("maxent.json");
+        write_synthetic_maxent_directory(&input);
+
+        let report = sync_maxent_splice_model(
+            input.to_string_lossy().as_ref(),
+            Some(output.to_string_lossy().as_ref()),
+            Some("https://example.invalid/maxent-source"),
+            Some("2026-08-27"),
+            Some("synthetic_test_tables"),
+        )
+        .expect("sync MaxEnt tables");
+        assert_eq!(report.resource, "maxent-splice-model");
+        let snapshot: MaxEntSpliceModelSnapshot =
+            serde_json::from_str(&fs::read_to_string(output).expect("read normalized model"))
+                .expect("parse normalized model");
+        snapshot.validate().expect("valid model");
+        assert_eq!(snapshot.table_sha256.len(), 11);
+        assert_eq!(snapshot.retrieved_on.as_deref(), Some("2026-08-27"));
+        assert_eq!(snapshot.redistribution_status, "synthetic_test_tables");
+    }
+
+    #[test]
+    fn maxent_sync_refuses_network_input() {
+        let error =
+            sync_maxent_splice_model("https://example.invalid/maxent.zip", None, None, None, None)
+                .expect_err("network input must be refused");
+        assert!(error.contains("user-supplied local"), "{error}");
     }
 }

@@ -110,18 +110,21 @@ pub use gentle_protocol::{
     ConstructReasoningRiskTask, ConstructReasoningSeverity, ConstructReasoningStore,
     ConstructReasoningTaskApplicability, ConstructReasoningTaskApplicabilityBasis,
     ConstructReasoningTaskSeverity, ConstructRole, Container, ContainerId, ContainerKind,
-    ContainerState, DecisionMethod, DesignDecisionNode, DesignEvidence, DesignFact,
-    DotplotInspectionProvenanceCitation, DotplotInspectionProvenanceStatus,
-    DotplotInspectionRequestSnapshot, DotplotMode, EditableStatus, EvidenceClass, EvidenceScope,
-    ExonSkipReturnKind, ExonSkipReturnPayload, ExonSkipSelectionCriterion, GelBandLabelLayout,
-    GelBufferModel, GelIsoformMarkerMode, GelLaneLabelLayout, GelRunConditions, GelTopologyForm,
-    HostLifecycleRole, LineageEdge, LineageGraph, LineageMacroInstance, LineageMacroPortBinding,
-    LineageNode, MacroInstanceStatus, NodeId, OpId, OrthologAmbiguityPolicy,
-    OrthologCutRunNormalizationInput, OrthologPromoterCohortReport,
-    OrthologPromoterComparisonReport, PoolGelRenderOptions, PrimerSpecificityAmpliconCeilingSource,
-    PrimerSpecificityReportDetailMode, ProteinExternalOpinionSource, ProteinFeatureFilter, Rack,
-    RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
-    RackOccupant, RackPhysicalTemplateFamily, RackPhysicalTemplateKind, RackPhysicalTemplateSpec,
+    ContainerState, CrypticSplicingEvidenceOverlayReport, CrypticSplicingEvidenceOverlayRequest,
+    CrypticSplicingProteinProjectionReport, CrypticSplicingProteinProjectionRequest,
+    CrypticSplicingScreenRequest, CrypticSplicingScreenView, DecisionMethod, DesignDecisionNode,
+    DesignEvidence, DesignFact, DotplotInspectionProvenanceCitation,
+    DotplotInspectionProvenanceStatus, DotplotInspectionRequestSnapshot, DotplotMode,
+    EditableStatus, EvidenceClass, EvidenceScope, ExonSkipReturnKind, ExonSkipReturnPayload,
+    ExonSkipSelectionCriterion, GelBandLabelLayout, GelBufferModel, GelIsoformMarkerMode,
+    GelLaneLabelLayout, GelRunConditions, GelTopologyForm, HostLifecycleRole, LineageEdge,
+    LineageGraph, LineageMacroInstance, LineageMacroPortBinding, LineageNode, MacroInstanceStatus,
+    NodeId, OpId, OrthologAmbiguityPolicy, OrthologCutRunNormalizationInput,
+    OrthologPromoterCohortReport, OrthologPromoterComparisonReport, PoolGelRenderOptions,
+    PrimerSpecificityAmpliconCeilingSource, PrimerSpecificityReportDetailMode,
+    ProteinExternalOpinionSource, ProteinFeatureFilter, Rack, RackAuthoringTemplate,
+    RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
+    RackPhysicalTemplateFamily, RackPhysicalTemplateKind, RackPhysicalTemplateSpec,
     RackPlacementEntry, RackProfileKind, RackProfileSnapshot, ReadAcquisitionAnalysisFormat,
     ReadAcquisitionReadLayout, RunId, SeqId, SequenceOrigin,
 };
@@ -3202,6 +3205,25 @@ pub enum Operation {
         seq_id: SeqId,
         target: FeatureExpertTarget,
         path: String,
+    },
+    InspectCrypticSplicingScreen {
+        request: CrypticSplicingScreenRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    RenderCrypticSplicingScreenSvg {
+        request: CrypticSplicingScreenRequest,
+        path: String,
+    },
+    InspectCrypticSplicingEvidenceOverlay {
+        request: CrypticSplicingEvidenceOverlayRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    InspectCrypticSplicingProteinProjection {
+        request: CrypticSplicingProteinProjectionRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
     },
     RenderIsoformArchitectureSvg {
         seq_id: SeqId,
@@ -9534,6 +9556,10 @@ impl GentleEngine {
                 | Operation::RenderTfbsScoreTracksSvg { .. }
                 | Operation::RenderTfbsScoreTrackCorrelationSvg { .. }
                 | Operation::RenderFeatureExpertSvg { .. }
+                | Operation::InspectCrypticSplicingScreen { .. }
+                | Operation::RenderCrypticSplicingScreenSvg { .. }
+                | Operation::InspectCrypticSplicingEvidenceOverlay { .. }
+                | Operation::InspectCrypticSplicingProteinProjection { .. }
                 | Operation::RenderIsoformArchitectureSvg { .. }
                 | Operation::RenderRnaStructureSvg { .. }
                 | Operation::RenderLineageSvg { .. }

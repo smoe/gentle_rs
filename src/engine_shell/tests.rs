@@ -31910,6 +31910,36 @@ fn parse_resources_sync_attract_with_output() {
 }
 
 #[test]
+fn parse_resources_sync_maxent_with_provenance() {
+    let cmd = parse_shell_line(
+        "resources sync-maxent MaxEntScan.zip out.maxent.json --source-url https://example.invalid/maxent --retrieved-on 2026-08-27 --redistribution-status user_supplied_not_redistributed",
+    )
+    .expect("parse resources sync-maxent");
+    match cmd {
+        ShellCommand::ResourcesSyncMaxent {
+            input,
+            output,
+            source_url,
+            retrieved_on,
+            redistribution_status,
+        } => {
+            assert_eq!(input, "MaxEntScan.zip");
+            assert_eq!(output.as_deref(), Some("out.maxent.json"));
+            assert_eq!(
+                source_url.as_deref(),
+                Some("https://example.invalid/maxent")
+            );
+            assert_eq!(retrieved_on.as_deref(), Some("2026-08-27"));
+            assert_eq!(
+                redistribution_status.as_deref(),
+                Some("user_supplied_not_redistributed")
+            );
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_resources_inspect_jaspar_with_options() {
     let cmd = parse_shell_line(
         "resources inspect-jaspar SP1 --random-length 2048 --seed 5 --fetch-remote --output jaspar.expert.json",
@@ -44724,6 +44754,7 @@ fn splicing_cryptic_screen_and_render_share_the_typed_report() {
     let temp = tempdir().expect("tempdir");
     let request_path = temp.path().join("cryptic_request.json");
     let svg_path = temp.path().join("cryptic.svg");
+    let json_path = temp.path().join("cryptic.json");
     let request = gentle_protocol::CrypticSplicingScreenRequest {
         seq_id: "cassette".to_string(),
         start_1based: 1,
@@ -44755,6 +44786,25 @@ fn splicing_cryptic_screen_and_render_share_the_typed_report() {
             .as_array()
             .is_some_and(|rows| !rows.is_empty())
     );
+    assert!(screened.output["op_id"].as_str().is_some());
+    assert!(screened.output["run_id"].as_str().is_some());
+
+    let export = parse_shell_line(&format!(
+        "splicing cryptic-export @{} {}",
+        request_path.display(),
+        json_path.display()
+    ))
+    .expect("parse cryptic export");
+    let exported = execute_shell_command(&mut engine, &export).expect("export cryptic JSON");
+    assert!(!exported.state_changed);
+    let exported_report: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&json_path).expect("read exported JSON"))
+            .expect("parse exported JSON");
+    assert_eq!(exported_report["schema"], screened.output["schema"]);
+    assert_eq!(
+        exported_report["effective_input_sha256"],
+        screened.output["effective_input_sha256"]
+    );
 
     let render = parse_shell_line(&format!(
         "splicing cryptic-render @{} {}",
@@ -44780,7 +44830,13 @@ fn splicing_cryptic_screen_and_render_share_the_typed_report() {
     let descriptors = capabilities.output["capabilities"]
         .as_array()
         .expect("capability rows");
-    for capability_id in ["splicing cryptic-screen", "splicing cryptic-render"] {
+    for capability_id in [
+        "splicing cryptic-screen",
+        "splicing cryptic-render",
+        "splicing cryptic-export",
+        "splicing cryptic-overlay",
+        "splicing cryptic-protein",
+    ] {
         let descriptor = descriptors
             .iter()
             .find(|descriptor| descriptor["id"].as_str() == Some(capability_id))

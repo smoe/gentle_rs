@@ -162,6 +162,8 @@ pub struct UniprotGenomeProjection {
     pub projection_id: String,
     pub entry_id: String,
     pub seq_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_sequence_sha256: Option<String>,
     pub created_at_unix_ms: u128,
     pub op_id: Option<String>,
     pub run_id: Option<String>,

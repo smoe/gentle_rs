@@ -14511,6 +14511,9 @@ impl GentleEngine {
         let checkpoint = self.maybe_capture_checkpoint(&op);
         let mut result = OpResult {
             primer_group_target_design: None,
+            cryptic_splicing_screen: None,
+            cryptic_splicing_evidence_overlay: None,
+            cryptic_splicing_protein_projection: None,
             op_id: self.next_op_id(),
             created_seq_ids: vec![],
             changed_seq_ids: vec![],
@@ -14645,6 +14648,9 @@ impl GentleEngine {
         let checkpoint = self.maybe_capture_checkpoint(&op);
         let mut result = OpResult {
             primer_group_target_design: None,
+            cryptic_splicing_screen: None,
+            cryptic_splicing_evidence_overlay: None,
+            cryptic_splicing_protein_projection: None,
             op_id: self.next_op_id(),
             created_seq_ids: vec![],
             changed_seq_ids: vec![],
@@ -16049,6 +16055,13 @@ impl GentleEngine {
             report_id,
             report_mode,
             seq_id: seq_id.to_string(),
+            source_sequence_sha256: Some(crate::digest_utils::sha256_prefixed_bytes(
+                dna.forward_bytes(),
+            )),
+            coordinate_space: gentle_protocol::RNA_READ_LOADED_SEQUENCE_COORDINATE_SPACE
+                .to_string(),
+            coordinate_convention: gentle_protocol::RNA_READ_LOADED_SEQUENCE_COORDINATE_CONVENTION
+                .to_string(),
             seed_feature_id,
             generated_at_unix_ms: Self::now_unix_ms(),
             op_id: None,
