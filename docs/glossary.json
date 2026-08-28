@@ -450,7 +450,9 @@
       },
       {
          "aliases": [],
-         "engine_operations": [],
+         "engine_operations": [
+            "InspectCrypticSplicingScreen"
+         ],
          "interfaces": [
             "cli-shell",
             "gui-shell",
@@ -463,7 +465,9 @@
       },
       {
          "aliases": [],
-         "engine_operations": [],
+         "engine_operations": [
+            "RenderCrypticSplicingScreenSvg"
+         ],
          "interfaces": [
             "cli-shell",
             "gui-shell",
@@ -473,6 +477,48 @@
          "path": "splicing cryptic-render",
          "summary": "Compute the same bounded cryptic-splicing structural screen and render its typed report as SVG.",
          "usage": "splicing cryptic-render REQUEST_JSON_OR_@FILE OUTPUT.svg"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "InspectCrypticSplicingScreen"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "splicing cryptic-export",
+         "summary": "Compute the bounded cryptic-splicing screen and export its typed report as JSON.",
+         "usage": "splicing cryptic-export REQUEST_JSON_OR_@FILE OUTPUT.json"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "InspectCrypticSplicingEvidenceOverlay"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "splicing cryptic-overlay",
+         "summary": "Join structural candidates with content-bound RNA junction evidence while preserving exact, nearby, no-retained-support, and not-assessable states.",
+         "usage": "splicing cryptic-overlay REQUEST_JSON_OR_@FILE [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "InspectCrypticSplicingProteinProjection"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "splicing cryptic-protein",
+         "summary": "Project candidate removals onto a digest-bound UniProt feature projection as a separate annotation-evidence layer.",
+         "usage": "splicing cryptic-protein REQUEST_JSON_OR_@FILE [--output OUTPUT.json]"
       },
       {
          "aliases": [
@@ -1778,6 +1824,18 @@
          "path": "resources sync-jaspar",
          "summary": "Normalize JASPAR source data into project motif JSON.",
          "usage": "resources sync-jaspar INPUT.jaspar_or_URL [OUTPUT.motifs.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources sync-maxent",
+         "summary": "Normalize user-supplied MaxEntScan tables into a provenance-bound local splice-model snapshot without bundling or redistributing the tables.",
+         "usage": "resources sync-maxent INPUT.directory_or_zip [OUTPUT.json] [--source-url URL] [--retrieved-on YYYY-MM-DD] [--redistribution-status STATUS]"
       },
       {
          "aliases": [],

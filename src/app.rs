@@ -12006,6 +12006,9 @@ Error: `{err}`"
             })
             .map(|report| OpResult {
                 primer_group_target_design: None,
+                cryptic_splicing_screen: None,
+                cryptic_splicing_evidence_overlay: None,
+                cryptic_splicing_protein_projection: None,
                 op_id: "background-prepare-genome".to_string(),
                 created_seq_ids: vec![],
                 changed_seq_ids: vec![],

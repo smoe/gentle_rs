@@ -200,7 +200,7 @@ use crate::{
     },
     render_dna::{RenderDna, RestrictionEnzymePosition},
     render_export::{export_circular_svg, export_linear_svg},
-    render_feature_expert::{render_cryptic_splicing_screen, render_feature_expert_svg},
+    render_feature_expert::render_feature_expert_svg,
     render_sequence::RenderSequence,
     scroll_input_policy::{self, WheelIntent, ZoomDirection},
     tf_motifs,
@@ -211,7 +211,10 @@ use crate::{
 use eframe::egui::{self, Frame, PointerState, Vec2};
 use gentle_gui::theme;
 use gentle_protocol::{
-    CrypticSplicingModelStatus, CrypticSplicingScreenRequest, CrypticSplicingScreenView,
+    CrypticSplicingEvidenceOverlayReport, CrypticSplicingEvidenceOverlayRequest,
+    CrypticSplicingModelPolicy, CrypticSplicingModelStatus, CrypticSplicingProteinProjectionReport,
+    CrypticSplicingProteinProjectionRequest, CrypticSplicingProteinProjectionStatus,
+    CrypticSplicingRnaEvidenceStatus, CrypticSplicingScreenRequest, CrypticSplicingScreenView,
     CrypticSplicingSignalStatus, CrypticSplicingSpan, CrypticSplicingStrand,
     GeneSetCohortRelationship, OrthologAmbiguityPolicy, OrthologCutRunNormalizationInput,
     OrthologCutRunQuantitativeComparisonStatus, OrthologCutRunSupportStatus,
@@ -1334,13 +1337,20 @@ struct PrimerDesignTask {
 #[derive(Clone, Debug)]
 struct CrypticSplicingTask {
     started: Instant,
-    receiver: Arc<Mutex<Receiver<Result<CrypticSplicingScreenView, EngineError>>>>,
+    label: String,
+    receiver: Arc<Mutex<Receiver<Result<CrypticSplicingTaskCompletion, EngineError>>>>,
+}
+
+#[derive(Clone, Debug)]
+enum CrypticSplicingTaskCompletion {
+    Screen(CrypticSplicingScreenView),
+    EvidenceOverlay(CrypticSplicingEvidenceOverlayReport),
+    ProteinProjection(CrypticSplicingProteinProjectionReport),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct CrypticSplicingCacheKey {
-    request_sha256: String,
-    source_digest: String,
+    effective_input_sha256: String,
 }
 
 #[derive(Clone, Debug)]
@@ -1717,10 +1727,17 @@ pub struct MainAreaDna {
     cryptic_splicing_min_intron_bp: String,
     cryptic_splicing_max_intron_bp: String,
     cryptic_splicing_max_candidates: String,
+    cryptic_splicing_use_maxent: bool,
+    cryptic_splicing_expected_model_fingerprint: String,
+    cryptic_splicing_rna_report_ids: String,
+    cryptic_splicing_rna_nearby_tolerance_bp: String,
+    cryptic_splicing_uniprot_projection_id: String,
     cryptic_splicing_svg_path: String,
     cryptic_splicing_task: Option<CrypticSplicingTask>,
     cryptic_splicing_cache_key: Option<CrypticSplicingCacheKey>,
     cryptic_splicing_report: Option<Arc<CrypticSplicingScreenView>>,
+    cryptic_splicing_evidence_overlay: Option<Arc<CrypticSplicingEvidenceOverlayReport>>,
+    cryptic_splicing_protein_projection: Option<Arc<CrypticSplicingProteinProjectionReport>>,
     cryptic_splicing_status: String,
     cryptic_splicing_focus_requested: bool,
     cached_splicing_expert_presentations: Vec<CachedSplicingExpertPresentation>,
@@ -2489,10 +2506,17 @@ impl MainAreaDna {
             cryptic_splicing_min_intron_bp: "50".to_string(),
             cryptic_splicing_max_intron_bp: "5000".to_string(),
             cryptic_splicing_max_candidates: "1000".to_string(),
+            cryptic_splicing_use_maxent: false,
+            cryptic_splicing_expected_model_fingerprint: String::new(),
+            cryptic_splicing_rna_report_ids: String::new(),
+            cryptic_splicing_rna_nearby_tolerance_bp: "2".to_string(),
+            cryptic_splicing_uniprot_projection_id: String::new(),
             cryptic_splicing_svg_path: "cryptic-splicing-screen.svg".to_string(),
             cryptic_splicing_task: None,
             cryptic_splicing_cache_key: None,
             cryptic_splicing_report: None,
+            cryptic_splicing_evidence_overlay: None,
+            cryptic_splicing_protein_projection: None,
             cryptic_splicing_status: String::new(),
             cryptic_splicing_focus_requested: false,
             cached_splicing_expert_presentations: Vec::new(),

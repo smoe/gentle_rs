@@ -39,9 +39,11 @@ pub use gentle_protocol::{
     CollectionOperationReport, CollectionSubjectKind, CollectionSubjectRef, ConstructCandidate,
     ConstructObjective, ConstructReasoningGraph, ConstructReasoningGraphFreshness,
     ConstructReasoningInputFingerprint, ConstructReasoningInspectionAction,
-    ConstructReasoningStore, ConstructRole, ContainerId, ContainerKind, CutRunAlignConfig,
-    CutRunCatalogEntry, CutRunCatalogListEntry, CutRunCoverageKind, CutRunDatasetListReport,
-    CutRunDatasetProjectionReport, CutRunDatasetStatus, CutRunFragmentSpan, CutRunInputFormat,
+    ConstructReasoningStore, ConstructRole, ContainerId, ContainerKind,
+    CrypticSplicingEvidenceOverlayReport, CrypticSplicingProteinProjectionReport,
+    CrypticSplicingScreenView, CutRunAlignConfig, CutRunCatalogEntry, CutRunCatalogListEntry,
+    CutRunCoverageKind, CutRunDatasetListReport, CutRunDatasetProjectionReport,
+    CutRunDatasetStatus, CutRunFragmentSpan, CutRunInputFormat,
     CutRunMotifAbsentOccupancyInterpretation, CutRunMotifAbsentSupportWindow,
     CutRunMotifContextHit, CutRunMotifContextScope, CutRunMotifContextSummaryRow,
     CutRunPreparedAssetManifest, CutRunPreparedAssetStatus, CutRunPreparedManifest,
@@ -5069,6 +5071,12 @@ pub struct OpResult {
     pub jaspar_entry_presentation: Option<JasparEntryPresentationReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequence_context_view: Option<SequenceContextViewReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cryptic_splicing_screen: Option<Box<CrypticSplicingScreenView>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cryptic_splicing_evidence_overlay: Option<Box<CrypticSplicingEvidenceOverlayReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cryptic_splicing_protein_projection: Option<Box<CrypticSplicingProteinProjectionReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequence_context_bundle: Option<SequenceContextBundleExport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

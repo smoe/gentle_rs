@@ -12,6 +12,9 @@ use crate::{
     },
     enzymes::load_restriction_enzymes_from_json_text,
     external_checksums::{LegacySha1ToolStatus, legacy_sha1_tool_status},
+    maxent_splicing::{
+        DEFAULT_MAXENT_SPLICE_MODEL_PATH, active_model_status as active_maxent_model_status,
+    },
     publication_resources::{
         PublicationResourceCollectionStatus, publication_resource_collection_status,
     },
@@ -52,6 +55,7 @@ pub struct ResourceCatalogReport {
     pub jaspar: ResourceSnapshotStatus,
     pub gene_ontology: ExternalDatabaseStatus,
     pub attract: AttractResourceStatus,
+    pub maxent_splice_model: MaxEntSpliceModelResourceStatus,
     pub publication_datasets: PublicationResourceCollectionStatus,
     pub ucsc_rmsk: UcscRmskResourceStatus,
     pub legacy_sha1: LegacySha1ToolStatus,
@@ -129,6 +133,25 @@ pub struct AttractResourceStatus {
     pub active_pwm_row_count: usize,
     pub active_consensus_only_row_count: usize,
     pub active_fingerprint: Option<String>,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MaxEntSpliceModelResourceStatus {
+    pub resource_id: String,
+    pub display_name: String,
+    pub support_status: String,
+    pub homepage: String,
+    pub runtime_path: String,
+    pub runtime_exists: bool,
+    pub runtime_valid: bool,
+    pub model_fingerprint_sha256: Option<String>,
+    pub source: Option<String>,
+    pub source_url: Option<String>,
+    pub retrieved_on: Option<String>,
+    pub redistribution_status: Option<String>,
+    pub table_sha256: Vec<gentle_protocol::CrypticSplicingModelTableDigest>,
+    pub runtime_error: Option<String>,
     pub notes: Vec<String>,
 }
 
@@ -563,6 +586,49 @@ fn attract_status() -> AttractResourceStatus {
     }
 }
 
+fn maxent_splice_model_status() -> MaxEntSpliceModelResourceStatus {
+    let active = active_maxent_model_status();
+    let snapshot = active.model.as_ref().map(|model| model.snapshot());
+    let runtime_valid = snapshot.is_some();
+    let support_status = if runtime_valid {
+        "runtime_snapshot"
+    } else if active.exists {
+        "invalid_runtime_snapshot"
+    } else {
+        "user_resource_required"
+    };
+    let mut notes = vec![
+        "GENtle does not bundle or download MaxEntScan probability tables; sync a user-supplied MaxEntScan directory or ZIP archive.".to_string(),
+        "Structural cryptic-splicing screening remains available when the optional model is absent or invalid.".to_string(),
+    ];
+    if !runtime_valid {
+        notes.push(format!(
+            "Use `resources sync-maxent INPUT` to prepare '{}'.",
+            DEFAULT_MAXENT_SPLICE_MODEL_PATH
+        ));
+    }
+    MaxEntSpliceModelResourceStatus {
+        resource_id: "maxent_splice_model".to_string(),
+        display_name: "MaxEntScan splice-site model".to_string(),
+        support_status: support_status.to_string(),
+        homepage: "http://hollywood.mit.edu/burgelab/maxent/Xmaxentscan_scoreseq.html".to_string(),
+        runtime_path: active.path.clone(),
+        runtime_exists: active.exists,
+        runtime_valid,
+        model_fingerprint_sha256: snapshot
+            .map(|snapshot| snapshot.model_fingerprint_sha256.clone()),
+        source: snapshot.map(|snapshot| snapshot.source.clone()),
+        source_url: snapshot.and_then(|snapshot| snapshot.source_url.clone()),
+        retrieved_on: snapshot.and_then(|snapshot| snapshot.retrieved_on.clone()),
+        redistribution_status: snapshot.map(|snapshot| snapshot.redistribution_status.clone()),
+        table_sha256: snapshot
+            .map(|snapshot| snapshot.table_sha256.clone())
+            .unwrap_or_default(),
+        runtime_error: active.error.clone(),
+        notes,
+    }
+}
+
 fn count_ucsc_rmsk_snapshot_items(text: &str) -> Result<usize, String> {
     let parsed: Value =
         serde_json::from_str(text).map_err(|e| format!("Could not parse UCSC rmsk JSON: {e}"))?;
@@ -710,6 +776,7 @@ pub fn resource_catalog_status() -> ResourceCatalogReport {
         jaspar: jaspar_status(),
         gene_ontology: gene_ontology_status(),
         attract: attract_status(),
+        maxent_splice_model: maxent_splice_model_status(),
         publication_datasets: publication_resource_collection_status(),
         ucsc_rmsk: ucsc_rmsk_status(),
         legacy_sha1: legacy_sha1_tool_status(),

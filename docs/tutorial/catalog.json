@@ -1061,6 +1061,28 @@
       "notes": "Machine-checked CLI chapter for practical endpoint RT-PCR, isoform-discriminating SYBR, and routine common-region transcript-panel design through the shared operation contract.",
       "review_status": "codex_reviewed",
       "codex_reviewed_at": "2026-07-21"
+    },
+    {
+      "id": "cryptic_splicing_evidence_cli_gui",
+      "title": "Inspect Cryptic-Splicing Hypotheses Without Calling Them Events",
+      "path": "docs/tutorial/07-03_cryptic_splicing_evidence_cli_gui.md",
+      "group": "07",
+      "group_label": "RNA Reads, Splicing & Expression",
+      "group_order": 7,
+      "group_position": 3,
+      "decimal_id": "07.03",
+      "type": "cli_gui_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "cli_first",
+        "sequence_analysis",
+        "wet_lab_biologists",
+        "contributors"
+      ],
+      "notes": "Offline synthetic walkthrough for separating structural candidates, optional model ranking, observed RNA junction evidence, and projected protein-feature context.",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-08-27"
     }
   ]
 }

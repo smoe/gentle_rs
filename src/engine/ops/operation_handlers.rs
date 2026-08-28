@@ -39577,6 +39577,9 @@ impl GentleEngine {
             jaspar_registry_benchmark: None,
             jaspar_entry_presentation: None,
             sequence_context_view: None,
+            cryptic_splicing_screen: None,
+            cryptic_splicing_evidence_overlay: None,
+            cryptic_splicing_protein_projection: None,
             sequence_context_bundle: None,
             variant_promoter_context: None,
             alternative_promoter_comparison: None,
@@ -40093,6 +40096,110 @@ impl GentleEngine {
                         target.describe(),
                         path
                     ));
+                }
+                Operation::InspectCrypticSplicingScreen { request, path } => {
+                    let mut report = self.inspect_cryptic_splicing_screen(&request)?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    if let Some(path) = path.as_deref() {
+                        let payload =
+                            serde_json::to_vec_pretty(&report).map_err(|error| EngineError {
+                                code: ErrorCode::Internal,
+                                message: format!(
+                                    "Could not serialize cryptic-splicing screen: {error}"
+                                ),
+                                cause_chain: vec![],
+                            })?;
+                        std::fs::write(path, payload).map_err(|error| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not write cryptic-splicing screen JSON to '{path}': {error}"
+                            ),
+                            cause_chain: vec![],
+                        })?;
+                        result.messages.push(format!(
+                            "Wrote cryptic-splicing screen for '{}' to '{}'",
+                            request.seq_id, path
+                        ));
+                    }
+                    parent_seq_ids.push(request.seq_id.clone());
+                    result.cryptic_splicing_screen = Some(Box::new(report));
+                }
+                Operation::RenderCrypticSplicingScreenSvg { request, path } => {
+                    let mut report = self.inspect_cryptic_splicing_screen(&request)?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    let svg = crate::render_feature_expert::render_cryptic_splicing_screen(&report);
+                    std::fs::write(&path, svg).map_err(|error| EngineError {
+                        code: ErrorCode::Io,
+                        message: format!(
+                            "Could not write cryptic-splicing screen SVG to '{path}': {error}"
+                        ),
+                        cause_chain: vec![],
+                    })?;
+                    result.messages.push(format!(
+                        "Wrote cryptic-splicing screen SVG for '{}' to '{}'",
+                        request.seq_id, path
+                    ));
+                    parent_seq_ids.push(request.seq_id.clone());
+                    result.cryptic_splicing_screen = Some(Box::new(report));
+                }
+                Operation::InspectCrypticSplicingEvidenceOverlay { request, path } => {
+                    let mut report = self.inspect_cryptic_splicing_evidence_overlay(&request)?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    if let Some(path) = path.as_deref() {
+                        let payload =
+                            serde_json::to_vec_pretty(&report).map_err(|error| EngineError {
+                                code: ErrorCode::Internal,
+                                message: format!(
+                                    "Could not serialize cryptic-splicing evidence overlay: {error}"
+                                ),
+                                cause_chain: vec![],
+                            })?;
+                        std::fs::write(path, payload).map_err(|error| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not write cryptic-splicing evidence overlay JSON to '{path}': {error}"
+                            ),
+                            cause_chain: vec![],
+                        })?;
+                        result.messages.push(format!(
+                            "Wrote cryptic-splicing evidence overlay for '{}' to '{}'",
+                            request.screen_request.seq_id, path
+                        ));
+                    }
+                    parent_seq_ids.push(request.screen_request.seq_id.clone());
+                    result.cryptic_splicing_evidence_overlay = Some(Box::new(report));
+                }
+                Operation::InspectCrypticSplicingProteinProjection { request, path } => {
+                    let mut report = self.inspect_cryptic_splicing_protein_projection(&request)?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    if let Some(path) = path.as_deref() {
+                        let payload = serde_json::to_vec_pretty(&report).map_err(|error| {
+                            EngineError {
+                                code: ErrorCode::Internal,
+                                message: format!(
+                                    "Could not serialize cryptic-splicing protein projection: {error}"
+                                ),
+                                cause_chain: vec![],
+                            }
+                        })?;
+                        std::fs::write(path, payload).map_err(|error| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not write cryptic-splicing protein projection JSON to '{path}': {error}"
+                            ),
+                            cause_chain: vec![],
+                        })?;
+                        result.messages.push(format!(
+                            "Wrote cryptic-splicing protein projection for '{}' to '{}'",
+                            request.screen_request.seq_id, path
+                        ));
+                    }
+                    parent_seq_ids.push(request.screen_request.seq_id.clone());
+                    result.cryptic_splicing_protein_projection = Some(Box::new(report));
                 }
                 Operation::RenderIsoformArchitectureSvg {
                     seq_id,

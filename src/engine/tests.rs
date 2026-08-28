@@ -24511,6 +24511,7 @@ SQ   SEQUENCE   20 AA;  2222 MW;  0000000000000000 CRC64;
             projection_id: "PMIS1@toy_mismatch".to_string(),
             entry_id: "PMIS1".to_string(),
             seq_id: "toy_mismatch".to_string(),
+            source_sequence_sha256: None,
             created_at_unix_ms: 1,
             op_id: None,
             run_id: None,

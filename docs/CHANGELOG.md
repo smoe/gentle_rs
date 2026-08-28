@@ -1,5 +1,21 @@
 # GENtle Changelog
 
+- Completed the engine-owned cryptic-splicing inspection arc without changing
+  `gentle.cryptic_splicing_screen.v1` semantics. Portable operations and shared
+  shell routes now inspect/export/render the screen, join digest- and
+  coordinate-bound RNA junction evidence in
+  `gentle.cryptic_splicing_evidence_overlay.v1`, and separately project
+  candidate removals onto digest-bound UniProt feature geometry in
+  `gentle.cryptic_splicing_protein_projection.v1`. Added optional native
+  MaxEntScan scoring over provenance- and table-hash-bound user resources,
+  deterministic global top-K selection for scored searches, explicit
+  evaluated/reported/ranking accounting, source binding on newly generated RNA
+  reports and UniProt projections, operation/run identities, stale-model-aware
+  GUI controls, and JSON/SVG parity. Missing, invalid, mismatched, or legacy
+  evidence remains absent/failed/not-assessable while structural rows remain
+  inspectable; no candidate is treated as observed splicing without bound RNA
+  support.
+
 - Generalized the existing promoter-reporter candidate operation without
   adding a new operation or schema family. Transcript promoter windows can now
   form deterministic same-gene/same-strand TSS classes when first exons overlap;

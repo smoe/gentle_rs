@@ -242,18 +242,65 @@ impl MainAreaDna {
             },
             insert_span,
             cds_feature_id,
+            model_policy: if self.cryptic_splicing_use_maxent {
+                CrypticSplicingModelPolicy::UseActiveMaxent
+            } else {
+                CrypticSplicingModelPolicy::StructuralOnly
+            },
+            expected_model_fingerprint_sha256: self
+                .cryptic_splicing_use_maxent
+                .then(|| {
+                    self.cryptic_splicing_expected_model_fingerprint
+                        .trim()
+                        .to_string()
+                })
+                .filter(|value| !value.is_empty()),
             min_pseudo_intron_bp,
             max_pseudo_intron_bp,
             max_candidate_pairs,
         })
     }
 
-    pub(super) fn start_cryptic_splicing_screen(&mut self) {
+    fn start_cryptic_splicing_operation(&mut self, operation: Operation, label: &str) {
         if self.cryptic_splicing_task.is_some() {
-            self.cryptic_splicing_status =
-                "A cryptic-splicing structural screen is already running".to_string();
+            self.cryptic_splicing_status = "A cryptic-splicing operation is already running".into();
             return;
         }
+        let Some(engine) = self.engine.clone() else {
+            self.cryptic_splicing_status = "No engine is attached".to_string();
+            return;
+        };
+        let (sender, receiver) = mpsc::channel();
+        self.cryptic_splicing_status = format!("{label} on an immutable project snapshot...");
+        self.cryptic_splicing_task = Some(CrypticSplicingTask {
+            started: Instant::now(),
+            label: label.to_string(),
+            receiver: Arc::new(Mutex::new(receiver)),
+        });
+        std::thread::spawn(move || {
+            let result = crate::background_engine::execute_read_only_operation_on_engine_snapshot(
+                &engine, operation,
+            )
+            .and_then(|mut result| {
+                if let Some(report) = result.cryptic_splicing_screen.take() {
+                    Ok(CrypticSplicingTaskCompletion::Screen(*report))
+                } else if let Some(report) = result.cryptic_splicing_evidence_overlay.take() {
+                    Ok(CrypticSplicingTaskCompletion::EvidenceOverlay(*report))
+                } else if let Some(report) = result.cryptic_splicing_protein_projection.take() {
+                    Ok(CrypticSplicingTaskCompletion::ProteinProjection(*report))
+                } else {
+                    Err(EngineError {
+                        code: ErrorCode::Internal,
+                        message: "Cryptic-splicing operation returned no typed report".to_string(),
+                        cause_chain: vec![],
+                    })
+                }
+            });
+            let _ = sender.send(result);
+        });
+    }
+
+    pub(super) fn start_cryptic_splicing_screen(&mut self) {
         let request = match self.cryptic_splicing_request_from_controls() {
             Ok(request) => request,
             Err(error) => {
@@ -261,29 +308,88 @@ impl MainAreaDna {
                 return;
             }
         };
-        let Some(engine) = self.engine.clone() else {
-            self.cryptic_splicing_status = "No engine is attached".to_string();
-            return;
-        };
-        let (sender, receiver) = mpsc::channel();
-        self.cryptic_splicing_status = format!(
-            "Screening {}:{}..{} ({}) on an immutable project snapshot...",
+        let label = format!(
+            "Screening {}:{}..{} ({})",
             request.seq_id,
             request.start_1based,
             request.end_1based,
             request.strand.as_str()
         );
-        self.cryptic_splicing_task = Some(CrypticSplicingTask {
-            started: Instant::now(),
-            receiver: Arc::new(Mutex::new(receiver)),
-        });
-        std::thread::spawn(move || {
-            let result = crate::background_engine::execute_read_only_on_engine_snapshot(
-                &engine,
-                |snapshot| snapshot.inspect_cryptic_splicing_screen(&request),
-            );
-            let _ = sender.send(result);
-        });
+        self.start_cryptic_splicing_operation(
+            Operation::InspectCrypticSplicingScreen {
+                request,
+                path: None,
+            },
+            &label,
+        );
+    }
+
+    fn start_cryptic_splicing_rna_overlay(&mut self) {
+        let Some(screen) = self.cryptic_splicing_report.as_ref() else {
+            self.cryptic_splicing_status =
+                "Run the structural screen before joining evidence".into();
+            return;
+        };
+        let screen_request = screen.request.clone();
+        let rna_read_report_ids = self
+            .cryptic_splicing_rna_report_ids
+            .split([',', ';', '\n'])
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        if rna_read_report_ids.is_empty() {
+            self.cryptic_splicing_status = "Provide at least one RNA-read report id".into();
+            return;
+        }
+        let nearby_tolerance_bp = match Self::cryptic_splicing_parse_usize(
+            "RNA nearby tolerance",
+            &self.cryptic_splicing_rna_nearby_tolerance_bp,
+        ) {
+            Ok(value) => value,
+            Err(error) => {
+                self.cryptic_splicing_status = error;
+                return;
+            }
+        };
+        self.start_cryptic_splicing_operation(
+            Operation::InspectCrypticSplicingEvidenceOverlay {
+                request: CrypticSplicingEvidenceOverlayRequest {
+                    screen_request,
+                    rna_read_report_ids,
+                    nearby_tolerance_bp,
+                },
+                path: None,
+            },
+            "Joining RNA-read junction evidence",
+        );
+    }
+
+    fn start_cryptic_splicing_protein_projection(&mut self) {
+        let Some(screen) = self.cryptic_splicing_report.as_ref() else {
+            self.cryptic_splicing_status =
+                "Run the structural screen before projecting evidence".into();
+            return;
+        };
+        let screen_request = screen.request.clone();
+        let uniprot_projection_id = self
+            .cryptic_splicing_uniprot_projection_id
+            .trim()
+            .to_string();
+        if uniprot_projection_id.is_empty() {
+            self.cryptic_splicing_status = "Provide a UniProt projection id".into();
+            return;
+        }
+        self.start_cryptic_splicing_operation(
+            Operation::InspectCrypticSplicingProteinProjection {
+                request: CrypticSplicingProteinProjectionRequest {
+                    screen_request,
+                    uniprot_projection_id,
+                },
+                path: None,
+            },
+            "Projecting bound UniProt feature evidence",
+        );
     }
 
     pub(super) fn poll_cryptic_splicing_task(&mut self, ctx: &egui::Context) {
@@ -291,6 +397,7 @@ impl MainAreaDna {
             return;
         };
         let started = task.started;
+        let label = task.label.clone();
         let receiver = Arc::clone(&task.receiver);
         let outcome = match receiver.lock() {
             Ok(receiver) => match receiver.try_recv() {
@@ -309,35 +416,62 @@ impl MainAreaDna {
             })),
         };
         let Some(outcome) = outcome else {
-            self.cryptic_splicing_status = format!(
-                "Cryptic-splicing structural screen running... {:.1}s elapsed",
-                started.elapsed().as_secs_f32()
-            );
+            self.cryptic_splicing_status =
+                format!("{label}... {:.1}s elapsed", started.elapsed().as_secs_f32());
             ctx.request_repaint_after(Duration::from_millis(100));
             return;
         };
 
         self.cryptic_splicing_task = None;
         match outcome {
-            Ok(report) => {
+            Ok(CrypticSplicingTaskCompletion::Screen(report)) => {
                 self.cryptic_splicing_cache_key = Some(CrypticSplicingCacheKey {
-                    request_sha256: report.request_sha256.clone(),
-                    source_digest: report.source_digest.clone(),
+                    effective_input_sha256: report.effective_input_sha256.clone(),
                 });
+                self.cryptic_splicing_evidence_overlay = None;
+                self.cryptic_splicing_protein_projection = None;
                 self.cryptic_splicing_status = format!(
                     "Screened {} candidate pair(s) in {:.1}s{}",
                     report.candidates.len(),
                     started.elapsed().as_secs_f32(),
-                    if report.budget.truncated {
-                        "; result was deterministically truncated at the configured budget"
+                    if report.budget.truncated && report.budget.ranking_complete {
+                        "; reported the complete model-ranked top set at the configured output budget"
+                    } else if report.budget.truncated {
+                        "; reported ranking is incomplete at the configured budget"
                     } else {
                         ""
                     }
                 );
                 self.cryptic_splicing_report = Some(Arc::new(report));
             }
+            Ok(CrypticSplicingTaskCompletion::EvidenceOverlay(report)) => {
+                self.cryptic_splicing_cache_key = Some(CrypticSplicingCacheKey {
+                    effective_input_sha256: report.screen_effective_input_sha256.clone(),
+                });
+                self.cryptic_splicing_report = Some(Arc::new(report.screen.clone()));
+                self.cryptic_splicing_status = format!(
+                    "Joined {} RNA report binding(s) in {:.1}s",
+                    report.rna_report_bindings.len(),
+                    started.elapsed().as_secs_f32()
+                );
+                self.cryptic_splicing_evidence_overlay = Some(Arc::new(report));
+            }
+            Ok(CrypticSplicingTaskCompletion::ProteinProjection(report)) => {
+                self.cryptic_splicing_cache_key = Some(CrypticSplicingCacheKey {
+                    effective_input_sha256: report.screen_effective_input_sha256.clone(),
+                });
+                self.cryptic_splicing_report = Some(Arc::new(report.screen.clone()));
+                self.cryptic_splicing_status = format!(
+                    "Projected UniProt feature evidence for {} candidate(s) in {:.1}s",
+                    report.candidates.len(),
+                    started.elapsed().as_secs_f32()
+                );
+                self.cryptic_splicing_protein_projection = Some(Arc::new(report));
+            }
             Err(error) => {
                 self.cryptic_splicing_report = None;
+                self.cryptic_splicing_evidence_overlay = None;
+                self.cryptic_splicing_protein_projection = None;
                 self.cryptic_splicing_cache_key = None;
                 self.cryptic_splicing_status = format!(
                     "Cryptic-splicing screen failed after {:.1}s: {}",
@@ -365,15 +499,13 @@ impl MainAreaDna {
         else {
             return;
         };
-        self.cryptic_splicing_status = match serde_json::to_vec_pretty(report.as_ref())
-            .map_err(|error| format!("Could not serialize report: {error}"))
-            .and_then(|bytes| {
-                std::fs::write(&path, bytes)
-                    .map_err(|error| format!("Could not write '{}': {error}", path.display()))
-            }) {
-            Ok(()) => format!("Wrote {}", path.display()),
-            Err(error) => error,
-        };
+        self.start_cryptic_splicing_operation(
+            Operation::InspectCrypticSplicingScreen {
+                request: report.request.clone(),
+                path: Some(path.display().to_string()),
+            },
+            "Exporting cryptic-splicing JSON",
+        );
     }
 
     fn export_cryptic_splicing_svg(&mut self) {
@@ -386,11 +518,13 @@ impl MainAreaDna {
             self.cryptic_splicing_status = "Provide an SVG output path".into();
             return;
         }
-        let svg = render_cryptic_splicing_screen(report.as_ref());
-        self.cryptic_splicing_status = match std::fs::write(path, svg) {
-            Ok(()) => format!("Wrote {path}"),
-            Err(error) => format!("Could not write '{path}': {error}"),
-        };
+        self.start_cryptic_splicing_operation(
+            Operation::RenderCrypticSplicingScreenSvg {
+                request: report.request.clone(),
+                path: path.to_string(),
+            },
+            "Rendering cryptic-splicing SVG",
+        );
     }
 
     fn cryptic_splicing_signal_label(status: CrypticSplicingSignalStatus) -> &'static str {
@@ -409,6 +543,44 @@ impl MainAreaDna {
         }
     }
 
+    fn cryptic_splicing_rna_evidence_label(
+        status: CrypticSplicingRnaEvidenceStatus,
+    ) -> &'static str {
+        match status {
+            CrypticSplicingRnaEvidenceStatus::ExactObservedJunction => "exact observed",
+            CrypticSplicingRnaEvidenceStatus::NearbyObservedJunction => "nearby observed",
+            CrypticSplicingRnaEvidenceStatus::NoRetainedJunctionSupport => "none retained",
+            CrypticSplicingRnaEvidenceStatus::NotAssessable => "not assessable",
+        }
+    }
+
+    fn cryptic_splicing_protein_projection_label(
+        status: CrypticSplicingProteinProjectionStatus,
+    ) -> &'static str {
+        match status {
+            CrypticSplicingProteinProjectionStatus::OverlapsProjectedFeature => "feature overlap",
+            CrypticSplicingProteinProjectionStatus::NoProjectedFeatureOverlap => "no overlap",
+            CrypticSplicingProteinProjectionStatus::NotAssessable => "not assessable",
+        }
+    }
+
+    fn cryptic_splicing_report_model_is_stale(&self) -> bool {
+        let Some(report) = self.cryptic_splicing_report.as_ref() else {
+            return false;
+        };
+        if report.request.model_policy != CrypticSplicingModelPolicy::UseActiveMaxent
+            || report.model.status != CrypticSplicingModelStatus::Present
+        {
+            return false;
+        }
+        let active = crate::maxent_splicing::active_model_status();
+        let active_fingerprint = active
+            .model
+            .as_ref()
+            .map(|model| model.snapshot().model_fingerprint_sha256.as_str());
+        report.model.resource_sha256.as_deref() != active_fingerprint
+    }
+
     pub(super) fn render_cryptic_splicing_screen_ui(
         &mut self,
         ui: &mut egui::Ui,
@@ -422,6 +594,12 @@ impl MainAreaDna {
             )
             .color(egui::Color32::from_rgb(71, 85, 105)),
         );
+        let active_maxent = crate::maxent_splicing::active_model_status();
+        let active_maxent_fingerprint = active_maxent
+            .model
+            .as_ref()
+            .map(|model| model.snapshot().model_fingerprint_sha256.clone());
+        let report_model_is_stale = self.cryptic_splicing_report_model_is_stale();
         ui.horizontal_wrapped(|ui| {
             if ui.button("Use full sequence").clicked() {
                 self.cryptic_splicing_start_1based = "1".to_string();
@@ -485,6 +663,48 @@ impl MainAreaDna {
                 .on_hover_text("Optional zero-based feature index used for CDS consequences");
                 ui.end_row();
 
+                ui.label("Splice-site model");
+                ui.checkbox(
+                    &mut self.cryptic_splicing_use_maxent,
+                    "use active MaxEnt snapshot",
+                )
+                .on_hover_text(
+                    "Optional user-supplied model scores and ranks structural candidates; it does not establish observed splicing.",
+                );
+                ui.label("Resource");
+                match (
+                    active_maxent_fingerprint.as_deref(),
+                    active_maxent.error.as_deref(),
+                ) {
+                    (Some(fingerprint), _) => {
+                        ui.label(format!("ready ({fingerprint})"))
+                            .on_hover_text(&active_maxent.path);
+                    }
+                    (None, Some(error)) => {
+                        ui.colored_label(egui::Color32::from_rgb(180, 83, 9), "invalid")
+                            .on_hover_text(format!("{}\n{}", active_maxent.path, error));
+                    }
+                    (None, None) => {
+                        ui.label("not installed")
+                            .on_hover_text(&active_maxent.path);
+                    }
+                }
+                ui.end_row();
+
+                if self.cryptic_splicing_use_maxent {
+                    ui.label("Expected fingerprint");
+                    ui.add(
+                        egui::TextEdit::singleline(
+                            &mut self.cryptic_splicing_expected_model_fingerprint,
+                        )
+                        .desired_width(300.0)
+                        .hint_text("optional sha256 content lock"),
+                    );
+                    ui.label("Binding");
+                    ui.label("fail scores closed on mismatch");
+                    ui.end_row();
+                }
+
                 ui.label("Insert span (optional)");
                 ui.add(
                     egui::TextEdit::singleline(&mut self.cryptic_splicing_insert_start_1based)
@@ -522,7 +742,7 @@ impl MainAreaDna {
             }
             if ui
                 .add_enabled(
-                    self.cryptic_splicing_report.is_some(),
+                    self.cryptic_splicing_report.is_some() && !report_model_is_stale,
                     egui::Button::new("Save JSON..."),
                 )
                 .clicked()
@@ -530,6 +750,69 @@ impl MainAreaDna {
                 self.export_cryptic_splicing_json_dialog();
             }
         });
+        egui::CollapsingHeader::new("Evidence overlays")
+            .default_open(false)
+            .show(ui, |ui| {
+                ui.label(
+                    "These joins remain separate evidence layers. They do not convert a structural candidate into an observed event.",
+                );
+                egui::Grid::new(("cryptic_splicing_evidence_inputs", id_namespace))
+                    .num_columns(4)
+                    .spacing([10.0, 5.0])
+                    .show(ui, |ui| {
+                        ui.label("RNA report ids");
+                        ui.add(
+                            egui::TextEdit::singleline(
+                                &mut self.cryptic_splicing_rna_report_ids,
+                            )
+                            .desired_width(300.0)
+                            .hint_text("comma-separated report ids"),
+                        );
+                        ui.label("Nearby bp");
+                        ui.add(
+                            egui::TextEdit::singleline(
+                                &mut self.cryptic_splicing_rna_nearby_tolerance_bp,
+                            )
+                            .desired_width(60.0),
+                        );
+                        ui.end_row();
+
+                        ui.label("UniProt projection id");
+                        ui.add(
+                            egui::TextEdit::singleline(
+                                &mut self.cryptic_splicing_uniprot_projection_id,
+                            )
+                            .desired_width(300.0),
+                        );
+                        ui.label("");
+                        ui.label("");
+                        ui.end_row();
+                    });
+                ui.horizontal_wrapped(|ui| {
+                    if ui
+                        .add_enabled(
+                            self.cryptic_splicing_task.is_none()
+                                && self.cryptic_splicing_report.is_some()
+                                && !report_model_is_stale,
+                            egui::Button::new("Join RNA evidence"),
+                        )
+                        .clicked()
+                    {
+                        self.start_cryptic_splicing_rna_overlay();
+                    }
+                    if ui
+                        .add_enabled(
+                            self.cryptic_splicing_task.is_none()
+                                && self.cryptic_splicing_report.is_some()
+                                && !report_model_is_stale,
+                            egui::Button::new("Project UniProt features"),
+                        )
+                        .clicked()
+                    {
+                        self.start_cryptic_splicing_protein_projection();
+                    }
+                });
+            });
         ui.horizontal_wrapped(|ui| {
             ui.label("SVG path");
             ui.add(
@@ -538,7 +821,7 @@ impl MainAreaDna {
             );
             if ui
                 .add_enabled(
-                    self.cryptic_splicing_report.is_some(),
+                    self.cryptic_splicing_report.is_some() && !report_model_is_stale,
                     egui::Button::new("Render SVG"),
                 )
                 .clicked()
@@ -586,9 +869,43 @@ impl MainAreaDna {
             }
         });
         ui.small(format!(
-            "Request {} | source {}",
-            report.request_sha256, report.source_digest
+            "Evaluated {} / admissible {} pair(s); reported {}; ranking {}",
+            report.budget.evaluated_pair_count,
+            report.budget.admissible_pair_count,
+            report.budget.reported_pair_count,
+            if report.budget.ranking_complete {
+                "complete"
+            } else {
+                "incomplete"
+            }
         ));
+        ui.small(format!(
+            "Request {} | effective input {} | source {}",
+            report.request_sha256, report.effective_input_sha256, report.source_digest
+        ));
+        if report.request.model_policy == CrypticSplicingModelPolicy::UseActiveMaxent
+            && report.model.status == CrypticSplicingModelStatus::Present
+            && report.model.resource_sha256.as_deref() != active_maxent_fingerprint.as_deref()
+        {
+            ui.colored_label(
+                egui::Color32::from_rgb(180, 83, 9),
+                "The active model changed after this report was computed; rerun before exporting or joining evidence.",
+            );
+        }
+        if let Some(overlay) = self.cryptic_splicing_evidence_overlay.as_ref() {
+            ui.small(format!(
+                "RNA overlay {} binds {} report(s) to screen {}",
+                overlay.report_id,
+                overlay.rna_report_bindings.len(),
+                overlay.screen_effective_input_sha256
+            ));
+        }
+        if let Some(projection) = self.cryptic_splicing_protein_projection.as_ref() {
+            ui.small(format!(
+                "UniProt projection {}: {}",
+                projection.uniprot_projection_id, projection.binding_note
+            ));
+        }
         if !report.warnings.is_empty() {
             egui::CollapsingHeader::new(format!("Warnings ({})", report.warnings.len()))
                 .default_open(true)
@@ -599,6 +916,24 @@ impl MainAreaDna {
                 });
         }
 
+        let mut rna_status_by_candidate = HashMap::new();
+        if let Some(overlay) = self.cryptic_splicing_evidence_overlay.as_ref()
+            && overlay.screen_effective_input_sha256 == report.effective_input_sha256
+        {
+            for candidate in &overlay.candidates {
+                rna_status_by_candidate.insert(candidate.candidate_id.as_str(), candidate.status);
+            }
+        }
+        let mut protein_status_by_candidate = HashMap::new();
+        if let Some(projection) = self.cryptic_splicing_protein_projection.as_ref()
+            && projection.screen_effective_input_sha256 == report.effective_input_sha256
+        {
+            for candidate in &projection.candidates {
+                protein_status_by_candidate
+                    .insert(candidate.candidate_id.as_str(), candidate.status);
+            }
+        }
+
         let row_height = 26.0;
         let available_height = (ui.available_height() - 20.0).clamp(160.0, 420.0);
         egui::ScrollArea::both()
@@ -607,7 +942,7 @@ impl MainAreaDna {
             .auto_shrink([false, false])
             .show_rows(ui, row_height, report.candidates.len() + 1, |ui, rows| {
                 egui::Grid::new(("cryptic_splicing_candidate_grid", id_namespace))
-                    .num_columns(8)
+                    .num_columns(10)
                     .striped(true)
                     .spacing([10.0, 4.0])
                     .show(ui, |ui| {
@@ -619,7 +954,9 @@ impl MainAreaDna {
                                 ui.strong("removed bp");
                                 ui.strong("branchpoint");
                                 ui.strong("PPT");
-                                ui.strong("model");
+                                ui.strong("MaxEnt donor / acceptor");
+                                ui.strong("RNA evidence");
+                                ui.strong("protein feature");
                                 ui.strong("CDS consequence");
                                 ui.end_row();
                                 continue;
@@ -637,7 +974,30 @@ impl MainAreaDna {
                             ui.label(Self::cryptic_splicing_signal_label(
                                 candidate.polypyrimidine_tract.status,
                             ));
-                            ui.label(Self::cryptic_splicing_model_label(candidate.model_status));
+                            ui.label(
+                                candidate
+                                    .donor_maxent_score
+                                    .zip(candidate.acceptor_maxent_score)
+                                    .map(|(donor, acceptor)| format!("{donor:.2} / {acceptor:.2}"))
+                                    .unwrap_or_else(|| {
+                                        Self::cryptic_splicing_model_label(candidate.model_status)
+                                            .to_string()
+                                    }),
+                            );
+                            ui.label(
+                                rna_status_by_candidate
+                                    .get(candidate.candidate_id.as_str())
+                                    .copied()
+                                    .map(Self::cryptic_splicing_rna_evidence_label)
+                                    .unwrap_or("not joined"),
+                            );
+                            ui.label(
+                                protein_status_by_candidate
+                                    .get(candidate.candidate_id.as_str())
+                                    .copied()
+                                    .map(Self::cryptic_splicing_protein_projection_label)
+                                    .unwrap_or("not projected"),
+                            );
                             ui.label(
                                 candidate
                                     .cds_consequence

@@ -112,6 +112,8 @@ fn cryptic_splicing_gui_builds_one_typed_source_request() {
     area.cryptic_splicing_min_intron_bp = "40".to_string();
     area.cryptic_splicing_max_intron_bp = "120".to_string();
     area.cryptic_splicing_max_candidates = "75".to_string();
+    area.cryptic_splicing_use_maxent = true;
+    area.cryptic_splicing_expected_model_fingerprint = "sha256:expected".to_string();
 
     let request = area
         .cryptic_splicing_request_from_controls()
@@ -131,6 +133,14 @@ fn cryptic_splicing_gui_builds_one_typed_source_request() {
         (40, 120)
     );
     assert_eq!(request.max_candidate_pairs, 75);
+    assert_eq!(
+        request.model_policy,
+        gentle_protocol::CrypticSplicingModelPolicy::UseActiveMaxent
+    );
+    assert_eq!(
+        request.expected_model_fingerprint_sha256.as_deref(),
+        Some("sha256:expected")
+    );
 }
 
 #[test]
@@ -171,8 +181,11 @@ fn cryptic_splicing_gui_worker_is_read_only_and_caches_content_identity() {
         .cryptic_splicing_cache_key
         .as_ref()
         .expect("content cache key");
-    assert_eq!(cache_key.request_sha256, report.request_sha256);
-    assert_eq!(cache_key.source_digest, report.source_digest);
+    assert_eq!(
+        cache_key.effective_input_sha256,
+        report.effective_input_sha256
+    );
+    assert!(report.op_id.is_some());
     assert_eq!(
         engine.read().expect("engine").mutation_revision(),
         revision_before
@@ -1155,6 +1168,9 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
 
     area.handle_imported_sequencing_trace_result(&OpResult {
         primer_group_target_design: None,
+        cryptic_splicing_screen: None,
+        cryptic_splicing_evidence_overlay: None,
+        cryptic_splicing_protein_projection: None,
         experimental_assay_handoff: None,
         op_id: "op-import-trace".to_string(),
         created_seq_ids: vec![],
@@ -5152,6 +5168,9 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
     area.handle_operation_success(
         super::OpResult {
             primer_group_target_design: None,
+            cryptic_splicing_screen: None,
+            cryptic_splicing_evidence_overlay: None,
+            cryptic_splicing_protein_projection: None,
             experimental_assay_handoff: None,
             op_id: "op-preview".to_string(),
             created_seq_ids: vec![],

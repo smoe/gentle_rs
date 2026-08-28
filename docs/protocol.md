@@ -3499,6 +3499,9 @@ Sequencing-trace evidence notes:
   - persists one `gentle.uniprot_genome_projection.v1` artifact with stable
     `projection_id`, upstream `seq_id`/`entry_id`, and stored `op_id` /
     `run_id` provenance for lineage/reopen paths
+  - newly generated projections also carry `source_sequence_sha256`; legacy
+    projections without it remain readable but cannot support authoritative
+    coordinate-bound cryptic-splicing feature joins
 - `GenerateCandidateSet { set_name, seq_id, length_bp, step_bp, feature_kinds[], feature_label_regex?, max_distance_bp?, feature_geometry_mode?, feature_boundary_mode?, feature_strand_relation?, limit? }`
 - `GenerateCandidateSetBetweenAnchors { set_name, seq_id, anchor_a, anchor_b, length_bp, step_bp, limit? }`
 - `DeleteCandidateSet { set_name }`
@@ -10993,41 +10996,81 @@ Dotplot + flexibility operation contract (implemented baseline):
 
 Splicing-reference derivation + pairwise alignment operation contract (implemented baseline):
 
-Cryptic-splicing structural screen (implemented):
+Cryptic-splicing inspection (implemented):
 
-- schema: `gentle.cryptic_splicing_screen.v1`
-- shell routes:
+- schemas:
+  - `gentle.cryptic_splicing_screen.v1`
+  - `gentle.cryptic_splicing_evidence_overlay.v1`
+  - `gentle.cryptic_splicing_protein_projection.v1`
+  - optional local model snapshot: `gentle.maxent_splice_model.v1`
+- portable operations:
+  - `InspectCrypticSplicingScreen`
+  - `RenderCrypticSplicingScreenSvg`
+  - `InspectCrypticSplicingEvidenceOverlay`
+  - `InspectCrypticSplicingProteinProjection`
+- shared-shell routes:
   - `splicing cryptic-screen REQUEST_JSON_OR_@FILE`
   - `splicing cryptic-render REQUEST_JSON_OR_@FILE OUTPUT.svg`
+  - `splicing cryptic-export REQUEST_JSON_OR_@FILE OUTPUT.json`
+  - `splicing cryptic-overlay REQUEST_JSON_OR_@FILE [--output OUTPUT.json]`
+  - `splicing cryptic-protein REQUEST_JSON_OR_@FILE [--output OUTPUT.json]`
 - `CrypticSplicingScreenRequest` identifies one source sequence, a 1-based
   inclusive non-wrapping span, and scan orientation. `insert_span` and
   `cds_feature_id` are optional annotations on that same source coordinate
   system; min/max pseudo-intron lengths and a materialized-candidate cap are
-  explicit inputs.
+  explicit inputs. `model_policy` defaults to `structural_only`; an optional
+  `expected_model_fingerprint_sha256` content-lock is valid only with
+  `use_active_maxent`.
 - `CrypticSplicingScreenView` records request and oriented-source digests,
+  an effective-input digest that also binds model status/fingerprint,
   coordinate convention, projected genomic provenance where available,
   donor/acceptor rows, deterministic candidate pairs, pair-budget/truncation
-  accounting, optional CDS consequences, model provenance, and warnings.
+  accounting, optional CDS consequences, operation/run identity, model
+  provenance, and warnings.
 - Evidence classes are not interchangeable:
   - `structural_candidate` means only that the bounded sequence has a compatible
     donor/acceptor configuration
   - `model_scored` requires an identified scoring model/resource
-  - `observed_junction` is reserved for RNA evidence and is not produced by the
-    v1 structural scan
+  - `observed_junction` is reserved for a separate RNA evidence overlay and is
+    not produced by the structural scan
 - The dependency-free v1 engine scans `GT...AG` pairs and reuses conservative
   branchpoint-like and polypyrimidine-tract heuristics. Windows too short for a
-  heuristic are `not_evaluable`, not negative. MaxEnt fields remain null with
-  `model.status = absent`; absence of an external model does not fail the
-  structural report.
-- Candidate enumeration is stable in oriented coordinate order. If admissible
-  pairs exceed `max_candidate_pairs`, the report preserves the full count,
-  materializes the deterministic prefix, and names the truncation rule.
+  heuristic are `not_evaluable`, not negative.
+- Optional MaxEntScan support is native Rust over user-supplied probability
+  tables. GENtle neither downloads nor redistributes those tables. Normalize a
+  reviewed local directory/ZIP with `resources sync-maxent`; `resources status`
+  exposes validation, source URL, retrieval date, redistribution status,
+  per-table hashes, and the effective model fingerprint. Missing, corrupt, or
+  fingerprint-mismatched resources retain a successful structural report with
+  absent/failed model evidence rather than dropping candidate rows.
+- Candidate enumeration is stable and budget-accounted. Structural-only scans
+  report a deterministic positional prefix when capped and set
+  `ranking_complete=false`. Model-scored scans evaluate the donor-plus-acceptor
+  prioritization heuristic for every admissible pair and retain a bounded,
+  deterministic global top-K; separate donor and acceptor scores remain
+  authoritative and the combined value is not a probability.
 - CDS projection reports removed coding bases, frame delta, first altered amino
   acid, predicted translated length, and native-stop removal when evaluable.
-  Protein-domain effects are intentionally not inferred without a separate
-  domain-mapping contract.
+  It remains annotation-bound; unannotated ORF inference is not performed.
+- `CrypticSplicingEvidenceOverlayReport` recomputes and embeds the exact screen,
+  then joins only RNA reports whose `seq_id`, full source-sequence SHA-256,
+  coordinate space, and coordinate convention match. It records each RNA
+  report's content hash and distinguishes exact, nearby,
+  `no_retained_junction_support`, and `not_assessable`. No retained row is not
+  evidence that an event is biologically absent. RNA junction boundaries are
+  stored in ascending loaded-sequence coordinates; overlay matching normalizes
+  candidate geometry before comparison, including reverse-strand candidates.
+  Legacy RNA reports without source binding remain viewable but
+  non-authoritative.
+- `CrypticSplicingProteinProjectionReport` is a separate annotation-evidence
+  layer over an existing UniProt genome projection. Sequence id and digest must
+  match; candidate removals may then be labelled as overlapping or not
+  overlapping projected protein features. This does not claim that splicing
+  occurs or that a protein feature is experimentally lost. Legacy unbound
+  projections are `not_assessable`.
 - Reports are computed on demand and are not persisted in project metadata.
-  The SVG renderer is a projection of the same typed report.
+  JSON/SVG files are explicit exports, and the SVG renderer is a projection of
+  the same typed screen report.
 
 - Splicing-reference derivation operation:
   - `DeriveSplicingReferences { seq_id, span_start_0based, span_end_0based, seed_feature_id?, scope?, output_prefix? }`
@@ -11605,6 +11648,10 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - report schema: `gentle.rna_read_report.v1`
   - metadata store schema: `gentle.rna_read_reports.v1`
   - metadata key: `rna_read_reports`
+  - newly generated reports carry `source_sequence_sha256`,
+    `coordinate_space=loaded_sequence_local`, and an explicit 1-based-inclusive
+    coordinate convention. Legacy reports remain readable, but evidence joins
+    that require exact coordinate identity mark them `not_assessable`
   - `rna-reads list-reports` summary rows include sparse-origin request
     provenance:
     - `origin_mode`

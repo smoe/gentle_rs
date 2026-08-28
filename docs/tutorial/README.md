@@ -123,6 +123,7 @@ Tutorial numbers now describe the topic group first and the learning position se
 
 - `07.01` [Batch-Compare cDNA FASTA.GZ Samples for One Target Gene (CLI Tutorial)](./07-01_rna_read_batch_gene_support_cli.md) - guided CLI; status `manual/hybrid`; review `unreviewed` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: Hands-on batch workflow for interpreting many gzipped cDNA FASTA files, aligning saved reports, and exporting one target-gene cohort sample sheet.
 - `07.02` [Map TP53 locus reads with multi-gene sparse indexing (online)](./generated/chapters/07-02_tp53_multi_gene_sparse_mapping_online.md) - executable reference; status `generated+checked/human-pending`; review `unreviewed` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.
+- `07.03` [Inspect Cryptic-Splicing Hypotheses Without Calling Them Events](./07-03_cryptic_splicing_evidence_cli_gui.md) - guided CLI/GUI; status `manual/hybrid`; review `codex_reviewed` - Codex 2026-08-27 - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: You want an offline walkthrough that keeps structural candidates, optional splice-model ranking, observed RNA junction evidence, and projected protein-feature context explicitly separate.
 
 ### Regulatory, TFBS & Reporter Design
 
