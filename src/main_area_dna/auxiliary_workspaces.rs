@@ -8553,13 +8553,29 @@ impl MainAreaDna {
                                 "{} transcript model(s) | {}",
                                 junction.annotation_model_count, junction.specificity_class
                             ));
-                            if ui
+                            let design_response = ui
                                 .button("Design junction assay")
                                 .on_hover_text(
                                     "Open the shared qPCR designer with junction-only specificity requested for this splicing context",
-                                )
-                                .clicked()
+                                );
+                            #[cfg(feature = "gui-test-support")]
                             {
+                                let subject_scope =
+                                    crate::gui_test_support::opaque_subject_scope(&[
+                                        &report.seq_id,
+                                        &report.panel_id,
+                                        &junction.junction_id,
+                                    ]);
+                                crate::gui_test_support::register_response(
+                                    &design_response,
+                                    "splicing.locus.assay_continuation",
+                                    "window.splicing_expert",
+                                    Some(&subject_scope),
+                                    crate::gui_test_support::GuiTestWidgetKind::Button,
+                                    false,
+                                );
+                            }
+                            if design_response.clicked() {
                                 design_junction = Some(junction.clone());
                             }
                         });
@@ -8600,6 +8616,11 @@ impl MainAreaDna {
         view: &SplicingExpertView,
     ) {
         crate::gentle_gui_profile_scope!("MainAreaDna::render_splicing_locus_evidence_tab");
+        #[cfg(feature = "gui-test-support")]
+        let semantic_scope = crate::gui_test_support::opaque_subject_scope(&[
+            &view.seq_id,
+            &view.target_feature_id.to_string(),
+        ]);
         ui.label(
             egui::RichText::new(
                 "Compose transcript architecture, occupancy, motif scores, probe effects, and validation assays through the shared gene-locus evidence contract.",
@@ -8615,8 +8636,28 @@ impl MainAreaDna {
                     .spacing([12.0, 5.0])
                     .show(ui, |ui| {
                         ui.label("Isoform panel");
-                        ui.text_edit_singleline(&mut self.splicing_isoform_evidence_panel_id);
-                        if ui.button("Use panel control").clicked() {
+                        let _panel_id =
+                            ui.text_edit_singleline(&mut self.splicing_isoform_evidence_panel_id);
+                        #[cfg(feature = "gui-test-support")]
+                        crate::gui_test_support::register_response(
+                            &_panel_id,
+                            "splicing.locus.panel_id",
+                            "window.splicing_expert",
+                            Some(&semantic_scope),
+                            crate::gui_test_support::GuiTestWidgetKind::TextInput,
+                            false,
+                        );
+                        let use_panel = ui.button("Use panel control");
+                        #[cfg(feature = "gui-test-support")]
+                        crate::gui_test_support::register_response(
+                            &use_panel,
+                            "splicing.locus.use_panel_control",
+                            "window.splicing_expert",
+                            Some(&semantic_scope),
+                            crate::gui_test_support::GuiTestWidgetKind::Button,
+                            false,
+                        );
+                        if use_panel.clicked() {
                             self.splicing_isoform_evidence_panel_id = self.isoform_panel_id.clone();
                         }
                         ui.end_row();
@@ -8765,7 +8806,17 @@ impl MainAreaDna {
         let mut export_json = false;
         let mut export_pdf = false;
         ui.horizontal_wrapped(|ui| {
-            compose = ui.button("Compose and preview").clicked();
+            let compose_response = ui.button("Compose and preview");
+            #[cfg(feature = "gui-test-support")]
+            crate::gui_test_support::register_response(
+                &compose_response,
+                "splicing.locus.compose",
+                "window.splicing_expert",
+                Some(&semantic_scope),
+                crate::gui_test_support::GuiTestWidgetKind::Button,
+                false,
+            );
+            compose = compose_response.clicked();
             if ui
                 .add_enabled(
                     self.splicing_locus_report.is_some(),
@@ -8778,18 +8829,34 @@ impl MainAreaDna {
                 ui.ctx().copy_text(json);
                 self.splicing_locus_status = "Copied locus report JSON".to_string();
             }
-            export_json = ui
-                .add_enabled(
-                    self.splicing_locus_report.is_some(),
-                    egui::Button::new("Save JSON..."),
-                )
-                .clicked();
-            export_pdf = ui
-                .add_enabled(
-                    self.splicing_locus_report.is_some(),
-                    egui::Button::new("Save PDF..."),
-                )
-                .clicked();
+            let export_json_response = ui.add_enabled(
+                self.splicing_locus_report.is_some(),
+                egui::Button::new("Save JSON..."),
+            );
+            #[cfg(feature = "gui-test-support")]
+            crate::gui_test_support::register_response(
+                &export_json_response,
+                "splicing.locus.export_json",
+                "window.splicing_expert",
+                Some(&semantic_scope),
+                crate::gui_test_support::GuiTestWidgetKind::Button,
+                false,
+            );
+            export_json = export_json_response.clicked();
+            let export_pdf_response = ui.add_enabled(
+                self.splicing_locus_report.is_some(),
+                egui::Button::new("Save PDF..."),
+            );
+            #[cfg(feature = "gui-test-support")]
+            crate::gui_test_support::register_response(
+                &export_pdf_response,
+                "splicing.locus.export_pdf",
+                "window.splicing_expert",
+                Some(&semantic_scope),
+                crate::gui_test_support::GuiTestWidgetKind::Button,
+                false,
+            );
+            export_pdf = export_pdf_response.clicked();
         });
         ui.horizontal_wrapped(|ui| {
             ui.label("SVG path");
@@ -8802,7 +8869,17 @@ impl MainAreaDna {
             {
                 self.splicing_locus_svg_path = path.to_string_lossy().to_string();
             }
-            render_svg = ui.button("Render SVG").clicked();
+            let render_svg_response = ui.button("Render SVG");
+            #[cfg(feature = "gui-test-support")]
+            crate::gui_test_support::register_response(
+                &render_svg_response,
+                "splicing.locus.export_svg",
+                "window.splicing_expert",
+                Some(&semantic_scope),
+                crate::gui_test_support::GuiTestWidgetKind::Button,
+                false,
+            );
+            render_svg = render_svg_response.clicked();
         });
         if compose {
             self.inspect_splicing_locus_evidence();
@@ -8820,10 +8897,19 @@ impl MainAreaDna {
             self.export_splicing_locus_pdf_dialog();
         }
         if !self.splicing_locus_status.is_empty() {
-            ui.label(
+            let _status_response = ui.label(
                 egui::RichText::new(&self.splicing_locus_status)
                     .size(10.0)
                     .color(egui::Color32::from_rgb(51, 65, 85)),
+            );
+            #[cfg(feature = "gui-test-support")]
+            crate::gui_test_support::register_response(
+                &_status_response,
+                "splicing.locus.status",
+                "window.splicing_expert",
+                Some(&semantic_scope),
+                crate::gui_test_support::GuiTestWidgetKind::Status,
+                false,
             );
         }
         ui.separator();

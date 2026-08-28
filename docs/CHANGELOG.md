@@ -1,5 +1,13 @@
 # GENtle Changelog
 
+- Added feature-gated, privacy-safe semantic GUI acceptance metadata for the
+  bounded TP73/PATZ1 release path. Native harnesses can locate main/DNA,
+  Splicing Expert, and Agent Assistant controls by stable dotted purpose IDs,
+  opaque domain-row scopes, post-layout logical rectangles, state, and frame
+  generation without translated labels or fixed coordinates. The opt-in JSON
+  snapshot is read-only and provides no listener, input injection, command
+  execution, or screenshot-consent bypass.
+
 - Added a dependency-free, engine-owned cryptic-splicing structural screen for
   loaded sequence spans. The new `gentle.cryptic_splicing_screen.v1` report
   keeps GT-AG structural candidates, optional splice-model scores, observed

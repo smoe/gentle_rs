@@ -2819,11 +2819,25 @@ impl GENtleApp {
                                         });
                                     }
                                     LineageNodeKind::Sequence => {
-                                        if ui
+                                        let open_response = ui
                                             .button(&row.seq_id)
-                                            .on_hover_text("Open this sequence in a dedicated window")
-                                            .clicked()
+                                            .on_hover_text("Open this sequence in a dedicated window");
+                                        #[cfg(feature = "gui-test-support")]
                                         {
+                                            let subject_scope =
+                                                crate::gui_test_support::opaque_subject_scope(&[
+                                                    &row.seq_id,
+                                                ]);
+                                            crate::gui_test_support::register_response(
+                                                &open_response,
+                                                "main.project.sequence.open",
+                                                "window.main",
+                                                Some(&subject_scope),
+                                                crate::gui_test_support::GuiTestWidgetKind::Button,
+                                                false,
+                                            );
+                                        }
+                                        if open_response.clicked() {
                                             open_seq = Some(row.seq_id.clone());
                                         }
                                     }

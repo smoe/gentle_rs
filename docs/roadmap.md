@@ -302,8 +302,9 @@ wet-lab conclusions or unconfirmed mutations.
 - Replace whole-transcriptome FASTA materialization in UniProt linked-transcript
   inventory construction with indexed/streaming retrieval, and expose bounded
   progress during large specificity finalization joins.
-- Add stable semantic GUI test identifiers so acceptance automation can target
-  windows, controls, rows, and state transitions without screen coordinates.
+- Extend the feature-gated semantic GUI test identifier registry beyond the
+  bounded TP73/PATZ1 DNA-viewer, Splicing Expert, and Agent Assistant release
+  controls as additional native acceptance stories require it.
 - Pilot the context-labelled tutorial-action graph over one existing tutorial:
   canonical capability references, semantic context labels, outcome roles, and
   GUI/CLI/agent projections first; forward skill activation and inverse

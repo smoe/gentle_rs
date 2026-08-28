@@ -91,6 +91,7 @@ default = ["screenshot-capture"]
 screenshot-capture = ["dep:screencapturekit"]
 gui-profiler = ["dep:puffin", "dep:puffin_http"]
 benchmark-support = []
+gui-test-support = []
 snapshot-tests = ["gentle-render/snapshot-tests"]
 js-interface = [
     "dep:deno_core",

@@ -567,15 +567,32 @@ impl GENtleApp {
             }
             ui.small(self.tr("agent.screenshot_request.preview_notice"));
             ui.horizontal(|ui| {
-                allow_clicked = ui
-                    .add_enabled(
-                        can_allow,
-                        egui::Button::new(self.tr("agent.screenshot_request.allow_once")),
-                    )
-                    .clicked();
-                decline_clicked = ui
-                    .button(self.tr("agent.screenshot_request.decline"))
-                    .clicked();
+                let allow_response = ui.add_enabled(
+                    can_allow,
+                    egui::Button::new(self.tr("agent.screenshot_request.allow_once")),
+                );
+                let decline_response = ui.button(self.tr("agent.screenshot_request.decline"));
+                #[cfg(feature = "gui-test-support")]
+                {
+                    crate::gui_test_support::register_response(
+                        &allow_response,
+                        "agent.screenshot.allow_once",
+                        "window.agent_assistant",
+                        None,
+                        crate::gui_test_support::GuiTestWidgetKind::Button,
+                        false,
+                    );
+                    crate::gui_test_support::register_response(
+                        &decline_response,
+                        "agent.screenshot.decline",
+                        "window.agent_assistant",
+                        None,
+                        crate::gui_test_support::GuiTestWidgetKind::Button,
+                        false,
+                    );
+                }
+                allow_clicked = allow_response.clicked();
+                decline_clicked = decline_response.clicked();
             });
         });
 
@@ -642,13 +659,21 @@ impl GENtleApp {
                         "The selected agent system does not support image attachments. Choose an image-capable system or remove the screenshot.",
                     );
                 }
-                if ui
+                let remove_response = ui
                     .add_enabled(
                         self.agent_task.is_none(),
                         egui::Button::new("Remove screenshot"),
-                    )
-                    .clicked()
-                {
+                    );
+                #[cfg(feature = "gui-test-support")]
+                crate::gui_test_support::register_response(
+                    &remove_response,
+                    "agent.screenshot.remove",
+                    "window.agent_assistant",
+                    None,
+                    crate::gui_test_support::GuiTestWidgetKind::Button,
+                    false,
+                );
+                if remove_response.clicked() {
                     self.agent_pending_image_attachment = None;
                     self.agent_status = "Pending screenshot removed".to_string();
                 }
@@ -5218,6 +5243,23 @@ impl GENtleApp {
     }
 
     pub(super) fn render_agent_assistant_contents(&mut self, ui: &mut Ui) -> bool {
+        #[cfg(feature = "gui-test-support")]
+        crate::gui_test_support::register_rect(
+            ui.ctx().clone(),
+            "window.agent_assistant",
+            "window.agent_assistant",
+            None,
+            crate::gui_test_support::GuiTestWidgetKind::Window,
+            ui.max_rect(),
+            true,
+            true,
+            true,
+            Some(if self.agent_task.is_some() {
+                "running"
+            } else {
+                "ready"
+            }),
+        );
         self.refresh_agent_system_catalog();
         let mut close_requested = false;
         let close_hover = Self::specialist_window_close_hover_text("Agent Assistant");
@@ -5538,11 +5580,19 @@ impl GENtleApp {
             } else {
                 "Send prompt to selected agent system (Command/Ctrl+Return)"
             };
-            if ui
+            let ask_response = ui
                 .add_enabled(can_submit_prompt, egui::Button::new(ask_button_text))
-                .on_hover_text(ask_hover_text)
-                .clicked()
-            {
+                .on_hover_text(ask_hover_text);
+            #[cfg(feature = "gui-test-support")]
+            crate::gui_test_support::register_response(
+                &ask_response,
+                "agent.ask",
+                "window.agent_assistant",
+                None,
+                crate::gui_test_support::GuiTestWidgetKind::Button,
+                false,
+            );
+            if ask_response.clicked() {
                 if let Some(command) = direct_prompt_command.as_deref() {
                     self.execute_agent_prompt_command(command);
                 } else {

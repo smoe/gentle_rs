@@ -4164,6 +4164,28 @@ impl MainAreaDna {
     /// root panels before delegating into the specialized render helpers below.
     pub fn render(&mut self, ctx: &egui::Context) {
         crate::gentle_gui_profile_scope!("MainAreaDna::render");
+        #[cfg(feature = "gui-test-support")]
+        {
+            let subject_scope = crate::gui_test_support::opaque_subject_scope(&[self
+                .seq_id
+                .as_deref()
+                .unwrap_or("unnamed")]);
+            crate::gui_test_support::register_rect(
+                ctx.clone(),
+                "window.dna_viewer",
+                "window.dna_viewer",
+                Some(&subject_scope),
+                crate::gui_test_support::GuiTestWidgetKind::Window,
+                ctx.content_rect(),
+                true,
+                true,
+                true,
+                Some("ready"),
+            );
+            if self.feature_tree_deferred_until_interaction {
+                crate::gui_test_support::mark_unsettled(ctx);
+            }
+        }
         self.prefill_container_ids();
         self.poll_tfbs_task(ctx);
         self.poll_primer_design_task(ctx);
@@ -5342,6 +5364,20 @@ impl MainAreaDna {
                 .on_hover_text(format!(
                     "Show or hide rmsk/RepeatMasker repeat features ({repeat_count} in current view)"
                 ));
+            #[cfg(feature = "gui-test-support")]
+            {
+                let subject_scope = crate::gui_test_support::opaque_subject_scope(&[
+                    self.seq_id.as_deref().unwrap_or("unnamed"),
+                ]);
+                crate::gui_test_support::register_response(
+                    &repeat_response,
+                    "dna.display.repeats",
+                    "window.dna_viewer",
+                    Some(&subject_scope),
+                    crate::gui_test_support::GuiTestWidgetKind::Checkbox,
+                    repeat_active,
+                );
+            }
             if repeat_response.clicked() {
                 let visible = {
                     let display = self.dna_display.read().expect("DNA display lock poisoned");
@@ -5372,6 +5408,20 @@ impl MainAreaDna {
                         "Show or hide genome-projected microarray contrast features ({array_count} in the current view; {array_total_count} on the full sequence)"
                     ))
             };
+            #[cfg(feature = "gui-test-support")]
+            {
+                let subject_scope = crate::gui_test_support::opaque_subject_scope(&[
+                    self.seq_id.as_deref().unwrap_or("unnamed"),
+                ]);
+                crate::gui_test_support::register_response(
+                    &array_response,
+                    "dna.display.arrays",
+                    "window.dna_viewer",
+                    Some(&subject_scope),
+                    crate::gui_test_support::GuiTestWidgetKind::Checkbox,
+                    array_active,
+                );
+            }
             if array_response.clicked() {
                 if array_total_count == 0 {
                     self.open_array_setup();
@@ -5504,6 +5554,20 @@ impl MainAreaDna {
                 .on_hover_text(format!(
                     "Show or hide computed TFBS features ({tfbs_count} in current view)"
                 ));
+            #[cfg(feature = "gui-test-support")]
+            {
+                let subject_scope = crate::gui_test_support::opaque_subject_scope(&[
+                    self.seq_id.as_deref().unwrap_or("unnamed"),
+                ]);
+                crate::gui_test_support::register_response(
+                    &response,
+                    "dna.display.tfbs",
+                    "window.dna_viewer",
+                    Some(&subject_scope),
+                    crate::gui_test_support::GuiTestWidgetKind::Checkbox,
+                    tfbs_active,
+                );
+            }
             if response.clicked() {
                 let visible = {
                     let display = self.dna_display.read().expect("DNA display lock poisoned");
@@ -18786,20 +18850,47 @@ impl MainAreaDna {
         id_namespace: &str,
         pending_initial_render: bool,
     ) {
+        #[cfg(feature = "gui-test-support")]
+        {
+            let subject_scope = crate::gui_test_support::opaque_subject_scope(&[
+                &view.seq_id,
+                &view.target_feature_id.to_string(),
+            ]);
+            crate::gui_test_support::register_rect(
+                ui.ctx().clone(),
+                "window.splicing_expert",
+                "window.splicing_expert",
+                Some(&subject_scope),
+                crate::gui_test_support::GuiTestWidgetKind::Window,
+                ui.max_rect(),
+                true,
+                true,
+                true,
+                Some(if pending_initial_render {
+                    "loading"
+                } else {
+                    "ready"
+                }),
+            );
+        }
+        #[cfg(feature = "gui-test-support")]
+        if pending_initial_render {
+            crate::gui_test_support::mark_unsettled(ui.ctx());
+        }
         crate::agent_help::render_agent_help_button(ui, Self::splicing_expert_window_title(view));
         ui.separator();
         ui.horizontal(|ui| {
-            ui.selectable_value(
+            let _structure = ui.selectable_value(
                 &mut self.splicing_expert_tab,
                 SplicingExpertTab::Structure,
                 "Structure",
             );
-            ui.selectable_value(
+            let _evidence = ui.selectable_value(
                 &mut self.splicing_expert_tab,
                 SplicingExpertTab::Evidence,
                 "Evidence",
             );
-            ui.selectable_value(
+            let _locus = ui.selectable_value(
                 &mut self.splicing_expert_tab,
                 SplicingExpertTab::LocusFigure,
                 "Locus figure",
@@ -18809,6 +18900,39 @@ impl MainAreaDna {
                 SplicingExpertTab::CrypticScreen,
                 "Cryptic screen",
             );
+            #[cfg(feature = "gui-test-support")]
+            {
+                let subject_scope = crate::gui_test_support::opaque_subject_scope(&[
+                    &view.seq_id,
+                    &view.target_feature_id.to_string(),
+                ]);
+                for (response, semantic_id, selected) in [
+                    (
+                        &_structure,
+                        "splicing.tab.structure",
+                        self.splicing_expert_tab == SplicingExpertTab::Structure,
+                    ),
+                    (
+                        &_evidence,
+                        "splicing.tab.evidence",
+                        self.splicing_expert_tab == SplicingExpertTab::Evidence,
+                    ),
+                    (
+                        &_locus,
+                        "splicing.tab.locus_figure",
+                        self.splicing_expert_tab == SplicingExpertTab::LocusFigure,
+                    ),
+                ] {
+                    crate::gui_test_support::register_response(
+                        response,
+                        semantic_id,
+                        "window.splicing_expert",
+                        Some(&subject_scope),
+                        crate::gui_test_support::GuiTestWidgetKind::Tab,
+                        selected,
+                    );
+                }
+            }
         });
         ui.separator();
         if self.splicing_expert_tab == SplicingExpertTab::Evidence {
@@ -26292,13 +26416,27 @@ impl MainAreaDna {
                                         ui.small(
                                             "This annotation-rich document stays responsive until you load the feature browser.",
                                         );
-                                        if ui
+                                        let load_response = ui
                                             .button("Load feature tree/details")
                                             .on_hover_text(
                                                 "Build the complete grouped feature browser for this sequence",
-                                            )
-                                            .clicked()
+                                            );
+                                        #[cfg(feature = "gui-test-support")]
                                         {
+                                            let subject_scope =
+                                                crate::gui_test_support::opaque_subject_scope(&[
+                                                self.seq_id.as_deref().unwrap_or("unnamed"),
+                                            ]);
+                                            crate::gui_test_support::register_response(
+                                                &load_response,
+                                                "dna.feature_tree.load",
+                                                "window.dna_viewer",
+                                                Some(&subject_scope),
+                                                crate::gui_test_support::GuiTestWidgetKind::Button,
+                                                false,
+                                            );
+                                        }
+                                        if load_response.clicked() {
                                             load_requested = true;
                                         }
                                     } else {
@@ -26398,6 +26536,21 @@ impl MainAreaDna {
                                     )),
                                     egui::Sense::click_and_drag(),
                                 );
+                                #[cfg(feature = "gui-test-support")]
+                                {
+                                    let subject_scope =
+                                        crate::gui_test_support::opaque_subject_scope(&[
+                                            self.seq_id.as_deref().unwrap_or("unnamed"),
+                                        ]);
+                                    crate::gui_test_support::register_response(
+                                        &split_response,
+                                        "dna.splitter.info_height",
+                                        "window.dna_viewer",
+                                        Some(&subject_scope),
+                                        crate::gui_test_support::GuiTestWidgetKind::Splitter,
+                                        false,
+                                    );
+                                }
                                 let split_color = if split_response.dragged() {
                                     egui::Color32::from_rgb(40, 140, 210)
                                 } else if split_response.hovered() {
@@ -26460,6 +26613,20 @@ impl MainAreaDna {
                     )),
                     egui::Sense::click_and_drag(),
                 );
+                #[cfg(feature = "gui-test-support")]
+                {
+                    let subject_scope = crate::gui_test_support::opaque_subject_scope(&[
+                        self.seq_id.as_deref().unwrap_or("unnamed"),
+                    ]);
+                    crate::gui_test_support::register_response(
+                        &split_response,
+                        "dna.splitter.info_width",
+                        "window.dna_viewer",
+                        Some(&subject_scope),
+                        crate::gui_test_support::GuiTestWidgetKind::Splitter,
+                        false,
+                    );
+                }
                 let split_color = if split_response.dragged() {
                     egui::Color32::from_rgb(40, 140, 210)
                 } else if split_response.hovered() {

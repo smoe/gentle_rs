@@ -1989,6 +1989,21 @@ impl MainAreaDna {
                         .desired_width(220.0),
                 )
                 .on_hover_text(Self::feature_tree_filter_help_text());
+            #[cfg(feature = "gui-test-support")]
+            {
+                let subject_scope = crate::gui_test_support::opaque_subject_scope(&[self
+                    .seq_id
+                    .as_deref()
+                    .unwrap_or("unnamed")]);
+                crate::gui_test_support::register_response(
+                    &response,
+                    "dna.feature_tree.filter",
+                    "window.dna_viewer",
+                    Some(&subject_scope),
+                    crate::gui_test_support::GuiTestWidgetKind::TextInput,
+                    false,
+                );
+            }
             if response.changed() {
                 self.pending_feature_tree_scroll_to = None;
                 self.save_engine_ops_state();
@@ -2196,6 +2211,29 @@ impl MainAreaDna {
                                 if !hover_lines.is_empty() {
                                     response = response.on_hover_text(hover_lines.join("\n"));
                                 }
+                                #[cfg(feature = "gui-test-support")]
+                                {
+                                    let feature_identity = self
+                                        .dna
+                                        .read()
+                                        .ok()
+                                        .and_then(|dna| dna.features().get(entry.id).cloned())
+                                        .and_then(|feature| serde_json::to_string(&feature).ok())
+                                        .unwrap_or_else(|| format!("missing-feature-{}", entry.id));
+                                    let subject_scope =
+                                        crate::gui_test_support::opaque_subject_scope(&[
+                                            self.seq_id.as_deref().unwrap_or("unnamed"),
+                                            &feature_identity,
+                                        ]);
+                                    crate::gui_test_support::register_response(
+                                        &response,
+                                        "dna.feature_tree.row",
+                                        "window.dna_viewer",
+                                        Some(&subject_scope),
+                                        crate::gui_test_support::GuiTestWidgetKind::Row,
+                                        selected,
+                                    );
+                                }
                                 if selected && self.pending_feature_tree_scroll_to == Some(entry.id) {
                                     response.scroll_to_me(Some(egui::Align::Center));
                                     self.pending_feature_tree_scroll_to = None;
@@ -2295,11 +2333,41 @@ impl MainAreaDna {
                                         FeatureCopyPayloadKind::Description,
                                         FeatureCopyPayloadKind::PopupText,
                                     ] {
-                                        if ui
+                                        let copy_response = ui
                                             .button(kind.menu_label())
-                                            .on_hover_text(kind.hover_text())
-                                            .clicked()
-                                        {
+                                            .on_hover_text(kind.hover_text());
+                                        #[cfg(feature = "gui-test-support")]
+                                        if matches!(
+                                            kind,
+                                            FeatureCopyPayloadKind::Identifier
+                                                | FeatureCopyPayloadKind::Description
+                                        ) {
+                                            let semantic_id = match kind {
+                                                FeatureCopyPayloadKind::Identifier => {
+                                                    "dna.feature_details.copy_id"
+                                                }
+                                                FeatureCopyPayloadKind::Description => {
+                                                    "dna.feature_details.copy_details"
+                                                }
+                                                FeatureCopyPayloadKind::PopupText => unreachable!(),
+                                            };
+                                            crate::gui_test_support::register_response(
+                                                &copy_response,
+                                                semantic_id,
+                                                "window.dna_viewer",
+                                                Some(&crate::gui_test_support::opaque_subject_scope(
+                                                    &[
+                                                        self.seq_id
+                                                            .as_deref()
+                                                            .unwrap_or("unnamed"),
+                                                        &entry.id.to_string(),
+                                                    ],
+                                                )),
+                                                crate::gui_test_support::GuiTestWidgetKind::Button,
+                                                false,
+                                            );
+                                        }
+                                        if copy_response.clicked() {
                                             copy_feature_payload = Some((entry.id, kind));
                                             ui.close();
                                             return;
