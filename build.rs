@@ -115,10 +115,8 @@ fn explicit_git_commit(name: &str) -> Option<String> {
 }
 
 fn emit_git_rerun_paths(manifest_dir: &Path) {
-    for git_path in ["HEAD", "packed-refs"] {
-        if let Some(path) = git_stdout(manifest_dir, &["rev-parse", "--git-path", git_path]) {
-            println!("cargo:rerun-if-changed={path}");
-        }
+    if let Some(path) = git_stdout(manifest_dir, &["rev-parse", "--git-path", "HEAD"]) {
+        println!("cargo:rerun-if-changed={path}");
     }
     if let Some(branch_ref) = git_stdout(manifest_dir, &["symbolic-ref", "--quiet", "HEAD"])
         && let Some(path) = git_stdout(
@@ -127,6 +125,20 @@ fn emit_git_rerun_paths(manifest_dir: &Path) {
         )
     {
         println!("cargo:rerun-if-changed={path}");
+        let branch_path = PathBuf::from(&path);
+        let branch_path = if branch_path.is_absolute() {
+            branch_path
+        } else {
+            manifest_dir.join(branch_path)
+        };
+        if !branch_path.exists()
+            && let Some(packed_refs) =
+                git_stdout(manifest_dir, &["rev-parse", "--git-path", "packed-refs"])
+        {
+            // A loose ref supersedes packed-refs. Watching the repository-wide
+            // file in that common case invalidates unrelated worktrees.
+            println!("cargo:rerun-if-changed={packed_refs}");
+        }
     }
 }
 

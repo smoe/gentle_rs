@@ -748,3 +748,9 @@ project state, window creation, repaint and resize behavior, and profiler
 evidence where needed. Shared CI runners may compile or smoke benchmark targets
 but do not establish strict timing gates without repeated stable-host evidence
 and an auditor-approved threshold.
+
+Routine thin-LTO, unwind-panic audit binaries and exact release-like fat-LTO,
+abort-panic audit binaries are distinct evidence classes. Baselines are
+comparable only when profile, host, toolchain, fixture hash, and GENtle revision
+match; retained metadata and baseline labels must identify the profile
+explicitly.

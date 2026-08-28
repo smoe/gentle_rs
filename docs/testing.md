@@ -221,8 +221,25 @@ UI-thread hydration boundary, and first and steady embedded egui frames over a
 feature-free control and the public TP73 locus:
 
 ```bash
-cargo bench --bench gui_operations --features benchmark-support
+cargo bench --profile bench-audit --bench gui_operations \
+  --features benchmark-support -- --quick --noplot
 ```
+
+`bench-audit` keeps the release profile's `opt-level=3` and stripping, but uses
+thin LTO, 16 codegen units, and `panic=unwind` for practical routine audits.
+Cargo forces unwind for benchmark targets regardless of the release panic
+setting; using it throughout this custom profile prevents the binary targets
+built with an integration benchmark from requiring a second root-library panic
+variant. Plain `cargo bench --bench gui_operations ...` remains the exact
+release-like fat-LTO, one-codegen-unit, abort-panic mode. The two modes
+characterize different binaries and their results must never be compared.
+Cold routine builds may remain expensive because Cargo automatically prepares
+enabled binary targets for integration benchmarks and each keeps a Thin-LTO
+link step. The custom profile is intended to bound that pressure and support
+cacheable repeated audits, not to promise a short first build. Build metadata
+tracks the current loose Git branch ref; repository-wide `packed-refs` is only
+tracked as a fallback so unrelated worktree maintenance does not discard the
+audit cache.
 
 Implementation-side verification stops at the non-statistical smoke path:
 
@@ -243,18 +260,23 @@ The secondary target covers complete-query BLAST HSP parsing and
 primer-specificity interpretation at 100, 1,000, and 6,600 total rows:
 
 ```bash
-cargo bench --bench specificity_finalization --features benchmark-support
+cargo bench --profile bench-audit --bench specificity_finalization \
+  --features benchmark-support -- --quick --noplot
 ```
 
 The benchmark constructs its synthetic input outside timed loops, verifies the
 expected hit, pairing, intended-product, and off-target counts once, reports
 throughput in HSP rows, and includes a fixture SHA-256 token in every benchmark
-ID. It launches no BLAST process and reads no real reference dataset. Criterion
-results should only be compared for the same runner, toolchain, fixture hash,
-and optimized profile. Pull-request CI may compile or smoke the targets, but
-strict timing thresholds belong to repeated external-auditor runs on a stable
-host after several baselines exist. The exact commands and retained evidence
-are documented in [`../benches/README.md`](../benches/README.md).
+ID. It launches no BLAST process and reads no real reference dataset. Cargo
+separates compiled custom-profile artifacts under `target/bench-audit/`, but
+Criterion otherwise shares `target/criterion/` across profiles. Retained audit
+runs therefore set `CRITERION_HOME` to the matching profile directory and put
+the profile name in every baseline label. Results should only be compared when
+runner, toolchain, fixture hash, GENtle revision, and optimized profile all
+match. Pull-request CI may compile or smoke the targets, but strict timing
+thresholds belong to repeated external-auditor runs on a stable host after
+several baselines exist. Exact commands and retained evidence are documented
+in [`../benches/README.md`](../benches/README.md).
 
 Full Ensembl FASTA retrieval, peak RSS, real BLAST/Primer3 execution, GUI frame
 behavior, and Xvfb/macOS acceptance remain system-level measurements rather

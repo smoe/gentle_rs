@@ -1,9 +1,10 @@
 # GENtle Roadmap
 
-Last session: 2026-08-27 - generalized promoter-reporter planning with local
-motif/interval anchors, first-exon-aware TSS classes, strand-aware flank
-geometry, and typed overlength rejection; copied-state IRF9 acceptance and
-manual GUI smoke for unreleased `v0.1.0-internal.10` remain before the tag
+Last session: 2026-08-28 - added a release-derived thin-LTO `bench-audit`
+profile with a unified unwind panic strategy for practical external performance
+sampling, plus worktree-local Git build invalidation, while preserving exact
+fat-LTO `cargo bench`; copied-state IRF9 acceptance and manual GUI smoke for
+unreleased `v0.1.0-internal.10` remain before the tag
 
 Purpose: fast session orientation. This file answers "what next?" and should be
 readable in under two minutes. Completed work belongs in

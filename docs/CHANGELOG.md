@@ -35,6 +35,17 @@
   snapshot is read-only and provides no listener, input injection, command
   execution, or screenshot-consent bypass.
 
+- Added a dedicated `bench-audit` Cargo profile for practical external
+  Criterion sampling. It preserves release `opt-level=3` and stripping while
+  using thin LTO, 16 codegen units, and the unwind panic strategy Cargo already
+  requires for benchmark targets, avoiding a second root-library panic variant
+  for integration-benchmark binary preparation. Plain `cargo bench` remains
+  the exact release-like fat-LTO mode. Audit documentation keeps profile result
+  trees and labels separate and forbids cross-profile baseline comparisons.
+  Build revision tracking now watches repository-wide `packed-refs` only when
+  the active branch has no loose ref, avoiding expensive audit-cache misses
+  caused by unrelated Git maintenance in another worktree.
+
 - Added a dependency-free, engine-owned cryptic-splicing structural screen for
   loaded sequence spans. The new `gentle.cryptic_splicing_screen.v1` report
   keeps GT-AG structural candidates, optional splice-model scores, observed
