@@ -1,10 +1,9 @@
 # GENtle Roadmap
 
-Last session: 2026-08-28 - completed the motif-anchored promoter-reporter panel
-arc through digest-gated shared operations, CLI/shell/introspection parity,
-thin Promoter design GUI review, exact product/manifest tests, and an offline
-synthetic tutorial; copied-state IRF9 acceptance and manual GUI smoke for
-unreleased `v0.1.0-internal.10` remain before the tag
+Last session: 2026-08-29 - completed transcript-bound extended-to-CDS-start
+promoter-reporter fragments with typed spliced-5'-UTR warnings; copied-state
+IRF9 acceptance and manual GUI smoke for unreleased `v0.1.0-internal.10`
+remain before the tag
 
 Purpose: fast session orientation. This file answers "what next?" and should be
 readable in under two minutes. Completed work belongs in

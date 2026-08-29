@@ -7244,6 +7244,29 @@ count exceeding the combined vector-plus-insert count is flagged for review.
 The proposal binds those results and every source/state hash under
 `proposal_digest`.
 
+Core members retain the ranked candidate's fragment geometry. An extended
+member must explicitly bind one annotated transcript and the canonical CDS
+start-codon boundary:
+
+```json
+{
+  "candidate_set_path": "tgfb1_candidates.json",
+  "candidate_id": "tgfb1_core",
+  "fragment_role": "extended",
+  "extended_boundary": {
+    "kind": "canonical_cds_start_codon",
+    "transcript_id": "ENST00000221930"
+  },
+  "label": "TGFB1 extended"
+}
+```
+
+GENtle derives the strand-aware genomic endpoint from that transcript's CDS
+annotation. The proposal's `extended_boundary_audit` exposes the exact codon
+coordinates, spliced 5'-UTR exon ranges, and typed upstream-ATG, uORF, and
+5'-UTR-intron warnings. Missing, duplicate, strand-mismatched, or CDS-free
+annotations fail instead of falling back to an inferred genomic ATG.
+
 After reviewing the proposal, materialize only that exact digest:
 
 ```bash

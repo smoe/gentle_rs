@@ -35,9 +35,253 @@ struct PromoterReporterPanelResolvedMember {
     motif_forward_strand: bool,
     wild_type_seq_id: String,
     mutant_seq_id: String,
+    extended_boundary_audit: Option<PromoterReporterPanelExtendedBoundaryAudit>,
 }
 
 impl GentleEngine {
+    fn promoter_reporter_panel_extended_geometry(
+        source: &DNAsequence,
+        candidate: &PromoterReporterFragmentCandidate,
+        policy: &PromoterReporterPanelExtendedBoundaryPolicy,
+    ) -> Result<(usize, usize, PromoterReporterPanelExtendedBoundaryAudit), EngineError> {
+        let transcript_id = policy.transcript_id.trim();
+        if transcript_id.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Extended promoter fragments require a non-empty transcript_id"
+                    .to_string(),
+                cause_chain: vec![],
+            });
+        }
+        let transcript_matches = source
+            .features()
+            .iter()
+            .filter(|feature| Self::is_mrna_feature(feature))
+            .filter(|feature| {
+                feature
+                    .qualifier_values("transcript_id")
+                    .any(|value| value.trim().eq_ignore_ascii_case(transcript_id))
+            })
+            .collect::<Vec<_>>();
+        if transcript_matches.len() != 1 {
+            return Err(EngineError {
+                code: if transcript_matches.is_empty() {
+                    ErrorCode::NotFound
+                } else {
+                    ErrorCode::InvalidInput
+                },
+                message: format!(
+                    "Extended promoter fragment transcript '{}' resolved to {} transcript annotations; exactly one is required",
+                    transcript_id,
+                    transcript_matches.len()
+                ),
+                cause_chain: vec![],
+            });
+        }
+        let transcript = transcript_matches[0];
+        let is_reverse = feature_is_reverse(transcript);
+        let candidate_reverse = matches!(
+            candidate.strand.trim().to_ascii_lowercase().as_str(),
+            "-" | "reverse" | "minus"
+        );
+        if is_reverse != candidate_reverse {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Extended transcript '{}' strand does not match candidate '{}'",
+                    transcript_id, candidate.candidate_id
+                ),
+                cause_chain: vec![],
+            });
+        }
+
+        let mut cds_ranges = vec![];
+        for feature in source.features().iter().filter(|feature| {
+            feature.kind.to_string().eq_ignore_ascii_case("CDS")
+                && feature_is_reverse(feature) == is_reverse
+                && feature
+                    .qualifier_values("transcript_id")
+                    .any(|value| value.trim().eq_ignore_ascii_case(transcript_id))
+        }) {
+            collect_location_ranges_usize(&feature.location, &mut cds_ranges);
+        }
+        cds_ranges.retain(|(start, end)| end > start);
+        cds_ranges.sort_unstable();
+        cds_ranges.dedup();
+        if cds_ranges.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Extended transcript '{}' has no unambiguous CDS start annotation",
+                    transcript_id
+                ),
+                cause_chain: vec![],
+            });
+        }
+        let cds_entry = if is_reverse {
+            cds_ranges
+                .iter()
+                .map(|(_, end)| *end)
+                .max()
+                .unwrap_or_default()
+        } else {
+            cds_ranges
+                .iter()
+                .map(|(start, _)| *start)
+                .min()
+                .unwrap_or_default()
+        };
+        let (codon_start, codon_end) = if is_reverse {
+            (cds_entry.saturating_sub(3), cds_entry)
+        } else {
+            (cds_entry, cds_entry.saturating_add(3))
+        };
+        if codon_end > source.len() || codon_end.saturating_sub(codon_start) != 3 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Extended transcript '{}' CDS start codon is outside the loaded sequence",
+                    transcript_id
+                ),
+                cause_chain: vec![],
+            });
+        }
+        let source_text = source.get_forward_string();
+        let cds_start_codon = if is_reverse {
+            Self::reverse_complement(&source_text[codon_start..codon_end])
+        } else {
+            source_text[codon_start..codon_end].to_ascii_uppercase()
+        };
+
+        let mut exon_ranges = vec![];
+        for feature in source.features().iter().filter(|feature| {
+            feature.kind.to_string().eq_ignore_ascii_case("exon")
+                && feature_is_reverse(feature) == is_reverse
+                && feature
+                    .qualifier_values("transcript_id")
+                    .any(|value| value.trim().eq_ignore_ascii_case(transcript_id))
+        }) {
+            collect_location_ranges_usize(&feature.location, &mut exon_ranges);
+        }
+        if exon_ranges.is_empty() {
+            collect_location_ranges_usize(&transcript.location, &mut exon_ranges);
+        }
+        exon_ranges.retain(|(start, end)| end > start);
+        exon_ranges.sort_unstable();
+        exon_ranges.dedup();
+        let mut utr_ranges = exon_ranges
+            .iter()
+            .filter_map(|(start, end)| {
+                if is_reverse {
+                    let utr_start = (*start).max(cds_entry);
+                    (*end > utr_start).then_some((utr_start, *end))
+                } else {
+                    let utr_end = (*end).min(cds_entry);
+                    (utr_end > *start).then_some((*start, utr_end))
+                }
+            })
+            .collect::<Vec<_>>();
+        if is_reverse {
+            utr_ranges.sort_unstable_by(|left, right| right.0.cmp(&left.0));
+        } else {
+            utr_ranges.sort_unstable();
+        }
+        let mut utr_sequence = String::new();
+        for (start, end) in &utr_ranges {
+            let segment = &source_text[*start..*end];
+            if is_reverse {
+                utr_sequence.push_str(&Self::reverse_complement(segment));
+            } else {
+                utr_sequence.push_str(segment);
+            }
+        }
+        let utr_upper = utr_sequence.to_ascii_uppercase();
+        let upstream_atgs = (0..utr_upper.len().saturating_sub(2))
+            .filter(|offset| &utr_upper[*offset..*offset + 3] == "ATG")
+            .collect::<Vec<_>>();
+        let upstream_orfs = upstream_atgs
+            .iter()
+            .copied()
+            .filter(|start| {
+                ((*start + 3)..utr_upper.len().saturating_sub(2))
+                    .step_by(3)
+                    .any(|offset| matches!(&utr_upper[offset..offset + 3], "TAA" | "TAG" | "TGA"))
+            })
+            .collect::<Vec<_>>();
+        let mut warnings = vec![];
+        if !upstream_atgs.is_empty() {
+            warnings.push(PromoterReporterPanelExtendedWarning {
+                kind: PromoterReporterPanelExtendedWarningKind::UpstreamAtg,
+                transcript_id: transcript_id.to_string(),
+                detail: format!(
+                    "The spliced 5' UTR contains {} upstream ATG start candidate(s)",
+                    upstream_atgs.len()
+                ),
+                transcript_positions_0based: upstream_atgs,
+            });
+        }
+        if !upstream_orfs.is_empty() {
+            warnings.push(PromoterReporterPanelExtendedWarning {
+                kind: PromoterReporterPanelExtendedWarningKind::UpstreamOrf,
+                transcript_id: transcript_id.to_string(),
+                detail: format!(
+                    "The spliced 5' UTR contains {} upstream ATG(s) with an in-frame stop before the annotated CDS",
+                    upstream_orfs.len()
+                ),
+                transcript_positions_0based: upstream_orfs,
+            });
+        }
+        let mut genomic_utr_ranges = utr_ranges.clone();
+        genomic_utr_ranges.sort_unstable();
+        let five_prime_utr_intron_count = genomic_utr_ranges
+            .windows(2)
+            .filter(|pair| pair[1].0 > pair[0].1)
+            .count();
+        if five_prime_utr_intron_count > 0 {
+            warnings.push(PromoterReporterPanelExtendedWarning {
+                kind: PromoterReporterPanelExtendedWarningKind::FivePrimeUtrIntron,
+                transcript_id: transcript_id.to_string(),
+                detail: format!(
+                    "The genomic extended fragment contains {} intron(s) between 5' UTR exons",
+                    five_prime_utr_intron_count
+                ),
+                transcript_positions_0based: vec![],
+            });
+        }
+        let (fragment_start, fragment_end) = if is_reverse {
+            (codon_start, candidate.end_0based_exclusive)
+        } else {
+            (candidate.start_0based, codon_end)
+        };
+        if fragment_start >= fragment_end
+            || candidate.variant_start_0based < fragment_start
+            || candidate.variant_end_0based_exclusive > fragment_end
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Extended transcript '{}' CDS boundary does not contain candidate '{}' motif anchor",
+                    transcript_id, candidate.candidate_id
+                ),
+                cause_chain: vec![],
+            });
+        }
+        Ok((
+            fragment_start,
+            fragment_end,
+            PromoterReporterPanelExtendedBoundaryAudit {
+                policy: policy.clone(),
+                strand: if is_reverse { "-" } else { "+" }.to_string(),
+                cds_start_codon_source_start_0based: codon_start,
+                cds_start_codon_source_end_0based_exclusive: codon_end,
+                cds_start_codon_5prime_to_3prime: cds_start_codon,
+                five_prime_utr_spliced_length_bp: utr_upper.len(),
+                five_prime_utr_exon_ranges_0based: utr_ranges,
+                warnings,
+            },
+        ))
+    }
+
     /// Select one directional restriction pair that is usable across every
     /// panel insert, or return an explicit Gibson fallback.
     pub fn restriction_cloning_panel_strategy(
@@ -1298,7 +1542,7 @@ impl GentleEngine {
                 .candidate_id
                 .as_deref()
                 .unwrap_or(&candidate_set.recommended_candidate_id);
-            let candidate = candidate_set
+            let mut candidate = candidate_set
                 .candidates
                 .iter()
                 .find(|candidate| candidate.candidate_id == candidate_id)
@@ -1361,6 +1605,53 @@ impl GentleEngine {
                     cause_chain: vec![],
                 });
             }
+            let extended_boundary_audit = match member_request.fragment_role {
+                PromoterReporterPanelFragmentRole::Core => {
+                    if member_request.extended_boundary.is_some() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Core panel member '{}' must not provide extended_boundary",
+                                candidate.candidate_id
+                            ),
+                            cause_chain: vec![],
+                        });
+                    }
+                    None
+                }
+                PromoterReporterPanelFragmentRole::Extended => {
+                    let policy = member_request.extended_boundary.as_ref().ok_or_else(|| {
+                        EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Extended panel member '{}' requires an explicit extended_boundary transcript policy",
+                                candidate.candidate_id
+                            ),
+                            cause_chain: vec![],
+                        }
+                    })?;
+                    let (start, end, audit) = Self::promoter_reporter_panel_extended_geometry(
+                        source, &candidate, policy,
+                    )?;
+                    let length = end.saturating_sub(start);
+                    if length > candidate_set.fragment_policy.max_fragment_length_bp {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Extended panel member '{}' is {} bp, exceeding the candidate-set maximum of {} bp",
+                                candidate.candidate_id,
+                                length,
+                                candidate_set.fragment_policy.max_fragment_length_bp
+                            ),
+                            cause_chain: vec![],
+                        });
+                    }
+                    candidate.start_0based = start;
+                    candidate.end_0based_exclusive = end;
+                    candidate.length_bp = length;
+                    Some(audit)
+                }
+            };
             let base_label = member_request
                 .label
                 .clone()
@@ -1421,6 +1712,7 @@ impl GentleEngine {
                 motif_forward_strand,
                 wild_type_seq_id,
                 mutant_seq_id,
+                extended_boundary_audit,
             });
         }
         Ok(resolved)
@@ -1529,6 +1821,7 @@ impl GentleEngine {
                 fragment_start_0based: resolved.candidate.start_0based,
                 fragment_end_0based_exclusive: resolved.candidate.end_0based_exclusive,
                 fragment_length_bp: resolved.candidate.length_bp,
+                extended_boundary_audit: resolved.extended_boundary_audit.clone(),
                 motif_start_in_fragment_0based: resolved.motif_start_in_fragment_0based,
                 motif_end_in_fragment_0based_exclusive: resolved
                     .motif_end_in_fragment_0based_exclusive,
@@ -1538,7 +1831,17 @@ impl GentleEngine {
                 mutant_seq_id: resolved.mutant_seq_id.clone(),
                 mutant_sha256: sha256_prefixed_str(&mutation.mutant_sequence),
                 mutation,
-                warnings: vec![],
+                warnings: resolved
+                    .extended_boundary_audit
+                    .as_ref()
+                    .map(|audit| {
+                        audit
+                            .warnings
+                            .iter()
+                            .map(|warning| warning.detail.clone())
+                            .collect()
+                    })
+                    .unwrap_or_default(),
             });
         }
 
@@ -2629,6 +2932,7 @@ mod tests {
                 candidate_set_path: candidate_set_path.to_string_lossy().to_string(),
                 candidate_id: Some("tp73_core".to_string()),
                 fragment_role: PromoterReporterPanelFragmentRole::Core,
+                extended_boundary: None,
                 label: Some("TP73 core".to_string()),
             }],
             output_dir: output_dir.to_string_lossy().to_string(),
@@ -3016,5 +3320,147 @@ mod tests {
         assert!(manifest.contains("primer_seq_ids\tprimer_sequences_5prime_to_3prime"));
         assert!(manifest.contains("junction_validation\tfinal_restriction_site_count"));
         assert!(manifest.contains("tp73_synthetic_panel_01_tp73_core"));
+    }
+
+    fn extended_boundary_test_feature(
+        kind: &str,
+        start: usize,
+        end: usize,
+        transcript_id: &str,
+        reverse: bool,
+    ) -> gb_io::seq::Feature {
+        let location = gb_io::seq::Location::simple_range(start as i64, end as i64);
+        gb_io::seq::Feature {
+            kind: kind.to_string().into(),
+            location: if reverse {
+                gb_io::seq::Location::Complement(Box::new(location))
+            } else {
+                location
+            },
+            qualifiers: vec![("transcript_id".into(), Some(transcript_id.to_string()))],
+        }
+    }
+
+    #[test]
+    fn promoter_reporter_extended_boundary_uses_spliced_utr_and_reports_uorf_and_intron() {
+        let mut bases = vec![b'C'; 120];
+        bases[5..14].copy_from_slice(b"ATGAAATAA");
+        bases[80..83].copy_from_slice(b"ATG");
+        let mut source = DNAsequence::from_sequence(&String::from_utf8(bases).unwrap())
+            .expect("extended source");
+        source.features_mut().extend([
+            extended_boundary_test_feature("mRNA", 0, 100, "ENST_TGFB1", false),
+            extended_boundary_test_feature("exon", 0, 30, "ENST_TGFB1", false),
+            extended_boundary_test_feature("exon", 50, 100, "ENST_TGFB1", false),
+            extended_boundary_test_feature("CDS", 80, 100, "ENST_TGFB1", false),
+        ]);
+        let candidate = PromoterReporterFragmentCandidate {
+            candidate_id: "tgfb1_core".to_string(),
+            strand: "+".to_string(),
+            variant_start_0based: 20,
+            variant_end_0based_exclusive: 25,
+            start_0based: 0,
+            end_0based_exclusive: 40,
+            length_bp: 40,
+            ..PromoterReporterFragmentCandidate::default()
+        };
+        let policy = PromoterReporterPanelExtendedBoundaryPolicy {
+            kind: PromoterReporterPanelExtendedBoundaryKind::CanonicalCdsStartCodon,
+            transcript_id: "ENST_TGFB1".to_string(),
+        };
+
+        let (start, end, audit) =
+            GentleEngine::promoter_reporter_panel_extended_geometry(&source, &candidate, &policy)
+                .expect("extended boundary");
+
+        assert_eq!((start, end), (0, 83));
+        assert_eq!(
+            audit.five_prime_utr_exon_ranges_0based,
+            vec![(0, 30), (50, 80)]
+        );
+        assert_eq!(audit.five_prime_utr_spliced_length_bp, 60);
+        assert_eq!(audit.cds_start_codon_5prime_to_3prime, "ATG");
+        assert!(audit.warnings.iter().any(|warning| {
+            warning.kind == PromoterReporterPanelExtendedWarningKind::UpstreamAtg
+        }));
+        assert!(audit.warnings.iter().any(|warning| {
+            warning.kind == PromoterReporterPanelExtendedWarningKind::UpstreamOrf
+        }));
+        assert!(audit.warnings.iter().any(|warning| {
+            warning.kind == PromoterReporterPanelExtendedWarningKind::FivePrimeUtrIntron
+        }));
+        let round_trip: PromoterReporterPanelExtendedBoundaryAudit = serde_json::from_str(
+            &serde_json::to_string(&audit).expect("serialize extended boundary audit"),
+        )
+        .expect("deserialize extended boundary audit");
+        assert_eq!(round_trip, audit);
+    }
+
+    #[test]
+    fn promoter_reporter_extended_boundary_is_strand_aware() {
+        let mut bases = vec![b'G'; 120];
+        bases[37..40].copy_from_slice(b"CAT");
+        let mut source = DNAsequence::from_sequence(&String::from_utf8(bases).unwrap())
+            .expect("reverse extended source");
+        source.features_mut().extend([
+            extended_boundary_test_feature("mRNA", 20, 120, "ENST_CD44", true),
+            extended_boundary_test_feature("exon", 20, 70, "ENST_CD44", true),
+            extended_boundary_test_feature("exon", 90, 120, "ENST_CD44", true),
+            extended_boundary_test_feature("CDS", 20, 40, "ENST_CD44", true),
+        ]);
+        let candidate = PromoterReporterFragmentCandidate {
+            candidate_id: "cd44_core".to_string(),
+            strand: "-".to_string(),
+            variant_start_0based: 100,
+            variant_end_0based_exclusive: 105,
+            start_0based: 80,
+            end_0based_exclusive: 120,
+            length_bp: 40,
+            ..PromoterReporterFragmentCandidate::default()
+        };
+        let policy = PromoterReporterPanelExtendedBoundaryPolicy {
+            kind: PromoterReporterPanelExtendedBoundaryKind::CanonicalCdsStartCodon,
+            transcript_id: "ENST_CD44".to_string(),
+        };
+
+        let (start, end, audit) =
+            GentleEngine::promoter_reporter_panel_extended_geometry(&source, &candidate, &policy)
+                .expect("reverse extended boundary");
+
+        assert_eq!((start, end), (37, 120));
+        assert_eq!(audit.strand, "-");
+        assert_eq!(audit.cds_start_codon_source_start_0based, 37);
+        assert_eq!(audit.cds_start_codon_source_end_0based_exclusive, 40);
+        assert_eq!(audit.cds_start_codon_5prime_to_3prime, "ATG");
+        assert_eq!(
+            audit.five_prime_utr_exon_ranges_0based,
+            vec![(90, 120), (40, 70)]
+        );
+    }
+
+    #[test]
+    fn promoter_reporter_extended_boundary_requires_exact_transcript_cds_annotation() {
+        let source = DNAsequence::from_sequence(&"A".repeat(100)).expect("source");
+        let candidate = PromoterReporterFragmentCandidate {
+            candidate_id: "serpine1_core".to_string(),
+            strand: "+".to_string(),
+            variant_start_0based: 10,
+            variant_end_0based_exclusive: 20,
+            start_0based: 0,
+            end_0based_exclusive: 30,
+            length_bp: 30,
+            ..PromoterReporterFragmentCandidate::default()
+        };
+        let error = GentleEngine::promoter_reporter_panel_extended_geometry(
+            &source,
+            &candidate,
+            &PromoterReporterPanelExtendedBoundaryPolicy {
+                kind: PromoterReporterPanelExtendedBoundaryKind::CanonicalCdsStartCodon,
+                transcript_id: "ENST_SERPINE1".to_string(),
+            },
+        )
+        .expect_err("missing transcript annotation must fail");
+        assert_eq!(error.code, ErrorCode::NotFound);
+        assert!(error.message.contains("exactly one is required"));
     }
 }

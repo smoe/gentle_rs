@@ -3596,12 +3596,26 @@ Sequencing-trace evidence notes:
   - v1 currently accepts only `mutation_policy=p53_family_core_disruption_v1`;
     an omitted/`unspecified` policy is rejected before sequence editing so a
     generic promoter request cannot silently receive p53-family substitutions
+  - a `core` member keeps the selected candidate geometry and must not carry
+    an `extended_boundary`
+  - an `extended` member must carry `extended_boundary` with
+    `kind: canonical_cds_start_codon` and one explicit `transcript_id`; the
+    engine resolves exactly one matching transcript and its CDS annotation,
+    then extends strand-correctly through the annotated start codon
+  - unresolved, duplicate, strand-mismatched, or CDS-free transcript geometry
+    fails closed; the engine never guesses an ATG from raw genomic sequence
   - `gentle.promoter_reporter_panel_proposal.v1` binds normalized inputs and
     hashes, exact vector validation, wild-type/mutant members, the complete
     ordered child-operation workflow, cloning strategy, primer sequences,
     predicted circular product hashes, junction-validation basis, final
     restriction-site scans with conservative count-excess warnings, artifact
     paths, warnings, and non-claims under one approval digest
+    - extended members carry `extended_boundary_audit`, including source
+      coordinates and 5'-to-3' sequence for the CDS start codon, ordered
+      spliced 5'-UTR exon ranges, spliced UTR length, and typed `upstream_atg`, `upstream_orf`, and
+      `five_prime_utr_intron` warnings
+    - upstream-ATG/uORF checks run on transcript-oriented spliced UTR sequence;
+      intronic genomic bases are not scanned as if they were mature RNA
   - `gentle.promoter_reporter_panel_receipt.v1` records the approved digest,
     committed sequence/product ids, artifact paths, manifest path, and final
     project-state hash
