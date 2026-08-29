@@ -1482,6 +1482,61 @@ mod tests {
     }
 
     #[test]
+    fn cryptic_splicing_cds_consequence_distinguishes_in_frame_and_frameshift_removals() {
+        let coding_sequence = b"ATGAAACCCGGGTAA".to_vec();
+        let context = CrypticCdsContext {
+            feature_id: 7,
+            strand_matches: true,
+            source_positions_0based: (0..coding_sequence.len()).collect(),
+            coding_sequence,
+            translation_table: 1,
+        };
+
+        let in_frame = GentleEngine::cryptic_cds_consequence(Some(&context), 4, 6)
+            .expect("in-frame consequence");
+        assert_eq!(in_frame.status, "coding_in_frame_removal");
+        assert_eq!(in_frame.removed_coding_bp, 3);
+        assert_eq!(in_frame.frame_delta_mod_3, Some(0));
+
+        let frameshift = GentleEngine::cryptic_cds_consequence(Some(&context), 4, 7)
+            .expect("frameshift consequence");
+        assert_eq!(frameshift.status, "coding_frameshift");
+        assert_eq!(frameshift.removed_coding_bp, 4);
+        assert_eq!(frameshift.frame_delta_mod_3, Some(1));
+    }
+
+    #[test]
+    fn cryptic_splicing_boundary_class_reports_donor_and_acceptor_compartments() {
+        let without_insert = request("cassette", 40);
+        assert_eq!(
+            GentleEngine::cryptic_boundary_class(&without_insert, 12, 24),
+            "insert_span_not_specified"
+        );
+
+        let mut with_insert = without_insert;
+        with_insert.insert_span = Some(CrypticSplicingSpan {
+            start_1based: 10,
+            end_1based: 30,
+        });
+        assert_eq!(
+            GentleEngine::cryptic_boundary_class(&with_insert, 12, 24),
+            "insert_to_insert"
+        );
+        assert_eq!(
+            GentleEngine::cryptic_boundary_class(&with_insert, 2, 8),
+            "vector_to_vector"
+        );
+        assert_eq!(
+            GentleEngine::cryptic_boundary_class(&with_insert, 12, 35),
+            "insert_to_vector"
+        );
+        assert_eq!(
+            GentleEngine::cryptic_boundary_class(&with_insert, 2, 12),
+            "vector_to_insert"
+        );
+    }
+
+    #[test]
     fn cryptic_splicing_reverse_screen_uses_requested_orientation() {
         let forward = structural_sequence();
         let reverse = String::from_utf8(GentleEngine::reverse_complement_bytes(forward.as_bytes()))

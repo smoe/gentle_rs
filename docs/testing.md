@@ -78,6 +78,25 @@ GENTLE_TEST_EXTERNAL_BINARIES=1 cargo test real_primer3 -- --test-threads=1
   integration path separately from the default deterministic internal-backend
   CI surface.
 
+MaxEntScan reference-parity policy:
+
+- Default tests use synthetic unrestricted tables and do not require or bundle
+  MaxEntScan resources.
+- Developers with a reviewed, unpacked MaxEntScan distribution can compare
+  GENtle's normalized native scorer directly with upstream `score5.pl` and
+  `score3.pl`:
+
+```bash
+GENTLE_TEST_MAXENTSCAN_DIR=/path/to/MaxEntScan \
+  cargo test native_maxent_scoring_matches_opt_in_reference_scripts \
+  -- --test-threads=1
+```
+
+- `GENTLE_TEST_PERL_BIN` may name a non-default Perl executable. The test is
+  skipped when `GENTLE_TEST_MAXENTSCAN_DIR` is unset, bounds each reference
+  scorer invocation to 15 seconds, and never copies the supplied tables into
+  repository fixtures.
+
 ### 3.2 Tutorial drift and runtime checks
 
 Tutorial source + generated outputs are part of the test surface:

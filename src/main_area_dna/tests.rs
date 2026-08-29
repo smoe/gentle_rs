@@ -14166,7 +14166,7 @@ fn splicing_expert_presentation_test_view() -> SplicingExpertView {
 fn splicing_expert_presentation_reuses_immutable_view_and_invalidates_on_replacement() {
     let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
     let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
-    let view = splicing_expert_presentation_test_view();
+    let mut view = splicing_expert_presentation_test_view();
 
     let first = area.splicing_expert_presentation_for_view(&view);
     let second = area.splicing_expert_presentation_for_view(&view);
@@ -14183,15 +14183,14 @@ fn splicing_expert_presentation_reuses_immutable_view_and_invalidates_on_replace
     );
     assert_eq!(first.junction_rows[0].donor_label, "30");
 
-    let mut replacement = view.clone();
-    replacement.matrix_rows[0].transcript_id = "tx1_revised".to_string();
-    let third = area.splicing_expert_presentation_for_view(&replacement);
+    view.matrix_rows[0].transcript_id = "tx1_revised".to_string();
+    let third = area.splicing_expert_presentation_for_view(&view);
     assert!(!Arc::ptr_eq(&first, &third));
     assert_eq!(area.splicing_expert_presentation_cache_misses, 2);
     assert_eq!(third.transcript_rows[0].label, "n-11 tx1_revised");
 
     area.invalidate_splicing_expert_presentation_cache();
-    let fourth = area.splicing_expert_presentation_for_view(&replacement);
+    let fourth = area.splicing_expert_presentation_for_view(&view);
     assert!(!Arc::ptr_eq(&third, &fourth));
     assert_eq!(area.splicing_expert_presentation_cache_misses, 3);
 }
