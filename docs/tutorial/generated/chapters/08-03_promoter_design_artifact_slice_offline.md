@@ -9,7 +9,7 @@ executed_during_generation: true
 automated_status: "passing"
 review_status: "human_reviewed"
 review_stale: true
-codex_reviewed_at: null
+codex_reviewed_at: "2026-08-29"
 human_reviewed_at: "2026-05-18"
 human_reviewer: "smoe"
 review_stale_reason: "source JSON 'docs/tutorial/sources/08-03_promoter_design_artifact_slice_offline.json' changed after human review date 2026-05-18"
@@ -221,7 +221,7 @@ cargo run --bin gentle_cli -- workflow @docs/examples/workflows/promoter_design_
 cargo run --bin gentle_cli -- shell 'features promoter-evidence-matrix tp73_promoter_artifact_demo --gene-label TP73 --promoter-upstream-bp 40 --promoter-downstream-bp 15 --path artifacts/tp73_promoter_artifact_demo.evidence_matrix.json'
 cargo run --bin gentle_cli -- shell 'features promoter-isoform-comparison tp73_promoter_artifact_demo --gene-label TP73 --promoter-upstream-bp 40 --promoter-downstream-bp 15 --path artifacts/tp73_promoter_artifact_demo.isoform_promoter_comparison.json'
 cargo run --bin gentle_cli -- shell 'features promoter-expression-evidence tp73_promoter_artifact_demo --gene-label TP73 --promoter-upstream-bp 40 --promoter-downstream-bp 15 --source-label synthetic_demo --expression-json {"transcript_id":"ENSTTP73DEMO1","value":18.0,"unit":"a.u."} --path artifacts/tp73_promoter_artifact_demo.promoter_expression_evidence.json'
-cargo run --bin gentle_cli -- shell 'features tfbs-track-similarity tp73_promoter_artifact_demo --anchor SP1 --candidate TP53 --candidate TP63 --candidate TP73 --candidate CTCF --range 60..158 --score-kind llr_background_tail_log10 --path artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json'
+cargo run --bin gentle_cli -- shell 'features tfbs-track-similarity tp73_promoter_artifact_demo --anchor-motif SP1 --candidate-motif TP53 --candidate-motif TP63 --candidate-motif TP73 --candidate-motif CTCF --range 60..158 --ranking-metric smoothed_spearman --score-kind llr_background_tail_log10 --path artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json'
 ```
 
 ## Checkpoints
@@ -262,7 +262,7 @@ cargo run --bin gentle_cli -- shell 'features tfbs-track-similarity tp73_promote
 - Executed during generation: `yes`
 - Automated status: `passing`
 - Review status: `human_reviewed`
-- Codex reviewed at: `not recorded`
+- Codex reviewed at: `2026-08-29`
 - Human reviewed at: `2026-05-18`
 - Inspect the source JSON when you need full option-level detail.
 

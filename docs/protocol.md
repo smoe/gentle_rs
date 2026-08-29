@@ -11057,6 +11057,13 @@ Cryptic-splicing inspection (implemented):
   - `splicing cryptic-export REQUEST_JSON_OR_@FILE OUTPUT.json`
   - `splicing cryptic-overlay REQUEST_JSON_OR_@FILE [--output OUTPUT.json]`
   - `splicing cryptic-protein REQUEST_JSON_OR_@FILE [--output OUTPUT.json]`
+- MCP clients use the same portable screen, render, export, RNA-evidence
+  overlay, and protein-projection operation payloads through the generic
+  confirmed `op` tool. JSON/SVG output retains its explicit path and therefore
+  remains an external-I/O action rather than an MCP-only in-memory
+  approximation. `resources sync-maxent` remains intentionally host-local
+  because it normalizes user-supplied model tables into local resource files
+  and has no portable engine operation.
 - `CrypticSplicingScreenRequest` identifies one source sequence, a 1-based
   inclusive non-wrapping span, and scan orientation. `insert_span` and
   `cds_feature_id` are optional annotations on that same source coordinate

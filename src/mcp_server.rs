@@ -3725,7 +3725,9 @@ mod tests {
         dna_sequence::DNAsequence,
         engine::{
             AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan,
-            ConstructObjective, construct_reasoning_action_dotplot_request,
+            ConstructObjective, UniprotLinkedTranscriptInventory,
+            UniprotLinkedTranscriptInventoryLink, UniprotLinkedTranscriptInventoryRequest,
+            construct_reasoning_action_dotplot_request,
         },
         engine_shell::{execute_shell_command, parse_shell_tokens},
         genomes::GenomeCatalog,
@@ -4741,6 +4743,230 @@ mod tests {
         let persisted = ProjectState::load_from_path(&state_path.to_string_lossy())
             .expect("load persisted state");
         assert_eq!(persisted.parameters.max_fragments_per_container, 123);
+    }
+
+    #[test]
+    fn mcp_op_builds_uniprot_linked_transcript_inventory_through_shared_contract() {
+        let temp = tempdir().expect("tempdir");
+        let state_path = temp.path().join("mcp_inventory_state.gentle.json");
+        let transcript_path = temp.path().join("transcripts.fa");
+        let output_path = temp.path().join("inventory.json");
+        ProjectState::default()
+            .save_to_path(&state_path.to_string_lossy())
+            .expect("save inventory state");
+        fs::write(
+            &transcript_path,
+            ">TX_A.1 gene=GENE_X transcript=TX_A.1\nATGCCCTAA\n",
+        )
+        .expect("write transcript FASTA");
+        let inventory_request = UniprotLinkedTranscriptInventoryRequest {
+            inventory_id: "mcp_inventory".to_string(),
+            assembly: "synthetic_assembly".to_string(),
+            annotation_release: "synthetic_release".to_string(),
+            source_resource_id: "synthetic_transcripts".to_string(),
+            transcript_fasta_paths: vec![transcript_path.to_string_lossy().to_string()],
+            links: vec![UniprotLinkedTranscriptInventoryLink {
+                entry_id: "ENTRY_X".to_string(),
+                isoform_id: "ENTRY_X-1".to_string(),
+                transcript_id: "TX_A.1".to_string(),
+                locus_reference_accession: Some("LOCUS_TX_A".to_string()),
+            }],
+            output_path: output_path.to_string_lossy().to_string(),
+        };
+        let operation = Operation::BuildUniprotLinkedTranscriptInventory {
+            request: inventory_request.clone(),
+        };
+
+        let denied = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({
+                "state_path": state_path.to_string_lossy(),
+                "operation": serde_json::to_value(&operation).expect("serialize operation")
+            }),
+        );
+        assert_eq!(denied["result"]["isError"], Value::Bool(true));
+        assert!(
+            !output_path.exists(),
+            "unconfirmed op must not write output"
+        );
+
+        let expected = GentleEngine::build_uniprot_linked_transcript_inventory(&inventory_request)
+            .expect("build inventory directly");
+        let response = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({
+                "confirm": true,
+                "state_path": state_path.to_string_lossy(),
+                "operation": serde_json::to_value(operation).expect("serialize operation")
+            }),
+        );
+        assert_eq!(
+            response["result"]["isError"],
+            Value::Bool(false),
+            "{response:#}"
+        );
+        let returned: UniprotLinkedTranscriptInventory = serde_json::from_value(
+            response["result"]["structuredContent"]["result"]
+                ["uniprot_linked_transcript_inventory"]
+                .clone(),
+        )
+        .expect("typed inventory result");
+        assert_eq!(returned, expected);
+        let exported: UniprotLinkedTranscriptInventory =
+            serde_json::from_slice(&fs::read(&output_path).expect("read inventory output"))
+                .expect("parse inventory output");
+        assert_eq!(exported, expected);
+        ProjectState::load_from_path(&state_path.to_string_lossy())
+            .expect("MCP op persists a readable project state");
+
+        let missing_request = UniprotLinkedTranscriptInventoryRequest {
+            transcript_fasta_paths: vec![
+                temp.path().join("missing.fa").to_string_lossy().to_string(),
+            ],
+            output_path: temp
+                .path()
+                .join("missing-output.json")
+                .to_string_lossy()
+                .to_string(),
+            ..inventory_request
+        };
+        let failed = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({
+                "confirm": true,
+                "state_path": state_path.to_string_lossy(),
+                "operation": serde_json::to_value(
+                    Operation::BuildUniprotLinkedTranscriptInventory {
+                        request: missing_request
+                    }
+                )
+                .expect("serialize failing operation")
+            }),
+        );
+        assert_eq!(failed["result"]["isError"], Value::Bool(true));
+        assert!(
+            failed["result"]["structuredContent"]["error"]["code"]
+                .as_str()
+                .is_some_and(|code| !code.is_empty()),
+            "typed engine error must survive the MCP boundary: {failed:#}"
+        );
+    }
+
+    #[test]
+    fn mcp_op_inspects_and_renders_cryptic_splicing_with_confirmation() {
+        let temp = tempdir().expect("tempdir");
+        let state_path = temp.path().join("mcp_cryptic_state.gentle.json");
+        let svg_path = temp.path().join("cryptic.svg");
+        let sequence = "AAAGTCCCCCTACTAACCCCCCCCCCCCCCCCCCCAGAAA";
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "cassette".to_string(),
+            DNAsequence::from_sequence(sequence).expect("cryptic-splicing sequence"),
+        );
+        state
+            .save_to_path(&state_path.to_string_lossy())
+            .expect("save cryptic-splicing state");
+        let screen_request = gentle_protocol::CrypticSplicingScreenRequest {
+            seq_id: "cassette".to_string(),
+            start_1based: 1,
+            end_1based: sequence.len(),
+            min_pseudo_intron_bp: 20,
+            max_pseudo_intron_bp: 200,
+            max_candidate_pairs: 10,
+            ..gentle_protocol::CrypticSplicingScreenRequest::default()
+        };
+
+        let screen = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({
+                "confirm": true,
+                "state_path": state_path.to_string_lossy(),
+                "operation": serde_json::to_value(Operation::InspectCrypticSplicingScreen {
+                    request: screen_request.clone(),
+                    path: None
+                })
+                .expect("serialize screen operation")
+            }),
+        );
+        assert_eq!(
+            screen["result"]["isError"],
+            Value::Bool(false),
+            "{screen:#}"
+        );
+        assert_eq!(
+            screen["result"]["structuredContent"]["result"]["cryptic_splicing_screen"]["schema"],
+            gentle_protocol::CRYPTIC_SPLICING_SCREEN_SCHEMA
+        );
+
+        let render_operation = Operation::RenderCrypticSplicingScreenSvg {
+            request: screen_request.clone(),
+            path: svg_path.to_string_lossy().to_string(),
+        };
+        let denied = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({
+                "state_path": state_path.to_string_lossy(),
+                "operation": serde_json::to_value(&render_operation)
+                    .expect("serialize render operation")
+            }),
+        );
+        assert_eq!(denied["result"]["isError"], Value::Bool(true));
+        assert!(!svg_path.exists(), "unconfirmed render must not write SVG");
+
+        let rendered = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({
+                "confirm": true,
+                "state_path": state_path.to_string_lossy(),
+                "operation": serde_json::to_value(render_operation)
+                    .expect("serialize render operation")
+            }),
+        );
+        assert_eq!(
+            rendered["result"]["isError"],
+            Value::Bool(false),
+            "{rendered:#}"
+        );
+        assert!(
+            fs::metadata(&svg_path)
+                .expect("rendered SVG metadata")
+                .len()
+                > 0
+        );
+        assert_eq!(
+            rendered["result"]["structuredContent"]["result"]["cryptic_splicing_screen"]["effective_input_sha256"],
+            screen["result"]["structuredContent"]["result"]["cryptic_splicing_screen"]["effective_input_sha256"]
+        );
+
+        let failed = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({
+                "confirm": true,
+                "state_path": state_path.to_string_lossy(),
+                "operation": serde_json::to_value(Operation::InspectCrypticSplicingScreen {
+                    request: gentle_protocol::CrypticSplicingScreenRequest {
+                        seq_id: "missing".to_string(),
+                        ..screen_request
+                    },
+                    path: None
+                })
+                .expect("serialize failing screen operation")
+            }),
+        );
+        assert_eq!(failed["result"]["isError"], Value::Bool(true));
+        assert!(
+            failed["result"]["structuredContent"]["error"]["code"]
+                .as_str()
+                .is_some_and(|code| !code.is_empty()),
+            "typed engine error must survive the MCP boundary: {failed:#}"
+        );
     }
 
     #[test]

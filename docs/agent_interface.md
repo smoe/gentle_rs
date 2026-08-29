@@ -397,6 +397,11 @@ Key properties:
   calling a route
 - `op`, `workflow`, and materialization-style routes require explicit
   confirmation (`confirm=true`) at the tool boundary where supported
+- `uniprot build-linked-transcript-inventory` and the five
+  `splicing cryptic-*` inspection/export routes are advertised through the
+  generic typed `op` tool, not through duplicate MCP-only implementations.
+  Cryptic reports remain typed; JSON/SVG output paths retain their explicit
+  external-I/O boundary and write only after `confirm=true`.
 - UI-intent tools are currently non-mutating query/intent routes
 
 #### Intentionally MCP-excluded shell commands
@@ -697,9 +702,10 @@ an agent has selected a deterministic operation.
 - `resources summarize-jaspar`
 - `resources sync-jaspar`
 - `resources sync-jaspar-remote-metadata`
-- `resources sync-maxent` (installs a user-supplied MaxEntScan resource and
-  records external provenance; it has no portable engine operation and remains
-  outside MCP until a dedicated confirmed external-mutation contract exists)
+- `resources sync-maxent` - normalizes user-supplied local model tables and
+  writes host resource files, and records external provenance; it has no
+  portable engine operation and remains outside MCP until a dedicated
+  confirmed external-mutation contract exists
 - `resources sync-rebase`
 - `resources sync-ucsc-rmsk`
 - `reverse-translate export-report`
