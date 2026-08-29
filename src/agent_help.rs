@@ -168,7 +168,7 @@ pub fn render_agent_help_button(ui: &mut egui::Ui, window_title: impl Into<Strin
         } else {
             "window.dna_viewer"
         };
-        let subject_scope = crate::gui_test_support::opaque_subject_scope(&[&window_title]);
+        let subject_scope = crate::gui_test_support::pseudonymous_subject_scope(&[&window_title]);
         crate::gui_test_support::register_response(
             &response,
             "agent.help.open",

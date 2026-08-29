@@ -3590,8 +3590,12 @@ Sequencing-trace evidence notes:
     substitution rule to one or two oriented p53-family half-sites, then audits
     local TP73/TP53/TP63 PWM scores and selected restriction-site changes
   - `gentle.promoter_reporter_panel_request.v1` selects already-ranked
-    promoter candidates, one exact catalog-owned vector identity, and an output
-    directory without re-resolving promoter biology in an adapter
+    promoter candidates, one exact catalog-owned vector identity, an explicit
+    `mutation_policy`, optional request-bound `scientific_caveats`, and an
+    output directory without re-resolving promoter biology in an adapter
+  - v1 currently accepts only `mutation_policy=p53_family_core_disruption_v1`;
+    an omitted/`unspecified` policy is rejected before sequence editing so a
+    generic promoter request cannot silently receive p53-family substitutions
   - `gentle.promoter_reporter_panel_proposal.v1` binds normalized inputs and
     hashes, exact vector validation, wild-type/mutant members, the complete
     ordered child-operation workflow, cloning strategy, primer sequences,

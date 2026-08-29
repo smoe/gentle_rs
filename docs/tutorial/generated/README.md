@@ -81,7 +81,7 @@ Online execution was disabled (`GENTLE_TEST_ONLINE=0` during generation).
 - `08.03` [Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)](./chapters/08-03_promoter_design_artifact_slice_offline.md) - `core` - example `promoter_design_artifact_slice_offline` - executed `yes` - review `human_reviewed` `stale` - human 2026-05-18 by smoe - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
 - `08.07` [Promoter Cohorts With Gene-Set and Ortholog Relationship Flags](./chapters/08-07_promoter_gene_set_ortholog_cohort_offline.md) - `core` - example `promoter_gene_set_ortholog_cohort_offline` - executed `yes` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
 - `08.08` [Gene-Set and Ortholog Promoter Cohorts (Offline Synthetic TP73 Demo)](./chapters/08-08_gene_set_ortholog_promoter_cohorts_offline.md) - `core` - example `gene_set_ortholog_promoter_cohorts_offline` - executed `yes` - review `codex_reviewed` - codex 2026-06-25
-- `08.09` [Promoter-Reporter Panel Planning (Offline Approval-Gated Demo)](./chapters/08-09_promoter_reporter_panel_planning_offline.md) - `core` - example `promoter_reporter_panel_planning_offline` - executed `yes` - review `missing_review_manifest_entry` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
+- `08.09` [Promoter-Reporter Panel Planning (Offline Approval-Gated Demo)](./chapters/08-09_promoter_reporter_panel_planning_offline.md) - `core` - example `promoter_reporter_panel_planning_offline` - executed `yes` - review `codex_reviewed` - codex 2026-08-29
 
 ## Concepts and Where They Recur
 

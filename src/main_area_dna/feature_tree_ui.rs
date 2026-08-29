@@ -1991,7 +1991,7 @@ impl MainAreaDna {
                 .on_hover_text(Self::feature_tree_filter_help_text());
             #[cfg(feature = "gui-test-support")]
             {
-                let subject_scope = crate::gui_test_support::opaque_subject_scope(&[self
+                let subject_scope = crate::gui_test_support::pseudonymous_subject_scope(&[self
                     .seq_id
                     .as_deref()
                     .unwrap_or("unnamed")]);
@@ -2221,7 +2221,7 @@ impl MainAreaDna {
                                         .and_then(|feature| serde_json::to_string(&feature).ok())
                                         .unwrap_or_else(|| format!("missing-feature-{}", entry.id));
                                     let subject_scope =
-                                        crate::gui_test_support::opaque_subject_scope(&[
+                                        crate::gui_test_support::pseudonymous_subject_scope(&[
                                             self.seq_id.as_deref().unwrap_or("unnamed"),
                                             &feature_identity,
                                         ]);
@@ -2355,7 +2355,7 @@ impl MainAreaDna {
                                                 &copy_response,
                                                 semantic_id,
                                                 "window.dna_viewer",
-                                                Some(&crate::gui_test_support::opaque_subject_scope(
+                                                Some(&crate::gui_test_support::pseudonymous_subject_scope(
                                                     &[
                                                         self.seq_id
                                                             .as_deref()

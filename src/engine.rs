@@ -12099,6 +12099,24 @@ impl GentleEngine {
         self.get_isoform_panel_record(seq_id, panel_id).is_ok()
     }
 
+    /// Returns imported isoform panel ids for one sequence, newest first.
+    ///
+    /// The ids remain sequence-scoped: GUI controls must not copy a panel id
+    /// from another sequence merely because it is visible in a shared input.
+    pub fn isoform_panel_ids_for_sequence(&self, seq_id: &str) -> Vec<String> {
+        let mut seen = BTreeSet::new();
+        self.read_isoform_panel_store()
+            .records
+            .iter()
+            .rev()
+            .filter(|record| record.seq_id == seq_id)
+            .filter_map(|record| {
+                seen.insert(record.panel_id.clone())
+                    .then(|| record.panel_id.clone())
+            })
+            .collect()
+    }
+
     fn read_primer_design_store_from_metadata(
         value: Option<&serde_json::Value>,
     ) -> PrimerDesignStore {

@@ -5635,6 +5635,13 @@ Tutorial projects:
     `MaterializePromoterReporterPanel` operations:
     - request JSON selects already-reviewed promoter candidates and one loaded,
       exactly catalog-validated vector; the GUI does not resolve or rerank them
+    - request JSON must also name the mutation policy; v1 accepts only
+      `p53_family_core_disruption_v1` and rejects an omitted or `unspecified`
+      policy rather than silently applying p53-family biology to an unrelated
+      promoter panel
+    - study-specific interpretation limits belong in request-bound
+      `scientific_caveats`; GENtle preserves them in the proposal instead of
+      injecting gene names or study claims from the generic operation
     - `Plan panel` is read-only and displays member boundaries/roles, candidate
       motif coordinates, the stated-rule mutation audit, shared restriction or
       Gibson strategy, primer readiness, predicted circular products, exact

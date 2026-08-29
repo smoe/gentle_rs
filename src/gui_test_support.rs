@@ -10,7 +10,7 @@ use std::{collections::BTreeMap, fs, path::Path};
 use eframe::egui::{self, Context, Rect, Response};
 use serde::{Deserialize, Serialize};
 
-pub const SNAPSHOT_SCHEMA: &str = "gentle.gui_semantic_snapshot.v1";
+pub const SNAPSHOT_SCHEMA: &str = "gentle.gui_semantic_snapshot.v2";
 pub const SNAPSHOT_PATH_ENV: &str = "GENTLE_GUI_TEST_SNAPSHOT";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -166,7 +166,7 @@ pub fn register_rect(
     let semantic_id = semantic_id.into();
     let window_id = window_id.into();
     if let Some(scope) = subject_scope {
-        assert_opaque_scope(scope);
+        assert_pseudonymous_scope(scope);
     }
     let pixels_per_point = ctx.pixels_per_point();
     let viewport_origin = ctx.input(|input| {
@@ -251,15 +251,15 @@ fn write_snapshot(path: &Path, snapshot: &GuiTestSnapshot) -> Result<(), String>
     })
 }
 
-pub fn opaque_subject_scope(parts: &[&str]) -> String {
-    let mut hash = 0xcbf29ce484222325_u64;
+pub fn pseudonymous_subject_scope(parts: &[&str]) -> String {
+    let mut identity = b"gentle.gui.subject_scope.v1\0".to_vec();
     for part in parts {
-        for byte in part.as_bytes().iter().copied().chain([0xff]) {
-            hash ^= u64::from(byte);
-            hash = hash.wrapping_mul(0x100000001b3);
-        }
+        let length = u64::try_from(part.len()).expect("semantic scope part length fits u64");
+        identity.extend_from_slice(&length.to_be_bytes());
+        identity.extend_from_slice(part.as_bytes());
     }
-    format!("subject-{hash:016x}")
+    let digest = crate::digest_utils::sha256_hex_bytes(&identity);
+    format!("subject-{}", &digest[..32])
 }
 
 fn registry_id() -> egui::Id {
@@ -277,12 +277,12 @@ fn assert_semantic_token(value: &str) {
     );
 }
 
-fn assert_opaque_scope(value: &str) {
+fn assert_pseudonymous_scope(value: &str) {
     assert!(
         value.starts_with("subject-")
-            && value.len() == 24
+            && value.len() == 40
             && value[8..].bytes().all(|byte| byte.is_ascii_hexdigit()),
-        "semantic GUI subject scopes must be opaque hashes"
+        "semantic GUI subject scopes must be pseudonymous hashes"
     );
 }
 
@@ -364,16 +364,22 @@ mod tests {
 
     #[test]
     fn scoped_dynamic_rows_keep_identity_across_order_and_filter_changes() {
-        let a = opaque_subject_scope(&["seq-1", "repeat", "100..120", "rmsk:Alu"]);
-        let b = opaque_subject_scope(&["seq-1", "array", "300..320", "PSR-1"]);
+        let a = pseudonymous_subject_scope(&["seq-1", "repeat", "100..120", "rmsk:Alu"]);
+        let b = pseudonymous_subject_scope(&["seq-1", "array", "300..320", "PSR-1"]);
         let mut original = vec![a.clone(), b.clone()];
         let reordered = vec![b.clone(), a.clone()];
         original.sort();
         let mut reordered_sorted = reordered;
         reordered_sorted.sort();
         assert_eq!(original, reordered_sorted);
-        assert_eq!(vec![a.clone()], vec![a]);
+        assert_eq!(vec![a.clone()], vec![a.clone()]);
         assert!(!b.contains("PSR-1"));
+        assert_ne!(
+            pseudonymous_subject_scope(&["ab", "c"]),
+            pseudonymous_subject_scope(&["a", "bc"]),
+            "length-prefixing must keep scope components unambiguous"
+        );
+        assert_eq!(a.len(), 40);
     }
 
     #[test]
@@ -381,7 +387,7 @@ mod tests {
         let ctx = Context::default();
         begin_frame(&ctx);
         let scope =
-            opaque_subject_scope(&["ACGTACGT", "/Users/private/project.gb", "secret-token"]);
+            pseudonymous_subject_scope(&["ACGTACGT", "/Users/private/project.gb", "secret-token"]);
         let button = response(&ctx, "Private visible label", true);
         register_response(
             &button,

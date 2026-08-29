@@ -2,11 +2,11 @@
 
 | Release field | Value |
 | --- | --- |
-| Status | Draft through 2026-08-14, pending automated pre-tag validation |
+| Status | Draft through 2026-08-29, pending automated pre-tag validation |
 | Target date | August 2026 |
 | Previous tag | `v0.1.0-internal.9` (2026-06-05) |
 | Primary story | Genome-anchored TP73 evidence viewer and transcript-aware primer workflows |
-| Manual GUI smoke | Deliberately deferred until after this interim release |
+| Manual GUI smoke | Required before tagging; pending |
 
 This internal release covers the work after `v0.1.0-internal.9`, tagged on
 2026-06-05. Once the new tag is cut, the auditable Git comparison is:
@@ -241,6 +241,13 @@ expensive GUI work that runs safely away from the egui thread.
   including Msty's gateway/model-server distinction.
 - Added JS and Lua bindings for construct-reasoning inspection actions and
   maintained CLI/MCP/ClawBio parity checks over shared routes.
+- Projected all five portable cryptic-splicing inspection/export routes through
+  the confirmation-gated MCP `op` tool. User-supplied MaxEnt resource sync
+  remains an explicit external-mutation exclusion rather than an implied MCP
+  capability.
+- Replaced guessable 64-bit semantic GUI scope hashes with domain-separated,
+  length-prefixed SHA-256 scopes truncated to 128 bits. These identifiers are
+  path-free and pseudonymous, not a claim of anonymity for guessable inputs.
 
 ### 6. Gene Sets, Promoters, and Construct Reasoning
 
@@ -255,6 +262,10 @@ expensive GUI work that runs safely away from the egui thread.
 - Added portable construct-reasoning inspection actions and shared dotplot
   execution routes, including objective-specific task severity and curated
   repeat-family corroboration.
+- Added approval-gated promoter-reporter panel planning/materialization with
+  exact vector and state binding. Requests must explicitly select the supported
+  `p53_family_core_disruption_v1` mutation policy; study-specific caveats are
+  bound to the request rather than hard-coded into the generic operation.
 
 ### 7. Materials and External-Service Handoffs
 
@@ -279,6 +290,9 @@ expensive GUI work that runs safely away from the egui thread.
   history while preserving undo across live and detached operations.
 - Made metadata-only track/planning edits dirty the project and invalidate
   stale redo checkpoints.
+- Made Splicing Expert panel reuse sequence-scoped, preventing a shared TP53
+  default from being copied into PATZ1 when the active sequence has its own
+  imported panel.
 - Cached root-frame presentation state, linear rendering derivations,
   sequence-window display synchronization, and Splicing Expert models.
 - Virtualized dense JASPAR, feature-tree, and sequencing-confirmation lists and
@@ -320,6 +334,9 @@ expensive GUI work that runs safely away from the egui thread.
 - Most new schemas and fields in this interval are additive. Callers should
   continue to validate the advertised schema id/version and ignore documented
   optional fields they do not consume.
+- The unreleased `gentle.promoter_reporter_panel_request.v1` contract now
+  requires an explicit `mutation_policy`; omitted/`unspecified` requests fail
+  closed instead of silently receiving p53-family substitutions.
 - ClawBio shell-normalizer compatibility modes deprecated in `.8` remain
   accepted in `.10` with warnings. Their earliest possible removal is `.11`,
   after a separate compatibility discussion.
@@ -385,10 +402,10 @@ git diff --check
 
 Automated pre-tag validation results: _pending_.
 
-## Post-Release GUI Smoke
+## Pre-Release GUI Smoke
 
-Manual GUI smoke is deliberately deferred until after this interim tag. It
-should then follow `docs/tp73_genome_evidence_viewer_runbook.md`, including
+Manual GUI smoke is required before this interim tag. It must follow
+`docs/tp73_genome_evidence_viewer_runbook.md`, including
 anchor/build status, repeat/array/BED/TFBS visibility and details,
 feature-detail copy controls, Splicing Expert presentation, and the first 1200
 bp linear viewport. Also open the Agent Assistant, select Codex Local, and
@@ -411,4 +428,4 @@ Primer3 run reports progress and remains cancellable when a progress-capable
 binary is available. A machine without Primer3 or BLAST+ should instead show a
 clear preflight limitation without disabling unrelated project work.
 
-Manual GUI smoke: _deferred until after `v0.1.0-internal.10`_.
+Manual GUI smoke: _pending before `v0.1.0-internal.10`_.

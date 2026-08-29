@@ -4,6 +4,10 @@
   "vector_seq_id": "synthetic_panel_vector",
   "vector_catalog_id": "Synthetic panel vector",
   "helper_catalog_path": "docs/examples/assets/promoter_reporter_panel_demo_helper_vectors.json",
+  "mutation_policy": "p53_family_core_disruption_v1",
+  "scientific_caveats": [
+    "Synthetic test fixture; no functional promoter claim is made."
+  ],
   "members": [
     {
       "candidate_set_path": "docs/examples/assets/promoter_reporter_panel_demo_candidates.json",

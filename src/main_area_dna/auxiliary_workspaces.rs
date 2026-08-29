@@ -7715,6 +7715,24 @@ impl MainAreaDna {
         values
     }
 
+    pub(super) fn sequence_scoped_isoform_panel_id(&self) -> Option<String> {
+        let seq_id = self.seq_id.as_deref()?.trim();
+        if seq_id.is_empty() {
+            return None;
+        }
+        let engine = self.engine.as_ref()?.read().ok()?;
+        let visible_panel_id = self.isoform_panel_id.trim();
+        if !visible_panel_id.is_empty()
+            && engine.isoform_panel_is_available(seq_id, visible_panel_id)
+        {
+            return Some(visible_panel_id.to_string());
+        }
+        engine
+            .isoform_panel_ids_for_sequence(seq_id)
+            .into_iter()
+            .next()
+    }
+
     pub(super) fn splicing_isoform_evidence_request(
         &self,
     ) -> Result<GeneIsoformEvidenceRequest, String> {
@@ -8488,10 +8506,17 @@ impl MainAreaDna {
                     ui.text_edit_singleline(&mut self.splicing_isoform_evidence_panel_id);
                     if ui
                         .button("Use panel control")
-                        .on_hover_text("Copy the panel id from the Isoform Architecture controls")
+                        .on_hover_text(
+                            "Use the visible panel only if it belongs to this sequence; otherwise use this sequence's most recently imported panel",
+                        )
                         .clicked()
                     {
-                        self.splicing_isoform_evidence_panel_id = self.isoform_panel_id.clone();
+                        if let Some(panel_id) = self.sequence_scoped_isoform_panel_id() {
+                            self.splicing_isoform_evidence_panel_id = panel_id;
+                        } else {
+                            self.splicing_isoform_evidence_status =
+                                "No isoform panel is imported for the active sequence".to_string();
+                        }
                     }
                 });
                 ui.end_row();
@@ -8921,7 +8946,7 @@ impl MainAreaDna {
                             #[cfg(feature = "gui-test-support")]
                             {
                                 let subject_scope =
-                                    crate::gui_test_support::opaque_subject_scope(&[
+                                    crate::gui_test_support::pseudonymous_subject_scope(&[
                                         &report.seq_id,
                                         &report.panel_id,
                                         &junction.junction_id,
@@ -8977,7 +9002,7 @@ impl MainAreaDna {
     ) {
         crate::gentle_gui_profile_scope!("MainAreaDna::render_splicing_locus_evidence_tab");
         #[cfg(feature = "gui-test-support")]
-        let semantic_scope = crate::gui_test_support::opaque_subject_scope(&[
+        let semantic_scope = crate::gui_test_support::pseudonymous_subject_scope(&[
             &view.seq_id,
             &view.target_feature_id.to_string(),
         ]);
@@ -9018,7 +9043,13 @@ impl MainAreaDna {
                             false,
                         );
                         if use_panel.clicked() {
-                            self.splicing_isoform_evidence_panel_id = self.isoform_panel_id.clone();
+                            if let Some(panel_id) = self.sequence_scoped_isoform_panel_id() {
+                                self.splicing_isoform_evidence_panel_id = panel_id;
+                            } else {
+                                self.splicing_locus_status =
+                                    "No isoform panel is imported for the active sequence"
+                                        .to_string();
+                            }
                         }
                         ui.end_row();
                         ui.label("Annotation release");

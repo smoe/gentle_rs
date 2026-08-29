@@ -697,6 +697,9 @@ an agent has selected a deterministic operation.
 - `resources summarize-jaspar`
 - `resources sync-jaspar`
 - `resources sync-jaspar-remote-metadata`
+- `resources sync-maxent` (installs a user-supplied MaxEntScan resource and
+  records external provenance; it has no portable engine operation and remains
+  outside MCP until a dedicated confirmed external-mutation contract exists)
 - `resources sync-rebase`
 - `resources sync-ucsc-rmsk`
 - `reverse-translate export-report`
@@ -756,8 +759,6 @@ an agent has selected a deterministic operation.
 - `services route-project-source`
 - `services status`
 - `set-param`
-- `splicing cryptic-render`
-- `splicing cryptic-screen`
 - `splicing-refs derive`
 - `tracks import-bed`
 - `tracks import-bigwig`

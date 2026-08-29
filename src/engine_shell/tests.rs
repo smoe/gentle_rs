@@ -86,6 +86,8 @@ fn promoters_panel_routes_parse_typed_request_and_exact_approval() {
         panel_id: "tp73_panel".to_string(),
         vector_seq_id: "pgl4".to_string(),
         vector_catalog_id: "promega_pgl4_10_luc2".to_string(),
+        mutation_policy:
+            crate::engine::PromoterReporterPanelMutationPolicy::P53FamilyCoreDisruptionV1,
         members: vec![crate::engine::PromoterReporterPanelMemberRequest {
             candidate_set_path: "/tmp/tp73_candidates.json".to_string(),
             ..crate::engine::PromoterReporterPanelMemberRequest::default()

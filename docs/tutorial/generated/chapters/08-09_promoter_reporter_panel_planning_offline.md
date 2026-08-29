@@ -7,14 +7,14 @@ source_example: "docs/examples/workflows/promoter_reporter_panel_planning_offlin
 example_test_mode: "always"
 executed_during_generation: true
 automated_status: "passing"
-review_status: "missing_review_manifest_entry"
+review_status: "codex_reviewed"
 review_stale: false
-codex_reviewed_at: null
+codex_reviewed_at: "2026-08-29"
 human_reviewed_at: null
 human_reviewer: null
 review_stale_reason: null
-review_issue_template: "Tutorial confusion"
-review_issue_template_path: ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+review_issue_template: null
+review_issue_template_path: null
 generated_artifact_dir: "docs/tutorial/generated/artifacts/promoter_reporter_panel_planning_offline"
 ---
 
@@ -22,9 +22,9 @@ generated_artifact_dir: "docs/tutorial/generated/artifacts/promoter_reporter_pan
 
 Build a read-only, content-addressed promoter-reporter panel proposal from one synthetic motif-anchored fragment and an exactly validated synthetic vector, inspect its evidence and non-claims, then materialize only the exact approved digest.
 
-A reporter-panel design is not one opaque cloning command. GENtle first binds the selected promoter candidate, source sequence, exact vector identity, motif-disruption rule, shared cloning strategy, primers, predicted circular products, and export paths into one proposal digest. Planning runs the full workflow on a detached project state and writes no constructs. A separate materialization request must repeat that exact digest; any changed project sequence, candidate file, helper catalog, or proposal field makes the approval stale.
+A reporter-panel design is not one opaque cloning command. GENtle first binds the selected promoter candidate, source sequence, exact vector identity, explicit mutation policy, request-specific scientific caveats, shared cloning strategy, primers, predicted circular products, and export paths into one proposal digest. Planning runs the full workflow on a detached project state and writes no constructs. A separate materialization request must repeat that exact digest; any changed project sequence, candidate file, helper catalog, policy, caveat, or proposal field makes the approval stale.
 
-This chapter stays offline by using a repository-owned 240 bp synthetic MCS-layout vector and a 151 bp synthetic promoter fragment. The vector is deliberately not pGL4.10 and the fragment is not real TP73 regulatory DNA. The candidate response element is sequence-motif evidence only, and its stated-rule mutant is a testable sequence proposal rather than proof of lost occupancy or reporter function.
+This chapter stays offline by using a repository-owned 240 bp synthetic MCS-layout vector and a 151 bp synthetic promoter fragment. The vector is deliberately not pGL4.10 and the fragment is not real TP73 regulatory DNA. V1 requires the explicit `p53_family_core_disruption_v1` policy rather than silently applying p53-family substitutions to a generic promoter request. The candidate response element is sequence-motif evidence only, and its stated-rule mutant is a testable sequence proposal rather than proof of lost occupancy or reporter function.
 
 **Prerequisites:** Read [Chapter 24: Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)](./08-03_promoter_design_artifact_slice_offline.md) first.
 
@@ -52,6 +52,7 @@ This chapter stays offline by using a repository-owned 240 bp synthetic MCS-layo
 - Distinguish read-only panel planning from digest-approved project mutation and file export.
 - Explain which source, vector, workflow, product, and path facts are bound by the proposal digest.
 - Inspect a fixed p53-family core-edit rule and its PWM/restriction-site audits without turning either into a functional claim.
+- Require an explicit mutation policy and keep study-specific caveats bound to the reviewed request rather than adding gene-specific prose globally.
 - Recognize why the synthetic MCS fixture validates only against its own catalog identity and must be rejected as pGL4.10.
 - Use the same engine contract from the Promoter design GUI and the `promoters panel-*` shell routes.
 
@@ -216,8 +217,8 @@ cat /tmp/gentle-promoter-reporter-panel-demo-products/synthetic_tp73_demo_panel.
 - Example test_mode: `always`
 - Executed during generation: `yes`
 - Automated status: `passing`
-- Review status: `missing_review_manifest_entry`
-- Codex reviewed at: `not recorded`
+- Review status: `codex_reviewed`
+- Codex reviewed at: `2026-08-29`
 - Human reviewed at: `not recorded`
 - Inspect the source JSON when you need full option-level detail.
 

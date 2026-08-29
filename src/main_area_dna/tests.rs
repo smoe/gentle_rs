@@ -8918,6 +8918,43 @@ fn splicing_locus_resource_rows_distinguish_ready_and_relocated_files() {
 }
 
 #[test]
+fn sequence_scoped_panel_control_does_not_leak_the_tp53_default_into_patz1() {
+    let fixture = "test_files/fixtures/isoform_evidence/patz1";
+    let mut engine = GentleEngine::default();
+    engine
+        .apply(Operation::LoadFile {
+            path: format!("{fixture}/patz1_minus_strand.gb"),
+            as_id: Some("patz1_panel_scope".to_string()),
+        })
+        .expect("load PATZ1 fixture");
+    engine
+        .apply(Operation::ImportIsoformPanel {
+            seq_id: "patz1_panel_scope".to_string(),
+            panel_path: format!("{fixture}/patz1_isoform_panel.json"),
+            panel_id: Some("patz1_synthetic_v1".to_string()),
+            strict: false,
+        })
+        .expect("import PATZ1 panel");
+    let dna = engine
+        .state()
+        .sequences
+        .get("patz1_panel_scope")
+        .expect("PATZ1 sequence")
+        .clone();
+    let area = MainAreaDna::new(
+        dna,
+        Some("patz1_panel_scope".to_string()),
+        Some(Arc::new(RwLock::new(engine))),
+    );
+
+    assert_eq!(area.isoform_panel_id, "tp53_isoforms_v1");
+    assert_eq!(
+        area.sequence_scoped_isoform_panel_id().as_deref(),
+        Some("patz1_synthetic_v1")
+    );
+}
+
+#[test]
 fn opening_a_splicing_group_clears_cached_isoform_evidence() {
     let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
     let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);

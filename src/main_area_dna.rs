@@ -4199,7 +4199,7 @@ impl MainAreaDna {
         crate::gentle_gui_profile_scope!("MainAreaDna::render");
         #[cfg(feature = "gui-test-support")]
         {
-            let subject_scope = crate::gui_test_support::opaque_subject_scope(&[self
+            let subject_scope = crate::gui_test_support::pseudonymous_subject_scope(&[self
                 .seq_id
                 .as_deref()
                 .unwrap_or("unnamed")]);
@@ -5399,7 +5399,7 @@ impl MainAreaDna {
                 ));
             #[cfg(feature = "gui-test-support")]
             {
-                let subject_scope = crate::gui_test_support::opaque_subject_scope(&[
+                let subject_scope = crate::gui_test_support::pseudonymous_subject_scope(&[
                     self.seq_id.as_deref().unwrap_or("unnamed"),
                 ]);
                 crate::gui_test_support::register_response(
@@ -5443,7 +5443,7 @@ impl MainAreaDna {
             };
             #[cfg(feature = "gui-test-support")]
             {
-                let subject_scope = crate::gui_test_support::opaque_subject_scope(&[
+                let subject_scope = crate::gui_test_support::pseudonymous_subject_scope(&[
                     self.seq_id.as_deref().unwrap_or("unnamed"),
                 ]);
                 crate::gui_test_support::register_response(
@@ -5589,7 +5589,7 @@ impl MainAreaDna {
                 ));
             #[cfg(feature = "gui-test-support")]
             {
-                let subject_scope = crate::gui_test_support::opaque_subject_scope(&[
+                let subject_scope = crate::gui_test_support::pseudonymous_subject_scope(&[
                     self.seq_id.as_deref().unwrap_or("unnamed"),
                 ]);
                 crate::gui_test_support::register_response(
@@ -18885,7 +18885,7 @@ impl MainAreaDna {
     ) {
         #[cfg(feature = "gui-test-support")]
         {
-            let subject_scope = crate::gui_test_support::opaque_subject_scope(&[
+            let subject_scope = crate::gui_test_support::pseudonymous_subject_scope(&[
                 &view.seq_id,
                 &view.target_feature_id.to_string(),
             ]);
@@ -18935,7 +18935,7 @@ impl MainAreaDna {
             );
             #[cfg(feature = "gui-test-support")]
             {
-                let subject_scope = crate::gui_test_support::opaque_subject_scope(&[
+                let subject_scope = crate::gui_test_support::pseudonymous_subject_scope(&[
                     &view.seq_id,
                     &view.target_feature_id.to_string(),
                 ]);
@@ -26457,7 +26457,7 @@ impl MainAreaDna {
                                         #[cfg(feature = "gui-test-support")]
                                         {
                                             let subject_scope =
-                                                crate::gui_test_support::opaque_subject_scope(&[
+                                                crate::gui_test_support::pseudonymous_subject_scope(&[
                                                 self.seq_id.as_deref().unwrap_or("unnamed"),
                                             ]);
                                             crate::gui_test_support::register_response(
@@ -26572,7 +26572,7 @@ impl MainAreaDna {
                                 #[cfg(feature = "gui-test-support")]
                                 {
                                     let subject_scope =
-                                        crate::gui_test_support::opaque_subject_scope(&[
+                                        crate::gui_test_support::pseudonymous_subject_scope(&[
                                             self.seq_id.as_deref().unwrap_or("unnamed"),
                                         ]);
                                     crate::gui_test_support::register_response(
@@ -26648,7 +26648,7 @@ impl MainAreaDna {
                 );
                 #[cfg(feature = "gui-test-support")]
                 {
-                    let subject_scope = crate::gui_test_support::opaque_subject_scope(&[
+                    let subject_scope = crate::gui_test_support::pseudonymous_subject_scope(&[
                         self.seq_id.as_deref().unwrap_or("unnamed"),
                     ]);
                     crate::gui_test_support::register_response(

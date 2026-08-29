@@ -7229,8 +7229,13 @@ cargo run --quiet --bin gentle_cli -- --state STATE.json \
 ```
 
 The request names one loaded, exactly catalog-validated vector and one or more
-saved `gentle.promoter_reporter_candidates.v1` members. Planning is read-only:
-GENtle simulates fragment extraction, the stated-rule p53-family motif mutant,
+saved `gentle.promoter_reporter_candidates.v1` members. It must explicitly set
+`mutation_policy` to `p53_family_core_disruption_v1`; v1 rejects an omitted or
+`unspecified` policy so an unrelated promoter request cannot silently receive
+p53-family substitutions. Optional study-specific interpretation limits belong
+in request-bound `scientific_caveats` and are preserved in the proposal rather
+than supplied by the generic operation. Planning is read-only: GENtle simulates
+fragment extraction, the policy-selected p53-family motif mutant,
 shared directional restriction selection or explicit Gibson fallback, cloning
 primers, circular products, feature transfer, and GenBank/SVG/manifest paths in
 a detached engine. Each product also carries the assembly junction-validation

@@ -2825,7 +2825,7 @@ impl GENtleApp {
                                         #[cfg(feature = "gui-test-support")]
                                         {
                                             let subject_scope =
-                                                crate::gui_test_support::opaque_subject_scope(&[
+                                                crate::gui_test_support::pseudonymous_subject_scope(&[
                                                     &row.seq_id,
                                                 ]);
                                             crate::gui_test_support::register_response(

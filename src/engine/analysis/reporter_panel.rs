@@ -722,6 +722,13 @@ impl GentleEngine {
         Self::append_promoter_reporter_panel_export_steps(&mut simulation.workflow, &artifacts)?;
         let workflow_sha256 =
             self.promoter_reporter_panel_value_sha256(&simulation.workflow, "panel workflow")?;
+        let mut nonclaims = vec![
+            "Sequence motifs are candidate regulatory evidence, not proof of p53-family occupancy or promoter function."
+                .to_string(),
+            "In-silico construct and primer models require wet-lab validation; GENtle does not order oligos or execute experiments."
+                .to_string(),
+        ];
+        nonclaims.extend(request.scientific_caveats.iter().cloned());
         let mut proposal = PromoterReporterPanelProposal {
             schema: PROMOTER_REPORTER_PANEL_PROPOSAL_SCHEMA.to_string(),
             request,
@@ -744,7 +751,12 @@ impl GentleEngine {
                 .warnings
                 .iter()
                 .cloned()
-                .chain(simulation.members.iter().flat_map(|member| member.warnings.clone()))
+                .chain(
+                    simulation
+                        .members
+                        .iter()
+                        .flat_map(|member| member.warnings.clone()),
+                )
                 .chain(
                     simulation
                         .products
@@ -752,14 +764,7 @@ impl GentleEngine {
                         .flat_map(|product| product.final_product_audit.warnings.clone()),
                 )
                 .collect(),
-            nonclaims: vec![
-                "Sequence motifs are candidate regulatory evidence, not proof of TP73 occupancy or promoter function."
-                    .to_string(),
-                "TGFB1 and SERPINE1 reporter differences may be confounded by autocrine TGF-beta signaling."
-                    .to_string(),
-                "In-silico construct and primer models require wet-lab validation; GENtle does not order oligos or execute experiments."
-                    .to_string(),
-            ],
+            nonclaims,
             ..PromoterReporterPanelProposal::default()
         };
         proposal.proposal_digest = Self::promoter_reporter_panel_proposal_digest(&proposal)?;
@@ -1149,6 +1154,22 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
+        if request.mutation_policy == PromoterReporterPanelMutationPolicy::Unspecified {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Panel request requires an explicit mutation_policy; promoter-reporter panel v1 currently supports p53_family_core_disruption_v1"
+                    .to_string(),
+                cause_chain: vec![],
+            });
+        }
+        request.scientific_caveats = request
+            .scientific_caveats
+            .into_iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
         if let Some(path) = request.helper_catalog_path.as_deref() {
             request.helper_catalog_path = Some(
                 Self::canonical_existing_path(path, "helper-vector catalog")?
@@ -1456,7 +1477,8 @@ impl GentleEngine {
                     ),
                     cause_chain: vec![],
                 })?;
-            let mutation = detached.engine().design_p53_family_motif_disruption(
+            let mutation = detached.engine().design_promoter_reporter_panel_mutation(
+                request.mutation_policy,
                 &wild_type_sequence,
                 resolved.motif_start_in_fragment_0based,
                 resolved.motif_end_in_fragment_0based_exclusive,
@@ -1549,7 +1571,8 @@ impl GentleEngine {
                     message: format!("Panel insert '{}' disappeared", member.wild_type_seq_id),
                     cause_chain: vec![],
                 })?;
-            let audited = detached.engine().design_p53_family_motif_disruption(
+            let audited = detached.engine().design_promoter_reporter_panel_mutation(
+                request.mutation_policy,
                 &wild_type,
                 member.motif_start_in_fragment_0based,
                 member.motif_end_in_fragment_0based_exclusive,
@@ -1619,6 +1642,32 @@ impl GentleEngine {
             products,
             created_seq_ids,
         })
+    }
+
+    fn design_promoter_reporter_panel_mutation(
+        &self,
+        policy: PromoterReporterPanelMutationPolicy,
+        source_sequence: &str,
+        motif_start_0based: usize,
+        motif_end_0based_exclusive: usize,
+        motif_forward_strand: bool,
+        selected_enzymes: &[String],
+    ) -> Result<P53FamilyMotifDisruptionReport, EngineError> {
+        match policy {
+            PromoterReporterPanelMutationPolicy::P53FamilyCoreDisruptionV1 => self
+                .design_p53_family_motif_disruption(
+                    source_sequence,
+                    motif_start_0based,
+                    motif_end_0based_exclusive,
+                    motif_forward_strand,
+                    selected_enzymes,
+                ),
+            PromoterReporterPanelMutationPolicy::Unspecified => Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Promoter-reporter panel mutation policy is unspecified".to_string(),
+                cause_chain: vec![],
+            }),
+        }
     }
 
     fn replace_panel_mutant_sequence(
@@ -2572,6 +2621,10 @@ mod tests {
             vector_seq_id: "synthetic_vector".to_string(),
             vector_catalog_id: "Synthetic panel vector".to_string(),
             helper_catalog_path: Some(helper_catalog_path.to_string_lossy().to_string()),
+            mutation_policy: PromoterReporterPanelMutationPolicy::P53FamilyCoreDisruptionV1,
+            scientific_caveats: vec![
+                "Synthetic test fixture; no functional promoter claim is made.".to_string(),
+            ],
             members: vec![PromoterReporterPanelMemberRequest {
                 candidate_set_path: candidate_set_path.to_string_lossy().to_string(),
                 candidate_id: Some("tp73_core".to_string()),
@@ -2761,6 +2814,28 @@ mod tests {
         assert!(error.message.contains("expected C"));
     }
 
+    #[test]
+    fn promoter_reporter_panel_rejects_an_unspecified_mutation_policy() {
+        let request = PromoterReporterPanelRequest {
+            schema: PROMOTER_REPORTER_PANEL_REQUEST_SCHEMA.to_string(),
+            panel_id: "unscoped_panel".to_string(),
+            vector_seq_id: "vector".to_string(),
+            vector_catalog_id: "catalog_vector".to_string(),
+            members: vec![PromoterReporterPanelMemberRequest {
+                candidate_set_path: "unused.json".to_string(),
+                ..PromoterReporterPanelMemberRequest::default()
+            }],
+            output_dir: "unused-output".to_string(),
+            ..PromoterReporterPanelRequest::default()
+        };
+        let error = GentleEngine::default()
+            .plan_promoter_reporter_panel(request)
+            .expect_err("an omitted mutation policy must fail before sequence work");
+        assert_eq!(error.code, ErrorCode::InvalidInput);
+        assert!(error.message.contains("explicit mutation_policy"));
+        assert!(error.message.contains("p53_family_core_disruption_v1"));
+    }
+
     fn run_promoter_reporter_panel_end_to_end_test(name: &str, test: fn()) {
         std::thread::Builder::new()
             .name(name.to_string())
@@ -2793,6 +2868,22 @@ mod tests {
             .expect("second panel proposal");
 
         assert_eq!(first.proposal_digest, second.proposal_digest);
+        assert_eq!(
+            first.request.mutation_policy,
+            PromoterReporterPanelMutationPolicy::P53FamilyCoreDisruptionV1
+        );
+        assert!(
+            first
+                .nonclaims
+                .iter()
+                .any(|value| value.contains("Synthetic test fixture"))
+        );
+        assert!(
+            first
+                .nonclaims
+                .iter()
+                .all(|value| !value.contains("TGFB1") && !value.contains("SERPINE1"))
+        );
         assert_eq!(first.workflow_sha256, second.workflow_sha256);
         assert_eq!(first.products.len(), 2);
         assert_eq!(

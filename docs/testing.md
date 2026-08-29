@@ -292,8 +292,10 @@ listener, input-injection API, screenshot permission bypass, or command route.
 
 Semantic IDs are lowercase dotted purpose names such as
 `dna.splitter.info_width` and do not derive from translated labels or screen
-position. Repeated domain rows share one semantic ID and carry an opaque
-`subject_scope` hash derived from stable domain fields rather than list index.
+position. Repeated domain rows share one semantic ID and carry a pseudonymous
+`subject_scope` derived from stable domain fields rather than list index. V2
+uses a domain-separated SHA-256 digest truncated to 128 bits; this prevents
+literal-value disclosure but is not an anonymity claim for guessable inputs.
 Snapshots never include visible labels, sequence strings, paths, credentials,
 or arbitrary user text. Rectangles are screen-relative egui logical points,
 including the native viewport origin; multiply them by the item's
@@ -309,14 +311,14 @@ jq '.generation, .settled, .items[] | select(.semantic_id == "dna.splitter.info_
   /tmp/gentle-gui.json
 ```
 
-The snapshot schema is `gentle.gui_semantic_snapshot.v1`. `generation`
+The snapshot schema is `gentle.gui_semantic_snapshot.v2`. `generation`
 advances monotonically and `settled` is false while known deferred GUI work,
 including initial feature-tree hydration, is pending. Harnesses should wait on
 those fields rather than a fixed sleep. Semantic IDs locate GUI affordances;
 scientific correctness still comes from the typed project state and reports.
 The Linux example [`../scripts/gui_semantic_xvfb_smoke.sh`](../scripts/gui_semantic_xvfb_smoke.sh)
 self-skips when X11 tools or a display are unavailable and accepts explicit
-opaque repeat/array row scopes plus a typed-state verification command.
+pseudonymous repeat/array row scopes plus a typed-state verification command.
 than Criterion microbenchmarks.
 
 ## 6. Practical implementation order

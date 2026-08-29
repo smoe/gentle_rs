@@ -14,7 +14,9 @@
   GUI controls, and JSON/SVG parity. Missing, invalid, mismatched, or legacy
   evidence remains absent/failed/not-assessable while structural rows remain
   inspectable; no candidate is treated as observed splicing without bound RNA
-  support.
+  support. All five portable cryptic-splicing routes are now projected through
+  the confirmation-gated MCP `op` tool; user-supplied MaxEnt resource sync
+  remains an explicitly documented external-mutation exclusion.
 
 - Completed the approval-gated promoter-reporter panel arc with shared
   `PlanPromoterReporterPanel` and `MaterializePromoterReporterPanel` operations,
@@ -26,10 +28,13 @@
   GenBank/SVG/manifest exports under one content digest. Materialization
   requires that exact digest, recomputes all bound state and file inputs,
   refuses drift and overwrites, commits atomically, and returns a state-bound
-  receipt. A synthetic offline tutorial demonstrates the review boundary
-  without bundling or impersonating pGL4.10, and behavioral tests cover
-  deterministic planning, wrong/stale approval rejection, product/manifest
-  creation, and GUI cache parity.
+  receipt. Requests must now select the explicit
+  `p53_family_core_disruption_v1` mutation policy; omitted policy fails closed,
+  and study-specific caveats are request-bound rather than hard-coded into the
+  generic operation. A synthetic offline tutorial demonstrates the review
+  boundary without bundling or impersonating pGL4.10, and behavioral tests
+  cover deterministic planning, wrong/stale approval rejection,
+  product/manifest creation, and GUI cache parity.
 
 - Added a stated-rule p53-family response-element disruption report for
   promoter-reporter design. V1 changes only the conserved oriented C/G core
@@ -67,13 +72,20 @@
   serialization and behavior, and motif annotations remain sequence evidence
   rather than occupancy or functional claims.
 
-- Added feature-gated, privacy-safe semantic GUI acceptance metadata for the
+- Added feature-gated, path-free semantic GUI acceptance metadata for the
   bounded TP73/PATZ1 release path. Native harnesses can locate main/DNA,
   Splicing Expert, and Agent Assistant controls by stable dotted purpose IDs,
-  opaque domain-row scopes, post-layout logical rectangles, state, and frame
+  domain-separated SHA-256 pseudonymous row scopes, post-layout logical
+  rectangles, state, and frame
   generation without translated labels or fixed coordinates. The opt-in JSON
   snapshot is read-only and provides no listener, input injection, command
-  execution, or screenshot-consent bypass.
+  execution, or screenshot-consent bypass. Scope hashes prevent literal-value
+  disclosure but are not presented as anonymity for guessable inputs.
+
+- Made both Splicing Expert `Use panel control` actions sequence-scoped. A
+  shared TP53 default can no longer leak into a PATZ1 view; GENtle accepts the
+  visible id only when it belongs to the active sequence and otherwise selects
+  that sequence's most recently imported panel.
 
 - Added a dedicated `bench-audit` Cargo profile for practical external
   Criterion sampling. It preserves release `opt-level=3` and stripping while

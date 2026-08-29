@@ -9172,6 +9172,19 @@ pub enum PromoterReporterPanelFragmentRole {
     Extended,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Explicit sequence-edit policy for a promoter-reporter panel.
+///
+/// V1 supports only the stated-rule p53-family core disruption. `Unspecified`
+/// exists so omitted policy fails validation instead of silently applying that
+/// biology to an unrelated promoter panel.
+pub enum PromoterReporterPanelMutationPolicy {
+    #[default]
+    Unspecified,
+    P53FamilyCoreDisruptionV1,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
 /// One already-ranked promoter candidate selected for panel planning.
@@ -9195,6 +9208,10 @@ pub struct PromoterReporterPanelRequest {
     pub vector_catalog_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub helper_catalog_path: Option<String>,
+    #[serde(default)]
+    pub mutation_policy: PromoterReporterPanelMutationPolicy,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scientific_caveats: Vec<String>,
     pub members: Vec<PromoterReporterPanelMemberRequest>,
     pub output_dir: String,
 }

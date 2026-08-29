@@ -1102,9 +1102,8 @@
         "contributors"
       ],
       "notes": "Machine-checked offline planning chapter; exact digest approval remains a separate, explicit user action.",
-      "review_status": "missing_review_manifest_entry",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-08-29",
       "graphics": [
         {
           "kind": "generated",
