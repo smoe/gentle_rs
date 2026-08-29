@@ -13,6 +13,7 @@ use super::*;
 use crate::engine::{
     DotplotOverlayQuerySpec, DotplotReferenceAnnotationInterval, DotplotReferenceAnnotationTrack,
 };
+use ring::digest::{Context as DigestContext, SHA256};
 
 const SPLICING_EXPERT_PRESENTATION_CACHE_CAPACITY: usize = 4;
 
@@ -43,24 +44,74 @@ pub(super) struct LocusEvidenceResourceRow {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct SplicingExpertPresentationKey {
-    view_identity: usize,
-    target_feature_id: usize,
-    transcript_count: usize,
-    unique_exon_count: usize,
-    matrix_row_count: usize,
-    junction_count: usize,
+    content_sha256: [u8; 32],
 }
 
 impl SplicingExpertPresentationKey {
+    fn digest_usize(context: &mut DigestContext, value: usize) {
+        context.update(&(value as u64).to_le_bytes());
+    }
+
+    fn digest_bool(context: &mut DigestContext, value: bool) {
+        context.update(&[u8::from(value)]);
+    }
+
+    fn digest_str(context: &mut DigestContext, value: &str) {
+        Self::digest_usize(context, value.len());
+        context.update(value.as_bytes());
+    }
+
     fn from_view(view: &SplicingExpertView) -> Self {
-        Self {
-            view_identity: view as *const SplicingExpertView as usize,
-            target_feature_id: view.target_feature_id,
-            transcript_count: view.transcript_count,
-            unique_exon_count: view.unique_exons.len(),
-            matrix_row_count: view.matrix_rows.len(),
-            junction_count: view.junctions.len(),
+        let mut context = DigestContext::new(&SHA256);
+        context.update(b"gentle.splicing_expert_presentation_cache.v1\0");
+        Self::digest_str(&mut context, &view.seq_id);
+        Self::digest_usize(&mut context, view.target_feature_id);
+        Self::digest_usize(&mut context, view.transcript_count);
+
+        Self::digest_usize(&mut context, view.unique_exons.len());
+        for exon in &view.unique_exons {
+            Self::digest_usize(&mut context, exon.start_1based);
+            Self::digest_usize(&mut context, exon.end_1based);
+            Self::digest_usize(&mut context, exon.support_transcript_count);
+            Self::digest_bool(&mut context, exon.constitutive);
         }
+
+        Self::digest_usize(&mut context, view.transcripts.len());
+        for transcript in &view.transcripts {
+            Self::digest_usize(&mut context, transcript.transcript_feature_id);
+            Self::digest_str(&mut context, &transcript.strand);
+            Self::digest_usize(&mut context, transcript.exons.len());
+            for exon in &transcript.exons {
+                Self::digest_usize(&mut context, exon.start_1based);
+                Self::digest_usize(&mut context, exon.end_1based);
+            }
+        }
+
+        Self::digest_usize(&mut context, view.matrix_rows.len());
+        for row in &view.matrix_rows {
+            Self::digest_usize(&mut context, row.transcript_feature_id);
+            Self::digest_str(&mut context, &row.transcript_id);
+            Self::digest_usize(&mut context, row.exon_presence.len());
+            for present in &row.exon_presence {
+                Self::digest_bool(&mut context, *present);
+            }
+        }
+
+        Self::digest_usize(&mut context, view.junctions.len());
+        for junction in &view.junctions {
+            Self::digest_usize(&mut context, junction.donor_1based);
+            Self::digest_usize(&mut context, junction.acceptor_1based);
+            Self::digest_usize(&mut context, junction.support_transcript_count);
+            Self::digest_usize(&mut context, junction.transcript_feature_ids.len());
+            for feature_id in &junction.transcript_feature_ids {
+                Self::digest_usize(&mut context, *feature_id);
+            }
+        }
+
+        let digest = context.finish();
+        let mut content_sha256 = [0u8; 32];
+        content_sha256.copy_from_slice(digest.as_ref());
+        Self { content_sha256 }
     }
 }
 

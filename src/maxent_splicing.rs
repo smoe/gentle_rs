@@ -321,6 +321,17 @@ pub fn active_model_status() -> ActiveMaxEntModelStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{
+        env,
+        ffi::OsString,
+        path::{Path, PathBuf},
+        process::{Command, Stdio},
+        thread,
+        time::{Duration, Instant},
+    };
+
+    const REAL_MAXENTSCAN_TEST_DIR_ENV: &str = "GENTLE_TEST_MAXENTSCAN_DIR";
+    const REAL_MAXENTSCAN_PERL_ENV: &str = "GENTLE_TEST_PERL_BIN";
 
     fn base4_sequence(mut index: usize, len: usize) -> String {
         let mut bases = vec![b'A'; len];
@@ -353,6 +364,70 @@ mod tests {
         snapshot
     }
 
+    fn reference_maxent_scores(
+        model_dir: &Path,
+        script_name: &str,
+        sequences: &[String],
+        input_path: &Path,
+    ) -> Vec<f64> {
+        let script_path = model_dir.join(script_name);
+        assert!(
+            script_path.is_file(),
+            "{} must contain {}",
+            model_dir.display(),
+            script_name
+        );
+        fs::write(input_path, format!("{}\n", sequences.join("\n")))
+            .expect("write MaxEnt reference input");
+        let perl = env::var_os(REAL_MAXENTSCAN_PERL_ENV).unwrap_or_else(|| OsString::from("perl"));
+        let mut child = Command::new(perl)
+            .current_dir(model_dir)
+            .arg(&script_path)
+            .arg(input_path)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("start upstream MaxEntScan Perl scorer");
+        let started = Instant::now();
+        loop {
+            match child.try_wait().expect("poll MaxEntScan scorer") {
+                Some(_) => break,
+                None if started.elapsed() < Duration::from_secs(15) => {
+                    thread::sleep(Duration::from_millis(10));
+                }
+                None => {
+                    let _ = child.kill();
+                    let output = child
+                        .wait_with_output()
+                        .expect("collect timed-out MaxEntScan scorer output");
+                    panic!(
+                        "{script_name} exceeded the 15 second test bound: {}",
+                        String::from_utf8_lossy(&output.stderr)
+                    );
+                }
+            }
+        }
+        let output = child
+            .wait_with_output()
+            .expect("collect MaxEntScan scorer output");
+        assert!(
+            output.status.success(),
+            "{script_name} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8(output.stdout).expect("MaxEntScan UTF-8 output");
+        let scores = stdout
+            .lines()
+            .filter_map(|line| line.split_whitespace().next_back()?.parse::<f64>().ok())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            scores.len(),
+            sequences.len(),
+            "{script_name} returned an unexpected score count; stdout:\n{stdout}"
+        );
+        scores
+    }
+
     #[test]
     fn base4_index_matches_original_maxent_order() {
         assert_eq!(base4_index("AAAA").expect("index"), 0);
@@ -374,6 +449,75 @@ mod tests {
             .expect("acceptor score");
         let expected_acceptor = ((0.9903 / 0.27_f64) * (0.9905 / 0.23_f64)).log2();
         assert!((acceptor - expected_acceptor).abs() < 1e-12);
+    }
+
+    #[test]
+    fn native_maxent_scoring_matches_opt_in_reference_scripts() {
+        let Some(model_dir) = env::var_os(REAL_MAXENTSCAN_TEST_DIR_ENV).map(PathBuf::from) else {
+            return;
+        };
+        assert!(
+            model_dir.is_dir(),
+            "{REAL_MAXENTSCAN_TEST_DIR_ENV} must name an unpacked MaxEntScan directory"
+        );
+        let model_dir = model_dir
+            .canonicalize()
+            .expect("canonicalize the MaxEntScan test directory");
+
+        let temp = tempfile::tempdir().expect("MaxEnt parity tempdir");
+        let snapshot_path = temp.path().join("normalized-maxent.json");
+        crate::resource_sync::sync_maxent_splice_model(
+            model_dir.to_string_lossy().as_ref(),
+            Some(snapshot_path.to_string_lossy().as_ref()),
+            None,
+            None,
+            Some("user_supplied_reference_test"),
+        )
+        .expect("normalize user-supplied MaxEntScan tables");
+        let snapshot: MaxEntSpliceModelSnapshot = serde_json::from_str(
+            &fs::read_to_string(snapshot_path).expect("read normalized MaxEnt snapshot"),
+        )
+        .expect("parse normalized MaxEnt snapshot");
+        let model = MaxEntSpliceModel::from_snapshot(snapshot).expect("load normalized model");
+
+        let donor_sequences = ["CAGGTAAGT", "AAAGTAAAA", "GCCGTCAGG"]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        let acceptor_sequences = vec![
+            format!("{}AGGTT", "T".repeat(18)),
+            format!("{}AGAAA", "A".repeat(18)),
+            format!("{}AGTGC", "CT".repeat(9)),
+        ];
+        let reference_donors = reference_maxent_scores(
+            &model_dir,
+            "score5.pl",
+            &donor_sequences,
+            &temp.path().join("donors.txt"),
+        );
+        let reference_acceptors = reference_maxent_scores(
+            &model_dir,
+            "score3.pl",
+            &acceptor_sequences,
+            &temp.path().join("acceptors.txt"),
+        );
+
+        for (sequence, expected) in donor_sequences.iter().zip(reference_donors) {
+            let observed = model.score_donor(sequence).expect("native donor score");
+            assert!(
+                (observed - expected).abs() < 1e-5,
+                "donor {sequence}: native={observed}, reference={expected}"
+            );
+        }
+        for (sequence, expected) in acceptor_sequences.iter().zip(reference_acceptors) {
+            let observed = model
+                .score_acceptor(sequence)
+                .expect("native acceptor score");
+            assert!(
+                (observed - expected).abs() < 1e-5,
+                "acceptor {sequence}: native={observed}, reference={expected}"
+            );
+        }
     }
 
     #[test]

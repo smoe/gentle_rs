@@ -36,6 +36,8 @@ pub enum CrypticSplicingEvidenceClass {
     #[default]
     StructuralCandidate,
     ModelScored,
+    /// Reserved for evidence-bearing projections. The structural screen never
+    /// emits this class; observed RNA junctions live in the sibling overlay.
     ObservedJunction,
 }
 
@@ -220,6 +222,8 @@ pub struct CrypticSplicingCandidateRow {
     pub pseudo_intron_length_bp: usize,
     pub paired_motif_signature: String,
     pub motif_class: String,
+    /// Donor and acceptor endpoint compartments relative to `insert_span`, for
+    /// example `insert_to_insert` or `insert_to_vector`.
     pub boundary_class: String,
     pub branchpoint: CrypticSplicingBranchpointSignal,
     pub polypyrimidine_tract: CrypticSplicingPolypyrimidineSignal,

@@ -1,5 +1,14 @@
 # GENtle Changelog
 
+- Hardened the splicing evidence implementation after review. The Splicing
+  Expert presentation cache now uses a streaming content digest over the exact
+  transcript/exon/junction inputs it renders instead of a process pointer.
+  Cryptic-splicing tests now pin in-frame versus frameshift consequences and
+  all donor/acceptor insert-boundary classes. Added an opt-in, bounded
+  reference-parity test that normalizes user-supplied MaxEntScan tables and
+  compares native Rust scores with upstream `score5.pl`/`score3.pl` without
+  bundling or redistributing those resources.
+
 - Completed the engine-owned cryptic-splicing inspection arc without changing
   `gentle.cryptic_splicing_screen.v1` semantics. Portable operations and shared
   shell routes now inspect/export/render the screen, join digest- and
