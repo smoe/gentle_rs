@@ -8893,7 +8893,24 @@ fn splicing_locus_resource_rows_distinguish_ready_and_relocated_files() {
         Some("patz1_ui".to_string()),
         Some(Arc::new(RwLock::new(engine))),
     );
-    area.splicing_isoform_evidence_panel_id = "patz1_synthetic_v1".to_string();
+    assert_eq!(area.isoform_panel_id, "tp53_isoforms_v1");
+    assert_eq!(
+        area.splicing_isoform_evidence_panel_id, "patz1_synthetic_v1",
+        "the unique panel imported for PATZ1 must win over the unrelated panel-editor default"
+    );
+    assert_eq!(
+        area.splicing_locus_evidence_request()
+            .expect("PATZ1 locus request without manual panel replacement")
+            .isoform_evidence
+            .panel_id,
+        "patz1_synthetic_v1"
+    );
+    area.inspect_splicing_locus_evidence();
+    assert!(
+        area.splicing_locus_report.is_some(),
+        "Compose and preview should reach the shared report with the unique imported panel: {}",
+        area.splicing_locus_status
+    );
     area.splicing_isoform_evidence_cdna_est_paths = format!("{fixture}/patz1_cdna_est.json");
     area.splicing_locus_probe_effect_paths = "missing/relocated-effects.tsv".to_string();
 
@@ -8915,6 +8932,94 @@ fn splicing_locus_resource_rows_distinguish_ready_and_relocated_files() {
             && row.readiness == LocusEvidenceResourceReadiness::Missing
             && row.detail.contains("relocated copy")
     }));
+}
+
+#[test]
+fn splicing_locus_multiple_imported_panels_require_and_persist_explicit_selection() {
+    let fixture = "test_files/fixtures/isoform_evidence/patz1";
+    let mut engine = GentleEngine::default();
+    engine
+        .apply(Operation::LoadFile {
+            path: format!("{fixture}/patz1_minus_strand.gb"),
+            as_id: Some("patz1_multi".to_string()),
+        })
+        .expect("load PATZ1 fixture");
+    for panel_id in ["patz1_panel_a", "patz1_panel_b"] {
+        engine
+            .apply(Operation::ImportIsoformPanel {
+                seq_id: "patz1_multi".to_string(),
+                panel_path: format!("{fixture}/patz1_isoform_panel.json"),
+                panel_id: Some(panel_id.to_string()),
+                strict: false,
+            })
+            .expect("import compatible PATZ1 panel");
+    }
+    assert_eq!(
+        engine.isoform_panel_ids_for_sequence("patz1_multi"),
+        vec!["patz1_panel_a".to_string(), "patz1_panel_b".to_string()]
+    );
+    let dna = engine.state().sequences["patz1_multi"].clone();
+    let shared_engine = Arc::new(RwLock::new(engine));
+    let mut area = MainAreaDna::new(
+        dna.clone(),
+        Some("patz1_multi".to_string()),
+        Some(Arc::clone(&shared_engine)),
+    );
+    assert!(
+        area.splicing_isoform_evidence_panel_id.is_empty(),
+        "multiple compatible panels must not be selected implicitly"
+    );
+    assert!(area.splicing_isoform_evidence_request().is_err());
+    area.select_splicing_isoform_panel("patz1_panel_b")
+        .expect("select imported panel explicitly");
+    assert_eq!(area.splicing_isoform_evidence_panel_id, "patz1_panel_b");
+    assert_eq!(
+        shared_engine
+            .read()
+            .expect("engine")
+            .splicing_locus_panel_selection("patz1_multi")
+            .as_deref(),
+        Some("patz1_panel_b")
+    );
+
+    let project = tempfile::NamedTempFile::new().expect("saved project");
+    shared_engine
+        .read()
+        .expect("engine")
+        .state()
+        .save_to_path(&project.path().to_string_lossy())
+        .expect("save project with explicit panel selection");
+    let reopened_state = ProjectState::load_from_path(&project.path().to_string_lossy())
+        .expect("reopen saved project");
+    let reopened_engine = GentleEngine::from_state(reopened_state);
+    let reopened = MainAreaDna::new(
+        dna,
+        Some("patz1_multi".to_string()),
+        Some(Arc::new(RwLock::new(reopened_engine))),
+    );
+    assert_eq!(
+        reopened.splicing_isoform_evidence_panel_id, "patz1_panel_b",
+        "the user's explicit sequence-scoped choice must survive save/reopen"
+    );
+}
+
+#[test]
+fn splicing_locus_without_imported_panels_stays_blank_and_blocked() {
+    let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+    let mut state = ProjectState::default();
+    state.sequences.insert("no_panel".to_string(), dna.clone());
+    let area = MainAreaDna::new(
+        dna,
+        Some("no_panel".to_string()),
+        Some(Arc::new(RwLock::new(GentleEngine::from_state(state)))),
+    );
+    assert!(area.splicing_isoform_evidence_panel_id.is_empty());
+    assert!(area.splicing_compatible_isoform_panel_ids().is_empty());
+    assert!(
+        area.splicing_isoform_evidence_request()
+            .expect_err("no-panel request should stay blocked")
+            .contains("Select an imported isoform panel")
+    );
 }
 
 #[test]

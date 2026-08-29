@@ -2,11 +2,11 @@
 
 | Release field | Value |
 | --- | --- |
-| Status | Draft through 2026-08-14, pending automated pre-tag validation |
+| Status | Draft through 2026-08-29, pending automated and independent pre-tag validation |
 | Target date | August 2026 |
 | Previous tag | `v0.1.0-internal.9` (2026-06-05) |
 | Primary story | Genome-anchored TP73 evidence viewer and transcript-aware primer workflows |
-| Manual GUI smoke | Deliberately deferred until after this interim release |
+| Manual GUI smoke | Required before tagging; exact candidate revision pending |
 
 This internal release covers the work after `v0.1.0-internal.9`, tagged on
 2026-06-05. Once the new tag is cut, the auditable Git comparison is:
@@ -377,6 +377,7 @@ cargo test --workspace --no-fail-fast
 cargo run --quiet --bin gentle_examples_docs -- --check
 cargo run --quiet --bin gentle_examples_docs -- tutorial-check
 cargo test -q workflow_examples_tp73_cutrun_release_proof_writes_artifacts_and_features
+cargo test -q workflow_examples_patz1_locus_evidence_preserves_visual_evidence_classes
 python3 -m pytest -q tests/test_codex_agent_bridge.py
 cargo run --release --bin gentle -- --version
 cargo run --release --bin gentle_cli -- capabilities
@@ -385,13 +386,22 @@ git diff --check
 
 Automated pre-tag validation results: _pending_.
 
-## Post-Release GUI Smoke
+## Pre-Tag Independent Acceptance
 
-Manual GUI smoke is deliberately deferred until after this interim tag. It
-should then follow `docs/tp73_genome_evidence_viewer_runbook.md`, including
+Manual GUI smoke is required on the exact candidate revision before this
+interim tag. It must follow `docs/tp73_genome_evidence_viewer_runbook.md`, including
 anchor/build status, repeat/array/BED/TFBS visibility and details,
 feature-detail copy controls, Splicing Expert presentation, and the first 1200
-bp linear viewport. Also open the Agent Assistant, select Codex Local, and
+bp linear viewport. The PATZ1 Splicing Expert workflow in
+`docs/gene_isoform_occupancy_figure_runbook.md` must also be opened from its
+clean-profile project, select the panel imported for the active PATZ1
+sequence rather than the unrelated global panel-editor default, reach resource
+readiness, compose the locus preview, and produce non-empty shared JSON/SVG/PDF
+exports where the native host's file dialogs can be exercised. Evidence-to-assay
+continuation must remain an explicit planning action and must not imply assay
+validation or order readiness.
+
+Also open the Agent Assistant, select Codex Local, and
 confirm that the model selector is visible before model discovery completes.
 From Splicing Expert, click `Agent help` and confirm that Agent Assistant opens
 with a preview labelled for that source window, that removing the image works,
@@ -411,4 +421,17 @@ Primer3 run reports progress and remains cancellable when a progress-capable
 binary is available. A machine without Primer3 or BLAST+ should instead show a
 clear preflight limitation without disabling unrelated project work.
 
-Manual GUI smoke: _deferred until after `v0.1.0-internal.10`_.
+The copied-state IRF9/Q00978 acceptance is likewise a pre-tag gate and requires
+Glen's private copied state; it cannot be reproduced from public repository
+fixtures. The historical assessment at `42b82288fe95f928ea160afa309f5fa585204b35`
+reported one of three linked cDNA digests and two of four linked records
+covered, with only `ENST00000646071.2` genomically unassessed. That historical
+result is context, not acceptance of the candidate revision.
+
+Native macOS and Windows checks remain platform-specific. Linux/Xvfb evidence
+does not establish native file-dialog, repaint, or permission behavior on
+either platform.
+
+Manual TP73/PATZ1 GUI smoke on exact candidate: _pending_.
+
+Copied-state IRF9/Q00978 acceptance on exact candidate: _pending_.

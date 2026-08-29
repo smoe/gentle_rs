@@ -1059,6 +1059,13 @@ Feature tree grouping:
 - The Splicing Expert has `Structure`, `Evidence`, `Locus figure`, and
   `Cryptic screen` tabs.
   `Evidence` is a thin GUI over `FeatureExpertTarget::IsoformEvidence`:
+  - isoform-panel choices come from panels imported for the active sequence.
+    One compatible panel is seeded directly; several panels require an
+    explicit choice; no compatible panel leaves composition blocked with an
+    import hint. An explicit choice is stored with the project per sequence and
+    restored after reopening it. `Use panel editor ID` remains a visibly
+    separate advanced action and does not make an incompatible global editor
+    default valid for the current locus
   - choose an imported isoform panel and optionally supply annotation-release
     text, persisted RNA-read/qPCR report ids, probe-evidence JSON, cDNA/EST
     resource JSON, an expression TSV, and projected occupancy track names

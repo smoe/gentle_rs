@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+- Closed the reproducible `v0.1.0-internal.10` integration gaps without adding
+  adapter-only biology. The generic confirmed MCP `op` boundary now advertises
+  and tests the existing typed UniProt linked-transcript inventory and
+  cryptic-splicing inspection/export operation family, including typed errors
+  and explicit JSON/SVG output boundaries; host-local MaxEnt resource
+  normalization remains an explicit non-portable exclusion. Splicing Expert
+  now resolves isoform panels
+  from those imported for the active sequence: one panel is seeded, multiple
+  panels require an explicit persisted choice, no panel remains blocked, and
+  the unrelated global panel-editor value is a separately labelled advanced
+  action. The affected tutorial command and review records were re-audited,
+  while release notes now keep TP73/PATZ1 GUI smoke and copied-state IRF9
+  acceptance as pending pre-tag gates on the exact candidate revision.
+
 - Completed the engine-owned cryptic-splicing inspection arc without changing
   `gentle.cryptic_splicing_screen.v1` semantics. Portable operations and shared
   shell routes now inspect/export/render the screen, join digest- and

@@ -964,6 +964,8 @@ const BLAST_OPTIONS_DEFAULTS_PATH_METADATA_KEY: &str = "blast_options_defaults_p
 const DEFAULT_BLAST_OPTIONS_PATH: &str = "assets/blast_defaults.json";
 const ISOFORM_PANELS_METADATA_KEY: &str = "isoform_panels";
 const ISOFORM_PANELS_SCHEMA: &str = "gentle.isoform_panels.v1";
+const SPLICING_LOCUS_PANEL_SELECTIONS_METADATA_KEY: &str = "splicing_locus_panel_selections";
+const SPLICING_LOCUS_PANEL_SELECTIONS_SCHEMA: &str = "gentle.splicing_locus_panel_selections.v1";
 const ISOFORM_PANEL_RESOURCE_SCHEMA: &str = "gentle.isoform_panel_resource.v1";
 const ISOFORM_PANEL_VALIDATION_REPORT_SCHEMA: &str = "gentle.isoform_panel_validation_report.v1";
 const UNIPROT_ENTRIES_METADATA_KEY: &str = "uniprot_entries";
@@ -3044,6 +3046,13 @@ struct IsoformPanelStore {
     schema: String,
     updated_at_unix_ms: u128,
     records: Vec<IsoformPanelRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+struct SplicingLocusPanelSelectionStore {
+    schema: String,
+    selections: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -12097,6 +12106,105 @@ impl GentleEngine {
     /// authoritative schema and transcript-geometry validation path.
     pub fn isoform_panel_is_available(&self, seq_id: &str, panel_id: &str) -> bool {
         self.get_isoform_panel_record(seq_id, panel_id).is_ok()
+    }
+
+    /// Return deterministic imported isoform-panel ids compatible with one sequence.
+    pub fn isoform_panel_ids_for_sequence(&self, seq_id: &str) -> Vec<String> {
+        let seq_id = seq_id.trim();
+        if seq_id.is_empty() {
+            return Vec::new();
+        }
+        let mut panel_ids = self
+            .read_isoform_panel_store()
+            .records
+            .into_iter()
+            .filter(|record| record.seq_id == seq_id)
+            .map(|record| record.panel_id.trim().to_string())
+            .filter(|panel_id| !panel_id.is_empty())
+            .collect::<Vec<_>>();
+        panel_ids.sort();
+        panel_ids.dedup();
+        panel_ids
+    }
+
+    fn read_splicing_locus_panel_selection_store(&self) -> SplicingLocusPanelSelectionStore {
+        let mut store = self
+            .state
+            .metadata
+            .get(SPLICING_LOCUS_PANEL_SELECTIONS_METADATA_KEY)
+            .cloned()
+            .and_then(|value| {
+                serde_json::from_value::<SplicingLocusPanelSelectionStore>(value).ok()
+            })
+            .unwrap_or_default();
+        if store.schema.trim().is_empty() {
+            store.schema = SPLICING_LOCUS_PANEL_SELECTIONS_SCHEMA.to_string();
+        }
+        store
+    }
+
+    /// Return a still-compatible explicit locus-panel choice for one sequence.
+    pub fn splicing_locus_panel_selection(&self, seq_id: &str) -> Option<String> {
+        let seq_id = seq_id.trim();
+        let panel_id = self
+            .read_splicing_locus_panel_selection_store()
+            .selections
+            .get(seq_id)
+            .cloned()?;
+        self.isoform_panel_is_available(seq_id, &panel_id)
+            .then_some(panel_id)
+    }
+
+    /// Persist or clear an explicit locus-panel choice after compatibility validation.
+    pub fn set_splicing_locus_panel_selection(
+        &mut self,
+        seq_id: &str,
+        panel_id: Option<&str>,
+    ) -> Result<bool, EngineError> {
+        let seq_id = seq_id.trim();
+        if seq_id.is_empty() {
+            return Err(EngineError::invalid_input(
+                "seq_id cannot be empty for a splicing-locus panel selection",
+            ));
+        }
+        let panel_id = panel_id.map(str::trim).filter(|value| !value.is_empty());
+        if let Some(panel_id) = panel_id
+            && !self.isoform_panel_is_available(seq_id, panel_id)
+        {
+            return Err(EngineError::new(
+                ErrorCode::NotFound,
+                format!(
+                    "Isoform panel '{}' is not imported for sequence '{}'",
+                    panel_id, seq_id
+                ),
+            ));
+        }
+
+        let mut store = self.read_splicing_locus_panel_selection_store();
+        match panel_id {
+            Some(panel_id) => {
+                store
+                    .selections
+                    .insert(seq_id.to_string(), panel_id.to_string());
+            }
+            None => {
+                store.selections.remove(seq_id);
+            }
+        }
+        store.schema = SPLICING_LOCUS_PANEL_SELECTIONS_SCHEMA.to_string();
+        let value = if store.selections.is_empty() {
+            None
+        } else {
+            Some(serde_json::to_value(store).map_err(|error| {
+                EngineError::internal(format!(
+                    "Could not serialize splicing-locus panel selections: {error}"
+                ))
+            })?)
+        };
+        Ok(self.write_auxiliary_metadata_values(vec![(
+            SPLICING_LOCUS_PANEL_SELECTIONS_METADATA_KEY,
+            value,
+        )]))
     }
 
     fn read_primer_design_store_from_metadata(

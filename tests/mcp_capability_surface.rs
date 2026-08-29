@@ -182,6 +182,38 @@ fn every_glossary_shell_command_is_mcp_tool_or_documented_exclusion() {
 }
 
 #[test]
+fn typed_op_routes_are_advertised_without_exclusion_shortcuts() {
+    let tools = mcp_tools();
+    let covered = tool_command_paths(&tools);
+    let excluded = intentionally_mcp_excluded_paths();
+    for path in [
+        "splicing cryptic-screen",
+        "splicing cryptic-render",
+        "splicing cryptic-export",
+        "splicing cryptic-overlay",
+        "splicing cryptic-protein",
+        "uniprot build-linked-transcript-inventory",
+    ] {
+        assert!(
+            covered.contains(path),
+            "{path} must be advertised by MCP op"
+        );
+        assert!(
+            !excluded.contains(path),
+            "{path} must not be counted as both supported and excluded"
+        );
+    }
+    assert!(
+        excluded.contains("resources sync-maxent"),
+        "host-local MaxEnt resource normalization must remain an explicit MCP exclusion"
+    );
+    assert!(
+        !covered.contains("resources sync-maxent"),
+        "an exclusion must not be mistaken for MCP support"
+    );
+}
+
+#[test]
 fn mcp_tool_errors_return_typed_engine_error_payloads() {
     let cases = [
         gentle::mcp_server::mcp_tool_call_for_capability_surface_tests(

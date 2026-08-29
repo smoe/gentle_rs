@@ -365,6 +365,7 @@ fn sample_value_for_usage_token(flag: &str, token: &str) -> String {
             "F" | "Q" | "VALUE" => "0.5".to_string(),
             "JSON"
             | "JSON_OR_@FILE"
+            | "PROPOSAL_JSON_OR_@FILE"
             | "REQUEST_JSON_OR_@FILE"
             | "SCRIPT_OR_@FILE"
             | "WORKFLOW.json"

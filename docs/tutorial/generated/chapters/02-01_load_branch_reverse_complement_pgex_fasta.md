@@ -9,7 +9,7 @@ executed_during_generation: true
 automated_status: "passing"
 review_status: "human_reviewed"
 review_stale: true
-codex_reviewed_at: null
+codex_reviewed_at: "2026-08-29"
 human_reviewed_at: "2026-05-18"
 human_reviewer: "smoe"
 review_stale_reason: "source JSON 'docs/tutorial/sources/02-01_load_branch_reverse_complement_pgex_fasta.json' changed after human review date 2026-05-18"
@@ -110,7 +110,7 @@ cargo run --bin gentle_cli -- op '{"ReverseComplement":{"input":"pgex_fasta_bran
 - Executed during generation: `yes`
 - Automated status: `passing`
 - Review status: `human_reviewed`
-- Codex reviewed at: `not recorded`
+- Codex reviewed at: `2026-08-29`
 - Human reviewed at: `2026-05-18`
 - Inspect the source JSON when you need full option-level detail.
 

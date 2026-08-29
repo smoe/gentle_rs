@@ -2586,6 +2586,7 @@ impl MainAreaDna {
         }
         ret.sync_contextual_transcript_visibility_filter();
         ret.sync_primer_backend_controls_from_engine();
+        ret.seed_splicing_isoform_panel_from_current_sequence();
         ret
     }
 

@@ -19,7 +19,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 |---|---:|---:|---:|
 | GUI | 37 | 668 | 0 |
 | gentle_cli | 425 | 304 | 0 |
-| MCP | 103 | 472 | 57 |
+| MCP | 108 | 467 | 57 |
 | JS | 78 | 477 | 62 |
 | Lua | 77 | 478 | 62 |
 | ClawBio | 0 | 0 | 0 |
@@ -63,11 +63,11 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | render-dotplot-svg | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | inspect-feature-expert | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Expert/report inspection currently remains a shell workflow until a portable operation is defined.<br>JS: Expert/report inspection currently remains a shell workflow until a portable operation is defined.<br>Lua: Expert/report inspection currently remains a shell workflow until a portable operation is defined.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | render-feature-expert-svg | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
-| splicing cryptic-screen | glossary-command | prominent | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
-| splicing cryptic-render | glossary-command | prominent | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
-| splicing cryptic-export | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
-| splicing cryptic-overlay | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
-| splicing cryptic-protein | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| splicing cryptic-screen | glossary-command | prominent | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| splicing cryptic-render | glossary-command | prominent | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| splicing cryptic-export | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| splicing cryptic-overlay | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| splicing cryptic-protein | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | panels import-isoform | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | panels inspect-isoform | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Expert/report inspection currently remains a shell workflow until a portable operation is defined.<br>JS: Expert/report inspection currently remains a shell workflow until a portable operation is defined.<br>Lua: Expert/report inspection currently remains a shell workflow until a portable operation is defined.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | panels render-isoform-svg | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |

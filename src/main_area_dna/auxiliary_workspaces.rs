@@ -7715,6 +7715,186 @@ impl MainAreaDna {
         values
     }
 
+    pub(super) fn splicing_compatible_isoform_panel_ids(&self) -> Vec<String> {
+        let Some(engine) = self.engine.as_ref() else {
+            return Vec::new();
+        };
+        let Some(seq_id) = self.seq_id.as_deref() else {
+            return Vec::new();
+        };
+        engine
+            .read()
+            .ok()
+            .map(|engine| engine.isoform_panel_ids_for_sequence(seq_id))
+            .unwrap_or_default()
+    }
+
+    pub(super) fn seed_splicing_isoform_panel_from_current_sequence(&mut self) {
+        if !self.splicing_isoform_evidence_panel_id.trim().is_empty() {
+            return;
+        }
+        let Some(engine) = self.engine.as_ref() else {
+            return;
+        };
+        let Some(seq_id) = self.seq_id.as_deref() else {
+            return;
+        };
+        let Ok(engine) = engine.read() else {
+            return;
+        };
+        if let Some(panel_id) = engine.splicing_locus_panel_selection(seq_id) {
+            self.splicing_isoform_evidence_panel_id = panel_id;
+            return;
+        }
+        let panel_ids = engine.isoform_panel_ids_for_sequence(seq_id);
+        if let [panel_id] = panel_ids.as_slice() {
+            self.splicing_isoform_evidence_panel_id = panel_id.clone();
+        }
+    }
+
+    pub(super) fn select_splicing_isoform_panel(&mut self, panel_id: &str) -> Result<bool, String> {
+        let panel_id = panel_id.trim();
+        if panel_id.is_empty() {
+            return Err("Select a non-empty imported isoform panel id".to_string());
+        }
+        let engine = self
+            .engine
+            .as_ref()
+            .ok_or_else(|| "No project engine is available for panel selection".to_string())?;
+        let seq_id = self
+            .seq_id
+            .as_deref()
+            .ok_or_else(|| "No active sequence id is available for panel selection".to_string())?;
+        let changed = engine
+            .write()
+            .map_err(|_| "Could not lock the project for panel selection".to_string())?
+            .set_splicing_locus_panel_selection(seq_id, Some(panel_id))
+            .map_err(|error| error.to_string())?;
+        self.splicing_isoform_evidence_panel_id = panel_id.to_string();
+        Ok(changed)
+    }
+
+    fn remember_typed_splicing_isoform_panel_if_compatible(&mut self) {
+        let panel_id = self.splicing_isoform_evidence_panel_id.trim().to_string();
+        if self
+            .splicing_compatible_isoform_panel_ids()
+            .iter()
+            .any(|candidate| candidate == &panel_id)
+            && let Err(error) = self.select_splicing_isoform_panel(&panel_id)
+        {
+            self.splicing_isoform_evidence_status = error.clone();
+            self.splicing_locus_status = error;
+        }
+    }
+
+    fn render_splicing_isoform_panel_controls(
+        &mut self,
+        ui: &mut egui::Ui,
+        semantic_scope: Option<&str>,
+    ) {
+        self.seed_splicing_isoform_panel_from_current_sequence();
+        let panel_ids = self.splicing_compatible_isoform_panel_ids();
+        let current = self.splicing_isoform_evidence_panel_id.trim().to_string();
+        let mut chosen_panel = None;
+
+        if panel_ids.is_empty() {
+            let _picker = ui
+                .add_enabled(false, egui::Button::new("No imported panels"))
+                .on_hover_text(
+                    "Import an isoform panel for the active sequence before composing evidence.",
+                );
+            #[cfg(feature = "gui-test-support")]
+            crate::gui_test_support::register_response(
+                &_picker,
+                "splicing.locus.use_panel_control",
+                "window.splicing_expert",
+                semantic_scope,
+                crate::gui_test_support::GuiTestWidgetKind::Button,
+                false,
+            );
+        } else if let [panel_id] = panel_ids.as_slice() {
+            let picker = ui
+                .add_enabled(
+                    current != *panel_id,
+                    egui::Button::new("Use imported panel"),
+                )
+                .on_hover_text(format!(
+                    "Use the only panel imported for this sequence: {panel_id}"
+                ));
+            #[cfg(feature = "gui-test-support")]
+            crate::gui_test_support::register_response(
+                &picker,
+                "splicing.locus.use_panel_control",
+                "window.splicing_expert",
+                semantic_scope,
+                crate::gui_test_support::GuiTestWidgetKind::Button,
+                false,
+            );
+            if picker.clicked() {
+                chosen_panel = Some(panel_id.clone());
+            }
+        } else {
+            let label = if panel_ids.iter().any(|panel_id| panel_id == &current) {
+                format!("Imported: {current}")
+            } else {
+                "Choose imported panel...".to_string()
+            };
+            let _picker = ui.menu_button(label, |ui| {
+                for panel_id in &panel_ids {
+                    if ui
+                        .selectable_label(panel_id == &current, panel_id)
+                        .clicked()
+                    {
+                        chosen_panel = Some(panel_id.clone());
+                        ui.close();
+                    }
+                }
+            });
+            #[cfg(feature = "gui-test-support")]
+            crate::gui_test_support::register_response(
+                &_picker.response,
+                "splicing.locus.use_panel_control",
+                "window.splicing_expert",
+                semantic_scope,
+                crate::gui_test_support::GuiTestWidgetKind::Button,
+                false,
+            );
+        }
+
+        if let Some(panel_id) = chosen_panel
+            && let Err(error) = self.select_splicing_isoform_panel(&panel_id)
+        {
+            self.splicing_isoform_evidence_status = error.clone();
+            self.splicing_locus_status = error;
+        }
+
+        let use_editor = ui
+            .button("Use panel editor ID")
+            .on_hover_text("Advanced: copy the id from the separate Isoform Architecture panel editor; compatibility with this sequence is still checked before composition.");
+        #[cfg(feature = "gui-test-support")]
+        crate::gui_test_support::register_response(
+            &use_editor,
+            "splicing.locus.use_panel_editor_id",
+            "window.splicing_expert",
+            semantic_scope,
+            crate::gui_test_support::GuiTestWidgetKind::Button,
+            false,
+        );
+        if use_editor.clicked() {
+            let panel_id = self.isoform_panel_id.trim().to_string();
+            self.splicing_isoform_evidence_panel_id = panel_id.clone();
+            if panel_ids.iter().any(|candidate| candidate == &panel_id)
+                && let Err(error) = self.select_splicing_isoform_panel(&panel_id)
+            {
+                self.splicing_isoform_evidence_status = error.clone();
+                self.splicing_locus_status = error;
+            }
+        }
+
+        #[cfg(not(feature = "gui-test-support"))]
+        let _ = semantic_scope;
+    }
+
     pub(super) fn splicing_isoform_evidence_request(
         &self,
     ) -> Result<GeneIsoformEvidenceRequest, String> {
@@ -8071,7 +8251,7 @@ impl MainAreaDna {
         Ok(())
     }
 
-    fn inspect_splicing_locus_evidence(&mut self) {
+    pub(super) fn inspect_splicing_locus_evidence(&mut self) {
         crate::gentle_gui_profile_scope!("MainAreaDna::inspect_splicing_locus_evidence");
         let request = match self.splicing_locus_evidence_request() {
             Ok(request) => request,
@@ -8485,14 +8665,12 @@ impl MainAreaDna {
             .show(ui, |ui| {
                 ui.label("Isoform panel");
                 ui.horizontal(|ui| {
-                    ui.text_edit_singleline(&mut self.splicing_isoform_evidence_panel_id);
-                    if ui
-                        .button("Use panel control")
-                        .on_hover_text("Copy the panel id from the Isoform Architecture controls")
-                        .clicked()
-                    {
-                        self.splicing_isoform_evidence_panel_id = self.isoform_panel_id.clone();
+                    let panel_id =
+                        ui.text_edit_singleline(&mut self.splicing_isoform_evidence_panel_id);
+                    if panel_id.changed() {
+                        self.remember_typed_splicing_isoform_panel_if_compatible();
                     }
+                    self.render_splicing_isoform_panel_controls(ui, None);
                 });
                 ui.end_row();
                 ui.label("Annotation release");
@@ -8996,30 +9174,24 @@ impl MainAreaDna {
                     .spacing([12.0, 5.0])
                     .show(ui, |ui| {
                         ui.label("Isoform panel");
-                        let _panel_id =
+                        let panel_id =
                             ui.text_edit_singleline(&mut self.splicing_isoform_evidence_panel_id);
                         #[cfg(feature = "gui-test-support")]
                         crate::gui_test_support::register_response(
-                            &_panel_id,
+                            &panel_id,
                             "splicing.locus.panel_id",
                             "window.splicing_expert",
                             Some(&semantic_scope),
                             crate::gui_test_support::GuiTestWidgetKind::TextInput,
                             false,
                         );
-                        let use_panel = ui.button("Use panel control");
-                        #[cfg(feature = "gui-test-support")]
-                        crate::gui_test_support::register_response(
-                            &use_panel,
-                            "splicing.locus.use_panel_control",
-                            "window.splicing_expert",
-                            Some(&semantic_scope),
-                            crate::gui_test_support::GuiTestWidgetKind::Button,
-                            false,
-                        );
-                        if use_panel.clicked() {
-                            self.splicing_isoform_evidence_panel_id = self.isoform_panel_id.clone();
+                        if panel_id.changed() {
+                            self.remember_typed_splicing_isoform_panel_if_compatible();
                         }
+                        #[cfg(feature = "gui-test-support")]
+                        self.render_splicing_isoform_panel_controls(ui, Some(&semantic_scope));
+                        #[cfg(not(feature = "gui-test-support"))]
+                        self.render_splicing_isoform_panel_controls(ui, None);
                         ui.end_row();
                         ui.label("Annotation release");
                         ui.text_edit_singleline(
