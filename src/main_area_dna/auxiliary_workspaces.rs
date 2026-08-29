@@ -48,6 +48,18 @@ pub(super) struct SplicingExpertPresentationKey {
 }
 
 impl SplicingExpertPresentationKey {
+    fn parse_engine_fingerprint(value: &str) -> Option<[u8; 32]> {
+        let hex = value.strip_prefix("sha256:")?;
+        if hex.len() != 64 {
+            return None;
+        }
+        let mut digest = [0u8; 32];
+        for (index, byte) in digest.iter_mut().enumerate() {
+            *byte = u8::from_str_radix(&hex[index * 2..index * 2 + 2], 16).ok()?;
+        }
+        Some(digest)
+    }
+
     fn digest_usize(context: &mut DigestContext, value: usize) {
         context.update(&(value as u64).to_le_bytes());
     }
@@ -62,6 +74,12 @@ impl SplicingExpertPresentationKey {
     }
 
     fn from_view(view: &SplicingExpertView) -> Self {
+        if let Some(content_sha256) =
+            Self::parse_engine_fingerprint(&view.presentation_fingerprint_sha256)
+        {
+            return Self { content_sha256 };
+        }
+
         let mut context = DigestContext::new(&SHA256);
         context.update(b"gentle.splicing_expert_presentation_cache.v1\0");
         Self::digest_str(&mut context, &view.seq_id);

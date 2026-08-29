@@ -5424,6 +5424,7 @@ mod tests {
             unique_exon_count: 3,
             instruction: "Inspect exon geometry, splice-boundary motifs, transition support, and the provenance legend before treating this figure as evidence. This deliberately long instruction verifies that the renderer grows the SVG instead of writing text through the page boundary."
                 .to_string(),
+            presentation_fingerprint_sha256: String::new(),
             transcripts: vec![
                 SplicingTranscriptLane {
                     transcript_feature_id: 7,

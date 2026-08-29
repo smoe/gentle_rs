@@ -1,5 +1,11 @@
 # GENtle Changelog
 
+- Removed repeated full-view hashing from the idle Splicing Expert render path.
+  Engine-built views now carry a stable SHA-256 presentation fingerprint that
+  the GUI can compare in constant time, while legacy and manually constructed
+  payloads retain the prior content-digest fallback. Deterministic engine and
+  GUI regressions pin both paths.
+
 - Corrected transcript-bound promoter-reporter extension when an annotated CDS
   start codon crosses an exon junction. GENtle now consumes the first three
   coding bases from transcript-ordered CDS ranges on either strand, extends the

@@ -9301,7 +9301,7 @@ impl GentleEngine {
             },
         ];
 
-        Ok(SplicingExpertView {
+        let mut view = SplicingExpertView {
             seq_id: seq_id.to_string(),
             target_feature_id: feature_id,
             scope,
@@ -9316,6 +9316,7 @@ impl GentleEngine {
             transcript_count,
             unique_exon_count: unique_exons.len(),
             instruction: SPLICING_EXPERT_INSTRUCTION.to_string(),
+            presentation_fingerprint_sha256: String::new(),
             transcripts: transcript_lanes,
             unique_exons: unique_exon_summaries,
             matrix_rows,
@@ -9323,7 +9324,17 @@ impl GentleEngine {
             intron_signals,
             junctions,
             events,
-        })
+        };
+        let fingerprint_input = serde_json::to_vec(&view).map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not fingerprint Splicing Expert view for sequence '{seq_id}': {error}"
+            ),
+            cause_chain: vec![],
+        })?;
+        view.presentation_fingerprint_sha256 =
+            crate::digest_utils::sha256_prefixed_bytes(&fingerprint_input);
+        Ok(view)
     }
 
     fn sequence_source_organism(dna: &DNAsequence) -> Option<String> {

@@ -11157,6 +11157,12 @@ Cryptic-splicing inspection (implemented):
       (`gt_ag_major_canonical`, `gc_ag_major_noncanonical`,
       `at_ac_minor_u12_like`, `at_ag_minor_u12_like`,
       `other_noncanonical`)
+  - engine-built `SplicingExpertView` payloads carry
+    `presentation_fingerprint_sha256`, computed once from the serialized view
+    while that field is empty. GUI presentation caches use this stable content
+    identity without walking transcript/exon/junction vectors on every frame;
+    older payloads without the field remain supported through a local fallback
+    digest
   - shared splicing expert payloads also carry conservative intron-signal
     heuristics per intron:
     - donor/acceptor positions and intron length

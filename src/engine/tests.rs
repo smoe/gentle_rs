@@ -42129,6 +42129,36 @@ fn test_build_splicing_expert_view_accepts_gene_seed_feature() {
 }
 
 #[test]
+fn test_build_splicing_expert_view_carries_stable_content_fingerprint() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_seed".to_string(), splicing_seed_feature_sequence());
+    let engine = GentleEngine::from_state(state);
+
+    let first = engine
+        .build_splicing_expert_view("seq_seed", 2, SplicingScopePreset::TargetGroupTargetStrand)
+        .expect("first splicing view");
+    let second = engine
+        .build_splicing_expert_view("seq_seed", 2, SplicingScopePreset::TargetGroupTargetStrand)
+        .expect("second splicing view");
+
+    assert!(first.presentation_fingerprint_sha256.starts_with("sha256:"));
+    assert_eq!(
+        first.presentation_fingerprint_sha256,
+        second.presentation_fingerprint_sha256
+    );
+
+    let mut unhashed = first.clone();
+    unhashed.presentation_fingerprint_sha256.clear();
+    let serialized = serde_json::to_vec(&unhashed).expect("serialize unhashed splicing view");
+    assert_eq!(
+        first.presentation_fingerprint_sha256,
+        crate::digest_utils::sha256_prefixed_bytes(&serialized)
+    );
+}
+
+#[test]
 fn test_build_splicing_expert_view_accepts_cds_seed_feature() {
     let mut state = ProjectState::default();
     state
@@ -48368,6 +48398,7 @@ fn test_mapped_support_counts_follow_transcript_offsets_not_genomic_span_overlap
         transcript_count: 2,
         unique_exon_count: 3,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![
             SplicingTranscriptLane {
                 transcript_feature_id: 1,

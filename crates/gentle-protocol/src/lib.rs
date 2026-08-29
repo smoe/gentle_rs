@@ -2999,6 +2999,9 @@ pub struct SplicingExpertView {
     pub transcript_count: usize,
     pub unique_exon_count: usize,
     pub instruction: String,
+    /// Stable digest of the serialized view with this field omitted.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub presentation_fingerprint_sha256: String,
     pub transcripts: Vec<SplicingTranscriptLane>,
     pub unique_exons: Vec<SplicingExonSummary>,
     pub matrix_rows: Vec<SplicingMatrixRow>,

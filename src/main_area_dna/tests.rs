@@ -1570,6 +1570,7 @@ fn splicing_boundary_motif_rows_pair_donor_and_acceptor_markers() {
         transcript_count: 1,
         unique_exon_count: 2,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![SplicingTranscriptLane {
             transcript_feature_id: 11,
             transcript_id: "tx1".to_string(),
@@ -1643,6 +1644,7 @@ fn splicing_intron_signal_rows_preserve_branchpoint_and_polyy_metadata() {
         transcript_count: 1,
         unique_exon_count: 2,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -1694,6 +1696,7 @@ fn splicing_selected_intron_signal_key_falls_back_and_preserves_valid_selection(
         transcript_count: 1,
         unique_exon_count: 2,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -1774,6 +1777,7 @@ fn splicing_selected_intron_signal_row_recovers_when_previous_selection_is_missi
         transcript_count: 1,
         unique_exon_count: 2,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -3584,6 +3588,7 @@ fn dotplot_transcript_reference_choices_follow_active_mapping_locus() {
         transcript_count: 1,
         unique_exon_count: 0,
         instruction: "mapping".to_string(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![SplicingTranscriptLane {
             transcript_feature_id: 4,
             transcript_id: "NM_005427.4".to_string(),
@@ -3626,6 +3631,7 @@ fn dotplot_can_derive_annotated_transcript_reference_without_switching_query_win
         transcript_count: 2,
         unique_exon_count: 0,
         instruction: "mapping".to_string(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![
             SplicingTranscriptLane {
                 transcript_feature_id: 0,
@@ -3802,6 +3808,7 @@ fn rna_seed_histogram_cache_separates_biological_and_pixel_rebuilds() {
         transcript_count: 1,
         unique_exon_count: 2,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![
             SplicingExonSummary {
@@ -4062,6 +4069,7 @@ fn completed_rna_read_task_routes_final_status_to_mapping_workspace() {
         transcript_count: 1,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -6026,6 +6034,7 @@ fn splicing_group_roi_range_converts_to_zero_based_end_exclusive() {
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -6135,6 +6144,7 @@ fn splicing_transcript_dotplot_mode_uses_transcript_lane_strand() {
         transcript_count: 2,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![
             SplicingTranscriptLane {
                 transcript_feature_id: 11,
@@ -6828,6 +6838,7 @@ fn qpcr_splicing_context_summary_flags_junction_crossing_probe() {
         transcript_count: 1,
         unique_exon_count: 2,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![
             SplicingExonSummary {
@@ -9064,6 +9075,7 @@ fn collect_open_auxiliary_window_entries_includes_splicing_and_isoform_windows()
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: "splicing".to_string(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -9247,6 +9259,7 @@ fn collect_open_auxiliary_window_entries_includes_rna_read_mapping_window() {
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: "mapping".to_string(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -9281,6 +9294,7 @@ fn rna_read_mapping_embedded_window_registers_visible_window_area() {
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: "mapping".to_string(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -9325,6 +9339,7 @@ fn rna_read_mapping_embedded_window_focus_request_uses_foreground_order() {
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: "mapping".to_string(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -9369,6 +9384,7 @@ fn rna_read_mapping_embedded_window_clears_legacy_title_bar_area() {
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: "mapping".to_string(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -9493,6 +9509,7 @@ fn rna_read_mapping_embedded_window_renders_intro_only_once() {
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: "mapping".to_string(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -10383,6 +10400,7 @@ fn rna_read_scope_selection_label_mentions_target_gene_when_applicable() {
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -10451,6 +10469,7 @@ fn rna_read_gene_scope_summary_mentions_explicit_sparse_gene_list() {
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -10551,6 +10570,7 @@ fn open_rna_read_mapping_workspace_seeds_report_id_from_selected_evidence_report
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -10610,6 +10630,7 @@ fn open_rna_read_mapping_workspace_replaces_stale_report_id_with_matching_report
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -11409,6 +11430,7 @@ fn splicing_intron_regulatory_rows_merge_cached_attract_hits_with_intron_signals
         transcript_count: 1,
         unique_exon_count: 2,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![SplicingTranscriptLane {
             transcript_feature_id: 1,
             transcript_id: "ENSTTP73A".to_string(),
@@ -11911,6 +11933,7 @@ fn show_splicing_expert_for_rna_read_mapping_view_selects_current_mapping_report
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -11959,6 +11982,7 @@ fn default_rna_read_report_id_tracks_scope_origin_and_target_genes() {
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -11998,6 +12022,7 @@ fn build_splicing_rna_read_workflow_uses_interpret_payload_and_autorunid() {
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -12060,6 +12085,7 @@ fn build_splicing_rna_read_workflow_keeps_manual_report_id_override() {
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -12123,6 +12149,7 @@ fn legacy_rna_read_ui_state_keeps_manual_report_id_after_load() {
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -12309,6 +12336,7 @@ fn saved_rna_read_report_payloads_are_cached_and_invalidated_on_commit() {
         transcript_count: 1,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -12440,6 +12468,7 @@ fn mapping_workspace_uses_saved_report_progress_without_evidence_selection() {
         transcript_count: 1,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -12528,6 +12557,7 @@ fn mapping_workspace_ignores_saved_report_progress_for_other_splicing_view() {
         transcript_count: 1,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -12594,6 +12624,7 @@ fn unaligned_saved_report_progress_skips_alignment_inspection() {
         transcript_count: 1,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -12996,6 +13027,7 @@ fn build_splicing_rna_read_align_operation_uses_explicit_sorted_subset() {
         transcript_count: 1,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -13488,6 +13520,7 @@ fn thresholded_cdna_exon_support_rows_follow_seed_passed_isoform_assignments() {
         transcript_count: 2,
         unique_exon_count: 3,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![
             SplicingTranscriptLane {
                 transcript_feature_id: 11,
@@ -14145,6 +14178,7 @@ fn splicing_expert_presentation_test_view() -> SplicingExpertView {
         transcript_count: 2,
         unique_exon_count: 2,
         instruction: "test".to_string(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![
             SplicingTranscriptLane {
                 transcript_feature_id: 11,
@@ -14264,6 +14298,22 @@ fn splicing_expert_presentation_reuses_immutable_view_and_invalidates_on_replace
 }
 
 #[test]
+fn splicing_expert_presentation_uses_engine_fingerprint_without_rehashing_view_content() {
+    let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    let mut view = splicing_expert_presentation_test_view();
+    view.presentation_fingerprint_sha256 = format!("sha256:{}", "ab".repeat(32));
+
+    let first = area.splicing_expert_presentation_for_view(&view);
+    view.matrix_rows[0].transcript_id = "content_not_rehashed".to_string();
+    let second = area.splicing_expert_presentation_for_view(&view);
+
+    assert!(Arc::ptr_eq(&first, &second));
+    assert_eq!(area.splicing_expert_presentation_cache_misses, 1);
+    assert_eq!(area.splicing_expert_presentation_cache_hits, 1);
+}
+
+#[test]
 fn splicing_expert_presentation_transition_storage_is_sparse() {
     let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
     let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
@@ -14323,6 +14373,7 @@ fn large_splicing_attract_section_defaults_to_collapsed() {
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -15622,6 +15673,7 @@ fn open_splicing_expert_window_marks_initial_render_pending() {
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
