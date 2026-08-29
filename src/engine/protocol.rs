@@ -9185,6 +9185,60 @@ pub enum PromoterReporterPanelMutationPolicy {
     P53FamilyCoreDisruptionV1,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Transcript-derived boundary used for an extended promoter fragment.
+pub enum PromoterReporterPanelExtendedBoundaryKind {
+    #[default]
+    CanonicalCdsStartCodon,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Explicit transcript selection for deriving an extended fragment boundary.
+pub struct PromoterReporterPanelExtendedBoundaryPolicy {
+    pub kind: PromoterReporterPanelExtendedBoundaryKind,
+    pub transcript_id: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Inspectable warning produced while interpreting a transcript's 5' UTR.
+pub enum PromoterReporterPanelExtendedWarningKind {
+    #[default]
+    UpstreamAtg,
+    UpstreamOrf,
+    FivePrimeUtrIntron,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// One transcript-aware caveat for an extended promoter fragment.
+pub struct PromoterReporterPanelExtendedWarning {
+    pub kind: PromoterReporterPanelExtendedWarningKind,
+    pub transcript_id: String,
+    pub detail: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub transcript_positions_0based: Vec<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Deterministic basis used to extend a promoter fragment through its selected
+/// transcript's annotated translation-start codon.
+pub struct PromoterReporterPanelExtendedBoundaryAudit {
+    pub policy: PromoterReporterPanelExtendedBoundaryPolicy,
+    pub strand: String,
+    pub cds_start_codon_source_start_0based: usize,
+    pub cds_start_codon_source_end_0based_exclusive: usize,
+    pub cds_start_codon_5prime_to_3prime: String,
+    #[serde(default)]
+    pub five_prime_utr_exon_ranges_0based: Vec<(usize, usize)>,
+    pub five_prime_utr_spliced_length_bp: usize,
+    #[serde(default)]
+    pub warnings: Vec<PromoterReporterPanelExtendedWarning>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
 /// One already-ranked promoter candidate selected for panel planning.
@@ -9194,6 +9248,8 @@ pub struct PromoterReporterPanelMemberRequest {
     pub candidate_id: Option<String>,
     #[serde(default)]
     pub fragment_role: PromoterReporterPanelFragmentRole,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extended_boundary: Option<PromoterReporterPanelExtendedBoundaryPolicy>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
 }
@@ -9244,6 +9300,8 @@ pub struct PromoterReporterPanelMemberProposal {
     pub fragment_start_0based: usize,
     pub fragment_end_0based_exclusive: usize,
     pub fragment_length_bp: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extended_boundary_audit: Option<PromoterReporterPanelExtendedBoundaryAudit>,
     pub motif_start_in_fragment_0based: usize,
     pub motif_end_in_fragment_0based_exclusive: usize,
     pub motif_forward_strand: bool,

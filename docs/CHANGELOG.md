@@ -23,6 +23,14 @@
   while release notes now keep TP73/PATZ1 GUI smoke and copied-state IRF9
   acceptance as pending pre-tag gates on the exact candidate revision.
 
+- Added an explicit transcript-bound extended-fragment policy to promoter-
+  reporter panel requests. Extended members now derive their genomic endpoint
+  through the selected transcript's annotated CDS start codon, fail closed on
+  missing or ambiguous transcript/CDS geometry, and retain a portable boundary
+  audit. The audit reports spliced 5'-UTR exon geometry plus typed upstream-ATG,
+  uORF, and intervening-intron warnings; CLI/MCP JSON and the Promoter design
+  review consume the same proposal object. Core-fragment behavior is unchanged.
+
 - Completed the engine-owned cryptic-splicing inspection arc without changing
   `gentle.cryptic_splicing_screen.v1` semantics. Portable operations and shared
   shell routes now inspect/export/render the screen, join digest- and

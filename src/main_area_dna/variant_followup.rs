@@ -5049,6 +5049,22 @@ impl MainAreaDna {
                                 "review"
                             }
                         ));
+                        if let Some(audit) = &member.extended_boundary_audit {
+                            ui.small(format!(
+                                "extended through {} CDS start codon {} {}..{} | spliced 5' UTR {} bp",
+                                audit.policy.transcript_id,
+                                audit.cds_start_codon_5prime_to_3prime,
+                                audit.cds_start_codon_source_start_0based,
+                                audit.cds_start_codon_source_end_0based_exclusive,
+                                audit.five_prime_utr_spliced_length_bp,
+                            ));
+                            for warning in &audit.warnings {
+                                ui.colored_label(
+                                    egui::Color32::from_rgb(180, 83, 9),
+                                    &warning.detail,
+                                );
+                            }
+                        }
                     }
                     for product in &proposal.products {
                         ui.small(format!(
