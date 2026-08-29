@@ -1,5 +1,13 @@
 # GENtle Changelog
 
+- Corrected transcript-bound promoter-reporter extension when an annotated CDS
+  start codon crosses an exon junction. GENtle now consumes the first three
+  coding bases from transcript-ordered CDS ranges on either strand, extends the
+  genomic fragment through the final contributing base, and records both the
+  enclosing span and exact codon-source ranges. Forward/reverse split-codon
+  regressions and an end-to-end plan/materialize test protect the construct
+  sequence and approval-bound audit.
+
 - Hardened the splicing evidence implementation after review. The Splicing
   Expert presentation cache now uses a streaming content digest over the exact
   transcript/exon/junction inputs it renders instead of a process pointer.

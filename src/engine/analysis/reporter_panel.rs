@@ -118,40 +118,72 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
+        if is_reverse {
+            cds_ranges.sort_unstable_by(|left, right| {
+                right.1.cmp(&left.1).then_with(|| right.0.cmp(&left.0))
+            });
+        }
         let cds_entry = if is_reverse {
-            cds_ranges
-                .iter()
-                .map(|(_, end)| *end)
-                .max()
-                .unwrap_or_default()
+            cds_ranges[0].1
         } else {
-            cds_ranges
-                .iter()
-                .map(|(start, _)| *start)
-                .min()
-                .unwrap_or_default()
+            cds_ranges[0].0
         };
-        let (codon_start, codon_end) = if is_reverse {
-            (cds_entry.saturating_sub(3), cds_entry)
-        } else {
-            (cds_entry, cds_entry.saturating_add(3))
-        };
-        if codon_end > source.len() || codon_end.saturating_sub(codon_start) != 3 {
+        let source_text = source.get_forward_string();
+        let mut remaining_codon_bases = 3usize;
+        let mut codon_ranges = Vec::new();
+        let mut cds_start_codon = String::with_capacity(3);
+        for &(start, end) in &cds_ranges {
+            if end > source_text.len() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Extended transcript '{}' CDS start codon is outside the loaded sequence",
+                        transcript_id
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            let take = remaining_codon_bases.min(end.saturating_sub(start));
+            if take == 0 {
+                continue;
+            }
+            let range = if is_reverse {
+                (end - take, end)
+            } else {
+                (start, start + take)
+            };
+            let segment = &source_text[range.0..range.1];
+            if is_reverse {
+                cds_start_codon.push_str(&Self::reverse_complement(segment));
+            } else {
+                cds_start_codon.push_str(&segment.to_ascii_uppercase());
+            }
+            codon_ranges.push(range);
+            remaining_codon_bases -= take;
+            if remaining_codon_bases == 0 {
+                break;
+            }
+        }
+        if remaining_codon_bases != 0 {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!(
-                    "Extended transcript '{}' CDS start codon is outside the loaded sequence",
+                    "Extended transcript '{}' has fewer than three annotated coding bases at its CDS start",
                     transcript_id
                 ),
                 cause_chain: vec![],
             });
         }
-        let source_text = source.get_forward_string();
-        let cds_start_codon = if is_reverse {
-            Self::reverse_complement(&source_text[codon_start..codon_end])
-        } else {
-            source_text[codon_start..codon_end].to_ascii_uppercase()
-        };
+        let codon_start = codon_ranges
+            .iter()
+            .map(|(start, _)| *start)
+            .min()
+            .unwrap_or_default();
+        let codon_end = codon_ranges
+            .iter()
+            .map(|(_, end)| *end)
+            .max()
+            .unwrap_or_default();
 
         let mut exon_ranges = vec![];
         for feature in source.features().iter().filter(|feature| {
@@ -272,6 +304,7 @@ impl GentleEngine {
             PromoterReporterPanelExtendedBoundaryAudit {
                 policy: policy.clone(),
                 strand: if is_reverse { "-" } else { "+" }.to_string(),
+                cds_start_codon_source_ranges_0based: codon_ranges,
                 cds_start_codon_source_start_0based: codon_start,
                 cds_start_codon_source_end_0based_exclusive: codon_end,
                 cds_start_codon_5prime_to_3prime: cds_start_codon,
@@ -2940,6 +2973,57 @@ mod tests {
         (temp, GentleEngine::from_state(state), request)
     }
 
+    fn promoter_reporter_panel_extended_materialization_fixture()
+    -> (TempDir, GentleEngine, PromoterReporterPanelRequest) {
+        let (temp, mut engine, mut request) = promoter_reporter_panel_materialization_fixture();
+        let candidate_set_path = Path::new(&request.members[0].candidate_set_path);
+        let mut candidate_set: PromoterReporterCandidateSet = serde_json::from_slice(
+            &fs::read(candidate_set_path).expect("extended candidate-set bytes"),
+        )
+        .expect("extended candidate set");
+
+        let mut bases = engine.snapshot().sequences["panel_source"]
+            .get_forward_string()
+            .into_bytes();
+        bases.extend_from_slice(
+            b"AGTCTGACCGTATCGGATCAGTGCATACGTCAGGCTATGACCTGATCGTACGATGCTAGTCAGTCCGATGCTACGTAGCATGTCAGC",
+        );
+        bases.resize(240, b'A');
+        bases[170..172].copy_from_slice(b"AT");
+        bases[200] = b'G';
+        let source_text = String::from_utf8(bases).expect("extended source DNA");
+        let mut source = DNAsequence::from_sequence(&source_text).expect("extended panel source");
+        source.features_mut().extend([
+            extended_boundary_test_feature("mRNA", 0, 240, "ENST_SYNTHETIC_TP73", false),
+            extended_boundary_test_feature("exon", 0, 172, "ENST_SYNTHETIC_TP73", false),
+            extended_boundary_test_feature("exon", 200, 240, "ENST_SYNTHETIC_TP73", false),
+            extended_boundary_test_feature("CDS", 170, 172, "ENST_SYNTHETIC_TP73", false),
+            extended_boundary_test_feature("CDS", 200, 240, "ENST_SYNTHETIC_TP73", false),
+        ]);
+        GentleEngine::prepare_sequence(&mut source);
+        engine
+            .state_mut()
+            .sequences
+            .insert("panel_source".to_string(), source);
+
+        candidate_set.sequence_length_bp = source_text.len();
+        let candidate = &mut candidate_set.candidates[0];
+        candidate.end_0based_exclusive = candidate.variant_end_0based_exclusive + 10;
+        candidate.length_bp = candidate.end_0based_exclusive - candidate.start_0based;
+        fs::write(
+            candidate_set_path,
+            serde_json::to_vec_pretty(&candidate_set).expect("extended candidate-set JSON"),
+        )
+        .expect("write extended candidate set");
+
+        request.members[0].fragment_role = PromoterReporterPanelFragmentRole::Extended;
+        request.members[0].extended_boundary = Some(PromoterReporterPanelExtendedBoundaryPolicy {
+            kind: PromoterReporterPanelExtendedBoundaryKind::CanonicalCdsStartCodon,
+            transcript_id: "ENST_SYNTHETIC_TP73".to_string(),
+        });
+        (temp, engine, request)
+    }
+
     fn promoter_reporter_panel_vector(sequence: &str) -> DNAsequence {
         let mut dna = DNAsequence::from_sequence(sequence).expect("vector sequence");
         *dna.restriction_enzymes_mut() = crate::enzymes::active_restriction_enzymes();
@@ -3322,6 +3406,43 @@ mod tests {
         assert!(manifest.contains("tp73_synthetic_panel_01_tp73_core"));
     }
 
+    #[test]
+    fn promoter_reporter_split_codon_extended_member_plans_and_materializes_exact_insert() {
+        run_promoter_reporter_panel_end_to_end_test(
+            "promoter-panel-split-codon-test",
+            promoter_reporter_split_codon_extended_member_runs_on_expanded_stack,
+        );
+    }
+
+    fn promoter_reporter_split_codon_extended_member_runs_on_expanded_stack() {
+        let (_temp, mut engine, request) =
+            promoter_reporter_panel_extended_materialization_fixture();
+        let proposal = engine
+            .plan_promoter_reporter_panel(request)
+            .expect("split-codon extended proposal");
+        let member = &proposal.members[0];
+        let audit = member
+            .extended_boundary_audit
+            .as_ref()
+            .expect("extended boundary audit");
+        assert_eq!(member.fragment_end_0based_exclusive, 201);
+        assert_eq!(audit.cds_start_codon_5prime_to_3prime, "ATG");
+        assert_eq!(
+            audit.cds_start_codon_source_ranges_0based,
+            vec![(170, 172), (200, 201)]
+        );
+
+        engine
+            .materialize_promoter_reporter_panel(
+                proposal.clone(),
+                proposal.proposal_digest.as_str(),
+            )
+            .expect("materialize split-codon extended panel");
+        let insert = &engine.snapshot().sequences[&member.wild_type_seq_id];
+        assert_eq!(insert.len(), 201);
+        assert!(insert.get_forward_string().ends_with('G'));
+    }
+
     fn extended_boundary_test_feature(
         kind: &str,
         start: usize,
@@ -3380,6 +3501,7 @@ mod tests {
         );
         assert_eq!(audit.five_prime_utr_spliced_length_bp, 60);
         assert_eq!(audit.cds_start_codon_5prime_to_3prime, "ATG");
+        assert_eq!(audit.cds_start_codon_source_ranges_0based, vec![(80, 83)]);
         assert!(audit.warnings.iter().any(|warning| {
             warning.kind == PromoterReporterPanelExtendedWarningKind::UpstreamAtg
         }));
@@ -3432,10 +3554,97 @@ mod tests {
         assert_eq!(audit.cds_start_codon_source_start_0based, 37);
         assert_eq!(audit.cds_start_codon_source_end_0based_exclusive, 40);
         assert_eq!(audit.cds_start_codon_5prime_to_3prime, "ATG");
+        assert_eq!(audit.cds_start_codon_source_ranges_0based, vec![(37, 40)]);
         assert_eq!(
             audit.five_prime_utr_exon_ranges_0based,
             vec![(90, 120), (40, 70)]
         );
+    }
+
+    #[test]
+    fn promoter_reporter_extended_boundary_resolves_forward_split_start_codon() {
+        let mut bases = vec![b'C'; 130];
+        bases[80..82].copy_from_slice(b"AT");
+        bases[100] = b'G';
+        let mut source = DNAsequence::from_sequence(&String::from_utf8(bases).unwrap())
+            .expect("forward split-codon source");
+        source.features_mut().extend([
+            extended_boundary_test_feature("mRNA", 0, 130, "ENST_SPLIT_FWD", false),
+            extended_boundary_test_feature("exon", 0, 82, "ENST_SPLIT_FWD", false),
+            extended_boundary_test_feature("exon", 100, 130, "ENST_SPLIT_FWD", false),
+            extended_boundary_test_feature("CDS", 80, 82, "ENST_SPLIT_FWD", false),
+            extended_boundary_test_feature("CDS", 100, 130, "ENST_SPLIT_FWD", false),
+        ]);
+        let candidate = PromoterReporterFragmentCandidate {
+            candidate_id: "split_forward".to_string(),
+            strand: "+".to_string(),
+            variant_start_0based: 20,
+            variant_end_0based_exclusive: 25,
+            start_0based: 0,
+            end_0based_exclusive: 40,
+            length_bp: 40,
+            ..PromoterReporterFragmentCandidate::default()
+        };
+        let policy = PromoterReporterPanelExtendedBoundaryPolicy {
+            kind: PromoterReporterPanelExtendedBoundaryKind::CanonicalCdsStartCodon,
+            transcript_id: "ENST_SPLIT_FWD".to_string(),
+        };
+
+        let (start, end, audit) =
+            GentleEngine::promoter_reporter_panel_extended_geometry(&source, &candidate, &policy)
+                .expect("forward split-codon boundary");
+
+        assert_eq!((start, end), (0, 101));
+        assert_eq!(audit.cds_start_codon_5prime_to_3prime, "ATG");
+        assert_eq!(
+            audit.cds_start_codon_source_ranges_0based,
+            vec![(80, 82), (100, 101)]
+        );
+        assert_eq!(audit.cds_start_codon_source_start_0based, 80);
+        assert_eq!(audit.cds_start_codon_source_end_0based_exclusive, 101);
+    }
+
+    #[test]
+    fn promoter_reporter_extended_boundary_resolves_reverse_split_start_codon() {
+        let mut bases = vec![b'C'; 160];
+        bases[118..120].copy_from_slice(b"AT");
+        bases[99] = b'C';
+        let mut source = DNAsequence::from_sequence(&String::from_utf8(bases).unwrap())
+            .expect("reverse split-codon source");
+        source.features_mut().extend([
+            extended_boundary_test_feature("mRNA", 80, 160, "ENST_SPLIT_REV", true),
+            extended_boundary_test_feature("exon", 80, 100, "ENST_SPLIT_REV", true),
+            extended_boundary_test_feature("exon", 118, 160, "ENST_SPLIT_REV", true),
+            extended_boundary_test_feature("CDS", 80, 100, "ENST_SPLIT_REV", true),
+            extended_boundary_test_feature("CDS", 118, 120, "ENST_SPLIT_REV", true),
+        ]);
+        let candidate = PromoterReporterFragmentCandidate {
+            candidate_id: "split_reverse".to_string(),
+            strand: "-".to_string(),
+            variant_start_0based: 135,
+            variant_end_0based_exclusive: 140,
+            start_0based: 130,
+            end_0based_exclusive: 155,
+            length_bp: 25,
+            ..PromoterReporterFragmentCandidate::default()
+        };
+        let policy = PromoterReporterPanelExtendedBoundaryPolicy {
+            kind: PromoterReporterPanelExtendedBoundaryKind::CanonicalCdsStartCodon,
+            transcript_id: "ENST_SPLIT_REV".to_string(),
+        };
+
+        let (start, end, audit) =
+            GentleEngine::promoter_reporter_panel_extended_geometry(&source, &candidate, &policy)
+                .expect("reverse split-codon boundary");
+
+        assert_eq!((start, end), (99, 155));
+        assert_eq!(audit.cds_start_codon_5prime_to_3prime, "ATG");
+        assert_eq!(
+            audit.cds_start_codon_source_ranges_0based,
+            vec![(118, 120), (99, 100)]
+        );
+        assert_eq!(audit.cds_start_codon_source_start_0based, 99);
+        assert_eq!(audit.cds_start_codon_source_end_0based_exclusive, 120);
     }
 
     #[test]

@@ -9229,7 +9229,12 @@ pub struct PromoterReporterPanelExtendedWarning {
 pub struct PromoterReporterPanelExtendedBoundaryAudit {
     pub policy: PromoterReporterPanelExtendedBoundaryPolicy,
     pub strand: String,
+    /// Transcript-ordered genomic ranges supplying the three coding bases.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cds_start_codon_source_ranges_0based: Vec<(usize, usize)>,
+    /// Inclusive outer genomic span start for the codon ranges.
     pub cds_start_codon_source_start_0based: usize,
+    /// Exclusive outer genomic span end for the codon ranges.
     pub cds_start_codon_source_end_0based_exclusive: usize,
     pub cds_start_codon_5prime_to_3prime: String,
     #[serde(default)]

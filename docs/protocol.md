@@ -3602,6 +3602,11 @@ Sequencing-trace evidence notes:
     `kind: canonical_cds_start_codon` and one explicit `transcript_id`; the
     engine resolves exactly one matching transcript and its CDS annotation,
     then extends strand-correctly through the annotated start codon
+  - start-codon bases are consumed from transcript-ordered CDS ranges rather
+    than assumed to be adjacent in genomic DNA; when a codon crosses an exon
+    junction, its reported sequence excludes the intron while the genomic
+    fragment extends through the final coding base and therefore retains the
+    intervening intron
   - unresolved, duplicate, strand-mismatched, or CDS-free transcript geometry
     fails closed; the engine never guesses an ATG from raw genomic sequence
   - `gentle.promoter_reporter_panel_proposal.v1` binds normalized inputs and
@@ -3610,8 +3615,9 @@ Sequencing-trace evidence notes:
     predicted circular product hashes, junction-validation basis, final
     restriction-site scans with conservative count-excess warnings, artifact
     paths, warnings, and non-claims under one approval digest
-    - extended members carry `extended_boundary_audit`, including source
-      coordinates and 5'-to-3' sequence for the CDS start codon, ordered
+    - extended members carry `extended_boundary_audit`, including the outer
+      genomic span and exact transcript-ordered source ranges supplying the
+      CDS start codon, its 5'-to-3' sequence, ordered
       spliced 5'-UTR exon ranges, spliced UTR length, and typed `upstream_atg`, `upstream_orf`, and
       `five_prime_utr_intron` warnings
     - upstream-ATG/uORF checks run on transcript-oriented spliced UTR sequence;
