@@ -1,5 +1,11 @@
 # GENtle Changelog
 
+- Completed cross-viewport publication for the opt-in semantic GUI snapshot.
+  Root frames now retain the latest rectangles and unsettled state from active
+  native children while dropping closed viewports, and the Linux TP73 smoke
+  opens a project-graph sequence through its read-only semantic rectangle
+  before waiting for the DNA splitters.
+
 - Closed the remaining Splicing Expert-adjacent stale-cache path in the
   RNA-read seed histogram. Its biological presentation key now reuses the
   engine-fingerprint/content-digest identity of `SplicingExpertView` instead of

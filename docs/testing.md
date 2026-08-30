@@ -306,8 +306,11 @@ than unit-test claims.
 GENtle exposes a bounded, read-only semantic widget snapshot only when built
 with `--features gui-test-support`. The feature is disabled by default. Set
 `GENTLE_GUI_TEST_SNAPSHOT` to an explicit output path when launching `gentle`;
-the app atomically replaces that JSON file after each root frame. There is no
-listener, input-injection API, screenshot permission bypass, or command route.
+the app atomically replaces that JSON file after each root frame. Root-frame
+publication retains the latest paint from every still-active native child
+viewport and removes entries once egui no longer reports that viewport. There
+is no listener, input-injection API, screenshot permission bypass, or command
+route.
 
 Semantic IDs are lowercase dotted purpose names such as
 `dna.splitter.info_width` and do not derive from translated labels or screen
@@ -342,9 +345,11 @@ viewport's previous rectangles in the aggregate snapshot; duplicate IDs within
 one paint remain an assertion failure. Semantic IDs locate GUI affordances;
 scientific correctness still comes from the typed project state and reports.
 The Linux example [`../scripts/gui_semantic_xvfb_smoke.sh`](../scripts/gui_semantic_xvfb_smoke.sh)
-self-skips when X11 tools or a display are unavailable, waits for the DNA viewer
-and its information-width splitter, and accepts explicit pseudonymous
-repeat/array row scopes plus a typed-state verification command.
+self-skips when X11 tools or a display are unavailable, uses the read-only
+`main.project.sequence.open` rectangle for one ordinary X11 double-click, then
+waits for the DNA viewer and its information-width splitter. It accepts
+explicit pseudonymous sequence/repeat/array row scopes plus a typed-state
+verification command.
 
 ## 6. Practical implementation order
 
