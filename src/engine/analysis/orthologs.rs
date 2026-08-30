@@ -8,14 +8,17 @@ use super::*;
 use gentle_protocol::{
     BiologicalContext, BiologicalContextRegistry, GeneSetCohortRelationship,
     GeneSetCohortRelationshipFlag, ORTHOLOG_PROMOTER_COHORT_SCHEMA,
-    ORTHOLOG_PROMOTER_COMPARISON_SCHEMA, ORTHOLOG_RESOURCE_SCHEMA, OrthologAmbiguityCandidate,
-    OrthologConfidence, OrthologCutRunNormalizationInput, OrthologCutRunNormalizedAssignment,
+    ORTHOLOG_PROMOTER_COMPARISON_SCHEMA, ORTHOLOG_PROMOTER_CONSERVATION_SCHEMA,
+    ORTHOLOG_RESOURCE_SCHEMA, OrthologAmbiguityCandidate, OrthologConfidence,
+    OrthologConservationPairwiseAlignment, OrthologConservedInterval,
+    OrthologCutRunNormalizationInput, OrthologCutRunNormalizedAssignment,
     OrthologCutRunNormalizedValueInput, OrthologCutRunPairwiseQuantitativeComparison,
     OrthologCutRunQuantitativeComparison, OrthologCutRunQuantitativeComparisonStatus,
     OrthologCutRunSupportRow, OrthologCutRunSupportStatus, OrthologExpressionAssignment,
     OrthologMappingRow, OrthologPairwiseTfbsSimilarity, OrthologPromoterCohortReport,
-    OrthologPromoterCohortRequest, OrthologPromoterComparisonReport, OrthologPromoterRole,
-    OrthologPromoterRow, OrthologResource, OrthologSequenceSimilarityRow, OrthologTfbsPeakSummary,
+    OrthologPromoterCohortRequest, OrthologPromoterComparisonReport,
+    OrthologPromoterConservationReport, OrthologPromoterRole, OrthologPromoterRow,
+    OrthologResource, OrthologSequenceSimilarityRow, OrthologTfbsPeakSummary,
     OrthologTfbsSummaryRow, OrthologUnresolvedRow, OrthologyType,
 };
 
@@ -1026,32 +1029,212 @@ impl GentleEngine {
     fn ortholog_sequence_similarity(
         left: &OrthologPromoterRow,
         right: &OrthologPromoterRow,
-    ) -> OrthologSequenceSimilarityRow {
+    ) -> Result<OrthologSequenceSimilarityRow, EngineError> {
         let left_sequence = left.promoter_sequence.as_deref().unwrap_or("");
         let right_sequence = right.promoter_sequence.as_deref().unwrap_or("");
-        let compared_length_bp = left_sequence.len().min(right_sequence.len());
-        let identical_bp = left_sequence
-            .as_bytes()
-            .iter()
-            .zip(right_sequence.as_bytes())
-            .take(compared_length_bp)
-            .filter(|(left, right)| left.eq_ignore_ascii_case(right))
-            .count();
-        let identity_fraction = if compared_length_bp == 0 {
-            0.0
-        } else {
-            ((identical_bp as f64 / compared_length_bp as f64) * 1_000_000.0).round() / 1_000_000.0
-        };
-        OrthologSequenceSimilarityRow {
+        let alignment = Self::compute_pairwise_alignment_report(
+            &format!("{} {}", left.species, left.display_label),
+            left_sequence,
+            None,
+            None,
+            &format!("{} {}", right.species, right.display_label),
+            right_sequence,
+            None,
+            None,
+            PairwiseAlignmentMode::Global,
+            2,
+            -3,
+            -5,
+            -1,
+        )?;
+        Ok(OrthologSequenceSimilarityRow {
             left_species: left.species.clone(),
             right_species: right.species.clone(),
             left_gene_label: left.display_label.clone(),
             right_gene_label: right.display_label.clone(),
-            alignment_mode: "direct_promoter_aligned_prefix".to_string(),
-            compared_length_bp,
-            identical_bp,
-            identity_fraction,
+            alignment_mode: "global_pairwise".to_string(),
+            compared_length_bp: alignment.report.aligned_columns,
+            identical_bp: alignment.report.matches,
+            identity_fraction: alignment.report.identity_fraction,
+        })
+    }
+
+    pub(crate) fn compare_ortholog_promoter_conservation(
+        &self,
+        cohort: OrthologPromoterCohortReport,
+        min_conserved_bp: usize,
+    ) -> Result<OrthologPromoterConservationReport, EngineError> {
+        if min_conserved_bp == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Ortholog promoter conservation requires min_conserved_bp >= 1"
+                    .to_string(),
+                cause_chain: vec![],
+            });
         }
+        let anchor = cohort
+            .rows
+            .iter()
+            .find(|row| row.role == OrthologPromoterRole::Anchor)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Ortholog promoter conservation requires one resolved anchor row"
+                    .to_string(),
+                cause_chain: vec![],
+            })?;
+        let anchor_sequence = anchor
+            .promoter_sequence
+            .as_deref()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Ortholog promoter conservation anchor has no sequence".to_string(),
+                cause_chain: vec![],
+            })?;
+        let targets = cohort
+            .rows
+            .iter()
+            .filter(|row| row.role == OrthologPromoterRole::Target)
+            .collect::<Vec<_>>();
+        if targets.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Ortholog promoter conservation requires at least one resolved target row"
+                    .to_string(),
+                cause_chain: vec![],
+            });
+        }
+
+        let mut common_mask = vec![true; anchor_sequence.len()];
+        let mut pairwise_alignments = Vec::with_capacity(targets.len());
+        let mut supporting_species = Vec::with_capacity(targets.len() + 1);
+        supporting_species.push(anchor.species.clone());
+        for target in targets {
+            let target_sequence =
+                target
+                    .promoter_sequence
+                    .as_deref()
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Ortholog promoter conservation target '{}' has no sequence",
+                            target.species
+                        ),
+                        cause_chain: vec![],
+                    })?;
+            let computed = Self::compute_pairwise_alignment_report(
+                &format!("{} {}", anchor.species, anchor.display_label),
+                anchor_sequence,
+                None,
+                None,
+                &format!("{} {}", target.species, target.display_label),
+                target_sequence,
+                None,
+                None,
+                PairwiseAlignmentMode::Global,
+                2,
+                -3,
+                -5,
+                -1,
+            )?;
+            let mut target_mask = vec![false; anchor_sequence.len()];
+            let mut anchor_index = 0usize;
+            let mut target_index = 0usize;
+            for operation in &computed.operations {
+                match operation {
+                    bio::alignment::AlignmentOperation::Match => {
+                        if anchor_index < target_mask.len()
+                            && target_index < target_sequence.len()
+                            && anchor_sequence.as_bytes()[anchor_index]
+                                .eq_ignore_ascii_case(&target_sequence.as_bytes()[target_index])
+                        {
+                            target_mask[anchor_index] = true;
+                        }
+                        anchor_index += 1;
+                        target_index += 1;
+                    }
+                    bio::alignment::AlignmentOperation::Subst => {
+                        anchor_index += 1;
+                        target_index += 1;
+                    }
+                    bio::alignment::AlignmentOperation::Ins => anchor_index += 1,
+                    bio::alignment::AlignmentOperation::Del => target_index += 1,
+                    bio::alignment::AlignmentOperation::Xclip(length) => anchor_index += *length,
+                    bio::alignment::AlignmentOperation::Yclip(length) => target_index += *length,
+                }
+            }
+            for (common, target_match) in common_mask.iter_mut().zip(target_mask.iter()) {
+                *common &= *target_match;
+            }
+            let identical_anchor_bp = target_mask.iter().filter(|matched| **matched).count();
+            pairwise_alignments.push(OrthologConservationPairwiseAlignment {
+                target_species: target.species.clone(),
+                target_gene_label: target.display_label.clone(),
+                target_transcript_id: target.transcript_id.clone(),
+                anchor_coverage_bp: computed.report.matches + computed.report.mismatches,
+                identical_anchor_bp,
+                alignment: computed.report,
+            });
+            supporting_species.push(target.species.clone());
+        }
+
+        let mut conserved_intervals = vec![];
+        let mut interval_start = None;
+        for (position, conserved) in common_mask
+            .iter()
+            .copied()
+            .chain(std::iter::once(false))
+            .enumerate()
+        {
+            if conserved {
+                interval_start.get_or_insert(position);
+                continue;
+            }
+            let Some(start) = interval_start.take() else {
+                continue;
+            };
+            if position.saturating_sub(start) < min_conserved_bp {
+                continue;
+            }
+            let strand = anchor.strand.chars().next();
+            let genomic_a = Self::promoter_local_position_to_genomic_1based(
+                strand,
+                anchor.promoter_start_1based,
+                anchor.promoter_end_1based,
+                anchor.promoter_length_bp,
+                start,
+            );
+            let genomic_b = Self::promoter_local_position_to_genomic_1based(
+                strand,
+                anchor.promoter_start_1based,
+                anchor.promoter_end_1based,
+                anchor.promoter_length_bp,
+                position.saturating_sub(1),
+            );
+            conserved_intervals.push(OrthologConservedInterval {
+                anchor_start_0based: start,
+                anchor_end_0based_exclusive: position,
+                length_bp: position - start,
+                promoter_relative_start_bp: start as i64 - anchor.tss_position_0based as i64,
+                promoter_relative_end_bp_exclusive: position as i64
+                    - anchor.tss_position_0based as i64,
+                genomic_start_1based: genomic_a.zip(genomic_b).map(|(a, b)| a.min(b)),
+                genomic_end_1based: genomic_a.zip(genomic_b).map(|(a, b)| a.max(b)),
+                supporting_species: supporting_species.clone(),
+            });
+        }
+        Ok(OrthologPromoterConservationReport {
+            schema: ORTHOLOG_PROMOTER_CONSERVATION_SCHEMA.to_string(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            anchor_species: anchor.species.clone(),
+            anchor_gene_label: anchor.display_label.clone(),
+            anchor_transcript_id: anchor.transcript_id.clone(),
+            min_conserved_bp,
+            pairwise_alignments,
+            conserved_intervals,
+            warnings: cohort.warnings.clone(),
+            cohort,
+            ..OrthologPromoterConservationReport::default()
+        })
     }
 
     fn ortholog_peak_summary(
@@ -1759,7 +1942,7 @@ impl GentleEngine {
                 sequence_similarity.push(Self::ortholog_sequence_similarity(
                     &cohort.rows[left_idx],
                     &cohort.rows[right_idx],
-                ));
+                )?);
             }
         }
 

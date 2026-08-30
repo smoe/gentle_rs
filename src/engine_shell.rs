@@ -1398,6 +1398,12 @@ pub enum ShellCommand {
         cutrun_normalization: Option<OrthologCutRunNormalizationInput>,
         output: Option<String>,
     },
+    OrthologsConservationComparison {
+        cohort: Option<Box<OrthologPromoterCohortReport>>,
+        cohort_path: Option<String>,
+        min_conserved_bp: usize,
+        output: Option<String>,
+    },
     ResourcesListPublicationDatasets {
         filter: Option<String>,
         catalog_path: Option<String>,
@@ -8300,6 +8306,20 @@ impl ShellCommand {
                 clip_negative,
                 relationship,
                 cutrun_normalization.is_some(),
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::OrthologsConservationComparison {
+                cohort,
+                cohort_path,
+                min_conserved_bp,
+                output,
+            } => format!(
+                "compare ortholog promoter conservation from {} (min_conserved_bp={}, output='{}')",
+                cohort_path
+                    .as_deref()
+                    .or_else(|| cohort.as_ref().map(|_| "inline cohort"))
+                    .unwrap_or("-"),
+                min_conserved_bp,
                 output.as_deref().unwrap_or("-"),
             ),
             Self::ReportersList {
@@ -28666,6 +28686,15 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "--cutrun-normalization-json", "required": false, "subject_kind": "other", "detail": "explicit normalized CUT&RUN values plus method, unit, shared reference, and provenance; accepts JSON or @FILE"}),
             ],
         ),
+        optional_artifact_resource_report_descriptor(
+            "orthologs conservation-comparison",
+            "optional external ortholog promoter-conservation JSON output path",
+            "Globally align every resolved target promoter to the cohort anchor and report exact intervals shared on anchor coordinates.",
+            vec![
+                json!({"name": "--cohort|--cohort-json", "required": true, "subject_kind": "other", "detail": "ortholog promoter cohort path or inline JSON"}),
+                json!({"name": "--min-conserved-bp", "required": false, "subject_kind": "other", "detail": "minimum exact interval length; default 8"}),
+            ],
+        ),
         optional_artifact_operation_descriptor(
             "ladders export",
             "external ladder-catalog JSON output path",
@@ -39769,7 +39798,7 @@ fn parse_gene_sets_command(tokens: &[String]) -> Result<ShellCommand, String> {
 fn parse_orthologs_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "orthologs requires a subcommand: resolve-promoter-cohort or promoter-comparison"
+            "orthologs requires a subcommand: resolve-promoter-cohort, promoter-comparison, or conservation-comparison"
                 .to_string(),
         );
     }
@@ -40059,8 +40088,66 @@ fn parse_orthologs_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 output,
             })
         }
+        "conservation-comparison" | "conservation_comparison" | "compare-conservation" => {
+            let context = "orthologs conservation-comparison";
+            let mut cohort: Option<OrthologPromoterCohortReport> = None;
+            let mut cohort_path: Option<String> = None;
+            let mut min_conserved_bp = 8usize;
+            let mut output: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--cohort" | "--cohort-path" => {
+                        let flag = tokens[idx].clone();
+                        cohort_path = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--cohort-json" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--cohort-json", context)?;
+                        cohort = Some(parse_required_json_payload::<OrthologPromoterCohortReport>(
+                            &raw,
+                            "ortholog promoter cohort",
+                        )?);
+                    }
+                    "--min-conserved-bp" | "--min_conserved_bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        min_conserved_bp = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid {flag} value '{raw}' for {context}: {e}")
+                        })?;
+                    }
+                    "--output" | "--path" => {
+                        let flag = tokens[idx].clone();
+                        output = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    other if !other.starts_with("--") && cohort_path.is_none() => {
+                        cohort_path = Some(other.to_string());
+                        idx += 1;
+                    }
+                    other => return Err(format!("Unknown option '{other}' for {context}")),
+                }
+            }
+            if cohort.is_some() && cohort_path.is_some() {
+                return Err(format!(
+                    "{context} accepts either --cohort PATH or --cohort-json JSON, not both"
+                ));
+            }
+            if cohort.is_none() && cohort_path.is_none() {
+                return Err(format!(
+                    "{context} requires --cohort PATH or --cohort-json JSON"
+                ));
+            }
+            if min_conserved_bp == 0 {
+                return Err(format!("{context} requires --min-conserved-bp >= 1"));
+            }
+            Ok(ShellCommand::OrthologsConservationComparison {
+                cohort: cohort.map(Box::new),
+                cohort_path,
+                min_conserved_bp,
+                output,
+            })
+        }
         other => Err(format!(
-            "Unknown orthologs subcommand '{other}' (expected resolve-promoter-cohort or promoter-comparison)"
+            "Unknown orthologs subcommand '{other}' (expected resolve-promoter-cohort, promoter-comparison, or conservation-comparison)"
         )),
     }
 }
@@ -50734,6 +50821,44 @@ fn execute_export_import_and_resource_command(
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::OrthologsConservationComparison {
+            cohort,
+            cohort_path,
+            min_conserved_bp,
+            output,
+        } => {
+            let cohort = match (cohort.as_ref(), cohort_path.as_deref()) {
+                (Some(report), _) => (**report).clone(),
+                (None, Some(path)) => {
+                    let raw = std::fs::read_to_string(path).map_err(|e| {
+                        format!("Could not read ortholog promoter cohort '{path}': {e}")
+                    })?;
+                    serde_json::from_str::<OrthologPromoterCohortReport>(&raw).map_err(|e| {
+                        format!("Could not parse ortholog promoter cohort '{path}': {e}")
+                    })?
+                }
+                (None, None) => {
+                    return Err("orthologs conservation-comparison requires a cohort".to_string());
+                }
+            };
+            let report = engine
+                .compare_ortholog_promoter_conservation(cohort, *min_conserved_bp)
+                .map_err(|e| e.to_string())?;
+            if let Some(path) = output.as_deref() {
+                let serialized = serde_json::to_string_pretty(&report).map_err(|e| {
+                    format!("Could not serialize ortholog promoter conservation report: {e}")
+                })?;
+                std::fs::write(path, format!("{serialized}\n")).map_err(|e| {
+                    format!("Could not write ortholog promoter conservation report '{path}': {e}")
+                })?;
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report).map_err(|e| {
+                    format!("Could not serialize ortholog promoter conservation report: {e}")
+                })?,
             })
         }
         ShellCommand::ReportersList {
@@ -63961,6 +64086,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::GeneSetsPromoterCohort { .. }
             | ShellCommand::OrthologsResolvePromoterCohort { .. }
             | ShellCommand::OrthologsPromoterComparison { .. }
+            | ShellCommand::OrthologsConservationComparison { .. }
             | ShellCommand::ReportersList { .. }
             | ShellCommand::ReportersRecommend { .. }
             | ShellCommand::ReportersExportCorpus { .. }
@@ -64768,6 +64894,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::GeneSetsPromoterCohort { .. }
         | ShellCommand::OrthologsResolvePromoterCohort { .. }
         | ShellCommand::OrthologsPromoterComparison { .. }
+        | ShellCommand::OrthologsConservationComparison { .. }
         | ShellCommand::ReportersList { .. }
         | ShellCommand::ReportersRecommend { .. }
         | ShellCommand::ReportersExportCorpus { .. }

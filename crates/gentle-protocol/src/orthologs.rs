@@ -7,7 +7,7 @@
 
 use crate::{
     BiologicalContextRegistry, BiologicalContextResolutionError, GeneSetCohortRelationship,
-    GeneSetCohortRelationshipFlag,
+    GeneSetCohortRelationshipFlag, SequenceAlignmentReport,
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{collections::BTreeMap, fmt, ops::Deref};
@@ -18,6 +18,8 @@ pub const ORTHOLOG_RESOURCE_SCHEMA: &str = "gentle.ortholog_resource.v1";
 pub const ORTHOLOG_PROMOTER_COHORT_SCHEMA: &str = "gentle.ortholog_promoter_cohort.v1";
 /// Cross-species promoter comparison report schema.
 pub const ORTHOLOG_PROMOTER_COMPARISON_SCHEMA: &str = "gentle.ortholog_promoter_comparison.v1";
+/// Anchor-oriented cross-species promoter conservation report schema.
+pub const ORTHOLOG_PROMOTER_CONSERVATION_SCHEMA: &str = "gentle.ortholog_promoter_conservation.v1";
 
 /// Canonical cardinality represented by a recognized orthology-type value.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -655,6 +657,58 @@ pub struct OrthologSequenceSimilarityRow {
     pub identity_fraction: f64,
 }
 
+/// One target promoter aligned to the cohort anchor promoter.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct OrthologConservationPairwiseAlignment {
+    pub target_species: String,
+    pub target_gene_label: String,
+    pub target_transcript_id: String,
+    pub alignment: SequenceAlignmentReport,
+    pub identical_anchor_bp: usize,
+    pub anchor_coverage_bp: usize,
+}
+
+/// One exact-match interval shared by every resolved target on anchor coordinates.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct OrthologConservedInterval {
+    pub anchor_start_0based: usize,
+    pub anchor_end_0based_exclusive: usize,
+    pub length_bp: usize,
+    pub promoter_relative_start_bp: i64,
+    pub promoter_relative_end_bp_exclusive: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_start_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_end_1based: Option<usize>,
+    #[serde(default)]
+    pub supporting_species: Vec<String>,
+}
+
+/// Portable conservation comparison over one resolved ortholog promoter cohort.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct OrthologPromoterConservationReport {
+    pub schema: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub cohort: OrthologPromoterCohortReport,
+    pub anchor_species: String,
+    pub anchor_gene_label: String,
+    pub anchor_transcript_id: String,
+    pub min_conserved_bp: usize,
+    #[serde(default)]
+    pub pairwise_alignments: Vec<OrthologConservationPairwiseAlignment>,
+    #[serde(default)]
+    pub conserved_intervals: Vec<OrthologConservedInterval>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
 /// Cross-species CUT&RUN/occupancy assignment row.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
@@ -979,5 +1033,42 @@ mod tests {
             value["normalization"]["normalization_method"],
             "spike_in_scaled_cpm"
         );
+    }
+
+    #[test]
+    fn promoter_conservation_report_round_trips_alignment_and_intervals() {
+        let report = OrthologPromoterConservationReport {
+            schema: ORTHOLOG_PROMOTER_CONSERVATION_SCHEMA.to_string(),
+            anchor_species: "human".to_string(),
+            min_conserved_bp: 8,
+            pairwise_alignments: vec![OrthologConservationPairwiseAlignment {
+                target_species: "chimp".to_string(),
+                alignment: SequenceAlignmentReport {
+                    cigar: "8=".to_string(),
+                    matches: 8,
+                    ..SequenceAlignmentReport::default()
+                },
+                identical_anchor_bp: 8,
+                anchor_coverage_bp: 8,
+                ..OrthologConservationPairwiseAlignment::default()
+            }],
+            conserved_intervals: vec![OrthologConservedInterval {
+                anchor_start_0based: 2,
+                anchor_end_0based_exclusive: 10,
+                length_bp: 8,
+                supporting_species: vec!["human".to_string(), "chimp".to_string()],
+                ..OrthologConservedInterval::default()
+            }],
+            ..OrthologPromoterConservationReport::default()
+        };
+        let value = serde_json::to_value(&report).expect("serialize conservation report");
+        let restored: OrthologPromoterConservationReport =
+            serde_json::from_value(value).expect("deserialize conservation report");
+        assert_eq!(restored.schema, ORTHOLOG_PROMOTER_CONSERVATION_SCHEMA);
+        assert_eq!(restored.anchor_species, "human");
+        assert_eq!(restored.pairwise_alignments.len(), 1);
+        assert_eq!(restored.pairwise_alignments[0].alignment.cigar, "8=");
+        assert_eq!(restored.pairwise_alignments[0].identical_anchor_bp, 8);
+        assert_eq!(restored.conserved_intervals, report.conserved_intervals);
     }
 }

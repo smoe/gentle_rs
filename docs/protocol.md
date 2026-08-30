@@ -547,6 +547,7 @@ Portable schemas:
 - `gentle.ortholog_resource.v1`
 - `gentle.ortholog_promoter_cohort.v1`
 - `gentle.ortholog_promoter_comparison.v1`
+- `gentle.ortholog_promoter_conservation.v1`
 
 Behavior notes:
 
@@ -608,6 +609,12 @@ Behavior notes:
   promoter-sequence identity, TFBS score-track similarity, motif peak
   presence, optional expression assignment, and CUT&RUN/occupancy status are
   reported in distinct arrays.
+- `orthologs conservation-comparison` is a read-only shared-shell projection
+  over one resolved cohort. It globally aligns every target promoter to the
+  anchor, retains the normal pairwise alignment report for each target, and
+  intersects exact-match masks on anchor coordinates. `conserved_intervals[]`
+  carries promoter-relative and genomic anchor coordinates plus all supporting
+  species. It does not infer regulatory function from conservation alone.
 - CUT&RUN source ids can assign species/genome-matched occupancy support as
   `confirmed`, `nearby`, `motif_only`, `occupancy_only`, or `no_data`.
   Rows without matching provenance are `not_comparable`; raw peak intensity is
