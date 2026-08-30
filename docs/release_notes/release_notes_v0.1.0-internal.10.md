@@ -252,6 +252,10 @@ expensive GUI work that runs safely away from the egui thread.
   windows: Agent Help uses caller-supplied stable window identities, repeated
   child repaint measurements no longer collide, and the Linux smoke waits for
   the DNA viewer and splitter before interacting.
+- Moved Criterion performance audits into the non-published
+  `gentle-benchmarks` workspace package. Audit runs now compile the GENtle
+  library without preparing unrelated application binaries, while preserving
+  the existing routine and exact release-like profiles and hash-bound fixtures.
 
 ### 6. Gene Sets, Promoters, and Construct Reasoning
 

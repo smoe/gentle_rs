@@ -1,0 +1,26 @@
+[package]
+name = "gentle-benchmarks"
+version.workspace = true
+edition.workspace = true
+publish = false
+description = "Dedicated Criterion audit harness for GENtle"
+
+[lib]
+name = "gentle_benchmarks"
+path = "src/lib.rs"
+
+[dev-dependencies]
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
+egui = { workspace = true }
+gentle = { package = "GENtle", path = "../..", default-features = false, features = ["benchmark-support"] }
+ring = "0.17.14"
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+
+[[bench]]
+name = "specificity_finalization"
+harness = false
+
+[[bench]]
+name = "gui_operations"
+harness = false

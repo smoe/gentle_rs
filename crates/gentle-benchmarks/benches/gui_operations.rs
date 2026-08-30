@@ -5,7 +5,7 @@
 //! window-system, GPU, input-dispatch, or compositor latency.
 
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
-use eframe::egui;
+use egui;
 use gentle::{
     about::GENTLE_SOURCE_REVISION,
     dna_sequence::{DNAsequence, load_from_file},
@@ -61,7 +61,7 @@ fn benchmark_fixtures() -> Vec<GuiFixture> {
     let synthetic = DNAsequence::from_sequence(&synthetic_sequence)
         .expect("construct feature-free GUI benchmark control");
 
-    let tp73_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_files/tp73.ncbi.gb");
+    let tp73_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../test_files/tp73.ncbi.gb");
     let tp73_bytes = fs::read(&tp73_path).expect("read public TP73 GUI benchmark fixture");
     let tp73 = load_from_file(&tp73_path.to_string_lossy())
         .expect("parse public TP73 GUI benchmark fixture");

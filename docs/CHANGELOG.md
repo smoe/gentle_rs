@@ -1,5 +1,11 @@
 # GENtle Changelog
 
+- Isolated external Criterion audits in a dedicated, non-published
+  `gentle-benchmarks` workspace package. Routine and exact release-like modes
+  now compile GENtle as a library without preparing its seven application
+  binaries or enabling screenshot capture; benchmark algorithms, fixture
+  hashes, scientific assertions, profiles, and auditor ownership are unchanged.
+
 - Completed cross-viewport publication for the opt-in semantic GUI snapshot.
   Root frames now retain the latest rectangles and unsettled state from active
   native children while dropping closed viewports, and the Linux TP73 smoke

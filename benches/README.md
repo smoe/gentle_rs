@@ -4,8 +4,8 @@ Developers verify that benchmark fixtures and scientific assertions still run
 without collecting a statistical baseline:
 
 ```bash
-cargo test --bench gui_operations --features benchmark-support
-cargo test --bench specificity_finalization --features benchmark-support
+cargo test -p gentle-benchmarks --bench gui_operations
+cargo test -p gentle-benchmarks --bench specificity_finalization
 ```
 
 Timed runs and release-facing comparisons belong to the external auditor.
@@ -17,12 +17,13 @@ GENtle provides two deliberately non-comparable optimized modes:
 - Routine audit uses `--profile bench-audit`. It keeps release `opt-level=3`
   and stripping, but uses thin LTO, 16 codegen units, and `panic=unwind` to
   reduce cold-build pressure and make cached audits practical. Cargo already
-  forces unwind for benchmark targets; matching that setting for the binary
-  targets built alongside an integration benchmark avoids compiling the root
-  library once for each panic strategy.
-- Exact release-like audit uses plain `cargo bench` and therefore preserves the
-  existing fat-LTO, one-codegen-unit benchmark build. Use it when compilation
-  cost and exact release-like code generation are part of the question.
+  forces unwind for benchmark targets; matching that setting throughout the
+  audit dependency graph avoids compiling the root library once for each panic
+  strategy.
+- Exact release-like audit uses `cargo bench -p gentle-benchmarks` without a
+  profile override and therefore preserves the existing fat-LTO,
+  one-codegen-unit benchmark build. Use it when compilation cost and exact
+  release-like code generation are part of the question.
 
 Cargo keeps compiled artifacts under `target/bench-audit/` and
 `target/release/`, respectively. Criterion 0.8.2 does not infer the Cargo
@@ -30,13 +31,15 @@ profile and otherwise stores both modes under the shared `target/criterion/`
 tree. Set `CRITERION_HOME` as shown below so measurements remain under the
 matching profile directory. Never compare results across these modes: the
 routine mode deliberately differs in LTO, codegen units, and panic strategy.
-The first routine build can still be substantial. Cargo automatically prepares
-enabled binary targets for an integration benchmark so it can expose
-`CARGO_BIN_EXE_*`; those targets therefore retain their own Thin-LTO link cost.
-Subsequent runs reuse the profile cache. GENtle's build fingerprint follows the
-current loose branch ref and consults repository-wide `packed-refs` only when
-that loose ref is absent, so Git maintenance in another worktree does not
-invalidate an otherwise unchanged audit build.
+The benchmarks live in the dedicated, non-published `gentle-benchmarks`
+workspace package. It depends on GENtle as a library with default features
+disabled, so Cargo does not prepare the application's GUI, CLI, MCP,
+documentation, or publication-report binaries before sampling. The first
+library build and link can still be substantial; subsequent runs reuse the
+profile cache. GENtle's build fingerprint follows the current loose branch ref
+and consults repository-wide `packed-refs` only when that loose ref is absent,
+so Git maintenance in another worktree does not invalidate an otherwise
+unchanged audit build.
 
 ## GUI-critical operations
 
@@ -45,18 +48,18 @@ embedded egui render path with a feature-free 120 kbp control and the public
 TP73 locus fixture:
 
 ```bash
-CRITERION_HOME=target/bench-audit/criterion \
-  cargo bench --profile bench-audit --bench gui_operations \
-  --features benchmark-support -- --quick --noplot
+CRITERION_HOME="$PWD/target/bench-audit/criterion" \
+  cargo bench --profile bench-audit -p gentle-benchmarks \
+  --bench gui_operations -- --quick --noplot
 ```
 
 For the exact release-like mode, omit `--profile` and change only the retained
 result directory:
 
 ```bash
-CRITERION_HOME=target/release/criterion \
-  cargo bench --bench gui_operations --features benchmark-support \
-  -- --quick --noplot
+CRITERION_HOME="$PWD/target/release/criterion" \
+  cargo bench -p gentle-benchmarks --bench gui_operations -- \
+  --quick --noplot
 ```
 
 It reports eager constructor, deferred UI-thread hydration, first-frame, and
@@ -74,9 +77,9 @@ in `docs/testing.md`.
 Run the deterministic primer-specificity benchmark with:
 
 ```bash
-CRITERION_HOME=target/bench-audit/criterion \
-  cargo bench --profile bench-audit --bench specificity_finalization \
-  --features benchmark-support -- --quick --noplot
+CRITERION_HOME="$PWD/target/bench-audit/criterion" \
+  cargo bench --profile bench-audit -p gentle-benchmarks \
+  --bench specificity_finalization -- --quick --noplot
 ```
 
 `specificity_finalization.rs` generates non-biological complete-query BLAST
@@ -109,17 +112,19 @@ git rev-parse HEAD
 rustc -Vv
 cargo -V
 uname -a
-CRITERION_HOME=target/bench-audit/criterion \
+CRITERION_HOME="$PWD/target/bench-audit/criterion" \
   /usr/bin/time -v cargo bench --profile bench-audit \
-  --bench gui_operations --features benchmark-support -- \
+  -p gentle-benchmarks --bench gui_operations -- \
   --quick --noplot --save-baseline bench-audit_HOST_TOOLCHAIN_REVISION
 ```
 
 Use `/usr/bin/time -l` instead of `-v` on macOS. Keep the console log and the
 corresponding `target/bench-audit/criterion/` subtree with the audit record.
-For an exact release-like baseline, use plain `cargo bench`, set
-`CRITERION_HOME=target/release/criterion`, and prefix the baseline label with
-`release-like`. Compare only against a baseline produced by the same profile,
-host, toolchain, fixture hash, and GENtle revision. The auditor decides whether
-a difference is meaningful after also performing the real GUI interaction
-check; GENtle does not turn a noisy shared runner result into a release verdict.
+For an exact release-like baseline, use `cargo bench -p gentle-benchmarks`
+without `--profile`, set
+`CRITERION_HOME="$PWD/target/release/criterion"`, and prefix the baseline label
+with `release-like`. Compare only against a baseline produced by the same
+profile, host, toolchain, fixture hash, and GENtle revision. The auditor decides
+whether a difference is meaningful after also performing the real GUI
+interaction check; GENtle does not turn a noisy shared runner result into a
+release verdict.

@@ -1,8 +1,9 @@
 # GENtle Roadmap
 
-Last session: 2026-08-30 - completed semantic child-viewport publication and
-the self-driving TP73 Xvfb smoke after hardening transcript-bound extended
-reporter fragments; final exact-revision PATZ1 GUI and copied-state acceptance
+Last session: 2026-08-30 - hardened transcript-bound extended reporter
+fragments, isolated Criterion audits from application binary targets, and
+completed semantic child-viewport publication plus the self-driving TP73 Xvfb
+smoke; final exact-revision PATZ1 GUI, benchmark, and copied-state acceptance
 remain before the unreleased `v0.1.0-internal.10` tag
 
 Purpose: fast session orientation. This file answers "what next?" and should be
