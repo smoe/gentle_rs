@@ -10,7 +10,6 @@ dependencies = [
  "arboard",
  "base64 0.22.1",
  "bio",
- "criterion",
  "csv",
  "deno_core",
  "deno_error",
@@ -2559,6 +2558,18 @@ dependencies = [
  "serde",
  "serde_bytes",
  "thiserror 2.0.20",
+]
+
+[[package]]
+name = "gentle-benchmarks"
+version = "0.1.0-internal.10"
+dependencies = [
+ "GENtle",
+ "criterion",
+ "egui",
+ "ring",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

@@ -240,31 +240,30 @@ UI-thread hydration boundary, and first and steady embedded egui frames over a
 feature-free control and the public TP73 locus:
 
 ```bash
-cargo bench --profile bench-audit --bench gui_operations \
-  --features benchmark-support -- --quick --noplot
+cargo bench --profile bench-audit -p gentle-benchmarks \
+  --bench gui_operations -- --quick --noplot
 ```
 
 `bench-audit` keeps the release profile's `opt-level=3` and stripping, but uses
 thin LTO, 16 codegen units, and `panic=unwind` for practical routine audits.
 Cargo forces unwind for benchmark targets regardless of the release panic
-setting; using it throughout this custom profile prevents the binary targets
-built with an integration benchmark from requiring a second root-library panic
-variant. Plain `cargo bench --bench gui_operations ...` remains the exact
-release-like fat-LTO, one-codegen-unit, abort-panic mode. The two modes
-characterize different binaries and their results must never be compared.
-Cold routine builds may remain expensive because Cargo automatically prepares
-enabled binary targets for integration benchmarks and each keeps a Thin-LTO
-link step. The custom profile is intended to bound that pressure and support
-cacheable repeated audits, not to promise a short first build. Build metadata
-tracks the current loose Git branch ref; repository-wide `packed-refs` is only
-tracked as a fallback so unrelated worktree maintenance does not discard the
-audit cache.
+setting. The dedicated, non-published `gentle-benchmarks` package depends on
+GENtle only as a library with default features disabled, so Cargo does not
+prepare the root package's application binaries before sampling. Plain
+`cargo bench -p gentle-benchmarks --bench gui_operations ...` remains the exact
+release-like fat-LTO, one-codegen-unit mode. The two modes characterize
+different binaries and their results must never be compared. A cold library
+build and link can remain substantial; the custom profile is intended to bound
+that pressure and support cacheable repeated audits, not to promise an
+instantaneous first build. Build metadata tracks the current loose Git branch
+ref; repository-wide `packed-refs` is only tracked as a fallback so unrelated
+worktree maintenance does not discard the audit cache.
 
 Implementation-side verification stops at the non-statistical smoke path:
 
 ```bash
-cargo test --bench gui_operations --features benchmark-support
-cargo test --bench specificity_finalization --features benchmark-support
+cargo test -p gentle-benchmarks --bench gui_operations
+cargo test -p gentle-benchmarks --bench specificity_finalization
 ```
 
 This is a CPU-side proxy for GUI-critical preparation and painting. It cannot
@@ -279,8 +278,8 @@ The secondary target covers complete-query BLAST HSP parsing and
 primer-specificity interpretation at 100, 1,000, and 6,600 total rows:
 
 ```bash
-cargo bench --profile bench-audit --bench specificity_finalization \
-  --features benchmark-support -- --quick --noplot
+cargo bench --profile bench-audit -p gentle-benchmarks \
+  --bench specificity_finalization -- --quick --noplot
 ```
 
 The benchmark constructs its synthetic input outside timed loops, verifies the

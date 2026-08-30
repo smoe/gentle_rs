@@ -14,6 +14,7 @@ build = "build.rs"
 [workspace]
 resolver = "3"
 members = [
+    "crates/gentle-benchmarks",
     "crates/gentle-engine",
     "crates/gentle-protocol",
     "crates/gentle-render",
@@ -167,19 +168,6 @@ screencapturekit = { version = "8.0.1", optional = true, features = ["macos_14_0
 
 [build-dependencies]
 winres = "0.1"
-
-[dev-dependencies]
-criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
-
-[[bench]]
-name = "specificity_finalization"
-harness = false
-required-features = ["benchmark-support"]
-
-[[bench]]
-name = "gui_operations"
-harness = false
-required-features = ["benchmark-support"]
 
 [profile.dev]
 # Favor faster local iteration for the large GUI crate. Keep line-table debug

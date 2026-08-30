@@ -1,4 +1,4 @@
-//! Criterion coverage for deterministic primer-specificity interpretation.
+//! Dedicated Criterion coverage for deterministic primer-specificity interpretation.
 //!
 //! The generated rows are synthetic, complete-query `blastn-short` HSPs. Each
 //! subject has one inward-facing forward/reverse pair, with the first product
