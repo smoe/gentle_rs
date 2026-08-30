@@ -54,6 +54,7 @@ COPY packages ./packages
 COPY crates ./crates
 COPY src ./src
 COPY assets ./assets
+COPY data/resources/affymetrix/platform_registry.json ./data/resources/affymetrix/
 COPY docs ./docs
 COPY icons ./icons
 COPY integrations/python ./integrations/python

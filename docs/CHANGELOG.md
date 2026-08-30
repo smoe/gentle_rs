@@ -18,6 +18,11 @@
   coordinates. Existing ortholog promoter sequence similarity now uses the
   shared global aligner instead of direct prefix identity.
 
+- Restored release-container builds after the Affymetrix platform registry
+  became a compile-time engine resource. The Docker context now admits and the
+  builder copies only that small tracked registry from the otherwise excluded
+  `data/` tree, without packaging experimental or prepared resource data.
+
 - Stabilized primer Tm values across operating-system math libraries by
   quantizing shared Tm, Tm-difference, and derived score metrics to nanodegree
   reporting precision before ranking and serialization. This prevents

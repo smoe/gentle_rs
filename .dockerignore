@@ -5,6 +5,11 @@ target
 .DS_Store
 paper
 test_files
-data
+data/*
+!data/resources/
+data/resources/*
+!data/resources/affymetrix/
+data/resources/affymetrix/*
+!data/resources/affymetrix/platform_registry.json
 *.pyc
 __pycache__
