@@ -10,6 +10,15 @@ fn lineage_graph_canvas_width(base_width: f32, graph_zoom: f32, viewport_width: 
     (base_width * graph_zoom + 280.0 * graph_zoom).max(viewport_width.max(1.0))
 }
 
+#[cfg(any(test, feature = "gui-test-support"))]
+fn clipped_semantic_interaction_rect(
+    interaction_rect: egui::Rect,
+    clip_rect: egui::Rect,
+) -> Option<egui::Rect> {
+    let clipped = interaction_rect.intersect(clip_rect);
+    clipped.is_positive().then_some(clipped)
+}
+
 fn container_pool_export_readiness(
     kind: &str,
     member_count: usize,
@@ -1628,17 +1637,22 @@ impl GENtleApp {
                                         crate::gui_test_support::pseudonymous_subject_scope(&[
                                             &row.seq_id,
                                         ]);
+                                    let interaction_rect = egui::Rect::from_center_size(
+                                        pos,
+                                        Vec2::splat(38.0 * graph_zoom),
+                                    );
+                                    let visible_rect = clipped_semantic_interaction_rect(
+                                        interaction_rect,
+                                        ui.clip_rect(),
+                                    );
                                     crate::gui_test_support::register_rect(
                                         ui.ctx().clone(),
                                         "main.project.sequence.open",
                                         "window.main",
                                         Some(&subject_scope),
                                         crate::gui_test_support::GuiTestWidgetKind::Button,
-                                        egui::Rect::from_center_size(
-                                            pos,
-                                            Vec2::splat(38.0 * graph_zoom),
-                                        ),
-                                        true,
+                                        visible_rect.unwrap_or(interaction_rect),
+                                        visible_rect.is_some(),
                                         true,
                                         false,
                                         None,
@@ -4348,7 +4362,11 @@ impl GENtleApp {
 
 #[cfg(test)]
 mod tests {
-    use super::{container_pool_export_readiness, lineage_graph_canvas_width};
+    use super::{
+        clipped_semantic_interaction_rect, container_pool_export_readiness,
+        lineage_graph_canvas_width,
+    };
+    use eframe::egui;
 
     #[test]
     fn lineage_graph_canvas_width_uses_parent_viewport_snapshot() {
@@ -4375,5 +4393,30 @@ mod tests {
             container_pool_export_readiness("Selection", 1, true),
             Err("Pool export requires a physical singleton or pool, not an in-silico selection")
         );
+    }
+
+    #[test]
+    fn semantic_lineage_node_rect_is_clipped_to_visible_viewport() {
+        let clip = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(100.0, 100.0));
+        let fully_visible =
+            egui::Rect::from_min_max(egui::pos2(20.0, 30.0), egui::pos2(40.0, 50.0));
+        assert_eq!(
+            clipped_semantic_interaction_rect(fully_visible, clip),
+            Some(fully_visible)
+        );
+
+        let partly_visible =
+            egui::Rect::from_min_max(egui::pos2(90.0, 40.0), egui::pos2(120.0, 70.0));
+        let clipped = clipped_semantic_interaction_rect(partly_visible, clip)
+            .expect("partially visible node should remain semantically visible");
+        assert_eq!(
+            clipped,
+            egui::Rect::from_min_max(egui::pos2(90.0, 40.0), egui::pos2(100.0, 70.0))
+        );
+        assert!(clip.contains(clipped.center()));
+        assert!(partly_visible.contains(clipped.center()));
+
+        let offscreen = egui::Rect::from_min_max(egui::pos2(120.0, 40.0), egui::pos2(150.0, 70.0));
+        assert_eq!(clipped_semantic_interaction_rect(offscreen, clip), None);
     }
 }

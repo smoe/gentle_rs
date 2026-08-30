@@ -1,5 +1,11 @@
 # GENtle Changelog
 
+- Corrected semantic GUI publication for sequence nodes in the scrollable
+  project graph. Partially visible nodes now publish only their clipped,
+  clickable viewport intersection, while fully offscreen nodes remain
+  discoverable but report `visible=false`; semantic smoke drivers can no longer
+  select a stale offscreen coordinate from a large project graph.
+
 - Isolated external Criterion audits in a dedicated, non-published
   `gentle-benchmarks` workspace package. Routine and exact release-like modes
   now compile GENtle as a library without preparing its seven application
