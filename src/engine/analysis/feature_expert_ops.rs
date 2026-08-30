@@ -8777,6 +8777,30 @@ impl GentleEngine {
             .collect()
     }
 
+    pub(crate) fn normalize_splicing_expert_view_fingerprint(
+        view: &mut SplicingExpertView,
+    ) -> Result<bool, EngineError> {
+        let supplied = std::mem::take(&mut view.presentation_fingerprint_sha256);
+        let fingerprint_input = match serde_json::to_vec(view) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                view.presentation_fingerprint_sha256 = supplied;
+                return Err(EngineError {
+                    code: ErrorCode::Internal,
+                    message: format!(
+                        "Could not fingerprint Splicing Expert view for sequence '{}': {error}",
+                        view.seq_id
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+        };
+        let expected = crate::digest_utils::sha256_prefixed_bytes(&fingerprint_input);
+        let matched = supplied == expected;
+        view.presentation_fingerprint_sha256 = expected;
+        Ok(matched)
+    }
+
     pub(super) fn build_splicing_expert_view(
         &self,
         seq_id: &str,
@@ -9325,15 +9349,7 @@ impl GentleEngine {
             junctions,
             events,
         };
-        let fingerprint_input = serde_json::to_vec(&view).map_err(|error| EngineError {
-            code: ErrorCode::Internal,
-            message: format!(
-                "Could not fingerprint Splicing Expert view for sequence '{seq_id}': {error}"
-            ),
-            cause_chain: vec![],
-        })?;
-        view.presentation_fingerprint_sha256 =
-            crate::digest_utils::sha256_prefixed_bytes(&fingerprint_input);
+        Self::normalize_splicing_expert_view_fingerprint(&mut view)?;
         Ok(view)
     }
 

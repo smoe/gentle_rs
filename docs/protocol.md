@@ -11165,10 +11165,11 @@ Cryptic-splicing inspection (implemented):
       `other_noncanonical`)
   - engine-built `SplicingExpertView` payloads carry
     `presentation_fingerprint_sha256`, computed once from the serialized view
-    while that field is empty. GUI presentation caches use this stable content
-    identity without walking transcript/exon/junction vectors on every frame;
-    older payloads without the field remain supported through a local fallback
-    digest
+    while that field is empty. GUI window ingress verifies and, when necessary,
+    replaces this digest before presentation caches trust it; subsequent frames
+    use the validated stable identity without walking transcript/exon/junction
+    vectors. Older payloads without the field remain supported through the same
+    one-time normalization and a local fallback digest if serialization fails
   - shared splicing expert payloads also carry conservative intron-signal
     heuristics per intron:
     - donor/acceptor positions and intron length

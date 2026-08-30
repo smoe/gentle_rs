@@ -133,6 +133,18 @@ impl SplicingExpertPresentationKey {
     }
 }
 
+impl MainAreaDna {
+    pub(super) fn cache_ready_splicing_expert_view(
+        view: &SplicingExpertView,
+    ) -> Arc<SplicingExpertView> {
+        let mut normalized = view.clone();
+        if GentleEngine::normalize_splicing_expert_view_fingerprint(&mut normalized).is_err() {
+            normalized.presentation_fingerprint_sha256.clear();
+        }
+        Arc::new(normalized)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(super) struct SplicingExpertExonPresentation {
     pub(super) coordinate_label: String,
@@ -9589,7 +9601,7 @@ impl MainAreaDna {
             let view = view.clone();
             self.invalidate_splicing_expert_presentation_cache();
             self.splicing_expert_window_feature_id = Some(view.target_feature_id);
-            self.splicing_expert_window_view = Some(Arc::new(view.clone()));
+            self.splicing_expert_window_view = Some(Self::cache_ready_splicing_expert_view(&view));
             self.splicing_isoform_evidence_report = None;
             self.splicing_isoform_evidence_status.clear();
             self.splicing_locus_report = None;
@@ -9851,7 +9863,7 @@ impl MainAreaDna {
             self.rna_read_mapping_window_pending_initial_render,
         );
         self.rna_read_mapping_window_feature_id = Some(view.target_feature_id);
-        self.rna_read_mapping_window_view = Some(Arc::new(view.clone()));
+        self.rna_read_mapping_window_view = Some(Self::cache_ready_splicing_expert_view(view));
         self.rna_read_mapping_window_pending_initial_render = true;
         self.rna_read_mapping_window_focus_requested = true;
         self.show_rna_read_mapping_window = true;

@@ -42156,6 +42156,22 @@ fn test_build_splicing_expert_view_carries_stable_content_fingerprint() {
         first.presentation_fingerprint_sha256,
         crate::digest_utils::sha256_prefixed_bytes(&serialized)
     );
+
+    let mut modified = first.clone();
+    modified.group_label = "GENE1_REVISED".to_string();
+    let original_fingerprint = modified.presentation_fingerprint_sha256.clone();
+    assert!(
+        !GentleEngine::normalize_splicing_expert_view_fingerprint(&mut modified)
+            .expect("normalize modified fingerprint")
+    );
+    assert_ne!(
+        modified.presentation_fingerprint_sha256,
+        original_fingerprint
+    );
+    assert!(
+        GentleEngine::normalize_splicing_expert_view_fingerprint(&mut modified)
+            .expect("revalidate normalized fingerprint")
+    );
 }
 
 #[test]

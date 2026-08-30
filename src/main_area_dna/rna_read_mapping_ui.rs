@@ -5364,11 +5364,7 @@ impl MainAreaDna {
         }
     }
 
-    fn rna_read_slice_identity<T>(rows: &[T]) -> (usize, usize) {
-        (rows.as_ptr() as usize, rows.len())
-    }
-
-    fn rna_read_seed_histogram_presentation_key(
+    pub(super) fn rna_read_seed_histogram_presentation_key(
         &self,
         progress: &RnaReadInterpretProgress,
         view: &SplicingExpertView,
@@ -5391,12 +5387,7 @@ impl MainAreaDna {
             tested_kmers: progress.tested_kmers,
             matched_kmers: progress.matched_kmers,
             done: progress.done,
-            bins_identity: Self::rna_read_slice_identity(&progress.bins),
-            top_hits_identity: Self::rna_read_slice_identity(&progress.top_hits_preview),
-            seed_catalog_identity: Self::rna_read_slice_identity(&self.rna_seed_catalog_preview),
-            template_audit_identity: Self::rna_read_slice_identity(
-                &self.rna_seed_template_audit_preview,
-            ),
+            data_revision: self.rna_read_seed_histogram_data_revision,
             selected_record_index: self.rna_seed_highlight_record_index,
             kmer_len,
             seed_stride_bp,

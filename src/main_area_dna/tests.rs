@@ -3909,6 +3909,40 @@ fn rna_seed_histogram_cache_separates_biological_and_pixel_rebuilds() {
 }
 
 #[test]
+fn rna_seed_histogram_key_uses_revision_instead_of_vector_address() {
+    let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    area.rna_seed_catalog_preview = vec![RnaSeedHashCatalogEntry {
+        seed_bits: MainAreaDna::encode_rna_seed_bits(b"ACG").expect("ACG bits"),
+        kmer_sequence: "ACG".to_string(),
+        transcript_feature_id: 11,
+        transcript_id: "TX1".to_string(),
+        transcript_label: "TX1".to_string(),
+        strand: "+".to_string(),
+        template_offset_0based: 0,
+        genomic_pos_1based: 3,
+    }];
+    let progress = test_rna_read_progress_snapshot(1);
+    let view = splicing_expert_presentation_test_view();
+    let original_address = area.rna_seed_catalog_preview.as_ptr();
+    let first =
+        area.rna_read_seed_histogram_presentation_key(&progress, &view, true, true, false, 3, 1);
+
+    area.rna_seed_catalog_preview[0].genomic_pos_1based = 5;
+    assert_eq!(
+        area.rna_seed_catalog_preview.as_ptr(),
+        original_address,
+        "the regression must retain the vector allocation"
+    );
+    area.invalidate_rna_read_seed_histogram_cache();
+    let second =
+        area.rna_read_seed_histogram_presentation_key(&progress, &view, true, true, false, 3, 1);
+
+    assert_ne!(first, second);
+    assert_eq!(second.data_revision, first.data_revision + 1);
+}
+
+#[test]
 fn rna_read_progress_coalescing_keeps_latest_snapshot_and_terminal_message() {
     let (tx, rx) = mpsc::channel::<RnaReadTaskMessage>();
     for reads_processed in 1..=3 {
@@ -14322,19 +14356,46 @@ fn splicing_expert_presentation_reuses_immutable_view_and_invalidates_on_replace
 }
 
 #[test]
-fn splicing_expert_presentation_uses_engine_fingerprint_without_rehashing_view_content() {
+fn splicing_expert_window_validates_fingerprint_once_before_cached_rendering() {
     let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
     let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
     let mut view = splicing_expert_presentation_test_view();
-    view.presentation_fingerprint_sha256 = format!("sha256:{}", "ab".repeat(32));
+    let stale_fingerprint = format!("sha256:{}", "ab".repeat(32));
+    view.presentation_fingerprint_sha256 = stale_fingerprint.clone();
 
-    let first = area.splicing_expert_presentation_for_view(&view);
-    view.matrix_rows[0].transcript_id = "content_not_rehashed".to_string();
-    let second = area.splicing_expert_presentation_for_view(&view);
+    area.open_splicing_expert_window_for_view(&view);
+    let stored = area
+        .splicing_expert_window_view
+        .clone()
+        .expect("validated splicing view");
+    assert_ne!(
+        stored.presentation_fingerprint_sha256, stale_fingerprint,
+        "wire fingerprints must not be trusted without checking view content"
+    );
+
+    let first = area.splicing_expert_presentation_for_view(stored.as_ref());
+    let second = area.splicing_expert_presentation_for_view(stored.as_ref());
 
     assert!(Arc::ptr_eq(&first, &second));
     assert_eq!(area.splicing_expert_presentation_cache_misses, 1);
     assert_eq!(area.splicing_expert_presentation_cache_hits, 1);
+
+    view.presentation_fingerprint_sha256 = stored.presentation_fingerprint_sha256.clone();
+    view.matrix_rows[0].transcript_id = "content_revised_before_ingress".to_string();
+    area.open_splicing_expert_window_for_view(&view);
+    let revised = area
+        .splicing_expert_window_view
+        .clone()
+        .expect("revalidated splicing view");
+    assert_ne!(
+        revised.presentation_fingerprint_sha256,
+        stored.presentation_fingerprint_sha256
+    );
+    let revised_presentation = area.splicing_expert_presentation_for_view(revised.as_ref());
+    assert_eq!(
+        revised_presentation.transcript_rows[0].label,
+        "n-11 content_revised_before_ingress"
+    );
 }
 
 #[test]

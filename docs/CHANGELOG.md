@@ -7,6 +7,13 @@
   membership, retained tutorial reports, and their checksums; ties are now
   resolved deterministically at the declared precision.
 
+- Hardened Splicing Expert cache identity at the GUI boundary. Serialized view
+  fingerprints are now recomputed once when Splicing Expert or RNA-read windows
+  accept a view, so stale or fabricated digests cannot retain stale biological
+  presentation data while normal repaint lookups remain constant-time. RNA-read
+  histogram inputs now use an explicit monotonic data revision instead of
+  vector addresses and lengths.
+
 - Corrected semantic GUI publication for sequence nodes in the scrollable
   project graph. Partially visible nodes now publish only their clipped,
   clickable viewport intersection, while fully offscreen nodes remain

@@ -408,10 +408,7 @@ pub(super) struct RnaReadSeedHistogramPresentationKey {
     pub(super) tested_kmers: usize,
     pub(super) matched_kmers: usize,
     pub(super) done: bool,
-    pub(super) bins_identity: (usize, usize),
-    pub(super) top_hits_identity: (usize, usize),
-    pub(super) seed_catalog_identity: (usize, usize),
-    pub(super) template_audit_identity: (usize, usize),
+    pub(super) data_revision: u64,
     pub(super) selected_record_index: Option<usize>,
     pub(super) kmer_len: usize,
     pub(super) seed_stride_bp: usize,
@@ -589,6 +586,8 @@ impl MainAreaDna {
     }
 
     pub(super) fn invalidate_rna_read_seed_histogram_cache(&mut self) {
+        self.rna_read_seed_histogram_data_revision =
+            self.rna_read_seed_histogram_data_revision.saturating_add(1);
         self.cached_rna_read_seed_histogram = None;
     }
 
