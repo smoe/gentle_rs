@@ -5,7 +5,11 @@
 //! confirmation. Callers may opt into an atomic JSON snapshot by setting
 //! `GENTLE_GUI_TEST_SNAPSHOT` to an output path.
 
-use std::{collections::BTreeMap, fs, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::Path,
+};
 
 use eframe::egui::{self, Context, Rect, Response};
 use serde::{Deserialize, Serialize};
@@ -101,7 +105,7 @@ pub struct GuiTestSnapshot {
 #[derive(Clone, Default)]
 struct GuiTestRegistry {
     generation: u64,
-    settled: bool,
+    unsettled_viewports: BTreeSet<egui::ViewportId>,
     items: BTreeMap<(String, String, Option<String>), RegisteredGuiTestItem>,
 }
 
@@ -123,13 +127,21 @@ fn discard_stale_viewport_items(
 }
 
 pub fn begin_frame(ctx: &Context) {
+    let viewport_id = ctx.viewport_id();
+    let active_viewports =
+        ctx.input(|input| input.raw.viewports.keys().copied().collect::<BTreeSet<_>>());
     ctx.data_mut(|data| {
         let mut registry = data
             .get_temp::<GuiTestRegistry>(registry_id())
             .unwrap_or_default();
         registry.generation = registry.generation.saturating_add(1);
-        registry.settled = true;
-        registry.items.clear();
+        registry
+            .unsettled_viewports
+            .retain(|candidate| active_viewports.contains(candidate) && *candidate != viewport_id);
+        registry.items.retain(|_, registered| {
+            active_viewports.contains(&registered.viewport_id)
+                && registered.viewport_id != viewport_id
+        });
         data.insert_temp(registry_id(), registry);
     });
 }
@@ -147,16 +159,19 @@ pub fn begin_viewport_frame(ctx: &Context) {
             .get_temp::<GuiTestRegistry>(registry_id())
             .unwrap_or_default();
         discard_stale_viewport_items(&mut registry, viewport_id, pass_nr);
+        registry.unsettled_viewports.remove(&viewport_id);
         data.insert_temp(registry_id(), registry);
     });
 }
 
 pub fn mark_unsettled(ctx: &Context) {
+    let viewport_id = ctx.viewport_id();
     ctx.data_mut(|data| {
-        if let Some(mut registry) = data.get_temp::<GuiTestRegistry>(registry_id()) {
-            registry.settled = false;
-            data.insert_temp(registry_id(), registry);
-        }
+        let mut registry = data
+            .get_temp::<GuiTestRegistry>(registry_id())
+            .unwrap_or_default();
+        registry.unsettled_viewports.insert(viewport_id);
+        data.insert_temp(registry_id(), registry);
     });
 }
 
@@ -268,7 +283,7 @@ pub fn snapshot(ctx: &Context) -> GuiTestSnapshot {
             "screen-relative egui logical points; multiply by pixels_per_point for physical pixels"
                 .to_string(),
         generation: registry.generation,
-        settled: registry.settled,
+        settled: registry.unsettled_viewports.is_empty(),
         items: registry
             .items
             .into_values()
@@ -349,6 +364,22 @@ mod tests {
         });
         let _ = ctx.end_pass();
         result.expect("button response")
+    }
+
+    fn input_for_viewport(
+        viewport_id: egui::ViewportId,
+        active_viewports: &[egui::ViewportId],
+    ) -> egui::RawInput {
+        let mut input = egui::RawInput {
+            viewport_id,
+            ..Default::default()
+        };
+        for active_viewport in active_viewports {
+            input
+                .viewports
+                .insert(*active_viewport, egui::ViewportInfo::default());
+        }
+        input
     }
 
     #[test]
@@ -466,6 +497,106 @@ mod tests {
             GuiTestWidgetKind::Button,
             false,
         );
+    }
+
+    #[test]
+    fn root_publication_keeps_active_child_items_and_removes_closed_viewports() {
+        let ctx = Context::default();
+        let root = egui::ViewportId::ROOT;
+        let child = egui::ViewportId::from_hash_of("semantic-child");
+
+        ctx.begin_pass(input_for_viewport(root, &[root, child]));
+        begin_frame(&ctx);
+        register_rect(
+            ctx.clone(),
+            "window.main",
+            "window.main",
+            None,
+            GuiTestWidgetKind::Window,
+            Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(100.0, 80.0)),
+            true,
+            true,
+            true,
+            Some("ready"),
+        );
+        let _ = ctx.end_pass();
+
+        ctx.begin_pass(input_for_viewport(child, &[root, child]));
+        begin_viewport_frame(&ctx);
+        register_rect(
+            ctx.clone(),
+            "dna.splitter.info_width",
+            "window.dna_viewer",
+            None,
+            GuiTestWidgetKind::Splitter,
+            Rect::from_min_size(egui::pos2(300.0, 0.0), egui::vec2(12.0, 600.0)),
+            true,
+            true,
+            false,
+            None,
+        );
+        let _ = ctx.end_pass();
+
+        ctx.begin_pass(input_for_viewport(root, &[root, child]));
+        begin_frame(&ctx);
+        register_rect(
+            ctx.clone(),
+            "window.main",
+            "window.main",
+            None,
+            GuiTestWidgetKind::Window,
+            Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(120.0, 90.0)),
+            true,
+            true,
+            true,
+            Some("ready"),
+        );
+        let aggregate = snapshot(&ctx);
+        assert!(
+            aggregate
+                .items
+                .iter()
+                .any(|item| item.semantic_id == "dna.splitter.info_width")
+        );
+        assert!(
+            aggregate
+                .items
+                .iter()
+                .any(|item| item.semantic_id == "window.main")
+        );
+        let _ = ctx.end_pass();
+
+        ctx.begin_pass(input_for_viewport(root, &[root]));
+        begin_frame(&ctx);
+        assert!(
+            snapshot(&ctx)
+                .items
+                .iter()
+                .all(|item| item.window_id != "window.dna_viewer")
+        );
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
+    fn child_unsettled_state_survives_root_publication_until_child_repaints() {
+        let ctx = Context::default();
+        let root = egui::ViewportId::ROOT;
+        let child = egui::ViewportId::from_hash_of("semantic-loading-child");
+
+        ctx.begin_pass(input_for_viewport(child, &[root, child]));
+        begin_viewport_frame(&ctx);
+        mark_unsettled(&ctx);
+        let _ = ctx.end_pass();
+
+        ctx.begin_pass(input_for_viewport(root, &[root, child]));
+        begin_frame(&ctx);
+        assert!(!snapshot(&ctx).settled);
+        let _ = ctx.end_pass();
+
+        ctx.begin_pass(input_for_viewport(child, &[root, child]));
+        begin_viewport_frame(&ctx);
+        assert!(snapshot(&ctx).settled);
+        let _ = ctx.end_pass();
     }
 
     #[test]

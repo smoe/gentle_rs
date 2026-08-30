@@ -1622,6 +1622,28 @@ impl GENtleApp {
                                         egui::Color32::from_rgb(235, 196, 150),
                                     )
                                 };
+                                #[cfg(feature = "gui-test-support")]
+                                if row.kind == LineageNodeKind::Sequence && row.pool_size <= 1 {
+                                    let subject_scope =
+                                        crate::gui_test_support::pseudonymous_subject_scope(&[
+                                            &row.seq_id,
+                                        ]);
+                                    crate::gui_test_support::register_rect(
+                                        ui.ctx().clone(),
+                                        "main.project.sequence.open",
+                                        "window.main",
+                                        Some(&subject_scope),
+                                        crate::gui_test_support::GuiTestWidgetKind::Button,
+                                        egui::Rect::from_center_size(
+                                            pos,
+                                            Vec2::splat(38.0 * graph_zoom),
+                                        ),
+                                        true,
+                                        true,
+                                        false,
+                                        None,
+                                    );
+                                }
                                 match row.kind {
                                     LineageNodeKind::Arrangement => {
                                         let rect = egui::Rect::from_center_size(
