@@ -3607,8 +3607,14 @@ Sequencing-trace evidence notes:
     junction, its reported sequence excludes the intron while the genomic
     fragment extends through the final coding base and therefore retains the
     intervening intron
+  - `canonical_cds_start_codon` additionally requires a complete CDS entry
+    (`codon_start=1` or `phase=0` when supplied), no 5'-partial location marker,
+    and an oriented `ATG` assembled from those transcript-ordered CDS bases;
+    malformed, conflicting, partial, or noncanonical entry evidence fails
+    before 5'-UTR/uORF interpretation
   - unresolved, duplicate, strand-mismatched, or CDS-free transcript geometry
-    fails closed; the engine never guesses an ATG from raw genomic sequence
+    fails closed; the engine never guesses an ATG from raw genomic sequence or
+    relabels the first complete codon of a partial CDS as its canonical start
   - `gentle.promoter_reporter_panel_proposal.v1` binds normalized inputs and
     hashes, exact vector validation, wild-type/mutant members, the complete
     ordered child-operation workflow, cloning strategy, primer sequences,

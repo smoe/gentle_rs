@@ -153,7 +153,11 @@ pub fn request_egui_viewport_capture_for(
 
 /// Render the common help affordance. Left-click captures the current GENtle
 /// viewport; on macOS, the context menu offers native full-window capture.
-pub fn render_agent_help_button(ui: &mut egui::Ui, window_title: impl Into<String>) {
+pub fn render_agent_help_button(
+    ui: &mut egui::Ui,
+    window_title: impl Into<String>,
+    semantic_window_id: &'static str,
+) {
     collect_egui_capture_events(ui.ctx());
     let window_title = window_title.into();
     let response = ui
@@ -161,23 +165,18 @@ pub fn render_agent_help_button(ui: &mut egui::Ui, window_title: impl Into<Strin
         .on_hover_text(crate::i18n::tr("agent.help_button.tooltip"));
     #[cfg(feature = "gui-test-support")]
     {
-        let semantic_window = if window_title.starts_with("Splicing Expert") {
-            "window.splicing_expert"
-        } else if window_title.starts_with("Agent Assistant") {
-            "window.agent_assistant"
-        } else {
-            "window.dna_viewer"
-        };
         let subject_scope = crate::gui_test_support::pseudonymous_subject_scope(&[&window_title]);
         crate::gui_test_support::register_response(
             &response,
             "agent.help.open",
-            semantic_window,
+            semantic_window_id,
             Some(&subject_scope),
             crate::gui_test_support::GuiTestWidgetKind::Button,
             false,
         );
     }
+    #[cfg(not(feature = "gui-test-support"))]
+    let _ = semantic_window_id;
     if response.clicked() {
         request_egui_viewport_capture(ui.ctx(), window_title.clone());
     }
@@ -474,5 +473,29 @@ mod tests {
         };
         assert_eq!(capture.request_id, request_id);
         assert_eq!(capture.window_title, "Promoter design");
+    }
+
+    #[cfg(feature = "gui-test-support")]
+    #[test]
+    fn help_buttons_use_explicit_semantic_window_identity() {
+        let ctx = egui::Context::default();
+        crate::gui_test_support::begin_frame(&ctx);
+        let _ = ctx.begin_pass(egui::RawInput::default());
+        egui::Window::new("semantic agent-help test").show(&ctx, |ui| {
+            render_agent_help_button(ui, "Shared visible title", "window.dna_viewer");
+            render_agent_help_button(ui, "Shared visible title", "window.specialist");
+        });
+        let _ = ctx.end_pass();
+
+        let snapshot = crate::gui_test_support::snapshot(&ctx);
+        let window_ids = snapshot
+            .items
+            .iter()
+            .map(|item| item.window_id.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(
+            window_ids,
+            std::collections::BTreeSet::from(["window.dna_viewer", "window.specialist"])
+        );
     }
 }

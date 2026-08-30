@@ -261,7 +261,11 @@ impl WindowDna {
             {
                 request_open_graphics_settings_from_native_menu();
             }
-            crate::agent_help::render_agent_help_button(ui, agent_help_window_title.clone());
+            crate::agent_help::render_agent_help_button(
+                ui,
+                agent_help_window_title.clone(),
+                "window.dna_viewer",
+            );
             if ui
                 .button(crate::i18n::tr("button.close"))
                 .on_hover_text("Close this sequence window (Cmd/Ctrl+W)")
@@ -278,6 +282,8 @@ impl WindowDna {
     /// then delegates the actual sequence-window layout to `MainAreaDna`.
     pub fn update(&mut self, ctx: &egui::Context) {
         crate::gentle_gui_profile_scope!("WindowDna::update");
+        #[cfg(feature = "gui-test-support")]
+        crate::gui_test_support::begin_viewport_frame(ctx);
         self.poll_deferred_load();
         let result = catch_unwind(AssertUnwindSafe(|| {
             let open_help_f1 = egui::KeyboardShortcut::new(egui::Modifiers::NONE, egui::Key::F1);

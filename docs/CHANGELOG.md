@@ -8,6 +8,19 @@
   snapshots retain their constant-time identities behind explicit replacement
   invalidation.
 
+- Repaired the opt-in semantic GUI release surface for the independently
+  scheduled native DNA child viewport. Agent-help controls now receive explicit stable window
+  identities instead of guessing from translated titles, repeated child
+  repaints replace their previous rectangles without weakening duplicate-id
+  checks within one paint, and the Linux smoke waits for the DNA viewer plus
+  splitter rather than accepting an earlier settled main-window snapshot.
+
+- Made canonical-CDS-start promoter-reporter extension fail closed on
+  `codon_start`/`phase` offsets, conflicting or malformed entry annotations,
+  5'-partial location markers, and non-`ATG` entry triplets. Split start codons
+  remain supported on both strands, while UTR/uORF analysis no longer proceeds
+  from a boundary that cannot establish a canonical translation start.
+
 - Removed repeated full-view hashing from the idle Splicing Expert render path.
   Engine-built views now carry a stable SHA-256 presentation fingerprint that
   the GUI can compare in constant time, while legacy and manually constructed

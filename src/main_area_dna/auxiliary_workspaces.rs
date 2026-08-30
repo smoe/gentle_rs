@@ -5164,6 +5164,7 @@ impl MainAreaDna {
                 "Dotplot workspace - {}",
                 self.seq_id.as_deref().unwrap_or("sequence")
             ),
+            "window.dotplot_workspace",
         );
         ui.separator();
         let panel_width = ui.available_width().max(600.0);
@@ -7472,6 +7473,7 @@ impl MainAreaDna {
         crate::agent_help::render_agent_help_button(
             ui,
             format!("Isoform Expert - {}", view.gene_symbol),
+            "window.isoform_expert",
         );
         ui.separator();
         let font_size = self.feature_details_font_size();
@@ -9794,6 +9796,7 @@ impl MainAreaDna {
         crate::agent_help::render_agent_help_button(
             ui,
             format!("RNA-read Mapping - {}", view.group_label),
+            "window.rna_read_mapping",
         );
         ui.separator();
         self.render_rna_read_mapping_window_intro(ui, view);

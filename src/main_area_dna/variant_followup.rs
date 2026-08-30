@@ -5160,6 +5160,7 @@ impl MainAreaDna {
         crate::agent_help::render_agent_help_button(
             ui,
             format!("Promoter design - {}", source_seq_id),
+            "window.promoter_design",
         );
         ui.separator();
         let current_seq_id = self.seq_id.clone().unwrap_or_default();

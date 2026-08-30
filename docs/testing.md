@@ -311,8 +311,11 @@ listener, input-injection API, screenshot permission bypass, or command route.
 
 Semantic IDs are lowercase dotted purpose names such as
 `dna.splitter.info_width` and do not derive from translated labels or screen
-position. Repeated domain rows share one semantic ID and carry a pseudonymous
-`subject_scope` derived from stable domain fields rather than list index. V2
+position. Agent-help controls receive their semantic window identity explicitly
+from the rendering caller; translated or dynamic titles are used only to derive
+the pseudonymous subject scope and never to guess a window kind. Repeated domain
+rows share one semantic ID and carry a pseudonymous `subject_scope` derived from
+stable domain fields rather than list index. V2
 uses a domain-separated SHA-256 digest truncated to 128 bits; this prevents
 literal-value disclosure but is not an anonymity claim for guessable inputs.
 Snapshots never include visible labels, sequence strings, paths, credentials,
@@ -333,12 +336,15 @@ jq '.generation, .settled, .items[] | select(.semantic_id == "dna.splitter.info_
 The snapshot schema is `gentle.gui_semantic_snapshot.v2`. `generation`
 advances monotonically and `settled` is false while known deferred GUI work,
 including initial feature-tree hydration, is pending. Harnesses should wait on
-those fields rather than a fixed sleep. Semantic IDs locate GUI affordances;
+those fields plus the semantic controls required by the scenario rather than a
+fixed sleep. Independently scheduled DNA child-viewport repaints replace that
+viewport's previous rectangles in the aggregate snapshot; duplicate IDs within
+one paint remain an assertion failure. Semantic IDs locate GUI affordances;
 scientific correctness still comes from the typed project state and reports.
 The Linux example [`../scripts/gui_semantic_xvfb_smoke.sh`](../scripts/gui_semantic_xvfb_smoke.sh)
-self-skips when X11 tools or a display are unavailable and accepts explicit
-pseudonymous repeat/array row scopes plus a typed-state verification command.
-than Criterion microbenchmarks.
+self-skips when X11 tools or a display are unavailable, waits for the DNA viewer
+and its information-width splitter, and accepts explicit pseudonymous
+repeat/array row scopes plus a typed-state verification command.
 
 ## 6. Practical implementation order
 

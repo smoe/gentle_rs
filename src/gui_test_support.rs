@@ -102,7 +102,24 @@ pub struct GuiTestSnapshot {
 struct GuiTestRegistry {
     generation: u64,
     settled: bool,
-    items: BTreeMap<(String, String, Option<String>), GuiTestItem>,
+    items: BTreeMap<(String, String, Option<String>), RegisteredGuiTestItem>,
+}
+
+#[derive(Clone)]
+struct RegisteredGuiTestItem {
+    viewport_id: egui::ViewportId,
+    pass_nr: u64,
+    item: GuiTestItem,
+}
+
+fn discard_stale_viewport_items(
+    registry: &mut GuiTestRegistry,
+    viewport_id: egui::ViewportId,
+    pass_nr: u64,
+) {
+    registry.items.retain(|_, registered| {
+        registered.viewport_id != viewport_id || registered.pass_nr == pass_nr
+    });
 }
 
 pub fn begin_frame(ctx: &Context) {
@@ -113,6 +130,23 @@ pub fn begin_frame(ctx: &Context) {
         registry.generation = registry.generation.saturating_add(1);
         registry.settled = true;
         registry.items.clear();
+        data.insert_temp(registry_id(), registry);
+    });
+}
+
+/// Start one independently scheduled child-viewport paint.
+///
+/// Deferred native viewports can repaint more than once between root app
+/// frames. Keep their latest rectangles in the aggregate snapshot while
+/// retaining the duplicate-id assertion within each individual paint.
+pub fn begin_viewport_frame(ctx: &Context) {
+    let viewport_id = ctx.viewport_id();
+    let pass_nr = ctx.cumulative_pass_nr();
+    ctx.data_mut(|data| {
+        let mut registry = data
+            .get_temp::<GuiTestRegistry>(registry_id())
+            .unwrap_or_default();
+        discard_stale_viewport_items(&mut registry, viewport_id, pass_nr);
         data.insert_temp(registry_id(), registry);
     });
 }
@@ -165,6 +199,8 @@ pub fn register_rect(
 ) {
     let semantic_id = semantic_id.into();
     let window_id = window_id.into();
+    let viewport_id = ctx.viewport_id();
+    let pass_nr = ctx.cumulative_pass_nr();
     if let Some(scope) = subject_scope {
         assert_pseudonymous_scope(scope);
     }
@@ -181,6 +217,7 @@ pub fn register_rect(
         let mut registry = data
             .get_temp::<GuiTestRegistry>(registry_id())
             .unwrap_or_default();
+        discard_stale_viewport_items(&mut registry, viewport_id, pass_nr);
         let key = (
             window_id.as_str().to_string(),
             semantic_id.as_str().to_string(),
@@ -202,7 +239,17 @@ pub fn register_rect(
             outcome_role: outcome_role.map(str::to_string),
         };
         assert!(
-            registry.items.insert(key, item).is_none(),
+            registry
+                .items
+                .insert(
+                    key,
+                    RegisteredGuiTestItem {
+                        viewport_id,
+                        pass_nr,
+                        item,
+                    },
+                )
+                .is_none(),
             "duplicate semantic GUI id in one window/frame: {}/{}",
             window_id.as_str(),
             semantic_id.as_str()
@@ -222,7 +269,11 @@ pub fn snapshot(ctx: &Context) -> GuiTestSnapshot {
                 .to_string(),
         generation: registry.generation,
         settled: registry.settled,
-        items: registry.items.into_values().collect(),
+        items: registry
+            .items
+            .into_values()
+            .map(|registered| registered.item)
+            .collect(),
     }
 }
 
@@ -360,6 +411,61 @@ mod tests {
                 false,
             );
         }
+    }
+
+    #[test]
+    fn a_new_egui_pass_replaces_that_viewports_previous_items() {
+        let ctx = Context::default();
+        begin_frame(&ctx);
+        let first = response(&ctx, "First paint", true);
+        register_response(
+            &first,
+            "agent.help.open",
+            "window.dna_viewer",
+            None,
+            GuiTestWidgetKind::Button,
+            false,
+        );
+
+        let second = response(&ctx, "Second paint", true);
+        register_response(
+            &second,
+            "agent.help.open",
+            "window.dna_viewer",
+            None,
+            GuiTestWidgetKind::Button,
+            false,
+        );
+
+        let snapshot = snapshot(&ctx);
+        assert_eq!(snapshot.items.len(), 1);
+        assert_eq!(snapshot.items[0].semantic_id, "agent.help.open");
+    }
+
+    #[test]
+    #[should_panic(expected = "duplicate semantic GUI id")]
+    fn child_viewport_hook_does_not_hide_duplicates_in_the_current_pass() {
+        let ctx = Context::default();
+        begin_frame(&ctx);
+        let button = response(&ctx, "Current paint", true);
+        register_response(
+            &button,
+            "agent.help.open",
+            "window.dna_viewer",
+            None,
+            GuiTestWidgetKind::Button,
+            false,
+        );
+
+        begin_viewport_frame(&ctx);
+        register_response(
+            &button,
+            "agent.help.open",
+            "window.dna_viewer",
+            None,
+            GuiTestWidgetKind::Button,
+            false,
+        );
     }
 
     #[test]

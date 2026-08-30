@@ -18913,7 +18913,11 @@ impl MainAreaDna {
         if pending_initial_render {
             crate::gui_test_support::mark_unsettled(ui.ctx());
         }
-        crate::agent_help::render_agent_help_button(ui, Self::splicing_expert_window_title(view));
+        crate::agent_help::render_agent_help_button(
+            ui,
+            Self::splicing_expert_window_title(view),
+            "window.splicing_expert",
+        );
         ui.separator();
         ui.horizontal(|ui| {
             let _structure = ui.selectable_value(

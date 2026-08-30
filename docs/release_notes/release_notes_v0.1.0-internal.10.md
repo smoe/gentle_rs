@@ -248,6 +248,10 @@ expensive GUI work that runs safely away from the egui thread.
 - Replaced guessable 64-bit semantic GUI scope hashes with domain-separated,
   length-prefixed SHA-256 scopes truncated to 128 bits. These identifiers are
   path-free and pseudonymous, not a claim of anonymity for guessable inputs.
+- Repaired the opt-in semantic GUI acceptance surface for native DNA child
+  windows: Agent Help uses caller-supplied stable window identities, repeated
+  child repaint measurements no longer collide, and the Linux smoke waits for
+  the DNA viewer and splitter before interacting.
 
 ### 6. Gene Sets, Promoters, and Construct Reasoning
 
@@ -266,6 +270,10 @@ expensive GUI work that runs safely away from the egui thread.
   exact vector and state binding. Requests must explicitly select the supported
   `p53_family_core_disruption_v1` mutation policy; study-specific caveats are
   bound to the request rather than hard-coded into the generic operation.
+- Extended promoter-reporter members support exon-junction-split start codons
+  but fail closed when CDS-entry phase/partiality cannot establish a canonical
+  oriented `ATG`, preventing a partial CDS from being reported as a verified
+  translation-start boundary.
 
 ### 7. Materials and External-Service Handoffs
 

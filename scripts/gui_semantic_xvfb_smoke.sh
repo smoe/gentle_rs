@@ -30,13 +30,22 @@ trap 'kill "$gentle_pid" 2>/dev/null || true' EXIT
 
 deadline=$((SECONDS + 30))
 while (( SECONDS < deadline )); do
-  if [[ -s "$snapshot" ]] && jq -e '.settled and (.generation > 0)' "$snapshot" >/dev/null; then
+  if [[ -s "$snapshot" ]] && jq -e '
+    .settled
+    and (.generation > 0)
+    and any(.items[]; .semantic_id == "window.dna_viewer")
+    and any(.items[]; .semantic_id == "dna.splitter.info_width")
+  ' "$snapshot" >/dev/null; then
     break
   fi
   sleep 0.1
 done
-if ! [[ -s "$snapshot" ]] || ! jq -e '.settled' "$snapshot" >/dev/null; then
-  echo "FAIL: semantic GUI snapshot did not settle" >&2
+if ! [[ -s "$snapshot" ]] || ! jq -e '
+  .settled
+  and any(.items[]; .semantic_id == "window.dna_viewer")
+  and any(.items[]; .semantic_id == "dna.splitter.info_width")
+' "$snapshot" >/dev/null; then
+  echo "FAIL: semantic GUI snapshot did not settle with the DNA viewer and splitter ready" >&2
   exit 1
 fi
 

@@ -47,7 +47,11 @@ impl GENtleApp {
         let render_history_in_foreground = self.viewport_foreground_requested(viewport_id);
         if ctx.embed_viewports() {
             let mut render_contents = |ui: &mut Ui| {
-                crate::agent_help::render_agent_help_button(ui, "Operation History");
+                crate::agent_help::render_agent_help_button(
+                    ui,
+                    "Operation History",
+                    "window.operation_history",
+                );
                 ui.separator();
                 ui.label("Operation-level history with multi-level undo/redo");
                 ui.horizontal(|ui| {
@@ -122,7 +126,11 @@ impl GENtleApp {
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, viewport_id);
             let mut render_contents = |ui: &mut Ui| {
-                crate::agent_help::render_agent_help_button(ui, "Operation History");
+                crate::agent_help::render_agent_help_button(
+                    ui,
+                    "Operation History",
+                    "window.operation_history",
+                );
                 ui.separator();
                 ui.label("Operation-level history with multi-level undo/redo");
                 ui.horizontal(|ui| {

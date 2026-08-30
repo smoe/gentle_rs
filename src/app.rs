@@ -16087,7 +16087,11 @@ Error: `{err}`"
             {
                 self.queue_focus_viewport(ViewportId::ROOT);
             }
-            crate::agent_help::render_agent_help_button(ui, agent_help_window_title.clone());
+            crate::agent_help::render_agent_help_button(
+                ui,
+                agent_help_window_title.clone(),
+                "window.specialist",
+            );
             if let Some((label, hover_text)) = close_button
                 && ui.button(label).on_hover_text(hover_text).clicked()
             {
@@ -17020,7 +17024,11 @@ Error: `{err}`"
                     ui.close();
                 }
             });
-            crate::agent_help::render_agent_help_button(ui, "Main project window");
+            crate::agent_help::render_agent_help_button(
+                ui,
+                "Main project window",
+                "window.main",
+            );
         });
     }
 
@@ -22260,7 +22268,7 @@ Error: `{err}`"
         .default_size(Vec2::new(460.0, 520.0))
         .min_size(Vec2::new(420.0, 460.0));
         crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {
-            crate::agent_help::render_agent_help_button(ui, self.tr("about.title"));
+            crate::agent_help::render_agent_help_button(ui, self.tr("about.title"), "window.about");
             ui.separator();
             ui.set_min_width(390.0);
             let dark_mode = ui.visuals().dark_mode;
@@ -22361,7 +22369,11 @@ Error: `{err}`"
         .min_size(Vec2::new(620.0, 460.0))
         .resizable(true);
         crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {
-            crate::agent_help::render_agent_help_button(ui, self.tr("about.details.title"));
+            crate::agent_help::render_agent_help_button(
+                ui,
+                self.tr("about.details.title"),
+                "window.about_details",
+            );
             ui.separator();
             egui::ScrollArea::vertical().show(ui, |ui| {
                 ui.columns(2, |columns| {
@@ -22474,7 +22486,11 @@ Error: `{err}`"
             .with_min_inner_size([500.0, 320.0]);
         if ctx.embed_viewports() {
             let mut render_contents = |ui: &mut Ui| {
-                crate::agent_help::render_agent_help_button(ui, "Command Palette");
+                crate::agent_help::render_agent_help_button(
+                    ui,
+                    "Command Palette",
+                    "window.command_palette",
+                );
                 ui.separator();
                 ui.label("Search actions, settings, and help topics");
                 let input_id = ui.make_persistent_id("gentle_command_palette_search");
@@ -22559,7 +22575,11 @@ Error: `{err}`"
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, viewport_id);
             let mut render_contents = |ui: &mut Ui| {
-                crate::agent_help::render_agent_help_button(ui, "Command Palette");
+                crate::agent_help::render_agent_help_button(
+                    ui,
+                    "Command Palette",
+                    "window.command_palette",
+                );
                 ui.separator();
                 ui.label("Search actions, settings, and help topics");
                 let input_id = ui.make_persistent_id("gentle_command_palette_search");
@@ -22671,7 +22691,11 @@ Error: `{err}`"
             Vec2::new(520.0, 320.0),
         );
         crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
-            crate::agent_help::render_agent_help_button(ui, "Background Jobs");
+            crate::agent_help::render_agent_help_button(
+                ui,
+                "Background Jobs",
+                "window.background_jobs",
+            );
             ui.separator();
             ui.label("Centralized progress, cancellation, and completion summaries");
             ui.separator();
@@ -23840,6 +23864,7 @@ Error: `{err}`"
             crate::agent_help::render_agent_help_button(
                 ui,
                 format!("Help - {}", self.active_help_title()),
+                "window.help",
             );
             ui.separator();
             let find_shortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::F);

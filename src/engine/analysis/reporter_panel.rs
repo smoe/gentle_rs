@@ -39,6 +39,97 @@ struct PromoterReporterPanelResolvedMember {
 }
 
 impl GentleEngine {
+    fn promoter_reporter_cds_entry_phase_offset(
+        transcript: &gb_io::seq::Feature,
+        entry_cds_features: &[&gb_io::seq::Feature],
+        transcript_id: &str,
+    ) -> Result<usize, EngineError> {
+        let mut offsets = BTreeSet::new();
+        let mut evidence = Vec::new();
+        for feature in std::iter::once(transcript).chain(entry_cds_features.iter().copied()) {
+            for (key, value) in &feature.qualifiers {
+                let key = key.as_ref();
+                if !matches!(key, "codon_start" | "phase") {
+                    continue;
+                }
+                let raw = value.as_deref().map(str::trim).ok_or_else(|| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Extended transcript '{}' has /{} without a value at the CDS entry",
+                        transcript_id, key
+                    ),
+                    cause_chain: vec![],
+                })?;
+                let parsed = raw.parse::<usize>().map_err(|_| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Extended transcript '{}' has invalid /{}='{}' at the CDS entry",
+                        transcript_id, key, raw
+                    ),
+                    cause_chain: vec![],
+                })?;
+                let offset = match key {
+                    "codon_start" if (1..=3).contains(&parsed) => parsed - 1,
+                    "phase" if parsed <= 2 => parsed,
+                    _ => {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Extended transcript '{}' has invalid /{}='{}' at the CDS entry",
+                                transcript_id, key, raw
+                            ),
+                            cause_chain: vec![],
+                        });
+                    }
+                };
+                offsets.insert(offset);
+                evidence.push(format!("{key}={raw}"));
+            }
+        }
+        if offsets.len() > 1 {
+            evidence.sort();
+            evidence.dedup();
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Extended transcript '{}' has conflicting CDS-entry phase annotations: {}",
+                    transcript_id,
+                    evidence.join(", ")
+                ),
+                cause_chain: vec![],
+            });
+        }
+        Ok(offsets.into_iter().next().unwrap_or_default())
+    }
+
+    fn promoter_reporter_location_has_partial_cds_entry(
+        location: &gb_io::seq::Location,
+        is_reverse: bool,
+        cds_entry: usize,
+    ) -> bool {
+        use gb_io::seq::Location;
+
+        match location {
+            Location::Range((start, before), (end, after)) => {
+                (!is_reverse && *start == cds_entry as i64 && before.0)
+                    || (is_reverse && *end == cds_entry as i64 && after.0)
+            }
+            Location::Complement(inner) => {
+                Self::promoter_reporter_location_has_partial_cds_entry(inner, is_reverse, cds_entry)
+            }
+            Location::Join(parts)
+            | Location::Order(parts)
+            | Location::Bond(parts)
+            | Location::OneOf(parts) => parts.iter().any(|part| {
+                Self::promoter_reporter_location_has_partial_cds_entry(part, is_reverse, cds_entry)
+            }),
+            Location::External(_, Some(inner)) => {
+                Self::promoter_reporter_location_has_partial_cds_entry(inner, is_reverse, cds_entry)
+            }
+            Location::Between(_, _) | Location::External(_, None) | Location::Gap(_) => false,
+        }
+    }
+
     fn promoter_reporter_panel_extended_geometry(
         source: &DNAsequence,
         candidate: &PromoterReporterFragmentCandidate,
@@ -95,14 +186,19 @@ impl GentleEngine {
             });
         }
 
+        let cds_features = source
+            .features()
+            .iter()
+            .filter(|feature| {
+                feature.kind.to_string().eq_ignore_ascii_case("CDS")
+                    && feature_is_reverse(feature) == is_reverse
+                    && feature
+                        .qualifier_values("transcript_id")
+                        .any(|value| value.trim().eq_ignore_ascii_case(transcript_id))
+            })
+            .collect::<Vec<_>>();
         let mut cds_ranges = vec![];
-        for feature in source.features().iter().filter(|feature| {
-            feature.kind.to_string().eq_ignore_ascii_case("CDS")
-                && feature_is_reverse(feature) == is_reverse
-                && feature
-                    .qualifier_values("transcript_id")
-                    .any(|value| value.trim().eq_ignore_ascii_case(transcript_id))
-        }) {
+        for feature in &cds_features {
             collect_location_ranges_usize(&feature.location, &mut cds_ranges);
         }
         cds_ranges.retain(|(start, end)| end > start);
@@ -128,6 +224,52 @@ impl GentleEngine {
         } else {
             cds_ranges[0].0
         };
+        let entry_cds_features = cds_features
+            .iter()
+            .copied()
+            .filter(|feature| {
+                let mut ranges = vec![];
+                collect_location_ranges_usize(&feature.location, &mut ranges);
+                ranges.iter().any(|(start, end)| {
+                    if is_reverse {
+                        *end == cds_entry
+                    } else {
+                        *start == cds_entry
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+        if entry_cds_features.iter().any(|feature| {
+            Self::promoter_reporter_location_has_partial_cds_entry(
+                &feature.location,
+                is_reverse,
+                cds_entry,
+            )
+        }) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Extended transcript '{}' has a 5'-partial CDS location and cannot define a canonical start codon",
+                    transcript_id
+                ),
+                cause_chain: vec![],
+            });
+        }
+        let cds_entry_phase_offset = Self::promoter_reporter_cds_entry_phase_offset(
+            transcript,
+            &entry_cds_features,
+            transcript_id,
+        )?;
+        if cds_entry_phase_offset != 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Extended transcript '{}' has CDS-entry phase offset {}; this is a 5'-partial CDS and cannot define a canonical start codon",
+                    transcript_id, cds_entry_phase_offset
+                ),
+                cause_chain: vec![],
+            });
+        }
         let source_text = source.get_forward_string();
         let mut remaining_codon_bases = 3usize;
         let mut codon_ranges = Vec::new();
@@ -170,6 +312,16 @@ impl GentleEngine {
                 message: format!(
                     "Extended transcript '{}' has fewer than three annotated coding bases at its CDS start",
                     transcript_id
+                ),
+                cause_chain: vec![],
+            });
+        }
+        if cds_start_codon != "ATG" {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Extended transcript '{}' CDS entry resolves to '{}', not the canonical ATG start codon",
+                    transcript_id, cds_start_codon
                 ),
                 cause_chain: vec![],
             });
@@ -3460,6 +3612,115 @@ mod tests {
             },
             qualifiers: vec![("transcript_id".into(), Some(transcript_id.to_string()))],
         }
+    }
+
+    fn promoter_reporter_cds_entry_validation_fixture(
+        codon: &str,
+        qualifier: Option<(&str, &str)>,
+    ) -> (
+        DNAsequence,
+        PromoterReporterFragmentCandidate,
+        PromoterReporterPanelExtendedBoundaryPolicy,
+    ) {
+        let mut bases = vec![b'C'; 120];
+        bases[80..83].copy_from_slice(codon.as_bytes());
+        let mut source = DNAsequence::from_sequence(&String::from_utf8(bases).unwrap())
+            .expect("CDS-entry validation source");
+        let mut cds = extended_boundary_test_feature("CDS", 80, 100, "ENST_PHASE_TEST", false);
+        if let Some((key, value)) = qualifier {
+            cds.qualifiers
+                .push((key.to_string().into(), Some(value.to_string())));
+        }
+        source.features_mut().extend([
+            extended_boundary_test_feature("mRNA", 0, 100, "ENST_PHASE_TEST", false),
+            extended_boundary_test_feature("exon", 0, 100, "ENST_PHASE_TEST", false),
+            cds,
+        ]);
+        (
+            source,
+            PromoterReporterFragmentCandidate {
+                candidate_id: "phase_test_core".to_string(),
+                strand: "+".to_string(),
+                variant_start_0based: 20,
+                variant_end_0based_exclusive: 25,
+                start_0based: 0,
+                end_0based_exclusive: 40,
+                length_bp: 40,
+                ..PromoterReporterFragmentCandidate::default()
+            },
+            PromoterReporterPanelExtendedBoundaryPolicy {
+                kind: PromoterReporterPanelExtendedBoundaryKind::CanonicalCdsStartCodon,
+                transcript_id: "ENST_PHASE_TEST".to_string(),
+            },
+        )
+    }
+
+    #[test]
+    fn promoter_reporter_extended_boundary_rejects_partial_cds_entry_phase() {
+        for (key, value) in [
+            ("codon_start", "2"),
+            ("codon_start", "3"),
+            ("phase", "1"),
+            ("phase", "2"),
+        ] {
+            let (source, candidate, policy) =
+                promoter_reporter_cds_entry_validation_fixture("ATG", Some((key, value)));
+            let error = GentleEngine::promoter_reporter_panel_extended_geometry(
+                &source, &candidate, &policy,
+            )
+            .expect_err("partial CDS entry must fail closed");
+            assert_eq!(error.code, ErrorCode::InvalidInput);
+            assert!(
+                error.message.contains("5'-partial CDS"),
+                "{}",
+                error.message
+            );
+        }
+    }
+
+    #[test]
+    fn promoter_reporter_extended_boundary_rejects_invalid_or_conflicting_phase() {
+        let (source, candidate, policy) =
+            promoter_reporter_cds_entry_validation_fixture("ATG", Some(("codon_start", "4")));
+        let error =
+            GentleEngine::promoter_reporter_panel_extended_geometry(&source, &candidate, &policy)
+                .expect_err("invalid codon_start must fail closed");
+        assert!(error.message.contains("invalid /codon_start='4'"));
+
+        let (mut source, candidate, policy) =
+            promoter_reporter_cds_entry_validation_fixture("ATG", Some(("phase", "1")));
+        source.features_mut()[0]
+            .qualifiers
+            .push(("codon_start".into(), Some("1".to_string())));
+        let error =
+            GentleEngine::promoter_reporter_panel_extended_geometry(&source, &candidate, &policy)
+                .expect_err("conflicting phase annotations must fail closed");
+        assert!(error.message.contains("conflicting CDS-entry phase"));
+    }
+
+    #[test]
+    fn promoter_reporter_extended_boundary_rejects_noncanonical_start_triplet() {
+        let (source, candidate, policy) =
+            promoter_reporter_cds_entry_validation_fixture("GTG", Some(("codon_start", "1")));
+        let error =
+            GentleEngine::promoter_reporter_panel_extended_geometry(&source, &candidate, &policy)
+                .expect_err("noncanonical start triplet must fail closed");
+        assert_eq!(error.code, ErrorCode::InvalidInput);
+        assert!(error.message.contains("'GTG', not the canonical ATG"));
+    }
+
+    #[test]
+    fn promoter_reporter_extended_boundary_rejects_partial_location_marker() {
+        let (mut source, candidate, policy) =
+            promoter_reporter_cds_entry_validation_fixture("ATG", None);
+        source.features_mut()[2].location = gb_io::seq::Location::Range(
+            (80, gb_io::seq::Before(true)),
+            (100, gb_io::seq::After(false)),
+        );
+        let error =
+            GentleEngine::promoter_reporter_panel_extended_geometry(&source, &candidate, &policy)
+                .expect_err("partial CDS location must fail closed");
+        assert!(error.message.contains("5'-partial CDS location"));
     }
 
     #[test]
