@@ -210,7 +210,7 @@
       "design_transcript_id": "PATZ1-202",
       "primer_pair": {
         "rank": 1,
-        "score": 1010.2149849402733,
+        "score": 1010.21498494,
         "score_terms": [
           {
             "term": "baseline",
@@ -221,9 +221,9 @@
           },
           {
             "term": "tm_delta",
-            "raw_value": 0.16425075298633374,
+            "raw_value": 0.164250753,
             "weight": -20.0,
-            "contribution": -3.2850150597266747,
+            "contribution": -3.28501506,
             "detail": "Absolute forward/reverse melting-temperature difference in degrees Celsius."
           },
           {
@@ -290,7 +290,7 @@
           "length_bp": 21,
           "anneal_length_bp": 21,
           "non_annealing_5prime_tail_bp": 0,
-          "tm_c": 64.77839486413313,
+          "tm_c": 64.778394864,
           "gc_fraction": 0.5714285714285714,
           "anneal_hits": 1,
           "three_prime_base": "G",
@@ -305,7 +305,7 @@
           "length_bp": 20,
           "anneal_length_bp": 20,
           "non_annealing_5prime_tail_bp": 0,
-          "tm_c": 64.94264561711947,
+          "tm_c": 64.942645617,
           "gc_fraction": 0.55,
           "anneal_hits": 1,
           "three_prime_base": "G",
@@ -316,7 +316,7 @@
         "amplicon_start_0based": 30,
         "amplicon_end_0based_exclusive": 80,
         "amplicon_length_bp": 50,
-        "tm_delta_c": 0.16425075298633374,
+        "tm_delta_c": 0.164250753,
         "primer_pair_complementary_run_bp": 5,
         "primer_pair_3prime_complementary_run_bp": 3,
         "rule_flags": {
@@ -394,15 +394,15 @@
             "design_amplicon_length_bp": 43,
             "practicality_classification": "allowed_nonpreferred",
             "common_region_status": "not_common",
-            "existing_candidate_score": 1012.1244154683359,
+            "existing_candidate_score": 1012.12441546,
             "on_pareto_frontier": true,
             "pareto_metrics": {
               "single_product_target_count": 1,
               "multiple_product_target_count": 0,
               "no_product_target_count": 2,
               "practicality_rank": 2,
-              "existing_candidate_score": 1012.1244154683359,
-              "tm_delta_c": 0.03377922658320642,
+              "existing_candidate_score": 1012.12441546,
+              "tm_delta_c": 0.033779227,
               "primer_pair_complementary_run_bp": 5,
               "primer_pair_3prime_complementary_run_bp": 2,
               "amplicon_length_bp": 43
@@ -416,15 +416,15 @@
             "design_amplicon_length_bp": 43,
             "practicality_classification": "allowed_nonpreferred",
             "common_region_status": "not_common",
-            "existing_candidate_score": 1009.6693412358484,
+            "existing_candidate_score": 1009.66934124,
             "on_pareto_frontier": false,
             "pareto_metrics": {
               "single_product_target_count": 1,
               "multiple_product_target_count": 0,
               "no_product_target_count": 2,
               "practicality_rank": 2,
-              "existing_candidate_score": 1009.6693412358484,
-              "tm_delta_c": 0.15653293820757597,
+              "existing_candidate_score": 1009.66934124,
+              "tm_delta_c": 0.156532938,
               "primer_pair_complementary_run_bp": 5,
               "primer_pair_3prime_complementary_run_bp": 2,
               "amplicon_length_bp": 43
@@ -438,15 +438,15 @@
             "design_amplicon_length_bp": 42,
             "practicality_classification": "allowed_nonpreferred",
             "common_region_status": "not_common",
-            "existing_candidate_score": 1007.4003301878937,
+            "existing_candidate_score": 1007.4003302,
             "on_pareto_frontier": false,
             "pareto_metrics": {
               "single_product_target_count": 1,
               "multiple_product_target_count": 0,
               "no_product_target_count": 2,
               "practicality_rank": 2,
-              "existing_candidate_score": 1007.4003301878937,
-              "tm_delta_c": 0.26498349060531723,
+              "existing_candidate_score": 1007.4003302,
+              "tm_delta_c": 0.26498349,
               "primer_pair_complementary_run_bp": 5,
               "primer_pair_3prime_complementary_run_bp": 2,
               "amplicon_length_bp": 42
@@ -505,7 +505,7 @@
           "sequence_5_to_3": "CTAGCATCGGGATCCGATCAG",
           "length_nt": 21,
           "anneal_length_nt": 21,
-          "tm_c": 64.77839486413313,
+          "tm_c": 64.778394864,
           "gc_fraction": 0.5714285714285714,
           "gc_percent": 57.14285714285714,
           "anneal_hit_count": 1,
@@ -530,7 +530,7 @@
           "sequence_5_to_3": "ATGCCGTAGCTTACGATCCG",
           "length_nt": 20,
           "anneal_length_nt": 20,
-          "tm_c": 64.94264561711947,
+          "tm_c": 64.942645617,
           "gc_fraction": 0.55,
           "gc_percent": 55.00000000000001,
           "anneal_hit_count": 1,
@@ -548,7 +548,7 @@
         "design_amplicon_start_0based": 30,
         "design_amplicon_end_0based_exclusive": 80,
         "design_amplicon_length_bp": 50,
-        "tm_delta_c": 0.16425075298633374,
+        "tm_delta_c": 0.164250753,
         "predicted_amplicon_lengths_bp": [
           50
         ],
@@ -694,7 +694,7 @@
       "design_transcript_id": "PATZ1-203",
       "primer_pair": {
         "rank": 2,
-        "score": 1013.7051837158768,
+        "score": 1013.70518372,
         "score_terms": [
           {
             "term": "baseline",
@@ -705,9 +705,9 @@
           },
           {
             "term": "tm_delta",
-            "raw_value": 0.05474081420615562,
+            "raw_value": 0.054740814,
             "weight": -20.0,
-            "contribution": -1.0948162841231124,
+            "contribution": -1.0948162799999999,
             "detail": "Absolute forward/reverse melting-temperature difference in degrees Celsius."
           },
           {
@@ -774,7 +774,7 @@
           "length_bp": 22,
           "anneal_length_bp": 22,
           "non_annealing_5prime_tail_bp": 0,
-          "tm_c": 64.94628464587302,
+          "tm_c": 64.946284646,
           "gc_fraction": 0.5454545454545454,
           "anneal_hits": 1,
           "three_prime_base": "C",
@@ -789,7 +789,7 @@
           "length_bp": 22,
           "anneal_length_bp": 22,
           "non_annealing_5prime_tail_bp": 0,
-          "tm_c": 65.00102546007918,
+          "tm_c": 65.00102546,
           "gc_fraction": 0.5454545454545454,
           "anneal_hits": 1,
           "three_prime_base": "C",
@@ -800,7 +800,7 @@
         "amplicon_start_0based": 2,
         "amplicon_end_0based_exclusive": 65,
         "amplicon_length_bp": 63,
-        "tm_delta_c": 0.05474081420615562,
+        "tm_delta_c": 0.054740814,
         "primer_pair_complementary_run_bp": 6,
         "primer_pair_3prime_complementary_run_bp": 3,
         "rule_flags": {
@@ -873,15 +873,15 @@
             "design_amplicon_length_bp": 87,
             "practicality_classification": "routine",
             "common_region_status": "not_common",
-            "existing_candidate_score": 1014.5551098276085,
+            "existing_candidate_score": 1014.55510984,
             "on_pareto_frontier": true,
             "pareto_metrics": {
               "single_product_target_count": 3,
               "multiple_product_target_count": 0,
               "no_product_target_count": 0,
               "practicality_rank": 3,
-              "existing_candidate_score": 1014.5551098276085,
-              "tm_delta_c": 0.012244508619573935,
+              "existing_candidate_score": 1014.55510984,
+              "tm_delta_c": 0.012244508,
               "primer_pair_complementary_run_bp": 6,
               "primer_pair_3prime_complementary_run_bp": 2,
               "amplicon_length_bp": 87
@@ -895,15 +895,15 @@
             "design_amplicon_length_bp": 58,
             "practicality_classification": "routine",
             "common_region_status": "not_common",
-            "existing_candidate_score": 1013.205183715878,
+            "existing_candidate_score": 1013.20518372,
             "on_pareto_frontier": false,
             "pareto_metrics": {
               "single_product_target_count": 2,
               "multiple_product_target_count": 0,
               "no_product_target_count": 1,
               "practicality_rank": 3,
-              "existing_candidate_score": 1013.205183715878,
-              "tm_delta_c": 0.054740814206098776,
+              "existing_candidate_score": 1013.20518372,
+              "tm_delta_c": 0.054740814,
               "primer_pair_complementary_run_bp": 6,
               "primer_pair_3prime_complementary_run_bp": 3,
               "amplicon_length_bp": 58
@@ -917,15 +917,15 @@
             "design_amplicon_length_bp": 59,
             "practicality_classification": "routine",
             "common_region_status": "not_common",
-            "existing_candidate_score": 1012.4950286328755,
+            "existing_candidate_score": 1012.49502862,
             "on_pareto_frontier": false,
             "pareto_metrics": {
               "single_product_target_count": 1,
               "multiple_product_target_count": 0,
               "no_product_target_count": 2,
               "practicality_rank": 3,
-              "existing_candidate_score": 1012.4950286328755,
-              "tm_delta_c": 0.09524856835622586,
+              "existing_candidate_score": 1012.49502862,
+              "tm_delta_c": 0.095248569,
               "primer_pair_complementary_run_bp": 6,
               "primer_pair_3prime_complementary_run_bp": 3,
               "amplicon_length_bp": 59
@@ -970,7 +970,7 @@
           "sequence_5_to_3": "GATCCGATCGTAGCCTAGCATC",
           "length_nt": 22,
           "anneal_length_nt": 22,
-          "tm_c": 64.94628464587302,
+          "tm_c": 64.946284646,
           "gc_fraction": 0.5454545454545454,
           "gc_percent": 54.54545454545454,
           "anneal_hit_count": 1,
@@ -994,7 +994,7 @@
           "sequence_5_to_3": "GGATCGTCGATCGTAGCTAACC",
           "length_nt": 22,
           "anneal_length_nt": 22,
-          "tm_c": 65.00102546007918,
+          "tm_c": 65.00102546,
           "gc_fraction": 0.5454545454545454,
           "gc_percent": 54.54545454545454,
           "anneal_hit_count": 1,
@@ -1013,7 +1013,7 @@
         "design_amplicon_start_0based": 2,
         "design_amplicon_end_0based_exclusive": 65,
         "design_amplicon_length_bp": 63,
-        "tm_delta_c": 0.05474081420615562,
+        "tm_delta_c": 0.054740814,
         "predicted_amplicon_lengths_bp": [
           63
         ],
@@ -1110,7 +1110,7 @@
       "design_transcript_id": "PATZ1-201",
       "primer_pair": {
         "rank": 3,
-        "score": 1013.5987814270749,
+        "score": 1013.59878142,
         "score_terms": [
           {
             "term": "baseline",
@@ -1121,9 +1121,9 @@
           },
           {
             "term": "tm_delta",
-            "raw_value": 0.05006092864626055,
+            "raw_value": 0.050060929,
             "weight": -20.0,
-            "contribution": -1.001218572925211,
+            "contribution": -1.00121858,
             "detail": "Absolute forward/reverse melting-temperature difference in degrees Celsius."
           },
           {
@@ -1190,7 +1190,7 @@
           "length_bp": 22,
           "anneal_length_bp": 22,
           "non_annealing_5prime_tail_bp": 0,
-          "tm_c": 64.94628464587302,
+          "tm_c": 64.946284646,
           "gc_fraction": 0.5454545454545454,
           "anneal_hits": 1,
           "three_prime_base": "C",
@@ -1205,7 +1205,7 @@
           "length_bp": 21,
           "anneal_length_bp": 21,
           "non_annealing_5prime_tail_bp": 0,
-          "tm_c": 64.89622371722676,
+          "tm_c": 64.896223717,
           "gc_fraction": 0.5238095238095238,
           "anneal_hits": 1,
           "three_prime_base": "G",
@@ -1216,7 +1216,7 @@
         "amplicon_start_0based": 2,
         "amplicon_end_0based_exclusive": 63,
         "amplicon_length_bp": 61,
-        "tm_delta_c": 0.05006092864626055,
+        "tm_delta_c": 0.050060929,
         "primer_pair_complementary_run_bp": 6,
         "primer_pair_3prime_complementary_run_bp": 3,
         "rule_flags": {
@@ -1285,15 +1285,15 @@
             "design_amplicon_length_bp": 57,
             "practicality_classification": "routine",
             "common_region_status": "not_common",
-            "existing_candidate_score": 1013.3176098690928,
+            "existing_candidate_score": 1013.31760986,
             "on_pareto_frontier": false,
             "pareto_metrics": {
               "single_product_target_count": 1,
               "multiple_product_target_count": 0,
               "no_product_target_count": 2,
               "practicality_rank": 3,
-              "existing_candidate_score": 1013.3176098690928,
-              "tm_delta_c": 0.04411950654535701,
+              "existing_candidate_score": 1013.31760986,
+              "tm_delta_c": 0.044119507,
               "primer_pair_complementary_run_bp": 6,
               "primer_pair_3prime_complementary_run_bp": 3,
               "amplicon_length_bp": 57
@@ -1345,7 +1345,7 @@
           "sequence_5_to_3": "GATCCGATCGTAGCCTAGCATC",
           "length_nt": 22,
           "anneal_length_nt": 22,
-          "tm_c": 64.94628464587302,
+          "tm_c": 64.946284646,
           "gc_fraction": 0.5454545454545454,
           "gc_percent": 54.54545454545454,
           "anneal_hit_count": 1,
@@ -1369,7 +1369,7 @@
           "sequence_5_to_3": "AACGTCGATCGTAGCTAACCG",
           "length_nt": 21,
           "anneal_length_nt": 21,
-          "tm_c": 64.89622371722676,
+          "tm_c": 64.896223717,
           "gc_fraction": 0.5238095238095238,
           "gc_percent": 52.38095238095239,
           "anneal_hit_count": 1,
@@ -1387,7 +1387,7 @@
         "design_amplicon_start_0based": 2,
         "design_amplicon_end_0based_exclusive": 63,
         "design_amplicon_length_bp": 61,
-        "tm_delta_c": 0.05006092864626055,
+        "tm_delta_c": 0.050060929,
         "predicted_amplicon_lengths_bp": [
           61
         ],
@@ -1543,8 +1543,8 @@
           "multiple_product_target_count": 0,
           "no_product_target_count": 2,
           "practicality_rank": 3,
-          "existing_candidate_score": 1010.2149849402733,
-          "tm_delta_c": 0.16425075298633374,
+          "existing_candidate_score": 1010.21498494,
+          "tm_delta_c": 0.164250753,
           "primer_pair_complementary_run_bp": 5,
           "primer_pair_3prime_complementary_run_bp": 3,
           "amplicon_length_bp": 50
@@ -1561,8 +1561,8 @@
           "multiple_product_target_count": 0,
           "no_product_target_count": 0,
           "practicality_rank": 3,
-          "existing_candidate_score": 1014.5551098276085,
-          "tm_delta_c": 0.012244508619573935,
+          "existing_candidate_score": 1014.55510984,
+          "tm_delta_c": 0.012244508,
           "primer_pair_complementary_run_bp": 6,
           "primer_pair_3prime_complementary_run_bp": 2,
           "amplicon_length_bp": 87
@@ -1579,8 +1579,8 @@
           "multiple_product_target_count": 0,
           "no_product_target_count": 2,
           "practicality_rank": 2,
-          "existing_candidate_score": 1012.1244154683359,
-          "tm_delta_c": 0.03377922658320642,
+          "existing_candidate_score": 1012.12441546,
+          "tm_delta_c": 0.033779227,
           "primer_pair_complementary_run_bp": 5,
           "primer_pair_3prime_complementary_run_bp": 2,
           "amplicon_length_bp": 43
@@ -3250,7 +3250,7 @@
       "design_transcript_id": "PATZ1-202",
       "primer_pair": {
         "rank": 1,
-        "score": 1010.2149849402733,
+        "score": 1010.21498494,
         "score_terms": [
           {
             "term": "baseline",
@@ -3261,9 +3261,9 @@
           },
           {
             "term": "tm_delta",
-            "raw_value": 0.16425075298633374,
+            "raw_value": 0.164250753,
             "weight": -20.0,
-            "contribution": -3.2850150597266747,
+            "contribution": -3.28501506,
             "detail": "Absolute forward/reverse melting-temperature difference in degrees Celsius."
           },
           {
@@ -3330,7 +3330,7 @@
           "length_bp": 21,
           "anneal_length_bp": 21,
           "non_annealing_5prime_tail_bp": 0,
-          "tm_c": 64.77839486413313,
+          "tm_c": 64.778394864,
           "gc_fraction": 0.5714285714285714,
           "anneal_hits": 1,
           "three_prime_base": "G",
@@ -3345,7 +3345,7 @@
           "length_bp": 20,
           "anneal_length_bp": 20,
           "non_annealing_5prime_tail_bp": 0,
-          "tm_c": 64.94264561711947,
+          "tm_c": 64.942645617,
           "gc_fraction": 0.55,
           "anneal_hits": 1,
           "three_prime_base": "G",
@@ -3356,7 +3356,7 @@
         "amplicon_start_0based": 30,
         "amplicon_end_0based_exclusive": 80,
         "amplicon_length_bp": 50,
-        "tm_delta_c": 0.16425075298633374,
+        "tm_delta_c": 0.164250753,
         "primer_pair_complementary_run_bp": 5,
         "primer_pair_3prime_complementary_run_bp": 3,
         "rule_flags": {
@@ -3434,15 +3434,15 @@
             "design_amplicon_length_bp": 43,
             "practicality_classification": "allowed_nonpreferred",
             "common_region_status": "not_common",
-            "existing_candidate_score": 1012.1244154683359,
+            "existing_candidate_score": 1012.12441546,
             "on_pareto_frontier": true,
             "pareto_metrics": {
               "single_product_target_count": 1,
               "multiple_product_target_count": 0,
               "no_product_target_count": 2,
               "practicality_rank": 2,
-              "existing_candidate_score": 1012.1244154683359,
-              "tm_delta_c": 0.03377922658320642,
+              "existing_candidate_score": 1012.12441546,
+              "tm_delta_c": 0.033779227,
               "primer_pair_complementary_run_bp": 5,
               "primer_pair_3prime_complementary_run_bp": 2,
               "amplicon_length_bp": 43
@@ -3456,15 +3456,15 @@
             "design_amplicon_length_bp": 43,
             "practicality_classification": "allowed_nonpreferred",
             "common_region_status": "not_common",
-            "existing_candidate_score": 1009.6693412358484,
+            "existing_candidate_score": 1009.66934124,
             "on_pareto_frontier": false,
             "pareto_metrics": {
               "single_product_target_count": 1,
               "multiple_product_target_count": 0,
               "no_product_target_count": 2,
               "practicality_rank": 2,
-              "existing_candidate_score": 1009.6693412358484,
-              "tm_delta_c": 0.15653293820757597,
+              "existing_candidate_score": 1009.66934124,
+              "tm_delta_c": 0.156532938,
               "primer_pair_complementary_run_bp": 5,
               "primer_pair_3prime_complementary_run_bp": 2,
               "amplicon_length_bp": 43
@@ -3478,15 +3478,15 @@
             "design_amplicon_length_bp": 42,
             "practicality_classification": "allowed_nonpreferred",
             "common_region_status": "not_common",
-            "existing_candidate_score": 1007.4003301878937,
+            "existing_candidate_score": 1007.4003302,
             "on_pareto_frontier": false,
             "pareto_metrics": {
               "single_product_target_count": 1,
               "multiple_product_target_count": 0,
               "no_product_target_count": 2,
               "practicality_rank": 2,
-              "existing_candidate_score": 1007.4003301878937,
-              "tm_delta_c": 0.26498349060531723,
+              "existing_candidate_score": 1007.4003302,
+              "tm_delta_c": 0.26498349,
               "primer_pair_complementary_run_bp": 5,
               "primer_pair_3prime_complementary_run_bp": 2,
               "amplicon_length_bp": 42
@@ -3545,7 +3545,7 @@
           "sequence_5_to_3": "CTAGCATCGGGATCCGATCAG",
           "length_nt": 21,
           "anneal_length_nt": 21,
-          "tm_c": 64.77839486413313,
+          "tm_c": 64.778394864,
           "gc_fraction": 0.5714285714285714,
           "gc_percent": 57.14285714285714,
           "anneal_hit_count": 1,
@@ -3570,7 +3570,7 @@
           "sequence_5_to_3": "ATGCCGTAGCTTACGATCCG",
           "length_nt": 20,
           "anneal_length_nt": 20,
-          "tm_c": 64.94264561711947,
+          "tm_c": 64.942645617,
           "gc_fraction": 0.55,
           "gc_percent": 55.00000000000001,
           "anneal_hit_count": 1,
@@ -3588,7 +3588,7 @@
         "design_amplicon_start_0based": 30,
         "design_amplicon_end_0based_exclusive": 80,
         "design_amplicon_length_bp": 50,
-        "tm_delta_c": 0.16425075298633374,
+        "tm_delta_c": 0.164250753,
         "predicted_amplicon_lengths_bp": [
           50
         ],

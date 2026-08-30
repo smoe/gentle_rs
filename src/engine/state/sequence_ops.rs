@@ -5153,7 +5153,13 @@ impl GentleEngine {
             return Self::estimate_primer_tm_wallace_c(&canonical);
         }
         Self::estimate_primer_tm_nearest_neighbor_c(&canonical)
+            .map(Self::quantize_primer_metric)
             .unwrap_or_else(|| Self::estimate_primer_tm_wallace_c(&canonical))
+    }
+
+    fn quantize_primer_metric(value: f64) -> f64 {
+        const REPORTING_SCALE: f64 = 1_000_000_000.0;
+        (value * REPORTING_SCALE).round() / REPORTING_SCALE
     }
 
     fn canonical_dna_bases(primer: &[u8]) -> Option<Vec<u8>> {
@@ -6660,7 +6666,7 @@ impl GentleEngine {
         let roi_covered = amplicon_start <= roi_start_0based && amplicon_end >= roi_end_0based;
         let amplicon_size_ok =
             amplicon_length_bp >= min_amplicon_bp && amplicon_length_bp <= max_amplicon_bp;
-        let tm_delta_c = (forward.tm_c - reverse.tm_c).abs();
+        let tm_delta_c = Self::quantize_primer_metric((forward.tm_c - reverse.tm_c).abs());
         let tm_delta_ok = tm_delta_c <= max_tm_delta_c;
         let length_penalty = amplicon_length_bp.abs_diff(target_amplicon_bp) as f64;
         let primer_length_penalty = Self::preferred_primer_length_penalty(forward.anneal_length_bp)
@@ -6679,14 +6685,16 @@ impl GentleEngine {
         } else {
             -8.0
         };
-        let score = 1000.0
-            - (tm_delta_c * 20.0)
-            - (length_penalty * 0.1)
-            - (hit_penalty * 10.0)
-            - (primer_length_penalty * 6.0)
-            - secondary_penalty
-            - dimer_penalty
-            + gc_clamp_bonus;
+        let score = Self::quantize_primer_metric(
+            1000.0
+                - (tm_delta_c * 20.0)
+                - (length_penalty * 0.1)
+                - (hit_penalty * 10.0)
+                - (primer_length_penalty * 6.0)
+                - secondary_penalty
+                - dimer_penalty
+                + gc_clamp_bonus,
+        );
         let score_terms = Self::primer_design_score_terms(
             &forward,
             &reverse,
@@ -7854,16 +7862,20 @@ impl GentleEngine {
                 let probe_end = probe_candidate.end_0based_exclusive;
                 let probe_inside_amplicon = probe_start >= pair.forward.end_0based_exclusive
                     && probe_end <= pair.reverse.start_0based;
-                let primer_mean_tm_c = (pair.forward.tm_c + pair.reverse.tm_c) / 2.0;
-                let probe_tm_offset_c = probe_candidate.tm_c - primer_mean_tm_c;
-                let probe_tm_delta_c = probe_tm_offset_c.abs();
+                let primer_mean_tm_c =
+                    Self::quantize_primer_metric((pair.forward.tm_c + pair.reverse.tm_c) / 2.0);
+                let probe_tm_offset_c =
+                    Self::quantize_primer_metric(probe_candidate.tm_c - primer_mean_tm_c);
+                let probe_tm_delta_c = Self::quantize_primer_metric(probe_tm_offset_c.abs());
                 let probe_tm_ok = probe_tm_delta_c <= max_probe_tm_delta_c;
                 let probe_mid = (probe_start + probe_end) / 2;
                 let probe_mid_penalty = probe_mid.abs_diff(amplicon_mid) as f64;
-                let probe_offset_penalty_c =
-                    (probe_tm_offset_c - QPCR_PREFERRED_PROBE_TM_OFFSET_C).abs();
-                let score =
-                    pair.score - (probe_offset_penalty_c * 10.0) - (probe_mid_penalty * 0.05);
+                let probe_offset_penalty_c = Self::quantize_primer_metric(
+                    (probe_tm_offset_c - QPCR_PREFERRED_PROBE_TM_OFFSET_C).abs(),
+                );
+                let score = Self::quantize_primer_metric(
+                    pair.score - (probe_offset_penalty_c * 10.0) - (probe_mid_penalty * 0.05),
+                );
                 let probe_record = Self::annotate_primer_record_heuristics(
                     PrimerDesignPrimerRecord {
                         sequence: probe_candidate.sequence.clone(),
@@ -9730,6 +9742,14 @@ mod tests {
                 String::from_utf8_lossy(primer)
             );
         }
+    }
+
+    #[test]
+    fn estimate_primer_tm_is_quantized_for_cross_platform_reports() {
+        assert_eq!(
+            GentleEngine::estimate_primer_tm_c(b"CGGATCCGATCGTAGCCTA"),
+            63.362778055
+        );
     }
 
     #[test]

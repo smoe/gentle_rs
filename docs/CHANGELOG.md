@@ -1,5 +1,12 @@
 # GENtle Changelog
 
+- Stabilized primer Tm values across operating-system math libraries by
+  quantizing shared Tm, Tm-difference, and derived score metrics to nanodegree
+  reporting precision before ranking and serialization. This prevents
+  insignificant platform-dependent floating-point tails from changing Pareto
+  membership, retained tutorial reports, and their checksums; ties are now
+  resolved deterministically at the declared precision.
+
 - Corrected semantic GUI publication for sequence nodes in the scrollable
   project graph. Partially visible nodes now publish only their clipped,
   clickable viewport intersection, while fully offscreen nodes remain

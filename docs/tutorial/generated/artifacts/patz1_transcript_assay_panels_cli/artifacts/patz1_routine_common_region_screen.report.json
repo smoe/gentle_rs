@@ -210,7 +210,7 @@
       "design_transcript_id": "PATZ1-201",
       "primer_pair": {
         "rank": 1,
-        "score": 951.6945804098265,
+        "score": 951.69458042,
         "score_terms": [
           {
             "term": "baseline",
@@ -221,9 +221,9 @@
           },
           {
             "term": "tm_delta",
-            "raw_value": 0.14027097950867784,
+            "raw_value": 0.140270979,
             "weight": -20.0,
-            "contribution": -2.805419590173557,
+            "contribution": -2.8054195799999997,
             "detail": "Absolute forward/reverse melting-temperature difference in degrees Celsius."
           },
           {
@@ -290,7 +290,7 @@
           "length_bp": 19,
           "anneal_length_bp": 19,
           "non_annealing_5prime_tail_bp": 0,
-          "tm_c": 63.36277805528183,
+          "tm_c": 63.362778055,
           "gc_fraction": 0.5789473684210527,
           "anneal_hits": 1,
           "three_prime_base": "A",
@@ -305,7 +305,7 @@
           "length_bp": 20,
           "anneal_length_bp": 20,
           "non_annealing_5prime_tail_bp": 0,
-          "tm_c": 63.22250707577315,
+          "tm_c": 63.222507076,
           "gc_fraction": 0.55,
           "anneal_hits": 1,
           "three_prime_base": "G",
@@ -316,7 +316,7 @@
         "amplicon_start_0based": 0,
         "amplicon_end_0based_exclusive": 40,
         "amplicon_length_bp": 40,
-        "tm_delta_c": 0.14027097950867784,
+        "tm_delta_c": 0.140270979,
         "primer_pair_complementary_run_bp": 4,
         "primer_pair_3prime_complementary_run_bp": 3,
         "rule_flags": {
@@ -383,7 +383,7 @@
             "design_amplicon_length_bp": 39,
             "practicality_classification": "allowed_nonpreferred",
             "common_region_status": "confirmed",
-            "existing_candidate_score": 947.0215985703193,
+            "existing_candidate_score": 947.02159856,
             "on_pareto_frontier": false,
             "pareto_metrics": {
               "single_product_target_count": 3,
@@ -391,8 +391,8 @@
               "no_product_target_count": 0,
               "common_region_confirmed": true,
               "practicality_rank": 2,
-              "existing_candidate_score": 947.0215985703193,
-              "tm_delta_c": 0.36892007148403394,
+              "existing_candidate_score": 947.02159856,
+              "tm_delta_c": 0.368920072,
               "primer_pair_complementary_run_bp": 4,
               "primer_pair_3prime_complementary_run_bp": 3,
               "amplicon_length_bp": 39
@@ -406,7 +406,7 @@
             "design_amplicon_length_bp": 38,
             "practicality_classification": "allowed_nonpreferred",
             "common_region_status": "confirmed",
-            "existing_candidate_score": 936.7924161328128,
+            "existing_candidate_score": 936.79241614,
             "on_pareto_frontier": false,
             "pareto_metrics": {
               "single_product_target_count": 3,
@@ -414,8 +414,8 @@
               "no_product_target_count": 0,
               "common_region_confirmed": true,
               "practicality_rank": 2,
-              "existing_candidate_score": 936.7924161328128,
-              "tm_delta_c": 0.2753791933593561,
+              "existing_candidate_score": 936.79241614,
+              "tm_delta_c": 0.275379193,
               "primer_pair_complementary_run_bp": 4,
               "primer_pair_3prime_complementary_run_bp": 3,
               "amplicon_length_bp": 38
@@ -429,7 +429,7 @@
             "design_amplicon_length_bp": 39,
             "practicality_classification": "allowed_nonpreferred",
             "common_region_status": "confirmed",
-            "existing_candidate_score": 934.7997249899697,
+            "existing_candidate_score": 934.79972498,
             "on_pareto_frontier": true,
             "pareto_metrics": {
               "single_product_target_count": 3,
@@ -437,8 +437,8 @@
               "no_product_target_count": 0,
               "common_region_confirmed": true,
               "practicality_rank": 2,
-              "existing_candidate_score": 934.7997249899697,
-              "tm_delta_c": 0.08001375050151438,
+              "existing_candidate_score": 934.79972498,
+              "tm_delta_c": 0.080013751,
               "primer_pair_complementary_run_bp": 4,
               "primer_pair_3prime_complementary_run_bp": 2,
               "amplicon_length_bp": 39
@@ -494,7 +494,7 @@
           "sequence_5_to_3": "CGGATCCGATCGTAGCCTA",
           "length_nt": 19,
           "anneal_length_nt": 19,
-          "tm_c": 63.36277805528183,
+          "tm_c": 63.362778055,
           "gc_fraction": 0.5789473684210527,
           "gc_percent": 57.89473684210527,
           "anneal_hit_count": 1,
@@ -518,7 +518,7 @@
           "sequence_5_to_3": "CCGATGCTAGCTTACCGATG",
           "length_nt": 20,
           "anneal_length_nt": 20,
-          "tm_c": 63.22250707577315,
+          "tm_c": 63.222507076,
           "gc_fraction": 0.55,
           "gc_percent": 55.00000000000001,
           "anneal_hit_count": 1,
@@ -536,7 +536,7 @@
         "design_amplicon_start_0based": 0,
         "design_amplicon_end_0based_exclusive": 40,
         "design_amplicon_length_bp": 40,
-        "tm_delta_c": 0.14027097950867784,
+        "tm_delta_c": 0.140270979,
         "predicted_amplicon_lengths_bp": [
           40
         ],
@@ -660,8 +660,8 @@
           "no_product_target_count": 0,
           "common_region_confirmed": true,
           "practicality_rank": 2,
-          "existing_candidate_score": 951.6945804098265,
-          "tm_delta_c": 0.14027097950867784,
+          "existing_candidate_score": 951.69458042,
+          "tm_delta_c": 0.140270979,
           "primer_pair_complementary_run_bp": 4,
           "primer_pair_3prime_complementary_run_bp": 3,
           "amplicon_length_bp": 40
@@ -679,8 +679,8 @@
           "no_product_target_count": 0,
           "common_region_confirmed": false,
           "practicality_rank": 3,
-          "existing_candidate_score": 1014.5551098276085,
-          "tm_delta_c": 0.012244508619573935,
+          "existing_candidate_score": 1014.55510984,
+          "tm_delta_c": 0.012244508,
           "primer_pair_complementary_run_bp": 6,
           "primer_pair_3prime_complementary_run_bp": 2,
           "amplicon_length_bp": 87
@@ -698,8 +698,8 @@
           "no_product_target_count": 0,
           "common_region_confirmed": true,
           "practicality_rank": 2,
-          "existing_candidate_score": 934.7997249899697,
-          "tm_delta_c": 0.08001375050151438,
+          "existing_candidate_score": 934.79972498,
+          "tm_delta_c": 0.080013751,
           "primer_pair_complementary_run_bp": 4,
           "primer_pair_3prime_complementary_run_bp": 2,
           "amplicon_length_bp": 39
@@ -717,8 +717,8 @@
           "no_product_target_count": 2,
           "common_region_confirmed": false,
           "practicality_rank": 2,
-          "existing_candidate_score": 1012.1244154683359,
-          "tm_delta_c": 0.03377922658320642,
+          "existing_candidate_score": 1012.12441546,
+          "tm_delta_c": 0.033779227,
           "primer_pair_complementary_run_bp": 5,
           "primer_pair_3prime_complementary_run_bp": 2,
           "amplicon_length_bp": 43
@@ -736,8 +736,8 @@
           "no_product_target_count": 2,
           "common_region_confirmed": false,
           "practicality_rank": 3,
-          "existing_candidate_score": 1010.2149849402733,
-          "tm_delta_c": 0.16425075298633374,
+          "existing_candidate_score": 1010.21498494,
+          "tm_delta_c": 0.164250753,
           "primer_pair_complementary_run_bp": 5,
           "primer_pair_3prime_complementary_run_bp": 3,
           "amplicon_length_bp": 50
