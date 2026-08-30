@@ -1,5 +1,13 @@
 # GENtle Changelog
 
+- Closed the remaining Splicing Expert-adjacent stale-cache path in the
+  RNA-read seed histogram. Its biological presentation key now reuses the
+  engine-fingerprint/content-digest identity of `SplicingExpertView` instead of
+  a process pointer, so changed exon geometry invalidates exon/intron guides
+  even when the view allocation address is unchanged. Progress and seed-catalog
+  snapshots retain their constant-time identities behind explicit replacement
+  invalidation.
+
 - Removed repeated full-view hashing from the idle Splicing Expert render path.
   Engine-built views now carry a stable SHA-256 presentation fingerprint that
   the GUI can compare in constant time, while legacy and manually constructed

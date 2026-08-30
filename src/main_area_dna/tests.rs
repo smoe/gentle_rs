@@ -3797,7 +3797,7 @@ fn rna_seed_histogram_cache_separates_biological_and_pixel_rebuilds() {
         template_last_genomic_pos_1based: 25,
         reverse_complemented_from_genome: false,
     }];
-    let view = SplicingExpertView {
+    let mut view = SplicingExpertView {
         seq_id: "seq1".to_string(),
         target_feature_id: 7,
         scope: SplicingScopePreset::AllOverlappingAnyStrand,
@@ -3881,6 +3881,30 @@ fn rna_seed_histogram_cache_separates_biological_and_pixel_rebuilds() {
             .model
             .selected_supported_positions,
         0
+    );
+
+    let misses_before_geometry_change = area.rna_read_seed_histogram_cache_misses;
+    let previous_exon_end_fraction = area
+        .cached_rna_read_seed_histogram
+        .as_ref()
+        .expect("pre-geometry-change cache")
+        .model
+        .exon_guides[0]
+        .end_fraction;
+    view.unique_exons[0].end_1based = 8;
+    area.refresh_rna_read_seed_histogram_cache(&progress, &view, true, true, false, 520.0);
+    assert_eq!(
+        area.rna_read_seed_histogram_cache_misses,
+        misses_before_geometry_change + 1,
+        "in-place-equivalent view storage with changed exon geometry must invalidate the biological presentation",
+    );
+    let revised = area
+        .cached_rna_read_seed_histogram
+        .as_ref()
+        .expect("geometry-refreshed cache");
+    assert_ne!(
+        revised.model.exon_guides[0].end_fraction, previous_exon_end_fraction,
+        "refreshed exon guides must reflect the revised geometry",
     );
 }
 

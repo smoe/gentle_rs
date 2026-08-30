@@ -73,7 +73,7 @@ impl SplicingExpertPresentationKey {
         context.update(value.as_bytes());
     }
 
-    fn from_view(view: &SplicingExpertView) -> Self {
+    pub(super) fn from_view(view: &SplicingExpertView) -> Self {
         if let Some(content_sha256) =
             Self::parse_engine_fingerprint(&view.presentation_fingerprint_sha256)
         {
