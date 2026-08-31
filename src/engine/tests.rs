@@ -6436,6 +6436,69 @@ fn summarize_ortholog_promoter_comparison_separates_sequence_tfbs_expression_and
 }
 
 #[test]
+fn ortholog_promoter_conservation_aligns_indels_and_reports_anchor_intervals() {
+    fn row(role: OrthologPromoterRole, species: &str, sequence: &str) -> OrthologPromoterRow {
+        OrthologPromoterRow {
+            species: species.to_string(),
+            genome_id: format!("{species} genome"),
+            role,
+            gene_query: "TP73".to_string(),
+            display_label: "TP73".to_string(),
+            transcript_id: format!("{species}_tx"),
+            chromosome: "chr1".to_string(),
+            strand: "+".to_string(),
+            promoter_start_1based: 101,
+            promoter_end_1based: 100 + sequence.len(),
+            promoter_length_bp: sequence.len(),
+            tss_1based: 109,
+            tss_position_0based: 8,
+            sequence_orientation: "transcription_aligned".to_string(),
+            promoter_sequence: Some(sequence.to_string()),
+            ..OrthologPromoterRow::default()
+        }
+    }
+
+    let cohort = OrthologPromoterCohortReport {
+        schema: ORTHOLOG_PROMOTER_COHORT_SCHEMA.to_string(),
+        resolved_promoter_count: 3,
+        rows: vec![
+            row(OrthologPromoterRole::Anchor, "human", "AAAACCCCGGGGTTTT"),
+            row(OrthologPromoterRole::Target, "chimp", "AAAATCCCCGGGGTTTT"),
+            row(OrthologPromoterRole::Target, "mouse", "AAAACCCCGGGGTTTA"),
+        ],
+        ..OrthologPromoterCohortReport::default()
+    };
+    let report = GentleEngine::new()
+        .compare_ortholog_promoter_conservation(cohort, 4)
+        .expect("compare ortholog conservation");
+
+    assert_eq!(report.schema, "gentle.ortholog_promoter_conservation.v1");
+    assert_eq!(report.pairwise_alignments.len(), 2);
+    assert!(report.pairwise_alignments.iter().all(|row| {
+        row.alignment.mode == PairwiseAlignmentMode::Global
+            && row.alignment.identity_fraction > 0.85
+    }));
+    let downstream = report
+        .conserved_intervals
+        .iter()
+        .max_by_key(|interval| interval.length_bp)
+        .expect("conserved interval after indel-aware alignment");
+    assert!(downstream.length_bp >= 8);
+    assert_eq!(
+        downstream.supporting_species,
+        vec!["human", "chimp", "mouse"]
+    );
+    assert_eq!(
+        downstream.genomic_start_1based,
+        Some(101 + downstream.anchor_start_0based)
+    );
+    assert_eq!(
+        downstream.genomic_end_1based,
+        Some(downstream.anchor_end_0based_exclusive + 100)
+    );
+}
+
+#[test]
 fn summarize_multi_gene_promoter_tfbs_expands_gene_set_and_keeps_plain_gene_path() {
     let td = tempdir().expect("tempdir");
     let root = td.path();

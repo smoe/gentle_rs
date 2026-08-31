@@ -6021,6 +6021,15 @@ Tutorial companion:
     co-regulated flags unexpected TFBS/CUT&RUN divergence, while
     anti-co-regulated flags unexpected concordance.
   - Returns portable schema `gentle.ortholog_promoter_comparison.v1`.
+- `orthologs conservation-comparison --cohort COHORT.json [--min-conserved-bp N] [--path OUTPUT.json]`
+  - Uses the resolved cohort's transcription-oriented, equal upstream/downstream
+    windows; it does not repeat genome or ortholog lookup.
+  - Globally aligns each target to the anchor with the shared pairwise aligner,
+    so target insertions/deletions do not shift downstream comparisons.
+  - Reports pairwise CIGAR/identity/coverage rows and exact intervals shared by
+    every resolved target in anchor-relative and anchor-genomic coordinates.
+  - Returns `gentle.ortholog_promoter_conservation.v1`. Conservation is a
+    prioritization signal for regulatory inspection, not proof of function.
 - `resources benchmark-jaspar [--random-length N] [--seed N] [--output OUTPUT.json]`
   - Benchmarks the full active local JASPAR registry through one deterministic
     shared background and writes an export-ready drift snapshot.

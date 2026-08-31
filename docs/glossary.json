@@ -2289,6 +2289,20 @@
       },
       {
          "aliases": [
+            "orthologs compare-conservation"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "orthologs conservation-comparison",
+         "summary": "Globally align every resolved target promoter to the cohort anchor and report exact conserved intervals in anchor-relative and genomic coordinates.",
+         "usage": "orthologs conservation-comparison --cohort COHORT.json [--min-conserved-bp N] [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [
             "resources publication-datasets"
          ],
          "engine_operations": [],

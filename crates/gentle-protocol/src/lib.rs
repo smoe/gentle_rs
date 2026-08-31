@@ -159,17 +159,19 @@ pub use isoform_evidence::{
     GeneLocusTranscriptMetrics, IsoformEvidenceAssessmentStatus, IsoformEvidenceSourceKind,
 };
 pub use orthologs::{
-    ORTHOLOG_PROMOTER_COHORT_SCHEMA, ORTHOLOG_PROMOTER_COMPARISON_SCHEMA, ORTHOLOG_RESOURCE_SCHEMA,
-    OrthologAmbiguityCandidate, OrthologAmbiguityPolicy, OrthologConfidence,
-    OrthologConfidenceLevel, OrthologCutRunNormalizationInput, OrthologCutRunNormalizedAssignment,
+    ORTHOLOG_PROMOTER_COHORT_SCHEMA, ORTHOLOG_PROMOTER_COMPARISON_SCHEMA,
+    ORTHOLOG_PROMOTER_CONSERVATION_SCHEMA, ORTHOLOG_RESOURCE_SCHEMA, OrthologAmbiguityCandidate,
+    OrthologAmbiguityPolicy, OrthologConfidence, OrthologConfidenceLevel,
+    OrthologConservationPairwiseAlignment, OrthologConservedInterval,
+    OrthologCutRunNormalizationInput, OrthologCutRunNormalizedAssignment,
     OrthologCutRunNormalizedValueInput, OrthologCutRunPairwiseQuantitativeComparison,
     OrthologCutRunQuantitativeComparison, OrthologCutRunQuantitativeComparisonStatus,
     OrthologCutRunSupportRow, OrthologCutRunSupportStatus, OrthologExpressionAssignment,
     OrthologMappingRow, OrthologPairwiseTfbsSimilarity, OrthologPromoterCohortReport,
-    OrthologPromoterCohortRequest, OrthologPromoterComparisonReport, OrthologPromoterRole,
-    OrthologPromoterRow, OrthologResource, OrthologSequenceSimilarityRow, OrthologSpeciesAlias,
-    OrthologTfbsPeakSummary, OrthologTfbsSummaryRow, OrthologUnresolvedRow, OrthologyCardinality,
-    OrthologyType,
+    OrthologPromoterCohortRequest, OrthologPromoterComparisonReport,
+    OrthologPromoterConservationReport, OrthologPromoterRole, OrthologPromoterRow,
+    OrthologResource, OrthologSequenceSimilarityRow, OrthologSpeciesAlias, OrthologTfbsPeakSummary,
+    OrthologTfbsSummaryRow, OrthologUnresolvedRow, OrthologyCardinality, OrthologyType,
 };
 pub use reporter::{
     PortBindingStatus, REPORTER_CATALOG_REPORT_SCHEMA, REPORTER_CATALOG_SCHEMA,

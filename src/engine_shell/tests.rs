@@ -34924,6 +34924,28 @@ fn parse_orthologs_resolve_promoter_cohort_and_comparison() {
 }
 
 #[test]
+fn parse_orthologs_conservation_comparison() {
+    let command = parse_shell_line(
+        "orthologs conservation-comparison --cohort cohort.json --min-conserved-bp 12 --path conservation.json",
+    )
+    .expect("parse ortholog conservation comparison");
+    match command {
+        ShellCommand::OrthologsConservationComparison {
+            cohort,
+            cohort_path,
+            min_conserved_bp,
+            output,
+        } => {
+            assert!(cohort.is_none());
+            assert_eq!(cohort_path.as_deref(), Some("cohort.json"));
+            assert_eq!(min_conserved_bp, 12);
+            assert_eq!(output.as_deref(), Some("conservation.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_genomes_extract_gene_with_annotation_flag() {
     let cmd = parse_shell_line(
         "genomes extract-gene ToyGenome MYGENE --include-genomic-annotation --output-id out",

@@ -11,6 +11,13 @@
   p53-family behavior remain compatible. Added a matching Agent Assistant
   template and conservative local-model playbook.
 
+- Added offline, anchor-oriented ortholog promoter conservation comparison.
+  Resolved equal-window cohorts can now be globally aligned through
+  `orthologs conservation-comparison`, with indel-aware pairwise evidence and
+  exact shared intervals reported in promoter-relative and genomic anchor
+  coordinates. Existing ortholog promoter sequence similarity now uses the
+  shared global aligner instead of direct prefix identity.
+
 - Stabilized primer Tm values across operating-system math libraries by
   quantizing shared Tm, Tm-difference, and derived score metrics to nanodegree
   reporting precision before ranking and serialization. This prevents
