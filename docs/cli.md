@@ -671,7 +671,7 @@ CLI resolution order:
 
 Resource update capability status:
 
-- `gentle_cli`: supported (`resources sync-rebase`, `resources sync-jaspar`, `resources sync-ucsc-rmsk`, `resources import-gene-list-cache`, `resources import-ontology-assignment-cache`, `resources import-co-regulated-cache`, `resources install-ucsc-rmsk`, `resources prepare-ucsc-rmsk-index`, `resources suggest-ucsc-rmsk-index`, `resources sync-jaspar-remote-metadata`, `resources summarize-jaspar`, `resources resolve-tf-query`, `gene-groups list/show/resolve/doctor/draft`, `gene-sets resolve/produce direct-list/produce ontology-assignment/produce co-regulated/promoter-cohort`, `resources benchmark-jaspar`, `resources list-jaspar`, `resources list-publication-datasets`, `resources status-publication-dataset`, `resources prepare-publication-dataset`, `resources inspect-jaspar`)
+- `gentle_cli`: supported (`resources sync-rebase`, `resources sync-jaspar`, `resources sync-ucsc-rmsk`, `resources import-gene-list-cache`, `resources import-ontology-assignment-cache`, `resources import-co-regulated-cache`, `resources install-ucsc-rmsk`, `resources prepare-ucsc-rmsk-index`, `resources suggest-ucsc-rmsk-index`, `resources sync-jaspar-remote-metadata`, `resources summarize-jaspar`, `resources resolve-tf-query`, `gene-groups list/show/resolve/doctor/draft`, `gene-sets resolve/produce direct-list/produce ontology-assignment/produce co-regulated/promoter-cohort/regulatory-partner-screen`, `resources benchmark-jaspar`, `resources list-jaspar`, `resources list-publication-datasets`, `resources status-publication-dataset`, `resources prepare-publication-dataset`, `resources inspect-jaspar`)
 - `gentle_js`: supported (`sync_rebase`, `sync_jaspar`)
 - `gentle_lua`: supported (`sync_rebase`, `sync_jaspar`)
 
@@ -2910,6 +2910,7 @@ Shared shell command:
     - `gene-sets produce co-regulated --cache CACHE.json_or_tsv --dataset DATASET_ID --contrast LABEL --score METHOD --threshold RULE --direction both|positive|negative [--relationship co-regulated|anti-co-regulated|manual] [--genome GENOME_ID] [--output OUTPUT.json]`
     - `gene-sets create-pool RESOLUTION_ID --member-container MEMBER_ID=CONTAINER_ID [--member-container MEMBER_ID=CONTAINER_ID ...] [--output-prefix PREFIX] [--container-name NAME] [--preview | --apply --expected-plan-fingerprint-sha256 SHA256] [--path REPORT.json]`
     - `gene-sets promoter-cohort GENOME_ID [--resolution RESOLUTION.json|--group GROUP_ID|--members A,B|--go GO:NNNNNNN] [--relationship manual|co-regulated|anti-co-regulated] [--output OUTPUT.json]`
+    - `gene-sets regulatory-partner-screen GENOME_ID --resolution RESOLUTION.json --anchor-motif MOTIF --partner-motif MOTIF [--cutrun-support SUPPORT.json] [--max-distance-bp N] [--output OUTPUT.json]`
     - `resources benchmark-jaspar [--random-length N] [--seed N] [--output OUTPUT.json]`
     - `resources list-jaspar [--filter TOKEN] [--limit N] [--fetch-remote] [--output OUTPUT.json]`
     - `resources inspect-jaspar MOTIF [--random-length N] [--seed N] [--fetch-remote] [--output OUTPUT.json]`
@@ -5981,6 +5982,29 @@ Tutorial companion:
     and live Ensembl ortholog/paralog retrieval is not implemented.
   - Draft members are included with explicit warnings; recipes that used
     `.status // "included"` may miss those warnings.
+- `gene-sets regulatory-partner-screen GENOME_ID --resolution RESOLUTION.json --anchor-motif MOTIF [--anchor-motif MOTIF ...] --partner-motif MOTIF [--partner-motif MOTIF ...] [--min-llr-bits BITS] [--motif-threshold MOTIF=BITS] [--max-distance-bp N] [--anchor-mode occupancy-preferred|motif-only] [--cutrun-support SUPPORT.json] [--upstream-bp N] [--downstream-bp N] [--genome-catalog PATH] [--cache-dir PATH] [--output OUTPUT.json]`
+  - Runs `InspectRegulatoryPartnerScreen` over the exact members in an existing
+    `gentle.gene_set_resolution.v1` report. It resolves strand-aware promoter
+    sequences through the prepared-genome index and uses the shared uncapped
+    TFBS scanner for both motif roles.
+  - The default minimum LLR is `0` bits and the default maximum center distance
+    is `100` bp. Repeat `--motif-threshold MOTIF=BITS` for stricter per-motif
+    absolute thresholds. Anchor and partner queries must resolve to distinct
+    motif ids.
+  - The portable result contains exact promoter/genome motif intervals, every
+    anchor-by-partner tuple, signed distance and orientation, source-report
+    SHA-256 bindings, and one replayable decision-tree trace per gene.
+  - `--anchor-mode occupancy-preferred` uses an optional existing
+    `gentle.gene_set_cutrun_regulatory_support.v1` report. An evaluated promoter
+    with zero support is a fail branch; an unevaluated promoter is an unknown
+    branch. `motif-only` leaves occupancy unknown by design.
+  - The Gene Set Inspector consumes the same command. Hovering a tree node
+    highlights genes whose recorded trace traversed it; selecting a gene shows
+    promoter-oriented DNA with exact anchor, partner, overlap, and TSS spans.
+  - Motif proximity and promoter occupancy are association evidence, not proof
+    of direct or causal co-regulation. This first screen does not perform
+    matched-control enrichment, multiple-testing correction, time-ordering, or
+    distal-element analysis.
 - `orthologs resolve-promoter-cohort --anchor-species SPECIES --anchor-genome GENOME_ID --anchor-gene QUERY --target-species SPECIES [--target-species SPECIES ...] [--target-genome SPECIES=GENOME_ID] [--transcript SPECIES=TRANSCRIPT_ID] --orthologs ORTHOLOG_RESOURCE.json [--relationship manual|co-regulated|anti-co-regulated] [--upstream-bp N] [--downstream-bp N] [--ambiguity-policy reject|first|preserve] [--catalog GENOMES.json] [--cache-dir PATH] [--path OUTPUT.json]`
   - Runs engine `ResolveOrthologPromoterCohort`.
   - Uses a local `gentle.ortholog_resource.v1` mapping table only; no live

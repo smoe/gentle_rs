@@ -47,16 +47,17 @@ use crate::{
         DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
         DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP,
         DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP, DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
-        DOTPLOT_ANALYSIS_METADATA_KEY, DigestCollectionMemberBinding, DisplayTarget,
-        DotplotInspectionRequestSnapshot, DotplotMode, DotplotOverlayAnchorExonRef,
-        DotplotOverlayQuerySpec, DotplotOverlayXAxisMode, EditableStatus, Engine, EvidenceClass,
-        ExonSkipReturnKind, ExonSkipSelectionCriterion, ExperimentalAssayReadinessPolicy,
-        ExternalPrimerPairImportRequest, ExternalPrimerPairSpecificityRequest, FactAtom, FactBasis,
-        FactExpression, FactSubject, FactSubjectKind, FactTruth, FeatureBedCoordinateMode,
-        FeatureExpertTarget, FeatureExpertView, FeatureLocationEditRequest,
-        FeatureLocationEditStrand, FeatureRecordCreateRequest, FeatureRecordCurationRequest,
-        FeatureRecordDeleteRequest, FeatureRecordMergeRequest, FeatureRecordQualifier,
-        FeatureRecordSplitRequest, FlexibilityModel, GENE_ISOFORM_ASSAY_STUDY_CHECKPOINT_SCHEMA,
+        DEFAULT_REGULATORY_PARTNER_DISTANCE_BP, DOTPLOT_ANALYSIS_METADATA_KEY,
+        DigestCollectionMemberBinding, DisplayTarget, DotplotInspectionRequestSnapshot,
+        DotplotMode, DotplotOverlayAnchorExonRef, DotplotOverlayQuerySpec, DotplotOverlayXAxisMode,
+        EditableStatus, Engine, EvidenceClass, ExonSkipReturnKind, ExonSkipSelectionCriterion,
+        ExperimentalAssayReadinessPolicy, ExternalPrimerPairImportRequest,
+        ExternalPrimerPairSpecificityRequest, FactAtom, FactBasis, FactExpression, FactSubject,
+        FactSubjectKind, FactTruth, FeatureBedCoordinateMode, FeatureExpertTarget,
+        FeatureExpertView, FeatureLocationEditRequest, FeatureLocationEditStrand,
+        FeatureRecordCreateRequest, FeatureRecordCurationRequest, FeatureRecordDeleteRequest,
+        FeatureRecordMergeRequest, FeatureRecordQualifier, FeatureRecordSplitRequest,
+        FlexibilityModel, GENE_ISOFORM_ASSAY_STUDY_CHECKPOINT_SCHEMA,
         GENE_ISOFORM_ASSAY_STUDY_PLAN_SCHEMA, GENE_ISOFORM_ASSAY_STUDY_REUSE_PROPOSAL_SCHEMA,
         GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_EXECUTION_SCHEMA,
         GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_REQUEST_SCHEMA,
@@ -66,15 +67,16 @@ use crate::{
         GeneIsoformAssayStudyReuseProposal, GeneIsoformAssayStudyRuntimeIdentity,
         GeneIsoformAssayStudyWorkflowBatch, GeneIsoformAssayStudyWorkflowBatchEntry,
         GeneIsoformAssayStudyWorkflowBatchRequest, GeneIsoformEvidenceRequest,
-        GeneLocusEvidenceDisplayRequest, GeneSetCohortRelationship, GeneSetPoolMemberBinding,
-        GeneSetProducerFilter, GeneSetPromoterCohortReport, GeneSetRequest,
-        GeneSetResolutionReport, GeneSetResolutionReviewStatus, GeneTranscriptAssayRoutineRequest,
-        GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource,
-        GenomeTrackSubscription, GentleEngine, GuideCandidate, GuideOligoExportFormat,
-        GuideOligoPlateFormat, GuidePracticalFilterConfig, InlineSequenceTopology,
-        LabAssistantInstructionsFormat, LineageMacroInstance, LineageMacroPortBinding,
-        MacroInstanceStatus, OligoOrderFormCreateRequest, Operation, OperationProgress,
-        OrthologAmbiguityPolicy, OrthologCutRunNormalizationInput, OrthologPromoterCohortReport,
+        GeneLocusEvidenceDisplayRequest, GeneSetCohortRelationship,
+        GeneSetCutRunRegulatorySupportReport, GeneSetPoolMemberBinding, GeneSetProducerFilter,
+        GeneSetPromoterCohortReport, GeneSetRequest, GeneSetResolutionReport,
+        GeneSetResolutionReviewStatus, GeneTranscriptAssayRoutineRequest, GenomeAnchorSide,
+        GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource, GenomeTrackSubscription,
+        GentleEngine, GuideCandidate, GuideOligoExportFormat, GuideOligoPlateFormat,
+        GuidePracticalFilterConfig, InlineSequenceTopology, LabAssistantInstructionsFormat,
+        LineageMacroInstance, LineageMacroPortBinding, MacroInstanceStatus,
+        OligoOrderFormCreateRequest, Operation, OperationProgress, OrthologAmbiguityPolicy,
+        OrthologCutRunNormalizationInput, OrthologPromoterCohortReport,
         PLANNING_CLONING_CONSULTATION_SCHEMA, PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA,
         PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
         PRIMER_DESIGN_REPORTS_METADATA_KEY, PROTEIN_EXPRESSION_HANDOFF_SCHEMA,
@@ -102,7 +104,8 @@ use crate::{
         QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
         RNA_READ_ALIGNMENT_DISPLAY_BATCH_SCHEMA, RackAuthoringTemplate, RackCarrierLabelPreset,
         RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
-        RackProfileKind, ReadAcquisitionAnalysisFormat, ReadAcquisitionReadLayout, RenderSvgMode,
+        RackProfileKind, ReadAcquisitionAnalysisFormat, ReadAcquisitionReadLayout,
+        RegulatoryPartnerAnchorMode, RegulatoryPartnerMotifThreshold, RenderSvgMode,
         RepeatAnnotationFilter, RepeatEnvironmentCohortReport, RepeatEnvironmentGeometryMode,
         ReporterConstraints, ReporterCorpusExportFormat, RestrictionCloningPcrHandoffMode,
         RestrictionSiteScanCollectionMemberBinding, RestrictionSiteScanReport,
@@ -1372,6 +1375,22 @@ pub enum ShellCommand {
         downstream_bp: usize,
         allow_draft: bool,
         allow_deprecated: bool,
+        output: Option<String>,
+    },
+    GeneSetsRegulatoryPartnerScreen {
+        genome_id: String,
+        resolution: Box<GeneSetResolutionReport>,
+        cutrun_support: Option<Box<GeneSetCutRunRegulatorySupportReport>>,
+        anchor_motifs: Vec<String>,
+        partner_motifs: Vec<String>,
+        min_llr_bits: f64,
+        per_motif_thresholds: Vec<RegulatoryPartnerMotifThreshold>,
+        max_distance_bp: usize,
+        anchor_mode: RegulatoryPartnerAnchorMode,
+        genome_catalog_path: Option<String>,
+        cache_dir: Option<String>,
+        upstream_bp: usize,
+        downstream_bp: usize,
         output: Option<String>,
     },
     OrthologsResolvePromoterCohort {
@@ -8262,6 +8281,34 @@ impl ShellCommand {
                     .or_else(|| resolution.as_ref().map(|_| "resolution"))
                     .unwrap_or("-"),
                 relationship,
+                upstream_bp,
+                downstream_bp,
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::GeneSetsRegulatoryPartnerScreen {
+                genome_id,
+                resolution,
+                cutrun_support,
+                anchor_motifs,
+                partner_motifs,
+                min_llr_bits,
+                max_distance_bp,
+                anchor_mode,
+                upstream_bp,
+                downstream_bp,
+                output,
+                ..
+            } => format!(
+                "screen regulatory partners for gene-set source '{}' in genome '{}' (members={}, anchor_motifs='{}', partner_motifs='{}', min_llr_bits={}, max_distance_bp={}, anchor_mode={:?}, cutrun_support={}, upstream_bp={}, downstream_bp={}, output='{}')",
+                resolution.request.source_kind_label(),
+                genome_id,
+                resolution.resolved_members.len(),
+                anchor_motifs.join(","),
+                partner_motifs.join(","),
+                min_llr_bits,
+                max_distance_bp,
+                anchor_mode,
+                cutrun_support.is_some(),
                 upstream_bp,
                 downstream_bp,
                 output.as_deref().unwrap_or("-"),
@@ -28732,6 +28779,42 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "--downstream-bp", "required": false, "subject_kind": "other", "detail": "promoter downstream window length"}),
             ],
         ),
+        json!({
+            "id": "InspectRegulatoryPartnerScreen",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "GENOME_ID", "required": true, "subject_kind": "other", "detail": "prepared reference/helper genome id"},
+                {"name": "RESOLUTION", "required": true, "subject_kind": "other", "detail": "portable gene-set resolution"},
+                {"name": "ANCHOR_MOTIFS", "required": true, "subject_kind": "other", "detail": "one or more anchor motif queries"},
+                {"name": "PARTNER_MOTIFS", "required": true, "subject_kind": "other", "detail": "one or more candidate partner motif queries"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external report JSON path"}
+            ],
+            "reads": [],
+            "effects": [{
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "may_on_success",
+                "description": "Writes the optional portable regulatory-partner report when OUTPUT_PATH is supplied."
+            }],
+            "precondition_expr": {"all": []},
+            "description": "Enumerate exact promoter motif tuples and emit a replayable evidence decision tree for a resolved gene set.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("InspectRegulatoryPartnerScreen")
+        }),
+        optional_artifact_resource_report_descriptor(
+            "gene-sets regulatory-partner-screen",
+            "optional external regulatory-partner screen JSON output path",
+            "Build an exact promoter motif-tuple ledger and replayable evidence tree; motif and occupancy observations remain non-causal associations.",
+            vec![
+                json!({"name": "GENOME_ID", "required": true, "subject_kind": "other", "detail": "prepared reference/helper genome id"}),
+                json!({"name": "--resolution", "required": true, "subject_kind": "other", "detail": "gene-set resolution JSON"}),
+                json!({"name": "--anchor-motif", "required": true, "subject_kind": "other", "detail": "repeatable or comma-separated anchor motif query"}),
+                json!({"name": "--partner-motif", "required": true, "subject_kind": "other", "detail": "repeatable or comma-separated partner motif query"}),
+                json!({"name": "--cutrun-support", "required": false, "subject_kind": "other", "detail": "optional gene-set CUT&RUN support JSON"}),
+            ],
+        ),
         optional_artifact_resource_report_descriptor(
             "orthologs resolve-promoter-cohort",
             "optional external ortholog promoter-cohort JSON output path",
@@ -29999,6 +30082,7 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "gene-sets produce ontology-assignment"
         | "gene-sets produce co-regulated"
         | "gene-sets promoter-cohort"
+        | "gene-sets regulatory-partner-screen"
         | "orthologs resolve-promoter-cohort"
         | "orthologs promoter-comparison"
         | "ladders export"
@@ -39037,7 +39121,7 @@ fn parse_display_command(tokens: &[String]) -> Result<ShellCommand, String> {
 fn parse_gene_sets_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "gene-sets requires a subcommand: resolve, produce, create-pool, or promoter-cohort"
+            "gene-sets requires a subcommand: resolve, produce, create-pool, promoter-cohort, or regulatory-partner-screen"
                 .to_string(),
         );
     }
@@ -39860,8 +39944,177 @@ fn parse_gene_sets_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 output,
             })
         }
+        "regulatory-partner-screen" | "regulatory_partner_screen" | "regulatory-partners" => {
+            let context = "gene-sets regulatory-partner-screen";
+            let mut genome_id: Option<String> = None;
+            let mut resolution: Option<GeneSetResolutionReport> = None;
+            let mut cutrun_support: Option<GeneSetCutRunRegulatorySupportReport> = None;
+            let mut anchor_motifs = vec![];
+            let mut partner_motifs = vec![];
+            let mut min_llr_bits = 0.0_f64;
+            let mut per_motif_thresholds = vec![];
+            let mut max_distance_bp = DEFAULT_REGULATORY_PARTNER_DISTANCE_BP;
+            let mut anchor_mode = RegulatoryPartnerAnchorMode::OccupancyPreferred;
+            let mut genome_catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut upstream_bp = DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP;
+            let mut downstream_bp = DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP;
+            let mut output: Option<String> = None;
+            let mut idx = 2usize;
+            if idx < tokens.len() && !tokens[idx].starts_with("--") {
+                genome_id = Some(tokens[idx].clone());
+                idx += 1;
+            }
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--genome" | "--genome-id" | "--genome_id" => {
+                        let flag = tokens[idx].clone();
+                        genome_id = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--resolution" | "--gene-set-resolution" | "--gene_set_resolution" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        resolution = Some(parse_required_json_payload::<GeneSetResolutionReport>(
+                            &raw,
+                            "gene-set resolution",
+                        )?);
+                    }
+                    "--cutrun-support" | "--cutrun_support" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        cutrun_support = Some(parse_required_json_payload::<
+                            GeneSetCutRunRegulatorySupportReport,
+                        >(
+                            &raw, "gene-set CUT&RUN support report"
+                        )?);
+                    }
+                    "--anchor-motif" | "--anchor_motif" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        anchor_motifs.extend(
+                            raw.split(',')
+                                .map(str::trim)
+                                .filter(|value| !value.is_empty())
+                                .map(str::to_string),
+                        );
+                    }
+                    "--partner-motif" | "--partner_motif" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        partner_motifs.extend(
+                            raw.split(',')
+                                .map(str::trim)
+                                .filter(|value| !value.is_empty())
+                                .map(str::to_string),
+                        );
+                    }
+                    "--min-llr-bits" | "--min_llr_bits" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        min_llr_bits = raw.parse::<f64>().map_err(|error| {
+                            format!("Invalid {flag} value '{raw}' for {context}: {error}")
+                        })?;
+                    }
+                    "--motif-threshold" | "--motif_threshold" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        let (motif, bits) = raw.split_once('=').ok_or_else(|| {
+                            format!("{context} {flag} expects MOTIF=MIN_LLR_BITS")
+                        })?;
+                        let motif = motif.trim();
+                        if motif.is_empty() {
+                            return Err(format!("{context} {flag} motif must not be empty"));
+                        }
+                        let min_llr_bits = bits.trim().parse::<f64>().map_err(|error| {
+                            format!("Invalid {flag} value '{raw}' for {context}: {error}")
+                        })?;
+                        per_motif_thresholds.push(RegulatoryPartnerMotifThreshold {
+                            motif: motif.to_string(),
+                            min_llr_bits,
+                        });
+                    }
+                    "--max-distance-bp" | "--max_distance_bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        max_distance_bp = raw.parse::<usize>().map_err(|error| {
+                            format!("Invalid {flag} value '{raw}' for {context}: {error}")
+                        })?;
+                    }
+                    "--anchor-mode" | "--anchor_mode" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        anchor_mode = match raw.trim().to_ascii_lowercase().as_str() {
+                            "occupancy-preferred" | "occupancy_preferred" | "occupancy" => {
+                                RegulatoryPartnerAnchorMode::OccupancyPreferred
+                            }
+                            "motif-only" | "motif_only" | "motif" => {
+                                RegulatoryPartnerAnchorMode::MotifOnly
+                            }
+                            _ => {
+                                return Err(format!(
+                                    "Invalid {flag} value '{raw}' for {context} (expected occupancy-preferred or motif-only)"
+                                ));
+                            }
+                        };
+                    }
+                    "--genome-catalog" | "--genome_catalog" => {
+                        let flag = tokens[idx].clone();
+                        genome_catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--cache-dir" | "--cache_dir" => {
+                        let flag = tokens[idx].clone();
+                        cache_dir = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--upstream-bp" | "--upstream_bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        upstream_bp = raw.parse::<usize>().map_err(|error| {
+                            format!("Invalid {flag} value '{raw}' for {context}: {error}")
+                        })?;
+                    }
+                    "--downstream-bp" | "--downstream_bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        downstream_bp = raw.parse::<usize>().map_err(|error| {
+                            format!("Invalid {flag} value '{raw}' for {context}: {error}")
+                        })?;
+                    }
+                    "--output" | "--path" => {
+                        let flag = tokens[idx].clone();
+                        output = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    other => return Err(format!("Unknown option '{other}' for {context}")),
+                }
+            }
+            let genome_id = genome_id
+                .ok_or_else(|| format!("{context} requires GENOME_ID or --genome GENOME_ID"))?;
+            let resolution =
+                resolution.ok_or_else(|| format!("{context} requires --resolution REPORT.json"))?;
+            if anchor_motifs.is_empty() || partner_motifs.is_empty() {
+                return Err(format!(
+                    "{context} requires at least one --anchor-motif and one --partner-motif"
+                ));
+            }
+            Ok(ShellCommand::GeneSetsRegulatoryPartnerScreen {
+                genome_id,
+                resolution: Box::new(resolution),
+                cutrun_support: cutrun_support.map(Box::new),
+                anchor_motifs,
+                partner_motifs,
+                min_llr_bits,
+                per_motif_thresholds,
+                max_distance_bp,
+                anchor_mode,
+                genome_catalog_path,
+                cache_dir,
+                upstream_bp,
+                downstream_bp,
+                output,
+            })
+        }
         other => Err(format!(
-            "Unknown gene-sets subcommand '{other}' (expected resolve, produce, create-pool, or promoter-cohort)"
+            "Unknown gene-sets subcommand '{other}' (expected resolve, produce, create-pool, promoter-cohort, or regulatory-partner-screen)"
         )),
     }
 }
@@ -50867,6 +51120,51 @@ fn execute_export_import_and_resource_command(
                 state_changed: false,
                 output: serde_json::to_value(&report)
                     .map_err(|e| format!("Could not serialize gene-set promoter cohort: {e}"))?,
+            })
+        }
+        ShellCommand::GeneSetsRegulatoryPartnerScreen {
+            genome_id,
+            resolution,
+            cutrun_support,
+            anchor_motifs,
+            partner_motifs,
+            min_llr_bits,
+            per_motif_thresholds,
+            max_distance_bp,
+            anchor_mode,
+            genome_catalog_path,
+            cache_dir,
+            upstream_bp,
+            downstream_bp,
+            output,
+        } => {
+            let result = engine
+                .apply(Operation::InspectRegulatoryPartnerScreen {
+                    genome_id: genome_id.clone(),
+                    resolution: resolution.clone(),
+                    cutrun_support: cutrun_support.clone(),
+                    anchor_motifs: anchor_motifs.clone(),
+                    partner_motifs: partner_motifs.clone(),
+                    min_llr_bits: *min_llr_bits,
+                    per_motif_thresholds: per_motif_thresholds.clone(),
+                    max_distance_bp: *max_distance_bp,
+                    anchor_mode: *anchor_mode,
+                    upstream_bp: *upstream_bp,
+                    downstream_bp: *downstream_bp,
+                    genome_catalog_path: genome_catalog_path.clone(),
+                    cache_dir: cache_dir.clone(),
+                    path: output.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = result.regulatory_partner_screen.ok_or_else(|| {
+                "InspectRegulatoryPartnerScreen did not return a regulatory-partner screen"
+                    .to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report.as_ref()).map_err(|error| {
+                    format!("Could not serialize regulatory-partner screen: {error}")
+                })?,
             })
         }
         ShellCommand::OrthologsResolvePromoterCohort {
@@ -64226,6 +64524,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::GeneSetsProduceOntologyAssignment { .. }
             | ShellCommand::GeneSetsProduceCoRegulatedCohort { .. }
             | ShellCommand::GeneSetsPromoterCohort { .. }
+            | ShellCommand::GeneSetsRegulatoryPartnerScreen { .. }
             | ShellCommand::OrthologsResolvePromoterCohort { .. }
             | ShellCommand::OrthologsPromoterComparison { .. }
             | ShellCommand::OrthologsConservationComparison { .. }
@@ -65035,6 +65334,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::GeneSetsProduceOntologyAssignment { .. }
         | ShellCommand::GeneSetsProduceCoRegulatedCohort { .. }
         | ShellCommand::GeneSetsPromoterCohort { .. }
+        | ShellCommand::GeneSetsRegulatoryPartnerScreen { .. }
         | ShellCommand::OrthologsResolvePromoterCohort { .. }
         | ShellCommand::OrthologsPromoterComparison { .. }
         | ShellCommand::OrthologsConservationComparison { .. }

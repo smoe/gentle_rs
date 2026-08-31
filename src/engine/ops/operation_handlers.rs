@@ -39567,6 +39567,7 @@ impl GentleEngine {
             collection_pool_export: None,
             gene_set_pool_creation: None,
             gene_set_cutrun_regulatory_support: None,
+            regulatory_partner_screen: None,
             ortholog_promoter_cohort: None,
             ortholog_promoter_comparison: None,
             read_acquisition_report: None,
@@ -43640,6 +43641,59 @@ impl GentleEngine {
                         report.aggregate.evaluated_member_count, report.aggregate.member_count
                     ));
                     result.gene_set_cutrun_regulatory_support = Some(report);
+                }
+                Operation::InspectRegulatoryPartnerScreen {
+                    genome_id,
+                    resolution,
+                    cutrun_support,
+                    anchor_motifs,
+                    partner_motifs,
+                    min_llr_bits,
+                    per_motif_thresholds,
+                    max_distance_bp,
+                    anchor_mode,
+                    upstream_bp,
+                    downstream_bp,
+                    genome_catalog_path,
+                    cache_dir,
+                    path,
+                } => {
+                    let mut report = self.inspect_regulatory_partner_screen(
+                        &genome_id,
+                        *resolution,
+                        cutrun_support.map(|report| *report),
+                        &anchor_motifs,
+                        &partner_motifs,
+                        min_llr_bits,
+                        &per_motif_thresholds,
+                        max_distance_bp,
+                        anchor_mode,
+                        upstream_bp,
+                        downstream_bp,
+                        genome_catalog_path.as_deref(),
+                        cache_dir.as_deref(),
+                    )?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    if let Some(path) = path.as_deref() {
+                        self.write_pretty_json_file(
+                            &report,
+                            path,
+                            "regulatory-partner screen report",
+                        )?;
+                        result.messages.push(format!(
+                            "Wrote regulatory-partner screen report to '{}'",
+                            path
+                        ));
+                    }
+                    result.warnings.extend(report.warnings.clone());
+                    result.messages.push(format!(
+                        "Screened {} promoter(s): {} exact motif hit(s), {} anchor-partner tuple(s)",
+                        report.ledger.resolved_promoter_count,
+                        report.ledger.motif_hit_count,
+                        report.ledger.tuple_count
+                    ));
+                    result.regulatory_partner_screen = Some(Box::new(report));
                 }
                 Operation::ResolveOrthologPromoterCohort {
                     anchor_species,

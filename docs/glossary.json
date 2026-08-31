@@ -2196,6 +2196,26 @@
       },
       {
          "aliases": [
+            "gene_sets regulatory-partner-screen",
+            "genesets regulatory-partner-screen",
+            "gene-sets regulatory_partner_screen",
+            "gene-sets regulatory-partners"
+         ],
+         "engine_operations": [
+            "InspectRegulatoryPartnerScreen"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "cli-direct"
+         ],
+         "path": "gene-sets regulatory-partner-screen",
+         "summary": "Enumerate exact anchor-plus-partner motif tuples in resolved promoter sequences and return a replayable evidence decision tree linked to gene and DNA views.",
+         "usage": "gene-sets regulatory-partner-screen GENOME_ID --resolution RESOLUTION.json --anchor-motif MOTIF [--anchor-motif MOTIF ...] --partner-motif MOTIF [--partner-motif MOTIF ...] [--min-llr-bits BITS] [--motif-threshold MOTIF=BITS] [--max-distance-bp N] [--anchor-mode occupancy-preferred|motif-only] [--cutrun-support SUPPORT.json] [--upstream-bp N] [--downstream-bp N] [--genome-catalog PATH] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [
             "gene_sets create-pool",
             "genesets create-pool",
             "gene-sets create_pool"

@@ -190,6 +190,12 @@ const GUI_PROMINENT_GLOSSARY_ENTRIES: &[GuiProminentGlossaryEntry] = &[
         ui_intent_target: None,
     },
     GuiProminentGlossaryEntry {
+        glossary_path: "gene-sets regulatory-partner-screen",
+        menu_path: "Genome > Gene Set Inspector...",
+        palette_title: "Gene Set Inspector",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
         glossary_path: "collections run primer-specificity",
         menu_path: "Genome > Gene Set Inspector...",
         palette_title: "Gene Set Inspector",

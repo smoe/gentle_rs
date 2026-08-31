@@ -18657,6 +18657,65 @@ fn parse_gene_sets_resolve_and_promoter_cohort_commands() {
         other => panic!("unexpected command: {other:?}"),
     }
 
+    let td = tempdir().expect("tempdir");
+    let resolution_path = td.path().join("resolution.json");
+    fs::write(
+        &resolution_path,
+        serde_json::to_vec_pretty(&GeneSetResolutionReport {
+            schema: GENE_SET_RESOLUTION_SCHEMA.to_string(),
+            request: GeneSetRequest::ExplicitMembers {
+                members: vec!["TP73".to_string(), "FUS".to_string()],
+            },
+            requested_member_count: 2,
+            resolved_member_count: 2,
+            ..GeneSetResolutionReport::default()
+        })
+        .expect("serialize resolution"),
+    )
+    .expect("write resolution");
+    let screen = parse_shell_line(&format!(
+        "gene-sets regulatory-partner-screen ToyGenome --resolution {} \
+         --anchor-motif TP73 --partner-motif SP1,REST --min-llr-bits 2.5 \
+         --motif-threshold SP1=4.0 --max-distance-bp 75 --anchor-mode motif-only \
+         --upstream-bp 800 --downstream-bp 150 --genome-catalog genomes.json \
+         --cache-dir cache --output screen.json",
+        resolution_path.display()
+    ))
+    .expect("parse gene-sets regulatory-partner-screen");
+    match screen {
+        ShellCommand::GeneSetsRegulatoryPartnerScreen {
+            genome_id,
+            resolution,
+            cutrun_support,
+            anchor_motifs,
+            partner_motifs,
+            min_llr_bits,
+            per_motif_thresholds,
+            max_distance_bp,
+            anchor_mode,
+            upstream_bp,
+            downstream_bp,
+            output,
+            ..
+        } => {
+            assert_eq!(genome_id, "ToyGenome");
+            assert_eq!(resolution.resolved_member_count, 2);
+            assert!(cutrun_support.is_none());
+            assert_eq!(anchor_motifs, ["TP73"]);
+            assert_eq!(partner_motifs, ["SP1", "REST"]);
+            assert_eq!(min_llr_bits, 2.5);
+            assert_eq!(per_motif_thresholds.len(), 1);
+            assert_eq!(per_motif_thresholds[0].motif, "SP1");
+            assert_eq!(per_motif_thresholds[0].min_llr_bits, 4.0);
+            assert_eq!(max_distance_bp, 75);
+            assert_eq!(anchor_mode, RegulatoryPartnerAnchorMode::MotifOnly);
+            assert_eq!(upstream_bp, 800);
+            assert_eq!(downstream_bp, 150);
+            assert_eq!(output.as_deref(), Some("screen.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
     let unknown = parse_shell_line(
         "gene-sets promoter-cohort ToyGenome --group yamanaka_factors --relationship unrelated",
     )

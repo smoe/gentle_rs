@@ -4308,6 +4308,72 @@ fn prepare_gene_set_test_genome(root: &Path, engine: &mut GentleEngine) -> Strin
     catalog_path
 }
 
+fn write_regulatory_partner_test_reference_catalog(root: &Path) -> String {
+    let fasta_gz = root.join("regulatory_partner_toy.fa.gz");
+    let ann_gz = root.join("regulatory_partner_toy.gtf.gz");
+    let mut chr1 = "AT".repeat(1200);
+    // PAIR1: promoter-local anchor AAA at 40..43 and partner CCC at 49..52.
+    chr1.replace_range(460..463, "AAA");
+    chr1.replace_range(469..472, "CCC");
+    // ANCHOR1: anchor only, against a background without AAA/TTT or CCC/GGG.
+    chr1.replace_range(860..863, "AAA");
+    // NEGPAIR: genomic TTT/GGG become promoter-oriented AAA/CCC on the minus strand.
+    chr1.replace_range(1557..1560, "TTT");
+    chr1.replace_range(1548..1551, "GGG");
+    write_gzip(&fasta_gz, &format!(">chr1\n{chr1}\n"));
+    write_gzip(
+        &ann_gz,
+        concat!(
+            "chr1\tsrc\tgene\t481\t700\t.\t+\t.\tgene_id \"GENE_PAIR1\"; gene_name \"PAIR1\";\n",
+            "chr1\tsrc\ttranscript\t501\t650\t.\t+\t.\tgene_id \"GENE_PAIR1\"; gene_name \"PAIR1\"; transcript_id \"TX_PAIR1\";\n",
+            "chr1\tsrc\texon\t501\t650\t.\t+\t.\tgene_id \"GENE_PAIR1\"; gene_name \"PAIR1\"; transcript_id \"TX_PAIR1\"; exon_number \"1\";\n",
+            "chr1\tsrc\tgene\t881\t1100\t.\t+\t.\tgene_id \"GENE_ANCHOR1\"; gene_name \"ANCHOR1\";\n",
+            "chr1\tsrc\ttranscript\t901\t1050\t.\t+\t.\tgene_id \"GENE_ANCHOR1\"; gene_name \"ANCHOR1\"; transcript_id \"TX_ANCHOR1\";\n",
+            "chr1\tsrc\texon\t901\t1050\t.\t+\t.\tgene_id \"GENE_ANCHOR1\"; gene_name \"ANCHOR1\"; transcript_id \"TX_ANCHOR1\"; exon_number \"1\";\n",
+            "chr1\tsrc\tgene\t1301\t1520\t.\t-\t.\tgene_id \"GENE_NEGPAIR\"; gene_name \"NEGPAIR\";\n",
+            "chr1\tsrc\ttranscript\t1351\t1500\t.\t-\t.\tgene_id \"GENE_NEGPAIR\"; gene_name \"NEGPAIR\"; transcript_id \"TX_NEGPAIR\";\n",
+            "chr1\tsrc\texon\t1351\t1500\t.\t-\t.\tgene_id \"GENE_NEGPAIR\"; gene_name \"NEGPAIR\"; transcript_id \"TX_NEGPAIR\"; exon_number \"1\";\n",
+        ),
+    );
+    let cache_dir = root.join("regulatory_partner_reference_cache");
+    let catalog_path = root.join("regulatory_partner_reference_catalog.json");
+    fs::write(
+        &catalog_path,
+        format!(
+            r#"{{
+  "RegulatoryPartnerToy": {{
+    "description": "synthetic regulatory-partner test genome",
+    "sequence_remote": "{}",
+    "annotations_remote": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            file_url(&fasta_gz),
+            file_url(&ann_gz),
+            cache_dir.display()
+        ),
+    )
+    .expect("write regulatory-partner reference catalog");
+    catalog_path.to_string_lossy().to_string()
+}
+
+fn prepare_regulatory_partner_test_genome(root: &Path, engine: &mut GentleEngine) -> String {
+    let catalog_path = write_regulatory_partner_test_reference_catalog(root);
+    let _guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+    engine
+        .apply(Operation::PrepareGenome {
+            genome_id: "RegulatoryPartnerToy".to_string(),
+            catalog_path: Some(catalog_path.clone()),
+            cache_dir: None,
+            timeout_seconds: None,
+        })
+        .expect("prepare regulatory-partner test genome");
+    catalog_path
+}
+
 fn write_ortholog_test_reference_catalog(root: &Path) -> String {
     let human_fasta = root.join("ortholog_human.fa.gz");
     let human_gtf = root.join("ortholog_human.gtf.gz");
@@ -5663,6 +5729,191 @@ fn build_gene_set_promoter_cohort_uses_default_strand_geometry_and_keeps_unresol
     assert_eq!(neg.tss_1based, 3500);
     assert_eq!(neg.promoter_start_1based, 3300);
     assert_eq!(neg.promoter_end_1based, 4500);
+}
+
+#[test]
+fn inspect_regulatory_partner_screen_links_exact_motifs_tree_paths_and_occupancy_states() {
+    let _serial = jaspar_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+    crate::tf_motifs::reload();
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let genome_catalog_path = prepare_regulatory_partner_test_genome(root, &mut engine);
+    let resolution = engine
+        .resolve_gene_set(
+            GeneSetRequest::ExplicitMembers {
+                members: vec![
+                    "PAIR1".to_string(),
+                    "ANCHOR1".to_string(),
+                    "NEGPAIR".to_string(),
+                    "MISSING".to_string(),
+                ],
+            },
+            Some("RegulatoryPartnerToy"),
+            None,
+            Some(&genome_catalog_path),
+            None,
+            false,
+            false,
+        )
+        .expect("resolve regulatory-partner gene set");
+    let key_for = |symbol: &str| {
+        resolution
+            .resolved_members
+            .iter()
+            .find(|member| member.symbol == symbol)
+            .map(|member| member.dedup_key.clone())
+            .unwrap_or_else(|| panic!("resolved member {symbol}"))
+    };
+    let pair_key = key_for("PAIR1");
+    let negative_key = key_for("NEGPAIR");
+    let cutrun_support = GeneSetCutRunRegulatorySupportReport {
+        schema: GENE_SET_CUTRUN_REGULATORY_SUPPORT_SCHEMA.to_string(),
+        op_id: Some("synthetic-cutrun-op".to_string()),
+        genome_id: "RegulatoryPartnerToy".to_string(),
+        dataset_ids: vec!["synthetic-anchor-cutrun".to_string()],
+        member_support: vec![
+            GeneSetCutRunMemberSupport {
+                member_dedup_key: pair_key.clone(),
+                symbol: "PAIR1".to_string(),
+                evaluation_state: GeneSetCutRunEvaluationState::Evaluated,
+                support_window_count: 1,
+                contributing_dataset_ids: vec!["synthetic-anchor-cutrun".to_string()],
+                ..GeneSetCutRunMemberSupport::default()
+            },
+            GeneSetCutRunMemberSupport {
+                member_dedup_key: negative_key.clone(),
+                symbol: "NEGPAIR".to_string(),
+                evaluation_state: GeneSetCutRunEvaluationState::Evaluated,
+                support_window_count: 0,
+                contributing_dataset_ids: vec!["synthetic-anchor-cutrun".to_string()],
+                ..GeneSetCutRunMemberSupport::default()
+            },
+        ],
+        ..GeneSetCutRunRegulatorySupportReport::default()
+    };
+    let output_path = root.join("regulatory_partner_screen.json");
+
+    let result = engine
+        .apply(Operation::InspectRegulatoryPartnerScreen {
+            genome_id: "RegulatoryPartnerToy".to_string(),
+            resolution: Box::new(resolution),
+            cutrun_support: Some(Box::new(cutrun_support)),
+            anchor_motifs: vec!["AAA".to_string()],
+            partner_motifs: vec!["CCC".to_string()],
+            min_llr_bits: 0.0,
+            per_motif_thresholds: vec![],
+            max_distance_bp: 20,
+            anchor_mode: RegulatoryPartnerAnchorMode::OccupancyPreferred,
+            upstream_bp: 80,
+            downstream_bp: 20,
+            genome_catalog_path: Some(genome_catalog_path),
+            cache_dir: None,
+            path: Some(output_path.to_string_lossy().to_string()),
+        })
+        .expect("inspect regulatory-partner screen");
+    let report = result
+        .regulatory_partner_screen
+        .expect("regulatory-partner report");
+    assert_eq!(report.schema, REGULATORY_PARTNER_SCREEN_SCHEMA);
+    assert_eq!(report.ledger.schema, REGULATORY_PARTNER_TUPLE_LEDGER_SCHEMA);
+    assert_eq!(
+        report.decision_tree.schema,
+        REGULATORY_PARTNER_DECISION_TREE_SCHEMA
+    );
+    assert_eq!(report.ledger.requested_member_count, 4);
+    assert_eq!(report.ledger.resolved_promoter_count, 3);
+    assert!(output_path.is_file());
+    assert!(
+        report
+            .ledger
+            .source_reports
+            .iter()
+            .all(|source| source.content_sha256.starts_with("sha256:"))
+    );
+
+    let pair = report
+        .ledger
+        .genes
+        .iter()
+        .find(|gene| gene.gene_symbol == "PAIR1")
+        .expect("PAIR1 row");
+    assert_eq!(pair.terminal_class, "occupancy_supported_tuple");
+    assert_eq!(
+        pair.occupancy_evaluation_state,
+        GeneSetCutRunEvaluationState::Evaluated
+    );
+    assert!(pair.promoter_occupancy_supported);
+    assert_eq!(pair.tss_position_0based, Some(80));
+    let pair_hits = report
+        .ledger
+        .motif_hits
+        .iter()
+        .filter(|hit| hit.member_dedup_key == pair_key)
+        .collect::<Vec<_>>();
+    assert!(pair_hits.iter().any(|hit| {
+        hit.role == RegulatoryPartnerMotifRole::Anchor
+            && hit.promoter_start_0based == 40
+            && hit.genomic_start_1based == 461
+            && hit.matched_sequence == "AAA"
+    }));
+    assert!(pair_hits.iter().any(|hit| {
+        hit.role == RegulatoryPartnerMotifRole::Partner
+            && hit.promoter_start_0based == 49
+            && hit.genomic_start_1based == 470
+            && hit.matched_sequence == "CCC"
+    }));
+    assert!(report.ledger.tuples.iter().any(|tuple| {
+        tuple.member_dedup_key == pair_key
+            && tuple.within_requested_distance
+            && (tuple.signed_anchor_to_partner_center_distance_bp - 9.0).abs() < f64::EPSILON
+    }));
+
+    let anchor_only = report
+        .ledger
+        .genes
+        .iter()
+        .find(|gene| gene.gene_symbol == "ANCHOR1")
+        .expect("ANCHOR1 row");
+    assert_eq!(anchor_only.terminal_class, "anchor_only");
+    assert_eq!(
+        anchor_only.occupancy_evaluation_state,
+        GeneSetCutRunEvaluationState::Unevaluated
+    );
+
+    let negative = report
+        .ledger
+        .genes
+        .iter()
+        .find(|gene| gene.gene_symbol == "NEGPAIR")
+        .expect("NEGPAIR row");
+    assert_eq!(negative.strand.as_deref(), Some("-"));
+    assert_eq!(negative.tss_position_0based, Some(80));
+    assert_eq!(negative.terminal_class, "tuple_without_occupancy_support");
+    assert!(report.ledger.motif_hits.iter().any(|hit| {
+        hit.member_dedup_key == negative_key
+            && hit.role == RegulatoryPartnerMotifRole::Anchor
+            && hit.promoter_forward_strand
+            && !hit.genomic_forward_strand
+            && hit.matched_sequence == "AAA"
+    }));
+
+    let missing = report
+        .ledger
+        .genes
+        .iter()
+        .find(|gene| gene.gene_symbol == "MISSING")
+        .expect("unresolved member row");
+    assert!(!missing.promoter_resolved);
+    assert_eq!(missing.terminal_class, "unresolved");
+    assert_eq!(
+        missing
+            .trace
+            .iter()
+            .map(|step| step.node_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["promoter_resolved", "unresolved"]
+    );
 }
 
 #[test]

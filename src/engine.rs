@@ -128,7 +128,8 @@ pub use gentle_protocol::{
     RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
     RackPhysicalTemplateFamily, RackPhysicalTemplateKind, RackPhysicalTemplateSpec,
     RackPlacementEntry, RackProfileKind, RackProfileSnapshot, ReadAcquisitionAnalysisFormat,
-    ReadAcquisitionReadLayout, RunId, SeqId, SequenceOrigin,
+    ReadAcquisitionReadLayout, RegulatoryPartnerAnchorMode, RegulatoryPartnerMotifThreshold,
+    RegulatoryPartnerScreenReport, RunId, SeqId, SequenceOrigin,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -1125,6 +1126,7 @@ const TFBS_REGION_SUMMARY_MAX_LIMIT: usize = 10_000;
 const TFBS_TRACK_SIMILARITY_REPORT_SCHEMA: &str = "gentle.tfbs_track_similarity.v1";
 pub(crate) const DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP: usize = 1000;
 pub(crate) const DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP: usize = 200;
+pub(crate) const DEFAULT_REGULATORY_PARTNER_DISTANCE_BP: usize = 100;
 pub const DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP: usize = 10_000;
 pub const DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED: u64 = 0x4A_41_53_50_41_52_5F_31;
 pub const DEFAULT_TFBS_SCORE_TRACK_RANDOM_SEQUENCE_LENGTH_BP: usize = 100_000;
@@ -1173,6 +1175,10 @@ fn default_promoter_window_upstream_bp() -> usize {
 
 fn default_promoter_window_downstream_bp() -> usize {
     DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP
+}
+
+fn default_regulatory_partner_distance_bp() -> usize {
+    DEFAULT_REGULATORY_PARTNER_DISTANCE_BP
 }
 
 fn default_jaspar_presentation_random_sequence_length_bp() -> usize {
@@ -1269,6 +1275,8 @@ mod promoter_reporter_architecture;
 mod protein_handoff;
 #[path = "engine/io/read_acquisition.rs"]
 mod read_acquisition;
+#[path = "engine/analysis/regulatory_partners.rs"]
+mod regulatory_partners;
 #[path = "engine/analysis/repeat_cohort.rs"]
 mod repeat_cohort;
 #[path = "engine/ops/reporter_ops.rs"]
@@ -3960,6 +3968,32 @@ pub enum Operation {
         allow_draft: bool,
         #[serde(default)]
         allow_deprecated: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    InspectRegulatoryPartnerScreen {
+        genome_id: String,
+        resolution: Box<GeneSetResolutionReport>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cutrun_support: Option<Box<GeneSetCutRunRegulatorySupportReport>>,
+        anchor_motifs: Vec<String>,
+        partner_motifs: Vec<String>,
+        #[serde(default)]
+        min_llr_bits: f64,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        per_motif_thresholds: Vec<RegulatoryPartnerMotifThreshold>,
+        #[serde(default = "default_regulatory_partner_distance_bp")]
+        max_distance_bp: usize,
+        #[serde(default)]
+        anchor_mode: RegulatoryPartnerAnchorMode,
+        #[serde(default = "default_promoter_window_upstream_bp")]
+        upstream_bp: usize,
+        #[serde(default = "default_promoter_window_downstream_bp")]
+        downstream_bp: usize,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        genome_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },

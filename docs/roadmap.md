@@ -383,6 +383,11 @@ wet-lab conclusions or unconfirmed mutations.
   perturbation-response gene cohort plus explicit TSS/evidence policies and
   emits per-gene candidate sets and a ready panel request without duplicating
   the existing terminal panel planner.
+- Extend the promoter regulatory-partner screen beyond its exact motif-tuple
+  ledger with explicit matched/background cohorts, calibrated enrichment and
+  multiple-testing correction, local ontology/hallmark interpretation, and
+  distal-element evidence. Preserve the landed per-hit coordinates and
+  replayable decision traces as the audit layer for those later statistics.
 - Add paralog mapping/resolution only with a concrete engine consumer,
   preserving relationship provenance and one-to-many ambiguity without
   inferring functional equivalence from matching symbols.

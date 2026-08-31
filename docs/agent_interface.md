@@ -507,6 +507,7 @@ an agent has selected a deterministic operation.
 - `gene-sets produce ontology-assignment`
 - `gene-sets create-pool`
 - `gene-sets promoter-cohort`
+- `gene-sets regulatory-partner-screen`
 - `gene-sets resolve`
 - `genomes blast`
 - `genomes blast-track`
@@ -583,6 +584,7 @@ an agent has selected a deterministic operation.
 - `mirna catalog-show`
 - `mirna explain-seed`
 - `mirna scan-target`
+- `orthologs conservation-comparison`
 - `orthologs promoter-comparison`
 - `orthologs resolve-promoter-cohort`
 - `panels import-isoform`

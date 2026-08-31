@@ -17,6 +17,7 @@ pub mod gene_set_publication;
 pub mod gene_sets;
 pub mod isoform_evidence;
 pub mod orthologs;
+pub mod regulatory_partners;
 pub mod reporter;
 
 use serde::{Deserialize, Deserializer, Serialize};
@@ -172,6 +173,16 @@ pub use orthologs::{
     OrthologPromoterConservationReport, OrthologPromoterRole, OrthologPromoterRow,
     OrthologResource, OrthologSequenceSimilarityRow, OrthologSpeciesAlias, OrthologTfbsPeakSummary,
     OrthologTfbsSummaryRow, OrthologUnresolvedRow, OrthologyCardinality, OrthologyType,
+};
+pub use regulatory_partners::{
+    REGULATORY_PARTNER_DECISION_TREE_SCHEMA, REGULATORY_PARTNER_SCREEN_SCHEMA,
+    REGULATORY_PARTNER_TUPLE_LEDGER_SCHEMA, RegulatoryPartnerAnchorMode,
+    RegulatoryPartnerDecisionEdge, RegulatoryPartnerDecisionNode, RegulatoryPartnerDecisionOutcome,
+    RegulatoryPartnerDecisionTraceStep, RegulatoryPartnerDecisionTree, RegulatoryPartnerGeneRow,
+    RegulatoryPartnerIntervalRelation, RegulatoryPartnerMotifHit, RegulatoryPartnerMotifRole,
+    RegulatoryPartnerMotifThreshold, RegulatoryPartnerOrientation, RegulatoryPartnerScreenReport,
+    RegulatoryPartnerScreenRequest, RegulatoryPartnerSourceReportRef, RegulatoryPartnerTupleLedger,
+    RegulatoryPartnerTupleRow,
 };
 pub use reporter::{
     PortBindingStatus, REPORTER_CATALOG_REPORT_SCHEMA, REPORTER_CATALOG_SCHEMA,
@@ -5390,6 +5401,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "ExportCutRunReadCoverage",
     "InspectCutRunRegulatorySupport",
     "BuildGeneSetPromoterCohort",
+    "InspectRegulatoryPartnerScreen",
     "CreateGeneSetPool",
     "ImportIsoformPanel",
     "ImportUniprotSwissProt",

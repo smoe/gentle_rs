@@ -481,7 +481,7 @@ The project main window (lineage page) supports two views:
   the GUI should collect the collection operand, show per-member and aggregate
   readiness/errors/results, and call the same named operation or shell route
   that CLI/MCP/agent surfaces can invoke.
-- `Genome > Gene Set Inspector...` has two shared-engine modes:
+- `Genome > Gene Set Inspector...` has three shared-engine modes:
   - `Resolve new set` authors catalog-group, explicit-member, local external
     mapping, genomic-neighbor, or deterministic-random sources
   - source-specific validation and shared genome/catalog/cache gates construct
@@ -492,6 +492,21 @@ The project main window (lineage page) supports two views:
   - `Inspect & run` shows report-level review state, resolved and unresolved
     members, member-owned status/confidence metadata, warnings, provenance, and
     portable JSON copy/export
+  - `Regulatory partners` accepts anchor and partner motif queries, absolute
+    thresholds, promoter geometry, a distance rule, and an optional persisted
+    gene-set CUT&RUN support report. It dispatches the shared
+    `gene-sets regulatory-partner-screen` command on a detached engine snapshot
+    and caches the portable result in the inspector
+  - its decision view is a branching tree derived from the engine report.
+    Hovering a node highlights every gene whose recorded trace traverses that
+    node; selecting a gene displays its strand-aware promoter DNA with the
+    exact anchor, partner, overlapping-role, and TSS bases highlighted
+  - the tree and sequence renderer do not rescan DNA or derive GUI-local
+    biology. Exact motif intervals, tuples, occupancy state, and node membership
+    all come from `gentle.regulatory_partner_screen.v1`
+  - wording remains evidence-focused: motif-family matches and promoter-level
+    occupancy are cross-gene association evidence, not proof of a unique bound
+    protein or causal co-regulation
   - external mappings are resolved from configured local catalogs; opening the
     form does not perform a live ontology lookup
   - the collection-operation catalog is projected from canonical

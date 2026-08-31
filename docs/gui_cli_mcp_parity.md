@@ -17,11 +17,11 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 37 | 670 | 0 |
-| gentle_cli | 426 | 305 | 0 |
-| MCP | 109 | 468 | 57 |
-| JS | 78 | 479 | 62 |
-| Lua | 77 | 480 | 62 |
+| GUI | 38 | 672 | 0 |
+| gentle_cli | 428 | 306 | 0 |
+| MCP | 109 | 470 | 58 |
+| JS | 78 | 481 | 63 |
+| Lua | 77 | 482 | 63 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -192,13 +192,14 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | gene-groups draft | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added.<br>JS: Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added.<br>Lua: Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | gene-sets resolve | glossary-command | prominent | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | gene-sets promoter-cohort | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| gene-sets regulatory-partner-screen | glossary-command | prominent | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | gene-sets create-pool | glossary-command | prominent | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | gene-sets produce direct-list | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | gene-sets produce ontology-assignment | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | gene-sets produce co-regulated | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | orthologs resolve-promoter-cohort | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | orthologs promoter-comparison | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
-| orthologs conservation-comparison | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| orthologs conservation-comparison | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | resources list-publication-datasets | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>JS: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>Lua: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | resources status-publication-dataset | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>JS: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>Lua: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | resources prepare-publication-dataset | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes.<br>JS: Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes.<br>Lua: Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -636,6 +637,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | ExportCutRunReadCoverage | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | InspectCutRunRegulatorySupport | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | BuildGeneSetPromoterCohort | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| InspectRegulatoryPartnerScreen | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | CreateGeneSetPool | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ImportIsoformPanel | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ImportUniprotSwissProt | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
@@ -890,6 +892,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | JS | introspect runtime | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | introspect verify-effects | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | introspect verify-effects | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| JS | orthologs conservation-comparison | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | planning consult cloning | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | planning protein-expression-handoff | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | primers export-qpcr-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
@@ -952,6 +955,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | Lua | introspect runtime | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | introspect verify-effects | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | introspect verify-effects | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| Lua | orthologs conservation-comparison | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | planning consult cloning | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | planning protein-expression-handoff | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | primers export-qpcr-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
@@ -1012,6 +1016,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | MCP | introspect readiness | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | introspect verify-effects | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | introspect verify-effects | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| MCP | orthologs conservation-comparison | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | planning consult cloning | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | planning protein-expression-handoff | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | primers export-qpcr-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |

@@ -885,6 +885,9 @@ Implemented baseline:
   - `gentle.gene_set_promoter_cohort.v1`
   - `gentle.gene_set_cutrun_regulatory_support.v1`
   - `gentle.gene_set_pool_creation.v1`
+  - `gentle.regulatory_partner_tuple_ledger.v1`
+  - `gentle.regulatory_partner_decision_tree.v1`
+  - `gentle.regulatory_partner_screen.v1`
 - engine operations:
   - `ResolveGeneSet`
   - `ProduceGeneSetDirectList`
@@ -893,6 +896,7 @@ Implemented baseline:
   - `BuildGeneSetPromoterCohort`
   - `CreateGeneSetPool`
   - `InspectCutRunGeneSetRegulatorySupport`
+  - `InspectRegulatoryPartnerScreen`
 - `gene-groups resolve` answers "which catalog entry matches this token";
   `gene-sets resolve` answers "which genes are in this analysis operand after
   expansion, gating, deduplication, and provenance recording".
@@ -921,6 +925,7 @@ gentle_cli shell 'gene-sets produce ontology-assignment --cache CACHE.json_or_ts
 gentle_cli shell 'gene-sets produce co-regulated --cache CACHE.json_or_tsv --dataset DATASET_ID --contrast LABEL --score METHOD --threshold RULE --direction both|positive|negative [--relationship co-regulated|anti-co-regulated|manual] [--genome GENOME_ID] [--provider-id ID] [--provider-version VERSION] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--filter FIELD=VALUE] [--output OUTPUT.json]'
 gentle_cli shell 'gene-sets create-pool RESOLUTION_ID --member-container MEMBER_ID=CONTAINER_ID [--member-container MEMBER_ID=CONTAINER_ID ...] [--output-prefix PREFIX] [--container-name NAME] [--preview | --apply --expected-plan-fingerprint-sha256 SHA256] [--path REPORT.json]'
 gentle_cli shell 'gene-sets promoter-cohort GENOME_ID [--resolution RESOLUTION.json|--group GROUP_ID|--members A,B|--go GO:NNNNNNN|--neighbors GENE --flank-genes N|--random-size N --seed N] [--relationship manual|co-regulated|anti-co-regulated] [--upstream-bp N] [--downstream-bp N] [--catalog PATH] [--genome-catalog PATH] [--output OUTPUT.json]'
+gentle_cli shell 'gene-sets regulatory-partner-screen GENOME_ID --resolution RESOLUTION.json --anchor-motif MOTIF [--anchor-motif MOTIF ...] --partner-motif MOTIF [--partner-motif MOTIF ...] [--min-llr-bits BITS] [--motif-threshold MOTIF=BITS] [--max-distance-bp N] [--anchor-mode occupancy-preferred|motif-only] [--cutrun-support SUPPORT.json] [--upstream-bp N] [--downstream-bp N] [--genome-catalog PATH] [--output OUTPUT.json]'
 ```
 
 Resolution notes:
@@ -944,6 +949,33 @@ Resolution notes:
 - existing jq recipes that approximate membership with `.status // "included"`
   may silently drop or miss draft-member warnings; the engine now reports draft
   members explicitly in gene-set resolution warnings.
+
+Regulatory-partner screen:
+
+- `InspectRegulatoryPartnerScreen` accepts one resolved gene set, a prepared
+  genome, distinct anchor and partner motif queries, absolute LLR thresholds,
+  a maximum pair distance, and optional existing gene-set CUT&RUN support.
+  It reuses the shared promoter/TSS resolver and uncapped TFBS scanner; it does
+  not create promoter sequences in project state or duplicate motif scoring in
+  a frontend.
+- `gentle.regulatory_partner_tuple_ledger.v1` retains every threshold-passing
+  motif hit and every anchor-by-partner tuple. Hits carry promoter-oriented
+  zero-based intervals, genomic one-based intervals, both strand frames,
+  matched DNA, scores, and TSS-relative coordinates. Tuples retain signed
+  center and edge distances, interval relation, motif orientation, and the
+  declared distance outcome.
+- Input resolution and optional CUT&RUN reports are content-bound by SHA-256.
+  CUT&RUN evidence is promoter-level: `evaluated` with zero support remains
+  distinct from `unevaluated`, and no claim is made that one occupancy interval
+  belongs to a particular motif or uniquely identifies the bound factor.
+- `gentle.regulatory_partner_decision_tree.v1` is a fixed branching tree over
+  promoter resolution, anchor motif, partner motif, proximity, and optional
+  occupancy. Each gene carries its replayable node trace and terminal class,
+  so GUI hover membership is a projection of report evidence rather than a
+  second implementation of the decision rules.
+- This screen reports promoter-scoped association evidence. It does not prove
+  direct or causal co-regulation, distinguish proteins sharing a PWM, infer
+  early versus secondary response, or assess distal regulatory elements.
 
 Biological-context binding:
 

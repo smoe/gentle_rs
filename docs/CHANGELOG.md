@@ -1,5 +1,15 @@
 # GENtle Changelog
 
+- Added an engine-owned regulatory-partner screen for resolved gene sets. The
+  portable report records uncapped threshold-passing anchor/partner motif hits,
+  exact promoter and genomic coordinates, every motif tuple, source-report
+  hashes, and evaluated/unevaluated promoter-occupancy states in a replayable
+  decision tree. `gene-sets regulatory-partner-screen` exposes the same
+  operation used by the Gene Set Inspector, where tree-node hover highlights
+  matching genes and gene selection paints contributing motif and TSS spans on
+  strand-aware promoter DNA. The screen remains association evidence and makes
+  no unique-factor, causal-regulation, temporal-order, or distal-element claim.
+
 - Added an engine-owned, read-only promoter-reporter architecture comparison
   for transcript-rich loci. One portable request/report now separates
   TSS-proximal transcriptional, synthetic spliced-5'-UTR, genomic-5'-UTR, and
@@ -11,7 +21,6 @@
   use the same contract. A pinned Ensembl-116 GRCh38 SERPINE1 fixture verifies
   two TSS classes, one common CDS start, and representative leader geometries
   without treating annotation or occupancy as promoter usage.
-
 - Generalized the approval-gated promoter-reporter panel from a mandatory
   luciferase/p53-mutant pair to an evidence-guided regulatory reporter
   contract. `native_only_v1` now emits one unchanged construct per member,
@@ -29,7 +38,6 @@
   exact shared intervals reported in promoter-relative and genomic anchor
   coordinates. Existing ortholog promoter sequence similarity now uses the
   shared global aligner instead of direct prefix identity.
-
 - Restored release-container builds after the Affymetrix platform registry
   became a compile-time engine resource. The Docker context now admits and the
   builder copies only that small tracked registry from the otherwise excluded

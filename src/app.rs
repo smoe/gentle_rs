@@ -5356,6 +5356,7 @@ Error: `{err}`"
             || self.container_pool_export_task.is_some()
             || self.has_active_gene_set_resolution_task()
             || self.has_active_gene_set_collection_operation_task()
+            || self.has_active_regulatory_partner_screen_task()
     }
 
     fn refresh_sequence_windows_for_seq_ids(&mut self, seq_ids: &[String]) -> usize {
@@ -12065,6 +12066,7 @@ Error: `{err}`"
                 collection_pool_export: None,
                 gene_set_pool_creation: None,
                 gene_set_cutrun_regulatory_support: None,
+                regulatory_partner_screen: None,
                 ortholog_promoter_cohort: None,
                 ortholog_promoter_comparison: None,
                 read_acquisition_report: None,
@@ -25365,6 +25367,7 @@ impl GENtleApp {
             self.poll_container_pool_export_task(ctx);
             self.poll_gene_set_resolution_task(ctx);
             self.poll_gene_set_collection_operation_task(ctx);
+            self.poll_regulatory_partner_screen_task(ctx);
             self.sync_tracked_bed_tracks_for_new_anchors();
             self.sync_open_windows_if_display_changed(ctx);
             self.refresh_root_frame_presentation_caches();
