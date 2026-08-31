@@ -1272,6 +1272,7 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
         sequence_context_view: None,
         sequence_context_bundle: None,
         alternative_promoter_comparison: None,
+        promoter_reporter_architecture_comparison: None,
         variant_promoter_context: None,
         promoter_evidence_matrix: None,
         isoform_promoter_comparison: None,
@@ -5326,6 +5327,7 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
             sequence_context_view: None,
             sequence_context_bundle: None,
             alternative_promoter_comparison: None,
+            promoter_reporter_architecture_comparison: None,
             variant_promoter_context: None,
             promoter_evidence_matrix: None,
             isoform_promoter_comparison: None,
@@ -11209,6 +11211,42 @@ fn variant_followup_promoter_reporter_panel_runs_shared_plan_and_caches_proposal
         .expect("spawn promoter panel GUI test")
         .join()
         .expect("promoter panel GUI test thread");
+}
+
+#[test]
+fn variant_followup_promoter_architecture_builder_preserves_shared_request_and_exports() {
+    let dna = DNAsequence::from_sequence(&"A".repeat(120)).expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("serpine1_gui".to_string()), None);
+    let request = crate::engine::PromoterReporterArchitectureComparisonRequest {
+        seq_id: "serpine1_gui".to_string(),
+        gene_label: Some("SERPINE1".to_string()),
+        transcript_ids: vec!["ENST00000223095.5".to_string()],
+        ..Default::default()
+    };
+    area.variant_followup_ui
+        .promoter_reporter_architecture_request_json =
+        serde_json::to_string(&request).expect("architecture request JSON");
+    area.variant_followup_ui
+        .promoter_reporter_architecture_json_path = "analysis/serpine1.json".to_string();
+    area.variant_followup_ui
+        .promoter_reporter_architecture_svg_path = "analysis/serpine1.svg".to_string();
+
+    let operation = area
+        .variant_followup_promoter_architecture_operation()
+        .expect("build shared architecture operation");
+    match operation {
+        Operation::ComparePromoterReporterArchitectures {
+            request,
+            path,
+            svg_path,
+        } => {
+            assert_eq!(request.seq_id, "serpine1_gui");
+            assert_eq!(request.gene_label.as_deref(), Some("SERPINE1"));
+            assert_eq!(path.as_deref(), Some("analysis/serpine1.json"));
+            assert_eq!(svg_path.as_deref(), Some("analysis/serpine1.svg"));
+        }
+        other => panic!("unexpected architecture operation: {other:?}"),
+    }
 }
 
 fn variant_followup_promoter_reporter_panel_runs_on_expanded_stack() {

@@ -132,6 +132,35 @@ fn promoters_panel_routes_parse_typed_request_and_exact_approval() {
     }
 }
 
+#[test]
+fn promoters_compare_architectures_parses_portable_request_and_both_exports() {
+    let request = crate::engine::PromoterReporterArchitectureComparisonRequest {
+        seq_id: "serpine1_ensembl116".to_string(),
+        gene_label: Some("SERPINE1".to_string()),
+        transcript_ids: vec!["ENST00000223095.5".to_string()],
+        ..Default::default()
+    };
+    let request_json = serde_json::to_string(&request).expect("architecture request JSON");
+    let command = parse_shell_line(&format!(
+        "promoters compare-architectures '{request_json}' --path /tmp/serpine1.json --svg-path /tmp/serpine1.svg"
+    ))
+    .expect("parse architecture comparison");
+
+    match command {
+        ShellCommand::PromotersCompareArchitectures {
+            request,
+            output,
+            svg_output,
+        } => {
+            assert_eq!(request.seq_id, "serpine1_ensembl116");
+            assert_eq!(request.gene_label.as_deref(), Some("SERPINE1"));
+            assert_eq!(output.as_deref(), Some("/tmp/serpine1.json"));
+            assert_eq!(svg_output.as_deref(), Some("/tmp/serpine1.svg"));
+        }
+        other => panic!("unexpected architecture comparison command: {other:?}"),
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct GlossaryFixture {
     commands: Vec<GlossaryCommandFixture>,

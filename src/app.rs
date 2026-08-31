@@ -12099,6 +12099,7 @@ Error: `{err}`"
                 sequence_context_view: None,
                 sequence_context_bundle: None,
                 alternative_promoter_comparison: None,
+                promoter_reporter_architecture_comparison: None,
                 variant_promoter_context: None,
                 promoter_evidence_matrix: None,
                 isoform_promoter_comparison: None,

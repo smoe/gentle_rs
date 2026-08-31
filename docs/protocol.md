@@ -3568,6 +3568,43 @@ Sequencing-trace evidence notes:
     representative transcript/TSS for GUI retargeting back into Promoter design
   - warnings make the transcript-level to DNA-level collapse explicit when
     several transcript TSS interpretations reduce to one genomic promoter span
+- `ComparePromoterReporterArchitectures { request, path?, svg_path? }`
+  - is a read-only project operation with request schema
+    `gentle.promoter_reporter_architecture_comparison_request.v1` and report
+    schema `gentle.promoter_reporter_architecture_comparison.v1`; optional
+    `path` and `svg_path` export the same engine-owned report and renderer used
+    by GUI, shared shell/CLI, and the generic MCP `op` route
+  - the request selects one annotated locus plus optional gene/transcript ids,
+    strand-aware promoter extents, TSS-cluster tolerance, architecture kinds,
+    explicit ATG-retaining fusion requests, initiation evidence, CUT&RUN
+    dataset/read-report ids, and theoretical motif tokens
+  - requested transcript and fusion-target ids use version-tolerant Ensembl
+    stable-id matching but retain exact versions in provenance; any unresolved
+    requested id fails closed rather than silently shrinking the comparison
+  - default rows compare `tss_proximal_transcriptional`,
+    `spliced_5utr_luc_atg_replacement`, and
+    `genomic_5utr_luc_atg_replacement`; an
+    `endogenous_atg_retained_fusion` row exists only for a caller-supplied
+    fusion policy and records whether the endogenous and vector luciferase
+    ATGs are retained, replaced, or removed
+  - all rows reuse the canonical-CDS-start audit below, including CDS phase,
+    partial-CDS and non-ATG rejection, split-codon handling, transcript-oriented
+    spliced UTRs, ordered intron spans, total/max intron burden, Kozak context,
+    upstream ATGs, and uORFs
+  - TSS annotation, caller-supplied initiation evidence, theoretical motif
+    matches, and CUT&RUN occupancy remain distinct report layers; occupancy
+    never changes TSS classification and is explicitly not proof of promoter
+    use, direct regulation, biochemical affinity, or reporter output
+  - more than one evaluated occupancy lane remains qualitative unless a future
+    compatible normalization contract is supplied; unresolved or unavailable
+    local evidence is emitted as `unevaluated`/`not_prepared`, and local source
+    paths are redacted unless explicitly requested
+  - the existing laboratory construct defaults to
+    `existing_construct_unverified`; binding an in-project insert sequence and
+    boundaries records a hash but still does not verify the physical stock or
+    vector/insert junctions
+  - architecture ids are content-bound and stable across runs; timestamps and
+    operation/run ids remain ordinary execution provenance
 - `SuggestPromoterReporterFragments { input, variant_label_or_id?, gene_label?, transcript_id?, retain_downstream_from_tss_bp=200, retain_upstream_beyond_variant_bp=500, max_candidates=5, fragment_policy?, path? }`
   - emits portable record schema `gentle.promoter_reporter_candidates.v1`
   - ranks transcript-aware, strand-aware promoter fragment candidates and marks

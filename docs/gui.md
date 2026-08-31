@@ -5640,8 +5640,25 @@ Tutorial projects:
       CUT&RUN support, `support_status`, and distance without inventing a GUI
       verdict
     - the engine report still preserves the legacy confirmed/unconfirmed row
-    vectors while displaying additive four-state `support_status`
+      vectors while displaying additive four-state `support_status`
       (`confirmed`, `nearby`, `absent`, `motif-poor`)
+  - the same window now also exposes `Reporter architecture comparison
+    (read-only)` as a thin client of
+    `ComparePromoterReporterArchitectures`:
+    - `Prepare from current locus` seeds one editable portable request from the
+      selected sequence, gene/transcript context, promoter extents, and current
+      motif list; `Compare / refresh` runs the shared engine operation
+    - summary, TSS classes, staged panel, warnings, non-claims, and CUT&RUN
+      readiness come directly from the cached report
+    - the collapsed `Architecture models` list exposes stable architecture id,
+      transcript, modeled insert length, spliced-UTR and intron burden, explicit
+      ATG policy, and a `Use transcript` navigation action without recalculating
+      biology in the GUI
+    - JSON and SVG paths invoke the shared exporter/renderer; leaving either
+      path empty keeps that artifact in memory
+    - an existing laboratory construct remains unverified until exact insert,
+      vector, and boundary evidence is supplied, while CUT&RUN overlap remains
+      occupancy support rather than evidence of TSS use or reporter output
   - the same window now also exposes `Promoter-reporter panel` as a thin client
     of the shared `PlanPromoterReporterPanel` and
     `MaterializePromoterReporterPanel` operations:

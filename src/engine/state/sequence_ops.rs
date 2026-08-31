@@ -2305,6 +2305,25 @@ impl GentleEngine {
             | Operation::AnnotateTfbs { seq_id, .. } => {
                 Self::push_unique_token(&mut summary.sequence_ids, seq_id);
             }
+            Operation::ComparePromoterReporterArchitectures {
+                request,
+                path,
+                svg_path,
+            } => {
+                Self::push_unique_token(&mut summary.sequence_ids, &request.seq_id);
+                if let Some(input_path) = request.cutrun_catalog_path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, input_path);
+                }
+                if let Some(input_path) = request.cutrun_cache_dir.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, input_path);
+                }
+                if let Some(output_path) = path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, output_path);
+                }
+                if let Some(output_path) = svg_path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, output_path);
+                }
+            }
             Operation::FindRestrictionSites { target, .. }
             | Operation::ScanTfbsHits { target, .. }
             | Operation::SummarizeTfbsScoreTracks { target, .. }
@@ -2870,6 +2889,14 @@ impl GentleEngine {
             Operation::PlanPromoterReporterPanel {
                 path: Some(path), ..
             } => push(path),
+            Operation::ComparePromoterReporterArchitectures { path, svg_path, .. } => {
+                if let Some(path) = path {
+                    push(path);
+                }
+                if let Some(path) = svg_path {
+                    push(path);
+                }
+            }
             Operation::MaterializePromoterReporterPanel { proposal, .. } => {
                 for artifact in &proposal.artifacts {
                     push(&artifact.path);
