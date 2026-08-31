@@ -183,8 +183,8 @@
       "right_species": "Mus musculus",
       "left_gene_label": "TP73",
       "right_gene_label": "Trp73",
-      "alignment_mode": "direct_promoter_aligned_prefix",
-      "compared_length_bp": 51,
+      "alignment_mode": "global_pairwise",
+      "compared_length_bp": 102,
       "identical_bp": 0,
       "identity_fraction": 0.0
     }

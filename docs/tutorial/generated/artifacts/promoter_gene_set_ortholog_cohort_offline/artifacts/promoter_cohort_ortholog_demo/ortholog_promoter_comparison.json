@@ -275,17 +275,17 @@
       "right_species": "Mus musculus",
       "left_gene_label": "TP73",
       "right_gene_label": "Trp73",
-      "alignment_mode": "direct_promoter_aligned_prefix",
-      "compared_length_bp": 51,
-      "identical_bp": 9,
-      "identity_fraction": 0.176471
+      "alignment_mode": "global_pairwise",
+      "compared_length_bp": 84,
+      "identical_bp": 10,
+      "identity_fraction": 0.11904761904761904
     },
     {
       "left_species": "Homo sapiens",
       "right_species": "Rattus norvegicus",
       "left_gene_label": "TP73",
       "right_gene_label": "Tp73",
-      "alignment_mode": "direct_promoter_aligned_prefix",
+      "alignment_mode": "global_pairwise",
       "compared_length_bp": 51,
       "identical_bp": 51,
       "identity_fraction": 1.0
@@ -295,10 +295,10 @@
       "right_species": "Rattus norvegicus",
       "left_gene_label": "Trp73",
       "right_gene_label": "Tp73",
-      "alignment_mode": "direct_promoter_aligned_prefix",
-      "compared_length_bp": 51,
-      "identical_bp": 9,
-      "identity_fraction": 0.176471
+      "alignment_mode": "global_pairwise",
+      "compared_length_bp": 84,
+      "identical_bp": 10,
+      "identity_fraction": 0.11904761904761904
     }
   ],
   "cutrun_support": [
