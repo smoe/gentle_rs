@@ -1,6 +1,6 @@
 # AI Task Playbooks for GENtle
 
-Last updated: 2026-06-21
+Last updated: 2026-08-31
 
 This document is a compact operating guide for AI assistants that suggest GENtle
 workflows. It is intentionally practical: the assistant should use these
@@ -294,6 +294,94 @@ Expected result:
 - optional questions,
 - reviewed `suggested_commands[]`,
 - deterministic execution through GENtle after user confirmation.
+
+## Playbook 11: Evidence-Guided Regulatory Reporter Study
+
+Use this when a perturbation or expression contrast identifies genes whose
+native regulatory regions should be tested in a reporter backbone. Luciferase,
+fluorescence, and other reporter modalities are vector choices, not different
+biological planning contracts.
+
+Required context:
+
+- perturbation factor, form or isoform, biological system, time point, and
+  contrast;
+- responsive genes and the exact response-evidence source;
+- species and genome assembly;
+- policy for retaining all transcript-derived TSS/promoter classes or selecting
+  among them;
+- local motif annotations and independent occupancy tracks, when available;
+- exact catalog-owned reporter-vector identity.
+
+Keep these evidence statements separate:
+
+- `response`: the gene changed under the stated perturbation;
+- `sequence_motif_annotation`: a sequence matches a motif model;
+- `occupancy`: an independently supplied assay supports physical binding;
+- `reporter_result`: a completed experiment measured regulatory activity.
+
+A motif match without occupancy evidence is a candidate binding site. It is not
+proof of binding, causality, a cofactor relationship, or reporter activity.
+
+Inspect promoter alternatives and their evidence before fragment planning:
+
+```text
+features promoter-evidence-matrix SEQ_ID --gene-label GENE --promoter-upstream-bp 1000 --promoter-downstream-bp 200 --path GENE.promoter_evidence.json
+```
+
+Generate candidates with the shared `SuggestPromoterReporterFragments`
+operation. A motif hit, explicit interval, or variant may be the anchor. Keep
+all requested TSS classes visible and explain why each fragment boundary was
+chosen. For a native fragment that retains the complete annotated 5' UTR but
+must not include the source start codon, bind the selected transcript with:
+
+```text
+op '{"SuggestPromoterReporterFragments":{"input":"SEQ_ID","gene_label":"GENE","retain_downstream_from_tss_bp":200,"retain_upstream_beyond_variant_bp":500,"max_candidates":10,"fragment_policy":{"anchor":{"kind":"motif_hit","label_or_id":"FACTOR","occurrence":1},"collapse_mode":{"tss_cluster":{"tolerance_bp":50}},"promoter_upstream_baseline_bp":500,"anchor_flank_bp":150,"max_fragment_length_bp":5000},"path":"GENE.promoter_candidates.json"}}'
+```
+
+Then select the transcript-bound extended boundary in the panel request:
+
+```json
+{
+  "kind": "canonical_cds_start_exclusive",
+  "transcript_id": "EXACT_TRANSCRIPT_ID"
+}
+```
+
+Build the first panel with `mutation_policy: "native_only_v1"`. Bind the
+response dataset and any independent occupancy support as distinct member
+`evidence[]` rows; do not flatten them into the motif annotation. An individual
+member may override that policy with `p53_family_core_disruption_v1` only when
+an engineered p53-family motif control was explicitly requested and its anchor
+is a resolved motif hit. Native-only members may use non-motif anchors and do
+not acquire a synthetic mutant by default.
+
+```text
+promoters panel-plan @panel_request.json --path panel_proposal.json
+```
+
+Review before approval:
+
+- gene, TSS class, transcript IDs, strand, and fragment bounds;
+- anchor type, evidence kind, motif identifier when applicable, overlapping
+  evidence rows, scores, provenance, and interpretation tags;
+- exact vector identity and preservation of every catalog-required vector
+  annotation outside the replaced multiple-cloning region;
+- cloning strategy, primer sequences, circular product hashes, final
+  restriction scan, warnings, and non-claims;
+- one `native` product per native-only member, plus only those engineered
+  controls that were explicitly requested.
+
+Stop before materialization. After a human reviews the complete proposal, use
+its exact digest:
+
+```text
+promoters panel-materialize @panel_proposal.json --approve DIGEST
+```
+
+External retrieval, mutation design, and final materialization remain
+confirmation-gated. A proposal predicts constructs; it does not establish
+biological activity or execute a wet-lab experiment.
 
 ## Tiny Local-Model Primer
 

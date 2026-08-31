@@ -33,8 +33,9 @@ struct PromoterReporterPanelResolvedMember {
     motif_start_in_fragment_0based: usize,
     motif_end_in_fragment_0based_exclusive: usize,
     motif_forward_strand: bool,
+    mutation_policy: PromoterReporterPanelMutationPolicy,
     wild_type_seq_id: String,
-    mutant_seq_id: String,
+    mutant_seq_id: Option<String>,
     extended_boundary_audit: Option<PromoterReporterPanelExtendedBoundaryAudit>,
 }
 
@@ -432,10 +433,19 @@ impl GentleEngine {
                 transcript_positions_0based: vec![],
             });
         }
-        let (fragment_start, fragment_end) = if is_reverse {
-            (codon_start, candidate.end_0based_exclusive)
-        } else {
-            (candidate.start_0based, codon_end)
+        let (fragment_start, fragment_end) = match (policy.kind, is_reverse) {
+            (PromoterReporterPanelExtendedBoundaryKind::CanonicalCdsStartCodon, true) => {
+                (codon_start, candidate.end_0based_exclusive)
+            }
+            (PromoterReporterPanelExtendedBoundaryKind::CanonicalCdsStartCodon, false) => {
+                (candidate.start_0based, codon_end)
+            }
+            (PromoterReporterPanelExtendedBoundaryKind::CanonicalCdsStartExclusive, true) => {
+                (cds_entry, candidate.end_0based_exclusive)
+            }
+            (PromoterReporterPanelExtendedBoundaryKind::CanonicalCdsStartExclusive, false) => {
+                (candidate.start_0based, cds_entry)
+            }
         };
         if fragment_start >= fragment_end
             || candidate.variant_start_0based < fragment_start
@@ -1146,17 +1156,26 @@ impl GentleEngine {
             &resolved_members,
             mcs_start_0based,
             mcs_end_0based_exclusive,
+            &expectation.required_features,
         )?;
         let artifacts = Self::promoter_reporter_panel_artifacts(&request, &simulation.products);
         Self::append_promoter_reporter_panel_export_steps(&mut simulation.workflow, &artifacts)?;
         let workflow_sha256 =
             self.promoter_reporter_panel_value_sha256(&simulation.workflow, "panel workflow")?;
         let mut nonclaims = vec![
-            "Sequence motifs are candidate regulatory evidence, not proof of p53-family occupancy or promoter function."
+            "Regulatory annotations and overlapping evidence support candidate selection but do not by themselves prove occupancy, causality, or promoter function."
                 .to_string(),
             "In-silico construct and primer models require wet-lab validation; GENtle does not order oligos or execute experiments."
                 .to_string(),
         ];
+        if simulation.members.iter().any(|member| {
+            member.mutation_policy == PromoterReporterPanelMutationPolicy::P53FamilyCoreDisruptionV1
+        }) {
+            nonclaims.push(
+                "A sequence-motif disruption is not proof of altered p53-family occupancy or reporter activity."
+                    .to_string(),
+            );
+        }
         nonclaims.extend(request.scientific_caveats.iter().cloned());
         let mut proposal = PromoterReporterPanelProposal {
             schema: PROMOTER_REPORTER_PANEL_PROPOSAL_SCHEMA.to_string(),
@@ -1583,13 +1602,18 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
-        if request.mutation_policy == PromoterReporterPanelMutationPolicy::Unspecified {
-            return Err(EngineError {
-                code: ErrorCode::InvalidInput,
-                message: "Panel request requires an explicit mutation_policy; promoter-reporter panel v1 currently supports p53_family_core_disruption_v1"
-                    .to_string(),
-                cause_chain: vec![],
-            });
+        for (index, member) in request.members.iter().enumerate() {
+            let policy = member.mutation_policy.unwrap_or(request.mutation_policy);
+            if policy == PromoterReporterPanelMutationPolicy::Unspecified {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Panel member {} requires an explicit mutation_policy, either native_only_v1 or p53_family_core_disruption_v1",
+                        index + 1
+                    ),
+                    cause_chain: vec![],
+                });
+            }
         }
         request.scientific_caveats = request
             .scientific_caveats
@@ -1606,7 +1630,7 @@ impl GentleEngine {
                     .to_string(),
             );
         }
-        for member in &mut request.members {
+        for (index, member) in request.members.iter_mut().enumerate() {
             member.candidate_set_path = Self::canonical_existing_path(
                 &member.candidate_set_path,
                 "promoter candidate set",
@@ -1625,6 +1649,10 @@ impl GentleEngine {
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
                 .map(str::to_string);
+            Self::normalize_promoter_reporter_panel_evidence(
+                &mut member.evidence,
+                &format!("Panel member {}", index + 1),
+            )?;
         }
         let output = PathBuf::from(request.output_dir.trim());
         if output.as_os_str().is_empty() {
@@ -1648,6 +1676,61 @@ impl GentleEngine {
         .to_string_lossy()
         .to_string();
         Ok(request)
+    }
+
+    fn normalize_promoter_reporter_panel_evidence(
+        evidence_rows: &mut Vec<PromoterEvidenceItem>,
+        context: &str,
+    ) -> Result<(), EngineError> {
+        let mut seen_evidence_ids = HashSet::new();
+        for evidence in evidence_rows.iter_mut() {
+            evidence.evidence_id = evidence.evidence_id.trim().to_string();
+            evidence.kind = evidence.kind.trim().to_string();
+            evidence.source = evidence.source.trim().to_string();
+            evidence.summary = evidence.summary.trim().to_string();
+            if evidence.evidence_id.is_empty()
+                || evidence.kind.is_empty()
+                || evidence.source.is_empty()
+                || evidence.summary.is_empty()
+            {
+                return Err(EngineError::invalid_input(format!(
+                    "{context} evidence requires non-empty evidence_id, kind, source, and summary"
+                )));
+            }
+            if !seen_evidence_ids.insert(evidence.evidence_id.clone()) {
+                return Err(EngineError::invalid_input(format!(
+                    "{context} repeats evidence_id '{}'",
+                    evidence.evidence_id
+                )));
+            }
+            match (evidence.start_0based, evidence.end_0based_exclusive) {
+                (Some(start), Some(end)) if start < end => {}
+                (None, None) => {}
+                _ => {
+                    return Err(EngineError::invalid_input(format!(
+                        "{context} evidence '{}' must provide either no interval or a non-empty 0-based/exclusive interval",
+                        evidence.evidence_id
+                    )));
+                }
+            }
+            if evidence.confidence.is_some_and(|value| !value.is_finite())
+                || evidence.metrics.values().any(|value| !value.is_finite())
+            {
+                return Err(EngineError::invalid_input(format!(
+                    "{context} evidence '{}' contains a non-finite numeric value",
+                    evidence.evidence_id
+                )));
+            }
+        }
+        evidence_rows.sort_by(|left, right| left.evidence_id.cmp(&right.evidence_id));
+        Ok(())
+    }
+
+    fn promoter_reporter_panel_member_mutation_policy(
+        request: &PromoterReporterPanelRequest,
+        member: &PromoterReporterPanelMemberRequest,
+    ) -> PromoterReporterPanelMutationPolicy {
+        member.mutation_policy.unwrap_or(request.mutation_policy)
     }
 
     fn canonical_existing_path(raw: &str, label: &str) -> Result<PathBuf, EngineError> {
@@ -1740,6 +1823,11 @@ impl GentleEngine {
                     ),
                     cause_chain: vec![],
                 })?;
+            let evidence_context = format!("Candidate '{}'", candidate.candidate_id);
+            Self::normalize_promoter_reporter_panel_evidence(
+                &mut candidate.evidence,
+                &evidence_context,
+            )?;
             let source = self
                 .state
                 .sequences
@@ -1752,6 +1840,23 @@ impl GentleEngine {
                     ),
                     cause_chain: vec![],
                 })?;
+            if let Some(evidence) = candidate
+                .evidence
+                .iter()
+                .chain(member_request.evidence.iter())
+                .find(|evidence| {
+                    evidence
+                        .end_0based_exclusive
+                        .is_some_and(|end| end > source.len())
+                })
+            {
+                return Err(EngineError::invalid_input(format!(
+                    "Panel evidence '{}' exceeds source sequence '{}' length {}; member evidence intervals use source-local 0-based/exclusive coordinates",
+                    evidence.evidence_id,
+                    candidate_set.seq_id,
+                    source.len()
+                )));
+            }
             if source.len() != candidate_set.sequence_length_bp
                 || candidate.end_0based_exclusive > source.len()
                 || candidate.start_0based >= candidate.end_0based_exclusive
@@ -1772,24 +1877,40 @@ impl GentleEngine {
                 .ok_or_else(|| EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!(
-                        "Candidate '{}' has no resolved motif anchor",
+                        "Candidate '{}' has no resolved regulatory anchor",
                         candidate.candidate_id
                     ),
                     cause_chain: vec![],
                 })?;
-            if anchor.kind != PromoterReporterAnchorKind::MotifHit
-                || anchor.start_0based < candidate.start_0based
+            let mutation_policy =
+                Self::promoter_reporter_panel_member_mutation_policy(request, member_request);
+            if anchor.start_0based < candidate.start_0based
                 || anchor.end_0based_exclusive > candidate.end_0based_exclusive
             {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!(
-                        "Candidate '{}' must contain one resolved motif_hit anchor",
+                        "Candidate '{}' must contain its resolved anchor",
                         candidate.candidate_id
                     ),
                     cause_chain: vec![],
                 });
             }
+            if mutation_policy == PromoterReporterPanelMutationPolicy::P53FamilyCoreDisruptionV1
+                && anchor.kind != PromoterReporterAnchorKind::MotifHit
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Candidate '{}' requires a motif_hit anchor for p53_family_core_disruption_v1",
+                        candidate.candidate_id
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            // Normalize a candidate-set-level anchor into the member record so
+            // the content-addressed proposal always carries the resolved basis.
+            candidate.anchor = Some(anchor.clone());
             let extended_boundary_audit = match member_request.fragment_role {
                 PromoterReporterPanelFragmentRole::Core => {
                     if member_request.extended_boundary.is_some() {
@@ -1837,6 +1958,36 @@ impl GentleEngine {
                     Some(audit)
                 }
             };
+            let mut evidence_by_id = candidate
+                .evidence
+                .into_iter()
+                .map(|item| (item.evidence_id.clone(), item))
+                .collect::<BTreeMap<_, _>>();
+            for item in &member_request.evidence {
+                if evidence_by_id
+                    .get(&item.evidence_id)
+                    .is_some_and(|existing| existing != item)
+                {
+                    return Err(EngineError::invalid_input(format!(
+                        "Panel evidence_id '{}' collides with a different candidate-set evidence row",
+                        item.evidence_id
+                    )));
+                }
+                evidence_by_id
+                    .entry(item.evidence_id.clone())
+                    .or_insert_with(|| item.clone());
+            }
+            for item in Self::promoter_reporter_evidence_for_span(
+                source,
+                candidate.start_0based,
+                candidate.end_0based_exclusive,
+            ) {
+                // Current sequence annotations refresh an identically named
+                // row, while independent response/occupancy evidence carried
+                // by the bound candidate set remains part of the proposal.
+                evidence_by_id.insert(item.evidence_id.clone(), item);
+            }
+            candidate.evidence = evidence_by_id.into_values().collect();
             let base_label = member_request
                 .label
                 .clone()
@@ -1855,9 +2006,21 @@ impl GentleEngine {
                     cause_chain: vec![],
                 });
             }
-            let wild_type_seq_id = format!("{}_wt", member_id);
-            let mutant_seq_id = format!("{}_mut", member_id);
-            for seq_id in [&wild_type_seq_id, &mutant_seq_id] {
+            let wild_type_seq_id = match mutation_policy {
+                PromoterReporterPanelMutationPolicy::NativeOnlyV1 => {
+                    format!("{}_native", member_id)
+                }
+                PromoterReporterPanelMutationPolicy::P53FamilyCoreDisruptionV1 => {
+                    format!("{}_wt", member_id)
+                }
+                PromoterReporterPanelMutationPolicy::Unspecified => {
+                    unreachable!("normalization rejects unspecified promoter-reporter policies")
+                }
+            };
+            let mutant_seq_id = (mutation_policy
+                == PromoterReporterPanelMutationPolicy::P53FamilyCoreDisruptionV1)
+                .then(|| format!("{}_mut", member_id));
+            for seq_id in std::iter::once(&wild_type_seq_id).chain(mutant_seq_id.iter()) {
                 if self.state.sequences.contains_key(seq_id) {
                     return Err(EngineError {
                         code: ErrorCode::InvalidInput,
@@ -1895,6 +2058,7 @@ impl GentleEngine {
                 motif_end_in_fragment_0based_exclusive: anchor.end_0based_exclusive
                     - candidate_start_0based,
                 motif_forward_strand,
+                mutation_policy,
                 wild_type_seq_id,
                 mutant_seq_id,
                 extended_boundary_audit,
@@ -1909,6 +2073,7 @@ impl GentleEngine {
         resolved_members: &[PromoterReporterPanelResolvedMember],
         mcs_start_0based: usize,
         mcs_end_0based_exclusive: usize,
+        required_vector_features: &[crate::genomes::HelperVectorRequiredFeatureExpectation],
     ) -> Result<PromoterReporterPanelSimulation, EngineError> {
         let mut detached = self.fork_detached_execution();
         let mut workflow = vec![];
@@ -1954,38 +2119,53 @@ impl GentleEngine {
                     ),
                     cause_chain: vec![],
                 })?;
-            let mutation = detached.engine().design_promoter_reporter_panel_mutation(
-                request.mutation_policy,
-                &wild_type_sequence,
-                resolved.motif_start_in_fragment_0based,
-                resolved.motif_end_in_fragment_0based_exclusive,
-                resolved.motif_forward_strand,
-                &[],
-            )?;
-            let branch_result = Self::apply_promoter_reporter_panel_step(
-                &mut detached,
-                &mut workflow,
-                "branch_wild_type_for_mutation",
-                Some(&resolved.member_id),
-                Operation::Branch {
-                    input: resolved.wild_type_seq_id.clone(),
-                    output_id: Some(resolved.mutant_seq_id.clone()),
-                },
-            )?;
-            Self::extend_unique(&mut created_seq_ids, &branch_result.created_seq_ids);
-            Self::replace_panel_mutant_sequence(
-                detached.engine_mut(),
-                &resolved.wild_type_seq_id,
-                &resolved.mutant_seq_id,
-                &mutation,
-            )?;
-            Self::record_promoter_reporter_panel_action(
-                &mut workflow,
-                "apply_stated_p53_family_rule",
-                Some(&resolved.member_id),
-                json!({"stated_p53_family_motif_disruption": mutation}),
-                vec![resolved.mutant_seq_id.clone()],
-            )?;
+            let mutation = match resolved.mutation_policy {
+                PromoterReporterPanelMutationPolicy::NativeOnlyV1 => None,
+                PromoterReporterPanelMutationPolicy::P53FamilyCoreDisruptionV1 => {
+                    let mutation = detached.engine().design_promoter_reporter_panel_mutation(
+                        resolved.mutation_policy,
+                        &wild_type_sequence,
+                        resolved.motif_start_in_fragment_0based,
+                        resolved.motif_end_in_fragment_0based_exclusive,
+                        resolved.motif_forward_strand,
+                        &[],
+                    )?;
+                    let mutant_seq_id = resolved.mutant_seq_id.as_ref().ok_or_else(|| {
+                        EngineError::new(
+                            ErrorCode::Internal,
+                            "p53-family panel member has no planned mutant sequence id",
+                        )
+                    })?;
+                    let branch_result = Self::apply_promoter_reporter_panel_step(
+                        &mut detached,
+                        &mut workflow,
+                        "branch_wild_type_for_mutation",
+                        Some(&resolved.member_id),
+                        Operation::Branch {
+                            input: resolved.wild_type_seq_id.clone(),
+                            output_id: Some(mutant_seq_id.clone()),
+                        },
+                    )?;
+                    Self::extend_unique(&mut created_seq_ids, &branch_result.created_seq_ids);
+                    Self::replace_panel_mutant_sequence(
+                        detached.engine_mut(),
+                        &resolved.wild_type_seq_id,
+                        mutant_seq_id,
+                        &mutation,
+                    )?;
+                    Self::record_promoter_reporter_panel_action(
+                        &mut workflow,
+                        "apply_stated_p53_family_rule",
+                        Some(&resolved.member_id),
+                        json!({"stated_p53_family_motif_disruption": &mutation}),
+                        vec![mutant_seq_id.clone()],
+                    )?;
+                    Some(mutation)
+                }
+                PromoterReporterPanelMutationPolicy::Unspecified => {
+                    unreachable!("normalization rejects unspecified promoter-reporter policies")
+                }
+            };
 
             members.push(PromoterReporterPanelMemberProposal {
                 member_id: resolved.member_id.clone(),
@@ -2006,7 +2186,10 @@ impl GentleEngine {
                 fragment_start_0based: resolved.candidate.start_0based,
                 fragment_end_0based_exclusive: resolved.candidate.end_0based_exclusive,
                 fragment_length_bp: resolved.candidate.length_bp,
+                mutation_policy: resolved.mutation_policy,
                 extended_boundary_audit: resolved.extended_boundary_audit.clone(),
+                anchor: resolved.candidate.anchor.clone(),
+                evidence: resolved.candidate.evidence.clone(),
                 motif_start_in_fragment_0based: resolved.motif_start_in_fragment_0based,
                 motif_end_in_fragment_0based_exclusive: resolved
                     .motif_end_in_fragment_0based_exclusive,
@@ -2014,7 +2197,9 @@ impl GentleEngine {
                 wild_type_seq_id: resolved.wild_type_seq_id.clone(),
                 wild_type_sha256: sha256_prefixed_str(&wild_type_sequence),
                 mutant_seq_id: resolved.mutant_seq_id.clone(),
-                mutant_sha256: sha256_prefixed_str(&mutation.mutant_sequence),
+                mutant_sha256: mutation
+                    .as_ref()
+                    .map(|mutation| sha256_prefixed_str(&mutation.mutant_sequence)),
                 mutation,
                 warnings: resolved
                     .extended_boundary_audit
@@ -2033,10 +2218,8 @@ impl GentleEngine {
         let insert_seq_ids = members
             .iter()
             .flat_map(|member| {
-                [
-                    member.wild_type_seq_id.clone(),
-                    member.mutant_seq_id.clone(),
-                ]
+                std::iter::once(member.wild_type_seq_id.clone())
+                    .chain(member.mutant_seq_id.iter().cloned())
             })
             .collect::<Vec<_>>();
         let cloning_strategy = detached
@@ -2048,6 +2231,9 @@ impl GentleEngine {
             .map(|pair| vec![pair.forward_enzyme.clone(), pair.reverse_enzyme.clone()])
             .unwrap_or_default();
         for member in &mut members {
+            if member.mutation_policy == PromoterReporterPanelMutationPolicy::NativeOnlyV1 {
+                continue;
+            }
             let wild_type = detached
                 .engine()
                 .state
@@ -2060,14 +2246,20 @@ impl GentleEngine {
                     cause_chain: vec![],
                 })?;
             let audited = detached.engine().design_promoter_reporter_panel_mutation(
-                request.mutation_policy,
+                member.mutation_policy,
                 &wild_type,
                 member.motif_start_in_fragment_0based,
                 member.motif_end_in_fragment_0based_exclusive,
                 member.motif_forward_strand,
                 &selected_enzymes,
             )?;
-            if audited.mutant_sequence != member.mutation.mutant_sequence {
+            if audited.mutant_sequence
+                != member
+                    .mutation
+                    .as_ref()
+                    .map(|mutation| mutation.mutant_sequence.as_str())
+                    .unwrap_or_default()
+            {
                 return Err(EngineError {
                     code: ErrorCode::Internal,
                     message: format!(
@@ -2097,7 +2289,8 @@ impl GentleEngine {
                     cause_chain: vec![],
                 });
             }
-            member.mutation = audited;
+            member.mutant_sha256 = Some(sha256_prefixed_str(&audited.mutant_sequence));
+            member.mutation = Some(audited);
         }
 
         let products = match cloning_strategy.strategy {
@@ -2107,6 +2300,7 @@ impl GentleEngine {
                     request,
                     &members,
                     &cloning_strategy,
+                    required_vector_features,
                     &mut workflow,
                     &mut created_seq_ids,
                 )?,
@@ -2117,6 +2311,7 @@ impl GentleEngine {
                     &members,
                     mcs_start_0based,
                     mcs_end_0based_exclusive,
+                    required_vector_features,
                     &mut workflow,
                     &mut created_seq_ids,
                 )?,
@@ -2142,6 +2337,11 @@ impl GentleEngine {
         selected_enzymes: &[String],
     ) -> Result<P53FamilyMotifDisruptionReport, EngineError> {
         match policy {
+            PromoterReporterPanelMutationPolicy::NativeOnlyV1 => Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "native_only_v1 does not define an engineered mutation".to_string(),
+                cause_chain: vec![],
+            }),
             PromoterReporterPanelMutationPolicy::P53FamilyCoreDisruptionV1 => self
                 .design_p53_family_motif_disruption(
                     source_sequence,
@@ -2229,6 +2429,38 @@ impl GentleEngine {
         Ok(())
     }
 
+    fn promoter_reporter_panel_member_variants(
+        member: &PromoterReporterPanelMemberProposal,
+    ) -> Vec<(&'static str, &str)> {
+        let native_label =
+            if member.mutation_policy == PromoterReporterPanelMutationPolicy::NativeOnlyV1 {
+                "native"
+            } else {
+                "wild_type"
+            };
+        let mut variants = vec![(native_label, member.wild_type_seq_id.as_str())];
+        if let Some(mutant_seq_id) = member.mutant_seq_id.as_deref() {
+            variants.push(("mutant", mutant_seq_id));
+        }
+        variants
+    }
+
+    fn promoter_reporter_panel_product_seq_id(
+        member: &PromoterReporterPanelMemberProposal,
+        allele: &str,
+        vector_catalog_id: &str,
+    ) -> String {
+        let legacy_pgl_p53_path = member.mutation_policy
+            == PromoterReporterPanelMutationPolicy::P53FamilyCoreDisruptionV1
+            && vector_catalog_id.to_ascii_lowercase().contains("pgl");
+        let suffix = if legacy_pgl_p53_path {
+            "pgl"
+        } else {
+            "reporter"
+        };
+        format!("{}_{}_{}", member.member_id, allele, suffix)
+    }
+
     fn apply_promoter_reporter_panel_step(
         detached: &mut DetachedEngineExecution,
         workflow: &mut Vec<PromoterReporterPanelWorkflowStep>,
@@ -2289,6 +2521,7 @@ impl GentleEngine {
         request: &PromoterReporterPanelRequest,
         members: &[PromoterReporterPanelMemberProposal],
         cloning_strategy: &PromoterReporterPanelCloningStrategyReport,
+        required_vector_features: &[crate::genomes::HelperVectorRequiredFeatureExpectation],
         workflow: &mut Vec<PromoterReporterPanelWorkflowStep>,
         created_seq_ids: &mut Vec<String>,
     ) -> Result<Vec<PromoterReporterPanelProductProposal>, EngineError> {
@@ -2321,10 +2554,7 @@ impl GentleEngine {
 
         let mut products = vec![];
         for member in members {
-            for (allele, insert_seq_id) in [
-                ("wild_type", member.wild_type_seq_id.as_str()),
-                ("mutant", member.mutant_seq_id.as_str()),
-            ] {
+            for (allele, insert_seq_id) in Self::promoter_reporter_panel_member_variants(member) {
                 let insert_length = detached
                     .engine()
                     .state
@@ -2468,7 +2698,11 @@ impl GentleEngine {
                     &insert_digest.created_seq_ids,
                     "digested promoter insert",
                 )?;
-                let product_seq_id = format!("{}_{}_pgl", member.member_id, allele);
+                let product_seq_id = Self::promoter_reporter_panel_product_seq_id(
+                    member,
+                    allele,
+                    &request.vector_catalog_id,
+                );
                 let ligation = Self::apply_promoter_reporter_panel_step(
                     detached,
                     workflow,
@@ -2523,6 +2757,7 @@ impl GentleEngine {
                     primer_seq_ids,
                     primer_sequences,
                     &final_scan,
+                    required_vector_features,
                 )?);
             }
         }
@@ -2537,16 +2772,18 @@ impl GentleEngine {
         members: &[PromoterReporterPanelMemberProposal],
         mcs_start_0based: usize,
         mcs_end_0based_exclusive: usize,
+        required_vector_features: &[crate::genomes::HelperVectorRequiredFeatureExpectation],
         workflow: &mut Vec<PromoterReporterPanelWorkflowStep>,
         created_seq_ids: &mut Vec<String>,
     ) -> Result<Vec<PromoterReporterPanelProductProposal>, EngineError> {
         let mut products = vec![];
         for member in members {
-            for (allele, insert_seq_id) in [
-                ("wild_type", member.wild_type_seq_id.as_str()),
-                ("mutant", member.mutant_seq_id.as_str()),
-            ] {
-                let product_seq_id = format!("{}_{}_pgl", member.member_id, allele);
+            for (allele, insert_seq_id) in Self::promoter_reporter_panel_member_variants(member) {
+                let product_seq_id = Self::promoter_reporter_panel_product_seq_id(
+                    member,
+                    allele,
+                    &request.vector_catalog_id,
+                );
                 let plan = Self::single_insert_panel_gibson_plan(
                     request,
                     &member.member_id,
@@ -2633,6 +2870,7 @@ impl GentleEngine {
                     primer_seq_ids,
                     primer_sequences,
                     &final_scan,
+                    required_vector_features,
                 )?);
             }
         }
@@ -2801,6 +3039,7 @@ impl GentleEngine {
         primer_seq_ids: Vec<String>,
         primer_sequences_5prime_to_3prime: Vec<String>,
         final_restriction_site_scan: &RestrictionSiteScanReport,
+        required_vector_features: &[crate::genomes::HelperVectorRequiredFeatureExpectation],
     ) -> Result<PromoterReporterPanelProductProposal, EngineError> {
         let product = engine
             .state
@@ -2821,28 +3060,46 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
-        let luc2_annotation_preserved = product.features().iter().any(|feature| {
-            feature.qualifier_values("label").any(|value| {
-                value.to_ascii_lowercase().contains("luc2")
-                    || value.to_ascii_lowercase().contains("luciferase")
-            }) || feature.qualifier_values("gene").any(|value| {
-                value.to_ascii_lowercase().contains("luc2")
-                    || value.to_ascii_lowercase().contains("luciferase")
-            }) || feature.qualifier_values("product").any(|value| {
-                value.to_ascii_lowercase().contains("luc2")
-                    || value.to_ascii_lowercase().contains("luciferase")
+        let required_annotations = required_vector_features
+            .iter()
+            .filter(|feature| !feature.id.eq_ignore_ascii_case("multiple_cloning_region"))
+            .collect::<Vec<_>>();
+        let mut preserved_vector_annotation_ids = required_annotations
+            .iter()
+            .filter_map(|feature| {
+                Self::find_reporter_vector_feature(product, feature)
+                    .is_some()
+                    .then_some(feature.id.clone())
             })
-        });
-        if !luc2_annotation_preserved {
+            .collect::<Vec<_>>();
+        preserved_vector_annotation_ids.sort();
+        let missing_vector_annotation_ids = required_annotations
+            .iter()
+            .filter(|feature| {
+                !preserved_vector_annotation_ids
+                    .iter()
+                    .any(|id| id.eq_ignore_ascii_case(&feature.id))
+            })
+            .map(|feature| feature.id.clone())
+            .collect::<Vec<_>>();
+        let required_vector_annotations_preserved = missing_vector_annotation_ids.is_empty();
+        if !required_vector_annotations_preserved {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!(
-                    "Panel product '{}' lost the luc2/luciferase annotation",
-                    product_seq_id
+                    "Panel product '{}' lost catalog-required vector annotation(s): {}",
+                    product_seq_id,
+                    missing_vector_annotation_ids.join(", ")
                 ),
                 cause_chain: vec![],
             });
         }
+        let luc2_annotation_preserved = required_vector_features
+            .iter()
+            .any(|feature| feature.id.eq_ignore_ascii_case("luc2"))
+            && preserved_vector_annotation_ids
+                .iter()
+                .any(|id| id.eq_ignore_ascii_case("luc2"));
         let final_product_audit = Self::promoter_reporter_panel_final_product_audit(
             engine,
             vector_seq_id,
@@ -2859,6 +3116,8 @@ impl GentleEngine {
             sequence_sha256: sha256_prefixed_str(&product.get_forward_string()),
             length_bp: product.len(),
             circular: true,
+            required_vector_annotations_preserved: Some(required_vector_annotations_preserved),
+            preserved_vector_annotation_ids,
             luc2_annotation_preserved,
             assembly_model: assembly_model.to_string(),
             primer_seq_ids,
@@ -3047,6 +3306,7 @@ mod tests {
             label: "synthetic p53-family response element".to_string(),
             start_0based: motif_start,
             end_0based_exclusive: motif_start + motif.len(),
+            source_feature_id: Some(0),
             strand: Some("+".to_string()),
             motif_id: Some("synthetic_p53_family_re".to_string()),
             evidence_kind: "sequence_motif_candidate".to_string(),
@@ -3097,6 +3357,24 @@ mod tests {
         .expect("write candidate set");
 
         let mut source = DNAsequence::from_sequence(&source_sequence).expect("source sequence");
+        source.features_mut().push(gb_io::seq::Feature {
+            kind: "TFBS".into(),
+            location: gb_io::seq::Location::simple_range(
+                motif_start as i64,
+                (motif_start + motif.len()) as i64,
+            ),
+            qualifiers: vec![
+                (
+                    "label".into(),
+                    Some("synthetic p53-family response element".to_string()),
+                ),
+                (
+                    "matrix_id".into(),
+                    Some("synthetic_p53_family_re".to_string()),
+                ),
+                ("score".into(), Some("12.5".to_string())),
+            ],
+        });
         GentleEngine::prepare_sequence(&mut source);
         let mut state = ProjectState::default();
         state
@@ -3119,6 +3397,8 @@ mod tests {
                 fragment_role: PromoterReporterPanelFragmentRole::Core,
                 extended_boundary: None,
                 label: Some("TP73 core".to_string()),
+                mutation_policy: None,
+                evidence: vec![],
             }],
             output_dir: output_dir.to_string_lossy().to_string(),
         };
@@ -3376,6 +3656,102 @@ mod tests {
         assert!(error.message.contains("p53_family_core_disruption_v1"));
     }
 
+    #[test]
+    fn promoter_reporter_panel_member_policy_overrides_the_request_default() {
+        let request = PromoterReporterPanelRequest {
+            mutation_policy: PromoterReporterPanelMutationPolicy::NativeOnlyV1,
+            ..PromoterReporterPanelRequest::default()
+        };
+        let member = PromoterReporterPanelMemberRequest {
+            mutation_policy: Some(PromoterReporterPanelMutationPolicy::P53FamilyCoreDisruptionV1),
+            ..PromoterReporterPanelMemberRequest::default()
+        };
+
+        assert_eq!(
+            GentleEngine::promoter_reporter_panel_member_mutation_policy(&request, &member),
+            PromoterReporterPanelMutationPolicy::P53FamilyCoreDisruptionV1
+        );
+    }
+
+    #[test]
+    fn promoter_reporter_product_ids_keep_pgl_only_for_the_legacy_p53_path() {
+        let mut member = PromoterReporterPanelMemberProposal {
+            member_id: "target_01".to_string(),
+            mutation_policy: PromoterReporterPanelMutationPolicy::P53FamilyCoreDisruptionV1,
+            ..PromoterReporterPanelMemberProposal::default()
+        };
+        assert_eq!(
+            GentleEngine::promoter_reporter_panel_product_seq_id(
+                &member,
+                "wild_type",
+                "promega_pgl4_10_luc2",
+            ),
+            "target_01_wild_type_pgl"
+        );
+        assert_eq!(
+            GentleEngine::promoter_reporter_panel_product_seq_id(
+                &member,
+                "wild_type",
+                "generic_fluorescent_reporter",
+            ),
+            "target_01_wild_type_reporter"
+        );
+
+        member.mutation_policy = PromoterReporterPanelMutationPolicy::NativeOnlyV1;
+        assert_eq!(
+            GentleEngine::promoter_reporter_panel_product_seq_id(
+                &member,
+                "native",
+                "promega_pgl4_10_luc2",
+            ),
+            "target_01_native_reporter"
+        );
+    }
+
+    #[test]
+    fn promoter_reporter_legacy_member_does_not_fabricate_anchor_provenance() {
+        let member: PromoterReporterPanelMemberProposal =
+            serde_json::from_value(json!({})).expect("legacy panel member");
+
+        assert!(member.anchor.is_none());
+    }
+
+    #[test]
+    fn promoter_reporter_panel_rejects_incomplete_member_evidence() {
+        let temp = tempdir().expect("panel evidence tempdir");
+        let candidate_set_path = temp.path().join("candidate.json");
+        fs::write(&candidate_set_path, b"{}").expect("candidate placeholder");
+        let request = PromoterReporterPanelRequest {
+            schema: PROMOTER_REPORTER_PANEL_REQUEST_SCHEMA.to_string(),
+            panel_id: "evidence_validation".to_string(),
+            vector_seq_id: "vector".to_string(),
+            vector_catalog_id: "catalog_vector".to_string(),
+            mutation_policy: PromoterReporterPanelMutationPolicy::NativeOnlyV1,
+            members: vec![PromoterReporterPanelMemberRequest {
+                candidate_set_path: candidate_set_path.to_string_lossy().to_string(),
+                evidence: vec![PromoterEvidenceItem {
+                    evidence_id: "response_1".to_string(),
+                    kind: "expression_response".to_string(),
+                    source: " ".to_string(),
+                    summary: "Bound response evidence".to_string(),
+                    ..PromoterEvidenceItem::default()
+                }],
+                ..PromoterReporterPanelMemberRequest::default()
+            }],
+            output_dir: temp.path().join("out").to_string_lossy().to_string(),
+            ..PromoterReporterPanelRequest::default()
+        };
+
+        let error = GentleEngine::normalize_promoter_reporter_panel_request(request)
+            .expect_err("incomplete evidence provenance must fail normalization");
+        assert_eq!(error.code, ErrorCode::InvalidInput);
+        assert!(
+            error
+                .message
+                .contains("evidence_id, kind, source, and summary")
+        );
+    }
+
     fn run_promoter_reporter_panel_end_to_end_test(name: &str, test: fn()) {
         std::thread::Builder::new()
             .name(name.to_string())
@@ -3457,6 +3833,109 @@ mod tests {
             engine
                 .promoter_reporter_panel_value_sha256(engine.snapshot(), "test baseline")
                 .expect("state after rejected approval")
+        );
+    }
+
+    #[test]
+    fn promoter_reporter_native_only_panel_preserves_evidence_without_inventing_a_mutant() {
+        run_promoter_reporter_panel_end_to_end_test(
+            "promoter-panel-native-only-test",
+            promoter_reporter_native_only_panel_runs_on_expanded_stack,
+        );
+    }
+
+    fn promoter_reporter_native_only_panel_runs_on_expanded_stack() {
+        let (_temp, engine, mut request) = promoter_reporter_panel_materialization_fixture();
+        request.mutation_policy = PromoterReporterPanelMutationPolicy::NativeOnlyV1;
+        let candidate_set_path = PathBuf::from(&request.members[0].candidate_set_path);
+        let mut candidate_set: PromoterReporterCandidateSet = serde_json::from_slice(
+            &fs::read(&candidate_set_path).expect("native candidate-set bytes"),
+        )
+        .expect("native candidate set");
+        let motif_anchor = candidate_set.anchor.clone().expect("fixture anchor");
+        let explicit_anchor = PromoterReporterAnchor {
+            kind: PromoterReporterAnchorKind::ExplicitInterval,
+            label: "reviewed regulatory interval".to_string(),
+            start_0based: motif_anchor.start_0based,
+            end_0based_exclusive: motif_anchor.end_0based_exclusive,
+            evidence_kind: "caller_declared_interval".to_string(),
+            interpretation_tags: vec![
+                "explicit_interval".to_string(),
+                "biological_role_not_inferred".to_string(),
+            ],
+            ..PromoterReporterAnchor::default()
+        };
+        candidate_set.anchor = Some(explicit_anchor.clone());
+        // Exercise the supported candidate-set fallback and prove that the
+        // resolved anchor is normalized into the proposal member.
+        candidate_set.candidates[0].anchor = None;
+        request.members[0].evidence.push(PromoterEvidenceItem {
+            evidence_id: "response_fixture_tp73_overexpression".to_string(),
+            kind: "expression_response".to_string(),
+            source: "synthetic_response_fixture".to_string(),
+            summary: "Synthetic perturbation response retained independently of motif evidence"
+                .to_string(),
+            interpretation_tags: vec!["response_not_causality".to_string()],
+            ..PromoterEvidenceItem::default()
+        });
+        fs::write(
+            &candidate_set_path,
+            serde_json::to_vec_pretty(&candidate_set).expect("native candidate-set JSON"),
+        )
+        .expect("write native candidate set");
+        let baseline = engine
+            .promoter_reporter_panel_value_sha256(engine.snapshot(), "native test baseline")
+            .expect("native baseline digest");
+
+        let proposal = engine
+            .plan_promoter_reporter_panel(request)
+            .expect("native-only panel proposal");
+
+        assert_eq!(proposal.members.len(), 1);
+        let member = &proposal.members[0];
+        assert_eq!(
+            member.mutation_policy,
+            PromoterReporterPanelMutationPolicy::NativeOnlyV1
+        );
+        assert_eq!(member.anchor.as_ref(), Some(&explicit_anchor));
+        assert!(member.wild_type_seq_id.ends_with("_native"));
+        assert!(member.mutant_seq_id.is_none());
+        assert!(member.mutant_sha256.is_none());
+        assert!(member.mutation.is_none());
+        let motif_evidence = member
+            .evidence
+            .iter()
+            .find(|item| item.kind == "tfbs_annotation")
+            .expect("overlapping TFBS evidence");
+        assert_eq!(motif_evidence.metrics.get("score"), Some(&12.5));
+        assert_eq!(
+            motif_evidence
+                .attributes
+                .get("feature_label")
+                .map(String::as_str),
+            Some("synthetic p53-family response element")
+        );
+        assert!(member.evidence.iter().any(|item| {
+            item.evidence_id == "response_fixture_tp73_overexpression"
+                && item.kind == "expression_response"
+                && item.source == "synthetic_response_fixture"
+        }));
+        assert_eq!(proposal.products.len(), 1);
+        assert_eq!(proposal.products[0].allele, "native");
+        assert!(proposal.products[0].product_seq_id.ends_with("_reporter"));
+        assert_eq!(
+            proposal.products[0].required_vector_annotations_preserved,
+            Some(true)
+        );
+        assert_eq!(
+            proposal.products[0].preserved_vector_annotation_ids,
+            vec!["luc2".to_string()]
+        );
+        assert_eq!(
+            baseline,
+            engine
+                .promoter_reporter_panel_value_sha256(engine.snapshot(), "native test baseline")
+                .expect("unchanged native baseline")
         );
     }
 
@@ -3863,6 +4342,22 @@ mod tests {
         );
         assert_eq!(audit.cds_start_codon_source_start_0based, 80);
         assert_eq!(audit.cds_start_codon_source_end_0based_exclusive, 101);
+
+        let (exclusive_start, exclusive_end, exclusive_audit) =
+            GentleEngine::promoter_reporter_panel_extended_geometry(
+                &source,
+                &candidate,
+                &PromoterReporterPanelExtendedBoundaryPolicy {
+                    kind: PromoterReporterPanelExtendedBoundaryKind::CanonicalCdsStartExclusive,
+                    transcript_id: "ENST_SPLIT_FWD".to_string(),
+                },
+            )
+            .expect("forward ATG-exclusive boundary");
+        assert_eq!((exclusive_start, exclusive_end), (0, 80));
+        assert_eq!(
+            exclusive_audit.cds_start_codon_source_ranges_0based,
+            vec![(80, 82), (100, 101)]
+        );
     }
 
     #[test]
@@ -3906,6 +4401,22 @@ mod tests {
         );
         assert_eq!(audit.cds_start_codon_source_start_0based, 99);
         assert_eq!(audit.cds_start_codon_source_end_0based_exclusive, 120);
+
+        let (exclusive_start, exclusive_end, exclusive_audit) =
+            GentleEngine::promoter_reporter_panel_extended_geometry(
+                &source,
+                &candidate,
+                &PromoterReporterPanelExtendedBoundaryPolicy {
+                    kind: PromoterReporterPanelExtendedBoundaryKind::CanonicalCdsStartExclusive,
+                    transcript_id: "ENST_SPLIT_REV".to_string(),
+                },
+            )
+            .expect("reverse ATG-exclusive boundary");
+        assert_eq!((exclusive_start, exclusive_end), (120, 155));
+        assert_eq!(
+            exclusive_audit.cds_start_codon_source_ranges_0based,
+            vec![(118, 120), (99, 100)]
+        );
     }
 
     #[test]

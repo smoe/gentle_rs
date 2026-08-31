@@ -1,5 +1,16 @@
 # GENtle Changelog
 
+- Generalized the approval-gated promoter-reporter panel from a mandatory
+  luciferase/p53-mutant pair to an evidence-guided regulatory reporter
+  contract. `native_only_v1` now emits one unchanged construct per member,
+  member-specific overrides retain explicitly requested p53-family controls,
+  motif/interval/variant anchors and overlapping evidence are bound into the
+  proposal digest, and `canonical_cds_start_exclusive` retains the complete
+  annotated 5' UTR without copying source-ATG bases. Final products preserve
+  catalog-required vector annotations generically; legacy pGL4/luc2 fields and
+  p53-family behavior remain compatible. Added a matching Agent Assistant
+  template and conservative local-model playbook.
+
 - Stabilized primer Tm values across operating-system math libraries by
   quantizing shared Tm, Tm-difference, and derived score metrics to nanodegree
   reporting precision before ranking and serialization. This prevents

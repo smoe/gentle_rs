@@ -7229,20 +7229,30 @@ cargo run --quiet --bin gentle_cli -- --state STATE.json \
 ```
 
 The request names one loaded, exactly catalog-validated vector and one or more
-saved `gentle.promoter_reporter_candidates.v1` members. It must explicitly set
-`mutation_policy` to `p53_family_core_disruption_v1`; v1 rejects an omitted or
-`unspecified` policy so an unrelated promoter request cannot silently receive
-p53-family substitutions. Optional study-specific interpretation limits belong
-in request-bound `scientific_caveats` and are preserved in the proposal rather
-than supplied by the generic operation. Planning is read-only: GENtle simulates
-fragment extraction, the policy-selected p53-family motif mutant,
-shared directional restriction selection or explicit Gibson fallback, cloning
-primers, circular products, feature transfer, and GenBank/SVG/manifest paths in
-a detached engine. Each product also carries the assembly junction-validation
-basis and a final scan from the shared restriction-enzyme machinery; any site
-count exceeding the combined vector-plus-insert count is flagged for review.
-The proposal binds those results and every source/state hash under
-`proposal_digest`.
+saved `gentle.promoter_reporter_candidates.v1` members. Use
+`mutation_policy: "native_only_v1"` for an unchanged regulatory-fragment panel.
+Use `p53_family_core_disruption_v1` only for explicitly requested p53-family
+motif controls; that policy retains the existing wild-type/mutant pair and
+requires a motif-hit anchor. A member may override the request policy, allowing
+selected controls without mutating every fragment. Omitted or `unspecified`
+effective policies fail before sequence editing. Optional study-specific
+response, occupancy, or other selection support belongs in each member's
+`evidence[]` ledger with a stable id, kind, source, summary, provenance, and
+interpretation tags. Study-wide interpretation limits belong in request-bound
+`scientific_caveats`. Both are preserved in the proposal rather than supplied
+by the generic operation.
+
+Planning is read-only: GENtle simulates fragment extraction, optional
+policy-selected controls, shared directional restriction selection or explicit
+Gibson fallback, cloning primers, circular products, feature transfer, and
+GenBank/SVG/manifest paths in a detached engine. Candidate anchor provenance and
+overlapping evidence rows, including motif scores and track provenance, are
+bound into the proposal without turning motif evidence into occupancy evidence.
+Each product must preserve all catalog-required vector annotations outside the
+replaced MCS and carries the assembly junction-validation basis plus a final scan
+from the shared restriction-enzyme machinery. Any site count exceeding the
+combined vector-plus-insert count is flagged for review. The proposal binds
+those results and every source/state hash under `proposal_digest`.
 
 Core members retain the ranked candidate's fragment geometry. An extended
 member must explicitly bind one annotated transcript and the canonical CDS
@@ -7254,7 +7264,7 @@ start-codon boundary:
   "candidate_id": "tgfb1_core",
   "fragment_role": "extended",
   "extended_boundary": {
-    "kind": "canonical_cds_start_codon",
+    "kind": "canonical_cds_start_exclusive",
     "transcript_id": "ENST00000221930"
   },
   "label": "TGFB1 extended"
@@ -7262,8 +7272,11 @@ start-codon boundary:
 ```
 
 GENtle derives the strand-aware genomic endpoint from that transcript's CDS
-annotation. The proposal's `extended_boundary_audit` exposes the exact codon
-coordinates, spliced 5'-UTR exon ranges, and typed upstream-ATG, uORF, and
+annotation. `canonical_cds_start_exclusive` retains the complete annotated 5'
+UTR but excludes every genomic base supplying the start codon; use
+`canonical_cds_start_codon` only when the source ATG itself belongs in the
+insert. The proposal's `extended_boundary_audit` exposes the exact codon source
+ranges, spliced 5'-UTR exon ranges, and typed upstream-ATG, uORF, and
 5'-UTR-intron warnings. Missing, duplicate, strand-mismatched, or CDS-free
 annotations fail instead of falling back to an inferred genomic ATG.
 

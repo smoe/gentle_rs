@@ -269,6 +269,10 @@ pub(super) fn agent_prompt_template_options() -> &'static [(&'static str, &'stat
         ("candidate_anchors", "Candidate between anchors"),
         ("blast_specificity", "BLAST specificity check"),
         ("track_intersection", "Track import + prioritization"),
+        (
+            "regulatory_reporter_study",
+            "Evidence-guided regulatory reporter study",
+        ),
         ("biological_adjustment", "Adapt a biological workflow"),
         ("macro_template", "Macro/template authoring"),
     ]
@@ -407,6 +411,43 @@ Output wanted:
 
 Execution policy:
 ask-before-run"#
+        }
+        "regulatory_reporter_study" => {
+            r#"Objective:
+Plan an evidence-guided study that places native regulatory DNA from responsive genes into a validated reporter backbone.
+
+Context to establish before suggesting execution:
+- perturbation factor and form/isoform: <FACTOR_AND_FORM>
+- biological system, cell type, time point, and contrast: <CONTEXT>
+- responsive target genes and evidence source: <GENES_AND_EVIDENCE>
+- species and exact genome assembly: <SPECIES_AND_BUILD>
+- exact reporter-vector catalog identity: <VECTOR_OR_UNKNOWN>
+
+Required distinctions:
+- expression response, sequence motif, occupancy evidence, and functional reporter evidence are separate evidence classes;
+- a motif match alone supports a candidate binding site, not occupancy, causality, or a cofactor claim;
+- enumerate transcript-derived TSS/promoter classes before choosing one fragment per gene;
+- keep native regulatory fragments as the default; engineered motif controls are optional per member and require an explicit mutation policy;
+- when retaining the complete annotated 5' UTR but excluding source translation, use canonical_cds_start_exclusive with one explicit transcript_id;
+- do not materialize constructs, download external data, or run a mutation without explicit confirmation.
+
+Useful shared GENtle surfaces after their operands are known:
+- `features promoter-evidence-matrix SEQ_ID --gene-label GENE ...`
+- `op '{"SuggestPromoterReporterFragments":{...}}'`
+- `promoters panel-plan @REQUEST.json --path PROPOSAL.json`
+- `promoters panel-materialize @PROPOSAL.json --approve DIGEST`
+
+Output wanted:
+1. assumptions and missing inputs;
+2. one evidence ledger per gene, keeping response/motif/occupancy provenance separate;
+3. TSS/promoter alternatives and fragment-policy rationale;
+4. a native-only panel request first, with optional member-specific controls listed separately;
+5. exact parser-valid commands only after every operand is known;
+6. proposal review checklist covering vector identity, fragment bounds, anchor/evidence provenance, primers, product annotations, and non-claims;
+7. an explicit stop point before materialization.
+
+Execution policy:
+ask-before-run; chat-only while species/build, evidence, TSS policy, vector identity, or local paths remain unresolved"#
         }
         "biological_adjustment" => {
             r#"Objective:
@@ -617,6 +658,18 @@ mod tests {
         assert!(agent_prompt_template_text("compact_intro").contains("docs/glossary.json"));
         assert!(agent_prompt_template_text("candidate_anchors").contains("candidates"));
         assert!(
+            agent_prompt_template_text("regulatory_reporter_study")
+                .contains("canonical_cds_start_exclusive")
+        );
+        assert!(
+            agent_prompt_template_text("regulatory_reporter_study").contains("motif match alone")
+        );
+        assert!(
+            agent_prompt_template_text("regulatory_reporter_study")
+                .contains("`op '{\"SuggestPromoterReporterFragments\"")
+        );
+        assert!(!agent_prompt_template_text("regulatory_reporter_study").contains("op apply"));
+        assert!(
             agent_prompt_template_text("biological_adjustment")
                 .contains("parameter-only use of an existing capability")
         );
@@ -630,6 +683,16 @@ mod tests {
         );
         assert!(agent_prompt_template_text("unknown").contains("Objective:"));
         assert!(agent_prompt_template_text("unknown").contains("operand conventions"));
+    }
+
+    #[test]
+    fn regulatory_reporter_template_uses_a_parser_valid_operation_command() {
+        let line = r#"op '{"SuggestPromoterReporterFragments":{"input":"seq","gene_label":"GENE","retain_downstream_from_tss_bp":200,"retain_upstream_beyond_variant_bp":500,"max_candidates":10,"fragment_policy":{"anchor":{"kind":"motif_hit","label_or_id":"FACTOR","occurrence":1},"collapse_mode":{"tss_cluster":{"tolerance_bp":50}},"promoter_upstream_baseline_bp":500,"anchor_flank_bp":150,"max_fragment_length_bp":5000},"path":"candidates.json"}}'"#;
+
+        assert!(matches!(
+            crate::engine_shell::parse_shell_line(line).expect("template operation command"),
+            crate::engine_shell::ShellCommand::Op { .. }
+        ));
     }
 
     #[test]

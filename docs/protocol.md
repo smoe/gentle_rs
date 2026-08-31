@@ -3582,6 +3582,10 @@ Sequencing-trace evidence notes:
     remain v1 coordinate aliases; for a non-variant request they contain the
     resolved anchor interval, while additive `anchor` provenance identifies
     its actual kind
+  - non-legacy candidates also carry an `evidence[]` ledger built from
+    overlapping TFBS, track, variant, repeat, enhancer, and terminator features;
+    motif scores and track provenance remain evidence attributes rather than
+    being promoted to occupancy or functional claims
 - Promoter-reporter panel support reports remain engine-owned and portable:
   - `gentle.promoter_reporter_panel_cloning_strategy.v1` checks one ordered
     vector-derived directional restriction pair against every insert and
@@ -3593,21 +3597,30 @@ Sequencing-trace evidence notes:
     promoter candidates, one exact catalog-owned vector identity, an explicit
     `mutation_policy`, optional request-bound `scientific_caveats`, and an
     output directory without re-resolving promoter biology in an adapter
-  - v1 currently accepts only `mutation_policy=p53_family_core_disruption_v1`;
-    an omitted/`unspecified` policy is rejected before sequence editing so a
-    generic promoter request cannot silently receive p53-family substitutions
+  - `mutation_policy=native_only_v1` produces one unchanged native insert and
+    reporter construct per member; `p53_family_core_disruption_v1` retains the
+    existing wild-type/mutant pair and requires a resolved motif-hit anchor
+  - a member-level `mutation_policy` may override the request default so a
+    native panel can contain only explicitly requested engineered controls;
+    every effective policy must be explicit and `unspecified` fails before
+    sequence editing
+  - each member may bind independent `evidence[]` rows with explicit identity,
+    kind, source, summary, optional source-local interval/metrics, provenance references,
+    and interpretation tags; these rows are request-hashed and merged with,
+    not substituted for, candidate and current sequence-feature evidence
   - a `core` member keeps the selected candidate geometry and must not carry
     an `extended_boundary`
   - an `extended` member must carry `extended_boundary` with
-    `kind: canonical_cds_start_codon` and one explicit `transcript_id`; the
-    engine resolves exactly one matching transcript and its CDS annotation,
-    then extends strand-correctly through the annotated start codon
+    one explicit `transcript_id`; `canonical_cds_start_codon` extends
+    strand-correctly through the annotated start codon, while
+    `canonical_cds_start_exclusive` retains the complete annotated 5' UTR but
+    excludes all genomic bases supplying that codon
   - start-codon bases are consumed from transcript-ordered CDS ranges rather
     than assumed to be adjacent in genomic DNA; when a codon crosses an exon
     junction, its reported sequence excludes the intron while the genomic
     fragment extends through the final coding base and therefore retains the
     intervening intron
-  - `canonical_cds_start_codon` additionally requires a complete CDS entry
+  - both canonical-CDS policies require a complete CDS entry
     (`codon_start=1` or `phase=0` when supplied), no 5'-partial location marker,
     and an oriented `ATG` assembled from those transcript-ordered CDS bases;
     malformed, conflicting, partial, or noncanonical entry evidence fails
@@ -3616,7 +3629,8 @@ Sequencing-trace evidence notes:
     fails closed; the engine never guesses an ATG from raw genomic sequence or
     relabels the first complete codon of a partial CDS as its canonical start
   - `gentle.promoter_reporter_panel_proposal.v1` binds normalized inputs and
-    hashes, exact vector validation, wild-type/mutant members, the complete
+    hashes, exact vector validation, native members plus optional engineered
+    controls, each resolved anchor and its overlapping evidence ledger, the complete
     ordered child-operation workflow, cloning strategy, primer sequences,
     predicted circular product hashes, junction-validation basis, final
     restriction-site scans with conservative count-excess warnings, artifact
@@ -3628,6 +3642,13 @@ Sequencing-trace evidence notes:
       `five_prime_utr_intron` warnings
     - upstream-ATG/uORF checks run on transcript-oriented spliced UTR sequence;
       intronic genomic bases are not scanned as if they were mature RNA
+    - final products must preserve every catalog-required vector annotation
+      outside the replaced multiple-cloning region; the older
+      `luc2_annotation_preserved` field remains as a compatibility projection,
+      not as a generic reporter requirement; an absent generic preservation
+      field identifies a legacy proposal rather than a failed validation
+    - an absent member `anchor` likewise identifies a legacy proposal; newly
+      planned proposals always bind the resolved anchor explicitly
   - `gentle.promoter_reporter_panel_receipt.v1` records the approved digest,
     committed sequence/product ids, artifact paths, manifest path, and final
     project-state hash

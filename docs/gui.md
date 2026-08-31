@@ -2914,6 +2914,11 @@ Window screenshot help:
 
 Behavior:
 
+- Prompt template `Evidence-guided regulatory reporter study` helps the agent
+  collect perturbation context, responsive genes, assembly, TSS policy,
+  evidence sources, and exact vector identity before suggesting commands. It
+  keeps response, motif, occupancy, and reporter-result evidence separate and
+  stops before mutation or materialization.
 - before the first conversation, a small `Start here` card offers two direct
   GUI actions: open one or more existing sequence documents, or open GENtle's
   general Configuration window; neither action is sent to an agent
@@ -5642,16 +5647,21 @@ Tutorial projects:
     `MaterializePromoterReporterPanel` operations:
     - request JSON selects already-reviewed promoter candidates and one loaded,
       exactly catalog-validated vector; the GUI does not resolve or rerank them
-    - request JSON must also name the mutation policy; v1 accepts only
-      `p53_family_core_disruption_v1` and rejects an omitted or `unspecified`
-      policy rather than silently applying p53-family biology to an unrelated
-      promoter panel
+    - request JSON must name an effective mutation policy:
+      `native_only_v1` creates one unchanged regulatory construct, while
+      `p53_family_core_disruption_v1` creates the established
+      wild-type/mutant pair and requires a motif-hit anchor; members can
+      override the request default, and `unspecified` remains invalid
+    - member `evidence[]` rows bind independent response or occupancy sources;
+      the panel summarizes their count and the proposal JSON retains their full
+      provenance without merging them semantically with motif annotations
     - study-specific interpretation limits belong in request-bound
       `scientific_caveats`; GENtle preserves them in the proposal instead of
       injecting gene names or study claims from the generic operation
-    - `Plan panel` is read-only and displays member boundaries/roles, candidate
-      motif coordinates, the stated-rule mutation audit, shared restriction or
-      Gibson strategy, primer readiness, predicted circular products, exact
+    - `Plan panel` is read-only and displays member boundaries/roles, effective
+      policy, anchor/evidence provenance, optional stated-rule mutation audit,
+      shared restriction or Gibson strategy, primer readiness, predicted
+      circular products, preserved catalog-required vector annotations, exact
       artifact paths, warnings, and biological non-claims
     - planning clears any previous approval text, and materialization remains
       disabled until the user types the complete displayed proposal digest

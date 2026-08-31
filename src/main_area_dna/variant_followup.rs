@@ -1,11 +1,14 @@
-//! Variant-linked promoter follow-up expert for `MainAreaDna`.
+//! Variant-linked regulatory-reporter follow-up expert for `MainAreaDna`.
 //!
-//! This keeps the GUI orchestration for promoter-SNP-to-luciferase follow-up
+//! This keeps the GUI orchestration for promoter and variant follow-up
 //! close to the sequence window while still routing all biology/business logic
 //! through shared engine operations.
 
 use super::*;
-use crate::engine::{TfbsScoreTrackCorrelationMetric, TfbsScoreTrackCorrelationSignalSource};
+use crate::engine::{
+    PromoterReporterPanelExtendedBoundaryKind, TfbsScoreTrackCorrelationMetric,
+    TfbsScoreTrackCorrelationSignalSource,
+};
 
 #[derive(Clone, Debug)]
 pub(super) struct VariantFollowupBundleArtifacts {
@@ -5030,28 +5033,61 @@ impl MainAreaDna {
                     for member in &proposal.members {
                         ui.horizontal_wrapped(|ui| {
                             ui.strong(&member.label);
+                            let sequence_ids = member
+                                .mutant_seq_id
+                                .as_deref()
+                                .map(|mutant| {
+                                    format!("{} / {mutant}", member.wild_type_seq_id)
+                                })
+                                .unwrap_or_else(|| member.wild_type_seq_id.clone());
                             ui.label(format!(
-                                "{:?} | {} bp | {} / {}",
+                                "{:?} | {} bp | {:?} | {}",
                                 member.fragment_role,
                                 member.fragment_length_bp,
-                                member.wild_type_seq_id,
-                                member.mutant_seq_id
+                                member.mutation_policy,
+                                sequence_ids
                             ));
                         });
-                        ui.small(format!(
-                            "motif {}..{} | {} stated base changes | p53-family local maximum audit: {}",
-                            member.motif_start_in_fragment_0based,
-                            member.motif_end_in_fragment_0based_exclusive,
-                            member.mutation.changes.len(),
-                            if member.mutation.no_stronger_p53_family_hit_near_edit {
-                                "pass"
-                            } else {
-                                "review"
-                            }
-                        ));
-                        if let Some(audit) = &member.extended_boundary_audit {
+                        if let Some(anchor) = &member.anchor {
                             ui.small(format!(
-                                "extended through {} CDS start codon {} {}..{} | spliced 5' UTR {} bp",
+                                "anchor {:?} '{}' {}..{} | {} evidence row(s)",
+                                anchor.kind,
+                                anchor.label,
+                                anchor.start_0based,
+                                anchor.end_0based_exclusive,
+                                member.evidence.len()
+                            ));
+                        } else {
+                            ui.small(format!(
+                                "anchor not reported (legacy proposal) | {} evidence row(s)",
+                                member.evidence.len()
+                            ));
+                        }
+                        if let Some(mutation) = &member.mutation {
+                            ui.small(format!(
+                                "motif {}..{} | {} stated base changes | p53-family local maximum audit: {}",
+                                member.motif_start_in_fragment_0based,
+                                member.motif_end_in_fragment_0based_exclusive,
+                                mutation.changes.len(),
+                                if mutation.no_stronger_p53_family_hit_near_edit {
+                                    "pass"
+                                } else {
+                                    "review"
+                                }
+                            ));
+                        }
+                        if let Some(audit) = &member.extended_boundary_audit {
+                            let boundary_description = match audit.policy.kind {
+                                PromoterReporterPanelExtendedBoundaryKind::CanonicalCdsStartCodon => {
+                                    "through"
+                                }
+                                PromoterReporterPanelExtendedBoundaryKind::CanonicalCdsStartExclusive => {
+                                    "up to but excluding"
+                                }
+                            };
+                            ui.small(format!(
+                                "extended {} {} CDS start codon {} {}..{} | spliced 5' UTR {} bp",
+                                boundary_description,
                                 audit.policy.transcript_id,
                                 audit.cds_start_codon_5prime_to_3prime,
                                 audit.cds_start_codon_source_start_0based,
@@ -5068,16 +5104,17 @@ impl MainAreaDna {
                     }
                     for product in &proposal.products {
                         ui.small(format!(
-                            "{} | {} bp circular | {} | {} primer(s) | luc2 annotation {} | {} final restriction site(s)",
+                            "{} | {} bp circular | {} | {} primer(s) | required vector annotations {} ({}) | {} final restriction site(s)",
                             product.product_seq_id,
                             product.length_bp,
                             product.assembly_model,
                             product.primer_seq_ids.len(),
-                            if product.luc2_annotation_preserved {
-                                "preserved"
-                            } else {
-                                "missing"
+                            match product.required_vector_annotations_preserved {
+                                Some(true) => "preserved",
+                                Some(false) => "missing",
+                                None => "not reported (legacy proposal)",
                             },
+                            product.preserved_vector_annotation_ids.join(", "),
                             product.final_product_audit.matched_site_count,
                         ));
                         ui.small(format!(

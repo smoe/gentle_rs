@@ -3405,7 +3405,7 @@ pub struct AlternativePromoterComparisonReport {
     pub warnings: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default)]
 /// One evidence item attached to a promoter candidate in the conservative
 /// promoter-evidence ledger.
@@ -3995,6 +3995,11 @@ pub struct PromoterReporterFragmentCandidate {
     pub grouping_reason: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub anchor: Option<PromoterReporterAnchor>,
+    /// Coordinate-overlapping evidence retained separately from the anchor.
+    /// A motif row remains sequence evidence unless an independent occupancy
+    /// source is present.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence: Vec<PromoterEvidenceItem>,
     /// Legacy coordinate aliases retained for v1 consumers. For non-variant
     /// reports they carry the resolved anchor interval.
     pub variant_start_0based: usize,
@@ -4014,7 +4019,7 @@ pub struct PromoterReporterFragmentCandidate {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 /// Portable candidate set for promoter-fragment suggestions that can be turned
-/// into luciferase reporter inserts.
+/// into inserts for a validated reporter backbone.
 pub struct PromoterReporterCandidateSet {
     pub schema: String,
     pub seq_id: String,
@@ -9176,12 +9181,13 @@ pub enum PromoterReporterPanelFragmentRole {
 #[serde(rename_all = "snake_case")]
 /// Explicit sequence-edit policy for a promoter-reporter panel.
 ///
-/// V1 supports only the stated-rule p53-family core disruption. `Unspecified`
-/// exists so omitted policy fails validation instead of silently applying that
-/// biology to an unrelated promoter panel.
+/// `Unspecified` exists so omitted policy fails validation instead of silently
+/// applying mutation biology to an unrelated promoter panel. Native-only
+/// members retain the source regulatory sequence without an engineered control.
 pub enum PromoterReporterPanelMutationPolicy {
     #[default]
     Unspecified,
+    NativeOnlyV1,
     P53FamilyCoreDisruptionV1,
 }
 
@@ -9191,6 +9197,9 @@ pub enum PromoterReporterPanelMutationPolicy {
 pub enum PromoterReporterPanelExtendedBoundaryKind {
     #[default]
     CanonicalCdsStartCodon,
+    /// Retain the complete annotated 5' UTR while excluding every genomic base
+    /// that supplies the canonical start codon.
+    CanonicalCdsStartExclusive,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -9224,8 +9233,8 @@ pub struct PromoterReporterPanelExtendedWarning {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
-/// Deterministic basis used to extend a promoter fragment through its selected
-/// transcript's annotated translation-start codon.
+/// Deterministic basis used to place an extended promoter-fragment boundary
+/// relative to its selected transcript's annotated translation-start codon.
 pub struct PromoterReporterPanelExtendedBoundaryAudit {
     pub policy: PromoterReporterPanelExtendedBoundaryPolicy,
     pub strand: String,
@@ -9244,7 +9253,7 @@ pub struct PromoterReporterPanelExtendedBoundaryAudit {
     pub warnings: Vec<PromoterReporterPanelExtendedWarning>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default)]
 /// One already-ranked promoter candidate selected for panel planning.
 pub struct PromoterReporterPanelMemberRequest {
@@ -9257,9 +9266,17 @@ pub struct PromoterReporterPanelMemberRequest {
     pub extended_boundary: Option<PromoterReporterPanelExtendedBoundaryPolicy>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
+    /// Optional member-specific override. When absent, the request-level policy
+    /// applies. This allows a native panel plus selected engineered controls.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mutation_policy: Option<PromoterReporterPanelMutationPolicy>,
+    /// Independent response, occupancy, or other selection evidence supplied
+    /// by the study. These rows remain distinct from sequence annotations.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence: Vec<PromoterEvidenceItem>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default)]
 /// Normalized input for one read-only promoter-reporter panel proposal.
 pub struct PromoterReporterPanelRequest {
@@ -9287,7 +9304,7 @@ pub struct PromoterReporterPanelSourceBinding {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
-/// One wild-type/mutant promoter-fragment pair in a proposal.
+/// One native promoter fragment and its optional engineered control.
 pub struct PromoterReporterPanelMemberProposal {
     pub member_id: String,
     pub label: String,
@@ -9305,16 +9322,26 @@ pub struct PromoterReporterPanelMemberProposal {
     pub fragment_start_0based: usize,
     pub fragment_end_0based_exclusive: usize,
     pub fragment_length_bp: usize,
+    pub mutation_policy: PromoterReporterPanelMutationPolicy,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub extended_boundary_audit: Option<PromoterReporterPanelExtendedBoundaryAudit>,
+    /// Resolved regulatory anchor for newly planned proposals. `None`
+    /// identifies a legacy v1 proposal that predates anchor provenance.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor: Option<PromoterReporterAnchor>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence: Vec<PromoterEvidenceItem>,
     pub motif_start_in_fragment_0based: usize,
     pub motif_end_in_fragment_0based_exclusive: usize,
     pub motif_forward_strand: bool,
     pub wild_type_seq_id: String,
     pub wild_type_sha256: String,
-    pub mutant_seq_id: String,
-    pub mutant_sha256: String,
-    pub mutation: P53FamilyMotifDisruptionReport,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mutant_seq_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mutant_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mutation: Option<P53FamilyMotifDisruptionReport>,
     pub warnings: Vec<String>,
 }
 
@@ -9357,6 +9384,14 @@ pub struct PromoterReporterPanelProductProposal {
     pub sequence_sha256: String,
     pub length_bp: usize,
     pub circular: bool,
+    /// All catalog-required vector annotations other than the replaced MCS
+    /// remain identifiable on the predicted product. `None` identifies a
+    /// legacy proposal that predates this generic validation field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required_vector_annotations_preserved: Option<bool>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub preserved_vector_annotation_ids: Vec<String>,
+    /// Compatibility projection retained for existing pGL4/luc2 consumers.
     pub luc2_annotation_preserved: bool,
     pub assembly_model: String,
     pub primer_seq_ids: Vec<String>,

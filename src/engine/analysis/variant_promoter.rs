@@ -1103,6 +1103,28 @@ impl GentleEngine {
         })
     }
 
+    pub(crate) fn promoter_reporter_evidence_for_span(
+        dna: &DNAsequence,
+        start_0based: usize,
+        end_0based_exclusive: usize,
+    ) -> Vec<PromoterEvidenceItem> {
+        let mut evidence = dna
+            .features()
+            .iter()
+            .enumerate()
+            .filter_map(|(feature_id, feature)| {
+                Self::promoter_evidence_feature_item(
+                    feature,
+                    feature_id,
+                    start_0based,
+                    end_0based_exclusive,
+                )
+            })
+            .collect::<Vec<_>>();
+        evidence.sort_by(|left, right| left.evidence_id.cmp(&right.evidence_id));
+        evidence
+    }
+
     fn promoter_evidence_row_from_record(
         seq_id: &str,
         record: PromoterWindowRecord,
@@ -3195,6 +3217,15 @@ impl GentleEngine {
                     record.grouping_reason.clone()
                 },
                 anchor: (!legacy_variant_geometry).then_some(anchor.clone()),
+                evidence: (!legacy_variant_geometry)
+                    .then(|| {
+                        Self::promoter_reporter_evidence_for_span(
+                            dna,
+                            start_0based,
+                            end_0based_exclusive,
+                        )
+                    })
+                    .unwrap_or_default(),
                 variant_start_0based: anchor.start_0based,
                 variant_end_0based_exclusive: anchor.end_0based_exclusive,
                 start_0based,

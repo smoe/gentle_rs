@@ -937,7 +937,15 @@ Current template set includes:
 - Candidate between anchors
 - BLAST specificity check
 - Track import + prioritization
+- Evidence-guided regulatory reporter study
+- Adapt a biological workflow
 - Macro/template authoring
+
+The regulatory-reporter template treats expression response, sequence motifs,
+independent occupancy data, and completed reporter measurements as separate
+evidence classes. It asks for species/build, TSS policy, responsive-gene
+evidence, and exact vector identity before proposing shared GENtle commands,
+defaults to native fragments, and stops before mutation or materialization.
 
 `Compact intro (no state)` is optimized for live demonstrations and "what can
 you do?" prompts. Selecting it in the GUI disables project-state summary

@@ -1,10 +1,10 @@
 # GENtle Roadmap
 
-Last session: 2026-08-30 - hardened transcript-bound extended reporter
-fragments, isolated Criterion audits from application binary targets, and
-completed semantic child-viewport publication plus the self-driving TP73 Xvfb
-smoke; final exact-revision PATZ1 GUI, benchmark, and copied-state acceptance
-remain before the unreleased `v0.1.0-internal.10` tag
+Last session: 2026-08-31 - generalized approval-gated reporter panels to native
+regulatory fragments with optional member-specific controls, evidence-bound
+proposals, and ATG-exclusive 5' UTR boundaries; final exact-revision PATZ1 GUI,
+benchmark, and copied-state acceptance remain before the unreleased
+`v0.1.0-internal.10` tag
 
 Purpose: fast session orientation. This file answers "what next?" and should be
 readable in under two minutes. Completed work belongs in
@@ -374,6 +374,10 @@ wet-lab conclusions or unconfirmed mutations.
   provenance, biological-context compatibility, multiple-testing correction,
   unresolved-member accounting, and no causal-regulation claim inferred from
   enrichment alone.
+- Engine-owned regulatory-reporter study composer that consumes a
+  perturbation-response gene cohort plus explicit TSS/evidence policies and
+  emits per-gene candidate sets and a ready panel request without duplicating
+  the existing terminal panel planner.
 - Add paralog mapping/resolution only with a concrete engine consumer,
   preserving relationship provenance and one-to-many ambiguity without
   inferring functional equivalence from matching symbols.

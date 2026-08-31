@@ -714,10 +714,16 @@ This enables:
 - operation-level undo/redo and replay support
 
 Scientific workflows that need human review before mutation may compose these
-operations through a content-addressed proposal. Promoter-reporter panel
-planning, for example, runs extraction, stated-rule motif mutation, primer
-design, cloning, product validation, and export planning in a detached engine;
-the live project and planned construct-artifact paths remain unchanged. An
+operations through a content-addressed proposal. Regulatory reporter-panel
+planning, for example, runs native-fragment extraction, optional explicitly
+scoped motif-control mutation, primer design, cloning, product validation, and
+export planning in a detached engine; the reporter modality is a catalog-bound
+vector choice rather than a separate biological contract. Candidate anchors
+and response/motif/occupancy evidence remain distinct, provenance-bearing
+records in the proposal; independent study evidence is bound through member
+requests and merged without replacing sequence-derived rows. No adapter may
+upgrade a motif hit to occupancy or causality. The live project and planned
+construct-artifact paths remain unchanged. An
 adapter may write the proposal JSON itself when the caller supplies an explicit
 proposal path. The separate materialization operation recomputes the complete
 proposal against current project state and bound input files, requires the
