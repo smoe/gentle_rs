@@ -141,6 +141,8 @@ pub mod render_export;
 pub mod render_feature_expert;
 /// Shared multi-gene promoter TFBS small-multiples SVG renderer.
 pub mod render_multi_gene_promoter_tfbs;
+/// Shared transcript-aware promoter-reporter architecture SVG renderer.
+pub mod render_promoter_reporter_architecture;
 /// Sequence export helpers and render-side formatting.
 pub mod render_sequence;
 /// Shared TF motif score-track SVG renderer.

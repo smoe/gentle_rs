@@ -170,8 +170,8 @@ use crate::enzymes::default_preferred_restriction_enzyme_names;
 use crate::genomes::BlastExternalBinaryPreflightReport;
 
 use super::{
-    CLONING_MACRO_TEMPLATE_SCHEMA, OpId, Operation, PrepareGenomeProgress,
-    ProtocolCartoonTemplateBindings, RunId, SeqId,
+    CLONING_MACRO_TEMPLATE_SCHEMA, OpId, Operation, PROMOTER_REPORTER_ARCHITECTURE_REQUEST_SCHEMA,
+    PrepareGenomeProgress, ProtocolCartoonTemplateBindings, RunId, SeqId,
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -5091,6 +5091,9 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub alternative_promoter_comparison: Option<AlternativePromoterComparisonReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_reporter_architecture_comparison:
+        Option<Box<PromoterReporterArchitectureComparisonReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub promoter_evidence_matrix: Option<PromoterEvidenceMatrixReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub isoform_promoter_comparison: Option<IsoformPromoterComparisonReport>,
@@ -9249,8 +9252,482 @@ pub struct PromoterReporterPanelExtendedBoundaryAudit {
     #[serde(default)]
     pub five_prime_utr_exon_ranges_0based: Vec<(usize, usize)>,
     pub five_prime_utr_spliced_length_bp: usize,
+    /// Introns between 5' UTR exons, ordered in transcript 5'-to-3'
+    /// orientation while each interval remains genomic ascending.
+    #[serde(default)]
+    pub five_prime_utr_intron_ranges_0based: Vec<(usize, usize)>,
+    pub five_prime_utr_total_intron_bp: usize,
+    pub five_prime_utr_max_intron_bp: usize,
+    /// Transcript-oriented sequence around the annotated start codon when the
+    /// loaded locus contains enough flanking exonic sequence.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kozak_context_5prime_to_3prime: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kozak_context_class: Option<String>,
     #[serde(default)]
     pub warnings: Vec<PromoterReporterPanelExtendedWarning>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Reporter architecture compared without creating a construct.
+pub enum PromoterReporterArchitectureKind {
+    #[default]
+    TssProximalTranscriptional,
+    Spliced5utrLucAtgReplacement,
+    Genomic5utrLucAtgReplacement,
+    EndogenousAtgRetainedFusion,
+}
+
+impl PromoterReporterArchitectureKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::TssProximalTranscriptional => "tss_proximal_transcriptional",
+            Self::Spliced5utrLucAtgReplacement => "spliced_5utr_luc_atg_replacement",
+            Self::Genomic5utrLucAtgReplacement => "genomic_5utr_luc_atg_replacement",
+            Self::EndogenousAtgRetainedFusion => "endogenous_atg_retained_fusion",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Fate of the endogenous and vector luciferase start codons.
+pub enum PromoterReporterAtgDisposition {
+    #[default]
+    EndogenousExcludedVectorLuciferaseRetained,
+    EndogenousReplacedByLuciferase,
+    EndogenousRetainedVectorLuciferaseRemoved,
+    EndogenousRetainedExtraUpstreamOfVectorLuciferase,
+}
+
+impl PromoterReporterAtgDisposition {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::EndogenousExcludedVectorLuciferaseRetained => {
+                "endogenous_excluded_vector_luciferase_retained"
+            }
+            Self::EndogenousReplacedByLuciferase => "endogenous_replaced_by_luciferase",
+            Self::EndogenousRetainedVectorLuciferaseRemoved => {
+                "endogenous_retained_vector_luciferase_removed"
+            }
+            Self::EndogenousRetainedExtraUpstreamOfVectorLuciferase => {
+                "endogenous_retained_extra_upstream_of_vector_luciferase"
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PromoterReporterFusionMode {
+    #[default]
+    InFrameTranslationFusion,
+    ExtraUpstreamAtg,
+}
+
+impl PromoterReporterFusionMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::InFrameTranslationFusion => "in_frame_translation_fusion",
+            Self::ExtraUpstreamAtg => "extra_upstream_atg",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Explicit opt-in request for an endogenous-ATG-retaining architecture.
+pub struct PromoterReporterFusionRequest {
+    pub transcript_id: String,
+    pub mode: PromoterReporterFusionMode,
+    pub retained_endogenous_cds_bp: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vector_luciferase_atg_removed: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub junction_sequence_5prime_to_3prime: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Optional caller-supplied baseline construct binding.
+pub struct PromoterReporterExistingConstructInput {
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub insert_seq_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vector_seq_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_start_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_end_0based_exclusive: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Caller-supplied transcription-initiation evidence kept separate from
+/// transcript annotation and CUT&RUN occupancy.
+pub struct PromoterReporterInitiationEvidenceInput {
+    pub transcript_id: String,
+    pub evidence_kind: String,
+    pub source_id: String,
+    pub summary: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub support_value: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub support_unit: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Read-only request for comparing transcript-aware reporter geometries.
+pub struct PromoterReporterArchitectureComparisonRequest {
+    pub schema: String,
+    pub seq_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub transcript_ids: Vec<String>,
+    pub promoter_upstream_bp: usize,
+    pub tss_proximal_downstream_bp: usize,
+    pub tss_cluster_tolerance_bp: usize,
+    #[serde(default)]
+    pub architectures: Vec<PromoterReporterArchitectureKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub existing_construct: Option<PromoterReporterExistingConstructInput>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fusion_requests: Vec<PromoterReporterFusionRequest>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub initiation_evidence: Vec<PromoterReporterInitiationEvidenceInput>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cutrun_dataset_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cutrun_read_report_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cutrun_catalog_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cutrun_cache_dir: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cutrun_species_filters: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub motif_tokens: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub motif_min_llr_quantile: Option<f64>,
+    #[serde(default)]
+    pub include_local_source_paths: bool,
+}
+
+impl Default for PromoterReporterArchitectureComparisonRequest {
+    fn default() -> Self {
+        Self {
+            schema: PROMOTER_REPORTER_ARCHITECTURE_REQUEST_SCHEMA.to_string(),
+            seq_id: String::new(),
+            gene_label: None,
+            transcript_ids: vec![],
+            promoter_upstream_bp: 1_000,
+            tss_proximal_downstream_bp: 200,
+            tss_cluster_tolerance_bp: 50,
+            architectures: vec![
+                PromoterReporterArchitectureKind::TssProximalTranscriptional,
+                PromoterReporterArchitectureKind::Spliced5utrLucAtgReplacement,
+                PromoterReporterArchitectureKind::Genomic5utrLucAtgReplacement,
+            ],
+            existing_construct: None,
+            fusion_requests: vec![],
+            initiation_evidence: vec![],
+            cutrun_dataset_ids: vec![],
+            cutrun_read_report_ids: vec![],
+            cutrun_catalog_path: None,
+            cutrun_cache_dir: None,
+            cutrun_species_filters: vec![],
+            motif_tokens: vec![],
+            motif_min_llr_quantile: None,
+            include_local_source_paths: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PromoterReporterArchitectureSourceProvenance {
+    pub source_sequence_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genome_anchor: Option<SequenceGenomeAnchorSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extraction_operation: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_source_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotation_source_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotation_source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_sha1: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotation_sha1: Option<String>,
+    pub local_paths_included: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct PromoterReporterArchitectureIntronAudit {
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub length_bp: usize,
+    pub transcript_order: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PromoterReporterTranscriptArchitectureAudit {
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub transcript_feature_id: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label: Option<String>,
+    pub strand: String,
+    pub tss_class_id: String,
+    pub tss_local_0based: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tss_genomic_1based: Option<usize>,
+    pub cds_start_codon_source_ranges_0based: Vec<(usize, usize)>,
+    #[serde(default)]
+    pub cds_start_codon_genomic_ranges_1based: Vec<(usize, usize)>,
+    pub cds_start_codon_5prime_to_3prime: String,
+    pub tss_to_atg_through_span_bp: usize,
+    #[serde(default)]
+    pub transcript_exon_ranges_0based: Vec<(usize, usize)>,
+    #[serde(default)]
+    pub cds_ranges_0based: Vec<(usize, usize)>,
+    pub five_prime_utr_exon_ranges_0based: Vec<(usize, usize)>,
+    pub five_prime_utr_spliced_length_bp: usize,
+    pub five_prime_utr_introns: Vec<PromoterReporterArchitectureIntronAudit>,
+    pub five_prime_utr_total_intron_bp: usize,
+    pub five_prime_utr_max_intron_bp: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kozak_context_5prime_to_3prime: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kozak_context_class: Option<String>,
+    #[serde(default)]
+    pub support_metadata: BTreeMap<String, Vec<String>>,
+    #[serde(default)]
+    pub warnings: Vec<PromoterReporterPanelExtendedWarning>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PromoterReporterTssClass {
+    pub class_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label: Option<String>,
+    pub strand: String,
+    pub representative_transcript_id: String,
+    pub representative_tss_local_0based: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub representative_tss_genomic_1based: Option<usize>,
+    pub min_tss_local_0based: usize,
+    pub max_tss_local_0based: usize,
+    #[serde(default)]
+    pub transcript_ids: Vec<String>,
+    pub grouping_reason: String,
+    pub transcription_initiation_evidence_state: String,
+    #[serde(default)]
+    pub initiation_evidence: Vec<PromoterReporterInitiationEvidenceInput>,
+    #[serde(default)]
+    pub recommended_usage_evidence: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct PromoterReporterArchitectureSegment {
+    pub segment_id: String,
+    pub kind: String,
+    pub material: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_start_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_end_0based_exclusive: Option<usize>,
+    pub length_bp: usize,
+    pub transcript_orientation: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct PromoterReporterArchitectureJunctionAudit {
+    pub endogenous_atg_disposition: PromoterReporterAtgDisposition,
+    pub reporter_atg_source: String,
+    pub vector_luciferase_atg_removed: Option<bool>,
+    pub frame_status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub junction_sequence_5prime_to_3prime: Option<String>,
+    pub audit_status: String,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PromoterReporterArchitectureRow {
+    pub architecture_id: String,
+    pub architecture_kind: PromoterReporterArchitectureKind,
+    pub tss_class_id: String,
+    pub representative_transcript_id: String,
+    #[serde(default)]
+    pub tss_class_transcript_ids: Vec<String>,
+    pub transcript_id: String,
+    pub strand: String,
+    pub tss_local_0based: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tss_genomic_1based: Option<usize>,
+    pub cds_start_codon_source_ranges_0based: Vec<(usize, usize)>,
+    pub modeled_insert_length_bp: usize,
+    pub modeled_length_scope: String,
+    pub five_prime_utr_spliced_length_bp: usize,
+    pub five_prime_utr_total_intron_bp: usize,
+    pub five_prime_utr_max_intron_bp: usize,
+    #[serde(default)]
+    pub five_prime_utr_introns: Vec<PromoterReporterArchitectureIntronAudit>,
+    #[serde(default)]
+    pub segments: Vec<PromoterReporterArchitectureSegment>,
+    pub junction: PromoterReporterArchitectureJunctionAudit,
+    #[serde(default)]
+    pub transcript_warnings: Vec<PromoterReporterPanelExtendedWarning>,
+    pub testable_question: String,
+    #[serde(default)]
+    pub major_confounds: Vec<String>,
+    #[serde(default)]
+    pub cloning_feasibility_notes: Vec<String>,
+    #[serde(default)]
+    pub non_claims: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PromoterReporterExistingConstructStatus {
+    pub status: String,
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub insert_seq_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vector_seq_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub insert_sequence_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_start_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_end_0based_exclusive: Option<usize>,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PromoterReporterPanelRecommendation {
+    pub recommendation_id: String,
+    pub stage: String,
+    pub role: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub architecture_id: Option<String>,
+    pub rationale: String,
+    pub required_before_materialization: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PromoterReporterCutRunLaneState {
+    #[default]
+    Unevaluated,
+    NotPrepared,
+    PreparedNoCompatibleEvidence,
+    Evaluated,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PromoterReporterCutRunLane {
+    pub source_kind: String,
+    pub source_id: String,
+    pub state: PromoterReporterCutRunLaneState,
+    pub role: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_factor: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub condition: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tissue_or_cell_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_accession: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_source_path: Option<String>,
+    pub support_window_count: usize,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PromoterReporterCutRunEvidence {
+    pub evaluation_state: String,
+    pub quantitative_comparison_status: String,
+    #[serde(default)]
+    pub lanes: Vec<PromoterReporterCutRunLane>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub regulatory_support: Option<CutRunRegulatorySupportReport>,
+    pub interpretation: String,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Portable read-only comparison used by GUI, shell/CLI, and MCP `op` routes.
+pub struct PromoterReporterArchitectureComparisonReport {
+    pub schema: String,
+    pub request_schema: String,
+    pub seq_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label: Option<String>,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub source_provenance: PromoterReporterArchitectureSourceProvenance,
+    pub promoter_upstream_bp: usize,
+    pub tss_proximal_downstream_bp: usize,
+    pub tss_cluster_tolerance_bp: usize,
+    #[serde(default)]
+    pub tss_classes: Vec<PromoterReporterTssClass>,
+    #[serde(default)]
+    pub transcripts: Vec<PromoterReporterTranscriptArchitectureAudit>,
+    #[serde(default)]
+    pub architectures: Vec<PromoterReporterArchitectureRow>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub common_cds_start_local_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub common_cds_start_genomic_1based: Option<usize>,
+    pub existing_construct: PromoterReporterExistingConstructStatus,
+    #[serde(default)]
+    pub staged_panel: Vec<PromoterReporterPanelRecommendation>,
+    pub cutrun_evidence: PromoterReporterCutRunEvidence,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub theoretical_motif_hits: Option<TfbsHitScanReport>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    #[serde(default)]
+    pub non_claims: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub json_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub svg_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]

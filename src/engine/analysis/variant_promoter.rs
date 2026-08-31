@@ -204,7 +204,7 @@ impl GentleEngine {
         }
     }
 
-    fn collapse_promoter_window_records_by_tss_cluster(
+    pub(crate) fn collapse_promoter_window_records_by_tss_cluster(
         records: Vec<PromoterWindowRecord>,
         tolerance_bp: usize,
     ) -> Vec<PromoterWindowRecord> {

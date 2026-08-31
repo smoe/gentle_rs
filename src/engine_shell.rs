@@ -89,7 +89,8 @@ use crate::{
         PrimerSpecificityCollectionMemberBinding, PrimerSpecificityPolicy,
         PrimerVariantScreenRequest, ProbeRegionRequest, ProjectFact, ProjectFactDomain,
         ProjectFactGraph, ProjectFactTypeSpec, ProjectState, PromoterArtifactManifestEntry,
-        PromoterCohortKind, PromoterExpressionEvidenceInput, PromoterReporterFragmentPolicy,
+        PromoterCohortKind, PromoterExpressionEvidenceInput,
+        PromoterReporterArchitectureComparisonRequest, PromoterReporterFragmentPolicy,
         PromoterReporterPanelProposal, PromoterReporterPanelRequest, PromoterTfbsGeneQuery,
         PromoterWindowCollapseMode, ProteinExpressionCdsAssessment,
         ProteinExpressionFeatureSummary, ProteinExpressionHandoffReport,
@@ -1084,6 +1085,11 @@ pub enum ShellCommand {
     PromotersPanelPlan {
         request: PromoterReporterPanelRequest,
         output: Option<String>,
+    },
+    PromotersCompareArchitectures {
+        request: PromoterReporterArchitectureComparisonRequest,
+        output: Option<String>,
+        svg_output: Option<String>,
     },
     PromotersPanelMaterialize {
         proposal: PromoterReporterPanelProposal,
@@ -8384,6 +8390,21 @@ impl ShellCommand {
                 request.members.len(),
                 request.vector_seq_id,
                 output.as_deref().unwrap_or("-"),
+            ),
+            Self::PromotersCompareArchitectures {
+                request,
+                output,
+                svg_output,
+            } => format!(
+                "compare transcript-aware promoter-reporter architectures on '{}' (transcripts={}, JSON='{}', SVG='{}')",
+                request.seq_id,
+                if request.transcript_ids.is_empty() {
+                    "all".to_string()
+                } else {
+                    request.transcript_ids.len().to_string()
+                },
+                output.as_deref().unwrap_or("-"),
+                svg_output.as_deref().unwrap_or("-"),
             ),
             Self::PromotersPanelMaterialize {
                 proposal,
@@ -26043,6 +26064,56 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             ],
         ),
         json!({
+            "id": "promoters compare-architectures",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "gentle.promoter_reporter_architecture_comparison_request.v1"},
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded annotated locus carried inside request.seq_id"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional portable JSON report supplied by --path"},
+                {"name": "SVG_PATH", "required": false, "subject_kind": "other", "detail": "optional shared-axis SVG supplied by --svg-path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"},
+                {"fact": "artifact.written", "subject": {"arg": "SVG_PATH"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ]},
+            "description": "Compare transcript-aware promoter-reporter geometries without materializing constructs; occupancy and initiation evidence remain separate layers.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("promoters compare-architectures")
+        }),
+        json!({
+            "id": "ComparePromoterReporterArchitectures",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "gentle.promoter_reporter_architecture_comparison_request.v1"},
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded annotated locus carried inside request.seq_id"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional JSON report carried by path"},
+                {"name": "SVG_PATH", "required": false, "subject_kind": "other", "detail": "optional shared-axis SVG carried by svg_path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"},
+                {"fact": "artifact.written", "subject": {"arg": "SVG_PATH"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ]},
+            "description": "Build the portable read-only promoter-reporter architecture comparison through the shared engine operation and generic MCP op surface.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ComparePromoterReporterArchitectures")
+        }),
+        json!({
             "id": "promoters panel-plan",
             "kind": "operation",
             "mutating": "false",
@@ -40539,9 +40610,58 @@ fn parse_gene_groups_command(tokens: &[String]) -> Result<ShellCommand, String> 
 
 fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
-        return Err("promoters requires a subcommand: panel-plan or panel-materialize".to_string());
+        return Err(
+            "promoters requires a subcommand: compare-architectures, panel-plan, or panel-materialize"
+                .to_string(),
+        );
     }
     match tokens[1].as_str() {
+        "compare-architectures" => {
+            if tokens.len() < 3 || tokens[2].starts_with("--") {
+                return Err(
+                    "promoters compare-architectures requires REQUEST_JSON_OR_@FILE [--path REPORT.json] [--svg-path FIGURE.svg]"
+                        .to_string(),
+                );
+            }
+            let request =
+                parse_required_json_payload::<PromoterReporterArchitectureComparisonRequest>(
+                    &tokens[2],
+                    "promoter-reporter architecture comparison request",
+                )?;
+            let mut output = None;
+            let mut svg_output = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--path" | "--output" => {
+                        output = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--path",
+                            "promoters compare-architectures",
+                        )?);
+                    }
+                    "--svg-path" | "--svg-output" => {
+                        svg_output = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--svg-path",
+                            "promoters compare-architectures",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for promoters compare-architectures"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PromotersCompareArchitectures {
+                request,
+                output,
+                svg_output,
+            })
+        }
         "panel-plan" => {
             if tokens.len() < 3 || tokens[2].starts_with("--") {
                 return Err(
@@ -40611,7 +40731,7 @@ fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
             })
         }
         other => Err(format!(
-            "Unknown promoters subcommand '{other}' (expected panel-plan or panel-materialize)"
+            "Unknown promoters subcommand '{other}' (expected compare-architectures, panel-plan, or panel-materialize)"
         )),
     }
 }
@@ -50938,6 +51058,28 @@ fn execute_export_import_and_resource_command(
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({ "result": proposal }),
+            })
+        }
+        ShellCommand::PromotersCompareArchitectures {
+            request,
+            output,
+            svg_output,
+        } => {
+            let op_result = engine
+                .apply(Operation::ComparePromoterReporterArchitectures {
+                    request: Box::new(request.clone()),
+                    path: output.clone(),
+                    svg_path: svg_output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result
+                .promoter_reporter_architecture_comparison
+                .ok_or_else(|| {
+                    "Promoter-reporter architecture comparison returned no report".to_string()
+                })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": report }),
             })
         }
         ShellCommand::PromotersPanelMaterialize {
@@ -64090,6 +64232,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::ReportersList { .. }
             | ShellCommand::ReportersRecommend { .. }
             | ShellCommand::ReportersExportCorpus { .. }
+            | ShellCommand::PromotersCompareArchitectures { .. }
             | ShellCommand::PromotersPanelPlan { .. }
             | ShellCommand::PromotersPanelMaterialize { .. }
             | ShellCommand::ResourcesListPublicationDatasets { .. }
@@ -64898,6 +65041,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ReportersList { .. }
         | ShellCommand::ReportersRecommend { .. }
         | ShellCommand::ReportersExportCorpus { .. }
+        | ShellCommand::PromotersCompareArchitectures { .. }
         | ShellCommand::PromotersPanelPlan { .. }
         | ShellCommand::PromotersPanelMaterialize { .. }
         | ShellCommand::ResourcesListPublicationDatasets { .. }

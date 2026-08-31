@@ -1,9 +1,10 @@
 # GENtle Roadmap
 
-Last session: 2026-08-31 - generalized approval-gated reporter panels to native
-regulatory fragments with optional member-specific controls, evidence-bound
-proposals, and ATG-exclusive 5' UTR boundaries; final exact-revision PATZ1 GUI,
-benchmark, and copied-state acceptance remain before the unreleased
+Last session: 2026-08-31 - added the read-only, transcript-aware
+promoter-reporter architecture comparison and pinned SERPINE1 acceptance
+fixture on the generalized evidence-guided reporter contract; final
+exact-revision PATZ1 GUI, benchmark, and copied-state acceptance remain before
+the unreleased
 `v0.1.0-internal.10` tag
 
 Purpose: fast session orientation. This file answers "what next?" and should be
@@ -342,6 +343,10 @@ wet-lab conclusions or unconfirmed mutations.
   story for downstream warfarin-relevant Factor X target-site constructs once
   the construct family, controls, readout, and bench-facing success criteria
   are stable enough for a validated walkthrough.
+- Bind the transcript-aware SERPINE1 architecture comparison to the actual
+  laboratory insert/vector sequence and prepared Rostock CUT&RUN manifests
+  before any construct assignment, occupancy comparison, or materialization;
+  retain absent local lanes as `unevaluated`/`not_prepared` meanwhile.
 - Primer-walking support and iterative read/contig data management.
 - Helper-construct terminology migration away from legacy "helper genome"
   wording.

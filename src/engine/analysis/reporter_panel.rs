@@ -131,7 +131,7 @@ impl GentleEngine {
         }
     }
 
-    fn promoter_reporter_panel_extended_geometry(
+    pub(crate) fn promoter_reporter_panel_extended_geometry(
         source: &DNAsequence,
         candidate: &PromoterReporterFragmentCandidate,
         policy: &PromoterReporterPanelExtendedBoundaryPolicy,
@@ -416,12 +416,27 @@ impl GentleEngine {
                 transcript_positions_0based: upstream_orfs,
             });
         }
-        let mut genomic_utr_ranges = utr_ranges.clone();
-        genomic_utr_ranges.sort_unstable();
-        let five_prime_utr_intron_count = genomic_utr_ranges
+        let five_prime_utr_intron_ranges_0based = utr_ranges
             .windows(2)
-            .filter(|pair| pair[1].0 > pair[0].1)
-            .count();
+            .filter_map(|pair| {
+                let (start, end) = if is_reverse {
+                    (pair[1].1, pair[0].0)
+                } else {
+                    (pair[0].1, pair[1].0)
+                };
+                (end > start).then_some((start, end))
+            })
+            .collect::<Vec<_>>();
+        let five_prime_utr_intron_count = five_prime_utr_intron_ranges_0based.len();
+        let five_prime_utr_total_intron_bp = five_prime_utr_intron_ranges_0based
+            .iter()
+            .map(|(start, end)| end.saturating_sub(*start))
+            .sum();
+        let five_prime_utr_max_intron_bp = five_prime_utr_intron_ranges_0based
+            .iter()
+            .map(|(start, end)| end.saturating_sub(*start))
+            .max()
+            .unwrap_or_default();
         if five_prime_utr_intron_count > 0 {
             warnings.push(PromoterReporterPanelExtendedWarning {
                 kind: PromoterReporterPanelExtendedWarningKind::FivePrimeUtrIntron,
@@ -433,6 +448,52 @@ impl GentleEngine {
                 transcript_positions_0based: vec![],
             });
         }
+        let mut coding_context = String::new();
+        let mut remaining_context_bases = 4usize;
+        for &(start, end) in &cds_ranges {
+            let take = remaining_context_bases.min(end.saturating_sub(start));
+            if take == 0 {
+                continue;
+            }
+            let range = if is_reverse {
+                (end - take, end)
+            } else {
+                (start, start + take)
+            };
+            let segment = &source_text[range.0..range.1];
+            if is_reverse {
+                coding_context.push_str(&Self::reverse_complement(segment));
+            } else {
+                coding_context.push_str(&segment.to_ascii_uppercase());
+            }
+            remaining_context_bases -= take;
+            if remaining_context_bases == 0 {
+                break;
+            }
+        }
+        let upstream_context_len = utr_upper.len().min(6);
+        let kozak_context_5prime_to_3prime = (coding_context.len() >= 3).then(|| {
+            format!(
+                "{}{}",
+                &utr_upper[utr_upper.len().saturating_sub(upstream_context_len)..],
+                coding_context
+            )
+        });
+        let kozak_context_class = kozak_context_5prime_to_3prime.as_ref().map(|context| {
+            let bytes = context.as_bytes();
+            let atg_offset = upstream_context_len;
+            let purine_minus_3 = atg_offset >= 3
+                && bytes
+                    .get(atg_offset - 3)
+                    .is_some_and(|base| matches!(base, b'A' | b'G'));
+            let guanine_plus_4 = bytes.get(atg_offset + 3).is_some_and(|base| *base == b'G');
+            match (purine_minus_3, guanine_plus_4) {
+                (true, true) => "strong_consensus",
+                (true, false) | (false, true) => "partial_consensus",
+                (false, false) => "weak_consensus",
+            }
+            .to_string()
+        });
         let (fragment_start, fragment_end) = match (policy.kind, is_reverse) {
             (PromoterReporterPanelExtendedBoundaryKind::CanonicalCdsStartCodon, true) => {
                 (codon_start, candidate.end_0based_exclusive)
@@ -472,6 +533,11 @@ impl GentleEngine {
                 cds_start_codon_5prime_to_3prime: cds_start_codon,
                 five_prime_utr_spliced_length_bp: utr_upper.len(),
                 five_prime_utr_exon_ranges_0based: utr_ranges,
+                five_prime_utr_intron_ranges_0based,
+                five_prime_utr_total_intron_bp,
+                five_prime_utr_max_intron_bp,
+                kozak_context_5prime_to_3prime,
+                kozak_context_class,
                 warnings,
             },
         ))

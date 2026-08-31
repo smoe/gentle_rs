@@ -39605,6 +39605,7 @@ impl GentleEngine {
             sequence_context_bundle: None,
             variant_promoter_context: None,
             alternative_promoter_comparison: None,
+            promoter_reporter_architecture_comparison: None,
             promoter_evidence_matrix: None,
             isoform_promoter_comparison: None,
             promoter_expression_evidence: None,
@@ -49786,6 +49787,45 @@ impl GentleEngine {
                         report.collapsed_window_count
                     ));
                     result.alternative_promoter_comparison = Some(report);
+                }
+                Operation::ComparePromoterReporterArchitectures {
+                    request,
+                    path,
+                    svg_path,
+                } => {
+                    let mut report = self.compare_promoter_reporter_architectures(*request)?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    report.json_path = path.clone();
+                    report.svg_path = svg_path.clone();
+                    if let Some(svg_path) = svg_path.as_deref() {
+                        let svg = crate::render_promoter_reporter_architecture::render_promoter_reporter_architecture_svg(&report);
+                        self.write_text_file(svg_path, &svg, "promoter-reporter architecture SVG")?;
+                        result.messages.push(format!(
+                            "Wrote promoter-reporter architecture SVG for '{}' to '{}'",
+                            report.seq_id, svg_path
+                        ));
+                    }
+                    if let Some(path) = path.as_deref() {
+                        self.write_pretty_json_file(
+                            &report,
+                            path,
+                            "promoter-reporter architecture comparison",
+                        )?;
+                        result.messages.push(format!(
+                            "Wrote promoter-reporter architecture comparison for '{}' to '{}'",
+                            report.seq_id, path
+                        ));
+                    }
+                    result.warnings.extend(report.warnings.iter().cloned());
+                    result.messages.push(format!(
+                        "Compared {} reporter architecture row(s) across {} transcript(s) and {} TSS class(es) on '{}'",
+                        report.architectures.len(),
+                        report.transcripts.len(),
+                        report.tss_classes.len(),
+                        report.seq_id
+                    ));
+                    result.promoter_reporter_architecture_comparison = Some(Box::new(report));
                 }
                 Operation::SummarizePromoterEvidenceMatrix {
                     input,

@@ -1,0 +1,883 @@
+{
+  "schema": "gentle.test_fixture.ensembl_serpine1.v1",
+  "provenance": {
+    "provider": "Ensembl REST",
+    "release": 116,
+    "assembly": "GRCh38",
+    "retrieved_utc": "2026-08-30",
+    "lookup_url": "https://rest.ensembl.org/lookup/id/ENSG00000106366?expand=1;utr=1",
+    "lookup_response_sha256": "f1013a8cb853de4011114a13adb812564742db320259fe1ddd35137e94568f7c",
+    "sequence_url": "https://rest.ensembl.org/sequence/region/human/7:101121158..101139263:1",
+    "sequence_response_sha256": "440d6b10a5affeda66358d2d4c102ebc0b0a8a68a79eedfcb94748a02b6297e0"
+  },
+  "gene": {
+    "id": "ENSG00000106366.11",
+    "stable_id": "ENSG00000106366",
+    "display_name": "SERPINE1",
+    "assembly_name": "GRCh38",
+    "seq_region_name": "7",
+    "start_1based": 101122158,
+    "end_1based": 101139263,
+    "strand": 1,
+    "canonical_transcript": "ENST00000223095.5"
+  },
+  "fixture_region": {
+    "start_1based": 101121158,
+    "end_1based": 101139263,
+    "strand": 1
+  },
+  "transcripts": [
+    {
+      "id": "ENST00000950058.1",
+      "stable_id": "ENST00000950058",
+      "display_name": "SERPINE1-203",
+      "biotype": "protein_coding",
+      "start_1based": 101122158,
+      "end_1based": 101139263,
+      "strand": 1,
+      "is_canonical": 0,
+      "translation_start_1based": 101128394,
+      "translation_end_1based": 101137442,
+      "exons": [
+        {
+          "id": "ENSE00004437532.1",
+          "start_1based": 101122158,
+          "end_1based": 101122881,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00004437537.1",
+          "start_1based": 101122991,
+          "end_1based": 101123087,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00004437535.1",
+          "start_1based": 101126210,
+          "end_1based": 101126273,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00004437533.1",
+          "start_1based": 101127124,
+          "end_1based": 101127244,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000881563.1",
+          "start_1based": 101128393,
+          "end_1based": 101128664,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712140.1",
+          "start_1based": 101130421,
+          "end_1based": 101130654,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712144.1",
+          "start_1based": 101131875,
+          "end_1based": 101132069,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712149.1",
+          "start_1based": 101133695,
+          "end_1based": 101133893,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712153.1",
+          "start_1based": 101135494,
+          "end_1based": 101135594,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712158.1",
+          "start_1based": 101135715,
+          "end_1based": 101135801,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712164.1",
+          "start_1based": 101137001,
+          "end_1based": 101137084,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00004794871.1",
+          "start_1based": 101137405,
+          "end_1based": 101139263,
+          "strand": 1
+        }
+      ]
+    },
+    {
+      "id": "ENST00000870828.2",
+      "stable_id": "ENST00000870828",
+      "display_name": "SERPINE1-202",
+      "biotype": "protein_coding",
+      "start_1based": 101126601,
+      "end_1based": 101139263,
+      "strand": 1,
+      "is_canonical": 0,
+      "translation_start_1based": 101128394,
+      "translation_end_1based": 101137442,
+      "exons": [
+        {
+          "id": "ENSE00004794870.1",
+          "start_1based": 101126601,
+          "end_1based": 101127244,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00004314662.1",
+          "start_1based": 101128097,
+          "end_1based": 101128204,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000881563.1",
+          "start_1based": 101128393,
+          "end_1based": 101128664,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712140.1",
+          "start_1based": 101130421,
+          "end_1based": 101130654,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712144.1",
+          "start_1based": 101131875,
+          "end_1based": 101132069,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712149.1",
+          "start_1based": 101133695,
+          "end_1based": 101133893,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712153.1",
+          "start_1based": 101135494,
+          "end_1based": 101135594,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712158.1",
+          "start_1based": 101135715,
+          "end_1based": 101135801,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712164.1",
+          "start_1based": 101137001,
+          "end_1based": 101137084,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00004794871.1",
+          "start_1based": 101137405,
+          "end_1based": 101139263,
+          "strand": 1
+        }
+      ]
+    },
+    {
+      "id": "ENST00000950059.2",
+      "stable_id": "ENST00000950059",
+      "display_name": "SERPINE1-204",
+      "biotype": "protein_coding",
+      "start_1based": 101126601,
+      "end_1based": 101139261,
+      "strand": 1,
+      "is_canonical": 0,
+      "translation_start_1based": 101128394,
+      "translation_end_1based": 101137442,
+      "exons": [
+        {
+          "id": "ENSE00004794870.1",
+          "start_1based": 101126601,
+          "end_1based": 101127244,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000881563.1",
+          "start_1based": 101128393,
+          "end_1based": 101128664,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712140.1",
+          "start_1based": 101130421,
+          "end_1based": 101130654,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712144.1",
+          "start_1based": 101131875,
+          "end_1based": 101132069,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712149.1",
+          "start_1based": 101133695,
+          "end_1based": 101133893,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712153.1",
+          "start_1based": 101135494,
+          "end_1based": 101135594,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712158.1",
+          "start_1based": 101135715,
+          "end_1based": 101135801,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712164.1",
+          "start_1based": 101137001,
+          "end_1based": 101137084,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00004437538.1",
+          "start_1based": 101137411,
+          "end_1based": 101139261,
+          "strand": 1
+        }
+      ]
+    },
+    {
+      "id": "ENST00000950060.2",
+      "stable_id": "ENST00000950060",
+      "display_name": "SERPINE1-205",
+      "biotype": "protein_coding",
+      "start_1based": 101126601,
+      "end_1based": 101139263,
+      "strand": 1,
+      "is_canonical": 0,
+      "translation_start_1based": 101128394,
+      "translation_end_1based": 101137442,
+      "exons": [
+        {
+          "id": "ENSE00004794870.1",
+          "start_1based": 101126601,
+          "end_1based": 101127244,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00004437536.1",
+          "start_1based": 101128393,
+          "end_1based": 101128688,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712140.1",
+          "start_1based": 101130421,
+          "end_1based": 101130654,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712144.1",
+          "start_1based": 101131875,
+          "end_1based": 101132069,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712149.1",
+          "start_1based": 101133695,
+          "end_1based": 101133893,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712153.1",
+          "start_1based": 101135494,
+          "end_1based": 101135594,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712158.1",
+          "start_1based": 101135715,
+          "end_1based": 101135801,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712164.1",
+          "start_1based": 101137001,
+          "end_1based": 101137084,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00004794871.1",
+          "start_1based": 101137405,
+          "end_1based": 101139263,
+          "strand": 1
+        }
+      ]
+    },
+    {
+      "id": "ENST00000950061.2",
+      "stable_id": "ENST00000950061",
+      "display_name": "SERPINE1-206",
+      "biotype": "protein_coding",
+      "start_1based": 101126601,
+      "end_1based": 101139263,
+      "strand": 1,
+      "is_canonical": 0,
+      "translation_start_1based": 101128394,
+      "translation_end_1based": 101137442,
+      "exons": [
+        {
+          "id": "ENSE00004794870.1",
+          "start_1based": 101126601,
+          "end_1based": 101127244,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000881563.1",
+          "start_1based": 101128393,
+          "end_1based": 101128664,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712144.1",
+          "start_1based": 101131875,
+          "end_1based": 101132069,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712149.1",
+          "start_1based": 101133695,
+          "end_1based": 101133893,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712153.1",
+          "start_1based": 101135494,
+          "end_1based": 101135594,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712158.1",
+          "start_1based": 101135715,
+          "end_1based": 101135801,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712164.1",
+          "start_1based": 101137001,
+          "end_1based": 101137084,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00004794871.1",
+          "start_1based": 101137405,
+          "end_1based": 101139263,
+          "strand": 1
+        }
+      ]
+    },
+    {
+      "id": "ENST00000950062.2",
+      "stable_id": "ENST00000950062",
+      "display_name": "SERPINE1-207",
+      "biotype": "protein_coding",
+      "start_1based": 101126601,
+      "end_1based": 101139263,
+      "strand": 1,
+      "is_canonical": 0,
+      "translation_start_1based": 101128394,
+      "translation_end_1based": 101137442,
+      "exons": [
+        {
+          "id": "ENSE00004794870.1",
+          "start_1based": 101126601,
+          "end_1based": 101127244,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000881563.1",
+          "start_1based": 101128393,
+          "end_1based": 101128664,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712140.1",
+          "start_1based": 101130421,
+          "end_1based": 101130654,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712144.1",
+          "start_1based": 101131875,
+          "end_1based": 101132069,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712149.1",
+          "start_1based": 101133695,
+          "end_1based": 101133893,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712153.1",
+          "start_1based": 101135494,
+          "end_1based": 101135594,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00004437539.1",
+          "start_1based": 101135715,
+          "end_1based": 101135816,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712164.1",
+          "start_1based": 101137001,
+          "end_1based": 101137084,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00004794871.1",
+          "start_1based": 101137405,
+          "end_1based": 101139263,
+          "strand": 1
+        }
+      ]
+    },
+    {
+      "id": "ENST00001041162.1",
+      "stable_id": "ENST00001041162",
+      "display_name": "SERPINE1-209",
+      "biotype": "protein_coding",
+      "start_1based": 101126601,
+      "end_1based": 101132746,
+      "strand": 1,
+      "is_canonical": 0,
+      "translation_start_1based": 101128394,
+      "translation_end_1based": 101132209,
+      "exons": [
+        {
+          "id": "ENSE00004794870.1",
+          "start_1based": 101126601,
+          "end_1based": 101127244,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000881563.1",
+          "start_1based": 101128393,
+          "end_1based": 101128664,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712140.1",
+          "start_1based": 101130421,
+          "end_1based": 101130654,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00004620462.1",
+          "start_1based": 101131875,
+          "end_1based": 101132746,
+          "strand": 1
+        }
+      ]
+    },
+    {
+      "id": "ENST00001041163.1",
+      "stable_id": "ENST00001041163",
+      "display_name": "SERPINE1-210",
+      "biotype": "protein_coding",
+      "start_1based": 101126601,
+      "end_1based": 101132724,
+      "strand": 1,
+      "is_canonical": 0,
+      "translation_start_1based": 101128394,
+      "translation_end_1based": 101132209,
+      "exons": [
+        {
+          "id": "ENSE00004794870.1",
+          "start_1based": 101126601,
+          "end_1based": 101127244,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00004620463.1",
+          "start_1based": 101128097,
+          "end_1based": 101128664,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712140.1",
+          "start_1based": 101130421,
+          "end_1based": 101130654,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00004620464.1",
+          "start_1based": 101131875,
+          "end_1based": 101132724,
+          "strand": 1
+        }
+      ]
+    },
+    {
+      "id": "ENST00001106562.1",
+      "stable_id": "ENST00001106562",
+      "display_name": "SERPINE1-212",
+      "biotype": "protein_coding",
+      "start_1based": 101126601,
+      "end_1based": 101135185,
+      "strand": 1,
+      "is_canonical": 0,
+      "translation_start_1based": 101128394,
+      "translation_end_1based": 101133897,
+      "exons": [
+        {
+          "id": "ENSE00004794870.1",
+          "start_1based": 101126601,
+          "end_1based": 101127244,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000881563.1",
+          "start_1based": 101128393,
+          "end_1based": 101128664,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712140.1",
+          "start_1based": 101130421,
+          "end_1based": 101130654,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712144.1",
+          "start_1based": 101131875,
+          "end_1based": 101132069,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00004737196.1",
+          "start_1based": 101133695,
+          "end_1based": 101135185,
+          "strand": 1
+        }
+      ]
+    },
+    {
+      "id": "ENST00001116474.1",
+      "stable_id": "ENST00001116474",
+      "display_name": "SERPINE1-213",
+      "biotype": "protein_coding",
+      "start_1based": 101126601,
+      "end_1based": 101129654,
+      "strand": 1,
+      "is_canonical": 0,
+      "translation_start_1based": 101128394,
+      "translation_end_1based": 101128933,
+      "exons": [
+        {
+          "id": "ENSE00004794870.1",
+          "start_1based": 101126601,
+          "end_1based": 101127244,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00004752763.1",
+          "start_1based": 101128393,
+          "end_1based": 101129654,
+          "strand": 1
+        }
+      ]
+    },
+    {
+      "id": "ENST00001122286.1",
+      "stable_id": "ENST00001122286",
+      "display_name": "SERPINE1-214",
+      "biotype": "protein_coding",
+      "start_1based": 101126601,
+      "end_1based": 101135183,
+      "strand": 1,
+      "is_canonical": 0,
+      "translation_start_1based": 101128394,
+      "translation_end_1based": 101134591,
+      "exons": [
+        {
+          "id": "ENSE00004794870.1",
+          "start_1based": 101126601,
+          "end_1based": 101127244,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000881563.1",
+          "start_1based": 101128393,
+          "end_1based": 101128664,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712140.1",
+          "start_1based": 101130421,
+          "end_1based": 101130654,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712144.1",
+          "start_1based": 101131875,
+          "end_1based": 101132069,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712149.1",
+          "start_1based": 101133695,
+          "end_1based": 101133893,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00004762809.1",
+          "start_1based": 101134588,
+          "end_1based": 101135183,
+          "strand": 1
+        }
+      ]
+    },
+    {
+      "id": "ENST00001139435.1",
+      "stable_id": "ENST00001139435",
+      "display_name": "SERPINE1-215",
+      "biotype": "protein_coding",
+      "start_1based": 101126601,
+      "end_1based": 101139263,
+      "strand": 1,
+      "is_canonical": 0,
+      "translation_start_1based": 101128394,
+      "translation_end_1based": 101137442,
+      "exons": [
+        {
+          "id": "ENSE00004794870.1",
+          "start_1based": 101126601,
+          "end_1based": 101127244,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000881563.1",
+          "start_1based": 101128393,
+          "end_1based": 101128664,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712140.1",
+          "start_1based": 101130421,
+          "end_1based": 101130654,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712144.1",
+          "start_1based": 101131875,
+          "end_1based": 101132069,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712149.1",
+          "start_1based": 101133695,
+          "end_1based": 101133893,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712153.1",
+          "start_1based": 101135494,
+          "end_1based": 101135594,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712158.1",
+          "start_1based": 101135715,
+          "end_1based": 101135801,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712164.1",
+          "start_1based": 101137001,
+          "end_1based": 101137084,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00004794871.1",
+          "start_1based": 101137405,
+          "end_1based": 101139263,
+          "strand": 1
+        }
+      ]
+    },
+    {
+      "id": "ENST00000223095.5",
+      "stable_id": "ENST00000223095",
+      "display_name": "SERPINE1-201",
+      "biotype": "protein_coding",
+      "start_1based": 101127104,
+      "end_1based": 101139247,
+      "strand": 1,
+      "is_canonical": 1,
+      "translation_start_1based": 101128394,
+      "translation_end_1based": 101137442,
+      "exons": [
+        {
+          "id": "ENSE00001714420.3",
+          "start_1based": 101127104,
+          "end_1based": 101127244,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000881563.1",
+          "start_1based": 101128393,
+          "end_1based": 101128664,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712140.1",
+          "start_1based": 101130421,
+          "end_1based": 101130654,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712144.1",
+          "start_1based": 101131875,
+          "end_1based": 101132069,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712149.1",
+          "start_1based": 101133695,
+          "end_1based": 101133893,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712153.1",
+          "start_1based": 101135494,
+          "end_1based": 101135594,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712158.1",
+          "start_1based": 101135715,
+          "end_1based": 101135801,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712164.1",
+          "start_1based": 101137001,
+          "end_1based": 101137084,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00001055519.4",
+          "start_1based": 101137405,
+          "end_1based": 101139247,
+          "strand": 1
+        }
+      ]
+    },
+    {
+      "id": "ENST00000950063.2",
+      "stable_id": "ENST00000950063",
+      "display_name": "SERPINE1-208",
+      "biotype": "protein_coding",
+      "start_1based": 101127119,
+      "end_1based": 101139263,
+      "strand": 1,
+      "is_canonical": 0,
+      "translation_start_1based": 101128394,
+      "translation_end_1based": 101137442,
+      "exons": [
+        {
+          "id": "ENSE00004794872.1",
+          "start_1based": 101127119,
+          "end_1based": 101128664,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712140.1",
+          "start_1based": 101130421,
+          "end_1based": 101130654,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712144.1",
+          "start_1based": 101131875,
+          "end_1based": 101132069,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712149.1",
+          "start_1based": 101133695,
+          "end_1based": 101133893,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712153.1",
+          "start_1based": 101135494,
+          "end_1based": 101135594,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712158.1",
+          "start_1based": 101135715,
+          "end_1based": 101135801,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712164.1",
+          "start_1based": 101137001,
+          "end_1based": 101137084,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00004794871.1",
+          "start_1based": 101137405,
+          "end_1based": 101139263,
+          "strand": 1
+        }
+      ]
+    },
+    {
+      "id": "ENST00001041164.1",
+      "stable_id": "ENST00001041164",
+      "display_name": "SERPINE1-211",
+      "biotype": "protein_coding",
+      "start_1based": 101127119,
+      "end_1based": 101132724,
+      "strand": 1,
+      "is_canonical": 0,
+      "translation_start_1based": 101128394,
+      "translation_end_1based": 101132209,
+      "exons": [
+        {
+          "id": "ENSE00004794872.1",
+          "start_1based": 101127119,
+          "end_1based": 101128664,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00000712140.1",
+          "start_1based": 101130421,
+          "end_1based": 101130654,
+          "strand": 1
+        },
+        {
+          "id": "ENSE00004620464.1",
+          "start_1based": 101131875,
+          "end_1based": 101132724,
+          "strand": 1
+        }
+      ]
+    }
+  ]
+}

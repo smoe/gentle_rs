@@ -1956,6 +1956,21 @@
       {
          "aliases": [],
          "engine_operations": [
+            "ComparePromoterReporterArchitectures"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "promoters compare-architectures",
+         "summary": "Compare transcript-aware TSS-proximal, spliced-leader, genomic-leader, and explicitly requested ATG-fusion reporter models without materializing constructs or conflating occupancy with promoter use.",
+         "usage": "promoters compare-architectures REQUEST_JSON_OR_@FILE [--path REPORT.json] [--svg-path FIGURE.svg]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "PlanPromoterReporterPanel"
          ],
          "interfaces": [

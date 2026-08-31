@@ -5494,6 +5494,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "SummarizeTfbsScoreTracks",
     "SummarizeTfbsTrackSimilarity",
     "SummarizeAlternativePromoterComparison",
+    "ComparePromoterReporterArchitectures",
     "SummarizePromoterEvidenceMatrix",
     "SummarizeIsoformPromoterComparison",
     "SummarizePromoterExpressionEvidence",
@@ -7101,6 +7102,7 @@ fn infer_engine_operation_mutation(operation: &str) -> CapabilityMutation {
         || operation == "TestCdnaQpcrFasta"
         || operation == "SuggestSequencingPrimers"
         || operation == "SuggestPromoterReporterFragments"
+        || operation == "ComparePromoterReporterArchitectures"
         || operation == "PlanPromoterReporterPanel"
         || operation == "BuildRepeatEnvironmentCohort"
         || operation == "BuildProteinToDnaHandoffReasoning"

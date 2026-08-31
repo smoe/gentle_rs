@@ -7228,6 +7228,32 @@ Motif selection uses only local TFBS annotations. Its report is explicitly
 sequence-motif evidence, not evidence of occupancy or functional regulation;
 overlength geometries remain visible as typed rejections.
 
+Compare transcript-aware promoter/reporter geometries without creating a
+construct through the shared `promoters` command family:
+
+```bash
+cargo run --quiet --bin gentle_cli -- --state STATE.json \
+  promoters compare-architectures \
+  @docs/examples/assets/serpine1_promoter_reporter_architecture_request.json \
+  --path analysis/serpine1_architecture_comparison.json \
+  --svg-path analysis/serpine1_architecture_comparison.svg
+```
+
+The loaded state must contain the annotated locus named by `seq_id`. The
+example request selects three pinned Ensembl-116 SERPINE1 transcript models
+representing the main and rare-upstream TSS classes and compares
+TSS-proximal, spliced-leader, and genomic-leader models. It deliberately
+supplies neither initiation evidence nor CUT&RUN sources, so those layers stay
+explicitly unevaluated rather than being inferred from annotation. Add
+`endogenous_atg_retained_fusion` only together with a matching
+`fusion_requests` row that states retained endogenous CDS length, fusion mode,
+vector-ATG removal, and junction sequence.
+
+`--path` and `--svg-path` are independent. Omitting either keeps that artifact
+in memory while returning the same portable report. MCP callers use the same
+`ComparePromoterReporterArchitectures` operation through the confirmed generic
+`op` route; there is no MCP-only analysis or scoring model.
+
 Build and inspect a complete promoter-reporter panel proposal through the
 distinct `promoters` command family (`reporters` remains the reporter-gene
 catalog family):

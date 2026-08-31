@@ -302,6 +302,13 @@ impl MainAreaDna {
             reporter_backbone_path:
                 "data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb".to_string(),
             reporter_output_prefix: format!("{token}_reporter"),
+            promoter_reporter_architecture_request_json: String::new(),
+            promoter_reporter_architecture_json_path: format!(
+                "analysis/promoter_reporter/{token}_architectures.json"
+            ),
+            promoter_reporter_architecture_svg_path: format!(
+                "analysis/promoter_reporter/{token}_architectures.svg"
+            ),
             promoter_reporter_panel_request_json: String::new(),
             promoter_reporter_panel_approval_digest: String::new(),
             cached_score_tracks: None,
@@ -328,6 +335,7 @@ impl MainAreaDna {
             cached_ortholog_promoter_cohort: None,
             cached_ortholog_promoter_comparison: None,
             cached_candidates: None,
+            cached_promoter_reporter_architecture_comparison: None,
             cached_promoter_reporter_panel_proposal: None,
             cached_promoter_reporter_panel_receipt: None,
         };
@@ -1956,6 +1964,111 @@ impl MainAreaDna {
 
     fn suggest_variant_followup_reporter_fragments(&mut self) {
         let _ = self.run_variant_followup_reporter_fragment_suggestion(None);
+    }
+
+    pub(super) fn prepare_variant_followup_promoter_architecture_request(&mut self) {
+        let seq_id = match self.variant_followup_input_seq_id() {
+            Ok(value) => value,
+            Err(error) => {
+                self.op_status = error;
+                return;
+            }
+        };
+        let promoter_upstream_bp = match Self::parse_positive_usize_text(
+            &self.variant_followup_ui.promoter_upstream_bp,
+            "promoter upstream bp",
+        ) {
+            Ok(value) => value,
+            Err(error) => {
+                self.op_status = error;
+                return;
+            }
+        };
+        let tss_proximal_downstream_bp = match Self::parse_positive_usize_text(
+            &self.variant_followup_ui.promoter_downstream_bp,
+            "promoter downstream bp",
+        ) {
+            Ok(value) => value,
+            Err(error) => {
+                self.op_status = error;
+                return;
+            }
+        };
+        let transcript_ids =
+            Self::variant_followup_optional_text(&self.variant_followup_ui.transcript_id)
+                .into_iter()
+                .collect();
+        let request = PromoterReporterArchitectureComparisonRequest {
+            seq_id,
+            gene_label: Self::variant_followup_optional_text(&self.variant_followup_ui.gene_label),
+            transcript_ids,
+            promoter_upstream_bp,
+            tss_proximal_downstream_bp,
+            motif_tokens: Self::promoter_design_parse_motif_tokens(
+                &self.variant_followup_ui.score_track_motifs,
+            ),
+            ..PromoterReporterArchitectureComparisonRequest::default()
+        };
+        match serde_json::to_string_pretty(&request) {
+            Ok(json) => {
+                self.variant_followup_ui
+                    .promoter_reporter_architecture_request_json = json;
+                self.variant_followup_ui
+                    .cached_promoter_reporter_architecture_comparison = None;
+                self.op_status =
+                    "Prepared a read-only promoter-reporter architecture request".to_string();
+            }
+            Err(error) => {
+                self.op_status =
+                    format!("Could not serialize promoter-reporter architecture request: {error}");
+            }
+        }
+    }
+
+    pub(super) fn variant_followup_promoter_architecture_operation(
+        &self,
+    ) -> Result<Operation, String> {
+        let raw = self
+            .variant_followup_ui
+            .promoter_reporter_architecture_request_json
+            .trim();
+        if raw.is_empty() {
+            return Err(
+                "Prepare or paste a promoter-reporter architecture request first".to_string(),
+            );
+        }
+        let request = serde_json::from_str::<PromoterReporterArchitectureComparisonRequest>(raw)
+            .map_err(|error| {
+                format!("Could not parse promoter-reporter architecture request JSON: {error}")
+            })?;
+        Ok(Operation::ComparePromoterReporterArchitectures {
+            request: Box::new(request),
+            path: Self::variant_followup_optional_text(
+                &self
+                    .variant_followup_ui
+                    .promoter_reporter_architecture_json_path,
+            ),
+            svg_path: Self::variant_followup_optional_text(
+                &self
+                    .variant_followup_ui
+                    .promoter_reporter_architecture_svg_path,
+            ),
+        })
+    }
+
+    pub(super) fn run_variant_followup_promoter_architecture_comparison(&mut self) {
+        let operation = match self.variant_followup_promoter_architecture_operation() {
+            Ok(operation) => operation,
+            Err(error) => {
+                self.op_status = error;
+                return;
+            }
+        };
+        let result = self.apply_operation_with_feedback_and_result(operation);
+        if let Some(report) = result.and_then(|row| row.promoter_reporter_architecture_comparison) {
+            self.variant_followup_ui
+                .cached_promoter_reporter_architecture_comparison = Some(*report);
+        }
     }
 
     pub(super) fn variant_followup_promoter_reporter_panel_plan_operation(
@@ -5191,6 +5304,229 @@ impl MainAreaDna {
         }
     }
 
+    fn render_variant_followup_promoter_architecture_comparison(&mut self, ui: &mut egui::Ui) {
+        let mut prepare_requested = false;
+        let mut compare_requested = false;
+        let mut selected_transcript = None;
+        egui::CollapsingHeader::new("Reporter architecture comparison (read-only)")
+            .default_open(false)
+            .show(ui, |ui| {
+                ui.label(
+                    "Compare TSS-proximal, spliced-leader, genomic-leader, and explicitly requested ATG-fusion models without creating constructs.",
+                );
+                ui.small(
+                    "Transcript annotation, transcription-initiation evidence, theoretical motifs, and CUT&RUN occupancy remain separate evidence layers.",
+                );
+                ui.horizontal_wrapped(|ui| {
+                    if ui.button("Prepare from current locus").clicked() {
+                        prepare_requested = true;
+                    }
+                    if ui
+                        .add_enabled(
+                            self.engine.is_some()
+                                && !self
+                                    .variant_followup_ui
+                                    .promoter_reporter_architecture_request_json
+                                    .trim()
+                                    .is_empty(),
+                            egui::Button::new("Compare / refresh"),
+                        )
+                        .clicked()
+                    {
+                        compare_requested = true;
+                    }
+                });
+                egui::CollapsingHeader::new("Request and export paths")
+                    .default_open(false)
+                    .show(ui, |ui| {
+                        ui.label("Request JSON");
+                        if ui
+                            .add(
+                                egui::TextEdit::multiline(
+                                    &mut self
+                                        .variant_followup_ui
+                                        .promoter_reporter_architecture_request_json,
+                                )
+                                .desired_rows(8)
+                                .code_editor(),
+                            )
+                            .changed()
+                        {
+                            self.variant_followup_ui
+                                .cached_promoter_reporter_architecture_comparison = None;
+                        }
+                        egui::Grid::new("promoter_reporter_architecture_export_paths")
+                            .num_columns(2)
+                            .spacing([10.0, 4.0])
+                            .show(ui, |ui| {
+                                ui.label("JSON report");
+                                ui.text_edit_singleline(
+                                    &mut self
+                                        .variant_followup_ui
+                                        .promoter_reporter_architecture_json_path,
+                                );
+                                ui.end_row();
+                                ui.label("SVG figure");
+                                ui.text_edit_singleline(
+                                    &mut self
+                                        .variant_followup_ui
+                                        .promoter_reporter_architecture_svg_path,
+                                );
+                                ui.end_row();
+                            });
+                        ui.small("Leave an output path empty to keep that artifact in memory only.");
+                    });
+
+                if let Some(report) = self
+                    .variant_followup_ui
+                    .cached_promoter_reporter_architecture_comparison
+                    .clone()
+                {
+                    ui.separator();
+                    egui::Grid::new("promoter_reporter_architecture_summary")
+                        .num_columns(2)
+                        .spacing([12.0, 4.0])
+                        .show(ui, |ui| {
+                            ui.label("Locus");
+                            ui.monospace(&report.seq_id);
+                            ui.end_row();
+                            ui.label("TSS classes / transcripts");
+                            ui.label(format!(
+                                "{} / {}",
+                                report.tss_classes.len(),
+                                report.transcripts.len()
+                            ));
+                            ui.end_row();
+                            ui.label("Architecture rows");
+                            ui.label(report.architectures.len().to_string());
+                            ui.end_row();
+                            ui.label("Common CDS start");
+                            ui.label(
+                                report
+                                    .common_cds_start_genomic_1based
+                                    .map(|position| position.to_string())
+                                    .unwrap_or_else(|| "not shared / not anchored".to_string()),
+                            );
+                            ui.end_row();
+                            ui.label("Existing construct");
+                            ui.label(&report.existing_construct.status);
+                            ui.end_row();
+                            ui.label("CUT&RUN");
+                            ui.label(format!(
+                                "{}; {}",
+                                report.cutrun_evidence.evaluation_state,
+                                report.cutrun_evidence.quantitative_comparison_status
+                            ));
+                            ui.end_row();
+                        });
+
+                    ui.strong("TSS classes");
+                    for class in &report.tss_classes {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.monospace(&class.class_id);
+                            ui.label(format!(
+                                "{} transcript(s); representative {}",
+                                class.transcript_ids.len(),
+                                class.representative_transcript_id
+                            ));
+                            if ui.small_button("Use transcript").clicked() {
+                                selected_transcript =
+                                    Some(class.representative_transcript_id.clone());
+                            }
+                        });
+                        ui.small(format!(
+                            "initiation evidence: {}",
+                            class.transcription_initiation_evidence_state
+                        ));
+                    }
+
+                    egui::CollapsingHeader::new("Architecture models")
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            for architecture in &report.architectures {
+                                ui.group(|ui| {
+                                    ui.horizontal_wrapped(|ui| {
+                                        ui.monospace(&architecture.architecture_id);
+                                        ui.label(format!(
+                                            "{} | {} | {} bp",
+                                            architecture.transcript_id,
+                                            architecture.architecture_kind.as_str(),
+                                            architecture.modeled_insert_length_bp
+                                        ));
+                                        if ui.small_button("Use transcript").clicked() {
+                                            selected_transcript =
+                                                Some(architecture.transcript_id.clone());
+                                        }
+                                    });
+                                    ui.small(format!(
+                                        "spliced 5' UTR {} bp | introns {} bp total / {} bp max | {}",
+                                        architecture.five_prime_utr_spliced_length_bp,
+                                        architecture.five_prime_utr_total_intron_bp,
+                                        architecture.five_prime_utr_max_intron_bp,
+                                        architecture
+                                            .junction
+                                            .endogenous_atg_disposition
+                                            .as_str()
+                                    ));
+                                    ui.small(&architecture.testable_question);
+                                });
+                            }
+                        });
+
+                    ui.strong("Staged panel");
+                    for recommendation in &report.staged_panel {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.monospace(&recommendation.stage);
+                            ui.label(format!(
+                                "{}: {}",
+                                recommendation.role, recommendation.rationale
+                            ));
+                        });
+                    }
+                    for lane in &report.cutrun_evidence.lanes {
+                        ui.small(format!(
+                            "CUT&RUN {} | {} | {:?}{}",
+                            lane.source_id,
+                            lane.role,
+                            lane.state,
+                            lane.condition
+                                .as_deref()
+                                .map(|value| format!(" | {value}"))
+                                .unwrap_or_default()
+                        ));
+                    }
+                    for warning in &report.warnings {
+                        ui.colored_label(egui::Color32::from_rgb(180, 83, 9), warning);
+                    }
+                    for nonclaim in &report.non_claims {
+                        ui.small(
+                            egui::RichText::new(nonclaim)
+                                .color(egui::Color32::from_rgb(100, 116, 139)),
+                        );
+                    }
+                    if let Some(path) = report.json_path.as_deref() {
+                        ui.small(format!("JSON: {path}"));
+                    }
+                    if let Some(path) = report.svg_path.as_deref() {
+                        ui.small(format!("SVG: {path}"));
+                    }
+                }
+            });
+        if prepare_requested {
+            self.prepare_variant_followup_promoter_architecture_request();
+        }
+        if compare_requested {
+            self.run_variant_followup_promoter_architecture_comparison();
+        }
+        if let Some(transcript_id) = selected_transcript {
+            self.variant_followup_ui.transcript_id = transcript_id.clone();
+            self.op_status = format!(
+                "Selected transcript '{}' from the architecture comparison",
+                transcript_id
+            );
+        }
+    }
+
     fn render_variant_followup_window_contents(&mut self, ui: &mut egui::Ui) {
         let engine_available = self.engine.is_some();
         let source_seq_id = self.variant_followup_ui.source_seq_id.clone();
@@ -6199,6 +6535,8 @@ impl MainAreaDna {
         self.render_variant_followup_report_summary(ui);
         ui.add_space(8.0);
         self.render_variant_followup_candidate_summary(ui);
+        ui.add_space(8.0);
+        self.render_variant_followup_promoter_architecture_comparison(ui);
         ui.add_space(8.0);
         self.render_variant_followup_promoter_reporter_panel(ui);
     }

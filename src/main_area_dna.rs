@@ -122,7 +122,8 @@ use crate::{
         ProbeRegionEvidenceMappingRow, ProbeRegionEvidenceSvgExport,
         ProbeRegionEvidenceTranscriptMapping, ProbeRegionOutputInspection,
         PromoterEvidenceMatrixReport, PromoterEvidenceMatrixRow, PromoterExpressionEvidenceInput,
-        PromoterExpressionEvidenceReport, PromoterReporterCandidateSet,
+        PromoterExpressionEvidenceReport, PromoterReporterArchitectureComparisonReport,
+        PromoterReporterArchitectureComparisonRequest, PromoterReporterCandidateSet,
         PromoterReporterPanelProposal, PromoterReporterPanelReceipt, PromoterReporterPanelRequest,
         PromoterWindowCollapseMode, ProtocolCartoonPreviewTelemetry, QpcrDesignReport,
         QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
@@ -1930,6 +1931,9 @@ struct VariantFollowupUiState {
     reporter_backbone_seq_id: String,
     reporter_backbone_path: String,
     reporter_output_prefix: String,
+    promoter_reporter_architecture_request_json: String,
+    promoter_reporter_architecture_json_path: String,
+    promoter_reporter_architecture_svg_path: String,
     promoter_reporter_panel_request_json: String,
     promoter_reporter_panel_approval_digest: String,
     cached_score_tracks: Option<TfbsScoreTrackReport>,
@@ -1942,6 +1946,8 @@ struct VariantFollowupUiState {
     cached_ortholog_promoter_cohort: Option<OrthologPromoterCohortReport>,
     cached_ortholog_promoter_comparison: Option<OrthologPromoterComparisonReport>,
     cached_candidates: Option<PromoterReporterCandidateSet>,
+    cached_promoter_reporter_architecture_comparison:
+        Option<PromoterReporterArchitectureComparisonReport>,
     cached_promoter_reporter_panel_proposal: Option<PromoterReporterPanelProposal>,
     cached_promoter_reporter_panel_receipt: Option<PromoterReporterPanelReceipt>,
 }
@@ -1983,6 +1989,9 @@ impl Default for VariantFollowupUiState {
             reporter_backbone_path:
                 "data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb".to_string(),
             reporter_output_prefix: String::new(),
+            promoter_reporter_architecture_request_json: String::new(),
+            promoter_reporter_architecture_json_path: String::new(),
+            promoter_reporter_architecture_svg_path: String::new(),
             promoter_reporter_panel_request_json: String::new(),
             promoter_reporter_panel_approval_digest: String::new(),
             cached_score_tracks: None,
@@ -2009,6 +2018,7 @@ impl Default for VariantFollowupUiState {
             cached_ortholog_promoter_cohort: None,
             cached_ortholog_promoter_comparison: None,
             cached_candidates: None,
+            cached_promoter_reporter_architecture_comparison: None,
             cached_promoter_reporter_panel_proposal: None,
             cached_promoter_reporter_panel_receipt: None,
         }

@@ -1,5 +1,17 @@
 # GENtle Changelog
 
+- Added an engine-owned, read-only promoter-reporter architecture comparison
+  for transcript-rich loci. One portable request/report now separates
+  TSS-proximal transcriptional, synthetic spliced-5'-UTR, genomic-5'-UTR, and
+  explicitly requested endogenous-ATG fusion models; reuses fail-closed CDS
+  phase/split-codon geometry; reports ordered/total/max intron burden and ATG
+  policy; and keeps initiation evidence, theoretical motifs, and CUT&RUN
+  occupancy as non-interchangeable evidence layers. Shared JSON/SVG exports,
+  shell/CLI and generic MCP reachability, and a thin Promoter Design inspector
+  use the same contract. A pinned Ensembl-116 GRCh38 SERPINE1 fixture verifies
+  two TSS classes, one common CDS start, and representative leader geometries
+  without treating annotation or occupancy as promoter usage.
+
 - Generalized the approval-gated promoter-reporter panel from a mandatory
   luciferase/p53-mutant pair to an evidence-guided regulatory reporter
   contract. `native_only_v1` now emits one unchanged construct per member,

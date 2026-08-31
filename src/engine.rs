@@ -881,6 +881,10 @@ pub const PROMOTER_REPORTER_PANEL_CLONING_STRATEGY_SCHEMA: &str =
 pub const P53_FAMILY_MOTIF_DISRUPTION_SCHEMA: &str = "gentle.p53_family_motif_disruption.v1";
 pub const PROMOTER_REPORTER_PANEL_REQUEST_SCHEMA: &str =
     "gentle.promoter_reporter_panel_request.v1";
+pub const PROMOTER_REPORTER_ARCHITECTURE_REQUEST_SCHEMA: &str =
+    "gentle.promoter_reporter_architecture_comparison_request.v1";
+pub const PROMOTER_REPORTER_ARCHITECTURE_REPORT_SCHEMA: &str =
+    "gentle.promoter_reporter_architecture_comparison.v1";
 pub const PROMOTER_REPORTER_PANEL_PROPOSAL_SCHEMA: &str =
     "gentle.promoter_reporter_panel_proposal.v1";
 pub const PROMOTER_REPORTER_PANEL_RECEIPT_SCHEMA: &str =
@@ -1259,6 +1263,8 @@ mod probe_region_glen_adapter;
 mod probe_regions;
 #[path = "engine/analysis/promoter_design.rs"]
 mod promoter_design;
+#[path = "engine/analysis/promoter_reporter_architecture.rs"]
+mod promoter_reporter_architecture;
 #[path = "engine/analysis/protein_handoff.rs"]
 mod protein_handoff;
 #[path = "engine/io/read_acquisition.rs"]
@@ -5429,6 +5435,13 @@ pub enum Operation {
         promoter_downstream_bp: usize,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
+    },
+    ComparePromoterReporterArchitectures {
+        request: Box<PromoterReporterArchitectureComparisonRequest>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        svg_path: Option<String>,
     },
     SummarizePromoterEvidenceMatrix {
         input: SeqId,
@@ -9658,6 +9671,7 @@ impl GentleEngine {
                 | Operation::SummarizeTfbsScoreTracks { .. }
                 | Operation::SummarizeTfbsTrackSimilarity { .. }
                 | Operation::SummarizeAlternativePromoterComparison { .. }
+                | Operation::ComparePromoterReporterArchitectures { .. }
                 | Operation::SummarizePromoterEvidenceMatrix { .. }
                 | Operation::SummarizeIsoformPromoterComparison { .. }
                 | Operation::SummarizePromoterExpressionEvidence { .. }
