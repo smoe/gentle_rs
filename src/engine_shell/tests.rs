@@ -393,7 +393,7 @@ fn sample_value_for_usage_token(flag: &str, token: &str) -> String {
             "CSV" => "A,B".to_string(),
             "DNA" | "QUERY_SEQUENCE" | "SEQ" => "ACGTACGTACGT".to_string(),
             "EXPRESSION" => "gc_fraction".to_string(),
-            "F" | "Q" | "VALUE" => "0.5".to_string(),
+            "BITS" | "F" | "Q" | "VALUE" => "0.5".to_string(),
             "JSON"
             | "JSON_OR_@FILE"
             | "PROPOSAL_JSON_OR_@FILE"
@@ -559,6 +559,9 @@ fn smoke_command_override(path: &str) -> Option<&'static str> {
         "gene-sets promoter-cohort" => {
             Some("gene-sets promoter-cohort ToyGenome --group yamanaka_factors")
         }
+        "gene-sets regulatory-partner-screen" => Some(
+            "gene-sets regulatory-partner-screen demo --resolution '{}' --anchor-motif demo --partner-motif demo",
+        ),
         "gene-sets create-pool" => {
             Some("gene-sets create-pool resolution:demo --member-container GENE1=container-1")
         }
@@ -636,6 +639,7 @@ fn skip_glossary_flag_parse(path: &str, flag: &str) -> bool {
                     "gene-sets promoter-cohort",
                     "--resolution" | "--gene-set-resolution"
                 )
+                | ("gene-sets regulatory-partner-screen", "--cutrun-support")
                 | ("collections run primer-specificity", "--pair-index")
                 | (
                     "collections run digest",
