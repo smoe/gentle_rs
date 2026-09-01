@@ -2162,6 +2162,14 @@ const PROJECT_FACT_TYPE_SPECS: &[ProjectFactTypeSpec] = &[
         description: "An explicit proof/report artifact is available as evidence.",
     },
     ProjectFactTypeSpec {
+        name: "primer_design_report.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Report,
+        description: "A persisted primer-design report with this id exists in current project metadata.",
+    },
+    ProjectFactTypeSpec {
         name: "dotplot.exists",
         domain: ProjectFactDomain::Project,
         world: ProjectFactWorld::ClosedWorld,

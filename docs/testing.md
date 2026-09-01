@@ -350,6 +350,44 @@ waits for the DNA viewer and its information-width splitter. It accepts
 explicit pseudonymous sequence/repeat/array row scopes plus a typed-state
 verification command.
 
+### 6.1 Tutorial GUI acceptance contracts
+
+Tutorial source units may carry an optional
+`gentle.tutorial_gui_acceptance.v1` block. The documentation generator copies
+and validates this block, but the runtime GUI and engine never read it. The
+contract names a deliberately incomplete starter workflow, a completed oracle,
+semantic GUI targets, closed interaction kinds, and typed postconditions. Its
+Rust representation has no command, script, shell, or executable-text field;
+the external runner owns input delivery and the final verdict.
+
+Mutating steps declare `mutating: true` and both `before` and `after` fact
+expressions. Deterministic tests require the completion condition and every
+mutating `before` expression to be `Unsatisfied` on the starter, not `Unknown`,
+and require the completion condition and every `after` expression to be
+`Satisfied` on the oracle. This prevents an already completed starter from
+producing a meaningless green GUI run. At runtime the eventual external runner
+must repeat those checks around each mutation and classify an `Unknown` truth
+as a harness gap unless its isolated dependency inventory proves a declared
+optional tool is missing.
+
+GUI state and scientific state remain independent evidence channels. Visible
+claims use only `gentle.gui_semantic_snapshot.v2`; facts, expected effects,
+reports, and state checks use only a project saved by the ordinary GUI action.
+For a project opened from a known path, `Ctrl+S` and `File -> Save Project` save
+in place without invoking a native file dialog. Harnesses should wait for
+`main.project.save_state` to change from `unsaved` to `saved` before inspecting
+that project with `gentle_cli --project`. Artifact checks inspect the artifact
+directly and do not force an otherwise unnecessary project save.
+
+The first contract is attached to `simple_pcr_selection_gui`. It uses a
+selection formula rather than pixel-coordinate dragging, enters the PCR
+Designer through the ordinary selection context action, and proves creation of
+the closed-world `primer_design_report.exists` fact against the separate
+`simple_pcr_primer_design_offline` oracle. The existing shell Xvfb script
+remains a liveness example; a contract-driven Python runner with an isolation
+record and checkpoint ledger is still required before this contract becomes a
+release acceptance result.
+
 ## 6. Practical implementation order
 
 1. Keep extending engine tests alongside new operations

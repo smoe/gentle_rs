@@ -1368,6 +1368,7 @@ pub struct MainAreaDna {
     engine: Option<Arc<RwLock<GentleEngine>>>,
     seq_id: Option<String>,
     window_scope_id: String,
+    rendering_pcr_specialist: bool,
     map_dna: RenderDna,
     map_sequence: RenderSequence,
     show_sequence: bool, // TODO move to DnaDisplay
@@ -2163,6 +2164,7 @@ impl MainAreaDna {
             engine,
             seq_id,
             window_scope_id: String::new(),
+            rendering_pcr_specialist: false,
             map_dna: RenderDna::new(dna.clone(), dna_display.clone()),
             map_sequence: RenderSequence::new_single_sequence(dna, dna_display),
             show_sequence: initial_is_circular,
@@ -2622,6 +2624,19 @@ impl MainAreaDna {
 
     pub fn set_window_scope_id(&mut self, scope_id: impl Into<String>) {
         self.window_scope_id = scope_id.into();
+    }
+
+    #[cfg(feature = "gui-test-support")]
+    fn semantic_control_window_id(&self) -> &'static str {
+        if self.rendering_pcr_specialist {
+            "window.pcr_design"
+        } else {
+            "window.dna_viewer"
+        }
+    }
+
+    pub fn set_rendering_pcr_specialist(&mut self, value: bool) {
+        self.rendering_pcr_specialist = value;
     }
 
     pub fn panel_scope_key(&self) -> String {
@@ -6377,12 +6392,27 @@ impl MainAreaDna {
             });
             self.render_selection_formula_inline_controls(ui, 420.0);
             if let Some((start, end_exclusive)) = selection_roi {
-                ui.label(
+                let _selection_status = ui.label(
                     egui::RichText::new(format!(
                         "Selection ready for PCR: {start}..{end_exclusive}. Use `Set PCR ROI`, `Queue PCR selection`, or the `PCR ROI` menu."
                     ))
                     .weak()
                     .italics(),
+                );
+                #[cfg(feature = "gui-test-support")]
+                crate::gui_test_support::register_rect(
+                    _selection_status.ctx.clone(),
+                    "dna.selection.status",
+                    "window.dna_viewer",
+                    Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
+                        self.seq_id.as_deref().unwrap_or("unnamed"),
+                    ])),
+                    crate::gui_test_support::GuiTestWidgetKind::Status,
+                    _selection_status.rect,
+                    true,
+                    true,
+                    true,
+                    Some("ready"),
                 );
             } else if let Some((start, end_exclusive)) = self.pcr_paint_intervals.roi {
                 ui.label(
@@ -13484,6 +13514,17 @@ impl MainAreaDna {
         } else {
             response.on_hover_text("Requires a non-empty current selection on the linear DNA map")
         };
+        #[cfg(feature = "gui-test-support")]
+        crate::gui_test_support::register_response(
+            &response,
+            "dna.selection.simple_pcr",
+            "window.dna_viewer",
+            Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
+                self.seq_id.as_deref().unwrap_or("unnamed"),
+            ])),
+            crate::gui_test_support::GuiTestWidgetKind::Button,
+            false,
+        );
         if response.clicked() {
             self.open_simple_pcr_designer_from_current_selection();
             return true;
@@ -27011,6 +27052,17 @@ impl MainAreaDna {
                         ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::ResizeHorizontal);
                     }
                 }
+                #[cfg(feature = "gui-test-support")]
+                crate::gui_test_support::register_response(
+                    &response,
+                    "dna.map.canvas",
+                    "window.dna_viewer",
+                    Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
+                        self.seq_id.as_deref().unwrap_or("unnamed"),
+                    ])),
+                    crate::gui_test_support::GuiTestWidgetKind::Row,
+                    false,
+                );
                 self.draw_pcr_paint_overlays(ui, &response);
                 self.render_pcr_post_drag_actions(ui);
                 let mut map_open_variant_followup_feature: Option<usize> = None;

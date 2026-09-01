@@ -555,7 +555,9 @@ impl WindowDna {
     }
 
     pub fn render_pcr_designer_specialist(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        self.main_area.set_rendering_pcr_specialist(true);
         self.main_area.render_pcr_designer_specialist(ui, ctx);
+        self.main_area.set_rendering_pcr_specialist(false);
     }
 
     pub fn render_sequencing_confirmation_specialist(

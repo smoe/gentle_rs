@@ -5827,12 +5827,23 @@ impl MainAreaDna {
                         ui.label("report_id").on_hover_text(
                             "Persisted report identifier. Batch mode derives deterministic suffixes (`_r01`, `_r02`, ...).",
                         );
-                        ui.add(
+                        let _report_id_response = ui.add(
                             egui::TextEdit::singleline(&mut self.primer_design_ui.report_id)
                                 .desired_width(240.0),
                         )
                         .on_hover_text(
                             "Optional report id stem. Empty value auto-derives from template and ROI.",
+                        );
+                        #[cfg(feature = "gui-test-support")]
+                        crate::gui_test_support::register_response(
+                            &_report_id_response,
+                            "pcr.design.report_id",
+                            self.semantic_control_window_id(),
+                            Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
+                                self.seq_id.as_deref().unwrap_or("unnamed"),
+                            ])),
+                            crate::gui_test_support::GuiTestWidgetKind::TextInput,
+                            false,
                         );
                         ui.end_row();
                     });
@@ -5851,7 +5862,18 @@ impl MainAreaDna {
                     );
                 });
                 ui.group(|ui| {
-                    ui.label("Simple PCR starter");
+                    let _starter_label = ui.label("Simple PCR starter");
+                    #[cfg(feature = "gui-test-support")]
+                    crate::gui_test_support::register_response(
+                        &_starter_label,
+                        "pcr.simple_starter.panel",
+                        self.semantic_control_window_id(),
+                        Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
+                            self.seq_id.as_deref().unwrap_or("unnamed"),
+                        ])),
+                        crate::gui_test_support::GuiTestWidgetKind::Status,
+                        true,
+                    );
                     ui.small(
                         "For a simple PCR, think in three inputs: core ROI, maximum primer distance from that core, and maximum amplicon length.",
                     );
@@ -5870,6 +5892,17 @@ impl MainAreaDna {
                                 "Requires a non-empty current selection on the sequence map",
                             )
                         };
+                        #[cfg(feature = "gui-test-support")]
+                        crate::gui_test_support::register_response(
+                            &seed_simple_response,
+                            "pcr.simple_starter.seed_from_selection",
+                            self.semantic_control_window_id(),
+                            Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
+                                self.seq_id.as_deref().unwrap_or("unnamed"),
+                            ])),
+                            crate::gui_test_support::GuiTestWidgetKind::Button,
+                            false,
+                        );
                         if seed_simple_response.clicked() {
                             self.open_simple_pcr_designer_from_current_selection();
                         }
@@ -6146,11 +6179,21 @@ impl MainAreaDna {
                 } else {
                     "Design Primer Pairs"
                 };
-                if ui
+                let design_response = ui
                     .add_enabled(!primer_task_running, egui::Button::new(design_button))
-                    .on_hover_text("Run DesignPrimerPairs with current GUI constraints")
-                    .clicked()
-                {
+                    .on_hover_text("Run DesignPrimerPairs with current GUI constraints");
+                #[cfg(feature = "gui-test-support")]
+                crate::gui_test_support::register_response(
+                    &design_response,
+                    "pcr.design.run",
+                    self.semantic_control_window_id(),
+                    Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
+                        self.seq_id.as_deref().unwrap_or("unnamed"),
+                    ])),
+                    crate::gui_test_support::GuiTestWidgetKind::Button,
+                    false,
+                );
+                if design_response.clicked() {
                     match self.build_design_primer_pairs_operation(&template) {
                         Ok(op) => self.start_primer_design_operation(op, "Primer-pair design"),
                         Err(err) => self.op_status = err,

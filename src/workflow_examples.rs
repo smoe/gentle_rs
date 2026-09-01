@@ -1,6 +1,9 @@
 //! Curated workflow example payloads and templates.
 
-use crate::engine::{Engine, GentleEngine, Operation, OperationProgress, ProjectState, Workflow};
+use crate::engine::{
+    Engine, GentleEngine, Operation, OperationProgress, ProjectState, Workflow,
+    protocol::FactExpression,
+};
 use gentle_protocol::FeatureExpertTarget;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -29,6 +32,7 @@ pub const TUTORIAL_MANIFEST_SCHEMA: &str = "gentle.tutorial_manifest.v2";
 pub const LEGACY_TUTORIAL_MANIFEST_SCHEMA_V1: &str = "gentle.tutorial_manifest.v1";
 pub const TUTORIAL_GENERATION_REPORT_SCHEMA: &str = "gentle.tutorial_generation_report.v1";
 pub const TUTORIAL_REVIEW_MANIFEST_SCHEMA: &str = "gentle.tutorial_review_manifest.v1";
+pub const TUTORIAL_GUI_ACCEPTANCE_SCHEMA: &str = "gentle.tutorial_gui_acceptance.v1";
 pub const DEFAULT_TUTORIAL_CATALOG_PATH: &str = "docs/tutorial/catalog.json";
 pub const DEFAULT_TUTORIAL_CATALOG_META_PATH: &str = "docs/tutorial/sources/catalog_meta.json";
 pub const DEFAULT_TUTORIAL_SOURCE_DIR: &str = "docs/tutorial/sources";
@@ -209,6 +213,137 @@ pub struct TutorialSourceGeneratedChapterSection {
     pub checkpoints: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub graphics: Vec<TutorialGraphic>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gui_acceptance: Option<TutorialGuiAcceptance>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TutorialGuiAcceptance {
+    pub schema: String,
+    pub profile: String,
+    pub network: TutorialGuiNetworkPolicy,
+    pub starter: TutorialGuiProjectReference,
+    pub oracle: TutorialGuiProjectReference,
+    pub completion_condition: FactExpression,
+    pub steps: Vec<TutorialGuiAcceptanceStep>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TutorialGuiNetworkPolicy {
+    Offline,
+    OnlineAllowed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TutorialGuiProjectReference {
+    pub example_id: String,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub seq_id_map: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TutorialGuiAcceptanceStep {
+    pub id: String,
+    pub prose_step: usize,
+    pub window: String,
+    pub target: String,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub subject: BTreeMap<String, String>,
+    pub interaction: TutorialGuiInteraction,
+    pub timeout_class: TutorialGuiTimeoutClass,
+    pub mutating: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub allow_preexisting: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub before: Option<FactExpression>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after: Option<FactExpression>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub verifiers: Vec<TutorialGuiVerifier>,
+    pub evidence: TutorialGuiEvidencePolicy,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum TutorialGuiInteraction {
+    Click,
+    RightClick,
+    DoubleClick,
+    TypeText { text: String },
+    SetCheckbox { selected: bool },
+    SelectTab,
+    PressKey { key: String },
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TutorialGuiTimeoutClass {
+    Instant,
+    Interactive,
+    Compute,
+    Io,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum TutorialGuiVerifier {
+    Facts {
+        expression: FactExpression,
+    },
+    ExpectedEffects {
+        capability_id: String,
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        args: BTreeMap<String, String>,
+    },
+    Report {
+        report_id: String,
+        schema: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        required_fields: Vec<String>,
+    },
+    Artifact {
+        path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sha256: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        schema: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        required_attributes: Vec<String>,
+    },
+    State {
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        seq_ids: Vec<String>,
+    },
+    VisibleClaim {
+        semantic_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        visible: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        enabled: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        selected: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        outcome_role: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TutorialGuiEvidencePolicy {
+    pub screenshot: TutorialGuiEvidenceRequirement,
+    pub snapshot: TutorialGuiEvidenceRequirement,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TutorialGuiEvidenceRequirement {
+    Required,
+    Optional,
+    Omitted,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -312,6 +447,7 @@ impl TutorialSourceGeneratedChapterSection {
             retain_outputs: self.retain_outputs,
             checkpoints: self.checkpoints,
             graphics,
+            gui_acceptance: self.gui_acceptance,
         }
     }
 }
@@ -500,6 +636,8 @@ pub struct TutorialChapter {
     pub checkpoints: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub graphics: Vec<TutorialGraphic>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gui_acceptance: Option<TutorialGuiAcceptance>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2110,6 +2248,9 @@ pub fn validate_tutorial_manifest_against_examples(
                 loaded.example.test_mode.as_str()
             ));
         }
+        if let Some(acceptance) = &chapter.gui_acceptance {
+            validate_tutorial_gui_acceptance(chapter, acceptance, &by_id)?;
+        }
         for concept_id in &chapter.concepts {
             if !concept_by_id.contains_key(concept_id) {
                 return Err(format!(
@@ -2126,6 +2267,101 @@ pub fn validate_tutorial_manifest_against_examples(
                 "Tutorial concept '{}' is defined but not used in any chapter",
                 concept_id
             ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_tutorial_gui_acceptance(
+    chapter: &TutorialChapter,
+    acceptance: &TutorialGuiAcceptance,
+    examples: &HashMap<String, LoadedWorkflowExample>,
+) -> Result<(), String> {
+    let context = format!("Tutorial chapter '{}' GUI acceptance", chapter.id);
+    if acceptance.schema != TUTORIAL_GUI_ACCEPTANCE_SCHEMA {
+        return Err(format!(
+            "{context} uses schema '{}' (expected '{}')",
+            acceptance.schema, TUTORIAL_GUI_ACCEPTANCE_SCHEMA
+        ));
+    }
+    if acceptance.profile.trim().is_empty() {
+        return Err(format!("{context} profile must not be empty"));
+    }
+    for (role, project) in [
+        ("starter", &acceptance.starter),
+        ("oracle", &acceptance.oracle),
+    ] {
+        if project.example_id.trim().is_empty() {
+            return Err(format!("{context} {role}.example_id must not be empty"));
+        }
+        if !examples.contains_key(project.example_id.as_str()) {
+            return Err(format!(
+                "{context} {role} references unknown example id '{}'",
+                project.example_id
+            ));
+        }
+    }
+    if acceptance.steps.is_empty() {
+        return Err(format!("{context} must declare at least one step"));
+    }
+    let mut step_ids = HashSet::new();
+    for step in &acceptance.steps {
+        if step.id.trim().is_empty() || !step_ids.insert(step.id.as_str()) {
+            return Err(format!(
+                "{context} contains an empty or duplicate step id '{}'",
+                step.id
+            ));
+        }
+        if step.prose_step == 0 || step.prose_step > chapter.gui_steps.len() {
+            return Err(format!(
+                "{context} step '{}' prose_step {} is outside gui_steps 1..={}",
+                step.id,
+                step.prose_step,
+                chapter.gui_steps.len()
+            ));
+        }
+        if step.window.trim().is_empty() || step.target.trim().is_empty() {
+            return Err(format!(
+                "{context} step '{}' requires non-empty window and target ids",
+                step.id
+            ));
+        }
+        match (step.mutating, step.before.is_some(), step.after.is_some()) {
+            (true, true, true) => {}
+            (true, _, _) => {
+                return Err(format!(
+                    "{context} mutating step '{}' requires before and after fact expressions",
+                    step.id
+                ));
+            }
+            (false, false, false) => {}
+            (false, _, _) => {
+                return Err(format!(
+                    "{context} non-mutating step '{}' must not declare before or after effects",
+                    step.id
+                ));
+            }
+        }
+        if step.allow_preexisting && !step.mutating {
+            return Err(format!(
+                "{context} non-mutating step '{}' cannot allow a pre-existing effect",
+                step.id
+            ));
+        }
+        match &step.interaction {
+            TutorialGuiInteraction::TypeText { text } if text.is_empty() => {
+                return Err(format!(
+                    "{context} step '{}' type_text value must not be empty",
+                    step.id
+                ));
+            }
+            TutorialGuiInteraction::PressKey { key } if key.trim().is_empty() => {
+                return Err(format!(
+                    "{context} step '{}' press_key value must not be empty",
+                    step.id
+                ));
+            }
+            _ => {}
         }
     }
     Ok(())
@@ -5551,6 +5787,7 @@ mod tests {
             retain_outputs: vec![],
             checkpoints: vec![],
             graphics: vec![],
+            gui_acceptance: None,
         }
     }
 
@@ -6205,6 +6442,139 @@ mod tests {
             !manifest.chapters.is_empty(),
             "Expected at least one tutorial chapter"
         );
+    }
+
+    #[test]
+    fn tutorial_gui_acceptance_contract_has_no_executable_text_fields() {
+        fn assert_no_execution_keys(value: &serde_json::Value) {
+            match value {
+                serde_json::Value::Object(map) => {
+                    for (key, child) in map {
+                        assert!(
+                            !matches!(key.as_str(), "command" | "exec" | "script" | "shell"),
+                            "GUI acceptance contracts must not carry executable field '{key}'"
+                        );
+                        assert_no_execution_keys(child);
+                    }
+                }
+                serde_json::Value::Array(values) => {
+                    for child in values {
+                        assert_no_execution_keys(child);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let manifest =
+            load_tutorial_manifest(&tutorial_manifest_path()).expect("load tutorial manifest");
+        let acceptance = manifest
+            .chapters
+            .iter()
+            .find_map(|chapter| chapter.gui_acceptance.as_ref())
+            .expect("at least one committed GUI acceptance contract");
+        let value = serde_json::to_value(acceptance).expect("serialize GUI acceptance contract");
+        assert_no_execution_keys(&value);
+    }
+
+    #[test]
+    fn tutorial_gui_acceptance_rejects_mutation_without_before_and_after_facts() {
+        let mut manifest =
+            load_tutorial_manifest(&tutorial_manifest_path()).expect("load tutorial manifest");
+        let acceptance = manifest
+            .chapters
+            .iter_mut()
+            .find_map(|chapter| chapter.gui_acceptance.as_mut())
+            .expect("at least one committed GUI acceptance contract");
+        let step = acceptance
+            .steps
+            .iter_mut()
+            .find(|step| step.mutating)
+            .expect("at least one mutating GUI acceptance step");
+        step.before = None;
+
+        let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
+        let error = validate_tutorial_manifest_against_examples(&manifest, &examples)
+            .expect_err("mutating step without before facts must be rejected");
+        assert!(
+            error.contains("requires before and after fact expressions"),
+            "unexpected validation error: {error}"
+        );
+    }
+
+    #[test]
+    fn simple_pcr_gui_acceptance_starter_and_oracle_bound_completion_fact() {
+        let manifest =
+            load_tutorial_manifest(&tutorial_manifest_path()).expect("load tutorial manifest");
+        let chapter = manifest
+            .chapters
+            .iter()
+            .find(|chapter| chapter.id == "simple_pcr_selection_gui")
+            .expect("simple PCR GUI tutorial chapter");
+        let acceptance = chapter
+            .gui_acceptance
+            .as_ref()
+            .expect("simple PCR GUI acceptance contract");
+        let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
+        let by_id = example_lookup(&examples);
+
+        let starter_dir = TempDir::new().expect("starter run dir");
+        let starter = run_example_workflow_for_project_state(
+            &by_id
+                .get(acceptance.starter.example_id.as_str())
+                .expect("starter workflow")
+                .example,
+            Path::new("."),
+            starter_dir.path(),
+        )
+        .expect("run starter workflow");
+        let starter_engine = GentleEngine::from_state(starter);
+        assert_eq!(
+            starter_engine
+                .evaluate_fact_expression(&acceptance.completion_condition, &[])
+                .truth,
+            crate::engine::protocol::FactTruth::Unsatisfied,
+            "the GUI starter must not already satisfy the tutorial completion condition"
+        );
+        for step in acceptance.steps.iter().filter(|step| step.mutating) {
+            assert_eq!(
+                starter_engine
+                    .evaluate_fact_expression(step.before.as_ref().expect("validated before"), &[])
+                    .truth,
+                crate::engine::protocol::FactTruth::Unsatisfied,
+                "mutating step '{}' must have an unsatisfied starter precondition",
+                step.id
+            );
+        }
+
+        let oracle_dir = TempDir::new().expect("oracle run dir");
+        let oracle = run_example_workflow_for_project_state(
+            &by_id
+                .get(acceptance.oracle.example_id.as_str())
+                .expect("oracle workflow")
+                .example,
+            Path::new("."),
+            oracle_dir.path(),
+        )
+        .expect("run oracle workflow");
+        let oracle_engine = GentleEngine::from_state(oracle);
+        assert_eq!(
+            oracle_engine
+                .evaluate_fact_expression(&acceptance.completion_condition, &[])
+                .truth,
+            crate::engine::protocol::FactTruth::Satisfied,
+            "the oracle must satisfy the tutorial completion condition"
+        );
+        for step in acceptance.steps.iter().filter(|step| step.mutating) {
+            assert_eq!(
+                oracle_engine
+                    .evaluate_fact_expression(step.after.as_ref().expect("validated after"), &[])
+                    .truth,
+                crate::engine::protocol::FactTruth::Satisfied,
+                "mutating step '{}' must have a satisfied oracle postcondition",
+                step.id
+            );
+        }
     }
 
     #[test]

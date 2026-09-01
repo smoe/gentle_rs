@@ -7899,20 +7899,6 @@ Error: `{err}`"
         }
     }
 
-    fn prompt_save_project(&mut self) {
-        if let Some(path) = rfd::FileDialog::new()
-            .set_file_name(self.default_project_save_file_name())
-            .add_filter("GENtle project", &["json"])
-            .save_file()
-        {
-            let path = path.display().to_string();
-            if self.save_project_to_file(&path).is_ok() {
-                self.set_current_project_path_and_track_recent(&path);
-                self.mark_clean_snapshot();
-            }
-        }
-    }
-
     fn prompt_export_lineage_svg(&mut self) {
         let Some(path) = rfd::FileDialog::new()
             .set_file_name(self.default_lineage_svg_file_name())
@@ -14434,6 +14420,19 @@ Error: `{err}`"
 
     fn render_pcr_design_contents(&mut self, ui: &mut Ui, ctx: &egui::Context) -> bool {
         let mut close_requested = false;
+        #[cfg(feature = "gui-test-support")]
+        crate::gui_test_support::register_rect(
+            ctx.clone(),
+            "window.pcr_design",
+            "window.pcr_design",
+            None,
+            crate::gui_test_support::GuiTestWidgetKind::Window,
+            ui.max_rect(),
+            true,
+            true,
+            true,
+            Some("ready"),
+        );
         let close_hover = Self::specialist_window_close_hover_text("PCR Designer");
         if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
             close_requested = true;
@@ -16371,12 +16370,20 @@ Error: `{err}`"
                         ui.close();
                     }
                 });
-                if ui
+                let save_response = ui
                     .button(self.tr("menu.file.save_project"))
-                    .on_hover_text(self.tr("menu.file.save_project.hover"))
-                    .clicked()
-                {
-                    self.prompt_save_project();
+                    .on_hover_text(self.tr("menu.file.save_project.hover"));
+                #[cfg(feature = "gui-test-support")]
+                crate::gui_test_support::register_response(
+                    &save_response,
+                    "main.project.save",
+                    "window.main",
+                    None,
+                    crate::gui_test_support::GuiTestWidgetKind::Button,
+                    false,
+                );
+                if save_response.clicked() {
+                    let _ = self.save_current_project();
                     ui.close();
                 }
                 if ui
@@ -20875,11 +20882,36 @@ Error: `{err}`"
                     } else {
                         project_status
                     };
-                    ui.label(Self::project_footer_status_text(
+                    #[cfg(feature = "gui-test-support")]
+                    let save_state = if self.current_project_path.is_none()
+                        && !self.project_has_user_content()
+                    {
+                        "no_project"
+                    } else if project_dirty {
+                        "unsaved"
+                    } else {
+                        "saved"
+                    };
+                    let status_response = ui.label(Self::project_footer_status_text(
                         ui.ctx(),
                         &self.tr("project.status"),
                         &project_status,
                     ));
+                    #[cfg(feature = "gui-test-support")]
+                    crate::gui_test_support::register_rect(
+                        status_response.ctx.clone(),
+                        "main.project.save_state",
+                        "window.main",
+                        None,
+                        crate::gui_test_support::GuiTestWidgetKind::Status,
+                        status_response.rect,
+                        true,
+                        true,
+                        false,
+                        Some(save_state),
+                    );
+                    #[cfg(not(feature = "gui-test-support"))]
+                    let _ = status_response;
                 },
             );
         });

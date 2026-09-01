@@ -9259,6 +9259,25 @@ fn default_save_file_names_follow_current_project_name() {
 }
 
 #[test]
+fn save_current_project_writes_known_path_without_save_as_dialog() {
+    let temp = tempdir().expect("temp project directory");
+    let project_path = temp.path().join("known.gentle.json");
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "saved_seq".to_string(),
+        DNAsequence::from_sequence("ACGT").expect("sequence"),
+    );
+    let mut app = GENtleApp::default();
+    app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    app.current_project_path = Some(project_path.to_string_lossy().to_string());
+
+    assert!(app.save_current_project());
+    let saved = ProjectState::load_from_path(project_path.to_string_lossy().as_ref())
+        .expect("load project written to known path");
+    assert!(saved.sequences.contains_key("saved_seq"));
+}
+
+#[test]
 fn can_close_project_is_enabled_for_unsaved_project_with_content() {
     let mut state = ProjectState::default();
     state.sequences.insert(

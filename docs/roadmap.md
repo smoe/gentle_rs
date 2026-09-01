@@ -306,11 +306,11 @@ wet-lab conclusions or unconfirmed mutations.
 - Extend the feature-gated semantic GUI test identifier registry beyond the
   bounded TP73/PATZ1 DNA-viewer, Splicing Expert, and Agent Assistant release
   controls as additional native acceptance stories require it.
-- Pilot the context-labelled tutorial-action graph over one existing tutorial:
-  canonical capability references, semantic context labels, outcome roles, and
-  GUI/CLI/agent projections first; forward skill activation and inverse
-  workflow-candidate discovery only after bound-readiness safeguards are
-  demonstrated.
+- Complete a Python/X11 runner for the typed `simple_pcr_selection_gui`
+  contract, with isolated environment/network policy, known-path saves, and a
+  content-bound checkpoint ledger; keep shell smoke as liveness evidence.
+- After that proof, extend context-labelled GUI/CLI/agent tutorial actions;
+  defer skill activation and inverse discovery until readiness is safeguarded.
 - Optional OS credential-store persistence for Agent Assistant API keys.
 - Separate opt-in inner coding-agent mode for Codex, Pi, or comparable local
   harnesses, with explicit workspace scope, tool permissions, diff review,

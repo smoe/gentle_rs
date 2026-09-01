@@ -93,6 +93,210 @@
       "A non-empty selection exposes `Simple PCR from selection` in the DNA-window context menu.",
       "The PCR Designer shows the `Simple PCR starter` block.",
       "After primer design, the report preview shows left/right distance from the core ROI and whether the pair cleanly flanks the core."
-    ]
+    ],
+    "gui_acceptance": {
+      "schema": "gentle.tutorial_gui_acceptance.v1",
+      "profile": "smoke",
+      "network": "offline",
+      "starter": {
+        "example_id": "simple_pcr_selection_gui"
+      },
+      "oracle": {
+        "example_id": "simple_pcr_primer_design_offline",
+        "seq_id_map": {
+          "tp73_locus": "simple_pcr_source_locus"
+        }
+      },
+      "completion_condition": {
+        "fact": "primer_design_report.exists",
+        "subject": {
+          "kind": "report",
+          "id": "simple_pcr_demo_primers"
+        }
+      },
+      "steps": [
+        {
+          "id": "enter_core_formula",
+          "prose_step": 2,
+          "window": "window.dna_viewer",
+          "target": "dna.selection_formula.input",
+          "subject": {
+            "sequence": "tp73_locus"
+          },
+          "interaction": {
+            "kind": "type_text",
+            "text": "=61721 .. 62120"
+          },
+          "timeout_class": "interactive",
+          "mutating": false,
+          "verifiers": [
+            {
+              "kind": "visible_claim",
+              "semantic_id": "dna.selection_formula.input",
+              "visible": true,
+              "enabled": true
+            }
+          ],
+          "evidence": {
+            "screenshot": "optional",
+            "snapshot": "required"
+          }
+        },
+        {
+          "id": "apply_core_formula",
+          "prose_step": 2,
+          "window": "window.dna_viewer",
+          "target": "dna.selection_formula.apply",
+          "subject": {
+            "sequence": "tp73_locus"
+          },
+          "interaction": {
+            "kind": "click"
+          },
+          "timeout_class": "interactive",
+          "mutating": false,
+          "verifiers": [
+            {
+              "kind": "visible_claim",
+              "semantic_id": "dna.selection.status",
+              "visible": true,
+              "outcome_role": "ready"
+            }
+          ],
+          "evidence": {
+            "screenshot": "optional",
+            "snapshot": "required"
+          }
+        },
+        {
+          "id": "open_selection_context",
+          "prose_step": 3,
+          "window": "window.dna_viewer",
+          "target": "dna.map.canvas",
+          "subject": {
+            "sequence": "tp73_locus"
+          },
+          "interaction": {
+            "kind": "right_click"
+          },
+          "timeout_class": "interactive",
+          "mutating": false,
+          "verifiers": [
+            {
+              "kind": "visible_claim",
+              "semantic_id": "dna.selection.simple_pcr",
+              "visible": true,
+              "enabled": true
+            }
+          ],
+          "evidence": {
+            "screenshot": "optional",
+            "snapshot": "required"
+          }
+        },
+        {
+          "id": "seed_simple_pcr",
+          "prose_step": 3,
+          "window": "window.dna_viewer",
+          "target": "dna.selection.simple_pcr",
+          "subject": {
+            "sequence": "tp73_locus"
+          },
+          "interaction": {
+            "kind": "click"
+          },
+          "timeout_class": "interactive",
+          "mutating": false,
+          "verifiers": [
+            {
+              "kind": "visible_claim",
+              "semantic_id": "window.pcr_design",
+              "visible": true,
+              "outcome_role": "ready"
+            },
+            {
+              "kind": "visible_claim",
+              "semantic_id": "pcr.simple_starter.panel",
+              "visible": true,
+              "selected": true
+            }
+          ],
+          "evidence": {
+            "screenshot": "required",
+            "snapshot": "required"
+          }
+        },
+        {
+          "id": "set_report_id",
+          "prose_step": 4,
+          "window": "window.pcr_design",
+          "target": "pcr.design.report_id",
+          "subject": {
+            "sequence": "tp73_locus"
+          },
+          "interaction": {
+            "kind": "type_text",
+            "text": "simple_pcr_demo_primers"
+          },
+          "timeout_class": "interactive",
+          "mutating": false,
+          "verifiers": [
+            {
+              "kind": "visible_claim",
+              "semantic_id": "pcr.design.run",
+              "visible": true,
+              "enabled": true
+            }
+          ],
+          "evidence": {
+            "screenshot": "optional",
+            "snapshot": "required"
+          }
+        },
+        {
+          "id": "design_primers",
+          "prose_step": 5,
+          "window": "window.pcr_design",
+          "target": "pcr.design.run",
+          "subject": {
+            "sequence": "tp73_locus"
+          },
+          "interaction": {
+            "kind": "click"
+          },
+          "timeout_class": "compute",
+          "mutating": true,
+          "before": {
+            "fact": "primer_design_report.exists",
+            "subject": {
+              "kind": "report",
+              "id": "simple_pcr_demo_primers"
+            }
+          },
+          "after": {
+            "fact": "primer_design_report.exists",
+            "subject": {
+              "kind": "report",
+              "id": "simple_pcr_demo_primers"
+            }
+          },
+          "verifiers": [
+            {
+              "kind": "report",
+              "report_id": "simple_pcr_demo_primers",
+              "schema": "gentle.primer_design_report.v1",
+              "required_fields": [
+                "report_id",
+                "pairs"
+              ]
+            }
+          ],
+          "evidence": {
+            "screenshot": "required",
+            "snapshot": "required"
+          }
+        }
+      ]
+    }
   }
 }

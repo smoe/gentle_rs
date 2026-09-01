@@ -1351,6 +1351,12 @@ impl GentleEngine {
 
         for report in self.list_primer_design_reports() {
             facts.push(ProjectFact {
+                fact: "primer_design_report.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Report, report.report_id.clone()),
+                value: Some(serde_json::json!(true)),
+                ..ProjectFact::default()
+            });
+            facts.push(ProjectFact {
                 fact: "report.exists".to_string(),
                 subject: fact_subject(FactSubjectKind::Report, report.report_id.clone()),
                 value: Some(serde_json::json!("primer_design")),

@@ -5670,6 +5670,11 @@ restriction-site scan evidence:
   `value: "sequencing_confirmation"`, persisted CUT&RUN read reports project
   with `value: "cutrun_read"`, and persisted RNA-read interpretation reports
   project with `value: "rna_read"`. Each carries a hard-fact basis.
+- `primer_design_report.exists` is the closed-world project-state companion for
+  persisted primer-pair reports. It is `Unsatisfied`, rather than `Unknown`,
+  when the named report is absent, which allows tutorial and automation
+  harnesses to prove both the pre-mutation absence and post-mutation presence
+  without weakening the general open-world `report.exists` contract.
   Restriction-scan reports supplied through `--evidence` project as
   `value: "restriction_scan"`.
   Read-only report inspection commands use the same values for readiness, so a

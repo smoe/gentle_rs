@@ -1,5 +1,17 @@
 # GENtle Changelog
 
+- Added the first typed, non-executable tutorial GUI acceptance contract for
+  the offline Simple PCR walkthrough. The source-owned contract binds prose
+  steps to semantic GUI controls, an incomplete starter, a separate oracle,
+  closed interaction kinds, visual evidence, and engine fact expressions;
+  deterministic tests reject pre-completed starters and require the oracle to
+  satisfy the completion fact. Known-path File-menu saves now avoid native file
+  dialogs, semantic snapshots expose project save state and PCR Designer
+  controls, and the engine fact graph exposes closed-world
+  `primer_design_report.exists`. This establishes the contract and proof
+  boundary only; the external Python/Xvfb checkpoint-ledger runner remains a
+  pre-release follow-up.
+
 - Updated the complete egui desktop family from `0.35.0` to `0.36.1`, including
   `eframe`, `egui_extras`, and the vendored CommonMark adapters. Keeping the
   family on one version avoids incompatible duplicate `Ui`/`Widget` types and

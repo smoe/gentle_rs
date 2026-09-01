@@ -117,15 +117,37 @@ impl MainAreaDna {
                     .on_hover_text(
                         "Excel-like range formula. Examples: `=CDS.start+10 .. CDS.end-500`, `=gene[label=TP73].start to gene[label=TP73].end`",
                     );
+                #[cfg(feature = "gui-test-support")]
+                crate::gui_test_support::register_response(
+                    &response,
+                    "dna.selection_formula.input",
+                    self.semantic_control_window_id(),
+                    Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
+                        self.seq_id.as_deref().unwrap_or("unnamed"),
+                    ])),
+                    crate::gui_test_support::GuiTestWidgetKind::TextInput,
+                    false,
+                );
                 if response.changed() {
                     self.save_engine_ops_state();
                 }
-                let apply_clicked = ui
+                let apply_response = ui
                     .button(Self::tr("sequence.apply_selection"))
                     .on_hover_text(
                         "Resolve selection formula and apply it as current map/text selection",
-                    )
-                    .clicked();
+                    );
+                #[cfg(feature = "gui-test-support")]
+                crate::gui_test_support::register_response(
+                    &apply_response,
+                    "dna.selection_formula.apply",
+                    self.semantic_control_window_id(),
+                    Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
+                        self.seq_id.as_deref().unwrap_or("unnamed"),
+                    ])),
+                    crate::gui_test_support::GuiTestWidgetKind::Button,
+                    false,
+                );
+                let apply_clicked = apply_response.clicked();
                 let enter_pressed = ui.input(|i| i.key_pressed(egui::Key::Enter));
                 if apply_clicked || (enter_pressed && response.lost_focus()) {
                     self.apply_selection_formula();
