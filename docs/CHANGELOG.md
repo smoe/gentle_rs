@@ -1,5 +1,11 @@
 # GENtle Changelog
 
+- Updated the complete egui desktop family from `0.35.0` to `0.36.1`, including
+  `eframe`, `egui_extras`, and the vendored CommonMark adapters. Keeping the
+  family on one version avoids incompatible duplicate `Ui`/`Widget` types and
+  makes the upstream macOS viewport/fullscreen changes available for the next
+  manual window-stability smoke; this does not yet claim that smoke has passed.
+
 - Added an engine-owned regulatory-partner screen for resolved gene sets. The
   portable report records uncapped threshold-passing anchor/partner motif hits,
   exact promoter and genomic coordinates, every motif tuple, source-report
