@@ -1,0 +1,139 @@
+{
+  "schema": "gentle.gene_locus_evidence_preparation_request.v1",
+  "gene_query": "synthetic_gene_locus_demo",
+  "species": "homo_sapiens",
+  "assembly": "GRCh38",
+  "allow_ensembl_network": false,
+  "ensembl_entry_path": "test_files/fixtures/gene_locus_evidence/general_locus_demo/ensembl_gene_entry.json",
+  "flank_5prime_bp": 150,
+  "flank_3prime_bp": 200,
+  "output_seq_id": "general_locus_demo",
+  "output_panel_id": "general_locus_demo_panel",
+  "annotation_release": "Synthetic Ensembl-like fixture v1",
+  "display_upstream_bp": 150,
+  "display_downstream_bp": 200,
+  "local_tracks": [
+    {
+      "source_kind": "bed",
+      "path": "test_files/fixtures/gene_locus_evidence/general_locus_demo/tp73_occupancy.bed",
+      "track_name": "TP73 CUT&RUN",
+      "clear_existing": false
+    },
+    {
+      "source_kind": "bed",
+      "path": "test_files/fixtures/gene_locus_evidence/general_locus_demo/h3k4me3_context.bed",
+      "track_name": "H3K4me3 CUT&RUN",
+      "clear_existing": false
+    }
+  ],
+  "occupancy_layout": {
+    "schema": "gentle.gene_locus_occupancy_layout.v1",
+    "groups": [
+      {
+        "group_id": "tp73_occupancy",
+        "label": "TP73 occupancy",
+        "scale_mode": "independent",
+        "lanes": [
+          {
+            "track_name": "TP73 CUT&RUN",
+            "display_label": "TP73 CUT&RUN",
+            "condition_label": "TP73",
+            "cell_line_label": "Synthetic cells",
+            "batch_label": "fixture-batch-1",
+            "role": "experimental"
+          }
+        ]
+      },
+      {
+        "group_id": "chromatin_context",
+        "label": "Promoter chromatin context",
+        "scale_mode": "independent",
+        "lanes": [
+          {
+            "track_name": "H3K4me3 CUT&RUN",
+            "display_label": "H3K4me3 CUT&RUN",
+            "condition_label": "matched context",
+            "cell_line_label": "Synthetic cells",
+            "batch_label": "fixture-batch-1",
+            "role": "chromatin_context"
+          }
+        ]
+      }
+    ]
+  },
+  "regulatory_score_tracks": [
+    {
+      "track_id": "tp73_jaspar",
+      "label": "TP73 JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "TP73"
+      ],
+      "factors": [
+        {
+          "factor_id": "TP73",
+          "factor_label": "p73"
+        }
+      ],
+      "score_kind": "llr_bits",
+      "strand_policy": "both",
+      "clip_negative": false,
+      "display_threshold": 0,
+      "top_hit_count": 3,
+      "scale_mode": "independent",
+      "color_hint": "#005f73"
+    },
+    {
+      "track_id": "sp1_jaspar",
+      "label": "SP1 JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "SP1"
+      ],
+      "factors": [
+        {
+          "factor_id": "SP1",
+          "factor_label": "SP1"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 3,
+      "scale_mode": "independent",
+      "color_hint": "#ae2012"
+    },
+    {
+      "track_id": "external_tp73_context",
+      "label": "Synthetic TP73-context model",
+      "provider_kind": "external_model_scores",
+      "source_path": "test_files/fixtures/gene_locus_evidence/general_locus_demo/external_model_scores.json",
+      "factors": [
+        {
+          "factor_id": "TP73",
+          "factor_label": "p73"
+        }
+      ],
+      "score_kind": "uncalibrated_model_score",
+      "score_units": "arbitrary_units",
+      "calibration_statement": "Uncalibrated synthetic model prediction for adapter testing; not measured binding or affinity.",
+      "strand_policy": "both",
+      "clip_negative": false,
+      "display_threshold": 0.5,
+      "top_hit_count": 3,
+      "scale_mode": "independent",
+      "color_hint": "#3a6b35",
+      "line_style_hint": "solid_forward_dashed_reverse"
+    }
+  ],
+  "scale_bar": {
+    "mode": "fixed",
+    "length_bp": 1000
+  },
+  "svg_path": "target/gene_locus_evidence_demo/general_locus_demo.svg",
+  "png_path": "target/gene_locus_evidence_demo/general_locus_demo.png",
+  "display_report_path": "target/gene_locus_evidence_demo/general_locus_demo.report.json",
+  "receipt_path": "target/gene_locus_evidence_demo/general_locus_demo.receipt.json",
+  "png_scale": 1
+}

@@ -18,6 +18,21 @@
       {
          "aliases": [],
          "engine_operations": [
+            "PrepareGeneLocusEvidence"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp-op"
+         ],
+         "path": "gene-locus prepare",
+         "summary": "Prepare an Ensembl-anchored locus, declared evidence tracks, normalized TF score tracks, and SVG/PNG/PDF artifacts with a digest-bound receipt.",
+         "usage": "gene-locus prepare REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "PreviewFeatureLocationEdit",
             "EditFeatureLocation"
          ],
@@ -432,7 +447,7 @@
          ],
          "path": "inspect-feature-expert",
          "summary": "Inspect TFBS, restriction-site, splicing, isoform architecture/evidence, composed gene-locus evidence, or transcript/protein expert details as JSON.",
-         "usage": "inspect-feature-expert SEQ_ID tfbs FEATURE_ID | inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | inspect-feature-expert SEQ_ID splicing FEATURE_ID | inspect-feature-expert SEQ_ID isoform PANEL_ID | inspect-feature-expert SEQ_ID isoform-evidence PANEL_ID [--annotation-release LABEL] [--rna-read-report-id ID]... [--probe-evidence PATH]... [--cdna-est-resource PATH]... [--expression-tsv PATH] [--occupancy-track NAME]... [--qpcr-report-id ID]... | inspect-feature-expert SEQ_ID gene-locus-evidence PANEL_ID [--annotation-release LABEL] [--rna-read-report-id ID]... [--probe-evidence PATH]... [--cdna-est-resource PATH]... [--expression-tsv PATH] [--qpcr-report-id ID]... [--probe-effect-table PATH]... [--probe-effect-contrast TOKEN]... [--probe-effect-coordinate-system ID] [--upstream-bp N] [--downstream-bp N] [--occupancy-layout JSON_OR_@FILE | --occupancy-track NAME]... [--motif TOKEN]... [--score-kind KIND] [--motif-threshold N] [--motif-top-hits N] [--allow-negative] | inspect-feature-expert SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]... | inspect-feature-expert SEQ_ID uniprot-projection PROJECTION_ID [--feature-key KEY]... [--feature-key-not KEY]..."
+         "usage": "inspect-feature-expert SEQ_ID tfbs FEATURE_ID | inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | inspect-feature-expert SEQ_ID splicing FEATURE_ID | inspect-feature-expert SEQ_ID isoform PANEL_ID | inspect-feature-expert SEQ_ID isoform-evidence PANEL_ID [--annotation-release LABEL] [--rna-read-report-id ID]... [--probe-evidence PATH]... [--cdna-est-resource PATH]... [--expression-tsv PATH] [--occupancy-track NAME]... [--qpcr-report-id ID]... | inspect-feature-expert SEQ_ID gene-locus-evidence PANEL_ID [--annotation-release LABEL] [--rna-read-report-id ID]... [--probe-evidence PATH]... [--cdna-est-resource PATH]... [--expression-tsv PATH] [--qpcr-report-id ID]... [--probe-effect-table PATH]... [--probe-effect-contrast TOKEN]... [--probe-effect-coordinate-system ID] [--upstream-bp N] [--downstream-bp N] [--occupancy-layout JSON_OR_@FILE | --occupancy-track NAME]... [--motif TOKEN]... [--score-kind KIND] [--motif-threshold N] [--motif-top-hits N] [--regulatory-score-tracks JSON_OR_@FILE] [--scale-bar hidden|auto|fixed] [--scale-bar-bp N] [--include-local-source-paths] [--allow-negative] | inspect-feature-expert SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]... | inspect-feature-expert SEQ_ID uniprot-projection PROJECTION_ID [--feature-key KEY]... [--feature-key-not KEY]..."
       },
       {
          "aliases": [],
@@ -446,7 +461,7 @@
          ],
          "path": "render-feature-expert-svg",
          "summary": "Render TFBS, restriction-site, splicing, isoform architecture/evidence, composed gene-locus evidence, or transcript/protein expert visualization as SVG.",
-         "usage": "render-feature-expert-svg SEQ_ID tfbs FEATURE_ID OUTPUT.svg | render-feature-expert-svg SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] OUTPUT.svg | render-feature-expert-svg SEQ_ID splicing FEATURE_ID OUTPUT.svg | render-feature-expert-svg SEQ_ID isoform PANEL_ID OUTPUT.svg | render-feature-expert-svg SEQ_ID isoform-evidence PANEL_ID [--annotation-release LABEL] [--rna-read-report-id ID]... [--probe-evidence PATH]... [--cdna-est-resource PATH]... [--expression-tsv PATH] [--occupancy-track NAME]... [--qpcr-report-id ID]... OUTPUT.svg | render-feature-expert-svg SEQ_ID gene-locus-evidence PANEL_ID [--annotation-release LABEL] [--rna-read-report-id ID]... [--probe-evidence PATH]... [--cdna-est-resource PATH]... [--expression-tsv PATH] [--qpcr-report-id ID]... [--probe-effect-table PATH]... [--probe-effect-contrast TOKEN]... [--probe-effect-coordinate-system ID] [--upstream-bp N] [--downstream-bp N] [--occupancy-layout JSON_OR_@FILE | --occupancy-track NAME]... [--motif TOKEN]... [--score-kind KIND] [--motif-threshold N] [--motif-top-hits N] [--allow-negative] OUTPUT.svg | render-feature-expert-svg SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]... OUTPUT.svg | render-feature-expert-svg SEQ_ID uniprot-projection PROJECTION_ID [--feature-key KEY]... [--feature-key-not KEY]... OUTPUT.svg"
+         "usage": "render-feature-expert-svg SEQ_ID tfbs FEATURE_ID OUTPUT.svg | render-feature-expert-svg SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] OUTPUT.svg | render-feature-expert-svg SEQ_ID splicing FEATURE_ID OUTPUT.svg | render-feature-expert-svg SEQ_ID isoform PANEL_ID OUTPUT.svg | render-feature-expert-svg SEQ_ID isoform-evidence PANEL_ID [--annotation-release LABEL] [--rna-read-report-id ID]... [--probe-evidence PATH]... [--cdna-est-resource PATH]... [--expression-tsv PATH] [--occupancy-track NAME]... [--qpcr-report-id ID]... OUTPUT.svg | render-feature-expert-svg SEQ_ID gene-locus-evidence PANEL_ID [--annotation-release LABEL] [--rna-read-report-id ID]... [--probe-evidence PATH]... [--cdna-est-resource PATH]... [--expression-tsv PATH] [--qpcr-report-id ID]... [--probe-effect-table PATH]... [--probe-effect-contrast TOKEN]... [--probe-effect-coordinate-system ID] [--upstream-bp N] [--downstream-bp N] [--occupancy-layout JSON_OR_@FILE | --occupancy-track NAME]... [--motif TOKEN]... [--score-kind KIND] [--motif-threshold N] [--motif-top-hits N] [--regulatory-score-tracks JSON_OR_@FILE] [--scale-bar hidden|auto|fixed] [--scale-bar-bp N] [--include-local-source-paths] [--allow-negative] OUTPUT.svg | render-feature-expert-svg SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]... OUTPUT.svg | render-feature-expert-svg SEQ_ID uniprot-projection PROJECTION_ID [--feature-key KEY]... [--feature-key-not KEY]... OUTPUT.svg"
       },
       {
          "aliases": [],

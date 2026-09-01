@@ -10,6 +10,18 @@
   strand-aware promoter DNA. The screen remains association evidence and makes
   no unique-factor, causal-regulation, temporal-order, or distal-element claim.
 
+- Generalized the engine-owned gene-locus evidence figure into an end-to-end
+  Ensembl-to-artifact workflow. Ensembl imports now persist verified canonical
+  genome anchors and annotation-derived versioned isoform panels without
+  guessing missing CDS geometry; typed occupancy/chromatin roles, independent
+  provider-neutral TF score tracks, and hidden/automatic/fixed genomic scale
+  bars share one portable report and renderer. `PrepareGeneLocusEvidence`
+  composes explicit-network or offline Ensembl input, BED/BigWig projection,
+  SVG plus optional PNG/PDF, and a digest-bound receipt with local paths
+  redacted by default. A synthetic public fixture exercises two transcript/TSS
+  and CDS-start classes, TP73/H3K4me3 lanes, two JASPAR requests, an offline
+  external score provider, and an exact 1000 bp scale bar.
+
 - Added an engine-owned, read-only promoter-reporter architecture comparison
   for transcript-rich loci. One portable request/report now separates
   TSS-proximal transcriptional, synthetic spliced-5'-UTR, genomic-5'-UTR, and

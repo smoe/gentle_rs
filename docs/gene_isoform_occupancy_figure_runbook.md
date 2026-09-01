@@ -1,9 +1,9 @@
 # Gene Locus Evidence Figure Runbook
 
 GENtle can compose transcript architecture, annotation-derived transcript/CDS
-metrics, selected projected BED or BigWig occupancy tracks, continuous motif
-score tracks, coordinate-aligned PSR/JUC probe-effect rows, and existing
-junction-qPCR candidates into one
+metrics, selected projected BED or BigWig occupancy tracks, continuous motif or
+provider-neutral predicted binding-score tracks, coordinate-aligned PSR/JUC
+probe-effect rows, a genomic scale bar, and existing junction-qPCR candidates into one
 `gentle.gene_locus_evidence_display.v1` SVG. This is intended for selected-gene
 CUT&RUN figures such as TAp73alpha versus DNp73beta at PATZ1. It is reusable for
 other genes and occupancy assays.
@@ -14,18 +14,67 @@ The figure places transcript geometry, locus-level occupancy, motif scores, and
 assay candidates on one strand-aware 5'-to-3' coordinate axis. It does not
 assign a peak to one transcript, infer isoform-specific regulation, or convert
 spatial overlap into causality. Expression, RNA-read, probe, cDNA/EST,
-occupancy, motif, and qPCR evidence remain separate report layers.
+occupancy, chromatin context, predicted score, and qPCR evidence remain separate
+report layers. H3K4me3 is promoter-associated chromatin context, not TP73
+occupancy or a positive binding control. JASPAR PWM and external-model values
+are predictions, not observed binding or measured affinity.
 
 Before projection, verify and record the track assembly independently. BigWig
 chromosome names can detect obvious chromosome mismatches but cannot establish
 GRCh37 versus GRCh38 identity. The open sequence should carry a verified genome
 anchor for the same assembly.
 
-## Prepare the project
+## Preferred typed preparation
+
+`gene-locus prepare REQUEST_JSON_OR_@FILE` composes the existing Ensembl import,
+automatic annotation-derived panel, BED/BigWig projection, score-track adapters,
+shared renderer, and SVG-to-PNG/PDF exporters. It returns
+`gentle.gene_locus_evidence_preparation_receipt.v1`, including request and
+sequence digests, resolved versioned transcripts, the verified genome anchor,
+track/provider bindings, output hashes, warnings, and the GENtle revision.
+
+The request must state `allow_ensembl_network`. With `false`, either
+`ensembl_entry_path` supplies an offline `gentle.ensembl_gene_entry.v1` resource
+or `gene_query` must resolve to a stored Ensembl entry with exactly matching
+species, assembly, and flanks; GENtle does not silently contact Ensembl. The
+offline file and network consent are mutually exclusive. With `true`, the
+operation may retrieve and store that matching entry through the existing
+Ensembl REST path. Local BED/BigWig and external-model files are never
+downloaded implicitly.
+
+The committed request shape is demonstrated by:
+
+```text
+test_files/fixtures/gene_locus_evidence/general_locus_demo/preparation_request.json
+```
+
+The committed request already names its offline entry and therefore runs from
+an empty project in the shared Shell/CLI:
+
+```text
+gene-locus prepare @test_files/fixtures/gene_locus_evidence/general_locus_demo/preparation_request.json
+```
+
+For a real gene, either fetch once explicitly with `ensembl-gene fetch` and
+keep `allow_ensembl_network=false` in later reproducible runs, or set it to
+`true` in the preparation request. A verified anchor is mandatory before any
+local genomic track or coordinate-bound model output is projected.
+
+Portable reports and receipts omit local source paths by default while
+retaining source digests. Set `include_local_source_paths=true` only for a
+deliberately machine-local artifact. The lower-level inspection command offers
+the equivalent explicit `--include-local-source-paths` opt-in.
+
+## Lower-level project preparation
+
+These commands expose the same individual operations when each step should be
+inspected separately.
 
 1. Load or extract one genome-anchored gene sequence containing its transcript
    annotations.
-2. Import an isoform panel whose transcript ids map to those annotations:
+2. Ensembl gene import derives and stores a versioned isoform panel
+   automatically. For non-Ensembl annotations, import an explicit panel whose
+   transcript ids map to those annotations:
 
 ```text
 panels import-isoform GENE_SEQ_ID PANEL.json --panel-id GENE_PANEL
@@ -95,9 +144,28 @@ svg-pdf patz1_locus_evidence.svg patz1_locus_evidence.pdf
 ```
 
 Omit `--qpcr-report-id` when no persisted assay report should be shown. Repeat
-`--motif` for additional matrices. `--motif-threshold 0` labels only scores
-strictly above zero; the continuous score trace is retained regardless. Motif
-provenance records the local JASPAR matrix id, score kind, and clipping policy.
+`--motif` for additional matrices on the backward-compatible shared settings.
+For independent per-track settings, pass
+`--regulatory-score-tracks JSON_OR_@FILE`; each entry declares provider,
+factor/source IDs, score kind, strand policy, threshold, hit count, and scale.
+Use `--scale-bar hidden|auto|fixed` and, for `fixed`, `--scale-bar-bp N`.
+`auto` deterministically chooses a readable 1/2/5 x 10^n length, `fixed`
+requires a positive length within the plotted span, and `hidden` is the
+backward-compatible default.
+
+An `external_model_scores` entry points to a
+`gentle.gene_locus_external_regulatory_scores.v1` JSON file. The file must bind
+structured values/sites to the exact sequence digest, assembly, chromosome,
+anchor, coordinate convention, model snapshot, request/schema digests, output
+digest, score semantics, and calibration statement. Mismatches fail the whole
+composition before rendering; model prose is not accepted as a score track.
+Forward and reverse values remain separate in the report and SVG.
+
+Each predicted-score track is independently scaled by default. Shared score
+scaling requires one declared group, identical provider/score/calibration
+semantics, and the same explicit comparability justification. Different
+providers or uncalibrated matrices must not be numerically compared or labelled
+as affinity.
 
 For a quick ungrouped inspection, repeat `--occupancy-track NAME` instead of
 using `--occupancy-layout`; `--occupancy-track '*'` includes every projected
@@ -105,12 +173,18 @@ BED/BigWig track overlapping the locus. Explicit layout files are preferable
 for publication figures because they prevent unrelated tracks from entering,
 declare lane roles, and avoid mixing distinct biological contexts.
 
+Use the explicit `chromatin_context` lane role for H3K4me3 or comparable
+promoter-state marks, including cell-line and batch labels. Do not combine its
+scale with TF occupancy unless a valid cross-track comparability rationale is
+available.
+
 Each occupancy group can use `shared_group`, `independent`, `fixed`, or
 `shared_all` scaling. `shared_all` should only be used when preprocessing and
 normalization make groups quantitatively comparable; include
 `cross_group_scale_justification` in that case. Unscored BED peaks are shown as
 interval marks. The JSON report retains local and genomic interval coordinates,
-source paths, score ranges, and explicit non-causal evidence notes.
+source digests, score ranges, and explicit non-causal evidence notes. Local
+paths are redacted unless their inclusion was requested explicitly.
 
 Probe-effect tables require an explicit coordinate system matching the open
 sequence anchor. Each PSR is drawn once as a locus interval and each JUC once as
@@ -135,7 +209,8 @@ Expert now also provides a graphical `Locus figure` tab:
 1. Enter the imported panel and optional RNA/cDNA, probe, expression, and qPCR
    sources under `Evidence`.
 2. In `Locus figure`, add probe-effect table paths and contrasts, the explicit
-   coordinate system, occupancy-layout path, motifs, flanks, and score options.
+   coordinate system, occupancy-layout path, motifs or a regulatory-score-track
+   JSON file, flanks, score options, and the scale-bar policy.
 3. Review the resource table. Missing local files can be relocated with the
    adjacent browse action; panel and projected-track identities remain
    engine-validated project objects.
@@ -160,4 +235,8 @@ planning actions and do not turn a displayed association into validation.
   condition, replicate, lane role, and scale policy;
 - input/negative/GFP controls inspected alongside experimental tracks where
   scientifically appropriate;
-- JSON report, occupancy-layout JSON, and SVG retained together.
+- JSON report, occupancy-layout JSON, and SVG retained together;
+- external score resources retain exact sequence/request/payload digests and
+  model/calibration provenance;
+- independently scaled or differently calibrated TF score tracks are not
+  ranked against one another.

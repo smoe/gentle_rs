@@ -12010,6 +12010,7 @@ Error: `{err}`"
                 cryptic_splicing_screen: None,
                 cryptic_splicing_evidence_overlay: None,
                 cryptic_splicing_protein_projection: None,
+                gene_locus_evidence_preparation: None,
                 op_id: "background-prepare-genome".to_string(),
                 created_seq_ids: vec![],
                 changed_seq_ids: vec![],

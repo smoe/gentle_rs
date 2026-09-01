@@ -24474,6 +24474,375 @@ fn test_ensembl_gene_entry_store_and_import_sequence() {
                     .any(|value| value == "ENSETOYGENE1")),
         "expanded Ensembl gene import should preserve exon features"
     );
+
+    let anchor = engine
+        .sequence_genome_anchor_summary("tp53_ensembl_gene_seq")
+        .expect("canonical Ensembl genome anchor");
+    assert_eq!(anchor.genome_id, "GRCh38");
+    assert_eq!(anchor.chromosome, "17");
+    assert_eq!(anchor.start_1based, 7_668_402);
+    assert_eq!(anchor.end_1based, 7_668_513);
+    assert_eq!(anchor.strand, Some('-'));
+    assert_eq!(anchor.anchor_verified, Some(true));
+
+    let panel_id = "ensembl_ensg00000141510_v1";
+    assert!(engine.isoform_panel_is_available("tp53_ensembl_gene_seq", panel_id));
+    let panel = engine
+        .get_isoform_panel_record("tp53_ensembl_gene_seq", panel_id)
+        .expect("automatically derived Ensembl isoform panel")
+        .resource;
+    assert_eq!(panel.isoforms.len(), 1);
+    let isoform = &panel.isoforms[0];
+    assert_eq!(isoform.isoform_id, "ENSTTOYGENE1.1");
+    assert_eq!(
+        isoform.annotation_transcript_id.as_deref(),
+        Some("ENSTTOYGENE1.1")
+    );
+    assert_eq!(
+        isoform.annotation_translation_id.as_deref(),
+        Some("ENSPTOYGENE1.1")
+    );
+    assert_eq!(isoform.transcript_strand.as_deref(), Some("-"));
+    assert_eq!(
+        isoform.transcript_biotype.as_deref(),
+        Some("protein_coding")
+    );
+    assert_eq!(isoform.exon_ranges_genomic_1based.len(), 1);
+    assert_eq!(
+        isoform.exon_ranges_genomic_1based[0].start_1based,
+        7_668_402
+    );
+    assert_eq!(isoform.exon_ranges_genomic_1based[0].end_1based, 7_668_513);
+    assert_eq!(isoform.cds_ranges_genomic_1based.len(), 1);
+    assert_eq!(isoform.cds_ranges_genomic_1based[0].start_1based, 7_668_412);
+    assert_eq!(isoform.cds_ranges_genomic_1based[0].end_1based, 7_668_450);
+    assert_eq!(
+        isoform.coding_start_status.as_deref(),
+        Some("annotation_translation_boundary")
+    );
+
+    let temp = tempfile::tempdir().expect("temporary immediate BED import");
+    let bed_path = temp.path().join("tp53_peak.bed");
+    std::fs::write(&bed_path, "chr17\t7668401\t7668406\tpeak-1\t8\t+\n")
+        .expect("write matching BED track");
+    engine
+        .apply(Operation::ImportGenomeBedTrack {
+            seq_id: "tp53_ensembl_gene_seq".to_string(),
+            path: bed_path.to_string_lossy().to_string(),
+            track_name: Some("immediate-enrichment".to_string()),
+            min_score: None,
+            max_score: None,
+            clear_existing: Some(false),
+        })
+        .expect("matching BED track should project immediately after Ensembl import");
+    assert!(
+        engine.state().sequences["tp53_ensembl_gene_seq"]
+            .features()
+            .iter()
+            .any(GentleEngine::is_generated_genome_bed_feature)
+    );
+}
+
+#[test]
+fn test_ensembl_gene_import_persists_verified_plus_strand_anchor() {
+    let mut entry = synthetic_ensembl_gene_entry("toy_plus_ensembl_gene", "ENSGTOYPLUS", "TOYPLUS");
+    entry.strand = Some(1);
+    for transcript in &mut entry.transcripts {
+        transcript.strand = Some(1);
+        for exon in &mut transcript.exons {
+            exon.strand = Some(1);
+        }
+    }
+    let mut engine = GentleEngine::default();
+    engine
+        .upsert_ensembl_gene_entry(entry)
+        .expect("upsert plus-strand Ensembl gene entry");
+    engine
+        .apply(Operation::ImportEnsemblGeneSequence {
+            entry_id: "toy_plus_ensembl_gene".to_string(),
+            output_id: Some("toy_plus_locus".to_string()),
+        })
+        .expect("import plus-strand Ensembl gene");
+
+    let anchor = engine
+        .sequence_genome_anchor_summary("toy_plus_locus")
+        .expect("verified plus-strand anchor");
+    assert_eq!(anchor.strand, Some('+'));
+    assert_eq!(anchor.anchor_verified, Some(true));
+    assert!(engine.isoform_panel_is_available("toy_plus_locus", "ensembl_ensgtoyplus_v1"));
+}
+
+#[test]
+fn test_ensembl_gene_import_does_not_guess_cds_outside_annotated_exons() {
+    let mut entry = synthetic_ensembl_gene_entry(
+        "toy_nonoverlap_ensembl_gene",
+        "ENSGTOYNONOVERLAP",
+        "TOYNONOVERLAP",
+    );
+    let translation = entry.transcripts[0]
+        .translation
+        .as_mut()
+        .expect("synthetic translation");
+    translation.genomic_start_1based = Some(7_668_300);
+    translation.genomic_end_1based = Some(7_668_350);
+
+    let mut engine = GentleEngine::default();
+    engine
+        .upsert_ensembl_gene_entry(entry)
+        .expect("upsert non-overlapping Ensembl annotation");
+    engine
+        .apply(Operation::ImportEnsemblGeneSequence {
+            entry_id: "toy_nonoverlap_ensembl_gene".to_string(),
+            output_id: Some("toy_nonoverlap_locus".to_string()),
+        })
+        .expect("import annotation without inventing CDS geometry");
+
+    let sequence = &engine.state().sequences["toy_nonoverlap_locus"];
+    assert!(
+        !sequence
+            .features()
+            .iter()
+            .any(|feature| feature.kind.eq_ignore_ascii_case("CDS")),
+        "translation bounds outside annotated exons must not become a guessed contiguous CDS"
+    );
+    let panel = engine
+        .get_isoform_panel_record("toy_nonoverlap_locus", "ensembl_ensgtoynonoverlap_v1")
+        .expect("annotation-derived panel")
+        .resource;
+    assert!(panel.isoforms[0].cds_ranges_genomic_1based.is_empty());
+    assert_eq!(
+        panel.isoforms[0].coding_start_status.as_deref(),
+        Some("not_assessable_translation_does_not_overlap_annotated_exons")
+    );
+}
+
+#[test]
+fn test_ensembl_gene_import_marks_inconsistent_sequence_span_unverified() {
+    let mut entry = synthetic_ensembl_gene_entry(
+        "toy_unverified_ensembl_gene",
+        "ENSGTOYUNVERIFIED",
+        "TOYUNVERIFIED",
+    );
+    entry.sequence_genomic_end_1based = Some(7_668_514);
+    let mut engine = GentleEngine::default();
+    engine
+        .upsert_ensembl_gene_entry(entry)
+        .expect("upsert inconsistent Ensembl entry");
+    let result = engine
+        .apply(Operation::ImportEnsemblGeneSequence {
+            entry_id: "toy_unverified_ensembl_gene".to_string(),
+            output_id: Some("toy_unverified_locus".to_string()),
+        })
+        .expect("import should preserve an explicitly unverified anchor");
+
+    assert_eq!(
+        engine
+            .sequence_genome_anchor_summary("toy_unverified_locus")
+            .expect("unverified anchor summary")
+            .anchor_verified,
+        Some(false)
+    );
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("unverified genome anchor"))
+    );
+}
+
+#[test]
+fn prepare_gene_locus_evidence_runs_fully_offline_with_normalized_score_sources() {
+    let _guard = jaspar_test_lock().lock().unwrap();
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let fixture = root.join("test_files/fixtures/gene_locus_evidence/general_locus_demo");
+    let mut request: GeneLocusEvidencePreparationRequest = serde_json::from_slice(
+        &fs::read(fixture.join("preparation_request.json")).expect("read preparation request"),
+    )
+    .expect("parse preparation request");
+    request.ensembl_entry_path = Some(
+        fixture
+            .join("ensembl_gene_entry.json")
+            .to_string_lossy()
+            .to_string(),
+    );
+    for track in &mut request.local_tracks {
+        track.path = fixture
+            .join(Path::new(&track.path).file_name().expect("track file name"))
+            .to_string_lossy()
+            .to_string();
+    }
+    for track in &mut request.regulatory_score_tracks {
+        if track.provider_kind == GeneLocusRegulatoryScoreProviderKind::ExternalModelScores {
+            track.source_path = Some(
+                fixture
+                    .join("external_model_scores.json")
+                    .to_string_lossy()
+                    .to_string(),
+            );
+        }
+    }
+    let output = tempdir().expect("temporary gene-locus outputs");
+    request.svg_path = output
+        .path()
+        .join("locus.svg")
+        .to_string_lossy()
+        .to_string();
+    request.png_path = Some(
+        output
+            .path()
+            .join("locus.png")
+            .to_string_lossy()
+            .to_string(),
+    );
+    request.display_report_path = Some(
+        output
+            .path()
+            .join("locus.report.json")
+            .to_string_lossy()
+            .to_string(),
+    );
+    request.receipt_path = Some(
+        output
+            .path()
+            .join("locus.receipt.json")
+            .to_string_lossy()
+            .to_string(),
+    );
+
+    let mut engine = GentleEngine::default();
+    let result = engine
+        .apply(Operation::PrepareGeneLocusEvidence {
+            request: Box::new(request.clone()),
+        })
+        .expect("prepare offline gene-locus evidence");
+    let receipt = result
+        .gene_locus_evidence_preparation
+        .as_deref()
+        .expect("typed preparation receipt");
+    assert!(!receipt.ensembl_network_used);
+    assert!(receipt.ensembl_entry_source_path.is_none());
+    assert!(
+        receipt
+            .ensembl_entry_source_sha256
+            .as_deref()
+            .is_some_and(|digest| digest.starts_with("sha256:"))
+    );
+    assert_eq!(receipt.sequence_id, "general_locus_demo");
+    assert_eq!(receipt.panel_id, "general_locus_demo_panel");
+    assert_eq!(
+        receipt.transcript_ids,
+        vec!["ENSTDEMO0001.2", "ENSTDEMO0002.3"]
+    );
+    assert_eq!(receipt.imported_tracks.len(), 2);
+    assert!(
+        receipt
+            .imported_tracks
+            .iter()
+            .all(|track| track.path.is_none())
+    );
+    assert_eq!(receipt.scale_bar.length_bp, 1_000);
+    assert!(
+        receipt
+            .warnings
+            .iter()
+            .all(|warning| !warning.contains("flank was clipped")),
+        "flanks that exactly reach the loaded sequence boundary are complete"
+    );
+    assert_eq!(
+        receipt
+            .genome_anchor
+            .as_ref()
+            .and_then(|row| row.anchor_verified),
+        Some(true)
+    );
+    assert!(
+        receipt
+            .artifacts
+            .iter()
+            .any(|row| row.kind == "svg" && row.size_bytes > 0)
+    );
+    assert!(
+        receipt
+            .artifacts
+            .iter()
+            .any(|row| row.kind == "png" && row.size_bytes > 0)
+    );
+
+    let report: GeneLocusEvidenceDisplayReport = serde_json::from_slice(
+        &fs::read(request.display_report_path.as_ref().expect("report path"))
+            .expect("read generated display report"),
+    )
+    .expect("parse generated display report");
+    assert_eq!(report.isoform_evidence.transcripts.len(), 2);
+    assert_eq!(
+        report
+            .codon_markers
+            .iter()
+            .filter(|marker| marker.kind == GeneLocusCodonKind::Start)
+            .count(),
+        2,
+        "both annotation-derived CDS starts should remain distinct"
+    );
+    assert_eq!(report.occupancy_groups.len(), 2);
+    assert_eq!(
+        report.occupancy_groups[1].lanes[0].role,
+        GeneLocusOccupancyLaneRole::ChromatinContext
+    );
+    assert!(
+        report
+            .regulatory_score_tracks
+            .iter()
+            .filter(|track| track.provider_kind == GeneLocusRegulatoryScoreProviderKind::JasparPwm)
+            .count()
+            >= 2
+    );
+    let tp73_sites = &report
+        .regulatory_score_tracks
+        .iter()
+        .find(|track| track.track_id == "tp73_jaspar")
+        .expect("TP73 JASPAR track")
+        .sites;
+    let sp1_sites = &report
+        .regulatory_score_tracks
+        .iter()
+        .find(|track| track.track_id == "sp1_jaspar")
+        .expect("SP1 JASPAR track")
+        .sites;
+    assert!(tp73_sites.iter().any(|tp73| {
+        sp1_sites.iter().any(|sp1| {
+            tp73.local_start_0based < sp1.local_end_0based_exclusive
+                && sp1.local_start_0based < tp73.local_end_0based_exclusive
+        })
+    }));
+    assert!(report.regulatory_score_tracks.iter().any(|track| {
+        track.provider_kind == GeneLocusRegulatoryScoreProviderKind::ExternalModelScores
+            && track.provider_id == "synthetic_regulatory_model"
+    }));
+    assert!(
+        report
+            .regulatory_score_tracks
+            .iter()
+            .all(|track| track.source_path.is_none())
+    );
+    assert!(
+        report
+            .regulatory_score_tracks
+            .iter()
+            .all(|track| { track.scale_mode == GeneLocusRegulatoryScoreScaleMode::Independent })
+    );
+
+    let svg = fs::read_to_string(&request.svg_path).expect("read generated SVG");
+    assert!(svg.contains("data-gentle-genomic-scale-bar=\"true\""));
+    assert!(svg.contains("data-gentle-scale-bp=\"1000\""));
+    assert!(svg.contains("data-gentle-occupancy-role=\"chromatin_context\""));
+    assert!(svg.contains("data-gentle-regulatory-provider=\"jaspar_pwm\""));
+    assert!(svg.contains("data-gentle-regulatory-provider=\"external_model_scores\""));
+    assert!(
+        fs::metadata(request.png_path.as_ref().expect("png path"))
+            .expect("generated PNG metadata")
+            .len()
+            > 0
+    );
 }
 
 #[test]
@@ -27038,12 +27407,14 @@ fn gene_isoform_evidence_inspector_composes_gene_locus_evidence_for_patz1_minus_
                             display_label: Some("TAp73alpha".to_string()),
                             condition_label: Some("TA".to_string()),
                             role: GeneLocusOccupancyLaneRole::Experimental,
+                            ..Default::default()
                         },
                         GeneLocusOccupancyLaneRequest {
                             track_name: "SAOS-2 DNp73beta TP73".to_string(),
                             display_label: Some("DNp73beta".to_string()),
                             condition_label: Some("DN".to_string()),
                             role: GeneLocusOccupancyLaneRole::Experimental,
+                            ..Default::default()
                         },
                     ],
                     ..Default::default()
@@ -27066,6 +27437,7 @@ fn gene_isoform_evidence_inspector_composes_gene_locus_evidence_for_patz1_minus_
         motif_clip_negative: false,
         motif_display_threshold: None,
         motif_top_hit_count: 3,
+        ..Default::default()
     };
     let locus_state_before =
         serde_json::to_value(engine.state()).expect("serialize state before locus inspection");

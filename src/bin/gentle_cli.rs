@@ -527,6 +527,7 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "routines",
     "gene-groups",
     "gene-sets",
+    "gene-locus",
     "promoters",
     "collections",
     "planning",
@@ -2211,6 +2212,22 @@ mod tests {
         ];
         let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
         assert!(matches!(parsed, Some(ShellCommand::ServicesProvidersList)));
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_gene_locus_through_shared_parser() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "gene-locus".to_string(),
+            "prepare".to_string(),
+            r#"{"schema":"gentle.gene_locus_evidence_preparation_request.v1","gene_query":"SERPINE1","species":"homo_sapiens","assembly":"GRCh38","allow_ensembl_network":false,"svg_path":"serpine1.svg"}"#.to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        assert!(matches!(
+            parsed,
+            Some(ShellCommand::PrepareGeneLocusEvidence { request })
+                if request.gene_query == "SERPINE1" && request.svg_path == "serpine1.svg"
+        ));
     }
 
     #[test]

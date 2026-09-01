@@ -4826,12 +4826,20 @@ Isoform architecture panel workflow:
     - see `docs/gene_isoform_occupancy_figure_runbook.md` for a local
       TAp73alpha/DNp73beta CUT&RUN example
   - publication-oriented gene-locus evidence composition:
-    - `inspect-feature-expert SEQ_ID gene-locus-evidence PANEL_ID [isoform-evidence options] [--probe-effect-table PATH]... [--probe-effect-contrast TOKEN]... [--probe-effect-coordinate-system ID] [--upstream-bp N] [--downstream-bp N] [--occupancy-layout JSON_OR_@FILE | --occupancy-track NAME ...] [--motif TOKEN]... [--score-kind KIND] [--motif-threshold N] [--motif-top-hits N] [--allow-negative]`
+    - `gene-locus prepare REQUEST_JSON_OR_@FILE`
+    - `inspect-feature-expert SEQ_ID gene-locus-evidence PANEL_ID [isoform-evidence options] [--probe-effect-table PATH]... [--probe-effect-contrast TOKEN]... [--probe-effect-coordinate-system ID] [--upstream-bp N] [--downstream-bp N] [--occupancy-layout JSON_OR_@FILE | --occupancy-track NAME ...] [--motif TOKEN]... [--score-kind KIND] [--motif-threshold N] [--motif-top-hits N] [--regulatory-score-tracks JSON_OR_@FILE] [--scale-bar hidden|auto|fixed] [--scale-bar-bp N] [--include-local-source-paths] [--allow-negative]`
     - `render-feature-expert-svg SEQ_ID gene-locus-evidence PANEL_ID [same options] OUTPUT.svg`
     - this pure-read route aligns transcript/CDS metrics, annotation-backed
       start/stop glyphs, grouped projected occupancy, continuous motif scores,
       optional coordinate-aligned PSR/JUC effect rows, and one marker per
       qPCR-targeted junction on a strand-aware 5'->3' axis
+    - `gene-locus prepare` is the mutating convenience route. Its typed request
+      composes an explicitly network-approved or offline Ensembl gene entry,
+      automatic versioned isoform panel, declared BED/BigWig tracks, the same
+      report/renderer, and optional PNG/PDF conversion. It returns a
+      hash-bound `gentle.gene_locus_evidence_preparation_receipt.v1`; the
+      committed offline example is
+      `test_files/fixtures/gene_locus_evidence/general_locus_demo/preparation_request.json`
     - repeat `--probe-effect-table` for compact TSV sources whose abundance
       columns are named `log2_mean_*` and whose differential columns are named
       `log2_*_minus_*`; repeat `--probe-effect-contrast` to select a subset.
@@ -4845,6 +4853,15 @@ Isoform architecture panel workflow:
       lines/conditions in separate declared groups and to choose
       `shared_group`, `independent`, `fixed`, or explicitly justified
       `shared_all` scaling; GENtle does not infer these meanings from filenames
+    - `--regulatory-score-tracks` accepts independent JASPAR or normalized
+      offline external-model tracks with their own factor/source identity,
+      score semantics, strand policy, thresholds, top sites, and scales.
+      Different providers remain non-comparable unless an explicit compatible
+      calibration and shared-scale justification are supplied
+    - `--scale-bar` defaults to backward-compatible `hidden`; `auto` selects a
+      deterministic 1/2/5 x 10^n length and `fixed` requires a positive
+      `--scale-bar-bp`. Local source paths are omitted from portable reports by
+      default; `--include-local-source-paths` is an explicit opt-in
     - see `docs/gene_isoform_occupancy_figure_runbook.md` and
       `docs/examples/gene_locus_evidence/patz1_cutrun_layout.json`
     - the fully offline structural/visual proof is:

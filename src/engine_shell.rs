@@ -67,7 +67,8 @@ use crate::{
         GeneIsoformAssayStudyReuseProposal, GeneIsoformAssayStudyRuntimeIdentity,
         GeneIsoformAssayStudyWorkflowBatch, GeneIsoformAssayStudyWorkflowBatchEntry,
         GeneIsoformAssayStudyWorkflowBatchRequest, GeneIsoformEvidenceRequest,
-        GeneLocusEvidenceDisplayRequest, GeneSetCohortRelationship,
+        GeneLocusEvidenceDisplayRequest, GeneLocusEvidencePreparationRequest,
+        GeneLocusRegulatoryScoreTrackRequest, GeneLocusScaleBarMode, GeneSetCohortRelationship,
         GeneSetCutRunRegulatorySupportReport, GeneSetPoolMemberBinding, GeneSetProducerFilter,
         GeneSetPromoterCohortReport, GeneSetRequest, GeneSetResolutionReport,
         GeneSetResolutionReviewStatus, GeneTranscriptAssayRoutineRequest, GenomeAnchorSide,
@@ -715,6 +716,9 @@ pub enum ShellCommand {
         seq_id: String,
         target: FeatureExpertTarget,
         output: String,
+    },
+    PrepareGeneLocusEvidence {
+        request: Box<GeneLocusEvidencePreparationRequest>,
     },
     PanelsImportIsoform {
         seq_id: String,
@@ -7186,6 +7190,14 @@ impl ShellCommand {
             } => format!(
                 "render feature expert SVG for '{seq_id}' target={} to '{output}'",
                 target.describe()
+            ),
+            Self::PrepareGeneLocusEvidence { request } => format!(
+                "prepare gene-locus evidence for '{}' (species={}, assembly={}, network={}, svg='{}')",
+                request.gene_query,
+                request.species,
+                request.assembly,
+                request.allow_ensembl_network,
+                request.svg_path
             ),
             Self::PanelsImportIsoform {
                 seq_id,
@@ -15568,6 +15580,63 @@ fn parse_feature_expert_target_tokens(
                             format!("Invalid --motif-top-hits value '{raw}': {error}")
                         })?;
                     }
+                    "--regulatory-score-tracks" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--regulatory-score-tracks",
+                            context,
+                        )?;
+                        let loaded = parse_json_payload(&raw)?;
+                        if let Ok(tracks) = serde_json::from_str::<
+                            Vec<GeneLocusRegulatoryScoreTrackRequest>,
+                        >(&loaded)
+                        {
+                            request.regulatory_score_tracks = tracks;
+                        } else {
+                            let value = serde_json::from_str::<serde_json::Value>(&loaded)
+                                .map_err(|error| {
+                                    format!(
+                                        "Invalid gene-locus regulatory-score JSON payload: {error}"
+                                    )
+                                })?;
+                            request.regulatory_score_tracks = serde_json::from_value(
+                                value.get("tracks").cloned().ok_or_else(|| {
+                                    "Regulatory-score JSON must be an array or contain a 'tracks' array"
+                                        .to_string()
+                                })?,
+                            )
+                            .map_err(|error| {
+                                format!(
+                                    "Invalid gene-locus regulatory-score track request: {error}"
+                                )
+                            })?;
+                        }
+                    }
+                    "--scale-bar" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--scale-bar", context)?;
+                        request.scale_bar.mode = match raw.as_str() {
+                            "hidden" => GeneLocusScaleBarMode::Hidden,
+                            "auto" => GeneLocusScaleBarMode::Auto,
+                            "fixed" => GeneLocusScaleBarMode::Fixed,
+                            _ => {
+                                return Err(format!(
+                                    "Invalid --scale-bar value '{raw}': expected hidden, auto, or fixed"
+                                ));
+                            }
+                        };
+                    }
+                    "--scale-bar-bp" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--scale-bar-bp", context)?;
+                        request.scale_bar.length_bp =
+                            Some(raw.parse::<usize>().map_err(|error| {
+                                format!("Invalid --scale-bar-bp value '{raw}': {error}")
+                            })?);
+                    }
+                    "--include-local-source-paths" => {
+                        request.include_local_source_paths = true;
+                        idx += 1;
+                    }
                     "--allow-negative" => {
                         request.motif_clip_negative = false;
                         idx += 1;
@@ -22332,6 +22401,24 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "description": "Render one feature-expert target from a loaded sequence to an external SVG file.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("render-feature-expert-svg")
+        }),
+        json!({
+            "id": "gene-locus prepare",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "gentle.gene_locus_evidence_preparation_request.v1; network consent and all output paths are explicit in the request"}
+            ],
+            "reads": [],
+            "effects": [
+                {"fact": "sequence.created", "subject": {"literal": "resolved Ensembl gene sequence"}, "effect_kind": "project_state"},
+                {"fact": "artifact.written", "subject": {"literal": "declared SVG/PNG/PDF/report/receipt outputs"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Compose stored or explicitly retrieved Ensembl annotation, declared local BED/BigWig tracks, normalized TF score tracks, and shared gene-locus SVG/PNG/PDF exports with a hash-bound receipt.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("gene-locus prepare")
         }),
         json!({
             "id": "features tfbs-summary",
@@ -42506,6 +42593,18 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 output,
             })
         }
+        "gene-locus" => {
+            if tokens.len() != 3 || tokens[1] != "prepare" {
+                return Err("gene-locus requires: prepare REQUEST_JSON_OR_@FILE".to_string());
+            }
+            let request = parse_required_json_payload::<GeneLocusEvidencePreparationRequest>(
+                &tokens[2],
+                "gene-locus evidence preparation request",
+            )?;
+            Ok(ShellCommand::PrepareGeneLocusEvidence {
+                request: Box::new(request),
+            })
+        }
         "render-rna-svg" => {
             if tokens.len() != 3 {
                 return Err(token_error(cmd));
@@ -59312,6 +59411,23 @@ fn execute_feature_expert_command(
                 output: json!({ "result": op_result }),
             })
         }
+        ShellCommand::PrepareGeneLocusEvidence { request } => {
+            let op_result = engine
+                .apply(Operation::PrepareGeneLocusEvidence {
+                    request: request.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let receipt = op_result
+                .gene_locus_evidence_preparation
+                .clone()
+                .ok_or_else(|| {
+                    "PrepareGeneLocusEvidence returned no typed preparation receipt".to_string()
+                })?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({ "receipt": receipt, "result": op_result }),
+            })
+        }
         ShellCommand::PanelsImportIsoform {
             seq_id,
             panel_path,
@@ -64713,6 +64829,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::SplicingCrypticOverlay { .. }
             | ShellCommand::SplicingCrypticProtein { .. }
             | ShellCommand::RenderFeatureExpertSvg { .. }
+            | ShellCommand::PrepareGeneLocusEvidence { .. }
             | ShellCommand::PanelsImportIsoform { .. }
             | ShellCommand::PanelsInspectIsoform { .. }
             | ShellCommand::PanelsRenderIsoformSvg { .. }
@@ -65052,6 +65169,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::SplicingCrypticOverlay { .. }
         | ShellCommand::SplicingCrypticProtein { .. }
         | ShellCommand::RenderFeatureExpertSvg { .. }
+        | ShellCommand::PrepareGeneLocusEvidence { .. }
         | ShellCommand::PanelsImportIsoform { .. }
         | ShellCommand::PanelsInspectIsoform { .. }
         | ShellCommand::PanelsRenderIsoformSvg { .. }

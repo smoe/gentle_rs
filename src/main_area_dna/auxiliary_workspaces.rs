@@ -8055,11 +8055,35 @@ impl MainAreaDna {
             .map_err(|error| format!("Could not parse occupancy layout '{path}': {error}"))
     }
 
+    fn load_locus_regulatory_score_tracks(
+        &self,
+    ) -> Result<Vec<GeneLocusRegulatoryScoreTrackRequest>, String> {
+        let path = self.splicing_locus_regulatory_tracks_path.trim();
+        if path.is_empty() {
+            return Ok(vec![]);
+        }
+        let bytes = std::fs::read(path)
+            .map_err(|error| format!("Could not read regulatory-score tracks '{path}': {error}"))?;
+        if let Ok(tracks) =
+            serde_json::from_slice::<Vec<GeneLocusRegulatoryScoreTrackRequest>>(&bytes)
+        {
+            return Ok(tracks);
+        }
+        let value = serde_json::from_slice::<serde_json::Value>(&bytes).map_err(|error| {
+            format!("Could not parse regulatory-score tracks '{path}': {error}")
+        })?;
+        serde_json::from_value(value.get("tracks").cloned().ok_or_else(|| {
+            format!("Regulatory-score file '{path}' must be an array or contain a 'tracks' array")
+        })?)
+        .map_err(|error| format!("Could not parse regulatory-score tracks '{path}': {error}"))
+    }
+
     pub(super) fn splicing_locus_evidence_request(
         &self,
     ) -> Result<GeneLocusEvidenceDisplayRequest, String> {
         let mut isoform_evidence = self.splicing_isoform_evidence_request()?;
         let occupancy_layout = self.load_locus_occupancy_layout()?;
+        let regulatory_score_tracks = self.load_locus_regulatory_score_tracks()?;
         if !occupancy_layout.groups.is_empty() {
             isoform_evidence.occupancy_track_names.clear();
         }
@@ -8080,6 +8104,27 @@ impl MainAreaDna {
                     .to_string(),
             );
         }
+        let scale_bar_mode = match self.splicing_locus_scale_bar_mode.trim() {
+            "hidden" => GeneLocusScaleBarMode::Hidden,
+            "auto" => GeneLocusScaleBarMode::Auto,
+            "fixed" => GeneLocusScaleBarMode::Fixed,
+            other => {
+                return Err(format!(
+                    "Invalid scale-bar mode '{other}': expected hidden, auto, or fixed"
+                ));
+            }
+        };
+        let scale_bar = GeneLocusScaleBarPolicy {
+            mode: scale_bar_mode,
+            length_bp: if scale_bar_mode == GeneLocusScaleBarMode::Fixed {
+                Some(Self::parse_locus_usize(
+                    &self.splicing_locus_scale_bar_bp,
+                    "fixed scale-bar length",
+                )?)
+            } else {
+                None
+            },
+        };
         Ok(GeneLocusEvidenceDisplayRequest {
             isoform_evidence,
             upstream_bp: Self::parse_locus_usize(
@@ -8107,6 +8152,9 @@ impl MainAreaDna {
                 &self.splicing_locus_motif_top_hits,
                 "motif top-hit count",
             )?,
+            regulatory_score_tracks,
+            scale_bar,
+            include_local_source_paths: false,
         })
     }
 
@@ -9411,6 +9459,58 @@ impl MainAreaDna {
                             );
                         });
                         ui.small("blank threshold keeps all scores");
+                        ui.end_row();
+                        ui.label("Regulatory score tracks");
+                        ui.horizontal(|ui| {
+                            ui.add(
+                                egui::TextEdit::singleline(
+                                    &mut self.splicing_locus_regulatory_tracks_path,
+                                )
+                                .hint_text("typed track request JSON")
+                                .desired_width(280.0),
+                            );
+                            if ui.button("Choose...").clicked()
+                                && let Some(path) = rfd::FileDialog::new()
+                                    .add_filter("JSON", &["json"])
+                                    .pick_file()
+                            {
+                                self.splicing_locus_regulatory_tracks_path =
+                                    path.to_string_lossy().to_string();
+                            }
+                        });
+                        ui.small("Array or {\"tracks\": [...]} with explicit providers");
+                        ui.end_row();
+                        ui.label("Genomic scale bar");
+                        ui.horizontal(|ui| {
+                            egui::ComboBox::from_id_salt("splicing_locus_scale_bar_mode")
+                                .selected_text(self.splicing_locus_scale_bar_mode.as_str())
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(
+                                        &mut self.splicing_locus_scale_bar_mode,
+                                        "hidden".to_string(),
+                                        "hidden",
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.splicing_locus_scale_bar_mode,
+                                        "auto".to_string(),
+                                        "auto (1/2/5)",
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.splicing_locus_scale_bar_mode,
+                                        "fixed".to_string(),
+                                        "fixed",
+                                    );
+                                });
+                            ui.add_enabled(
+                                self.splicing_locus_scale_bar_mode == "fixed",
+                                egui::TextEdit::singleline(&mut self.splicing_locus_scale_bar_bp)
+                                    .desired_width(80.0),
+                            );
+                            ui.small("bp");
+                        });
+                        ui.small(
+                            "Hidden preserves legacy figures; fixed must fit the displayed span",
+                        );
                         ui.end_row();
                     });
             });

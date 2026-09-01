@@ -4,8 +4,10 @@ use gentle_protocol::{
     CrypticSplicingScreenView, CrypticSplicingSignalStatus, FeatureExpertView,
     GeneIsoformEvidenceReport, GeneLocusCodonKind, GeneLocusEvidenceDisplayReport,
     GeneLocusOccupancyLaneRole, GeneLocusOccupancyScaleMode, GeneLocusProbeClass,
-    GeneLocusProbeEffectContrast, IsoformArchitectureExpertView, RestrictionSiteExpertView,
-    SplicingExonSummary, SplicingExpertView, SplicingJunctionArc, TfbsExpertView,
+    GeneLocusProbeEffectContrast, GeneLocusRegulatoryScoreProviderKind,
+    GeneLocusRegulatoryScoreTrack, GeneLocusScaleBarMode, IsoformArchitectureExpertView,
+    RestrictionSiteExpertView, SplicingExonSummary, SplicingExpertView, SplicingJunctionArc,
+    TfbsExpertView,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use svg::Document;
@@ -4296,6 +4298,7 @@ fn locus_lane_role_style(role: GeneLocusOccupancyLaneRole) -> (&'static str, f32
         GeneLocusOccupancyLaneRole::IggControl => ("#7c3aed", 0.48),
         GeneLocusOccupancyLaneRole::PositiveControl => ("#0f766e", 0.60),
         GeneLocusOccupancyLaneRole::NegativeControl => ("#9ca3af", 0.44),
+        GeneLocusOccupancyLaneRole::ChromatinContext => ("#c2410c", 0.66),
         GeneLocusOccupancyLaneRole::Other => ("#b45309", 0.60),
     }
 }
@@ -4308,8 +4311,81 @@ fn locus_role_label(role: GeneLocusOccupancyLaneRole) -> &'static str {
         GeneLocusOccupancyLaneRole::IggControl => "IgG control",
         GeneLocusOccupancyLaneRole::PositiveControl => "positive control",
         GeneLocusOccupancyLaneRole::NegativeControl => "negative control",
+        GeneLocusOccupancyLaneRole::ChromatinContext => "chromatin context",
         GeneLocusOccupancyLaneRole::Other => "other",
     }
+}
+
+fn locus_role_token(role: GeneLocusOccupancyLaneRole) -> &'static str {
+    match role {
+        GeneLocusOccupancyLaneRole::Experimental => "experimental",
+        GeneLocusOccupancyLaneRole::GfpControl => "gfp_control",
+        GeneLocusOccupancyLaneRole::InputControl => "input_control",
+        GeneLocusOccupancyLaneRole::IggControl => "igg_control",
+        GeneLocusOccupancyLaneRole::PositiveControl => "positive_control",
+        GeneLocusOccupancyLaneRole::NegativeControl => "negative_control",
+        GeneLocusOccupancyLaneRole::ChromatinContext => "chromatin_context",
+        GeneLocusOccupancyLaneRole::Other => "other",
+    }
+}
+
+fn locus_regulatory_provider_token(provider: GeneLocusRegulatoryScoreProviderKind) -> &'static str {
+    match provider {
+        GeneLocusRegulatoryScoreProviderKind::JasparPwm => "jaspar_pwm",
+        GeneLocusRegulatoryScoreProviderKind::ExternalModelScores => "external_model_scores",
+        GeneLocusRegulatoryScoreProviderKind::Other => "other",
+    }
+}
+
+fn locus_regulatory_palette(index: usize) -> &'static str {
+    const COLORS: [&str; 8] = [
+        "#005f73", "#ae2012", "#3a6b35", "#9b5de5", "#ca6702", "#4361ee", "#6d597a", "#007f5f",
+    ];
+    COLORS[index % COLORS.len()]
+}
+
+fn locus_regulatory_path(
+    track: &GeneLocusRegulatoryScoreTrack,
+    scores: &[f64],
+    plot_left: f32,
+    plot_right: f32,
+    x_for: &impl Fn(usize) -> f32,
+    lane_top: f32,
+    lane_height: f32,
+) -> Option<Data> {
+    if scores.is_empty() {
+        return None;
+    }
+    let bucket_count = (plot_right - plot_left).round().max(1.0) as usize;
+    let bucket_width = scores.len().div_ceil(bucket_count).max(1);
+    let scale_span = (track.display_scale_max - track.display_scale_min)
+        .abs()
+        .max(f64::EPSILON);
+    let mut data = Data::new();
+    let mut point_count = 0usize;
+    for (bucket, values) in scores.chunks(bucket_width).enumerate() {
+        let score = values
+            .iter()
+            .copied()
+            .filter(|value| value.is_finite())
+            .max_by(|left, right| left.abs().total_cmp(&right.abs()))
+            .unwrap_or(track.display_scale_min);
+        let source_index = bucket.saturating_mul(bucket_width);
+        let local_position = track
+            .track_start_0based
+            .saturating_add(source_index.saturating_mul(track.stride_bp.max(1)))
+            .saturating_add(1);
+        let x = x_for(local_position);
+        let fraction = ((score - track.display_scale_min) / scale_span).clamp(0.0, 1.0) as f32;
+        let y = lane_top + lane_height - fraction * lane_height;
+        data = if point_count == 0 {
+            data.move_to((x, y))
+        } else {
+            data.line_to((x, y))
+        };
+        point_count += 1;
+    }
+    (point_count > 0).then_some(data)
 }
 
 fn locus_probe_class_label(probe_class: GeneLocusProbeClass) -> &'static str {
@@ -4401,8 +4477,18 @@ fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String
         .map(|group| 31.0 + group.lanes.len() as f32 * 29.0)
         .sum::<f32>();
     let motif_top = occupancy_top + occupancy_height + 34.0;
-    let motif_pitch = 84.0_f32;
-    let motif_height = report.motif_tracks.len() as f32 * motif_pitch;
+    let normalized_regulatory_tracks = !report.regulatory_score_tracks.is_empty();
+    let motif_pitch = if normalized_regulatory_tracks {
+        108.0_f32
+    } else {
+        84.0_f32
+    };
+    let motif_track_count = if normalized_regulatory_tracks {
+        report.regulatory_score_tracks.len()
+    } else {
+        report.motif_tracks.len()
+    };
+    let motif_height = motif_track_count as f32 * motif_pitch;
     let warning_top = motif_top + motif_height + 42.0;
     let warning_rows = report.warnings.iter().take(8).collect::<Vec<_>>();
     let provenance_top = warning_top + 38.0 + warning_rows.len() as f32 * 15.0;
@@ -4585,6 +4671,63 @@ fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String
                 .set("font-size", 9)
                 .set("fill", "#475569"),
         );
+
+    if report.scale_bar.mode != GeneLocusScaleBarMode::Hidden && report.scale_bar.length_bp > 0 {
+        let span_bp = report
+            .locus_local_end_1based
+            .saturating_sub(report.locus_local_start_1based)
+            .saturating_add(1)
+            .max(1);
+        let width_px =
+            (report.scale_bar.length_bp as f32 / span_bp as f32) * (plot_right - plot_left);
+        let scale_x1 = plot_left;
+        let scale_x2 = scale_x1 + width_px;
+        doc = doc
+            .add(
+                Line::new()
+                    .set("x1", scale_x1)
+                    .set("x2", scale_x2)
+                    .set("y1", 108)
+                    .set("y2", 108)
+                    .set("stroke", "#334155")
+                    .set("stroke-width", 2)
+                    .set("data-gentle-genomic-scale-bar", "true")
+                    .set("data-gentle-scale-bp", report.scale_bar.length_bp),
+            )
+            .add(
+                Line::new()
+                    .set("x1", scale_x1)
+                    .set("x2", scale_x1)
+                    .set("y1", 103)
+                    .set("y2", 113)
+                    .set("stroke", "#334155")
+                    .set("stroke-width", 2)
+                    .set("data-gentle-genomic-scale-bar", "left-tick")
+                    .set("data-gentle-scale-bp", report.scale_bar.length_bp),
+            )
+            .add(
+                Line::new()
+                    .set("x1", scale_x2)
+                    .set("x2", scale_x2)
+                    .set("y1", 103)
+                    .set("y2", 113)
+                    .set("stroke", "#334155")
+                    .set("stroke-width", 2)
+                    .set("data-gentle-genomic-scale-bar", "right-tick")
+                    .set("data-gentle-scale-bp", report.scale_bar.length_bp),
+            )
+            .add(
+                Text::new(report.scale_bar.label.clone())
+                    .set("x", (scale_x1 + scale_x2) / 2.0)
+                    .set("y", 99)
+                    .set("text-anchor", "middle")
+                    .set("font-family", "monospace")
+                    .set("font-size", 9)
+                    .set("fill", "#334155")
+                    .set("data-gentle-genomic-scale-bar", "label")
+                    .set("data-gentle-scale-bp", report.scale_bar.length_bp),
+            );
+    }
 
     if !report.assay_overlays.is_empty() {
         doc = doc.add(
@@ -5052,12 +5195,24 @@ fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String
                 .as_deref()
                 .map(|value| format!(" | {value}"))
                 .unwrap_or_default();
+            let context = [lane.cell_line_label.as_deref(), lane.batch_label.as_deref()]
+                .into_iter()
+                .flatten()
+                .filter(|value| !value.trim().is_empty())
+                .collect::<Vec<_>>()
+                .join(" / ");
+            let context = if context.is_empty() {
+                String::new()
+            } else {
+                format!(" | {context}")
+            };
             doc = doc
                 .add(
                     Text::new(format!(
-                        "{}{} ({})",
+                        "{}{}{} ({})",
                         isoform_evidence_compact_label(label, 30),
                         condition,
+                        context,
                         locus_role_label(lane.role)
                     ))
                     .set("x", 52)
@@ -5074,7 +5229,16 @@ fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String
                         .set("y2", y)
                         .set("stroke", "#cbd5e1")
                         .set("stroke-width", 1)
-                        .set("data-gentle-occupancy-lane", lane.lane.lane_id.as_str()),
+                        .set("data-gentle-occupancy-lane", lane.lane.lane_id.as_str())
+                        .set("data-gentle-occupancy-role", locus_role_token(lane.role))
+                        .set(
+                            "data-gentle-cell-line",
+                            lane.cell_line_label.as_deref().unwrap_or(""),
+                        )
+                        .set(
+                            "data-gentle-batch",
+                            lane.batch_label.as_deref().unwrap_or(""),
+                        ),
                 );
             for interval in &lane.lane.intervals {
                 let x1 = x_for(interval.local_start_1based);
@@ -5103,7 +5267,8 @@ fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String
                         .set(
                             "data-gentle-occupancy-interval",
                             interval.interval_id.as_str(),
-                        ),
+                        )
+                        .set("data-gentle-occupancy-role", locus_role_token(lane.role)),
                 );
             }
             doc = doc.add(
@@ -5119,7 +5284,230 @@ fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String
         occupancy_y += 4.0;
     }
 
-    if !report.motif_tracks.is_empty() {
+    if normalized_regulatory_tracks {
+        doc = doc.add(
+            Text::new("Predicted TF binding scores")
+                .set("x", 34)
+                .set("y", motif_top - 14.0)
+                .set("font-family", "sans-serif")
+                .set("font-size", 13)
+                .set("font-weight", "bold")
+                .set("fill", "#1f2937")
+                .set("data-gentle-regulatory-score-section", "predicted"),
+        );
+        for (index, track) in report.regulatory_score_tracks.iter().enumerate() {
+            let y = motif_top + index as f32 * motif_pitch;
+            let lane_top = y + 18.0;
+            let lane_height = 50.0;
+            let lane_bottom = lane_top + lane_height;
+            let provider = locus_regulatory_provider_token(track.provider_kind);
+            let color = track
+                .color_hint
+                .as_deref()
+                .unwrap_or_else(|| locus_regulatory_palette(index));
+            let factors = track
+                .factors
+                .iter()
+                .map(|factor| {
+                    factor
+                        .factor_label
+                        .as_deref()
+                        .unwrap_or(factor.factor_id.as_str())
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            let factor_ids = track
+                .factors
+                .iter()
+                .map(|factor| factor.factor_id.as_str())
+                .collect::<Vec<_>>()
+                .join(",");
+            let source = if track.source_ids.is_empty() {
+                track.provider_id.clone()
+            } else {
+                track.source_ids.join(",")
+            };
+            doc = doc
+                .add(
+                    Text::new(format!(
+                        "{} | {} | {} | {} | {}",
+                        isoform_evidence_compact_label(&track.label, 30),
+                        provider,
+                        isoform_evidence_compact_label(&factors, 22),
+                        isoform_evidence_compact_label(&source, 22),
+                        track.score_kind
+                    ))
+                    .set("x", 34)
+                    .set("y", y + 4.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 8)
+                    .set("fill", "#374151")
+                    .set(
+                        "data-gentle-regulatory-score-track",
+                        track.track_id.as_str(),
+                    )
+                    .set("data-gentle-regulatory-provider", provider)
+                    .set("data-gentle-regulatory-factor", factor_ids.as_str()),
+                )
+                .add(
+                    Rectangle::new()
+                        .set("x", plot_left)
+                        .set("y", lane_top)
+                        .set("width", plot_right - plot_left)
+                        .set("height", lane_height)
+                        .set("fill", "#f8fafc")
+                        .set("stroke", "#cbd5e1")
+                        .set("stroke-width", 1)
+                        .set(
+                            "data-gentle-regulatory-score-track",
+                            track.track_id.as_str(),
+                        )
+                        .set("data-gentle-regulatory-provider", provider)
+                        .set("data-gentle-score-kind", track.score_kind.as_str()),
+                )
+                .add(
+                    Text::new("F solid | R dashed")
+                        .set("x", 52)
+                        .set("y", lane_top + 13.0)
+                        .set("font-family", "monospace")
+                        .set("font-size", 7)
+                        .set("fill", color),
+                )
+                .add(
+                    Text::new(format!(
+                        "scale {:.3}..{:.3} | {} | {}",
+                        track.display_scale_min,
+                        track.display_scale_max,
+                        track.score_units,
+                        track.calibration_status
+                    ))
+                    .set("x", metrics_left)
+                    .set("y", lane_top + 13.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 7)
+                    .set("fill", "#64748b"),
+                );
+            if let Some(data) = locus_regulatory_path(
+                track,
+                &track.forward_scores,
+                plot_left,
+                plot_right,
+                &x_for,
+                lane_top,
+                lane_height,
+            ) {
+                doc = doc.add(
+                    Path::new()
+                        .set("d", data)
+                        .set("fill", "none")
+                        .set("stroke", color)
+                        .set("stroke-width", 1.7)
+                        .set(
+                            "data-gentle-regulatory-score-track",
+                            track.track_id.as_str(),
+                        )
+                        .set("data-gentle-regulatory-provider", provider)
+                        .set("data-gentle-regulatory-strand", "forward"),
+                );
+            }
+            if let Some(data) = locus_regulatory_path(
+                track,
+                &track.reverse_scores,
+                plot_left,
+                plot_right,
+                &x_for,
+                lane_top,
+                lane_height,
+            ) {
+                doc = doc.add(
+                    Path::new()
+                        .set("d", data)
+                        .set("fill", "none")
+                        .set("stroke", color)
+                        .set("stroke-width", 1.5)
+                        .set("stroke-dasharray", "5,3")
+                        .set(
+                            "data-gentle-regulatory-score-track",
+                            track.track_id.as_str(),
+                        )
+                        .set("data-gentle-regulatory-provider", provider)
+                        .set("data-gentle-regulatory-strand", "reverse"),
+                );
+            }
+            if let Some(threshold) = track.display_threshold.filter(|value| value.is_finite()) {
+                let scale_span = (track.display_scale_max - track.display_scale_min)
+                    .abs()
+                    .max(f64::EPSILON);
+                let fraction =
+                    ((threshold - track.display_scale_min) / scale_span).clamp(0.0, 1.0) as f32;
+                let threshold_y = lane_bottom - fraction * lane_height;
+                doc = doc.add(
+                    Line::new()
+                        .set("x1", plot_left)
+                        .set("x2", plot_right)
+                        .set("y1", threshold_y)
+                        .set("y2", threshold_y)
+                        .set("stroke", "#475569")
+                        .set("stroke-width", 0.8)
+                        .set("stroke-dasharray", "2,3")
+                        .set("data-gentle-regulatory-threshold", threshold)
+                        .set(
+                            "data-gentle-regulatory-score-track",
+                            track.track_id.as_str(),
+                        ),
+                );
+            }
+            for site in &track.sites {
+                let x = x_for(site.local_start_0based.saturating_add(1));
+                doc = doc
+                    .add(
+                        Line::new()
+                            .set("x1", x)
+                            .set("x2", x)
+                            .set("y1", lane_top)
+                            .set("y2", lane_bottom + 5.0)
+                            .set("stroke", color)
+                            .set("stroke-width", 1)
+                            .set(
+                                "stroke-dasharray",
+                                if site.strand == "-" { "4,2" } else { "1,0" },
+                            )
+                            .set("data-gentle-regulatory-site", site.site_id.as_str())
+                            .set(
+                                "data-gentle-regulatory-score-track",
+                                track.track_id.as_str(),
+                            )
+                            .set("data-gentle-regulatory-provider", provider)
+                            .set("data-gentle-regulatory-factor", factor_ids.as_str())
+                            .set("data-gentle-regulatory-strand", site.strand.as_str()),
+                    )
+                    .add(
+                        Text::new(format!("{}:{:.2}", site.strand, site.score))
+                            .set("x", x + 2.0)
+                            .set("y", lane_top - 3.0)
+                            .set("font-family", "monospace")
+                            .set("font-size", 7)
+                            .set("fill", color),
+                    );
+            }
+            doc = doc.add(
+                Text::new(isoform_evidence_compact_label(
+                    track
+                        .calibration_statement
+                        .as_deref()
+                        .unwrap_or(&track.provenance),
+                    78,
+                ))
+                .set("x", metrics_left)
+                .set("y", lane_top + 29.0)
+                .set("font-family", "monospace")
+                .set("font-size", 7)
+                .set("fill", "#64748b"),
+            );
+        }
+    }
+
+    if !normalized_regulatory_tracks && !report.motif_tracks.is_empty() {
         doc = doc.add(
             Text::new("Motif score tracks from the active local JASPAR registry")
                 .set("x", 34)
@@ -5130,7 +5518,12 @@ fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String
                 .set("fill", "#1f2937"),
         );
     }
-    for (index, track) in report.motif_tracks.iter().enumerate() {
+    for (index, track) in report
+        .motif_tracks
+        .iter()
+        .filter(|_| !normalized_regulatory_tracks)
+        .enumerate()
+    {
         let y = motif_top + index as f32 * motif_pitch;
         let baseline = y + 25.0;
         let scores = track
@@ -5323,7 +5716,10 @@ pub fn render_feature_expert_svg(view: &FeatureExpertView) -> String {
 mod tests {
     use super::*;
     use gentle_protocol::{
-        GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA, GeneLocusCodonMarker, GeneLocusTranscriptMetrics,
+        GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA, GeneIsoformOccupancyInterval, GeneIsoformOccupancyLane,
+        GeneLocusCodonMarker, GeneLocusOccupancyGroup, GeneLocusOccupancyLane,
+        GeneLocusRegulatoryFactor, GeneLocusRegulatoryScoreSite, GeneLocusRegulatoryScoreState,
+        GeneLocusRegulatoryScoreStrandPolicy, GeneLocusScaleBar, GeneLocusTranscriptMetrics,
         IsoformArchitectureCdsAaSegment, IsoformArchitectureProteinDomain,
         IsoformArchitectureProteinLane, IsoformArchitectureTranscriptLane, IsoformExpressionMatrix,
         IsoformExpressionRow, SplicingBoundaryMarker, SplicingEventSummary, SplicingExpertView,
@@ -5912,6 +6308,129 @@ mod tests {
         assert!(svg.contains("data-gentle-transcript-legend=\"stop-codon\""));
         assert!(svg.contains("annotated start codon"));
         assert!(svg.contains("annotated stop codon"));
+    }
+
+    #[test]
+    fn gene_locus_renderer_keeps_scale_chromatin_and_regulatory_semantics() {
+        let score_track = GeneLocusRegulatoryScoreTrack {
+            track_id: "external_tp73".to_string(),
+            label: "TP73 external score".to_string(),
+            provider_kind: GeneLocusRegulatoryScoreProviderKind::ExternalModelScores,
+            provider_id: "synthetic-model".to_string(),
+            provider_version: Some("fixture-v1".to_string()),
+            factors: vec![GeneLocusRegulatoryFactor {
+                factor_id: "TP73".to_string(),
+                factor_label: Some("p73".to_string()),
+            }],
+            source_ids: vec!["synthetic-model:fixture-v1".to_string()],
+            input_sequence_id: "locus_demo".to_string(),
+            input_sequence_sha256: "sha256:fixture".to_string(),
+            assembly: "GRCh38".to_string(),
+            chromosome: "1".to_string(),
+            anchor_start_1based: 100_000,
+            anchor_end_1based: 101_999,
+            coordinate_convention: "1-based inclusive genomic".to_string(),
+            window_length_bp: 12,
+            stride_bp: 10,
+            strand_policy: GeneLocusRegulatoryScoreStrandPolicy::Both,
+            score_kind: "uncalibrated_model_score".to_string(),
+            score_units: "arbitrary_units".to_string(),
+            score_directionality: "higher_is_stronger_model_prediction".to_string(),
+            theoretical_min: None,
+            theoretical_max: None,
+            calibration_status: "uncalibrated".to_string(),
+            calibration_statement: Some(
+                "Synthetic model prediction; not measured binding or affinity.".to_string(),
+            ),
+            track_start_0based: 0,
+            forward_scores: vec![0.1, 0.8, 0.3],
+            reverse_scores: vec![0.2, 0.4, 0.9],
+            sites: vec![GeneLocusRegulatoryScoreSite {
+                site_id: "site-reverse".to_string(),
+                rank: 1,
+                local_start_0based: 20,
+                local_end_0based_exclusive: 32,
+                genomic_start_1based: 100_020,
+                genomic_end_1based: 100_031,
+                strand: "-".to_string(),
+                score: 0.9,
+                label: Some("model site".to_string()),
+            }],
+            display_threshold: Some(0.5),
+            display_scale_min: 0.0,
+            display_scale_max: 1.0,
+            state: GeneLocusRegulatoryScoreState::Available,
+            provenance: "synthetic renderer test".to_string(),
+            ..Default::default()
+        };
+        let chromatin_lane = GeneLocusOccupancyLane {
+            lane: GeneIsoformOccupancyLane {
+                lane_id: "h3k4me3".to_string(),
+                track_name: "H3K4me3".to_string(),
+                display_label: "H3K4me3".to_string(),
+                source_kind: "bed".to_string(),
+                interval_count: 1,
+                max_score: Some(12.0),
+                intervals: vec![GeneIsoformOccupancyInterval {
+                    interval_id: "peak-1".to_string(),
+                    local_start_1based: 200,
+                    local_end_1based: 350,
+                    genomic_start_1based: 100_199,
+                    genomic_end_1based: 100_349,
+                    score: Some(12.0),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            display_label: Some("H3K4me3".to_string()),
+            condition_label: Some("untreated".to_string()),
+            cell_line_label: Some("Saos-2".to_string()),
+            batch_label: Some("batch-1".to_string()),
+            role: GeneLocusOccupancyLaneRole::ChromatinContext,
+            display_abs_max_score: 12.0,
+        };
+        let report = GeneLocusEvidenceDisplayReport {
+            schema: GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA.to_string(),
+            seq_id: "locus_demo".to_string(),
+            gene_symbol: "DEMO".to_string(),
+            panel_id: "demo_panel".to_string(),
+            instruction: "Distinct evidence layers remain non-causal.".to_string(),
+            gene_strand: "-".to_string(),
+            locus_local_start_1based: 1,
+            locus_local_end_1based: 2_000,
+            axis_left_genomic_1based: 101_999,
+            axis_right_genomic_1based: 100_000,
+            occupancy_groups: vec![GeneLocusOccupancyGroup {
+                group_id: "chromatin".to_string(),
+                label: "Chromatin context".to_string(),
+                scale_mode: GeneLocusOccupancyScaleMode::Independent,
+                group_abs_max_score: 12.0,
+                lanes: vec![chromatin_lane],
+                ..Default::default()
+            }],
+            regulatory_score_tracks: vec![score_track],
+            scale_bar: GeneLocusScaleBar {
+                mode: GeneLocusScaleBarMode::Fixed,
+                length_bp: 1_000,
+                label: "1000 bp".to_string(),
+            },
+            ..Default::default()
+        };
+
+        let svg = render_feature_expert_svg(&FeatureExpertView::GeneLocusEvidence(report.clone()));
+        let repeated = render_feature_expert_svg(&FeatureExpertView::GeneLocusEvidence(report));
+        assert_eq!(svg, repeated, "gene-locus SVG must be deterministic");
+        assert!(svg.contains("data-gentle-genomic-scale-bar=\"true\""));
+        assert!(svg.contains("data-gentle-scale-bp=\"1000\""));
+        assert!(svg.contains("data-gentle-occupancy-role=\"chromatin_context\""));
+        assert!(svg.contains("fill=\"#c2410c\""));
+        assert!(svg.contains("Predicted TF binding scores"));
+        assert!(svg.contains("data-gentle-regulatory-provider=\"external_model_scores\""));
+        assert!(svg.contains("data-gentle-regulatory-factor=\"TP73\""));
+        assert!(svg.contains("data-gentle-regulatory-strand=\"forward\""));
+        assert!(svg.contains("data-gentle-regulatory-strand=\"reverse\""));
+        assert!(svg.contains("data-gentle-regulatory-site=\"site-reverse\""));
+        assert!(svg.contains("not measured binding or affinity"));
     }
 
     #[test]

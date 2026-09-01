@@ -76,44 +76,45 @@ pub use gentle_protocol::{
     GENE_SET_CUTRUN_REGULATORY_SUPPORT_SCHEMA, GENE_SET_DIRECT_LIST_CACHE_SCHEMA,
     GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA, GENE_SET_PROMOTER_COHORT_SCHEMA,
     GENE_SET_RESOLUTION_SCHEMA, GeneIsoformExonFamilyRow, GeneIsoformJunctionRow,
-    GeneLocusTranscriptMetrics, GeneSetCoRegulatedProducerMetadata, GeneSetCohortRelationship,
-    GeneSetCohortRelationshipFlag, GeneSetCutRunEvaluationState, GeneSetCutRunMemberSupport,
-    GeneSetCutRunRegulatorySupportReport, GeneSetCutRunSupportAggregate, GeneSetProducerFilter,
-    GeneSetProducerKind, GeneSetProducerProvenance, GeneSetProducerQueryMetadata,
-    GeneSetPromoterCohortReport, GeneSetPromoterWindow, GeneSetProvenanceRow,
-    GeneSetRandomProvenance, GeneSetRequest, GeneSetResolutionReport,
-    GeneSetResolutionReviewStatus, GeneSetResolvedMember, GeneSetUnresolvedMember,
-    GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackImportProgress,
-    GenomeTrackSource, GenomeTrackSubscription, HOST_PROFILE_CATALOG_SCHEMA,
-    HelperConstructProfile, HostLifecycleRole, HostProfileCatalog, HostProfileRecord,
-    HostRouteStep, LEGACY_BIOLOGICAL_CONTEXT_ID, ORTHOLOG_PROMOTER_COHORT_SCHEMA,
-    ORTHOLOG_PROMOTER_COMPARISON_SCHEMA, ORTHOLOG_RESOURCE_SCHEMA, OrthologAmbiguityCandidate,
-    OrthologAmbiguityPolicy, OrthologConfidence, OrthologConfidenceLevel, OrthologCutRunSupportRow,
-    OrthologCutRunSupportStatus, OrthologExpressionAssignment, OrthologMappingRow,
-    OrthologPairwiseTfbsSimilarity, OrthologPromoterCohortReport, OrthologPromoterCohortRequest,
-    OrthologPromoterComparisonReport, OrthologPromoterRole, OrthologPromoterRow, OrthologResource,
-    OrthologSequenceSimilarityRow, OrthologSpeciesAlias, OrthologTfbsPeakSummary,
-    OrthologTfbsSummaryRow, OrthologUnresolvedRow, OrthologyCardinality, OrthologyType,
-    PairwiseAlignmentMode, PortBindingStatus, PreparedCacheCleanupMode,
-    PreparedCacheCleanupRequest, PrimerDesignBackend, PrimerSpecificityAmpliconCeilingSource,
-    PrimerSpecificityCheckMode, PrimerSpecificityFullAlignmentMode,
-    PrimerSpecificityFullAlignmentPolicy, PrimerSpecificityPolicy,
-    PrimerSpecificityReportDetailMode, PrimerSpecificityReviewedOffTargetAllowance,
-    ProteinResidueGenomicCoordinateBase, ProteinResidueGenomicCoordinateMatch,
-    ProteinResidueGenomicCoordinateReport, ProteinToDnaHandoffCandidate,
-    ProteinToDnaHandoffCoverage, ProteinToDnaHandoffRankingGoal, ProteinToDnaHandoffStrategy,
-    ProtocolCartoonKind, QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargetingMode,
-    READ_ACQUISITION_REPORT_SCHEMA, REGULATORY_PARTNER_DECISION_TREE_SCHEMA,
-    REGULATORY_PARTNER_SCREEN_SCHEMA, REGULATORY_PARTNER_TUPLE_LEDGER_SCHEMA,
-    REPORTER_CATALOG_REPORT_SCHEMA, REPORTER_CATALOG_SCHEMA, REPORTER_CONSTRUCT_HANDOFF_SCHEMA,
-    REPORTER_CORPUS_EXPORT_SCHEMA, REPORTER_RECOMMENDATION_SCHEMA,
-    REPORTER_VECTOR_VALIDATION_SCHEMA, RNA_READ_ALIGNMENT_DISPLAY_BATCH_SCHEMA,
-    RNA_READ_BATCH_MAP_REPORT_SCHEMA, RNA_READ_GENE_SCREEN_SUMMARY_SCHEMA,
-    RNA_READ_TRANSCRIPT_CATALOG_INDEX_SCHEMA, ReadAcquisitionAnalysisFormat,
-    ReadAcquisitionCommandProvenance, ReadAcquisitionManifestRow, ReadAcquisitionOutputPath,
-    ReadAcquisitionReadLayout, ReadAcquisitionReadLengthStats, ReadAcquisitionReport,
-    ReadAcquisitionRunReport, RegulatoryPartnerAnchorMode, RegulatoryPartnerDecisionEdge,
-    RegulatoryPartnerDecisionNode, RegulatoryPartnerDecisionOutcome,
+    GeneLocusEvidenceDisplayReport, GeneLocusOccupancyLayout, GeneLocusRegulatoryScoreProviderKind,
+    GeneLocusRegulatoryScoreTrackRequest, GeneLocusScaleBarPolicy, GeneLocusTranscriptMetrics,
+    GeneSetCoRegulatedProducerMetadata, GeneSetCohortRelationship, GeneSetCohortRelationshipFlag,
+    GeneSetCutRunEvaluationState, GeneSetCutRunMemberSupport, GeneSetCutRunRegulatorySupportReport,
+    GeneSetCutRunSupportAggregate, GeneSetProducerFilter, GeneSetProducerKind,
+    GeneSetProducerProvenance, GeneSetProducerQueryMetadata, GeneSetPromoterCohortReport,
+    GeneSetPromoterWindow, GeneSetProvenanceRow, GeneSetRandomProvenance, GeneSetRequest,
+    GeneSetResolutionReport, GeneSetResolutionReviewStatus, GeneSetResolvedMember,
+    GeneSetUnresolvedMember, GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode,
+    GenomeTrackImportProgress, GenomeTrackSource, GenomeTrackSubscription,
+    HOST_PROFILE_CATALOG_SCHEMA, HelperConstructProfile, HostLifecycleRole, HostProfileCatalog,
+    HostProfileRecord, HostRouteStep, LEGACY_BIOLOGICAL_CONTEXT_ID,
+    ORTHOLOG_PROMOTER_COHORT_SCHEMA, ORTHOLOG_PROMOTER_COMPARISON_SCHEMA, ORTHOLOG_RESOURCE_SCHEMA,
+    OrthologAmbiguityCandidate, OrthologAmbiguityPolicy, OrthologConfidence,
+    OrthologConfidenceLevel, OrthologCutRunSupportRow, OrthologCutRunSupportStatus,
+    OrthologExpressionAssignment, OrthologMappingRow, OrthologPairwiseTfbsSimilarity,
+    OrthologPromoterCohortReport, OrthologPromoterCohortRequest, OrthologPromoterComparisonReport,
+    OrthologPromoterRole, OrthologPromoterRow, OrthologResource, OrthologSequenceSimilarityRow,
+    OrthologSpeciesAlias, OrthologTfbsPeakSummary, OrthologTfbsSummaryRow, OrthologUnresolvedRow,
+    OrthologyCardinality, OrthologyType, PairwiseAlignmentMode, PortBindingStatus,
+    PreparedCacheCleanupMode, PreparedCacheCleanupRequest, PrimerDesignBackend,
+    PrimerSpecificityAmpliconCeilingSource, PrimerSpecificityCheckMode,
+    PrimerSpecificityFullAlignmentMode, PrimerSpecificityFullAlignmentPolicy,
+    PrimerSpecificityPolicy, PrimerSpecificityReportDetailMode,
+    PrimerSpecificityReviewedOffTargetAllowance, ProteinResidueGenomicCoordinateBase,
+    ProteinResidueGenomicCoordinateMatch, ProteinResidueGenomicCoordinateReport,
+    ProteinToDnaHandoffCandidate, ProteinToDnaHandoffCoverage, ProteinToDnaHandoffRankingGoal,
+    ProteinToDnaHandoffStrategy, ProtocolCartoonKind, QpcrTranscriptSpecificityEvidence,
+    QpcrTranscriptTargetingMode, READ_ACQUISITION_REPORT_SCHEMA,
+    REGULATORY_PARTNER_DECISION_TREE_SCHEMA, REGULATORY_PARTNER_SCREEN_SCHEMA,
+    REGULATORY_PARTNER_TUPLE_LEDGER_SCHEMA, REPORTER_CATALOG_REPORT_SCHEMA,
+    REPORTER_CATALOG_SCHEMA, REPORTER_CONSTRUCT_HANDOFF_SCHEMA, REPORTER_CORPUS_EXPORT_SCHEMA,
+    REPORTER_RECOMMENDATION_SCHEMA, REPORTER_VECTOR_VALIDATION_SCHEMA,
+    RNA_READ_ALIGNMENT_DISPLAY_BATCH_SCHEMA, RNA_READ_BATCH_MAP_REPORT_SCHEMA,
+    RNA_READ_GENE_SCREEN_SUMMARY_SCHEMA, RNA_READ_TRANSCRIPT_CATALOG_INDEX_SCHEMA,
+    ReadAcquisitionAnalysisFormat, ReadAcquisitionCommandProvenance, ReadAcquisitionManifestRow,
+    ReadAcquisitionOutputPath, ReadAcquisitionReadLayout, ReadAcquisitionReadLengthStats,
+    ReadAcquisitionReport, ReadAcquisitionRunReport, RegulatoryPartnerAnchorMode,
+    RegulatoryPartnerDecisionEdge, RegulatoryPartnerDecisionNode, RegulatoryPartnerDecisionOutcome,
     RegulatoryPartnerDecisionTraceStep, RegulatoryPartnerDecisionTree, RegulatoryPartnerGeneRow,
     RegulatoryPartnerIntervalRelation, RegulatoryPartnerMotifHit, RegulatoryPartnerMotifRole,
     RegulatoryPartnerMotifThreshold, RegulatoryPartnerOrientation, RegulatoryPartnerScreenReport,
@@ -4611,6 +4612,167 @@ pub struct SequenceGenomeAnchorSummary {
     pub anchor_verified: Option<bool>,
 }
 
+pub const GENE_LOCUS_EVIDENCE_PREPARATION_REQUEST_SCHEMA: &str =
+    "gentle.gene_locus_evidence_preparation_request.v1";
+pub const GENE_LOCUS_EVIDENCE_PREPARATION_RECEIPT_SCHEMA: &str =
+    "gentle.gene_locus_evidence_preparation_receipt.v1";
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GeneLocusEvidenceTrackSourceKind {
+    #[default]
+    Bed,
+    BigWig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// One explicit local evidence source imported before locus composition.
+pub struct GeneLocusEvidenceTrackSource {
+    pub source_kind: GeneLocusEvidenceTrackSourceKind,
+    pub path: String,
+    pub track_name: String,
+    pub min_score: Option<f64>,
+    pub max_score: Option<f64>,
+    pub clear_existing: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+/// One typed end-to-end preparation request for an arbitrary Ensembl locus.
+pub struct GeneLocusEvidencePreparationRequest {
+    pub schema: String,
+    pub gene_query: String,
+    pub species: String,
+    pub assembly: String,
+    /// Explicit consent for Ensembl REST access. False resolves stored entries only.
+    pub allow_ensembl_network: bool,
+    /// Optional offline `gentle.ensembl_gene_entry.v1` resource. Mutually
+    /// exclusive with `allow_ensembl_network=true`.
+    pub ensembl_entry_path: Option<String>,
+    pub flank_5prime_bp: usize,
+    pub flank_3prime_bp: usize,
+    pub output_seq_id: Option<String>,
+    pub output_panel_id: Option<String>,
+    pub annotation_release: Option<String>,
+    pub display_upstream_bp: usize,
+    pub display_downstream_bp: usize,
+    pub local_tracks: Vec<GeneLocusEvidenceTrackSource>,
+    pub occupancy_layout: GeneLocusOccupancyLayout,
+    pub regulatory_score_tracks: Vec<GeneLocusRegulatoryScoreTrackRequest>,
+    pub scale_bar: GeneLocusScaleBarPolicy,
+    pub svg_path: String,
+    pub png_path: Option<String>,
+    pub pdf_path: Option<String>,
+    pub display_report_path: Option<String>,
+    pub receipt_path: Option<String>,
+    pub png_scale: f32,
+    /// Preserve local input/output paths in portable report metadata and the
+    /// preparation receipt. Disabled by default for shareable artifacts.
+    pub include_local_source_paths: bool,
+}
+
+impl Default for GeneLocusEvidencePreparationRequest {
+    fn default() -> Self {
+        Self {
+            schema: GENE_LOCUS_EVIDENCE_PREPARATION_REQUEST_SCHEMA.to_string(),
+            gene_query: String::new(),
+            species: String::new(),
+            assembly: String::new(),
+            allow_ensembl_network: false,
+            ensembl_entry_path: None,
+            flank_5prime_bp: 5_000,
+            flank_3prime_bp: 1_000,
+            output_seq_id: None,
+            output_panel_id: None,
+            annotation_release: None,
+            display_upstream_bp: 5_000,
+            display_downstream_bp: 1_000,
+            local_tracks: vec![],
+            occupancy_layout: GeneLocusOccupancyLayout::default(),
+            regulatory_score_tracks: vec![],
+            scale_bar: GeneLocusScaleBarPolicy::default(),
+            svg_path: String::new(),
+            png_path: None,
+            pdf_path: None,
+            display_report_path: None,
+            receipt_path: None,
+            png_scale: 1.0,
+            include_local_source_paths: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneLocusEvidencePreparedTrack {
+    pub source_kind: String,
+    pub track_name: String,
+    pub path: Option<String>,
+    pub sha256: String,
+    pub imported_feature_count: usize,
+    pub skipped_record_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneLocusEvidenceOutputArtifact {
+    pub kind: String,
+    pub path: String,
+    pub sha256: String,
+    pub size_bytes: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Provenance binding for one normalized regulatory-score track in a receipt.
+pub struct GeneLocusEvidenceRegulatoryBinding {
+    pub track_id: String,
+    pub provider_kind: GeneLocusRegulatoryScoreProviderKind,
+    pub provider_id: String,
+    pub provider_version: Option<String>,
+    pub source_ids: Vec<String>,
+    pub score_kind: String,
+    pub calibration_status: String,
+    pub request_sha256: Option<String>,
+    pub source_sha256: Option<String>,
+    pub output_sha256: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Machine-readable receipt for the composed preparation operation.
+pub struct GeneLocusEvidencePreparationReceipt {
+    pub schema: String,
+    pub request_schema: String,
+    pub request_sha256: String,
+    pub gentle_revision: String,
+    pub ensembl_network_used: bool,
+    pub ensembl_entry_source_path: Option<String>,
+    pub ensembl_entry_source_sha256: Option<String>,
+    pub resolved_entry_id: String,
+    pub resolved_gene_id: String,
+    pub resolved_gene_version: Option<usize>,
+    pub resolved_gene_symbol: String,
+    pub resolved_species: String,
+    pub resolved_assembly: String,
+    pub sequence_id: String,
+    pub sequence_sha256: String,
+    pub panel_id: String,
+    pub transcript_ids: Vec<String>,
+    pub genome_anchor: Option<SequenceGenomeAnchorSummary>,
+    pub imported_tracks: Vec<GeneLocusEvidencePreparedTrack>,
+    pub occupancy_layout: GeneLocusOccupancyLayout,
+    pub regulatory_track_ids: Vec<String>,
+    pub regulatory_provider_bindings: Vec<String>,
+    pub regulatory_source_sha256: Vec<String>,
+    pub regulatory_bindings: Vec<GeneLocusEvidenceRegulatoryBinding>,
+    pub scale_bar: gentle_protocol::GeneLocusScaleBar,
+    pub display_report_sha256: String,
+    pub artifacts: Vec<GeneLocusEvidenceOutputArtifact>,
+    pub warnings: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SequenceAnchorPreparedGenomeOptionsSummary {
     pub seq_id: String,
@@ -5007,6 +5169,8 @@ pub struct OpResult {
     pub gene_set_resolution: Option<GeneSetResolutionReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gene_set_promoter_cohort: Option<GeneSetPromoterCohortReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_locus_evidence_preparation: Option<Box<GeneLocusEvidencePreparationReceipt>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub collection_operation: Option<CollectionOperationReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -15435,6 +15599,18 @@ pub enum IsoformTranscriptGeometryMode {
     Cds,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// One Ensembl-derived genomic interval retained as panel provenance.
+pub struct IsoformPanelAnnotationRange {
+    pub start_1based: usize,
+    pub end_1based: usize,
+    #[serde(default)]
+    pub exon_id: Option<String>,
+    #[serde(default)]
+    pub exon_version: Option<usize>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default, deny_unknown_fields)]
 pub struct IsoformPanelIsoformSpec {
@@ -15455,6 +15631,29 @@ pub struct IsoformPanelIsoformSpec {
     pub curation: Option<IsoformPanelCurationInfo>,
     #[serde(default)]
     pub domains: Vec<IsoformPanelDomainSpec>,
+    /// Exact versioned transcript identifier from the annotation source.
+    #[serde(default)]
+    pub annotation_transcript_id: Option<String>,
+    #[serde(default)]
+    pub transcript_strand: Option<String>,
+    #[serde(default)]
+    pub transcript_biotype: Option<String>,
+    #[serde(default)]
+    pub annotation_is_canonical: Option<bool>,
+    #[serde(default)]
+    pub annotation_gencode_primary: Option<bool>,
+    #[serde(default)]
+    pub exon_ranges_genomic_1based: Vec<IsoformPanelAnnotationRange>,
+    #[serde(default)]
+    pub cds_ranges_genomic_1based: Vec<IsoformPanelAnnotationRange>,
+    #[serde(default)]
+    pub annotation_translation_id: Option<String>,
+    #[serde(default)]
+    pub coding_start_status: Option<String>,
+    #[serde(default)]
+    pub coding_completeness_status: Option<String>,
+    #[serde(default)]
+    pub annotation_provenance: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

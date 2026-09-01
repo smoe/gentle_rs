@@ -1,0 +1,105 @@
+{
+  "schema": "gentle.ensembl_gene_entry.v1",
+  "entry_id": "synthetic_gene_locus_demo",
+  "gene_id": "ENSGDEMO0001",
+  "gene_version": 1,
+  "gene_symbol": "LOCUSDEMO",
+  "gene_display_name": "Synthetic general gene-locus evidence demo",
+  "species": "homo_sapiens",
+  "assembly_name": "GRCh38",
+  "biotype": "protein_coding",
+  "strand": 1,
+  "seq_region_name": "Synthetic1",
+  "genomic_start_1based": 100151,
+  "genomic_end_1based": 101000,
+  "sequence_genomic_start_1based": 100001,
+  "sequence_genomic_end_1based": 101200,
+  "flank_5prime_bp": 150,
+  "flank_3prime_bp": 200,
+  "sequence": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGACATGTCTGGACATGTGGGGCGGGGAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAATGAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAATGAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAATAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  "sequence_length": 1200,
+  "transcripts": [
+    {
+      "transcript_id": "ENSTDEMO0001",
+      "transcript_version": 2,
+      "display_name": "LOCUSDEMO-201",
+      "biotype": "protein_coding",
+      "start_1based": 100151,
+      "end_1based": 101000,
+      "strand": 1,
+      "is_canonical": true,
+      "gencode_primary": true,
+      "translation": {
+        "translation_id": "ENSPDEMO0001",
+        "translation_version": 1,
+        "length_aa": 166,
+        "genomic_start_1based": 100301,
+        "genomic_end_1based": 100900
+      },
+      "exons": [
+        {
+          "exon_id": "ENSEDEMO0001",
+          "exon_version": 1,
+          "start_1based": 100151,
+          "end_1based": 100401,
+          "strand": 1,
+          "seq_region_name": "Synthetic1"
+        },
+        {
+          "exon_id": "ENSEDEMO0002",
+          "exon_version": 1,
+          "start_1based": 100501,
+          "end_1based": 101000,
+          "strand": 1,
+          "seq_region_name": "Synthetic1"
+        }
+      ]
+    },
+    {
+      "transcript_id": "ENSTDEMO0002",
+      "transcript_version": 3,
+      "display_name": "LOCUSDEMO-202-altTSS",
+      "biotype": "protein_coding",
+      "start_1based": 100350,
+      "end_1based": 101000,
+      "strand": 1,
+      "is_canonical": false,
+      "gencode_primary": false,
+      "translation": {
+        "translation_id": "ENSPDEMO0002",
+        "translation_version": 1,
+        "length_aa": 149,
+        "genomic_start_1based": 100352,
+        "genomic_end_1based": 100900
+      },
+      "exons": [
+        {
+          "exon_id": "ENSEDEMO0003",
+          "exon_version": 1,
+          "start_1based": 100350,
+          "end_1based": 100401,
+          "strand": 1,
+          "seq_region_name": "Synthetic1"
+        },
+        {
+          "exon_id": "ENSEDEMO0002",
+          "exon_version": 1,
+          "start_1based": 100501,
+          "end_1based": 101000,
+          "strand": 1,
+          "seq_region_name": "Synthetic1"
+        }
+      ]
+    }
+  ],
+  "aliases": [
+    "LOCUSDEMO"
+  ],
+  "source": "synthetic_offline_fixture",
+  "source_query": "LOCUSDEMO",
+  "imported_at_unix_ms": 0,
+  "lookup_source_url": "synthetic://gene-locus-evidence/general-locus-demo/lookup",
+  "sequence_source_url": "synthetic://gene-locus-evidence/general-locus-demo/sequence",
+  "raw_lookup_json": "{\"fixture\":\"general_locus_demo\",\"expanded\":true}",
+  "raw_sequence_json": "{\"fixture\":\"general_locus_demo\",\"length\":1200}"
+}

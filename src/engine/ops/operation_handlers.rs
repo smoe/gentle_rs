@@ -39559,6 +39559,7 @@ impl GentleEngine {
             cutrun_regulatory_support: None,
             gene_set_resolution: None,
             gene_set_promoter_cohort: None,
+            gene_locus_evidence_preparation: None,
             collection_operation: None,
             collection_restriction_site_scan: None,
             collection_construct_reasoning_inspection: None,
@@ -40123,6 +40124,10 @@ impl GentleEngine {
                         target.describe(),
                         path
                     ));
+                }
+                Operation::PrepareGeneLocusEvidence { request } => {
+                    let receipt = self.prepare_gene_locus_evidence(&mut result, &request)?;
+                    result.gene_locus_evidence_preparation = Some(Box::new(receipt));
                 }
                 Operation::InspectCrypticSplicingScreen { request, path } => {
                     let mut report = self.inspect_cryptic_splicing_screen(&request)?;

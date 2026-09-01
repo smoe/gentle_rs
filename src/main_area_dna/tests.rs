@@ -49,10 +49,10 @@ use crate::{
     engine_shell::{ShellCommand, parse_shell_line},
     enzymes::active_restriction_enzymes,
     feature_expert::{
-        FeatureExpertView, GeneLocusEvidenceDisplayReport, IsoformArchitectureExpertView,
-        RestrictionSiteExpertView, SplicingBoundaryMarker, SplicingExonSummary, SplicingExpertView,
-        SplicingIntronSignal, SplicingJunctionArc, SplicingMatrixRow, SplicingRange,
-        SplicingTranscriptLane,
+        FeatureExpertView, GeneLocusEvidenceDisplayReport, GeneLocusScaleBarMode,
+        IsoformArchitectureExpertView, RestrictionSiteExpertView, SplicingBoundaryMarker,
+        SplicingExonSummary, SplicingExpertView, SplicingIntronSignal, SplicingJunctionArc,
+        SplicingMatrixRow, SplicingRange, SplicingTranscriptLane,
     },
     linear_base_routing::{LinearBaseRenderMode, LinearBaseRoutePolicy},
     protocol_cartoon::pcr_oe_substitution_geometry_bindings,
@@ -1171,6 +1171,7 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
         cryptic_splicing_screen: None,
         cryptic_splicing_evidence_overlay: None,
         cryptic_splicing_protein_projection: None,
+        gene_locus_evidence_preparation: None,
         experimental_assay_handoff: None,
         regulatory_partner_screen: None,
         op_id: "op-import-trace".to_string(),
@@ -5242,6 +5243,7 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
             cryptic_splicing_screen: None,
             cryptic_splicing_evidence_overlay: None,
             cryptic_splicing_protein_projection: None,
+            gene_locus_evidence_preparation: None,
             experimental_assay_handoff: None,
             regulatory_partner_screen: None,
             op_id: "op-preview".to_string(),
@@ -8893,6 +8895,12 @@ fn splicing_locus_evidence_request_reuses_isoform_inputs_and_parses_layout() {
         }"#,
     )
     .expect("write occupancy layout");
+    let regulatory_path = temp.path().join("regulatory_scores.json");
+    std::fs::write(
+        &regulatory_path,
+        r#"{"tracks":[{"track_id":"tp73_pwm","label":"TP73 PWM","provider_kind":"jaspar_pwm","source_ids":["TP73"],"score_kind":"llr_bits","top_hit_count":3,"scale_mode":"independent"}]}"#,
+    )
+    .expect("write regulatory-score requests");
     let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
     let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
     area.splicing_isoform_evidence_panel_id = " patz1_panel ".to_string();
@@ -8910,6 +8918,9 @@ fn splicing_locus_evidence_request_reuses_isoform_inputs_and_parses_layout() {
     area.splicing_locus_motif_threshold = "2.5".to_string();
     area.splicing_locus_motif_top_hits = "7".to_string();
     area.splicing_locus_motif_clip_negative = false;
+    area.splicing_locus_regulatory_tracks_path = regulatory_path.to_string_lossy().to_string();
+    area.splicing_locus_scale_bar_mode = "fixed".to_string();
+    area.splicing_locus_scale_bar_bp = "1000".to_string();
 
     let request = area
         .splicing_locus_evidence_request()
@@ -8935,6 +8946,10 @@ fn splicing_locus_evidence_request_reuses_isoform_inputs_and_parses_layout() {
     assert_eq!(request.motif_display_threshold, Some(2.5));
     assert_eq!(request.motif_top_hit_count, 7);
     assert!(!request.motif_clip_negative);
+    assert_eq!(request.regulatory_score_tracks.len(), 1);
+    assert_eq!(request.regulatory_score_tracks[0].track_id, "tp73_pwm");
+    assert_eq!(request.scale_bar.mode, GeneLocusScaleBarMode::Fixed);
+    assert_eq!(request.scale_bar.length_bp, Some(1_000));
 }
 
 #[test]

@@ -38838,7 +38838,7 @@ fn parse_feature_expert_commands() {
     }
 
     let locus_evidence = parse_shell_line(
-        "inspect-feature-expert s gene-locus-evidence patz1_v1 --annotation-release Ensembl116 --probe-effect-table effects.tsv --probe-effect-contrast TAp73alpha-GFP --probe-effect-contrast DNp73beta-GFP --probe-effect-coordinate-system GRCh38.p14 --occupancy-layout '{\"schema\":\"gentle.gene_locus_occupancy_layout.v1\",\"groups\":[{\"group_id\":\"saos2\",\"label\":\"Saos-2\",\"scale_mode\":\"shared_group\",\"lanes\":[{\"track_name\":\"SAOS-2 TA\",\"condition_label\":\"TA\",\"role\":\"experimental\"}]}]}' --upstream-bp 5000 --downstream-bp 1200 --motif TP73 --motif SP1 --score-kind llr_bits --motif-threshold 2.5 --motif-top-hits 4 --allow-negative",
+        "inspect-feature-expert s gene-locus-evidence patz1_v1 --annotation-release Ensembl116 --probe-effect-table effects.tsv --probe-effect-contrast TAp73alpha-GFP --probe-effect-contrast DNp73beta-GFP --probe-effect-coordinate-system GRCh38.p14 --occupancy-layout '{\"schema\":\"gentle.gene_locus_occupancy_layout.v1\",\"groups\":[{\"group_id\":\"saos2\",\"label\":\"Saos-2\",\"scale_mode\":\"shared_group\",\"lanes\":[{\"track_name\":\"SAOS-2 TA\",\"condition_label\":\"TA\",\"role\":\"experimental\"}]}]}' --upstream-bp 5000 --downstream-bp 1200 --motif TP73 --motif SP1 --score-kind llr_bits --motif-threshold 2.5 --motif-top-hits 4 --allow-negative --regulatory-score-tracks '[{\"track_id\":\"tp73_pwm\",\"label\":\"TP73 PWM\",\"provider_kind\":\"jaspar_pwm\",\"source_ids\":[\"MA0861.1\"],\"score_kind\":\"llr_bits\",\"display_threshold\":1.5,\"top_hit_count\":2,\"scale_mode\":\"independent\"}]' --scale-bar fixed --scale-bar-bp 1000 --include-local-source-paths",
     )
     .expect("parse gene locus evidence target");
     match locus_evidence {
@@ -38868,6 +38868,19 @@ fn parse_feature_expert_commands() {
             assert_eq!(request.motif_display_threshold, Some(2.5));
             assert_eq!(request.motif_top_hit_count, 4);
             assert!(!request.motif_clip_negative);
+            assert_eq!(request.regulatory_score_tracks.len(), 1);
+            assert_eq!(request.regulatory_score_tracks[0].track_id, "tp73_pwm");
+            assert_eq!(
+                request.regulatory_score_tracks[0].source_ids,
+                vec!["MA0861.1"]
+            );
+            assert_eq!(
+                request.regulatory_score_tracks[0].display_threshold,
+                Some(1.5)
+            );
+            assert_eq!(request.scale_bar.mode, GeneLocusScaleBarMode::Fixed);
+            assert_eq!(request.scale_bar.length_bp, Some(1_000));
+            assert!(request.include_local_source_paths);
             assert_eq!(
                 request.occupancy_layout.schema,
                 crate::engine::GENE_LOCUS_OCCUPANCY_LAYOUT_SCHEMA
@@ -38875,6 +38888,23 @@ fn parse_feature_expert_commands() {
             assert_eq!(request.occupancy_layout.groups.len(), 1);
             assert_eq!(request.occupancy_layout.groups[0].group_id, "saos2");
             assert_eq!(request.occupancy_layout.groups[0].lanes.len(), 1);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let preparation = parse_shell_line(
+        "gene-locus prepare '{\"schema\":\"gentle.gene_locus_evidence_preparation_request.v1\",\"gene_query\":\"SERPINE1\",\"species\":\"homo_sapiens\",\"assembly\":\"GRCh38\",\"allow_ensembl_network\":false,\"svg_path\":\"serpine1.svg\",\"scale_bar\":{\"mode\":\"fixed\",\"length_bp\":1000}}'",
+    )
+    .expect("parse typed gene-locus preparation request");
+    match preparation {
+        ShellCommand::PrepareGeneLocusEvidence { request } => {
+            assert_eq!(request.gene_query, "SERPINE1");
+            assert_eq!(request.species, "homo_sapiens");
+            assert_eq!(request.assembly, "GRCh38");
+            assert!(!request.allow_ensembl_network);
+            assert_eq!(request.svg_path, "serpine1.svg");
+            assert_eq!(request.scale_bar.mode, GeneLocusScaleBarMode::Fixed);
+            assert_eq!(request.scale_bar.length_bp, Some(1_000));
         }
         other => panic!("unexpected command: {other:?}"),
     }

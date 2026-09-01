@@ -3989,7 +3989,8 @@ external coding agent runtime, see:
     report composes sequence evidence; it does not claim that an isoform is
     biologically validated
 - gene-locus evidence composition reuses that ledger without changing it:
-  - `inspect-feature-expert SEQ_ID gene-locus-evidence PANEL_ID [isoform-evidence options] [--probe-effect-table PATH]... [--probe-effect-contrast TOKEN]... [--probe-effect-coordinate-system ID] [--upstream-bp N] [--downstream-bp N] [--occupancy-layout JSON_OR_@FILE | --occupancy-track NAME ...] [--motif TOKEN]... [--score-kind KIND] [--motif-threshold N] [--motif-top-hits N] [--allow-negative]`
+  - `gene-locus prepare REQUEST_JSON_OR_@FILE`
+  - `inspect-feature-expert SEQ_ID gene-locus-evidence PANEL_ID [isoform-evidence options] [--probe-effect-table PATH]... [--probe-effect-contrast TOKEN]... [--probe-effect-coordinate-system ID] [--upstream-bp N] [--downstream-bp N] [--occupancy-layout JSON_OR_@FILE | --occupancy-track NAME ...] [--motif TOKEN]... [--score-kind KIND] [--motif-threshold N] [--motif-top-hits N] [--regulatory-score-tracks JSON_OR_@FILE] [--scale-bar hidden|auto|fixed] [--scale-bar-bp N] [--include-local-source-paths] [--allow-negative]`
   - `render-feature-expert-svg SEQ_ID gene-locus-evidence PANEL_ID [same options] OUTPUT.svg`
   - the pure-read result schema is `gentle.gene_locus_evidence_display.v1`.
     It embeds the `gentle.gene_isoform_evidence.v2` ledger and adds
@@ -3997,6 +3998,24 @@ external coding agent runtime, see:
     `probe_effect_overlays[]`, grouped `occupancy_groups[]`, continuous
     `motif_tracks[]`, deduplicated junction `assay_overlays[]`, a combined
     `provenance[]` inventory, strand-aware locus/flank coordinates, and warnings
+  - additive `regulatory_score_tracks[]` normalizes local JASPAR matrices and
+    offline `gentle.gene_locus_external_regulatory_scores.v1` payloads into one
+    renderer-owned shape. Every row binds provider/model, factor/source IDs,
+    sequence digest, assembly/anchor, coordinate convention, score semantics,
+    calibration status, strand-specific vectors/sites, scales, and digests.
+    Stale sequence/locus bindings fail closed. Legacy `motifs[]` remain
+    compatible and normalize to local-JASPAR tracks with historical settings
+  - `scale_bar` stores the resolved `hidden`, deterministic `auto`, or exact
+    positive `fixed` policy. The renderer derives its geometry from the same
+    locus transform and exposes stable SVG scale attributes
+  - `PrepareGeneLocusEvidence` accepts
+    `gentle.gene_locus_evidence_preparation_request.v1` and returns
+    `gentle.gene_locus_evidence_preparation_receipt.v1`. It composes the
+    existing Ensembl import, automatic panel conversion, BED/BigWig projection,
+    score adapters, report, SVG, and optional PNG/PDF paths. Ensembl network
+    access is explicit; an offline `ensembl_entry_path` is the mutually
+    exclusive reproducible alternative. Receipts retain hashes and redact
+    local source paths by default
   - probe-effect tables are tab-separated and retain PSR intervals and JUC
     junction-edge geometry as distinct classes. Abundance columns follow the
     `log2_mean_*` convention and differential-activity columns follow
@@ -4012,9 +4031,9 @@ external coding agent runtime, see:
     Each group declares `group_id`, label, `scale_mode`
     (`shared_group`, `shared_all`, `independent`, or `fixed`), optional fixed
     scale/comparability rationale, and lanes with exact projected track name,
-    optional display/condition labels, and role (`experimental`, `gfp_control`,
+    optional display/condition/cell-line/batch labels, and role (`experimental`, `gfp_control`,
     `input_control`, `igg_control`, `positive_control`, `negative_control`, or
-    `other`)
+    `chromatin_context` or `other`)
   - GENtle never infers cell line, condition, lane role, or cross-group
     comparability from a filename. `shared_all` without an explicit
     `cross_group_scale_justification` is retained but warned about

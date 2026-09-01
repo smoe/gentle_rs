@@ -16,12 +16,15 @@ pub const GENE_ISOFORM_EVIDENCE_SCHEMA: &str = "gentle.gene_isoform_evidence.v2"
 pub const GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA: &str = "gentle.gene_locus_evidence_display.v1";
 /// Declarative grouping and scaling metadata for projected occupancy tracks.
 pub const GENE_LOCUS_OCCUPANCY_LAYOUT_SCHEMA: &str = "gentle.gene_locus_occupancy_layout.v1";
+/// Portable offline input for externally computed, coordinate-bound TF scores.
+pub const GENE_LOCUS_EXTERNAL_REGULATORY_SCORE_SCHEMA: &str =
+    "gentle.gene_locus_external_regulatory_scores.v1";
 /// Small offline resource for cDNA/EST support linked to exon/junction geometry.
 pub const CDNA_EST_EVIDENCE_RESOURCE_SCHEMA: &str = "gentle.cdna_est_evidence_resource.v1";
 /// Human-facing interpretation boundary shared by GUI and SVG renderers.
 pub const GENE_ISOFORM_EVIDENCE_INSTRUCTION: &str = "Isoform evidence inspector: transcript models and coordinate geometry are annotation-derived; RNA reads, cDNA/EST records, array probes, expression values, projected occupancy tracks, and qPCR assays are shown as separate evidence layers. Missing evidence is unknown. Occupancy is locus-level evidence; spatial overlap alone neither identifies a regulated isoform nor establishes causality.";
 /// Human-facing interpretation boundary for composed locus figures.
-pub const GENE_LOCUS_EVIDENCE_DISPLAY_INSTRUCTION: &str = "Gene locus evidence display: transcript/CDS geometry, motif scores, projected occupancy, and validation-assay candidates are aligned on one strand-aware axis. These are distinct evidence layers. Shared visual position or scale does not establish isoform-specific regulation, causal binding, or cross-sample comparability.";
+pub const GENE_LOCUS_EVIDENCE_DISPLAY_INSTRUCTION: &str = "Gene locus evidence display: transcript/CDS geometry, predicted TF binding scores, projected occupancy, chromatin context, and validation-assay candidates are aligned on one strand-aware axis. These are distinct evidence layers. CUT&RUN enrichment is occupancy evidence, not biochemical affinity; chromatin context does not establish TF binding; PWM or model scores are predictions, not observed binding. Shared visual position or scale does not establish isoform-specific regulation, causal binding, or cross-sample comparability.";
 
 /// References to optional evidence sources composed by a pure-read inspection.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -68,6 +71,8 @@ pub enum GeneLocusOccupancyLaneRole {
     IggControl,
     PositiveControl,
     NegativeControl,
+    /// Promoter/chromatin-state context such as H3K4me3, not TF occupancy.
+    ChromatinContext,
     Other,
 }
 
@@ -80,6 +85,10 @@ pub struct GeneLocusOccupancyLaneRequest {
     pub display_label: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub condition_label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cell_line_label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub batch_label: Option<String>,
     pub role: GeneLocusOccupancyLaneRole,
 }
 
@@ -103,6 +112,152 @@ pub struct GeneLocusOccupancyGroupRequest {
 pub struct GeneLocusOccupancyLayout {
     pub schema: String,
     pub groups: Vec<GeneLocusOccupancyGroupRequest>,
+}
+
+/// Whether and how a genomic scale bar is included in a locus figure.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GeneLocusScaleBarMode {
+    /// Backward-compatible default for reports created before scale bars existed.
+    #[default]
+    Hidden,
+    /// Select a deterministic 1/2/5 x 10^n length from the displayed span.
+    Auto,
+    /// Use the positive `length_bp` supplied by the request.
+    Fixed,
+}
+
+/// Requested genomic scale-bar policy.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneLocusScaleBarPolicy {
+    pub mode: GeneLocusScaleBarMode,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub length_bp: Option<usize>,
+}
+
+/// Resolved scale bar retained in the portable report.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneLocusScaleBar {
+    pub mode: GeneLocusScaleBarMode,
+    pub length_bp: usize,
+    pub label: String,
+}
+
+/// Source family for one predicted regulatory-score track.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GeneLocusRegulatoryScoreProviderKind {
+    #[default]
+    JasparPwm,
+    ExternalModelScores,
+    Other,
+}
+
+/// Strand components retained from the provider output.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GeneLocusRegulatoryScoreStrandPolicy {
+    #[default]
+    Both,
+    ForwardOnly,
+    ReverseOnly,
+}
+
+/// Display-scale policy for one predicted score track.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GeneLocusRegulatoryScoreScaleMode {
+    #[default]
+    Independent,
+    SharedGroup,
+    Fixed,
+}
+
+/// Whether a normalized score track is available for rendering.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GeneLocusRegulatoryScoreState {
+    Available,
+    #[default]
+    NotAssessable,
+}
+
+/// Explicit factor identity carried independently of display labels and paths.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneLocusRegulatoryFactor {
+    pub factor_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub factor_label: Option<String>,
+}
+
+/// One independently configured predicted regulatory-score request.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct GeneLocusRegulatoryScoreTrackRequest {
+    pub track_id: String,
+    pub label: String,
+    pub provider_kind: GeneLocusRegulatoryScoreProviderKind,
+    /// JASPAR matrix/factor tokens in deterministic request order.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub source_ids: Vec<String>,
+    /// Required for `external_model_scores`; ignored by the local JASPAR adapter.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub factors: Vec<GeneLocusRegulatoryFactor>,
+    pub score_kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub score_units: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub calibration_statement: Option<String>,
+    pub strand_policy: GeneLocusRegulatoryScoreStrandPolicy,
+    pub clip_negative: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_threshold: Option<f64>,
+    pub top_hit_count: usize,
+    pub scale_mode: GeneLocusRegulatoryScoreScaleMode,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scale_group: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shared_scale_justification: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fixed_scale_min: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fixed_scale_max: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color_hint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line_style_hint: Option<String>,
+}
+
+impl Default for GeneLocusRegulatoryScoreTrackRequest {
+    fn default() -> Self {
+        Self {
+            track_id: String::new(),
+            label: String::new(),
+            provider_kind: GeneLocusRegulatoryScoreProviderKind::JasparPwm,
+            source_ids: vec![],
+            source_path: None,
+            factors: vec![],
+            score_kind: default_locus_motif_score_kind(),
+            score_units: None,
+            calibration_statement: None,
+            strand_policy: GeneLocusRegulatoryScoreStrandPolicy::Both,
+            clip_negative: true,
+            display_threshold: None,
+            top_hit_count: default_locus_motif_top_hit_count(),
+            scale_mode: GeneLocusRegulatoryScoreScaleMode::Independent,
+            scale_group: None,
+            shared_scale_justification: None,
+            fixed_scale_min: None,
+            fixed_scale_max: None,
+            color_hint: None,
+            line_style_hint: None,
+        }
+    }
 }
 
 fn default_locus_upstream_bp() -> usize {
@@ -141,6 +296,14 @@ pub struct GeneLocusEvidenceDisplayRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub motif_display_threshold: Option<f64>,
     pub motif_top_hit_count: usize,
+    /// Additive provider-neutral requests. Legacy `motifs` are normalized into
+    /// equivalent local-JASPAR requests by the engine.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub regulatory_score_tracks: Vec<GeneLocusRegulatoryScoreTrackRequest>,
+    pub scale_bar: GeneLocusScaleBarPolicy,
+    /// Preserve local source paths in the portable report. Disabled by default
+    /// so reports can be shared without exposing workstation paths.
+    pub include_local_source_paths: bool,
 }
 
 impl Default for GeneLocusEvidenceDisplayRequest {
@@ -158,6 +321,9 @@ impl Default for GeneLocusEvidenceDisplayRequest {
             motif_clip_negative: true,
             motif_display_threshold: None,
             motif_top_hit_count: default_locus_motif_top_hit_count(),
+            regulatory_score_tracks: vec![],
+            scale_bar: GeneLocusScaleBarPolicy::default(),
+            include_local_source_paths: false,
         }
     }
 }
@@ -283,6 +449,10 @@ pub struct GeneLocusOccupancyLane {
     pub display_label: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub condition_label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cell_line_label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub batch_label: Option<String>,
     pub role: GeneLocusOccupancyLaneRole,
     pub display_abs_max_score: f64,
 }
@@ -486,6 +656,125 @@ pub struct GeneLocusMotifTrack {
     pub reverse_scores: Vec<f64>,
     pub top_hits: Vec<GeneLocusMotifHit>,
     pub provenance: String,
+}
+
+/// One labeled site call retained by a normalized regulatory-score track.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct GeneLocusRegulatoryScoreSite {
+    pub site_id: String,
+    pub rank: usize,
+    pub local_start_0based: usize,
+    pub local_end_0based_exclusive: usize,
+    pub genomic_start_1based: usize,
+    pub genomic_end_1based: usize,
+    pub strand: String,
+    pub score: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+}
+
+/// Provider-neutral score-track result consumed directly by renderers.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct GeneLocusRegulatoryScoreTrack {
+    pub track_id: String,
+    pub label: String,
+    pub provider_kind: GeneLocusRegulatoryScoreProviderKind,
+    pub provider_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_version: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub factors: Vec<GeneLocusRegulatoryFactor>,
+    pub source_ids: Vec<String>,
+    pub input_sequence_id: String,
+    pub input_sequence_sha256: String,
+    pub assembly: String,
+    pub chromosome: String,
+    pub anchor_start_1based: usize,
+    pub anchor_end_1based: usize,
+    pub coordinate_convention: String,
+    pub window_length_bp: usize,
+    pub stride_bp: usize,
+    pub strand_policy: GeneLocusRegulatoryScoreStrandPolicy,
+    pub score_kind: String,
+    pub score_units: String,
+    pub score_directionality: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub theoretical_min: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub theoretical_max: Option<f64>,
+    pub calibration_status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub calibration_statement: Option<String>,
+    pub track_start_0based: usize,
+    pub forward_scores: Vec<f64>,
+    pub reverse_scores: Vec<f64>,
+    pub sites: Vec<GeneLocusRegulatoryScoreSite>,
+    pub display_threshold: Option<f64>,
+    pub scale_mode: GeneLocusRegulatoryScoreScaleMode,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scale_group: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shared_scale_justification: Option<String>,
+    pub display_scale_min: f64,
+    pub display_scale_max: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color_hint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line_style_hint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_sha256: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_sha256: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_sha256: Option<String>,
+    pub provenance: String,
+    pub state: GeneLocusRegulatoryScoreState,
+    pub warnings: Vec<String>,
+}
+
+/// One portable external score payload. It is deliberately data-only and does
+/// not identify or invoke a networked model provider.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct GeneLocusExternalRegulatoryScoreResource {
+    pub schema: String,
+    pub track_id: String,
+    pub label: String,
+    pub model_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_version: Option<String>,
+    pub factors: Vec<GeneLocusRegulatoryFactor>,
+    pub input_sequence_id: String,
+    pub input_sequence_sha256: String,
+    pub assembly: String,
+    pub chromosome: String,
+    pub anchor_start_1based: usize,
+    pub anchor_end_1based: usize,
+    pub coordinate_convention: String,
+    pub window_length_bp: usize,
+    pub stride_bp: usize,
+    pub strand_policy: GeneLocusRegulatoryScoreStrandPolicy,
+    pub score_kind: String,
+    pub score_units: String,
+    pub score_directionality: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub theoretical_min: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub theoretical_max: Option<f64>,
+    pub calibration_statement: String,
+    pub track_start_0based: usize,
+    pub forward_scores: Vec<f64>,
+    pub reverse_scores: Vec<f64>,
+    pub sites: Vec<GeneLocusRegulatoryScoreSite>,
+    pub request_schema_sha256: String,
+    pub request_sha256: String,
+    pub score_payload_sha256: String,
+    pub provenance: String,
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -793,6 +1082,9 @@ pub struct GeneLocusEvidenceDisplayReport {
     pub probe_effect_shared_abs_max: Option<f64>,
     pub occupancy_groups: Vec<GeneLocusOccupancyGroup>,
     pub motif_tracks: Vec<GeneLocusMotifTrack>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub regulatory_score_tracks: Vec<GeneLocusRegulatoryScoreTrack>,
+    pub scale_bar: GeneLocusScaleBar,
     pub assay_overlays: Vec<GeneLocusAssayOverlay>,
     pub provenance: Vec<GeneIsoformEvidenceProvenanceSource>,
     pub warnings: Vec<String>,
@@ -835,6 +1127,10 @@ mod tests {
         assert!(request.probe_effect_table_paths.is_empty());
         assert!(request.probe_effect_contrasts.is_empty());
         assert_eq!(request.probe_effect_coordinate_system, None);
+        assert!(request.regulatory_score_tracks.is_empty());
+        assert_eq!(request.scale_bar.mode, GeneLocusScaleBarMode::Hidden);
+        assert_eq!(request.scale_bar.length_bp, None);
+        assert!(!request.include_local_source_paths);
 
         let report: GeneLocusEvidenceDisplayReport = serde_json::from_value(serde_json::json!({
             "schema": GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA,
@@ -845,6 +1141,69 @@ mod tests {
         assert!(report.probe_effect_contrasts.is_empty());
         assert!(report.probe_effect_overlays.is_empty());
         assert_eq!(report.probe_effect_shared_abs_max, None);
+        assert!(report.regulatory_score_tracks.is_empty());
+        assert_eq!(report.scale_bar.mode, GeneLocusScaleBarMode::Hidden);
+        assert_eq!(report.scale_bar.length_bp, 0);
+    }
+
+    #[test]
+    fn chromatin_context_lane_and_score_track_settings_round_trip() {
+        let request: GeneLocusEvidenceDisplayRequest = serde_json::from_value(serde_json::json!({
+            "isoform_evidence": { "panel_id": "demo" },
+            "occupancy_layout": {
+                "schema": GENE_LOCUS_OCCUPANCY_LAYOUT_SCHEMA,
+                "groups": [{
+                    "group_id": "chromatin",
+                    "label": "Chromatin context",
+                    "scale_mode": "independent",
+                    "lanes": [{
+                        "track_name": "h3k4me3",
+                        "condition_label": "untreated",
+                        "cell_line_label": "Saos-2",
+                        "batch_label": "batch-1",
+                        "role": "chromatin_context"
+                    }]
+                }]
+            },
+            "regulatory_score_tracks": [{
+                "track_id": "tp73_pwm",
+                "label": "TP73 PWM",
+                "provider_kind": "jaspar_pwm",
+                "source_ids": ["MA0861.1"],
+                "factors": [{"factor_id": "TP73", "factor_label": "p73"}],
+                "score_kind": "llr_bits",
+                "strand_policy": "both",
+                "clip_negative": false,
+                "display_threshold": 2.5,
+                "top_hit_count": 7,
+                "scale_mode": "independent"
+            }],
+            "scale_bar": {"mode": "fixed", "length_bp": 1000},
+            "include_local_source_paths": true
+        }))
+        .expect("deserialize additive gene-locus request");
+
+        let lane = &request.occupancy_layout.groups[0].lanes[0];
+        assert_eq!(lane.role, GeneLocusOccupancyLaneRole::ChromatinContext);
+        assert_eq!(lane.cell_line_label.as_deref(), Some("Saos-2"));
+        assert_eq!(lane.batch_label.as_deref(), Some("batch-1"));
+        assert_eq!(request.regulatory_score_tracks.len(), 1);
+        assert_eq!(
+            request.regulatory_score_tracks[0].provider_kind,
+            GeneLocusRegulatoryScoreProviderKind::JasparPwm
+        );
+        assert_eq!(request.regulatory_score_tracks[0].top_hit_count, 7);
+        assert_eq!(request.scale_bar.mode, GeneLocusScaleBarMode::Fixed);
+        assert_eq!(request.scale_bar.length_bp, Some(1000));
+        assert!(request.include_local_source_paths);
+
+        let encoded = serde_json::to_value(&request).expect("serialize gene-locus request");
+        assert_eq!(
+            encoded["occupancy_layout"]["groups"][0]["lanes"][0]["role"],
+            "chromatin_context"
+        );
+        assert_eq!(encoded["scale_bar"]["length_bp"], 1000);
+        assert_eq!(encoded["include_local_source_paths"], true);
     }
 
     #[test]

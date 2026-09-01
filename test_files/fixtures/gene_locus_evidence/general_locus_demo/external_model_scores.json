@@ -1,0 +1,89 @@
+{
+  "schema": "gentle.gene_locus_external_regulatory_scores.v1",
+  "track_id": "external_tp73_context",
+  "label": "Synthetic TP73-context model",
+  "model_id": "synthetic_regulatory_model",
+  "model_version": "fixture-v1",
+  "factors": [
+    {
+      "factor_id": "TP73",
+      "factor_label": "p73"
+    }
+  ],
+  "input_sequence_id": "general_locus_demo",
+  "input_sequence_sha256": "sha256:4813bc39b42785cf6731d92c07fc65bc60e646248d323d22f4525c9a599b2e64",
+  "assembly": "GRCh38",
+  "chromosome": "chrSynthetic1",
+  "anchor_start_1based": 100001,
+  "anchor_end_1based": 101200,
+  "coordinate_convention": "genomic_1based_inclusive",
+  "window_length_bp": 20,
+  "stride_bp": 100,
+  "strand_policy": "both",
+  "score_kind": "uncalibrated_model_score",
+  "score_units": "arbitrary_units",
+  "score_directionality": "higher_is_stronger_model_prediction",
+  "theoretical_min": 0,
+  "theoretical_max": 1,
+  "calibration_statement": "Uncalibrated synthetic model prediction for adapter testing; not measured binding or affinity.",
+  "track_start_0based": 0,
+  "forward_scores": [
+    0.08,
+    0.12,
+    0.31,
+    0.78,
+    0.44,
+    0.19,
+    0.63,
+    0.27,
+    0.11,
+    0.06,
+    0.18,
+    0.09
+  ],
+  "reverse_scores": [
+    0.05,
+    0.22,
+    0.71,
+    0.34,
+    0.29,
+    0.81,
+    0.37,
+    0.21,
+    0.13,
+    0.07,
+    0.16,
+    0.12
+  ],
+  "sites": [
+    {
+      "site_id": "external-site-forward",
+      "rank": 1,
+      "local_start_0based": 300,
+      "local_end_0based_exclusive": 320,
+      "genomic_start_1based": 100301,
+      "genomic_end_1based": 100320,
+      "strand": "+",
+      "score": 0.78,
+      "label": "synthetic forward site"
+    },
+    {
+      "site_id": "external-site-reverse",
+      "rank": 2,
+      "local_start_0based": 500,
+      "local_end_0based_exclusive": 520,
+      "genomic_start_1based": 100501,
+      "genomic_end_1based": 100520,
+      "strand": "-",
+      "score": 0.81,
+      "label": "synthetic reverse site"
+    }
+  ],
+  "request_schema_sha256": "sha256:c9294424cba2ed5b9b1f78f4c43f56bf8002b0582436bcca0aaedf7127eb05fd",
+  "request_sha256": "sha256:8112e9ef8c7b39c7b8dbcea7877d6b990aafb995a21b3f331f4113c809c0c567",
+  "score_payload_sha256": "sha256:984272df50f25143f47e8eddcbf53dbc8b003c7e68de43bef50e495d6b18aed7",
+  "provenance": "Hand-crafted deterministic offline fixture; no external model or network was invoked.",
+  "warnings": [
+    "Model values are synthetic predictions, not observed binding or measured affinity."
+  ]
+}

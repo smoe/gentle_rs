@@ -1,0 +1,36 @@
+{
+  "schema": "gentle.gene_locus_occupancy_layout.v1",
+  "groups": [
+    {
+      "group_id": "tp73_occupancy",
+      "label": "TP73 occupancy",
+      "scale_mode": "independent",
+      "lanes": [
+        {
+          "track_name": "TP73 CUT&RUN",
+          "display_label": "TP73 CUT&RUN",
+          "condition_label": "TP73",
+          "cell_line_label": "Synthetic cells",
+          "batch_label": "fixture-batch-1",
+          "role": "experimental"
+        }
+      ]
+    },
+    {
+      "group_id": "chromatin_context",
+      "label": "Promoter chromatin context",
+      "scale_mode": "independent",
+      "lanes": [
+        {
+          "track_name": "H3K4me3 CUT&RUN",
+          "display_label": "H3K4me3 CUT&RUN",
+          "condition_label": "matched context",
+          "cell_line_label": "Synthetic cells",
+          "batch_label": "fixture-batch-1",
+          "role": "chromatin_context"
+        }
+      ]
+    }
+  ]
+}
+
