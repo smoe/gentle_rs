@@ -166,7 +166,7 @@ objc2-foundation = "0.3.2"
 objc2-app-kit = { version = "0.3.2", features = ["NSApplication", "NSMenu", "NSMenuItem", "NSResponder", "NSWindow"] }
 screencapturekit = { version = "8.0.1", optional = true, features = ["macos_14_0"] }
 
-[build-dependencies]
+[target.'cfg(target_os = "windows")'.build-dependencies]
 winres = "0.1"
 
 [profile.dev]
