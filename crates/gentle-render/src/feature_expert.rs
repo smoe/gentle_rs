@@ -4428,7 +4428,60 @@ fn locus_probe_contrast_short_label(label: &str) -> String {
     label.replace("alpha", "a").replace("beta", "b")
 }
 
+/// One already-resolved source interval drawn by an engine-owned overlay.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GeneLocusEvidenceOverlaySegment {
+    pub segment_id: String,
+    pub material: String,
+    pub local_start_1based: usize,
+    pub local_end_1based: usize,
+    pub fill: String,
+}
+
+/// One synthetic continuation attached to a resolved locus position without
+/// pretending that the continuation has genomic coordinates or scale.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GeneLocusEvidenceOverlaySchematicTail {
+    pub segment_id: String,
+    pub label: String,
+    pub detail: String,
+    pub fill: String,
+    pub anchor_local_1based: usize,
+}
+
+/// One design row projected onto the normalized locus coordinate axis.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GeneLocusEvidenceOverlayRow {
+    pub row_id: String,
+    pub label: String,
+    pub detail: String,
+    pub segments: Vec<GeneLocusEvidenceOverlaySegment>,
+    pub marker_local_1based: Option<usize>,
+    pub marker_label: Option<String>,
+    pub schematic_tail: Option<GeneLocusEvidenceOverlaySchematicTail>,
+}
+
+/// Presentation-only projection of a canonical engine report.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GeneLocusEvidenceOverlay {
+    pub overlay_id: String,
+    pub title: String,
+    pub document_title: String,
+    pub summary: String,
+    pub rows: Vec<GeneLocusEvidenceOverlayRow>,
+    pub non_claims: Vec<String>,
+}
+
 fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String {
+    render_gene_locus_evidence_with_overlay_svg(report, None)
+}
+
+/// Render normalized locus evidence with an optional already-resolved design
+/// overlay. The renderer never derives transcript or assay biology.
+pub fn render_gene_locus_evidence_with_overlay_svg(
+    report: &GeneLocusEvidenceDisplayReport,
+    overlay: Option<&GeneLocusEvidenceOverlay>,
+) -> String {
     let width = 1400.0_f32;
     let plot_left = 255.0_f32;
     let plot_right = 1050.0_f32;
@@ -4459,7 +4512,17 @@ fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String
     let transcript_top = assay_top + assay_height + 30.0;
     let transcript_pitch = 42.0_f32;
     let transcript_height = transcript_count.max(1) as f32 * transcript_pitch;
-    let probe_top = transcript_top + transcript_height + 34.0;
+    let overlay_top = transcript_top + transcript_height + 34.0;
+    let overlay_pitch = 38.0_f32;
+    let overlay_height = overlay
+        .filter(|overlay| !overlay.rows.is_empty())
+        .map(|overlay| 28.0 + overlay.rows.len() as f32 * overlay_pitch)
+        .unwrap_or_default();
+    let probe_top = if overlay_height > 0.0 {
+        overlay_top + overlay_height + 28.0
+    } else {
+        overlay_top
+    };
     let probe_pitch = 22.0_f32;
     let probe_height = if report.probe_effect_overlays.is_empty() {
         0.0
@@ -4489,12 +4552,31 @@ fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String
         report.motif_tracks.len()
     };
     let motif_height = motif_track_count as f32 * motif_pitch;
-    let warning_top = motif_top + motif_height + 42.0;
+    let overlay_non_claims = overlay
+        .map(|overlay| overlay.non_claims.iter().take(4).collect::<Vec<_>>())
+        .unwrap_or_default();
+    let interpretation_top = motif_top + motif_height + 36.0;
+    let interpretation_height = if overlay_non_claims.is_empty() {
+        0.0
+    } else {
+        30.0 + overlay_non_claims.len() as f32 * 15.0
+    };
+    let warning_top = motif_top + motif_height + 42.0 + interpretation_height;
     let warning_rows = report.warnings.iter().take(8).collect::<Vec<_>>();
     let provenance_top = warning_top + 38.0 + warning_rows.len() as f32 * 15.0;
     let provenance_rows = report.provenance.iter().take(10).collect::<Vec<_>>();
     let doc_height = (provenance_top + 48.0 + provenance_rows.len() as f32 * 14.0).max(620.0);
 
+    let document_title = overlay
+        .map(|overlay| overlay.document_title.trim())
+        .filter(|title| !title.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("{} locus evidence", report.gene_symbol));
+    let instruction = overlay
+        .map(|overlay| overlay.summary.trim())
+        .filter(|summary| !summary.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| report.instruction.clone());
     let mut doc = Document::new()
         .set("viewBox", (0, 0, width, doc_height))
         .set("width", width)
@@ -4510,7 +4592,7 @@ fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String
                 .set("fill", "#ffffff"),
         )
         .add(
-            Text::new(format!("{} locus evidence", report.gene_symbol))
+            Text::new(document_title)
                 .set("x", 34)
                 .set("y", 36)
                 .set("font-family", "sans-serif")
@@ -4544,7 +4626,7 @@ fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String
             .set("fill", "#475569"),
         )
         .add(
-            Text::new(isoform_evidence_compact_label(&report.instruction, 190))
+            Text::new(isoform_evidence_compact_label(&instruction, 190))
                 .set("x", 34)
                 .set("y", 82)
                 .set("font-family", "sans-serif")
@@ -4671,6 +4753,9 @@ fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String
                 .set("font-size", 9)
                 .set("fill", "#475569"),
         );
+    if let Some(overlay) = overlay {
+        doc = doc.set("data-gentle-overlay-id", overlay.overlay_id.as_str());
+    }
 
     if report.scale_bar.mode != GeneLocusScaleBarMode::Hidden && report.scale_bar.length_bp > 0 {
         let span_bp = report
@@ -4903,6 +4988,186 @@ fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String
                         );
                     }
                 }
+            }
+        }
+    }
+
+    if let Some(overlay) = overlay.filter(|overlay| !overlay.rows.is_empty()) {
+        doc = doc.add(
+            Text::new(if overlay.title.trim().is_empty() {
+                "Resolved design overlay"
+            } else {
+                overlay.title.as_str()
+            })
+            .set("x", 34)
+            .set("y", overlay_top - 14.0)
+            .set("font-family", "sans-serif")
+            .set("font-size", 13)
+            .set("font-weight", "bold")
+            .set("fill", "#1f2937")
+            .set("data-gentle-overlay-section", overlay.overlay_id.as_str()),
+        );
+        doc = doc.add(
+            Text::new("source intervals use the shared axis; synthetic tails are schematic")
+                .set("x", metrics_left)
+                .set("y", overlay_top - 14.0)
+                .set("font-family", "monospace")
+                .set("font-size", 8)
+                .set("fill", "#64748b")
+                .set("data-gentle-overlay-scale-note", "true"),
+        );
+        for (index, row) in overlay.rows.iter().enumerate() {
+            let y = overlay_top + index as f32 * overlay_pitch;
+            doc = doc
+                .add(
+                    Text::new(isoform_evidence_compact_label(&row.label, 37))
+                        .set("x", 34)
+                        .set("y", y + 3.0)
+                        .set("font-family", "monospace")
+                        .set("font-size", 9)
+                        .set("fill", "#374151")
+                        .set("data-gentle-overlay-row", row.row_id.as_str()),
+                )
+                .add(
+                    Text::new(isoform_evidence_compact_label(&row.detail, 52))
+                        .set("x", 34)
+                        .set("y", y + 16.0)
+                        .set("font-family", "sans-serif")
+                        .set("font-size", 8)
+                        .set("fill", "#64748b"),
+                )
+                .add(
+                    Line::new()
+                        .set("x1", plot_left)
+                        .set("x2", plot_right)
+                        .set("y1", y)
+                        .set("y2", y)
+                        .set("stroke", "#cbd5e1")
+                        .set("stroke-width", 1)
+                        .set("data-gentle-overlay-axis-row", row.row_id.as_str()),
+                );
+            let mut segments = row
+                .segments
+                .iter()
+                .filter(|segment| segment.local_end_1based >= segment.local_start_1based)
+                .collect::<Vec<_>>();
+            segments.sort_by_key(|segment| (segment.local_start_1based, segment.local_end_1based));
+            for segment in &segments {
+                let x1 = x_for(segment.local_start_1based);
+                let x2 = x_for(segment.local_end_1based);
+                doc = doc.add(
+                    Rectangle::new()
+                        .set("x", x1.min(x2))
+                        .set("y", y - 6.0)
+                        .set("width", (x2 - x1).abs().max(2.5))
+                        .set("height", 12)
+                        .set("rx", 2)
+                        .set(
+                            "fill",
+                            if segment.fill.trim().is_empty() {
+                                "#27847c"
+                            } else {
+                                segment.fill.as_str()
+                            },
+                        )
+                        .set("data-gentle-overlay-row", row.row_id.as_str())
+                        .set("data-gentle-overlay-segment", segment.segment_id.as_str())
+                        .set("data-gentle-overlay-material", segment.material.as_str()),
+                );
+            }
+            for pair in segments.windows(2) {
+                let x1 = x_for(pair[0].local_end_1based);
+                let x2 = x_for(pair[1].local_start_1based);
+                if (x2 - x1).abs() > 2.0 {
+                    let data = Data::new().move_to((x1, y)).quadratic_curve_to((
+                        (x1 + x2) / 2.0,
+                        y - 9.0,
+                        x2,
+                        y,
+                    ));
+                    doc = doc.add(
+                        Path::new()
+                            .set("d", data)
+                            .set("fill", "none")
+                            .set("stroke", "#ba6b32")
+                            .set("stroke-width", 1.3)
+                            .set("stroke-dasharray", "4 3")
+                            .set("data-gentle-overlay-link", row.row_id.as_str()),
+                    );
+                }
+            }
+            if let Some(marker) = row.marker_local_1based {
+                let x = x_for(marker);
+                let marker_path = Data::new()
+                    .move_to((x, y - 11.0))
+                    .line_to((x - 5.0, y - 19.0))
+                    .line_to((x + 5.0, y - 19.0))
+                    .close();
+                doc = doc.add(
+                    Path::new()
+                        .set("d", marker_path)
+                        .set("fill", "#d29d21")
+                        .set("data-gentle-overlay-marker", row.row_id.as_str()),
+                );
+                if let Some(label) = row.marker_label.as_deref() {
+                    doc = doc.add(
+                        Text::new(label)
+                            .set("x", x + 5.0)
+                            .set("y", y - 12.0)
+                            .set("font-family", "monospace")
+                            .set("font-size", 7)
+                            .set("fill", "#92400e"),
+                    );
+                }
+            }
+            if let Some(tail) = row.schematic_tail.as_ref() {
+                let anchor_x = x_for(tail.anchor_local_1based);
+                let tail_x = anchor_x + 10.0;
+                let tail_width = 76.0_f32;
+                doc = doc
+                    .add(
+                        Line::new()
+                            .set("x1", anchor_x)
+                            .set("x2", tail_x)
+                            .set("y1", y)
+                            .set("y2", y)
+                            .set("stroke", "#9f1239")
+                            .set("stroke-width", 1.5)
+                            .set("stroke-dasharray", "3 2")
+                            .set("data-gentle-overlay-schematic-link", row.row_id.as_str()),
+                    )
+                    .add(
+                        Rectangle::new()
+                            .set("x", tail_x)
+                            .set("y", y - 9.0)
+                            .set("width", tail_width)
+                            .set("height", 18)
+                            .set("rx", 3)
+                            .set(
+                                "fill",
+                                if tail.fill.trim().is_empty() {
+                                    "#b54b43"
+                                } else {
+                                    tail.fill.as_str()
+                                },
+                            )
+                            .set("data-gentle-overlay-schematic", tail.segment_id.as_str())
+                            .set("data-gentle-overlay-schematic-detail", tail.detail.as_str()),
+                    )
+                    .add(
+                        Text::new(if tail.label.trim().is_empty() {
+                            "synthetic"
+                        } else {
+                            tail.label.as_str()
+                        })
+                        .set("x", tail_x + tail_width / 2.0)
+                        .set("y", y + 3.0)
+                        .set("text-anchor", "middle")
+                        .set("font-family", "sans-serif")
+                        .set("font-size", 9)
+                        .set("font-weight", "bold")
+                        .set("fill", "#ffffff"),
+                    );
             }
         }
     }
@@ -5648,6 +5913,29 @@ fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String
         );
     }
 
+    if !overlay_non_claims.is_empty() {
+        doc = doc.add(
+            Text::new("Reporter interpretation boundaries")
+                .set("x", 34)
+                .set("y", interpretation_top)
+                .set("font-family", "sans-serif")
+                .set("font-size", 13)
+                .set("font-weight", "bold")
+                .set("fill", "#1f2937")
+                .set("data-gentle-overlay-non-claims", "true"),
+        );
+        for (index, non_claim) in overlay_non_claims.iter().enumerate() {
+            doc = doc.add(
+                Text::new(isoform_evidence_compact_label(non_claim, 190))
+                    .set("x", 34)
+                    .set("y", interpretation_top + 19.0 + index as f32 * 15.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 9)
+                    .set("fill", "#6c4d43"),
+            );
+        }
+    }
+
     doc = doc.add(
         Text::new("Warnings / interpretation checks")
             .set("x", 34)
@@ -6295,7 +6583,7 @@ mod tests {
             ..Default::default()
         };
 
-        let svg = render_feature_expert_svg(&FeatureExpertView::GeneLocusEvidence(report));
+        let svg = render_feature_expert_svg(&FeatureExpertView::GeneLocusEvidence(report.clone()));
         assert!(svg.contains("data-gentle-codon=\"start\""));
         assert!(svg.contains("data-gentle-codon=\"stop\""));
         assert!(svg.contains("fill=\"#16a34a\""));
@@ -6308,6 +6596,52 @@ mod tests {
         assert!(svg.contains("data-gentle-transcript-legend=\"stop-codon\""));
         assert!(svg.contains("annotated start codon"));
         assert!(svg.contains("annotated stop codon"));
+
+        let overlay = GeneLocusEvidenceOverlay {
+            overlay_id: "reporter_comparison".to_string(),
+            title: "Proposed reporter architectures".to_string(),
+            document_title: "DEMO promoter-reporter architectures".to_string(),
+            summary: "Canonical reporter geometry plus normalized evidence.".to_string(),
+            rows: vec![GeneLocusEvidenceOverlayRow {
+                row_id: "demo_spliced_luc".to_string(),
+                label: "NM_demo_1 · spliced 5' UTR".to_string(),
+                detail: "87 bp | endogenous ATG replaced".to_string(),
+                segments: vec![
+                    GeneLocusEvidenceOverlaySegment {
+                        segment_id: "leader_1".to_string(),
+                        material: "spliced_cdna".to_string(),
+                        local_start_1based: 100,
+                        local_end_1based: 125,
+                        fill: "#d58a3a".to_string(),
+                    },
+                    GeneLocusEvidenceOverlaySegment {
+                        segment_id: "leader_2".to_string(),
+                        material: "spliced_cdna".to_string(),
+                        local_start_1based: 150,
+                        local_end_1based: 175,
+                        fill: "#d58a3a".to_string(),
+                    },
+                ],
+                marker_local_1based: Some(176),
+                marker_label: Some("ATG boundary".to_string()),
+                schematic_tail: Some(GeneLocusEvidenceOverlaySchematicTail {
+                    segment_id: "demo_luciferase".to_string(),
+                    label: "LUC".to_string(),
+                    detail: "synthetic reporter coding body; not to genomic scale".to_string(),
+                    fill: "#b54b43".to_string(),
+                    anchor_local_1based: 175,
+                }),
+            }],
+            non_claims: vec!["Reporter geometry does not establish activity.".to_string()],
+        };
+        let combined = render_gene_locus_evidence_with_overlay_svg(&report, Some(&overlay));
+        assert!(combined.contains("data-gentle-overlay-id=\"reporter_comparison\""));
+        assert!(combined.contains("demo_spliced_luc"));
+        assert!(combined.contains("data-gentle-overlay-segment=\"leader_1\""));
+        assert!(combined.contains("data-gentle-overlay-schematic=\"demo_luciferase\""));
+        assert!(combined.contains("synthetic tails are schematic"));
+        assert!(combined.contains("Reporter interpretation boundaries"));
+        assert!(combined.contains("DEMO promoter-reporter architectures"));
     }
 
     #[test]

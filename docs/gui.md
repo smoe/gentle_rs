@@ -5670,9 +5670,15 @@ Tutorial projects:
     `ComparePromoterReporterArchitectures`:
     - `Prepare from current locus` seeds one editable portable request from the
       selected sequence, gene/transcript context, promoter extents, and current
-      motif list; `Compare / refresh` runs the shared engine operation
-    - summary, TSS classes, staged panel, warnings, non-claims, and CUT&RUN
-      readiness come directly from the cached report
+      motif list; when Splicing Expert > Locus figure has a configured isoform
+      panel, it also attaches that shared locus-evidence request. The status
+      explains the missing configuration when only the legacy comparison can
+      be prepared; invalid existing Locus figure paths/settings fail visibly
+      instead of silently dropping the evidence. `Compare / refresh` runs the
+      shared engine operation
+    - summary, TSS classes, staged panel, warnings, non-claims, CUT&RUN
+      readiness, and the integrated occupancy/score/scale summary come directly
+      from the cached report
     - the collapsed `Architecture models` list exposes stable architecture id,
       transcript, modeled insert length, spliced-UTR and intron burden, explicit
       ATG policy, and a `Use transcript` navigation action without recalculating

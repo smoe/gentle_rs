@@ -3633,7 +3633,16 @@ Sequencing-trace evidence notes:
   - the request selects one annotated locus plus optional gene/transcript ids,
     strand-aware promoter extents, TSS-cluster tolerance, architecture kinds,
     explicit ATG-retaining fusion requests, initiation evidence, CUT&RUN
-    dataset/read-report ids, and theoretical motif tokens
+    dataset/read-report ids, theoretical motif tokens, and an additive
+    `locus_evidence_request`
+  - when `locus_evidence_request` is present, the report embeds the resulting
+    `gentle.gene_locus_evidence_display.v1` payload. The canonical reporter
+    renderer projects its already-audited architecture segments onto that
+    payload's strand-aware axis, so designs, occupancy/chromatin, TF-score
+    traces, transcript models, and scale bar appear in one SVG. It does not
+    recalculate reporter geometry or merge evidence semantics
+  - omitting `locus_evidence_request` preserves the original v1 report content
+    and renderer path
   - requested transcript and fusion-target ids use version-tolerant Ensembl
     stable-id matching but retain exact versions in provenance; any unresolved
     requested id fails closed rather than silently shrinking the comparison
@@ -3643,6 +3652,8 @@ Sequencing-trace evidence notes:
     `endogenous_atg_retained_fusion` row exists only for a caller-supplied
     fusion policy and records whether the endogenous and vector luciferase
     ATGs are retained, replaced, or removed
+  - the documented 5' UTR tokens above are accepted as request aliases for the
+    historical compact serde spellings, preserving existing v1 payloads
   - all rows reuse the canonical-CDS-start audit below, including CDS phase,
     partial-CDS and non-ATG rejection, split-codon handling, transcript-oriented
     spliced UTRs, ordered intron spans, total/max intron burden, Kozak context,
@@ -4036,7 +4047,10 @@ external coding agent runtime, see:
     `gentle.gene_locus_evidence_preparation_request.v1` and returns
     `gentle.gene_locus_evidence_preparation_receipt.v1`. It composes the
     existing Ensembl import, automatic panel conversion, BED/BigWig projection,
-    score adapters, report, SVG, and optional PNG/PDF paths. Ensembl network
+    score adapters, report, SVG, and optional PNG/PDF paths. An optional
+    `reporter_architecture_request` is sequence- and panel-bound to that same
+    normalized display request and makes the figure use the canonical combined
+    reporter renderer; `reporter_report_path` persists its JSON. Ensembl network
     access is explicit; an offline `ensembl_entry_path` is the mutually
     exclusive reproducible alternative. Receipts retain hashes and redact
     local source paths by default

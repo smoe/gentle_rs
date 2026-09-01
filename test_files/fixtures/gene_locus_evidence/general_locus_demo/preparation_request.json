@@ -131,9 +131,27 @@
     "mode": "fixed",
     "length_bp": 1000
   },
+  "reporter_architecture_request": {
+    "schema": "gentle.promoter_reporter_architecture_comparison_request.v1",
+    "seq_id": "",
+    "gene_label": "LOCUSDEMO",
+    "transcript_ids": [
+      "ENSTDEMO0001.2",
+      "ENSTDEMO0002.3"
+    ],
+    "promoter_upstream_bp": 150,
+    "tss_proximal_downstream_bp": 80,
+    "tss_cluster_tolerance_bp": 40,
+    "architectures": [
+      "tss_proximal_transcriptional",
+      "spliced_5utr_luc_atg_replacement",
+      "genomic_5utr_luc_atg_replacement"
+    ]
+  },
   "svg_path": "target/gene_locus_evidence_demo/general_locus_demo.svg",
   "png_path": "target/gene_locus_evidence_demo/general_locus_demo.png",
   "display_report_path": "target/gene_locus_evidence_demo/general_locus_demo.report.json",
+  "reporter_report_path": "target/gene_locus_evidence_demo/general_locus_demo.reporter.json",
   "receipt_path": "target/gene_locus_evidence_demo/general_locus_demo.receipt.json",
   "png_scale": 1
 }

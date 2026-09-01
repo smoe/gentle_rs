@@ -25,7 +25,8 @@ credential, or network-derived payload. The names `LOCUSDEMO`,
 - `external_model_scores.json` is a provider-neutral, coordinate-bound set of
   synthetic forward/reverse model scores and two site calls. No model was run.
 - `preparation_request.json` composes those sources with two local JASPAR
-  requests and a fixed 1000 bp scale bar.
+  requests, a fixed 1000 bp scale bar, and the canonical three-way reporter
+  architecture comparison for both transcripts (six design rows total).
 
 ## Deterministic recreation
 
@@ -50,8 +51,13 @@ executes the typed `PrepareGeneLocusEvidence` operation directly against the
 offline entry without network access or pre-existing project state. The test verifies
 the canonical genome anchor, automatic isoform panel, two transcript/TSS and
 CDS-start classes, explicit occupancy/chromatin roles, normalized JASPAR and
-external-model score tracks, and non-empty SVG/PNG exports. The runbook uses
-the same request as the public offline demonstration.
+external-model score tracks, six canonical reporter architecture rows, and
+non-empty combined SVG/PNG exports. The architecture report embeds the same
+normalized locus-evidence report rendered in the figure; no reporter geometry
+is re-derived by the display adapter. Genomically sourced architecture segments
+remain to scale; each red `LUC` block is an explicitly schematic synthetic
+continuation and does not claim a genomic span. The runbook uses the same
+request as the public offline demonstration.
 
 Local source paths are omitted from the portable report and receipt by default;
 their SHA-256 bindings remain available for audit. Set

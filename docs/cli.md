@@ -4840,6 +4840,12 @@ Isoform architecture panel workflow:
       hash-bound `gentle.gene_locus_evidence_preparation_receipt.v1`; the
       committed offline example is
       `test_files/fixtures/gene_locus_evidence/general_locus_demo/preparation_request.json`
+    - the preparation request may include `reporter_architecture_request` and
+      `reporter_report_path`. GENtle binds the nested comparison to the newly
+      prepared sequence and normalized locus request, then renders its
+      canonical architecture rows in the same SVG/PNG/PDF as occupancy,
+      chromatin, TF-score, transcript, and scale-bar evidence. Nested callers
+      must not supply a competing `locus_evidence_request`
     - repeat `--probe-effect-table` for compact TSV sources whose abundance
       columns are named `log2_mean_*` and whose differential columns are named
       `log2_*_minus_*`; repeat `--probe-effect-contrast` to select a subset.

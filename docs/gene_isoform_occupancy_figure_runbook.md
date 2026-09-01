@@ -3,8 +3,9 @@
 GENtle can compose transcript architecture, annotation-derived transcript/CDS
 metrics, selected projected BED or BigWig occupancy tracks, continuous motif or
 provider-neutral predicted binding-score tracks, coordinate-aligned PSR/JUC
-probe-effect rows, a genomic scale bar, and existing junction-qPCR candidates into one
-`gentle.gene_locus_evidence_display.v1` SVG. This is intended for selected-gene
+probe-effect rows, a genomic scale bar, existing junction-qPCR candidates, and
+optional canonical promoter-reporter architecture rows into one shared-axis
+SVG. This is intended for selected-gene
 CUT&RUN figures such as TAp73alpha versus DNp73beta at PATZ1. It is reusable for
 other genes and occupancy assays.
 
@@ -32,6 +33,14 @@ shared renderer, and SVG-to-PNG/PDF exporters. It returns
 `gentle.gene_locus_evidence_preparation_receipt.v1`, including request and
 sequence digests, resolved versioned transcripts, the verified genome anchor,
 track/provider bindings, output hashes, warnings, and the GENtle revision.
+When `reporter_architecture_request` is present, preparation binds its empty
+`seq_id` and omitted `locus_evidence_request` to the imported sequence and the
+normalized display request. `reporter_report_path` stores the resulting
+canonical comparison JSON; SVG/PNG/PDF then include the proposed luciferase
+architectures themselves rather than only their surrounding locus evidence.
+Source intervals use the shared genomic scale, while the attached `LUC` coding
+blocks are visibly marked as schematic so no synthetic sequence is assigned a
+false genome coordinate.
 
 The request must state `allow_ensembl_network`. With `false`, either
 `ensembl_entry_path` supplies an offline `gentle.ensembl_gene_entry.v1` resource

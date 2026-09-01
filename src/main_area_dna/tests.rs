@@ -11266,6 +11266,47 @@ fn variant_followup_promoter_architecture_builder_preserves_shared_request_and_e
     }
 }
 
+#[test]
+fn variant_followup_promoter_architecture_builder_attaches_configured_locus_evidence() {
+    let dna = DNAsequence::from_sequence(&"A".repeat(120)).expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("serpine1_gui".to_string()), None);
+    area.variant_followup_ui.source_seq_id = "serpine1_gui".to_string();
+    area.variant_followup_ui.gene_label = "SERPINE1".to_string();
+    area.splicing_isoform_evidence_panel_id = "serpine1_panel".to_string();
+
+    area.prepare_variant_followup_promoter_architecture_request();
+
+    let request: crate::engine::PromoterReporterArchitectureComparisonRequest =
+        serde_json::from_str(
+            &area
+                .variant_followup_ui
+                .promoter_reporter_architecture_request_json,
+        )
+        .expect("prepared architecture request");
+    let locus = request
+        .locus_evidence_request
+        .expect("configured locus evidence request");
+    assert_eq!(locus.isoform_evidence.panel_id, "serpine1_panel");
+    assert!(area.op_status.contains("with the configured Locus figure"));
+}
+
+#[test]
+fn variant_followup_promoter_architecture_builder_rejects_invalid_configured_locus_evidence() {
+    let dna = DNAsequence::from_sequence(&"A".repeat(120)).expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("serpine1_gui".to_string()), None);
+    area.variant_followup_ui.source_seq_id = "serpine1_gui".to_string();
+    area.splicing_isoform_evidence_panel_id = "serpine1_panel".to_string();
+    area.splicing_locus_occupancy_layout_path = "missing-occupancy-layout.json".to_string();
+
+    area.prepare_variant_followup_promoter_architecture_request();
+
+    assert!(
+        area.op_status
+            .contains("Could not attach the configured Locus figure")
+    );
+    assert!(area.op_status.contains("missing-occupancy-layout.json"));
+}
+
 fn variant_followup_promoter_reporter_panel_runs_on_expanded_stack() {
     let temp = tempdir().expect("panel GUI tempdir");
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"));

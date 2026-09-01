@@ -76,10 +76,11 @@ pub use gentle_protocol::{
     GENE_SET_CUTRUN_REGULATORY_SUPPORT_SCHEMA, GENE_SET_DIRECT_LIST_CACHE_SCHEMA,
     GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA, GENE_SET_PROMOTER_COHORT_SCHEMA,
     GENE_SET_RESOLUTION_SCHEMA, GeneIsoformExonFamilyRow, GeneIsoformJunctionRow,
-    GeneLocusEvidenceDisplayReport, GeneLocusOccupancyLayout, GeneLocusRegulatoryScoreProviderKind,
-    GeneLocusRegulatoryScoreTrackRequest, GeneLocusScaleBarPolicy, GeneLocusTranscriptMetrics,
-    GeneSetCoRegulatedProducerMetadata, GeneSetCohortRelationship, GeneSetCohortRelationshipFlag,
-    GeneSetCutRunEvaluationState, GeneSetCutRunMemberSupport, GeneSetCutRunRegulatorySupportReport,
+    GeneLocusEvidenceDisplayReport, GeneLocusEvidenceDisplayRequest, GeneLocusOccupancyLayout,
+    GeneLocusRegulatoryScoreProviderKind, GeneLocusRegulatoryScoreTrackRequest,
+    GeneLocusScaleBarPolicy, GeneLocusTranscriptMetrics, GeneSetCoRegulatedProducerMetadata,
+    GeneSetCohortRelationship, GeneSetCohortRelationshipFlag, GeneSetCutRunEvaluationState,
+    GeneSetCutRunMemberSupport, GeneSetCutRunRegulatorySupportReport,
     GeneSetCutRunSupportAggregate, GeneSetProducerFilter, GeneSetProducerKind,
     GeneSetProducerProvenance, GeneSetProducerQueryMetadata, GeneSetPromoterCohortReport,
     GeneSetPromoterWindow, GeneSetProvenanceRow, GeneSetRandomProvenance, GeneSetRequest,
@@ -4669,10 +4670,17 @@ pub struct GeneLocusEvidencePreparationRequest {
     pub occupancy_layout: GeneLocusOccupancyLayout,
     pub regulatory_score_tracks: Vec<GeneLocusRegulatoryScoreTrackRequest>,
     pub scale_bar: GeneLocusScaleBarPolicy,
+    /// Optional canonical reporter comparison to compose with the normalized
+    /// locus evidence. The preparation workflow binds its sequence and locus
+    /// request; callers must leave those nested fields empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reporter_architecture_request: Option<PromoterReporterArchitectureComparisonRequest>,
     pub svg_path: String,
     pub png_path: Option<String>,
     pub pdf_path: Option<String>,
     pub display_report_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reporter_report_path: Option<String>,
     pub receipt_path: Option<String>,
     pub png_scale: f32,
     /// Preserve local input/output paths in portable report metadata and the
@@ -4700,10 +4708,12 @@ impl Default for GeneLocusEvidencePreparationRequest {
             occupancy_layout: GeneLocusOccupancyLayout::default(),
             regulatory_score_tracks: vec![],
             scale_bar: GeneLocusScaleBarPolicy::default(),
+            reporter_architecture_request: None,
             svg_path: String::new(),
             png_path: None,
             pdf_path: None,
             display_report_path: None,
+            reporter_report_path: None,
             receipt_path: None,
             png_scale: 1.0,
             include_local_source_paths: false,
@@ -4777,6 +4787,10 @@ pub struct GeneLocusEvidencePreparationReceipt {
     pub regulatory_bindings: Vec<GeneLocusEvidenceRegulatoryBinding>,
     pub scale_bar: gentle_protocol::GeneLocusScaleBar,
     pub display_report_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reporter_architecture_report_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reporter_architecture_ids: Vec<String>,
     pub artifacts: Vec<GeneLocusEvidenceOutputArtifact>,
     pub warnings: Vec<String>,
 }
@@ -9455,7 +9469,9 @@ pub struct PromoterReporterPanelExtendedBoundaryAudit {
 pub enum PromoterReporterArchitectureKind {
     #[default]
     TssProximalTranscriptional,
+    #[serde(alias = "spliced_5utr_luc_atg_replacement")]
     Spliced5utrLucAtgReplacement,
+    #[serde(alias = "genomic_5utr_luc_atg_replacement")]
     Genomic5utrLucAtgReplacement,
     EndogenousAtgRetainedFusion,
 }
@@ -9596,6 +9612,10 @@ pub struct PromoterReporterArchitectureComparisonRequest {
     pub motif_tokens: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub motif_min_llr_quantile: Option<f64>,
+    /// Optional normalized evidence request rendered on the same axis as the
+    /// canonical reporter architectures.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locus_evidence_request: Option<GeneLocusEvidenceDisplayRequest>,
     #[serde(default)]
     pub include_local_source_paths: bool,
 }
@@ -9625,6 +9645,7 @@ impl Default for PromoterReporterArchitectureComparisonRequest {
             cutrun_species_filters: vec![],
             motif_tokens: vec![],
             motif_min_llr_quantile: None,
+            locus_evidence_request: None,
             include_local_source_paths: false,
         }
     }
@@ -9901,6 +9922,10 @@ pub struct PromoterReporterArchitectureComparisonReport {
     pub cutrun_evidence: PromoterReporterCutRunEvidence,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub theoretical_motif_hits: Option<TfbsHitScanReport>,
+    /// Normalized quantitative/context evidence sharing this report's source
+    /// sequence and genomic axis. Absent for legacy requests.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locus_evidence: Option<GeneLocusEvidenceDisplayReport>,
     #[serde(default)]
     pub warnings: Vec<String>,
     #[serde(default)]

@@ -1998,6 +1998,17 @@ impl MainAreaDna {
             Self::variant_followup_optional_text(&self.variant_followup_ui.transcript_id)
                 .into_iter()
                 .collect();
+        let locus_evidence_request = match self.splicing_locus_evidence_request() {
+            Ok(request) => Some(request),
+            Err(_) if self.splicing_isoform_evidence_panel_id.trim().is_empty() => None,
+            Err(error) => {
+                self.op_status = format!(
+                    "Could not attach the configured Locus figure to the reporter comparison: {error}"
+                );
+                return;
+            }
+        };
+        let includes_locus_evidence = locus_evidence_request.is_some();
         let request = PromoterReporterArchitectureComparisonRequest {
             seq_id,
             gene_label: Self::variant_followup_optional_text(&self.variant_followup_ui.gene_label),
@@ -2007,6 +2018,7 @@ impl MainAreaDna {
             motif_tokens: Self::promoter_design_parse_motif_tokens(
                 &self.variant_followup_ui.score_track_motifs,
             ),
+            locus_evidence_request,
             ..PromoterReporterArchitectureComparisonRequest::default()
         };
         match serde_json::to_string_pretty(&request) {
@@ -2015,8 +2027,13 @@ impl MainAreaDna {
                     .promoter_reporter_architecture_request_json = json;
                 self.variant_followup_ui
                     .cached_promoter_reporter_architecture_comparison = None;
-                self.op_status =
-                    "Prepared a read-only promoter-reporter architecture request".to_string();
+                self.op_status = if includes_locus_evidence {
+                    "Prepared a reporter architecture request with the configured Locus figure evidence"
+                        .to_string()
+                } else {
+                    "Prepared a reporter architecture request without quantitative locus evidence; configure an isoform panel in Splicing Expert > Locus figure to integrate it"
+                        .to_string()
+                };
             }
             Err(error) => {
                 self.op_status =
@@ -5315,7 +5332,7 @@ impl MainAreaDna {
                     "Compare TSS-proximal, spliced-leader, genomic-leader, and explicitly requested ATG-fusion models without creating constructs.",
                 );
                 ui.small(
-                    "Transcript annotation, transcription-initiation evidence, theoretical motifs, and CUT&RUN occupancy remain separate evidence layers.",
+                    "Transcript annotation, initiation evidence, occupancy/chromatin lanes, predicted score tracks, and reporter designs remain separate layers on one axis when Locus figure evidence is configured.",
                 );
                 ui.horizontal_wrapped(|ui| {
                     if ui.button("Prepare from current locus").clicked() {
@@ -5399,6 +5416,18 @@ impl MainAreaDna {
                             ui.end_row();
                             ui.label("Architecture rows");
                             ui.label(report.architectures.len().to_string());
+                            ui.end_row();
+                            ui.label("Integrated locus evidence");
+                            if let Some(locus) = report.locus_evidence.as_ref() {
+                                ui.label(format!(
+                                    "{} occupancy group(s), {} score track(s), {} bp scale",
+                                    locus.occupancy_groups.len(),
+                                    locus.regulatory_score_tracks.len(),
+                                    locus.scale_bar.length_bp
+                                ));
+                            } else {
+                                ui.label("not requested (legacy figure)");
+                            }
                             ui.end_row();
                             ui.label("Common CDS start");
                             ui.label(

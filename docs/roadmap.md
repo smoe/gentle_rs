@@ -348,10 +348,6 @@ wet-lab conclusions or unconfirmed mutations.
   laboratory insert/vector sequence and prepared Rostock CUT&RUN manifests
   before any construct assignment, occupancy comparison, or materialization;
   retain absent local lanes as `unevaluated`/`not_prepared` meanwhile.
-- Let `ComparePromoterReporterArchitectures` consume the normalized gene-locus
-  evidence tracks and scale-bar contract through one shared adapter, so
-  quantitative occupancy/chromatin and per-TF score traces can join the
-  reporter figure without duplicating projection or rendering biology.
 - Primer-walking support and iterative read/contig data management.
 - Helper-construct terminology migration away from legacy "helper genome"
   wording.

@@ -1584,6 +1584,17 @@ impl GentleEngine {
                 None,
             )?)
         };
+        let locus_evidence = request
+            .locus_evidence_request
+            .as_ref()
+            .map(|locus_request| {
+                let mut locus_request = locus_request.clone();
+                if !request.include_local_source_paths {
+                    locus_request.include_local_source_paths = false;
+                }
+                self.build_gene_locus_evidence_display_report(&request.seq_id, &locus_request)
+            })
+            .transpose()?;
         let mut warnings = vec![];
         if tss_classes.len() > 1 && request.initiation_evidence.is_empty() {
             warnings.push(
@@ -1620,6 +1631,7 @@ impl GentleEngine {
             staged_panel,
             cutrun_evidence,
             theoretical_motif_hits,
+            locus_evidence,
             warnings,
             non_claims: vec![
                 "Transcript annotation alone does not establish which TSS is used in the assayed cells."
@@ -1849,6 +1861,33 @@ mod tests {
             }),
         );
         GentleEngine::from_state(state)
+    }
+
+    #[test]
+    fn legacy_architecture_payloads_default_to_no_locus_evidence() {
+        let request: PromoterReporterArchitectureComparisonRequest =
+            serde_json::from_value(serde_json::json!({
+                "schema": PROMOTER_REPORTER_ARCHITECTURE_REQUEST_SCHEMA,
+                "seq_id": "legacy_locus"
+            }))
+            .expect("legacy architecture request");
+        assert!(request.locus_evidence_request.is_none());
+        assert!(
+            !serde_json::to_value(&request)
+                .expect("serialize request")
+                .as_object()
+                .expect("request object")
+                .contains_key("locus_evidence_request")
+        );
+
+        let report: PromoterReporterArchitectureComparisonReport =
+            serde_json::from_value(serde_json::json!({
+                "schema": PROMOTER_REPORTER_ARCHITECTURE_REPORT_SCHEMA,
+                "request_schema": PROMOTER_REPORTER_ARCHITECTURE_REQUEST_SCHEMA,
+                "seq_id": "legacy_locus"
+            }))
+            .expect("legacy architecture report");
+        assert!(report.locus_evidence.is_none());
     }
 
     #[test]
@@ -2168,6 +2207,10 @@ mod tests {
         let first = engine
             .compare_promoter_reporter_architectures(request.clone())
             .expect("first deterministic comparison");
+        assert!(
+            first.locus_evidence.is_none(),
+            "legacy requests must keep the original renderer contract"
+        );
         let second = engine
             .compare_promoter_reporter_architectures(request.clone())
             .expect("second deterministic comparison");

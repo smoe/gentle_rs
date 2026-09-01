@@ -7,6 +7,10 @@ use crate::engine::{
     PromoterReporterArchitectureComparisonReport, PromoterReporterArchitectureKind,
     PromoterReporterAtgDisposition, PromoterReporterCutRunLaneState,
 };
+use gentle_render::{
+    GeneLocusEvidenceOverlay, GeneLocusEvidenceOverlayRow, GeneLocusEvidenceOverlaySchematicTail,
+    GeneLocusEvidenceOverlaySegment, render_gene_locus_evidence_with_overlay_svg,
+};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
 
@@ -157,10 +161,115 @@ fn render_section_title(svg: &mut String, title: &str, y: f64) {
     );
 }
 
+fn normalized_locus_overlay(
+    report: &PromoterReporterArchitectureComparisonReport,
+) -> GeneLocusEvidenceOverlay {
+    let rows = report
+        .architectures
+        .iter()
+        .map(|architecture| {
+            let terminal_anchor_local_1based =
+                architecture.segments.iter().rev().find_map(|segment| {
+                    let start = segment.source_start_0based?;
+                    let end = segment.source_end_0based_exclusive?;
+                    (end > start).then_some(if architecture.strand == "-" {
+                        start.saturating_add(1)
+                    } else {
+                        end
+                    })
+                });
+            let segments = architecture
+                .segments
+                .iter()
+                .filter_map(|segment| {
+                    let start = segment.source_start_0based?.saturating_add(1);
+                    let end = segment.source_end_0based_exclusive?;
+                    (end >= start).then(|| GeneLocusEvidenceOverlaySegment {
+                        segment_id: segment.segment_id.clone(),
+                        material: segment.material.clone(),
+                        local_start_1based: start,
+                        local_end_1based: end,
+                        fill: match segment.material.as_str() {
+                            "spliced_cdna" | "spliced_genomic_exon" => "#d58a3a",
+                            "reporter_sequence" => "#b54b43",
+                            _ => "#27847c",
+                        }
+                        .to_string(),
+                    })
+                })
+                .collect::<Vec<_>>();
+            let atg_position = architecture
+                .cds_start_codon_source_ranges_0based
+                .first()
+                .map(|(start, end)| {
+                    if architecture.strand == "-" {
+                        end.saturating_sub(1)
+                    } else {
+                        *start
+                    }
+                })
+                .map(|position| position.saturating_add(1));
+            GeneLocusEvidenceOverlayRow {
+                row_id: architecture.architecture_id.clone(),
+                label: format!(
+                    "{} · {}",
+                    architecture.transcript_id,
+                    architecture_label(architecture.architecture_kind)
+                ),
+                detail: format!(
+                    "{} bp | {} | TSS class {}",
+                    architecture.modeled_insert_length_bp,
+                    architecture.junction.endogenous_atg_disposition.as_str(),
+                    architecture.tss_class_id
+                ),
+                segments,
+                marker_local_1based: atg_position,
+                marker_label: Some("ATG boundary".to_string()),
+                schematic_tail: terminal_anchor_local_1based.map(|anchor_local_1based| {
+                    GeneLocusEvidenceOverlaySchematicTail {
+                        segment_id: format!("{}_luciferase", architecture.architecture_id),
+                        label: "LUC".to_string(),
+                        detail: format!(
+                            "{}; luciferase coding body is schematic and not to genomic scale",
+                            architecture.junction.reporter_atg_source
+                        ),
+                        fill: "#b54b43".to_string(),
+                        anchor_local_1based,
+                    }
+                }),
+            }
+        })
+        .collect();
+    GeneLocusEvidenceOverlay {
+        overlay_id: "promoter_reporter_architecture_comparison".to_string(),
+        title: "Proposed reporter architectures".to_string(),
+        document_title: format!(
+            "{} promoter-reporter architectures",
+            report
+                .gene_label
+                .as_deref()
+                .filter(|label| !label.trim().is_empty())
+                .unwrap_or(&report.seq_id)
+        ),
+        summary: format!(
+            "Canonical reporter comparison: {} TSS class(es), {} transcript(s), {} explicit architecture row(s); normalized evidence remains observational/predictive context.",
+            report.tss_classes.len(),
+            report.transcripts.len(),
+            report.architectures.len()
+        ),
+        rows,
+        non_claims: report.non_claims.clone(),
+    }
+}
+
 /// Render one portable comparison report on a shared local/genomic axis.
 pub fn render_promoter_reporter_architecture_svg(
     report: &PromoterReporterArchitectureComparisonReport,
 ) -> String {
+    if let Some(locus_evidence) = report.locus_evidence.as_ref() {
+        let overlay = normalized_locus_overlay(report);
+        return render_gene_locus_evidence_with_overlay_svg(locus_evidence, Some(&overlay));
+    }
     let motif_lane_count = report
         .theoretical_motif_hits
         .as_ref()
@@ -584,8 +693,70 @@ mod tests {
     use super::*;
     use crate::engine::{
         PromoterReporterArchitectureJunctionAudit, PromoterReporterArchitectureRow,
-        PromoterReporterCutRunEvidence, PromoterReporterTranscriptArchitectureAudit,
+        PromoterReporterArchitectureSegment, PromoterReporterCutRunEvidence,
+        PromoterReporterTranscriptArchitectureAudit,
     };
+
+    #[test]
+    fn normalized_overlay_anchors_schematic_luciferase_after_each_transcript_oriented_insert() {
+        let source_segment =
+            |id: &str, start: usize, end: usize| PromoterReporterArchitectureSegment {
+                segment_id: id.to_string(),
+                material: "genomic_dna".to_string(),
+                source_start_0based: Some(start),
+                source_end_0based_exclusive: Some(end),
+                length_bp: end - start,
+                ..Default::default()
+            };
+        let report = PromoterReporterArchitectureComparisonReport {
+            architectures: vec![
+                PromoterReporterArchitectureRow {
+                    architecture_id: "plus_arch".to_string(),
+                    transcript_id: "PLUS-201".to_string(),
+                    strand: "+".to_string(),
+                    segments: vec![source_segment("plus_insert", 100, 120)],
+                    junction: PromoterReporterArchitectureJunctionAudit {
+                        reporter_atg_source: "vector_luciferase_atg".to_string(),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+                PromoterReporterArchitectureRow {
+                    architecture_id: "minus_arch".to_string(),
+                    transcript_id: "MINUS-201".to_string(),
+                    strand: "-".to_string(),
+                    segments: vec![
+                        source_segment("minus_promoter", 300, 320),
+                        source_segment("minus_leader", 250, 270),
+                    ],
+                    junction: PromoterReporterArchitectureJunctionAudit {
+                        reporter_atg_source: "luciferase_cds_atg".to_string(),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let overlay = normalized_locus_overlay(&report);
+        assert_eq!(
+            overlay.rows[0]
+                .schematic_tail
+                .as_ref()
+                .expect("plus LUC tail")
+                .anchor_local_1based,
+            120
+        );
+        assert_eq!(
+            overlay.rows[1]
+                .schematic_tail
+                .as_ref()
+                .expect("minus LUC tail")
+                .anchor_local_1based,
+            251
+        );
+    }
 
     #[test]
     fn svg_keeps_architecture_and_non_claims_visible() {

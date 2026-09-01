@@ -14565,6 +14565,26 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
+        if request.reporter_report_path.is_some() && request.reporter_architecture_request.is_none()
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "reporter_report_path requires reporter_architecture_request".to_string(),
+                cause_chain: vec![],
+            });
+        }
+        if request
+            .reporter_architecture_request
+            .as_ref()
+            .is_some_and(|nested| nested.locus_evidence_request.is_some())
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "The nested reporter architecture request must omit locus_evidence_request; PrepareGeneLocusEvidence binds the normalized request"
+                    .to_string(),
+                cause_chain: vec![],
+            });
+        }
         if (request.png_path.is_some() || request.pdf_path.is_some())
             && !(request.png_scale.is_finite() && request.png_scale > 0.0)
         {
@@ -14864,9 +14884,74 @@ impl GentleEngine {
             self.write_pretty_json_file(&display_report, path, "gene-locus evidence report")?;
             artifacts.push(Self::gene_locus_output_artifact("report_json", path)?);
         }
-        let svg = render_feature_expert_svg(&FeatureExpertView::GeneLocusEvidence(
-            display_report.clone(),
-        ));
+        let mut reporter_report = if let Some(nested) =
+            request.reporter_architecture_request.as_ref()
+        {
+            let mut nested = nested.clone();
+            if !nested.seq_id.trim().is_empty() && nested.seq_id != seq_id {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Nested reporter architecture seq_id '{}' does not match prepared sequence '{}'",
+                        nested.seq_id, seq_id
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            nested.seq_id = seq_id.clone();
+            if nested
+                .gene_label
+                .as_deref()
+                .is_none_or(|label| label.trim().is_empty())
+            {
+                nested.gene_label = Some(display_report.gene_symbol.clone());
+            }
+            nested.include_local_source_paths = request.include_local_source_paths;
+            nested.locus_evidence_request = Some(display_request.clone());
+            let mut report = self.compare_promoter_reporter_architectures(nested)?;
+            report.op_id = Some(result.op_id.clone());
+            report.svg_path = Some(if request.include_local_source_paths {
+                request.svg_path.clone()
+            } else {
+                std::path::Path::new(&request.svg_path)
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or("redacted.svg")
+                    .to_string()
+            });
+            if let Some(path) = request.reporter_report_path.as_deref() {
+                report.json_path = Some(if request.include_local_source_paths {
+                    path.to_string()
+                } else {
+                    std::path::Path::new(path)
+                        .file_name()
+                        .and_then(|value| value.to_str())
+                        .unwrap_or("redacted.json")
+                        .to_string()
+                });
+                self.write_pretty_json_file(
+                    &report,
+                    path,
+                    "promoter-reporter architecture comparison",
+                )?;
+                artifacts.push(Self::gene_locus_output_artifact(
+                    "reporter_report_json",
+                    path,
+                )?);
+            }
+            Some(report)
+        } else {
+            None
+        };
+        let svg = if let Some(report) = reporter_report.as_ref() {
+            crate::render_promoter_reporter_architecture::render_promoter_reporter_architecture_svg(
+                report,
+            )
+        } else {
+            render_feature_expert_svg(&FeatureExpertView::GeneLocusEvidence(
+                display_report.clone(),
+            ))
+        };
         std::fs::write(&request.svg_path, svg).map_err(|error| EngineError {
             code: ErrorCode::Io,
             message: format!(
@@ -14929,8 +15014,33 @@ impl GentleEngine {
                 Self::ensembl_versioned_id(&transcript.transcript_id, transcript.transcript_version)
             })
             .collect::<Vec<_>>();
+        let reporter_architecture_report_sha256 = reporter_report
+            .as_ref()
+            .map(|report| serde_json::to_string(report))
+            .transpose()
+            .map_err(|error| EngineError {
+                code: ErrorCode::Internal,
+                message: format!(
+                    "Could not serialize composed promoter-reporter architecture report: {error}"
+                ),
+                cause_chain: vec![],
+            })?
+            .map(|payload| crate::digest_utils::sha256_prefixed_str(&payload));
+        let reporter_architecture_ids = reporter_report
+            .as_ref()
+            .map(|report| {
+                report
+                    .architectures
+                    .iter()
+                    .map(|row| row.architecture_id.clone())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
         let mut warnings = result.warnings.clone();
         warnings.extend(display_report.warnings.clone());
+        if let Some(report) = reporter_report.as_ref() {
+            warnings.extend(report.warnings.clone());
+        }
         for track in &display_report.regulatory_score_tracks {
             warnings.extend(track.warnings.clone());
         }
@@ -15002,19 +15112,29 @@ impl GentleEngine {
                 .collect(),
             scale_bar: display_report.scale_bar,
             display_report_sha256,
+            reporter_architecture_report_sha256,
+            reporter_architecture_ids,
             artifacts,
             warnings,
         };
         if let Some(path) = request.receipt_path.as_deref() {
             self.write_pretty_json_file(&receipt, path, "gene-locus preparation receipt")?;
         }
+        let reporter_architecture_count = reporter_report
+            .as_ref()
+            .map(|report| report.architectures.len())
+            .unwrap_or_default();
+        if let Some(report) = reporter_report.take() {
+            result.promoter_reporter_architecture_comparison = Some(Box::new(report));
+        }
         result.messages.push(format!(
-            "Prepared gene-locus evidence for '{}' as sequence '{}' / panel '{}' with {} local track(s), {} predicted score track(s), and SVG '{}'",
+            "Prepared gene-locus evidence for '{}' as sequence '{}' / panel '{}' with {} local track(s), {} predicted score track(s), {} reporter architecture row(s), and SVG '{}'",
             entry.gene_id,
             seq_id,
             receipt.panel_id,
             receipt.imported_tracks.len(),
             receipt.regulatory_track_ids.len(),
+            reporter_architecture_count,
             request.svg_path
         ));
         Ok(receipt)

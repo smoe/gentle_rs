@@ -22,6 +22,19 @@
   boundary only; the external Python/Xvfb checkpoint-ledger runner remains a
   pre-release follow-up.
 
+- Composed the canonical promoter-reporter architecture comparison with the
+  normalized gene-locus evidence contract. Reporter requests may now embed one
+  locus-evidence request; the report retains both contracts, and the existing
+  reporter renderer projects its already-audited design segments onto the same
+  strand-aware axis as occupancy/chromatin lanes, predicted TF score tracks,
+  transcript models, and the genomic scale bar. Synthetic luciferase coding
+  bodies appear as attached, explicitly non-scale `LUC` blocks rather than
+  receiving invented genomic coordinates. `PrepareGeneLocusEvidence`
+  can bind and export that combined report and SVG/PNG/PDF family directly;
+  legacy reporter requests and figures remain unchanged. Documented
+  `spliced_5utr`/`genomic_5utr` architecture tokens are also accepted as input
+  aliases for the historical compact serde spellings.
+
 - Updated the complete egui desktop family from `0.35.0` to `0.36.1`, including
   `eframe`, `egui_extras`, and the vendored CommonMark adapters. Keeping the
   family on one version avoids incompatible duplicate `Ui`/`Widget` types and

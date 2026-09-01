@@ -24701,6 +24701,13 @@ fn prepare_gene_locus_evidence_runs_fully_offline_with_normalized_score_sources(
             .to_string_lossy()
             .to_string(),
     );
+    request.reporter_report_path = Some(
+        output
+            .path()
+            .join("locus.reporter.json")
+            .to_string_lossy()
+            .to_string(),
+    );
     request.receipt_path = Some(
         output
             .path()
@@ -24741,6 +24748,8 @@ fn prepare_gene_locus_evidence_runs_fully_offline_with_normalized_score_sources(
             .all(|track| track.path.is_none())
     );
     assert_eq!(receipt.scale_bar.length_bp, 1_000);
+    assert!(receipt.reporter_architecture_report_sha256.is_some());
+    assert_eq!(receipt.reporter_architecture_ids.len(), 6);
     assert!(
         receipt
             .warnings
@@ -24767,6 +24776,30 @@ fn prepare_gene_locus_evidence_runs_fully_offline_with_normalized_score_sources(
             .iter()
             .any(|row| row.kind == "png" && row.size_bytes > 0)
     );
+    assert!(receipt.artifacts.iter().any(|row| {
+        row.kind == "reporter_report_json"
+            && row.size_bytes > 0
+            && !row.path.contains(output.path().to_string_lossy().as_ref())
+    }));
+
+    let reporter_report = result
+        .promoter_reporter_architecture_comparison
+        .as_deref()
+        .expect("composed promoter-reporter architecture report");
+    assert_eq!(reporter_report.architectures.len(), 6);
+    assert!(reporter_report.locus_evidence.is_some());
+    let persisted_report: PromoterReporterArchitectureComparisonReport = serde_json::from_slice(
+        &fs::read(
+            request
+                .reporter_report_path
+                .as_ref()
+                .expect("reporter report path"),
+        )
+        .expect("read generated reporter report"),
+    )
+    .expect("parse generated reporter report");
+    assert_eq!(persisted_report.architectures.len(), 6);
+    assert!(persisted_report.locus_evidence.is_some());
 
     let report: GeneLocusEvidenceDisplayReport = serde_json::from_slice(
         &fs::read(request.display_report_path.as_ref().expect("report path"))
@@ -24837,12 +24870,41 @@ fn prepare_gene_locus_evidence_runs_fully_offline_with_normalized_score_sources(
     assert!(svg.contains("data-gentle-occupancy-role=\"chromatin_context\""));
     assert!(svg.contains("data-gentle-regulatory-provider=\"jaspar_pwm\""));
     assert!(svg.contains("data-gentle-regulatory-provider=\"external_model_scores\""));
+    assert!(svg.contains("data-gentle-overlay-id=\"promoter_reporter_architecture_comparison\""));
+    assert!(svg.contains("data-gentle-overlay-schematic="));
+    assert!(svg.contains("LUC"));
+    assert!(svg.contains("synthetic tails are schematic"));
+    for architecture_id in &receipt.reporter_architecture_ids {
+        assert!(
+            svg.contains(architecture_id),
+            "combined SVG should expose architecture {architecture_id}"
+        );
+    }
     assert!(
         fs::metadata(request.png_path.as_ref().expect("png path"))
             .expect("generated PNG metadata")
             .len()
             > 0
     );
+}
+
+#[test]
+fn legacy_gene_locus_preparation_payloads_omit_optional_reporter_composition_fields() {
+    let request = GeneLocusEvidencePreparationRequest::default();
+    let request_json =
+        serde_json::to_value(&request).expect("serialize legacy preparation request");
+    assert!(request_json.get("reporter_architecture_request").is_none());
+    assert!(request_json.get("reporter_report_path").is_none());
+
+    let receipt = GeneLocusEvidencePreparationReceipt::default();
+    let receipt_json =
+        serde_json::to_value(&receipt).expect("serialize legacy preparation receipt");
+    assert!(
+        receipt_json
+            .get("reporter_architecture_report_sha256")
+            .is_none()
+    );
+    assert!(receipt_json.get("reporter_architecture_ids").is_none());
 }
 
 #[test]
