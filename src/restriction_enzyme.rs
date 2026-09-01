@@ -1,8 +1,55 @@
 //! Restriction-enzyme site model and cut geometry utilities.
 
-use crate::dna_sequence::DNAsequence;
+use crate::{dna_sequence::DNAsequence, engine::RestrictionEnzymeDisplayMode};
 use serde::{Deserialize, Serialize};
-use std::fmt;
+use std::{collections::BTreeSet, fmt};
+
+pub fn normalize_restriction_enzyme_name(name: &str) -> String {
+    name.chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .map(|c| c.to_ascii_uppercase())
+        .collect()
+}
+
+pub fn normalize_preferred_restriction_enzyme_names(names: &[String]) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut seen = BTreeSet::new();
+    for raw in names {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let normalized = normalize_restriction_enzyme_name(trimmed);
+        if normalized.is_empty() || !seen.insert(normalized) {
+            continue;
+        }
+        out.push(trimmed.to_string());
+    }
+    out
+}
+
+pub fn restriction_group_matches_display_mode(
+    mode: RestrictionEnzymeDisplayMode,
+    preferred_names: &[String],
+    key: &RestrictionEnzymeKey,
+    names: &[String],
+) -> bool {
+    let preferred = preferred_names
+        .iter()
+        .map(|name| normalize_restriction_enzyme_name(name))
+        .collect::<BTreeSet<_>>();
+    let is_preferred = names.iter().any(|name| {
+        let normalized = normalize_restriction_enzyme_name(name);
+        !normalized.is_empty() && preferred.contains(&normalized)
+    });
+    let is_unique = key.number_of_cuts() == 1;
+    match mode {
+        RestrictionEnzymeDisplayMode::PreferredOnly => is_preferred,
+        RestrictionEnzymeDisplayMode::PreferredAndUnique => is_preferred || is_unique,
+        RestrictionEnzymeDisplayMode::UniqueOnly => is_unique,
+        RestrictionEnzymeDisplayMode::AllInView => true,
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RestrictionEndGeometry {
@@ -297,6 +344,55 @@ impl RestrictionEnzymeSite {
 mod tests {
     use super::*;
     use crate::dna_sequence::DNAsequence;
+
+    #[test]
+    fn preferred_restriction_enzyme_names_are_normalized_and_deduplicated() {
+        let names = vec![
+            " EcoRI ".to_string(),
+            "eco-ri".to_string(),
+            "BamHI".to_string(),
+            "".to_string(),
+        ];
+
+        assert_eq!(
+            normalize_preferred_restriction_enzyme_names(&names),
+            vec!["EcoRI".to_string(), "BamHI".to_string()]
+        );
+    }
+
+    #[test]
+    fn restriction_groups_follow_shared_display_mode_policy() {
+        let preferred = vec!["EcoRI".to_string()];
+        let unique = RestrictionEnzymeKey::new(41, 41, 0, 1, 38, 44);
+        let repeated = RestrictionEnzymeKey::new(41, 41, 0, 2, 38, 44);
+        let eco_ri = vec!["eco-ri".to_string()];
+        let bam_hi = vec!["BamHI".to_string()];
+
+        assert!(restriction_group_matches_display_mode(
+            RestrictionEnzymeDisplayMode::PreferredOnly,
+            &preferred,
+            &repeated,
+            &eco_ri,
+        ));
+        assert!(restriction_group_matches_display_mode(
+            RestrictionEnzymeDisplayMode::PreferredAndUnique,
+            &preferred,
+            &unique,
+            &bam_hi,
+        ));
+        assert!(!restriction_group_matches_display_mode(
+            RestrictionEnzymeDisplayMode::UniqueOnly,
+            &preferred,
+            &repeated,
+            &eco_ri,
+        ));
+        assert!(restriction_group_matches_display_mode(
+            RestrictionEnzymeDisplayMode::AllInView,
+            &preferred,
+            &repeated,
+            &bam_hi,
+        ));
+    }
 
     #[test]
     fn restriction_enzyme_key_order_distinguishes_shared_cut_coordinates() {

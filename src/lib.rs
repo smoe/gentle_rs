@@ -15,6 +15,7 @@ pub mod agent_bridge;
 /// Deterministic execution of stored machine-facing agent plans.
 pub mod agent_execution;
 /// User-invoked, viewport-bound screenshot capture for Agent Assistant help.
+#[cfg(feature = "desktop-gui")]
 pub mod agent_help;
 /// Machine-facing prose compiler and typed plan/result contracts.
 pub mod agent_planner;
@@ -25,23 +26,28 @@ pub mod allele_hash_screen;
 /// Amino-acid lookup tables and codon translation helpers.
 pub mod amino_acids;
 /// Top-level GUI application wiring and event loop state.
+#[cfg(feature = "desktop-gui")]
 pub mod app;
 /// ATtRACT RNA-binding motif registry and runtime snapshot helpers.
 pub mod attract_motifs;
+#[cfg(feature = "desktop-gui")]
 mod background_engine;
 /// Small shared helpers for GENtle command-line binaries.
 pub mod cli_support;
 pub(crate) mod digest_utils;
 /// Shared DNA display configuration and visibility policies.
+#[cfg(feature = "desktop-gui")]
 pub mod dna_display;
 /// DNA/RNA ladder catalogs and migration helper utilities.
 pub mod dna_ladder;
 /// Core DNA sequence model and sequence-level biological operations.
 pub mod dna_sequence;
 /// Local GUI repro harness for bisecting DNA-viewer layout surfaces.
+#[cfg(feature = "desktop-gui")]
 #[doc(hidden)]
 pub mod dna_viewer_repro;
 /// Internal egui compatibility helpers used during GUI API migrations.
+#[cfg(feature = "desktop-gui")]
 pub(crate) mod egui_compat;
 /// Shared deterministic operation engine and state model.
 pub mod engine;
@@ -81,9 +87,11 @@ pub mod gui_profiler;
 #[cfg(feature = "gui-test-support")]
 pub mod gui_test_support;
 /// Embedded GUI translation catalogs and runtime presentation-language state.
+#[cfg(feature = "desktop-gui")]
 #[path = "app/i18n.rs"]
 pub(crate) mod i18n;
 /// Embedded icon/resource helpers for GUI rendering.
+#[cfg(feature = "desktop-gui")]
 pub mod icons;
 /// IUPAC nucleotide-code conversion and validation helpers.
 pub mod iupac_code;
@@ -98,6 +106,7 @@ pub mod linear_base_routing;
 #[cfg(feature = "lua-interface")]
 pub mod lua_interface;
 /// Main sequence-window GUI controller and interaction orchestration.
+#[cfg(feature = "desktop-gui")]
 pub mod main_area_dna;
 /// User-supplied MaxEnt splice-site model snapshots and native scoring.
 pub mod maxent_splicing;
@@ -130,10 +139,13 @@ pub mod pssm;
 /// Publication-associated external dataset catalog and download preparation.
 pub mod publication_resources;
 /// Shared DNA rendering entry points.
+#[cfg(feature = "desktop-gui")]
 pub mod render_dna;
 /// Circular-map DNA renderer.
+#[cfg(feature = "desktop-gui")]
 pub mod render_dna_circular;
 /// Linear-map DNA renderer.
+#[cfg(feature = "desktop-gui")]
 pub mod render_dna_linear;
 /// Shared export surfaces (SVG and snapshot pathways).
 pub mod render_export;
@@ -144,6 +156,7 @@ pub mod render_multi_gene_promoter_tfbs;
 /// Shared transcript-aware promoter-reporter architecture SVG renderer.
 pub mod render_promoter_reporter_architecture;
 /// Sequence export helpers and render-side formatting.
+#[cfg(feature = "desktop-gui")]
 pub mod render_sequence;
 /// Shared TF motif score-track SVG renderer.
 pub mod render_tfbs_score_tracks;
@@ -160,14 +173,19 @@ pub mod rna_structure;
 /// Process-local live activity stack and SIGUSR1 runtime diagnostics.
 pub mod runtime_status;
 /// Shared wheel/key/cursor interaction policy for scroll, pan, and zoom.
+#[cfg(feature = "desktop-gui")]
 pub mod scroll_input_policy;
 /// Sequence-row abstraction shared by specialized row renderers.
+#[cfg(feature = "desktop-gui")]
 pub mod sequence_rows;
 /// Blank-row renderer implementation.
+#[cfg(feature = "desktop-gui")]
 pub mod sequence_rows_blank;
 /// DNA base-row renderer implementation.
+#[cfg(feature = "desktop-gui")]
 pub mod sequence_rows_dna;
 /// Restriction-enzyme sequence-row renderer implementation.
+#[cfg(feature = "desktop-gui")]
 pub mod sequence_rows_restriction_enzymes;
 /// Combined readiness summary for prepared references, helpers, and resources.
 pub mod service_readiness;
@@ -191,10 +209,13 @@ pub mod ucsc_rmsk;
 /// UniProt/SWISS-PROT parsing contracts and projection payload models.
 pub mod uniprot;
 /// Generic GUI window abstraction.
+#[cfg(feature = "desktop-gui")]
 pub mod window;
 /// Window backdrop configuration and rendering helpers.
+#[cfg(feature = "desktop-gui")]
 pub mod window_backdrop;
 /// DNA sequence-window wrapper and per-window controls.
+#[cfg(feature = "desktop-gui")]
 pub mod window_dna;
 /// Curated workflow example payloads and templates.
 pub mod workflow_examples;

@@ -7,7 +7,10 @@ use crate::{
     },
     enzymes::default_preferred_restriction_enzyme_names,
     gc_contents::DEFAULT_SECTION_SIZE_BP,
-    restriction_enzyme::{RestrictionEndGeometry, RestrictionEnzymeKey},
+    restriction_enzyme::{
+        RestrictionEndGeometry, RestrictionEnzymeKey, normalize_preferred_restriction_enzyme_names,
+        restriction_group_matches_display_mode,
+    },
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -364,28 +367,8 @@ pub struct DnaDisplay {
 }
 
 impl DnaDisplay {
-    fn normalized_restriction_enzyme_name(name: &str) -> String {
-        name.chars()
-            .filter(|c| c.is_ascii_alphanumeric())
-            .map(|c| c.to_ascii_uppercase())
-            .collect()
-    }
-
     pub fn normalize_preferred_restriction_enzymes(names: &[String]) -> Vec<String> {
-        let mut out = Vec::new();
-        let mut seen = BTreeSet::new();
-        for raw in names {
-            let trimmed = raw.trim();
-            if trimmed.is_empty() {
-                continue;
-            }
-            let normalized = Self::normalized_restriction_enzyme_name(trimmed);
-            if normalized.is_empty() || !seen.insert(normalized) {
-                continue;
-            }
-            out.push(trimmed.to_string());
-        }
-        out
+        normalize_preferred_restriction_enzyme_names(names)
     }
 
     pub fn parse_preferred_restriction_enzymes_csv(csv: &str) -> Vec<String> {
@@ -398,31 +381,13 @@ impl DnaDisplay {
         Self::normalize_preferred_restriction_enzymes(&names)
     }
 
-    fn restriction_group_matches_preferred(preferred_names: &[String], names: &[String]) -> bool {
-        let preferred = preferred_names
-            .iter()
-            .map(|name| Self::normalized_restriction_enzyme_name(name))
-            .collect::<BTreeSet<_>>();
-        names.iter().any(|name| {
-            let normalized = Self::normalized_restriction_enzyme_name(name);
-            !normalized.is_empty() && preferred.contains(&normalized)
-        })
-    }
-
     pub fn restriction_group_matches_mode(
         mode: RestrictionEnzymeDisplayMode,
         preferred_names: &[String],
         key: &RestrictionEnzymeKey,
         names: &[String],
     ) -> bool {
-        let is_unique = key.number_of_cuts() == 1;
-        let is_preferred = Self::restriction_group_matches_preferred(preferred_names, names);
-        match mode {
-            RestrictionEnzymeDisplayMode::PreferredOnly => is_preferred,
-            RestrictionEnzymeDisplayMode::PreferredAndUnique => is_preferred || is_unique,
-            RestrictionEnzymeDisplayMode::UniqueOnly => is_unique,
-            RestrictionEnzymeDisplayMode::AllInView => true,
-        }
+        restriction_group_matches_display_mode(mode, preferred_names, key, names)
     }
 
     fn clamp_feature_details_font_size(value: f32) -> f32 {

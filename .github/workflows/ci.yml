@@ -50,6 +50,47 @@ jobs:
           echo "Selected CI platform: $platform"
           echo "platform=$platform" >> "$GITHUB_OUTPUT"
 
+  headless-linux:
+    name: Linux / headless CLI and MCP
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-headless-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-headless-cargo-registry-
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Check headless binaries without desktop features
+        run: cargo check --locked --no-default-features --bin gentle_cli --bin gentle_mcp
+
+      - name: Guard headless dependency boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          tree_path="$RUNNER_TEMP/gentle-headless-dependencies.txt"
+          cargo tree --locked --no-default-features --edges normal --prefix none > "$tree_path"
+          for package in arboard eframe egui egui_commonmark egui_extras gentle-gui rfd winit; do
+            if grep -Eq "^${package} v" "$tree_path"; then
+              echo "Desktop dependency '${package}' leaked into the headless graph"
+              grep -E "^${package} v" "$tree_path"
+              exit 1
+            fi
+          done
+
   macos:
     name: macOS
     needs: select-platform
@@ -510,6 +551,7 @@ jobs:
     name: CI / selected platform
     needs:
       - select-platform
+      - headless-linux
       - macos
       - linux
       - windows
@@ -521,6 +563,7 @@ jobs:
         shell: bash
         env:
           PLATFORM: ${{ needs.select-platform.outputs.platform }}
+          HEADLESS_RESULT: ${{ needs.headless-linux.result }}
           MACOS_RESULT: ${{ needs.macos.result }}
           LINUX_RESULT: ${{ needs.linux.result }}
           WINDOWS_RESULT: ${{ needs.windows.result }}
@@ -537,6 +580,10 @@ jobs:
           esac
           echo "Selected platform: $PLATFORM"
           echo "Selected platform result: $result"
+          echo "Headless Linux result: $HEADLESS_RESULT"
+          if [[ "$HEADLESS_RESULT" != "success" ]]; then
+            exit 1
+          fi
           if [[ "$result" != "success" ]]; then
             exit 1
           fi

@@ -1,13 +1,12 @@
 //! Shared export surfaces (SVG and snapshot pathways).
 
 use crate::{
-    dna_display::DnaDisplay,
     dna_sequence::DNAsequence,
     engine::DisplaySettings,
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
     gc_contents::GcContents,
     repeat_features::{is_repeat_feature, repeat_feature_display},
-    restriction_enzyme::RestrictionEnzymeKey,
+    restriction_enzyme::{RestrictionEnzymeKey, restriction_group_matches_display_mode},
 };
 use gb_io::seq::Feature;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -1774,7 +1773,7 @@ fn compute_linear_svg_re_label_extents(
         .restriction_enzyme_groups()
         .iter()
         .filter_map(|(key, names)| {
-            DnaDisplay::restriction_group_matches_mode(
+            restriction_group_matches_display_mode(
                 display.restriction_enzyme_display_mode,
                 &display.preferred_restriction_enzymes,
                 key,
@@ -2215,7 +2214,7 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
             .restriction_enzyme_groups()
             .iter()
             .filter_map(|(key, names)| {
-                DnaDisplay::restriction_group_matches_mode(
+                restriction_group_matches_display_mode(
                     display.restriction_enzyme_display_mode,
                     &display.preferred_restriction_enzymes,
                     key,
@@ -2555,7 +2554,7 @@ fn circular_restriction_label_layout(
         .restriction_enzyme_groups()
         .iter()
         .filter_map(|(key, names)| {
-            DnaDisplay::restriction_group_matches_mode(
+            restriction_group_matches_display_mode(
                 display.restriction_enzyme_display_mode,
                 &display.preferred_restriction_enzymes,
                 key,

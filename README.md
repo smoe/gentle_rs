@@ -79,6 +79,15 @@ cargo run --bin gentle_cli -- capabilities
 cargo run --bin gentle
 ```
 
+For a headless CLI/MCP build that excludes the desktop GUI dependency stack:
+
+```sh
+cargo build --locked --release --no-default-features \
+  --bin gentle_cli --bin gentle_mcp
+```
+
+The default feature set continues to build the desktop application.
+
 An existing RNA mapping report can feed its accepted target-gene reads directly
 into the allele-aware evidence screen:
 

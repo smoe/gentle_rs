@@ -30,56 +30,56 @@ pub fn about_clipboard_text() -> String {
     )
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "desktop-gui", target_os = "macos"))]
 pub fn install_native_about_menu_bridge() {
     macos_native_about_menu::install();
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(all(feature = "desktop-gui", target_os = "macos")))]
 pub fn install_native_about_menu_bridge() {}
 
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "desktop-gui", target_os = "macos"))]
 pub fn install_native_help_menu_bridge() {
     macos_native_help_menu::install();
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(all(feature = "desktop-gui", target_os = "macos")))]
 pub fn install_native_help_menu_bridge() {}
 
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "desktop-gui", target_os = "macos"))]
 pub fn install_native_settings_menu_bridge() {
     macos_native_settings_menu::install();
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(all(feature = "desktop-gui", target_os = "macos")))]
 pub fn install_native_settings_menu_bridge() {}
 
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "desktop-gui", target_os = "macos"))]
 pub fn install_native_windows_menu_bridge() {
     macos_native_windows_menu::install();
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(all(feature = "desktop-gui", target_os = "macos")))]
 pub fn install_native_windows_menu_bridge() {}
 
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "desktop-gui", target_os = "macos"))]
 pub fn install_native_app_windows_menu_bridge() {
     macos_native_app_windows_menu::install();
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(all(feature = "desktop-gui", target_os = "macos")))]
 pub fn install_native_app_windows_menu_bridge() {}
 
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "desktop-gui", target_os = "macos"))]
 pub fn sync_native_open_windows_menu(entries: &[(u64, String)], active_key: Option<u64>) {
     macos_native_windows_menu::sync_entries(entries, active_key);
     macos_native_app_windows_menu::sync_entries(entries, active_key);
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(all(feature = "desktop-gui", target_os = "macos")))]
 pub fn sync_native_open_windows_menu(_entries: &[(u64, String)], _active_key: Option<u64>) {}
 
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "desktop-gui", target_os = "macos"))]
 mod macos_native_about_menu {
     use std::{
         cell::RefCell,
@@ -161,7 +161,7 @@ mod macos_native_about_menu {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "desktop-gui", target_os = "macos"))]
 mod macos_native_help_menu {
     use std::{
         cell::RefCell,
@@ -250,7 +250,7 @@ mod macos_native_help_menu {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "desktop-gui", target_os = "macos"))]
 mod macos_native_settings_menu {
     use std::{
         cell::RefCell,
@@ -339,7 +339,7 @@ mod macos_native_settings_menu {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "desktop-gui", target_os = "macos"))]
 mod macos_native_windows_menu {
     use std::{
         cell::RefCell,
@@ -546,7 +546,7 @@ mod macos_native_windows_menu {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "desktop-gui", target_os = "macos"))]
 mod macos_native_app_windows_menu {
     use std::{
         cell::RefCell,

@@ -37,6 +37,7 @@ use crate::{
         build_protein_2d_gel_layout, build_protein_gel_layout, export_protein_2d_gel_svg,
         export_protein_gel_svg,
     },
+    restriction_enzyme::normalize_preferred_restriction_enzyme_names,
     uniprot::UniprotNucleotideXref,
 };
 
@@ -52921,10 +52922,7 @@ impl GentleEngine {
                             message: "SetParameter preferred_restriction_enzymes requires a string (CSV) or string array".to_string(),
                             cause_chain: vec![],});
                         };
-                        let normalized =
-                            crate::dna_display::DnaDisplay::normalize_preferred_restriction_enzymes(
-                                &values,
-                            );
+                        let normalized = normalize_preferred_restriction_enzyme_names(&values);
                         self.state.display.preferred_restriction_enzymes = normalized.clone();
                         result.messages.push(format!(
                             "Set parameter 'preferred_restriction_enzymes' to [{}]",
