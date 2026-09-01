@@ -1,5 +1,5 @@
-<svg data-gentle-panel-id="patz1_synthetic_v1" data-gentle-schema="gentle.gene_locus_evidence_display.v1" height="1103" viewBox="0 0 1400 1103" width="1400" xmlns="http://www.w3.org/2000/svg">
-<rect fill="#ffffff" height="1103" width="1400" x="0" y="0"/>
+<svg data-gentle-panel-id="patz1_synthetic_v1" data-gentle-schema="gentle.gene_locus_evidence_display.v1" height="1127" viewBox="0 0 1400 1127" width="1400" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#ffffff" height="1127" width="1400" x="0" y="0"/>
 <text fill="#111827" font-family="sans-serif" font-size="24" font-weight="bold" x="34" y="36">
 PATZ1 locus evidence
 </text>
@@ -7,7 +7,7 @@ PATZ1 locus evidence
 5' -&gt; 3' display, genomic 31326038 -&gt; 31325801 | strand - | assembly GRCh38.p14 | annotation synthetic Ensembl116-like fixture | upstream 19 bp | downstream 19 bp
 </text>
 <text fill="#64748b" font-family="sans-serif" font-size="10" x="34" y="82">
-Gene locus evidence display: transcript/CDS geometry, motif scores, projected occupancy, and validation-assay candidates are aligned on one strand-aware axis. These are distinct evidence lay...
+Gene locus evidence display: transcript/CDS geometry, predicted TF binding scores, projected occupancy, chromatin context, and validation-assay candidates are aligned on one strand-aware axi...
 </text>
 <line stroke="#64748b" stroke-width="1" x1="255" x2="1050" y1="108" y2="108"/>
 <text fill="#64748b" font-family="monospace" font-size="9" x="255" y="102">
@@ -106,7 +106,7 @@ TAp73a-DNp73b
 <text fill="#374151" font-family="monospace" font-size="8" x="34" y="411">
 JUC JUC_SYN_PATZ1_SKIP
 </text>
-<path d="M852.0886,411 Q652.5,396.78235,452.91144,411" data-gentle-probe-class="juc" data-gentle-probe-coordinate-system="GRCh38.p14" data-gentle-probe-effect-feature="JUC_SYN_PATZ1_SKIP" data-gentle-probe-source="./test_files/fixtures/gene_locus_evidence/patz1_offline_composer/patz1_probe_effects.tsv" fill="none" stroke="#d97706" stroke-width="2"/>
+<path d="M852.0886,411 Q652.5,396.78235,452.91144,411" data-gentle-probe-class="juc" data-gentle-probe-coordinate-system="GRCh38.p14" data-gentle-probe-effect-feature="JUC_SYN_PATZ1_SKIP" data-gentle-probe-source="redacted" fill="none" stroke="#d97706" stroke-width="2"/>
 <rect data-gentle-probe-effect-contrast="mean_DNp73beta" data-gentle-probe-effect-feature="JUC_SYN_PATZ1_SKIP" data-gentle-probe-effect-value="6.4723" data-gentle-probe-evidence-lane="abundance" fill="#0f766e" fill-opacity="0.7524208" height="16" rx="1.5" width="48.666668" x="1070" y="399"/>
 <text fill="#111827" font-family="monospace" font-size="8" x="1074" y="411">
 6.47
@@ -134,7 +134,7 @@ JUC JUC_SYN_PATZ1_SKIP
 <text fill="#374151" font-family="monospace" font-size="8" x="34" y="433">
 PSR PSR_SYN_PATZ1_EXON_A
 </text>
-<rect data-gentle-probe-class="psr" data-gentle-probe-coordinate-system="GRCh38.p14" data-gentle-probe-effect-feature="PSR_SYN_PATZ1_EXON_A" data-gentle-probe-source="./test_files/fixtures/gene_locus_evidence/patz1_offline_composer/patz1_probe_effects.tsv" fill="#0f766e" fill-opacity="0.68" height="10" rx="1.5" width="130.82275" x="855.44305" y="424"/>
+<rect data-gentle-probe-class="psr" data-gentle-probe-coordinate-system="GRCh38.p14" data-gentle-probe-effect-feature="PSR_SYN_PATZ1_EXON_A" data-gentle-probe-source="redacted" fill="#0f766e" fill-opacity="0.68" height="10" rx="1.5" width="130.82275" x="855.44305" y="424"/>
 <rect data-gentle-probe-effect-contrast="mean_DNp73beta" data-gentle-probe-effect-feature="PSR_SYN_PATZ1_EXON_A" data-gentle-probe-effect-value="8.3671" data-gentle-probe-evidence-lane="abundance" fill="#0f766e" fill-opacity="0.92" height="16" rx="1.5" width="48.666668" x="1070" y="421"/>
 <text fill="#111827" font-family="monospace" font-size="8" x="1074" y="433">
 8.37
@@ -168,16 +168,16 @@ Saos-2 synthetic occupancy | shared within group | observed group max 900.000
 <text fill="#475569" font-family="monospace" font-size="8" x="52" y="525">
 TP73 TAp73alpha | TA (experimental)
 </text>
-<line data-gentle-occupancy-lane="OCC:SAOS-2_TP73_TAp73alpha:saos2_tap73alpha.bed:a20ef7a2caf4" stroke="#cbd5e1" stroke-width="1" x1="255" x2="1050" y1="521" y2="521"/>
-<rect data-gentle-occupancy-interval="OCC:SAOS-2_TP73_TAp73alpha:saos2_tap73alpha.bed:a20ef7a2caf4:31325871-31325912:1" fill="#2563eb" fill-opacity="0.84" height="10" width="137.53168" x="677.6582" y="511"/>
+<line data-gentle-batch="" data-gentle-cell-line="" data-gentle-occupancy-lane="OCC:SAOS-2_TP73_TAp73alpha:saos2_tap73alpha.bed:a20ef7a2caf4" data-gentle-occupancy-role="experimental" stroke="#cbd5e1" stroke-width="1" x1="255" x2="1050" y1="521" y2="521"/>
+<rect data-gentle-occupancy-interval="OCC:SAOS-2_TP73_TAp73alpha:saos2_tap73alpha.bed:a20ef7a2caf4:31325871-31325912:1" data-gentle-occupancy-role="experimental" fill="#2563eb" fill-opacity="0.84" height="10" width="137.53168" x="677.6582" y="511"/>
 <text fill="#64748b" font-family="monospace" font-size="8" x="1070" y="525">
 scale 900.000
 </text>
 <text fill="#475569" font-family="monospace" font-size="8" x="52" y="554">
 TP73 DNp73beta | DN (experimental)
 </text>
-<line data-gentle-occupancy-lane="OCC:SAOS-2_TP73_DNp73beta:saos2_dnp73beta.bed:3590500ec46b" stroke="#cbd5e1" stroke-width="1" x1="255" x2="1050" y1="550" y2="550"/>
-<rect data-gentle-occupancy-interval="OCC:SAOS-2_TP73_DNp73beta:saos2_dnp73beta.bed:3590500ec46b:31325923-31325966:1" fill="#2563eb" fill-opacity="0.84" height="5.777778" width="144.24054" x="496.51898" y="544.2222"/>
+<line data-gentle-batch="" data-gentle-cell-line="" data-gentle-occupancy-lane="OCC:SAOS-2_TP73_DNp73beta:saos2_dnp73beta.bed:3590500ec46b" data-gentle-occupancy-role="experimental" stroke="#cbd5e1" stroke-width="1" x1="255" x2="1050" y1="550" y2="550"/>
+<rect data-gentle-occupancy-interval="OCC:SAOS-2_TP73_DNp73beta:saos2_dnp73beta.bed:3590500ec46b:31325923-31325966:1" data-gentle-occupancy-role="experimental" fill="#2563eb" fill-opacity="0.84" height="5.777778" width="144.24054" x="496.51898" y="544.2222"/>
 <text fill="#64748b" font-family="monospace" font-size="8" x="1070" y="554">
 scale 900.000
 </text>
@@ -187,77 +187,84 @@ SK-MEL-29 synthetic occupancy | shared within group | observed group max 760.000
 <text fill="#475569" font-family="monospace" font-size="8" x="52" y="614">
 TP73 TAp73alpha | TA (experimental)
 </text>
-<line data-gentle-occupancy-lane="OCC:SK-MEL-29_TP73_TAp73alpha:skmel29_tap73alpha.bed:744ac6eb26ac" stroke="#cbd5e1" stroke-width="1" x1="255" x2="1050" y1="610" y2="610"/>
-<rect data-gentle-occupancy-interval="OCC:SK-MEL-29_TP73_TAp73alpha:skmel29_tap73alpha.bed:744ac6eb26ac:31325889-31325944:1" fill="#2563eb" fill-opacity="0.84" height="10" width="184.49371" x="570.3164" y="600"/>
+<line data-gentle-batch="" data-gentle-cell-line="" data-gentle-occupancy-lane="OCC:SK-MEL-29_TP73_TAp73alpha:skmel29_tap73alpha.bed:744ac6eb26ac" data-gentle-occupancy-role="experimental" stroke="#cbd5e1" stroke-width="1" x1="255" x2="1050" y1="610" y2="610"/>
+<rect data-gentle-occupancy-interval="OCC:SK-MEL-29_TP73_TAp73alpha:skmel29_tap73alpha.bed:744ac6eb26ac:31325889-31325944:1" data-gentle-occupancy-role="experimental" fill="#2563eb" fill-opacity="0.84" height="10" width="184.49371" x="570.3164" y="600"/>
 <text fill="#64748b" font-family="monospace" font-size="8" x="1070" y="614">
 scale 760.000
 </text>
 <text fill="#475569" font-family="monospace" font-size="8" x="52" y="643">
 TP73 DNp73beta | DN (experimental)
 </text>
-<line data-gentle-occupancy-lane="OCC:SK-MEL-29_TP73_DNp73beta:skmel29_dnp73beta.bed:6a1253b45ecf" stroke="#cbd5e1" stroke-width="1" x1="255" x2="1050" y1="639" y2="639"/>
-<rect data-gentle-occupancy-interval="OCC:SK-MEL-29_TP73_DNp73beta:skmel29_dnp73beta.bed:6a1253b45ecf:31325955-31325996:1" fill="#2563eb" fill-opacity="0.84" height="5.6578946" width="137.53162" x="395.8861" y="633.3421"/>
+<line data-gentle-batch="" data-gentle-cell-line="" data-gentle-occupancy-lane="OCC:SK-MEL-29_TP73_DNp73beta:skmel29_dnp73beta.bed:6a1253b45ecf" data-gentle-occupancy-role="experimental" stroke="#cbd5e1" stroke-width="1" x1="255" x2="1050" y1="639" y2="639"/>
+<rect data-gentle-occupancy-interval="OCC:SK-MEL-29_TP73_DNp73beta:skmel29_dnp73beta.bed:6a1253b45ecf:31325955-31325996:1" data-gentle-occupancy-role="experimental" fill="#2563eb" fill-opacity="0.84" height="5.6578946" width="137.53162" x="395.8861" y="633.3421"/>
 <text fill="#64748b" font-family="monospace" font-size="8" x="1070" y="643">
 scale 760.000
 </text>
-<text fill="#1f2937" font-family="sans-serif" font-size="13" font-weight="bold" x="34" y="692">
-Motif score tracks from the active local JASPAR registry
+<text data-gentle-regulatory-score-section="predicted" fill="#1f2937" font-family="sans-serif" font-size="13" font-weight="bold" x="34" y="692">
+Predicted TF binding scores
 </text>
-<text fill="#374151" font-family="monospace" font-size="9" x="34" y="710">
-MA0861.2 TP73 | llr_background_tail_log10 | threshold not set
+<text data-gentle-regulatory-factor="MA0861.2" data-gentle-regulatory-provider="jaspar_pwm" data-gentle-regulatory-score-track="legacy_1_MA0861.2" fill="#374151" font-family="monospace" font-size="8" x="34" y="710">
+TP73 | jaspar_pwm | TP73 | MA0861.2 | llr_background_tail_log10
 </text>
-<line data-gentle-motif-track="MA0861.2" stroke="#cbd5e1" stroke-width="1" x1="255" x2="1050" y1="731" y2="731"/>
-<path d="M1050,731 L1046.6456,731 L1043.2911,731 L1039.9368,731 L1036.5823,731 L1033.2279,731 L1029.8734,731 L1026.519,731 L1023.16455,731 L1019.8101,731 L1016.4557,731 L1013.10126,731 L1009.7468,731 L1006.3924,731 L1003.03796,731 L999.68353,731 L996.3291,731 L992.9747,731 L989.62024,731 L986.2658,731 L982.9114,731 L979.55695,731 L976.2025,731 L972.8481,731 L969.49365,731 L966.1392,731 L962.7848,731 L959.43036,731 L956.0759,731 L952.7215,731 L949.36707,731 L946.01263,731 L942.6582,731 L939.30383,731 L935.94934,731 L932.5949,731 L929.2405,731 L925.8861,731 L922.5316,731 L919.17725,731 L915.82275,731 L912.4684,731 L909.1139,731 L905.7595,731 L902.405,731 L899.05066,731 L895.69617,731 L892.3418,731 L888.9873,731 L885.63293,731 L882.2785,731 L878.9241,731 L875.5696,731 L872.2152,731 L868.8608,731 L865.50635,731 L862.1519,731 L858.7975,731 L855.44305,731 L852.0886,731 L848.7342,731 L845.37976,731 L842.0253,731 L838.6709,731 L835.31647,731 L831.96204,731 L828.6076,731 L825.2532,731 L821.89874,731 L818.5443,731 L815.1899,731 L811.83545,731 L808.481,731 L805.1266,731 L801.77216,731 L798.4177,731 L795.0633,731 L791.70886,731 L788.35443,731 L785,731 L781.64557,731 L778.29114,731 L774.9367,731 L771.5823,731 L768.22784,731 L764.8734,731 L761.519,731 L758.16455,731 L754.8101,731 L751.4557,731 L748.1013,731 L744.7468,731 L741.3924,731 L738.03796,731 L734.68353,731 L731.3291,731 L727.9747,731 L724.62024,731 L721.26587,731 L717.9114,731 L714.557,731 L711.2025,731 L707.84814,731 L704.49365,731 L701.1392,731 L697.7848,731 L694.4304,731 L691.0759,731 L687.72156,731 L684.36707,731 L681.0127,731 L677.6582,731 L674.30383,731 L670.94934,731 L667.595,731 L664.2405,731 L660.8861,731 L657.5316,731 L654.17725,731 L650.82275,731 L647.4684,731 L644.1139,731 L640.7595,731 L637.405,731 L634.05066,731 L630.69617,731 L627.3418,731 L623.98737,731 L620.63293,731 L617.2785,731 L613.9241,731 L610.56964,731 L607.2152,731 L603.8608,731 L600.50635,731 L597.15186,731 L593.7975,731 L590.443,731 L587.0886,731 L583.73413,731 L580.37976,731 L577.02527,731 L573.6709,731 L570.3164,731 L566.96204,731 L563.6076,731 L560.2532,731 L556.89874,731 L553.5443,731 L550.1899,731 L546.83545,731 L543.481,731 L540.1266,731 L536.77216,731 L533.4177,731 L530.0633,731 L526.70886,731 L523.35443,731 L520,731 L516.64557,731 L513.29114,731 L509.9367,731 L506.58228,731 L503.22784,731 L499.8734,731 L496.51898,731 L493.16455,731 L489.81012,731 L486.4557,731 L483.10126,731 L479.74683,731 L476.3924,731 L473.03796,731 L469.68353,731 L466.3291,731 L462.97467,731 L459.62024,731 L456.2658,731 L452.91144,731 L449.557,731 L446.20258,731 L442.84814,731 L439.49365,731 L436.13922,731 L432.7848,731 L429.43036,731 L426.07593,731 L422.7215,731 L419.36707,731 L416.01263,731 L412.6582,731 L409.30377,731 L405.94934,731 L402.5949,731 L399.24048,731 L395.8861,731 L392.53168,731 L389.17725,731 L385.8228,731 L382.46838,731 L379.11395,731 L375.75952,731 L372.4051,731 L369.05066,731 L365.69623,731 L362.3418,731 L358.9873,731 L355.63287,731 L352.27844,731 L348.924,731 L345.56958,731 L342.21515,731 L338.86078,731 L335.50635,731 L332.15192,731 L328.7975,731 L325.44305,731 L322.08862,731 L318.7342,731 L315.37976,731 L312.02533,731" fill="none" stroke="#be123c" stroke-width="1.4"/>
-<line data-gentle-motif-hit="1" stroke="#9f1239" stroke-dasharray="2,2" stroke-width="1" x1="1050" x2="1050" y1="700" y2="736"/>
-<text fill="#881337" font-family="monospace" font-size="7" x="1052" y="697">
+<rect data-gentle-regulatory-provider="jaspar_pwm" data-gentle-regulatory-score-track="legacy_1_MA0861.2" data-gentle-score-kind="llr_background_tail_log10" fill="#f8fafc" height="50" stroke="#cbd5e1" stroke-width="1" width="795" x="255" y="724"/>
+<text fill="#005f73" font-family="monospace" font-size="7" x="52" y="737">
+F solid | R dashed
+</text>
+<text fill="#64748b" font-family="monospace" font-size="7" x="1070" y="737">
+scale 0.000..1.000 | -log10 modeled background-tail probability | matrix_specific_not_cross_track_calibrated
+</text>
+<path d="M1050,774 L1046.6456,774 L1043.2911,774 L1039.9368,774 L1036.5823,774 L1033.2279,774 L1029.8734,774 L1026.519,774 L1023.16455,774 L1019.8101,774 L1016.4557,774 L1013.10126,774 L1009.7468,774 L1006.3924,774 L1003.03796,774 L999.68353,774 L996.3291,774 L992.9747,774 L989.62024,774 L986.2658,774 L982.9114,774 L979.55695,774 L976.2025,774 L972.8481,774 L969.49365,774 L966.1392,774 L962.7848,774 L959.43036,774 L956.0759,774 L952.7215,774 L949.36707,774 L946.01263,774 L942.6582,774 L939.30383,774 L935.94934,774 L932.5949,774 L929.2405,774 L925.8861,774 L922.5316,774 L919.17725,774 L915.82275,774 L912.4684,774 L909.1139,774 L905.7595,774 L902.405,774 L899.05066,774 L895.69617,774 L892.3418,774 L888.9873,774 L885.63293,774 L882.2785,774 L878.9241,774 L875.5696,774 L872.2152,774 L868.8608,774 L865.50635,774 L862.1519,774 L858.7975,774 L855.44305,774 L852.0886,774 L848.7342,774 L845.37976,774 L842.0253,774 L838.6709,774 L835.31647,774 L831.96204,774 L828.6076,774 L825.2532,774 L821.89874,774 L818.5443,774 L815.1899,774 L811.83545,774 L808.481,774 L805.1266,774 L801.77216,774 L798.4177,774 L795.0633,774 L791.70886,774 L788.35443,774 L785,774 L781.64557,774 L778.29114,774 L774.9367,774 L771.5823,774 L768.22784,774 L764.8734,774 L761.519,774 L758.16455,774 L754.8101,774 L751.4557,774 L748.1013,774 L744.7468,774 L741.3924,774 L738.03796,774 L734.68353,774 L731.3291,774 L727.9747,774 L724.62024,774 L721.26587,774 L717.9114,774 L714.557,774 L711.2025,774 L707.84814,774 L704.49365,774 L701.1392,774 L697.7848,774 L694.4304,774 L691.0759,774 L687.72156,774 L684.36707,774 L681.0127,774 L677.6582,774 L674.30383,774 L670.94934,774 L667.595,774 L664.2405,774 L660.8861,774 L657.5316,774 L654.17725,774 L650.82275,774 L647.4684,774 L644.1139,774 L640.7595,774 L637.405,774 L634.05066,774 L630.69617,774 L627.3418,774 L623.98737,774 L620.63293,774 L617.2785,774 L613.9241,774 L610.56964,774 L607.2152,774 L603.8608,774 L600.50635,774 L597.15186,774 L593.7975,774 L590.443,774 L587.0886,774 L583.73413,774 L580.37976,774 L577.02527,774 L573.6709,774 L570.3164,774 L566.96204,774 L563.6076,774 L560.2532,774 L556.89874,774 L553.5443,774 L550.1899,774 L546.83545,774 L543.481,774 L540.1266,774 L536.77216,774 L533.4177,774 L530.0633,774 L526.70886,774 L523.35443,774 L520,774 L516.64557,774 L513.29114,774 L509.9367,774 L506.58228,774 L503.22784,774 L499.8734,774 L496.51898,774 L493.16455,774 L489.81012,774 L486.4557,774 L483.10126,774 L479.74683,774 L476.3924,774 L473.03796,774 L469.68353,774 L466.3291,774 L462.97467,774 L459.62024,774 L456.2658,774 L452.91144,774 L449.557,774 L446.20258,774 L442.84814,774 L439.49365,774 L436.13922,774 L432.7848,774 L429.43036,774 L426.07593,774 L422.7215,774 L419.36707,774 L416.01263,774 L412.6582,774 L409.30377,774 L405.94934,774 L402.5949,774 L399.24048,774 L395.8861,774 L392.53168,774 L389.17725,774 L385.8228,774 L382.46838,774 L379.11395,774 L375.75952,774 L372.4051,774 L369.05066,774 L365.69623,774 L362.3418,774 L358.9873,774 L355.63287,774 L352.27844,774 L348.924,774 L345.56958,774 L342.21515,774 L338.86078,774 L335.50635,774 L332.15192,774 L328.7975,774 L325.44305,774 L322.08862,774 L318.7342,774 L315.37976,774 L312.02533,774" data-gentle-regulatory-provider="jaspar_pwm" data-gentle-regulatory-score-track="legacy_1_MA0861.2" data-gentle-regulatory-strand="forward" fill="none" stroke="#005f73" stroke-width="1.7"/>
+<path d="M1050,774 L1046.6456,774 L1043.2911,774 L1039.9368,774 L1036.5823,774 L1033.2279,774 L1029.8734,774 L1026.519,774 L1023.16455,774 L1019.8101,774 L1016.4557,774 L1013.10126,774 L1009.7468,774 L1006.3924,774 L1003.03796,774 L999.68353,774 L996.3291,774 L992.9747,774 L989.62024,774 L986.2658,774 L982.9114,774 L979.55695,774 L976.2025,774 L972.8481,774 L969.49365,774 L966.1392,774 L962.7848,774 L959.43036,774 L956.0759,774 L952.7215,774 L949.36707,774 L946.01263,774 L942.6582,774 L939.30383,774 L935.94934,774 L932.5949,774 L929.2405,774 L925.8861,774 L922.5316,774 L919.17725,774 L915.82275,774 L912.4684,774 L909.1139,774 L905.7595,774 L902.405,774 L899.05066,774 L895.69617,774 L892.3418,774 L888.9873,774 L885.63293,774 L882.2785,774 L878.9241,774 L875.5696,774 L872.2152,774 L868.8608,774 L865.50635,774 L862.1519,774 L858.7975,774 L855.44305,774 L852.0886,774 L848.7342,774 L845.37976,774 L842.0253,774 L838.6709,774 L835.31647,774 L831.96204,774 L828.6076,774 L825.2532,774 L821.89874,774 L818.5443,774 L815.1899,774 L811.83545,774 L808.481,774 L805.1266,774 L801.77216,774 L798.4177,774 L795.0633,774 L791.70886,774 L788.35443,774 L785,774 L781.64557,774 L778.29114,774 L774.9367,774 L771.5823,774 L768.22784,774 L764.8734,774 L761.519,774 L758.16455,774 L754.8101,774 L751.4557,774 L748.1013,774 L744.7468,774 L741.3924,774 L738.03796,774 L734.68353,774 L731.3291,774 L727.9747,774 L724.62024,774 L721.26587,774 L717.9114,774 L714.557,774 L711.2025,774 L707.84814,774 L704.49365,774 L701.1392,774 L697.7848,774 L694.4304,774 L691.0759,774 L687.72156,774 L684.36707,774 L681.0127,774 L677.6582,774 L674.30383,774 L670.94934,774 L667.595,774 L664.2405,774 L660.8861,774 L657.5316,774 L654.17725,774 L650.82275,774 L647.4684,774 L644.1139,774 L640.7595,774 L637.405,774 L634.05066,774 L630.69617,774 L627.3418,774 L623.98737,774 L620.63293,774 L617.2785,774 L613.9241,774 L610.56964,774 L607.2152,774 L603.8608,774 L600.50635,774 L597.15186,774 L593.7975,774 L590.443,774 L587.0886,774 L583.73413,774 L580.37976,774 L577.02527,774 L573.6709,774 L570.3164,774 L566.96204,774 L563.6076,774 L560.2532,774 L556.89874,774 L553.5443,774 L550.1899,774 L546.83545,774 L543.481,774 L540.1266,774 L536.77216,774 L533.4177,774 L530.0633,774 L526.70886,774 L523.35443,774 L520,774 L516.64557,774 L513.29114,774 L509.9367,774 L506.58228,774 L503.22784,774 L499.8734,774 L496.51898,774 L493.16455,774 L489.81012,774 L486.4557,774 L483.10126,774 L479.74683,774 L476.3924,774 L473.03796,774 L469.68353,774 L466.3291,774 L462.97467,774 L459.62024,774 L456.2658,774 L452.91144,774 L449.557,774 L446.20258,774 L442.84814,774 L439.49365,774 L436.13922,774 L432.7848,774 L429.43036,774 L426.07593,774 L422.7215,774 L419.36707,774 L416.01263,774 L412.6582,774 L409.30377,774 L405.94934,774 L402.5949,774 L399.24048,774 L395.8861,774 L392.53168,774 L389.17725,774 L385.8228,774 L382.46838,774 L379.11395,774 L375.75952,774 L372.4051,774 L369.05066,774 L365.69623,774 L362.3418,774 L358.9873,774 L355.63287,774 L352.27844,774 L348.924,774 L345.56958,774 L342.21515,774 L338.86078,774 L335.50635,774 L332.15192,774 L328.7975,774 L325.44305,774 L322.08862,774 L318.7342,774 L315.37976,774 L312.02533,774" data-gentle-regulatory-provider="jaspar_pwm" data-gentle-regulatory-score-track="legacy_1_MA0861.2" data-gentle-regulatory-strand="reverse" fill="none" stroke="#005f73" stroke-dasharray="5,3" stroke-width="1.5"/>
+<line data-gentle-regulatory-factor="MA0861.2" data-gentle-regulatory-provider="jaspar_pwm" data-gentle-regulatory-score-track="legacy_1_MA0861.2" data-gentle-regulatory-site="legacy-1-site-1" data-gentle-regulatory-strand="+" stroke="#005f73" stroke-dasharray="1,0" stroke-width="1" x1="1050" x2="1050" y1="724" y2="779"/>
+<text fill="#005f73" font-family="monospace" font-size="7" x="1052" y="721">
 +:0.00
 </text>
-<text fill="#64748b" font-family="monospace" font-size="7" x="1070" y="710">
-active local JASPAR motif registry; matrix_id=MA0861.2; score_kind=llr_b...
+<text fill="#64748b" font-family="monospace" font-size="7" x="1070" y="753">
+Legacy JASPAR PWM score; values are not measured affinity and are not comparab...
 </text>
-<text fill="#1f2937" font-family="sans-serif" font-size="13" font-weight="bold" x="34" y="832">
+<text fill="#1f2937" font-family="sans-serif" font-size="13" font-weight="bold" x="34" y="856">
 Warnings / interpretation checks
 </text>
-<text fill="#92400e" font-family="monospace" font-size="9" x="34" y="852">
+<text fill="#92400e" font-family="monospace" font-size="9" x="34" y="876">
 warning: Synthetic probe evidence; array overlap is not isoform validation.
 </text>
-<text fill="#92400e" font-family="monospace" font-size="9" x="34" y="867">
+<text fill="#92400e" font-family="monospace" font-size="9" x="34" y="891">
 warning: cDNA/EST evidence 'cdna_synthetic_wrong_assembly' was not attached because its coordinate provenance differs: assembly 'GRCh37' != 'GRCh38.p14'.
 </text>
-<text fill="#92400e" font-family="monospace" font-size="9" x="34" y="882">
+<text fill="#92400e" font-family="monospace" font-size="9" x="34" y="906">
 warning: Clariom abundance means and activity differences are descriptive visualization inputs: signal supports assay-region prioritization, while PSR/JUC geometry flags exon or junction st...
 </text>
-<text fill="#1f2937" font-family="sans-serif" font-size="13" font-weight="bold" x="34" y="915">
+<text fill="#1f2937" font-family="sans-serif" font-size="13" font-weight="bold" x="34" y="939">
 Evidence provenance
 </text>
-<text data-gentle-provenance-source="cdna_est_resource" fill="#64748b" font-family="monospace" font-size="8" x="34" y="934">
-cdna_est_resource: patz1_synthetic_cdna_est_v1 | ./test_files/fixtures/isoform_evidence/patz1/patz1_cdna_est.json
+<text data-gentle-provenance-source="cdna_est_resource" fill="#64748b" font-family="monospace" font-size="8" x="34" y="958">
+cdna_est_resource: patz1_synthetic_cdna_est_v1
 </text>
-<text data-gentle-provenance-source="gene_locus_probe_effect_table" fill="#64748b" font-family="monospace" font-size="8" x="34" y="948">
-gene_locus_probe_effect_table: ./test_files/fixtures/gene_locus_evidence/patz1_offline_composer/patz1_probe_effects.tsv | ./test_files/fixtures/gene_locus_evidence/patz1_offline_composer/pat...
+<text data-gentle-provenance-source="gene_locus_probe_effect_table" fill="#64748b" font-family="monospace" font-size="8" x="34" y="972">
+gene_locus_probe_effect_table: ./test_files/fixtures/gene_locus_evidence/patz1_offline_composer/patz1_probe_effects.tsv
 </text>
-<text data-gentle-provenance-source="isoform_expression_matrix" fill="#64748b" font-family="monospace" font-size="8" x="34" y="962">
-isoform_expression_matrix: ./test_files/fixtures/isoform_evidence/patz1/patz1_expression.tsv | ./test_files/fixtures/isoform_evidence/patz1/patz1_expression.tsv
+<text data-gentle-provenance-source="isoform_expression_matrix" fill="#64748b" font-family="monospace" font-size="8" x="34" y="986">
+isoform_expression_matrix: ./test_files/fixtures/isoform_evidence/patz1/patz1_expression.tsv
 </text>
-<text data-gentle-provenance-source="isoform_panel" fill="#64748b" font-family="monospace" font-size="8" x="34" y="976">
-isoform_panel: patz1_synthetic_v1 | ./test_files/fixtures/isoform_evidence/patz1/patz1_isoform_panel.json
+<text data-gentle-provenance-source="isoform_panel" fill="#64748b" font-family="monospace" font-size="8" x="34" y="1000">
+isoform_panel: patz1_synthetic_v1
 </text>
-<text data-gentle-provenance-source="occupancy_layout" fill="#64748b" font-family="monospace" font-size="8" x="34" y="990">
+<text data-gentle-provenance-source="occupancy_layout" fill="#64748b" font-family="monospace" font-size="8" x="34" y="1014">
 occupancy_layout: saos2,skmel29
 </text>
-<text data-gentle-provenance-source="probe_evidence_report" fill="#64748b" font-family="monospace" font-size="8" x="34" y="1004">
-probe_evidence_report: ./test_files/fixtures/isoform_evidence/patz1/patz1_probe_evidence.json | ./test_files/fixtures/isoform_evidence/patz1/patz1_probe_evidence.json
+<text data-gentle-provenance-source="predicted_tf_score_jaspar_pwm" fill="#64748b" font-family="monospace" font-size="8" x="34" y="1028">
+predicted_tf_score_jaspar_pwm: local_jaspar_registry
 </text>
-<text data-gentle-provenance-source="projected_occupancy_track" fill="#64748b" font-family="monospace" font-size="8" x="34" y="1018">
-projected_occupancy_track: OCC:SAOS-2_TP73_DNp73beta:saos2_dnp73beta.bed:3590500ec46b | ./test_files/fixtures/gene_locus_evidence/patz1_offline_composer/saos2_dnp73beta.bed
+<text data-gentle-provenance-source="probe_evidence_report" fill="#64748b" font-family="monospace" font-size="8" x="34" y="1042">
+probe_evidence_report: ./test_files/fixtures/isoform_evidence/patz1/patz1_probe_evidence.json
 </text>
-<text data-gentle-provenance-source="projected_occupancy_track" fill="#64748b" font-family="monospace" font-size="8" x="34" y="1032">
-projected_occupancy_track: OCC:SAOS-2_TP73_TAp73alpha:saos2_tap73alpha.bed:a20ef7a2caf4 | ./test_files/fixtures/gene_locus_evidence/patz1_offline_composer/saos2_tap73alpha.bed
+<text data-gentle-provenance-source="projected_occupancy_track" fill="#64748b" font-family="monospace" font-size="8" x="34" y="1056">
+projected_occupancy_track: OCC:SAOS-2_TP73_DNp73beta:saos2_dnp73beta.bed:3590500ec46b
 </text>
-<text data-gentle-provenance-source="projected_occupancy_track" fill="#64748b" font-family="monospace" font-size="8" x="34" y="1046">
-projected_occupancy_track: OCC:SK-MEL-29_TP73_DNp73beta:skmel29_dnp73beta.bed:6a1253b45ecf | ./test_files/fixtures/gene_locus_evidence/patz1_offline_composer/skmel29_dnp73beta.bed
+<text data-gentle-provenance-source="projected_occupancy_track" fill="#64748b" font-family="monospace" font-size="8" x="34" y="1070">
+projected_occupancy_track: OCC:SAOS-2_TP73_TAp73alpha:saos2_tap73alpha.bed:a20ef7a2caf4
 </text>
-<text data-gentle-provenance-source="projected_occupancy_track" fill="#64748b" font-family="monospace" font-size="8" x="34" y="1060">
-projected_occupancy_track: OCC:SK-MEL-29_TP73_TAp73alpha:skmel29_tap73alpha.bed:744ac6eb26ac | ./test_files/fixtures/gene_locus_evidence/patz1_offline_composer/skmel29_tap73alpha.bed
+<text data-gentle-provenance-source="projected_occupancy_track" fill="#64748b" font-family="monospace" font-size="8" x="34" y="1084">
+projected_occupancy_track: OCC:SK-MEL-29_TP73_DNp73beta:skmel29_dnp73beta.bed:6a1253b45ecf
 </text>
 </svg>
