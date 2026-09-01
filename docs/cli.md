@@ -4858,12 +4858,19 @@ Isoform architecture panel workflow:
     - use a `gentle.gene_locus_occupancy_layout.v1` JSON file to keep cell
       lines/conditions in separate declared groups and to choose
       `shared_group`, `independent`, `fixed`, or explicitly justified
-      `shared_all` scaling; GENtle does not infer these meanings from filenames
+      `shared_all` scaling; GENtle does not infer these meanings from filenames.
+      Each requested lane remains visible in JSON/SVG as `available`,
+      `not_prepared`, `no_compatible_interval`, or `assembly_mismatch`, and may
+      carry stable source id/digest/assembly plus explicit assay, mark, and
+      factor metadata
     - `--regulatory-score-tracks` accepts independent JASPAR or normalized
       offline external-model tracks with their own factor/source identity,
       score semantics, strand policy, thresholds, top sites, and scales.
-      Different providers remain non-comparable unless an explicit compatible
-      calibration and shared-scale justification are supplied
+      Multi-source requests can bind factors per exact matrix/model through
+      `source_factor_bindings`. Different matrices, models, or providers remain
+      non-comparable unless `cross_source_calibrated` carries the same explicit
+      calibration id and SHA-256 digest on every member plus a shared-scale
+      justification; calibration prose alone never authorizes comparison
     - `--scale-bar` defaults to backward-compatible `hidden`; `auto` selects a
       deterministic 1/2/5 x 10^n length and `fixed` requires a positive
       `--scale-bar-bp`. Local source paths are omitted from portable reports by
@@ -4874,6 +4881,10 @@ Isoform architecture panel workflow:
       `cargo run --bin gentle_cli -- workflow @docs/examples/workflows/patz1_gene_locus_evidence_offline.json`;
       it writes `patz1_gene_locus_evidence.svg` from committed synthetic
       negative-strand PATZ1, PSR/JUC, and occupancy fixtures
+    - the general preparation fixture writes and verifies SVG, PNG, and PDF;
+      the pinned public Ensembl-116 SERPINE1 acceptance test additionally
+      verifies that its reporter architectures and clearly synthetic occupancy
+      context are rendered in one canonical figure
   - same command family for restriction-site details:
     - `inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED]`
     - JSON output includes `tooltip_lines[]` with the same concise

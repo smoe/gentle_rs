@@ -29,6 +29,7 @@ use crate::genomes::{BlastHit, BlastSubjectAnnotation, BlastSubjectAnnotationSou
 use crate::lineage_export::{LineageSvgNodeKind, build_lineage_svg_graph, export_lineage_svg};
 use bio::io::fasta;
 use flate2::{Compression, write::GzEncoder};
+use gentle_protocol::GeneLocusRegulatorySourceFactorBinding;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::env;
@@ -24694,6 +24695,13 @@ fn prepare_gene_locus_evidence_runs_fully_offline_with_normalized_score_sources(
             .to_string_lossy()
             .to_string(),
     );
+    request.pdf_path = Some(
+        output
+            .path()
+            .join("locus.pdf")
+            .to_string_lossy()
+            .to_string(),
+    );
     request.display_report_path = Some(
         output
             .path()
@@ -24776,6 +24784,12 @@ fn prepare_gene_locus_evidence_runs_fully_offline_with_normalized_score_sources(
             .iter()
             .any(|row| row.kind == "png" && row.size_bytes > 0)
     );
+    assert!(
+        receipt
+            .artifacts
+            .iter()
+            .any(|row| row.kind == "pdf" && row.size_bytes > 0)
+    );
     assert!(receipt.artifacts.iter().any(|row| {
         row.kind == "reporter_report_json"
             && row.size_bytes > 0
@@ -24817,6 +24831,28 @@ fn prepare_gene_locus_evidence_runs_fully_offline_with_normalized_score_sources(
         "both annotation-derived CDS starts should remain distinct"
     );
     assert_eq!(report.occupancy_groups.len(), 2);
+    let tp73_lane = report.occupancy_groups[0]
+        .lanes
+        .iter()
+        .find(|lane| lane.lane.track_name == "TP73 CUT&RUN")
+        .expect("prepared TP73 occupancy lane");
+    assert_eq!(tp73_lane.state, GeneLocusOccupancyLaneState::Available);
+    assert_eq!(tp73_lane.source_id, "synthetic:cutrun:tp73");
+    assert_eq!(tp73_lane.assay.as_deref(), Some("CUT&RUN"));
+    assert_eq!(tp73_lane.factor.as_deref(), Some("TP73"));
+    assert!(
+        tp73_lane
+            .source_sha256
+            .as_deref()
+            .is_some_and(|digest| digest.starts_with("sha256:"))
+    );
+    let absent_lane = report.occupancy_groups[0]
+        .lanes
+        .iter()
+        .find(|lane| lane.lane.track_name == "SERPINE1 CUT&RUN (not supplied)")
+        .expect("requested absent occupancy lane");
+    assert_eq!(absent_lane.state, GeneLocusOccupancyLaneState::NotPrepared);
+    assert!(absent_lane.lane.intervals.is_empty());
     assert_eq!(
         report.occupancy_groups[1].lanes[0].role,
         GeneLocusOccupancyLaneRole::ChromatinContext
@@ -24850,6 +24886,8 @@ fn prepare_gene_locus_evidence_runs_fully_offline_with_normalized_score_sources(
     assert!(report.regulatory_score_tracks.iter().any(|track| {
         track.provider_kind == GeneLocusRegulatoryScoreProviderKind::ExternalModelScores
             && track.provider_id == "synthetic_regulatory_model"
+            && track.calibration_state
+                == GeneLocusRegulatoryCalibrationState::ProviderDeclaredUncalibrated
     }));
     assert!(
         report
@@ -24863,11 +24901,74 @@ fn prepare_gene_locus_evidence_runs_fully_offline_with_normalized_score_sources(
             .iter()
             .all(|track| { track.scale_mode == GeneLocusRegulatoryScoreScaleMode::Independent })
     );
+    let tp73_matrix = report
+        .regulatory_score_tracks
+        .iter()
+        .find(|track| track.track_id == "tp73_jaspar")
+        .and_then(|track| track.source_ids.first())
+        .cloned()
+        .expect("resolved TP73 matrix id");
+    let sp1_matrix = report
+        .regulatory_score_tracks
+        .iter()
+        .find(|track| track.track_id == "sp1_jaspar")
+        .and_then(|track| track.source_ids.first())
+        .cloned()
+        .expect("resolved SP1 matrix id");
+    let multi_source_report = engine
+        .build_gene_locus_evidence_display_report(
+            "general_locus_demo",
+            &GeneLocusEvidenceDisplayRequest {
+                isoform_evidence: GeneIsoformEvidenceRequest {
+                    panel_id: "general_locus_demo_panel".to_string(),
+                    ..Default::default()
+                },
+                upstream_bp: 150,
+                downstream_bp: 200,
+                regulatory_score_tracks: vec![GeneLocusRegulatoryScoreTrackRequest {
+                    track_id: "explicit_multi_matrix".to_string(),
+                    provider_kind: GeneLocusRegulatoryScoreProviderKind::JasparPwm,
+                    source_ids: vec![tp73_matrix.clone(), sp1_matrix.clone()],
+                    source_factor_bindings: vec![
+                        GeneLocusRegulatorySourceFactorBinding {
+                            source_id: tp73_matrix,
+                            factors: vec![GeneLocusRegulatoryFactor {
+                                factor_id: "TP73".to_string(),
+                                factor_label: Some("p73".to_string()),
+                            }],
+                        },
+                        GeneLocusRegulatorySourceFactorBinding {
+                            source_id: sp1_matrix,
+                            factors: vec![GeneLocusRegulatoryFactor {
+                                factor_id: "SP1".to_string(),
+                                factor_label: Some("SP1".to_string()),
+                            }],
+                        },
+                    ],
+                    score_kind: "llr_bits".to_string(),
+                    clip_negative: false,
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+        )
+        .expect("build one multi-matrix request with source-specific factors");
+    assert_eq!(multi_source_report.regulatory_score_tracks.len(), 2);
+    assert!(
+        multi_source_report
+            .regulatory_score_tracks
+            .iter()
+            .all(|track| track.factors.len() == 1),
+        "factor lists must remain bound per resolved matrix rather than being copied wholesale"
+    );
 
     let svg = fs::read_to_string(&request.svg_path).expect("read generated SVG");
     assert!(svg.contains("data-gentle-genomic-scale-bar=\"true\""));
     assert!(svg.contains("data-gentle-scale-bp=\"1000\""));
     assert!(svg.contains("data-gentle-occupancy-role=\"chromatin_context\""));
+    assert!(svg.contains("data-gentle-occupancy-state=\"not_prepared\""));
+    assert!(svg.contains("data-gentle-occupancy-source=\"synthetic:cutrun:tp73\""));
+    assert!(svg.contains("data-gentle-occupancy-assay=\"CUT&amp;RUN\""));
     assert!(svg.contains("data-gentle-regulatory-provider=\"jaspar_pwm\""));
     assert!(svg.contains("data-gentle-regulatory-provider=\"external_model_scores\""));
     assert!(svg.contains("data-gentle-overlay-id=\"promoter_reporter_architecture_comparison\""));
@@ -24883,6 +24984,12 @@ fn prepare_gene_locus_evidence_runs_fully_offline_with_normalized_score_sources(
     assert!(
         fs::metadata(request.png_path.as_ref().expect("png path"))
             .expect("generated PNG metadata")
+            .len()
+            > 0
+    );
+    assert!(
+        fs::metadata(request.pdf_path.as_ref().expect("pdf path"))
+            .expect("generated PDF metadata")
             .len()
             > 0
     );
@@ -27485,11 +27592,27 @@ fn gene_isoform_evidence_inspector_composes_gene_locus_evidence_for_patz1_minus_
                     group_id: "comparison".to_string(),
                     label: "Separate comparison context".to_string(),
                     scale_mode: GeneLocusOccupancyScaleMode::Independent,
-                    lanes: vec![GeneLocusOccupancyLaneRequest {
-                        track_name: "unrelated occupancy track".to_string(),
-                        role: GeneLocusOccupancyLaneRole::Other,
-                        ..Default::default()
-                    }],
+                    lanes: vec![
+                        GeneLocusOccupancyLaneRequest {
+                            track_name: "unrelated occupancy track".to_string(),
+                            role: GeneLocusOccupancyLaneRole::Other,
+                            ..Default::default()
+                        },
+                        GeneLocusOccupancyLaneRequest {
+                            track_name: "requested but absent".to_string(),
+                            source_id: Some("synthetic:absent".to_string()),
+                            assay: Some("CUT&RUN".to_string()),
+                            role: GeneLocusOccupancyLaneRole::Experimental,
+                            ..Default::default()
+                        },
+                        GeneLocusOccupancyLaneRequest {
+                            track_name: "wrong assembly source".to_string(),
+                            source_id: Some("synthetic:wrong-assembly".to_string()),
+                            source_assembly: Some("GRCh37".to_string()),
+                            role: GeneLocusOccupancyLaneRole::Experimental,
+                            ..Default::default()
+                        },
+                    ],
                     ..Default::default()
                 },
             ],
@@ -27582,6 +27705,14 @@ fn gene_isoform_evidence_inspector_composes_gene_locus_evidence_for_patz1_minus_
         locus_report.occupancy_groups[1].lanes[0].display_abs_max_score,
         30.0
     );
+    assert_eq!(
+        locus_report.occupancy_groups[1].lanes[1].state,
+        GeneLocusOccupancyLaneState::NotPrepared
+    );
+    assert_eq!(
+        locus_report.occupancy_groups[1].lanes[2].state,
+        GeneLocusOccupancyLaneState::AssemblyMismatch
+    );
     assert_eq!(locus_report.assay_overlays.len(), 1);
     assert_eq!(locus_report.assay_overlays[0].assay_ids.len(), 1);
     assert_eq!(locus_report.motif_tracks.len(), 1);
@@ -27597,10 +27728,8 @@ fn gene_isoform_evidence_inspector_composes_gene_locus_evidence_for_patz1_minus_
     }));
     assert!(locus_report.provenance.iter().any(|source| {
         source.source_kind == "projected_occupancy_track"
-            && source
-                .path
-                .as_deref()
-                .is_some_and(|path| path.ends_with("tp73_saos2_TA_R1.bigWig"))
+            && source.source_id.starts_with("OCC:")
+            && source.path.is_none()
     }));
     assert!(locus_report.provenance.iter().any(|source| {
         source.source_kind == "tfbs_motif_matrix" && source.source_id == "MA0861.2"

@@ -10,6 +10,18 @@
   Semantic snapshots publish clipped interaction geometry, and the PCR
   Designer reports `blocked` until active sequence content renders.
 
+- Hardened the composed gene-locus evidence contract after external review.
+  Every explicitly requested occupancy/chromatin lane now survives as a typed
+  `available`, `not_prepared`, `no_compatible_interval`, or
+  `assembly_mismatch` row with stable source/digest/assembly and explicit
+  assay/mark/factor metadata. Regulatory score tracks now use typed calibration
+  states and exact calibration id/digest bindings; prose no longer authorizes
+  shared scaling, different matrices/models/providers fail closed without an
+  exact cross-source calibration, and per-source factor bindings remove
+  multi-matrix label ambiguity. The offline preparation acceptance now checks
+  SVG, PNG, and PDF, while a pinned public Ensembl-116 SERPINE1 case composes
+  its reporter rows with clearly synthetic evidence in the canonical figure.
+
 - Added the first typed tutorial GUI acceptance contract for
   the offline Simple PCR walkthrough. The source-owned contract binds prose
   steps to semantic GUI controls, an incomplete starter, a separate oracle,

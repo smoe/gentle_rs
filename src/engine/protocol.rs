@@ -76,7 +76,8 @@ pub use gentle_protocol::{
     GENE_SET_CUTRUN_REGULATORY_SUPPORT_SCHEMA, GENE_SET_DIRECT_LIST_CACHE_SCHEMA,
     GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA, GENE_SET_PROMOTER_COHORT_SCHEMA,
     GENE_SET_RESOLUTION_SCHEMA, GeneIsoformExonFamilyRow, GeneIsoformJunctionRow,
-    GeneLocusEvidenceDisplayReport, GeneLocusEvidenceDisplayRequest, GeneLocusOccupancyLayout,
+    GeneLocusEvidenceDisplayReport, GeneLocusEvidenceDisplayRequest, GeneLocusOccupancyLaneState,
+    GeneLocusOccupancyLayout, GeneLocusRegulatoryCalibrationState,
     GeneLocusRegulatoryScoreProviderKind, GeneLocusRegulatoryScoreTrackRequest,
     GeneLocusScaleBarPolicy, GeneLocusTranscriptMetrics, GeneSetCoRegulatedProducerMetadata,
     GeneSetCohortRelationship, GeneSetCohortRelationshipFlag, GeneSetCutRunEvaluationState,
@@ -4641,6 +4642,16 @@ pub struct GeneLocusEvidenceTrackSource {
     pub source_kind: GeneLocusEvidenceTrackSourceKind,
     pub path: String,
     pub track_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assembly: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assay: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mark: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub factor: Option<String>,
     pub min_score: Option<f64>,
     pub max_score: Option<f64>,
     pub clear_existing: bool,
@@ -4726,6 +4737,12 @@ impl Default for GeneLocusEvidencePreparationRequest {
 pub struct GeneLocusEvidencePreparedTrack {
     pub source_kind: String,
     pub track_name: String,
+    pub source_id: String,
+    pub state: GeneLocusOccupancyLaneState,
+    pub assembly: Option<String>,
+    pub assay: Option<String>,
+    pub mark: Option<String>,
+    pub factor: Option<String>,
     pub path: Option<String>,
     pub sha256: String,
     pub imported_feature_count: usize,
@@ -4752,6 +4769,9 @@ pub struct GeneLocusEvidenceRegulatoryBinding {
     pub source_ids: Vec<String>,
     pub score_kind: String,
     pub calibration_status: String,
+    pub calibration_state: GeneLocusRegulatoryCalibrationState,
+    pub calibration_id: Option<String>,
+    pub calibration_sha256: Option<String>,
     pub request_sha256: Option<String>,
     pub source_sha256: Option<String>,
     pub output_sha256: Option<String>,

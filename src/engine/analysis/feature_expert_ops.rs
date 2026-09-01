@@ -12884,6 +12884,80 @@ impl GentleEngine {
         Ok((contrasts, overlays, shared_abs_max))
     }
 
+    fn gene_locus_assembly_labels_compatible(left: &str, right: &str) -> bool {
+        let normalize = |value: &str| {
+            value
+                .chars()
+                .filter(|character| character.is_ascii_alphanumeric())
+                .flat_map(char::to_lowercase)
+                .collect::<String>()
+        };
+        let left = normalize(left);
+        let right = normalize(right);
+        if left == right {
+            return true;
+        }
+        let canonical = |value: &str| {
+            if value.contains("grch38") || value.contains("hg38") {
+                "grch38".to_string()
+            } else if value.contains("grch37") || value.contains("hg19") {
+                "grch37".to_string()
+            } else {
+                value.to_string()
+            }
+        };
+        canonical(&left) == canonical(&right)
+    }
+
+    fn gene_locus_requested_occupancy_lane(
+        request: &GeneLocusOccupancyLaneRequest,
+        state: GeneLocusOccupancyLaneState,
+    ) -> GeneLocusOccupancyLane {
+        let source_id = request
+            .source_id
+            .clone()
+            .unwrap_or_else(|| request.track_name.clone());
+        let identity = format!("{}\u{1f}{}", request.track_name, source_id);
+        let digest = crate::digest_utils::sha256_prefixed_str(&identity);
+        let short_digest = digest
+            .rsplit(':')
+            .next()
+            .unwrap_or(&digest)
+            .chars()
+            .take(12)
+            .collect::<String>();
+        let lane_id = format!(
+            "OCCREQ:{}:{}",
+            Self::isoform_evidence_id_token(&request.track_name),
+            short_digest
+        );
+        GeneLocusOccupancyLane {
+            lane: GeneIsoformOccupancyLane {
+                lane_id,
+                track_name: request.track_name.clone(),
+                display_label: request
+                    .display_label
+                    .clone()
+                    .unwrap_or_else(|| request.track_name.clone()),
+                source_kind: "requested_occupancy_source".to_string(),
+                ..Default::default()
+            },
+            state,
+            source_id,
+            source_sha256: request.source_sha256.clone(),
+            source_assembly: request.source_assembly.clone(),
+            display_label: request.display_label.clone(),
+            condition_label: request.condition_label.clone(),
+            cell_line_label: request.cell_line_label.clone(),
+            batch_label: request.batch_label.clone(),
+            assay: request.assay.clone(),
+            mark: request.mark.clone(),
+            factor: request.factor.clone(),
+            role: request.role,
+            display_abs_max_score: 1.0,
+        }
+    }
+
     fn gene_locus_occupancy_groups(
         &self,
         dna: &DNAsequence,
@@ -12985,8 +13059,41 @@ impl GentleEngine {
                 {
                     requested_track_names.push(lane.track_name.clone());
                 }
+                if lane
+                    .source_id
+                    .as_deref()
+                    .is_some_and(|value| value.trim().is_empty())
+                {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Occupancy lane '{}' has an empty source_id",
+                            lane.track_name
+                        ),
+                        cause_chain: vec![],
+                    });
+                }
+                if lane
+                    .source_sha256
+                    .as_deref()
+                    .is_some_and(|value| !Self::gene_locus_is_sha256_binding(value))
+                {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Occupancy lane '{}' source_sha256 is not a canonical sha256: binding",
+                            lane.track_name
+                        ),
+                        cause_chain: vec![],
+                    });
+                }
             }
         }
+        let prepared_track_names = self
+            .summarize_tfbs_score_track_overlay_tracks(dna, 0, dna.len())
+            .into_iter()
+            .map(|track| track.track_name.trim().to_ascii_lowercase())
+            .collect::<BTreeSet<_>>();
         let projected = self.isoform_evidence_occupancy_lanes(
             dna,
             local_start_1based,
@@ -13009,7 +13116,17 @@ impl GentleEngine {
             let mut lanes = Vec::new();
             let mut seen_lane_ids = BTreeSet::new();
             for lane_request in &group_request.lanes {
-                let matching = if lane_request.track_name == "*" {
+                let lane_count_before = lanes.len();
+                let assembly_mismatch = lane_request
+                    .source_assembly
+                    .as_deref()
+                    .zip(anchor.map(|value| value.genome_id.as_str()))
+                    .is_some_and(|(source, locus)| {
+                        !Self::gene_locus_assembly_labels_compatible(source, locus)
+                    });
+                let matching = if assembly_mismatch {
+                    vec![]
+                } else if lane_request.track_name == "*" {
                     projected.iter().collect::<Vec<_>>()
                 } else {
                     projected
@@ -13026,13 +13143,49 @@ impl GentleEngine {
                     }
                     lanes.push(GeneLocusOccupancyLane {
                         lane: lane.clone(),
+                        state: GeneLocusOccupancyLaneState::Available,
+                        source_id: lane_request
+                            .source_id
+                            .clone()
+                            .unwrap_or_else(|| lane.lane_id.clone()),
+                        source_sha256: lane_request.source_sha256.clone(),
+                        source_assembly: lane_request.source_assembly.clone(),
                         display_label: lane_request.display_label.clone(),
                         condition_label: lane_request.condition_label.clone(),
                         cell_line_label: lane_request.cell_line_label.clone(),
                         batch_label: lane_request.batch_label.clone(),
+                        assay: lane_request.assay.clone(),
+                        mark: lane_request.mark.clone(),
+                        factor: lane_request.factor.clone(),
                         role: lane_request.role,
                         display_abs_max_score: 1.0,
                     });
+                }
+                if lanes.len() == lane_count_before && lane_request.track_name != "*" {
+                    let state = if assembly_mismatch {
+                        GeneLocusOccupancyLaneState::AssemblyMismatch
+                    } else if let Some(state) = lane_request.source_state {
+                        if state == GeneLocusOccupancyLaneState::Available {
+                            GeneLocusOccupancyLaneState::NoCompatibleInterval
+                        } else {
+                            state
+                        }
+                    } else if prepared_track_names
+                        .contains(&lane_request.track_name.trim().to_ascii_lowercase())
+                    {
+                        GeneLocusOccupancyLaneState::NoCompatibleInterval
+                    } else {
+                        GeneLocusOccupancyLaneState::NotPrepared
+                    };
+                    warnings.push(format!(
+                        "Occupancy lane '{}' is retained as {}; no compatible interval is rendered.",
+                        lane_request.track_name,
+                        state.as_str()
+                    ));
+                    lanes.push(Self::gene_locus_requested_occupancy_lane(
+                        lane_request,
+                        state,
+                    ));
                 }
             }
             let group_abs_max = lanes
@@ -13298,6 +13451,34 @@ impl GentleEngine {
         }
     }
 
+    fn gene_locus_validate_calibration_binding(
+        track_id: &str,
+        state: GeneLocusRegulatoryCalibrationState,
+        calibration_id: Option<&str>,
+        calibration_sha256: Option<&str>,
+    ) -> Result<(), EngineError> {
+        let calibration_id = calibration_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let calibration_sha256 = calibration_sha256
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        if calibration_id.is_some() != calibration_sha256.is_some()
+            || calibration_sha256.is_some_and(|value| !Self::gene_locus_is_sha256_binding(value))
+            || (state == GeneLocusRegulatoryCalibrationState::CrossSourceCalibrated
+                && (calibration_id.is_none() || calibration_sha256.is_none()))
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Regulatory score track '{track_id}' requires a non-empty calibration_id paired with canonical calibration_sha256; cross_source_calibrated requires both"
+                ),
+                cause_chain: vec![],
+            });
+        }
+        Ok(())
+    }
+
     fn gene_locus_legacy_regulatory_tracks(
         &self,
         seq_id: &str,
@@ -13357,6 +13538,9 @@ impl GentleEngine {
                     theoretical_min: None,
                     theoretical_max: None,
                     calibration_status: "matrix_specific_not_cross_track_calibrated".to_string(),
+                    calibration_state: GeneLocusRegulatoryCalibrationState::MatrixSpecific,
+                    calibration_id: None,
+                    calibration_sha256: None,
                     calibration_statement: Some(
                         "Legacy JASPAR PWM score; values are not measured affinity and are not comparable across matrices by default."
                             .to_string(),
@@ -13456,6 +13640,71 @@ impl GentleEngine {
             request.clip_negative,
             false,
         )?;
+        let calibration_state =
+            if request.calibration_state == GeneLocusRegulatoryCalibrationState::Unspecified {
+                GeneLocusRegulatoryCalibrationState::MatrixSpecific
+            } else {
+                request.calibration_state
+            };
+        Self::gene_locus_validate_calibration_binding(
+            &request.track_id,
+            calibration_state,
+            request.calibration_id.as_deref(),
+            request.calibration_sha256.as_deref(),
+        )?;
+        let binding_matches = |source_id: &str, tf_id: &str, tf_name: Option<&str>| {
+            source_id.eq_ignore_ascii_case(tf_id)
+                || tf_name.is_some_and(|name| source_id.eq_ignore_ascii_case(name))
+        };
+        if !request.source_factor_bindings.is_empty() {
+            let mut binding_ids = BTreeSet::new();
+            for binding in &request.source_factor_bindings {
+                if binding.source_id.trim().is_empty()
+                    || binding.factors.is_empty()
+                    || !binding_ids.insert(binding.source_id.to_ascii_lowercase())
+                {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Regulatory score track '{}' requires unique, non-empty source_factor_bindings with at least one factor",
+                            request.track_id
+                        ),
+                        cause_chain: vec![],
+                    });
+                }
+                if !report.tracks.iter().any(|track| {
+                    binding_matches(&binding.source_id, &track.tf_id, track.tf_name.as_deref())
+                }) {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Regulatory score track '{}' has no resolved matrix/model matching source_factor_binding '{}'",
+                            request.track_id, binding.source_id
+                        ),
+                        cause_chain: vec![],
+                    });
+                }
+            }
+            for track in &report.tracks {
+                let matches = request
+                    .source_factor_bindings
+                    .iter()
+                    .filter(|binding| {
+                        binding_matches(&binding.source_id, &track.tf_id, track.tf_name.as_deref())
+                    })
+                    .count();
+                if matches != 1 {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Regulatory score track '{}' requires exactly one source_factor_binding for resolved source '{}'",
+                            request.track_id, track.tf_id
+                        ),
+                        cause_chain: vec![],
+                    });
+                }
+            }
+        }
         let multiple = report.tracks.len() > 1;
         let sequence_sha256 = crate::digest_utils::sha256_prefixed_str(&dna.get_forward_string());
         Ok(report
@@ -13549,6 +13798,54 @@ impl GentleEngine {
                     Self::gene_locus_regulatory_track_id(&request.track_id)
                 };
                 let normalization = track.normalization_reference.as_ref();
+                let default_factors = vec![GeneLocusRegulatoryFactor {
+                    factor_id: track.tf_id.clone(),
+                    factor_label: track.tf_name.clone(),
+                }];
+                let mut warnings = vec![
+                    "PWM values are predicted sequence-match scores, not observed binding or biochemical affinity."
+                        .to_string(),
+                ];
+                let factors = if !request.source_factor_bindings.is_empty() {
+                    request
+                        .source_factor_bindings
+                        .iter()
+                        .find(|binding| {
+                            binding_matches(
+                                &binding.source_id,
+                                &track.tf_id,
+                                track.tf_name.as_deref(),
+                            )
+                        })
+                        .map(|binding| binding.factors.clone())
+                        .unwrap_or_else(|| default_factors.clone())
+                } else if request.factors.is_empty() {
+                    default_factors.clone()
+                } else if multiple {
+                    let matched = request
+                        .factors
+                        .iter()
+                        .filter(|factor| {
+                            binding_matches(
+                                &factor.factor_id,
+                                &track.tf_id,
+                                track.tf_name.as_deref(),
+                            )
+                        })
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    if matched.is_empty() {
+                        warnings.push(
+                            "A legacy request-level factor list was not copied to this matrix because no exact source match was present; the resolved matrix identity is used instead."
+                                .to_string(),
+                        );
+                        default_factors.clone()
+                    } else {
+                        matched
+                    }
+                } else {
+                    request.factors.clone()
+                };
                 Ok(GeneLocusRegulatoryScoreTrack {
                     track_id: normalized_id,
                     label: if request.label.trim().is_empty() {
@@ -13568,14 +13865,7 @@ impl GentleEngine {
                     provider_kind: GeneLocusRegulatoryScoreProviderKind::JasparPwm,
                     provider_id: "local_jaspar_registry".to_string(),
                     provider_version: Some(track.tf_id.clone()),
-                    factors: if request.factors.is_empty() {
-                        vec![GeneLocusRegulatoryFactor {
-                            factor_id: track.tf_id.clone(),
-                            factor_label: track.tf_name.clone(),
-                        }]
-                    } else {
-                        request.factors.clone()
-                    },
+                    factors,
                     source_ids: vec![track.tf_id.clone()],
                     input_sequence_id: seq_id.to_string(),
                     input_sequence_sha256: sequence_sha256.clone(),
@@ -13602,7 +13892,10 @@ impl GentleEngine {
                     score_directionality: "higher_is_stronger_sequence_match".to_string(),
                     theoretical_min: normalization.map(|value| value.theoretical_min_score),
                     theoretical_max: normalization.map(|value| value.theoretical_max_score),
-                    calibration_status: "matrix_specific_not_cross_track_calibrated".to_string(),
+                    calibration_status: calibration_state.as_str().to_string(),
+                    calibration_state,
+                    calibration_id: request.calibration_id.clone(),
+                    calibration_sha256: request.calibration_sha256.clone(),
                     calibration_statement: request.calibration_statement.clone().or_else(|| {
                         Some(
                             "JASPAR PWM sequence-match prediction; not measured affinity and not cross-matrix calibrated."
@@ -13634,10 +13927,7 @@ impl GentleEngine {
                         request.clip_negative
                     ),
                     state: GeneLocusRegulatoryScoreState::Available,
-                    warnings: vec![
-                        "PWM values are predicted sequence-match scores, not observed binding or biochemical affinity."
-                            .to_string(),
-                    ],
+                    warnings,
                 })
             })
             .collect::<Result<Vec<_>, EngineError>>()?)
@@ -13752,6 +14042,32 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
+        Self::gene_locus_validate_calibration_binding(
+            &request.track_id,
+            resource.calibration_state,
+            resource.calibration_id.as_deref(),
+            resource.calibration_sha256.as_deref(),
+        )?;
+        if (request.calibration_state != GeneLocusRegulatoryCalibrationState::Unspecified
+            && request.calibration_state != resource.calibration_state)
+            || request
+                .calibration_id
+                .as_deref()
+                .is_some_and(|value| Some(value) != resource.calibration_id.as_deref())
+            || request
+                .calibration_sha256
+                .as_deref()
+                .is_some_and(|value| Some(value) != resource.calibration_sha256.as_deref())
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "External regulatory score track '{}' calibration binding differs from its resource",
+                    request.track_id
+                ),
+                cause_chain: vec![],
+            });
+        }
         let payload_sha256 = Self::gene_locus_external_score_payload_sha256(&resource)?;
         if resource.score_payload_sha256 != payload_sha256 {
             return Err(EngineError {
@@ -13783,6 +14099,36 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
+        let source_factor_binding = if request.source_factor_bindings.is_empty() {
+            None
+        } else if request.source_factor_bindings.len() == 1 {
+            let binding = &request.source_factor_bindings[0];
+            let source_matches = binding.source_id.eq_ignore_ascii_case(&resource.model_id)
+                || request
+                    .source_ids
+                    .iter()
+                    .any(|source_id| binding.source_id.eq_ignore_ascii_case(source_id));
+            if !source_matches || binding.factors != resource.factors {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "External regulatory score track '{}' source_factor_binding differs from its resource",
+                        request.track_id
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            Some(binding)
+        } else {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "External regulatory score track '{}' accepts at most one source_factor_binding",
+                    request.track_id
+                ),
+                cause_chain: vec![],
+            });
+        };
         if resource.window_length_bp == 0 || resource.stride_bp == 0 {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
@@ -14057,7 +14403,9 @@ impl GentleEngine {
             provider_kind: GeneLocusRegulatoryScoreProviderKind::ExternalModelScores,
             provider_id: resource.model_id.clone(),
             provider_version: resource.model_version.clone(),
-            factors: if request.factors.is_empty() {
+            factors: if let Some(binding) = source_factor_binding {
+                binding.factors.clone()
+            } else if request.factors.is_empty() {
                 resource.factors.clone()
             } else {
                 request.factors.clone()
@@ -14082,15 +14430,10 @@ impl GentleEngine {
             score_directionality: resource.score_directionality.clone(),
             theoretical_min: resource.theoretical_min,
             theoretical_max: resource.theoretical_max,
-            calibration_status: if resource
-                .calibration_statement
-                .to_ascii_lowercase()
-                .contains("uncalibrated")
-            {
-                "provider_declared_uncalibrated".to_string()
-            } else {
-                "provider_declared".to_string()
-            },
+            calibration_status: resource.calibration_state.as_str().to_string(),
+            calibration_state: resource.calibration_state,
+            calibration_id: resource.calibration_id.clone(),
+            calibration_sha256: resource.calibration_sha256.clone(),
             calibration_statement: Some(resource.calibration_statement.clone()),
             track_start_0based: resource
                 .track_start_0based
@@ -14153,33 +14496,36 @@ impl GentleEngine {
                     ),
                     cause_chain: vec![],
                 })?;
-            let calibration_statement = first
-                .calibration_statement
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .ok_or_else(|| EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: format!(
-                        "Regulatory score scale group '{group}' lacks a calibration statement"
-                    ),
-                    cause_chain: vec![],
-                })?;
             for index in &indices {
                 let track = &tracks[*index];
-                let compatible = track.provider_kind == first.provider_kind
-                    && track.score_kind == first.score_kind
+                let same_semantics = track.score_kind == first.score_kind
                     && track.score_units == first.score_units
-                    && track.calibration_status == first.calibration_status
-                    && track.calibration_statement.as_deref().map(str::trim)
-                        == Some(calibration_statement)
+                    && track.score_directionality == first.score_directionality;
+                let same_source = track.provider_kind == first.provider_kind
+                    && track.provider_id == first.provider_id
+                    && track.provider_version == first.provider_version
+                    && track.source_ids == first.source_ids;
+                let same_source_calibration = same_source
+                    && track.calibration_state == first.calibration_state
+                    && track.calibration_id == first.calibration_id
+                    && track.calibration_sha256 == first.calibration_sha256;
+                let shared_calibration = track.calibration_state
+                    == GeneLocusRegulatoryCalibrationState::CrossSourceCalibrated
+                    && first.calibration_state
+                        == GeneLocusRegulatoryCalibrationState::CrossSourceCalibrated
+                    && track.calibration_id.is_some()
+                    && track.calibration_id == first.calibration_id
+                    && track.calibration_sha256.is_some()
+                    && track.calibration_sha256 == first.calibration_sha256;
+                let compatible = same_semantics
+                    && (same_source_calibration || shared_calibration)
                     && track.shared_scale_justification.as_deref().map(str::trim)
                         == Some(justification);
                 if !compatible {
                     return Err(EngineError {
                         code: ErrorCode::InvalidInput,
                         message: format!(
-                            "Regulatory score scale group '{group}' mixes providers, score semantics, calibration, or justification"
+                            "Regulatory score scale group '{group}' mixes score semantics or source identities without one exact cross-source calibration binding"
                         ),
                         cause_chain: vec![],
                     });
@@ -14386,11 +14732,16 @@ impl GentleEngine {
         for group in &occupancy_groups {
             for lane in &group.lanes {
                 provenance.push(GeneIsoformEvidenceProvenanceSource {
-                    source_kind: "projected_occupancy_track".to_string(),
-                    source_id: lane.lane.lane_id.clone(),
+                    source_kind: if lane.state == GeneLocusOccupancyLaneState::Available {
+                        "projected_occupancy_track"
+                    } else {
+                        "requested_occupancy_track"
+                    }
+                    .to_string(),
+                    source_id: lane.source_id.clone(),
                     schema: None,
                     path: lane.lane.source_path.clone(),
-                    sha256: None,
+                    sha256: lane.source_sha256.clone(),
                 });
             }
         }
@@ -14776,6 +15127,7 @@ impl GentleEngine {
             });
         }
         let mut imported_tracks = Vec::new();
+        let mut local_track_names = BTreeSet::new();
         for source in &request.local_tracks {
             if source.path.trim().is_empty() || source.track_name.trim().is_empty() {
                 return Err(EngineError {
@@ -14799,38 +15151,27 @@ impl GentleEngine {
                     cause_chain: vec![],
                 });
             }
-            let dna = self
-                .state
-                .sequences
-                .get_mut(&seq_id)
-                .ok_or_else(|| EngineError {
-                    code: ErrorCode::NotFound,
-                    message: format!("Sequence '{seq_id}' disappeared during preparation"),
+            if !local_track_names.insert(source.track_name.trim().to_ascii_lowercase()) {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Gene-locus preparation requires unique local track_name values; '{}' is duplicated",
+                        source.track_name
+                    ),
                     cause_chain: vec![],
-                })?;
-            let import = match source.source_kind {
-                GeneLocusEvidenceTrackSourceKind::Bed => Self::import_genome_bed_track(
-                    dna,
-                    &anchor,
-                    &source.path,
-                    Some(&source.track_name),
-                    source.min_score,
-                    source.max_score,
-                    source.clear_existing,
-                    None,
-                )?,
-                GeneLocusEvidenceTrackSourceKind::BigWig => Self::import_genome_bigwig_track(
-                    dna,
-                    &anchor,
-                    &source.path,
-                    Some(&source.track_name),
-                    source.min_score,
-                    source.max_score,
-                    source.clear_existing,
-                    None,
-                )?,
-            };
-            result.warnings.extend(import.warnings.clone());
+                });
+            }
+            if source
+                .source_id
+                .as_deref()
+                .is_some_and(|value| value.trim().is_empty())
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("Local track '{}' has an empty source_id", source.track_name),
+                    cause_chain: vec![],
+                });
+            }
             let source_sha256 =
                 crate::digest_utils::sha256_file_hex(std::path::Path::new(&source.path))
                     .map(|digest| format!("sha256:{digest}"))
@@ -14839,6 +15180,75 @@ impl GentleEngine {
                         message: format!("Could not digest local track '{}': {error}", source.path),
                         cause_chain: vec![],
                     })?;
+            let source_id = source.source_id.clone().unwrap_or_else(|| {
+                let digest = source_sha256
+                    .rsplit(':')
+                    .next()
+                    .unwrap_or(&source_sha256)
+                    .chars()
+                    .take(12)
+                    .collect::<String>();
+                format!(
+                    "{}@{}",
+                    Self::isoform_evidence_id_token(&source.track_name),
+                    digest
+                )
+            });
+            let assembly_mismatch = source.assembly.as_deref().is_some_and(|assembly| {
+                !Self::gene_locus_assembly_labels_compatible(assembly, &request.assembly)
+            });
+            let import = if assembly_mismatch {
+                result.warnings.push(format!(
+                    "Local track '{}' declares assembly '{}' and was retained without projection against '{}'.",
+                    source.track_name,
+                    source.assembly.as_deref().unwrap_or(""),
+                    request.assembly
+                ));
+                GenomeBedTrackImportReport {
+                    track_name: source.track_name.clone(),
+                    ..Default::default()
+                }
+            } else {
+                let dna = self
+                    .state
+                    .sequences
+                    .get_mut(&seq_id)
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("Sequence '{seq_id}' disappeared during preparation"),
+                        cause_chain: vec![],
+                    })?;
+                match source.source_kind {
+                    GeneLocusEvidenceTrackSourceKind::Bed => Self::import_genome_bed_track(
+                        dna,
+                        &anchor,
+                        &source.path,
+                        Some(&source.track_name),
+                        source.min_score,
+                        source.max_score,
+                        source.clear_existing,
+                        None,
+                    )?,
+                    GeneLocusEvidenceTrackSourceKind::BigWig => Self::import_genome_bigwig_track(
+                        dna,
+                        &anchor,
+                        &source.path,
+                        Some(&source.track_name),
+                        source.min_score,
+                        source.max_score,
+                        source.clear_existing,
+                        None,
+                    )?,
+                }
+            };
+            result.warnings.extend(import.warnings.clone());
+            let state = if assembly_mismatch {
+                GeneLocusOccupancyLaneState::AssemblyMismatch
+            } else if import.imported_features > 0 {
+                GeneLocusOccupancyLaneState::Available
+            } else {
+                GeneLocusOccupancyLaneState::NoCompatibleInterval
+            };
             imported_tracks.push(GeneLocusEvidencePreparedTrack {
                 source_kind: match source.source_kind {
                     GeneLocusEvidenceTrackSourceKind::Bed => "bed",
@@ -14846,6 +15256,15 @@ impl GentleEngine {
                 }
                 .to_string(),
                 track_name: import.track_name,
+                source_id,
+                state,
+                assembly: source
+                    .assembly
+                    .clone()
+                    .or_else(|| Some(request.assembly.clone())),
+                assay: source.assay.clone(),
+                mark: source.mark.clone(),
+                factor: source.factor.clone(),
                 path: request
                     .include_local_source_paths
                     .then(|| source.path.clone()),
@@ -14857,6 +15276,70 @@ impl GentleEngine {
         if !request.local_tracks.is_empty() && !result.changed_seq_ids.contains(&seq_id) {
             result.changed_seq_ids.push(seq_id.clone());
         }
+        let mut occupancy_layout = request.occupancy_layout.clone();
+        for group in &mut occupancy_layout.groups {
+            for lane in &mut group.lanes {
+                let Some(prepared) = imported_tracks
+                    .iter()
+                    .find(|track| track.track_name.eq_ignore_ascii_case(&lane.track_name))
+                else {
+                    continue;
+                };
+                if lane
+                    .source_id
+                    .as_deref()
+                    .is_some_and(|value| value != prepared.source_id)
+                    || lane
+                        .source_sha256
+                        .as_deref()
+                        .is_some_and(|value| value != prepared.sha256)
+                    || lane
+                        .source_assembly
+                        .as_deref()
+                        .zip(prepared.assembly.as_deref())
+                        .is_some_and(|(left, right)| {
+                            !Self::gene_locus_assembly_labels_compatible(left, right)
+                        })
+                    || lane
+                        .assay
+                        .as_deref()
+                        .zip(prepared.assay.as_deref())
+                        .is_some_and(|(left, right)| !left.eq_ignore_ascii_case(right))
+                    || lane
+                        .mark
+                        .as_deref()
+                        .zip(prepared.mark.as_deref())
+                        .is_some_and(|(left, right)| !left.eq_ignore_ascii_case(right))
+                    || lane
+                        .factor
+                        .as_deref()
+                        .zip(prepared.factor.as_deref())
+                        .is_some_and(|(left, right)| !left.eq_ignore_ascii_case(right))
+                {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Occupancy lane '{}' source identity conflicts with the prepared local track",
+                            lane.track_name
+                        ),
+                        cause_chain: vec![],
+                    });
+                }
+                lane.source_id = Some(prepared.source_id.clone());
+                lane.source_sha256 = Some(prepared.sha256.clone());
+                lane.source_assembly = prepared.assembly.clone();
+                lane.source_state = Some(prepared.state);
+                if lane.assay.is_none() {
+                    lane.assay = prepared.assay.clone();
+                }
+                if lane.mark.is_none() {
+                    lane.mark = prepared.mark.clone();
+                }
+                if lane.factor.is_none() {
+                    lane.factor = prepared.factor.clone();
+                }
+            }
+        }
         let display_request = GeneLocusEvidenceDisplayRequest {
             isoform_evidence: GeneIsoformEvidenceRequest {
                 panel_id: panel_id.clone(),
@@ -14865,7 +15348,7 @@ impl GentleEngine {
             },
             upstream_bp: request.display_upstream_bp,
             downstream_bp: request.display_downstream_bp,
-            occupancy_layout: request.occupancy_layout.clone(),
+            occupancy_layout,
             regulatory_score_tracks: request.regulatory_score_tracks.clone(),
             scale_bar: request.scale_bar.clone(),
             include_local_source_paths: request.include_local_source_paths,
@@ -14909,6 +15392,7 @@ impl GentleEngine {
             nested.include_local_source_paths = request.include_local_source_paths;
             nested.locus_evidence_request = Some(display_request.clone());
             let mut report = self.compare_promoter_reporter_architectures(nested)?;
+            report.locus_evidence = Some(display_report.clone());
             report.op_id = Some(result.op_id.clone());
             report.svg_path = Some(if request.include_local_source_paths {
                 request.svg_path.clone()
@@ -15069,7 +15553,7 @@ impl GentleEngine {
             transcript_ids,
             genome_anchor,
             imported_tracks,
-            occupancy_layout: request.occupancy_layout.clone(),
+            occupancy_layout: display_request.occupancy_layout.clone(),
             regulatory_track_ids: display_report
                 .regulatory_score_tracks
                 .iter()
@@ -15105,6 +15589,9 @@ impl GentleEngine {
                     source_ids: track.source_ids.clone(),
                     score_kind: track.score_kind.clone(),
                     calibration_status: track.calibration_status.clone(),
+                    calibration_state: track.calibration_state,
+                    calibration_id: track.calibration_id.clone(),
+                    calibration_sha256: track.calibration_sha256.clone(),
                     request_sha256: track.request_sha256.clone(),
                     source_sha256: track.source_sha256.clone(),
                     output_sha256: track.output_sha256.clone(),
@@ -15639,6 +16126,67 @@ mod gene_locus_probe_effect_tests {
     }
 
     #[test]
+    fn regulatory_shared_scales_require_source_identity_or_exact_calibration_binding() {
+        let track =
+            |track_id: &str, matrix_id: &str, scale_max: f64| GeneLocusRegulatoryScoreTrack {
+                track_id: track_id.to_string(),
+                provider_kind: GeneLocusRegulatoryScoreProviderKind::JasparPwm,
+                provider_id: "local_jaspar_registry".to_string(),
+                provider_version: Some(matrix_id.to_string()),
+                source_ids: vec![matrix_id.to_string()],
+                score_kind: "llr_bits".to_string(),
+                score_units: "bits".to_string(),
+                score_directionality: "higher_is_stronger_sequence_match".to_string(),
+                calibration_state: GeneLocusRegulatoryCalibrationState::MatrixSpecific,
+                calibration_status: "matrix_specific".to_string(),
+                calibration_statement: Some("same descriptive prose".to_string()),
+                scale_mode: GeneLocusRegulatoryScoreScaleMode::SharedGroup,
+                scale_group: Some("comparison".to_string()),
+                shared_scale_justification: Some("synthetic test".to_string()),
+                display_scale_min: 0.0,
+                display_scale_max: scale_max,
+                ..Default::default()
+            };
+
+        let mut different_matrices = vec![
+            track("tp73", "MA0861.2", 8.0),
+            track("sp1", "MA0079.5", 12.0),
+        ];
+        let error =
+            GentleEngine::gene_locus_apply_regulatory_shared_scales(&mut different_matrices)
+                .expect_err("descriptive strings must not authorize cross-matrix scaling");
+        assert!(error.message.contains("source identities"));
+
+        let mut same_matrix = vec![
+            track("tp73_a", "MA0861.2", 8.0),
+            track("tp73_b", "MA0861.2", 12.0),
+        ];
+        GentleEngine::gene_locus_apply_regulatory_shared_scales(&mut same_matrix)
+            .expect("the exact same matrix and score semantics may share a scale");
+        assert!(
+            same_matrix
+                .iter()
+                .all(|track| track.display_scale_max == 12.0)
+        );
+
+        let calibration_id = "synthetic-cross-matrix-calibration".to_string();
+        let calibration_sha256 = format!("sha256:{}", "c".repeat(64));
+        for track in &mut different_matrices {
+            track.calibration_state = GeneLocusRegulatoryCalibrationState::CrossSourceCalibrated;
+            track.calibration_status = "cross_source_calibrated".to_string();
+            track.calibration_id = Some(calibration_id.clone());
+            track.calibration_sha256 = Some(calibration_sha256.clone());
+        }
+        GentleEngine::gene_locus_apply_regulatory_shared_scales(&mut different_matrices)
+            .expect("one exact typed calibration binding may authorize shared scaling");
+        assert!(
+            different_matrices
+                .iter()
+                .all(|track| track.display_scale_max == 12.0)
+        );
+    }
+
+    #[test]
     fn external_regulatory_scores_require_exact_sequence_and_anchor_binding() {
         let temp = tempfile::tempdir().expect("temporary external-score directory");
         let path = temp.path().join("scores.json");
@@ -15677,6 +16225,7 @@ mod gene_locus_probe_effect_tests {
             score_kind: "uncalibrated_model_score".to_string(),
             score_units: "arbitrary_units".to_string(),
             score_directionality: "higher_is_stronger_model_prediction".to_string(),
+            calibration_state: GeneLocusRegulatoryCalibrationState::ProviderDeclaredUncalibrated,
             calibration_statement:
                 "Uncalibrated synthetic model prediction; not measured binding or affinity."
                     .to_string(),
@@ -15729,6 +16278,11 @@ mod gene_locus_probe_effect_tests {
             )
             .expect("load exactly bound external score track");
         assert_eq!(track.provider_id, "synthetic-regulatory-model");
+        assert_eq!(
+            track.calibration_state,
+            GeneLocusRegulatoryCalibrationState::ProviderDeclaredUncalibrated
+        );
+        assert_eq!(track.calibration_status, "provider_declared_uncalibrated");
         assert_eq!(track.sites.len(), 1);
         assert_eq!(track.sites[0].strand, "-");
 

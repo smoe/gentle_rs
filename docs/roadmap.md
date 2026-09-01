@@ -1,10 +1,10 @@
 # GENtle Roadmap
 
-Last session: 2026-08-31 - added the read-only, transcript-aware
-promoter-reporter architecture comparison and pinned SERPINE1 acceptance
-fixture on the generalized evidence-guided reporter contract; final
-exact-revision PATZ1 GUI, benchmark, and copied-state acceptance remain before
-the unreleased
+Last session: 2026-09-01 - composed transcript-aware promoter-reporter plans
+with the canonical locus-evidence figure, retained unavailable occupancy lanes
+as typed portable rows, and made shared regulatory-score scales depend on exact
+typed source/calibration bindings; final exact-revision PATZ1 GUI, benchmark,
+and copied-state acceptance remain before the unreleased
 `v0.1.0-internal.10` tag
 
 Purpose: fast session orientation. This file answers "what next?" and should be
@@ -346,8 +346,9 @@ wet-lab conclusions or unconfirmed mutations.
   are stable enough for a validated walkthrough.
 - Bind the transcript-aware SERPINE1 architecture comparison to the actual
   laboratory insert/vector sequence and prepared Rostock CUT&RUN manifests
-  before any construct assignment, occupancy comparison, or materialization;
-  retain absent local lanes as `unevaluated`/`not_prepared` meanwhile.
+  before any construct assignment, occupancy comparison, or materialization.
+  The public pinned SERPINE1 plus clearly synthetic evidence test proves the
+  integrated presentation only; it does not substitute for those materials.
 - Primer-walking support and iterative read/contig data management.
 - Helper-construct terminology migration away from legacy "helper genome"
   wording.

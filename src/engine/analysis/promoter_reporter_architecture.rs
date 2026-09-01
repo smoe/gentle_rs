@@ -1757,6 +1757,7 @@ mod tests {
             .as_array()
             .expect("SERPINE1 transcripts");
         assert_eq!(transcripts.len(), 15);
+        let mut panel_isoforms = Vec::with_capacity(transcripts.len());
         for transcript in transcripts {
             let transcript_id = transcript["id"].as_str().expect("versioned transcript id");
             let display_name = transcript["display_name"]
@@ -1820,7 +1821,65 @@ mod tests {
                 "SERPINE1",
                 false,
             ));
+            panel_isoforms.push(IsoformPanelIsoformSpec {
+                isoform_id: transcript_id.to_string(),
+                label: Some(display_name.to_string()),
+                transcript_ids: vec![transcript_id.to_string()],
+                annotation_transcript_id: Some(transcript_id.to_string()),
+                transcript_strand: Some("+".to_string()),
+                transcript_biotype: transcript["biotype"].as_str().map(str::to_string),
+                annotation_is_canonical: Some(transcript["is_canonical"].as_u64() == Some(1)),
+                exon_ranges_genomic_1based: transcript["exons"]
+                    .as_array()
+                    .expect("transcript exons")
+                    .iter()
+                    .map(|exon| IsoformPanelAnnotationRange {
+                        start_1based: exon["start_1based"].as_u64().expect("exon start") as usize,
+                        end_1based: exon["end_1based"].as_u64().expect("exon end") as usize,
+                        exon_id: exon["id"].as_str().map(str::to_string),
+                        ..Default::default()
+                    })
+                    .collect(),
+                cds_ranges_genomic_1based: cds_ranges
+                    .iter()
+                    .map(|(start, end)| IsoformPanelAnnotationRange {
+                        start_1based: region_start + start,
+                        end_1based: region_start + end - 1,
+                        ..Default::default()
+                    })
+                    .collect(),
+                coding_start_status: Some("annotation_translation_boundary".to_string()),
+                coding_completeness_status: Some("not_reported_by_ensembl_lookup".to_string()),
+                annotation_provenance: Some(
+                    "Pinned Ensembl 116 expanded SERPINE1 lookup projection".to_string(),
+                ),
+                ..Default::default()
+            });
         }
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "track".into(),
+            location: gb_io::seq::Location::simple_range(6_900, 7_300),
+            qualifiers: vec![
+                (
+                    "label".into(),
+                    Some("synthetic SERPINE1 occupancy".to_string()),
+                ),
+                ("score".into(), Some("9.5".to_string())),
+                ("gentle_track_source".into(), Some("BED".to_string())),
+                (
+                    "gentle_generated".into(),
+                    Some("genome_bed_track".to_string()),
+                ),
+                (
+                    "gentle_track_name".into(),
+                    Some("Synthetic SERPINE1 CUT&RUN".to_string()),
+                ),
+                (
+                    "gentle_track_file".into(),
+                    Some("synthetic://serpine1-occupancy".to_string()),
+                ),
+            ],
+        });
         GentleEngine::prepare_sequence(&mut dna);
         let mut state = ProjectState::default();
         state
@@ -1860,7 +1919,28 @@ mod tests {
                 }]
             }),
         );
-        GentleEngine::from_state(state)
+        let mut engine = GentleEngine::from_state(state);
+        engine
+            .upsert_isoform_panel_record(IsoformPanelRecord {
+                seq_id: "serpine1_ensembl116".to_string(),
+                panel_id: "serpine1_ensembl116_panel".to_string(),
+                imported_at_unix_ms: 1,
+                source_path:
+                    "test_files/fixtures/promoter_reporter_architecture/ensembl_116_serpine1_geometry.json"
+                        .to_string(),
+                strict: false,
+                resource: IsoformPanelResource {
+                    schema: ISOFORM_PANEL_RESOURCE_SCHEMA.to_string(),
+                    panel_id: "serpine1_ensembl116_panel".to_string(),
+                    gene_symbol: "SERPINE1".to_string(),
+                    assembly: Some("GRCh38 Ensembl 116".to_string()),
+                    source: Some("Pinned Ensembl 116 acceptance fixture".to_string()),
+                    isoforms: panel_isoforms,
+                    ..Default::default()
+                },
+            })
+            .expect("register pinned SERPINE1 panel");
+        engine
     }
 
     #[test]
@@ -1951,6 +2031,40 @@ mod tests {
                     promoter_upstream_bp: 1_000,
                     tss_proximal_downstream_bp: 200,
                     tss_cluster_tolerance_bp: 600,
+                    locus_evidence_request: Some(GeneLocusEvidenceDisplayRequest {
+                        isoform_evidence: GeneIsoformEvidenceRequest {
+                            panel_id: "serpine1_ensembl116_panel".to_string(),
+                            annotation_release: Some("Ensembl 116".to_string()),
+                            ..Default::default()
+                        },
+                        upstream_bp: 1_000,
+                        downstream_bp: 500,
+                        occupancy_layout: GeneLocusOccupancyLayout {
+                            schema: GENE_LOCUS_OCCUPANCY_LAYOUT_SCHEMA.to_string(),
+                            groups: vec![GeneLocusOccupancyGroupRequest {
+                                group_id: "synthetic_serpine1_occupancy".to_string(),
+                                label: "Synthetic SERPINE1 evidence".to_string(),
+                                scale_mode: GeneLocusOccupancyScaleMode::Independent,
+                                lanes: vec![GeneLocusOccupancyLaneRequest {
+                                    track_name: "Synthetic SERPINE1 CUT&RUN".to_string(),
+                                    source_id: Some(
+                                        "synthetic:serpine1:cutrun:acceptance".to_string(),
+                                    ),
+                                    source_assembly: Some("GRCh38 Ensembl 116".to_string()),
+                                    assay: Some("CUT&RUN".to_string()),
+                                    factor: Some("SERPINE1".to_string()),
+                                    role: GeneLocusOccupancyLaneRole::Experimental,
+                                    ..Default::default()
+                                }],
+                                ..Default::default()
+                            }],
+                        },
+                        scale_bar: GeneLocusScaleBarPolicy {
+                            mode: GeneLocusScaleBarMode::Auto,
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    }),
                     ..Default::default()
                 },
             )
@@ -2012,6 +2126,26 @@ mod tests {
             report.source_provenance.annotation_sha1.as_deref(),
             Some("3780869ba4fd35e654ad27a5b9be332a3011d232")
         );
+        let locus_evidence = report
+            .locus_evidence
+            .as_ref()
+            .expect("SERPINE1 reporter comparison should carry the composed locus evidence");
+        let occupancy_lane = &locus_evidence.occupancy_groups[0].lanes[0];
+        assert_eq!(occupancy_lane.state, GeneLocusOccupancyLaneState::Available);
+        assert_eq!(occupancy_lane.assay.as_deref(), Some("CUT&RUN"));
+        let combined_svg =
+            crate::render_promoter_reporter_architecture::render_promoter_reporter_architecture_svg(
+                &report,
+            );
+        assert!(
+            combined_svg
+                .contains("data-gentle-overlay-id=\"promoter_reporter_architecture_comparison\"")
+        );
+        assert!(
+            combined_svg
+                .contains("data-gentle-occupancy-source=\"synthetic:serpine1:cutrun:acceptance\"")
+        );
+        assert!(combined_svg.contains("data-gentle-transcript=\"ENST00000223095.5\""));
         if let Some(output_dir) = std::env::var_os("GENTLE_SERPINE1_REPORTER_ARTIFACT_DIR") {
             let output_dir = std::path::PathBuf::from(output_dir);
             std::fs::create_dir_all(&output_dir).expect("create SERPINE1 artifact directory");

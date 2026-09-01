@@ -74,6 +74,14 @@ retaining source digests. Set `include_local_source_paths=true` only for a
 deliberately machine-local artifact. The lower-level inspection command offers
 the equivalent explicit `--include-local-source-paths` opt-in.
 
+Every requested occupancy or chromatin lane should declare a stable
+`source_id`; preparation also binds the file SHA-256. Optional `assembly`,
+`assay`, `mark`, and `factor` fields make source identity independent of the
+display label. GENtle retains the row even when it cannot draw intervals, using
+the typed state `not_prepared`, `no_compatible_interval`, or
+`assembly_mismatch`. Only `available` means compatible projected intervals were
+found; the other states are not evidence of absent occupancy.
+
 ## Lower-level project preparation
 
 These commands expose the same individual operations when each step should be
@@ -166,15 +174,21 @@ An `external_model_scores` entry points to a
 `gentle.gene_locus_external_regulatory_scores.v1` JSON file. The file must bind
 structured values/sites to the exact sequence digest, assembly, chromosome,
 anchor, coordinate convention, model snapshot, request/schema digests, output
-digest, score semantics, and calibration statement. Mismatches fail the whole
-composition before rendering; model prose is not accepted as a score track.
-Forward and reverse values remain separate in the report and SVG.
+digest, score semantics, and typed calibration state. Mismatches fail the whole
+composition before rendering; model or calibration prose is not accepted as a
+score track or policy. Forward and reverse values remain separate in the
+report and SVG.
 
 Each predicted-score track is independently scaled by default. Shared score
-scaling requires one declared group, identical provider/score/calibration
-semantics, and the same explicit comparability justification. Different
-providers or uncalibrated matrices must not be numerically compared or labelled
-as affinity.
+scaling requires one declared group, identical score semantics, and the same
+explicit comparability justification. Rows from the same exact
+provider/model/matrix identity may share their source-specific calibration.
+Different matrices, models, or providers require
+`calibration_state=cross_source_calibrated` and the exact same non-empty
+`calibration_id` and `calibration_sha256`; matching prose is deliberately
+insufficient. Use `source_factor_bindings[]` for a multi-matrix request so each
+resolved source receives only its own factor identity. Uncalibrated matrices
+must not be numerically compared or labelled as affinity.
 
 For a quick ungrouped inspection, repeat `--occupancy-track NAME` instead of
 using `--occupancy-layout`; `--occupancy-track '*'` includes every projected
@@ -246,6 +260,9 @@ planning actions and do not turn a displayed association into validation.
   scientifically appropriate;
 - JSON report, occupancy-layout JSON, and SVG retained together;
 - external score resources retain exact sequence/request/payload digests and
-  model/calibration provenance;
+  model/calibration provenance, including typed calibration state and any
+  explicit calibration id/digest;
+- requested occupancy rows retain stable source identity and a typed
+  availability state, including when no interval is rendered;
 - independently scaled or differently calibrated TF score tracks are not
   ranked against one another.

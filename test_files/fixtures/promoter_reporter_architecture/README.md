@@ -43,8 +43,11 @@ the upstream URLs, release, assembly, and raw-response hashes.
 an offline acceptance test. The test rebuilds an annotated locus, binds the
 GRCh38 interval and source hashes as extraction provenance, and verifies the
 observed TSS classes, common CDS start, and representative 5-prime-UTR/intron
-geometry. It does not claim cell-context promoter use or contain CUT&RUN
-evidence.
+geometry. The harness also derives the ordinary annotation panel and adds one
+clearly labeled, hand-crafted synthetic CUT&RUN-style interval. This verifies
+that the public SERPINE1 reporter architectures and locus evidence share one
+canonical figure without presenting the synthetic interval as experimental
+Rostock data or claiming cell-context promoter use.
 
 To emit a deterministic, inspectable report/SVG pair while running only that
 acceptance test:

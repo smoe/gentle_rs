@@ -76,11 +76,43 @@ pub enum GeneLocusOccupancyLaneRole {
     Other,
 }
 
+/// Whether one requested occupancy/chromatin lane could be evaluated.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GeneLocusOccupancyLaneState {
+    #[default]
+    Available,
+    NotPrepared,
+    NoCompatibleInterval,
+    AssemblyMismatch,
+}
+
+impl GeneLocusOccupancyLaneState {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Available => "available",
+            Self::NotPrepared => "not_prepared",
+            Self::NoCompatibleInterval => "no_compatible_interval",
+            Self::AssemblyMismatch => "assembly_mismatch",
+        }
+    }
+}
+
 /// One projected track and its explicitly declared figure role.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default)]
 pub struct GeneLocusOccupancyLaneRequest {
     pub track_name: String,
+    /// Stable source identity independent of a local display name or path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_sha256: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_assembly: Option<String>,
+    /// Optional preparation outcome supplied by an engine-owned composer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_state: Option<GeneLocusOccupancyLaneState>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display_label: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -89,6 +121,12 @@ pub struct GeneLocusOccupancyLaneRequest {
     pub cell_line_label: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub batch_label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assay: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mark: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub factor: Option<String>,
     pub role: GeneLocusOccupancyLaneRole,
 }
 
@@ -184,6 +222,32 @@ pub enum GeneLocusRegulatoryScoreState {
     NotAssessable,
 }
 
+/// Typed calibration status; descriptive prose is never parsed as policy.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GeneLocusRegulatoryCalibrationState {
+    #[default]
+    Unspecified,
+    MatrixSpecific,
+    ProviderDeclaredUncalibrated,
+    ProviderDeclaredCalibrated,
+    /// Different score sources may share a scale only when an exact
+    /// `calibration_id` and `calibration_sha256` bind them.
+    CrossSourceCalibrated,
+}
+
+impl GeneLocusRegulatoryCalibrationState {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Unspecified => "unspecified",
+            Self::MatrixSpecific => "matrix_specific",
+            Self::ProviderDeclaredUncalibrated => "provider_declared_uncalibrated",
+            Self::ProviderDeclaredCalibrated => "provider_declared_calibrated",
+            Self::CrossSourceCalibrated => "cross_source_calibrated",
+        }
+    }
+}
+
 /// Explicit factor identity carried independently of display labels and paths.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
@@ -191,6 +255,15 @@ pub struct GeneLocusRegulatoryFactor {
     pub factor_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub factor_label: Option<String>,
+}
+
+/// Factors bound to one exact matrix/model source in a multi-source request.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneLocusRegulatorySourceFactorBinding {
+    pub source_id: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub factors: Vec<GeneLocusRegulatoryFactor>,
 }
 
 /// One independently configured predicted regulatory-score request.
@@ -208,11 +281,19 @@ pub struct GeneLocusRegulatoryScoreTrackRequest {
     pub source_path: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub factors: Vec<GeneLocusRegulatoryFactor>,
+    /// Preferred for requests resolving more than one matrix/model source.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub source_factor_bindings: Vec<GeneLocusRegulatorySourceFactorBinding>,
     pub score_kind: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub score_units: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub calibration_statement: Option<String>,
+    pub calibration_state: GeneLocusRegulatoryCalibrationState,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub calibration_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub calibration_sha256: Option<String>,
     pub strand_policy: GeneLocusRegulatoryScoreStrandPolicy,
     pub clip_negative: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -242,9 +323,13 @@ impl Default for GeneLocusRegulatoryScoreTrackRequest {
             source_ids: vec![],
             source_path: None,
             factors: vec![],
+            source_factor_bindings: vec![],
             score_kind: default_locus_motif_score_kind(),
             score_units: None,
             calibration_statement: None,
+            calibration_state: GeneLocusRegulatoryCalibrationState::Unspecified,
+            calibration_id: None,
+            calibration_sha256: None,
             strand_policy: GeneLocusRegulatoryScoreStrandPolicy::Both,
             clip_negative: true,
             display_threshold: None,
@@ -445,6 +530,12 @@ pub struct GeneIsoformOccupancyLane {
 #[serde(default)]
 pub struct GeneLocusOccupancyLane {
     pub lane: GeneIsoformOccupancyLane,
+    pub state: GeneLocusOccupancyLaneState,
+    pub source_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_sha256: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_assembly: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display_label: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -453,6 +544,12 @@ pub struct GeneLocusOccupancyLane {
     pub cell_line_label: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub batch_label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assay: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mark: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub factor: Option<String>,
     pub role: GeneLocusOccupancyLaneRole,
     pub display_abs_max_score: f64,
 }
@@ -705,6 +802,11 @@ pub struct GeneLocusRegulatoryScoreTrack {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub theoretical_max: Option<f64>,
     pub calibration_status: String,
+    pub calibration_state: GeneLocusRegulatoryCalibrationState,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub calibration_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub calibration_sha256: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub calibration_statement: Option<String>,
     pub track_start_0based: usize,
@@ -765,6 +867,11 @@ pub struct GeneLocusExternalRegulatoryScoreResource {
     pub theoretical_min: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub theoretical_max: Option<f64>,
+    pub calibration_state: GeneLocusRegulatoryCalibrationState,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub calibration_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub calibration_sha256: Option<String>,
     pub calibration_statement: String,
     pub track_start_0based: usize,
     pub forward_scores: Vec<f64>,
@@ -1158,9 +1265,15 @@ mod tests {
                     "scale_mode": "independent",
                     "lanes": [{
                         "track_name": "h3k4me3",
+                        "source_id": "synthetic:h3k4me3",
+                        "source_sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                        "source_assembly": "GRCh38",
+                        "source_state": "not_prepared",
                         "condition_label": "untreated",
                         "cell_line_label": "Saos-2",
                         "batch_label": "batch-1",
+                        "assay": "CUT&RUN",
+                        "mark": "H3K4me3",
                         "role": "chromatin_context"
                     }]
                 }]
@@ -1171,7 +1284,12 @@ mod tests {
                 "provider_kind": "jaspar_pwm",
                 "source_ids": ["MA0861.1"],
                 "factors": [{"factor_id": "TP73", "factor_label": "p73"}],
+                "source_factor_bindings": [{
+                    "source_id": "MA0861.1",
+                    "factors": [{"factor_id": "TP73", "factor_label": "p73"}]
+                }],
                 "score_kind": "llr_bits",
+                "calibration_state": "matrix_specific",
                 "strand_policy": "both",
                 "clip_negative": false,
                 "display_threshold": 2.5,
@@ -1187,12 +1305,27 @@ mod tests {
         assert_eq!(lane.role, GeneLocusOccupancyLaneRole::ChromatinContext);
         assert_eq!(lane.cell_line_label.as_deref(), Some("Saos-2"));
         assert_eq!(lane.batch_label.as_deref(), Some("batch-1"));
+        assert_eq!(lane.source_id.as_deref(), Some("synthetic:h3k4me3"));
+        assert_eq!(
+            lane.source_state,
+            Some(GeneLocusOccupancyLaneState::NotPrepared)
+        );
+        assert_eq!(lane.assay.as_deref(), Some("CUT&RUN"));
+        assert_eq!(lane.mark.as_deref(), Some("H3K4me3"));
         assert_eq!(request.regulatory_score_tracks.len(), 1);
         assert_eq!(
             request.regulatory_score_tracks[0].provider_kind,
             GeneLocusRegulatoryScoreProviderKind::JasparPwm
         );
         assert_eq!(request.regulatory_score_tracks[0].top_hit_count, 7);
+        assert_eq!(
+            request.regulatory_score_tracks[0].calibration_state,
+            GeneLocusRegulatoryCalibrationState::MatrixSpecific
+        );
+        assert_eq!(
+            request.regulatory_score_tracks[0].source_factor_bindings[0].source_id,
+            "MA0861.1"
+        );
         assert_eq!(request.scale_bar.mode, GeneLocusScaleBarMode::Fixed);
         assert_eq!(request.scale_bar.length_bp, Some(1000));
         assert!(request.include_local_source_paths);
@@ -1204,6 +1337,37 @@ mod tests {
         );
         assert_eq!(encoded["scale_bar"]["length_bp"], 1000);
         assert_eq!(encoded["include_local_source_paths"], true);
+    }
+
+    #[test]
+    fn pre_availability_locus_lanes_remain_available_when_state_is_absent() {
+        let lane: GeneLocusOccupancyLane = serde_json::from_value(serde_json::json!({
+            "lane": {
+                "lane_id": "OCC:legacy",
+                "track_name": "legacy projected track",
+                "intervals": [{
+                    "interval_id": "legacy-1",
+                    "local_start_1based": 1,
+                    "local_end_1based": 4
+                }]
+            },
+            "role": "experimental"
+        }))
+        .expect("deserialize pre-availability occupancy lane");
+        assert_eq!(lane.state, GeneLocusOccupancyLaneState::Available);
+
+        let score_request: GeneLocusRegulatoryScoreTrackRequest =
+            serde_json::from_value(serde_json::json!({
+                "track_id": "legacy_jaspar",
+                "provider_kind": "jaspar_pwm",
+                "source_ids": ["MA0861.1"]
+            }))
+            .expect("deserialize pre-calibration score request");
+        assert_eq!(
+            score_request.calibration_state,
+            GeneLocusRegulatoryCalibrationState::Unspecified
+        );
+        assert!(score_request.source_factor_bindings.is_empty());
     }
 
     #[test]

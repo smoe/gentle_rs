@@ -3,8 +3,8 @@
 use gentle_protocol::{
     CrypticSplicingScreenView, CrypticSplicingSignalStatus, FeatureExpertView,
     GeneIsoformEvidenceReport, GeneLocusCodonKind, GeneLocusEvidenceDisplayReport,
-    GeneLocusOccupancyLaneRole, GeneLocusOccupancyScaleMode, GeneLocusProbeClass,
-    GeneLocusProbeEffectContrast, GeneLocusRegulatoryScoreProviderKind,
+    GeneLocusOccupancyLaneRole, GeneLocusOccupancyLaneState, GeneLocusOccupancyScaleMode,
+    GeneLocusProbeClass, GeneLocusProbeEffectContrast, GeneLocusRegulatoryScoreProviderKind,
     GeneLocusRegulatoryScoreTrack, GeneLocusScaleBarMode, IsoformArchitectureExpertView,
     RestrictionSiteExpertView, SplicingExonSummary, SplicingExpertView, SplicingJunctionArc,
     TfbsExpertView,
@@ -5471,14 +5471,36 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
             } else {
                 format!(" | {context}")
             };
+            let assay_context = [
+                lane.assay.as_deref(),
+                lane.mark.as_deref(),
+                lane.factor.as_deref(),
+            ]
+            .into_iter()
+            .flatten()
+            .filter(|value| !value.trim().is_empty())
+            .collect::<Vec<_>>()
+            .join(" / ");
+            let assay_context = if assay_context.is_empty() {
+                String::new()
+            } else {
+                format!(" | {assay_context}")
+            };
+            let state_suffix = if lane.state == GeneLocusOccupancyLaneState::Available {
+                String::new()
+            } else {
+                format!(" | {}", lane.state.as_str())
+            };
             doc = doc
                 .add(
                     Text::new(format!(
-                        "{}{}{} ({})",
+                        "{}{}{}{} ({}){}",
                         isoform_evidence_compact_label(label, 30),
                         condition,
                         context,
-                        locus_role_label(lane.role)
+                        assay_context,
+                        locus_role_label(lane.role),
+                        state_suffix
                     ))
                     .set("x", 52)
                     .set("y", y + 4.0)
@@ -5494,8 +5516,34 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
                         .set("y2", y)
                         .set("stroke", "#cbd5e1")
                         .set("stroke-width", 1)
+                        .set(
+                            "stroke-dasharray",
+                            if lane.state == GeneLocusOccupancyLaneState::Available {
+                                "1,0"
+                            } else {
+                                "4,3"
+                            },
+                        )
                         .set("data-gentle-occupancy-lane", lane.lane.lane_id.as_str())
                         .set("data-gentle-occupancy-role", locus_role_token(lane.role))
+                        .set("data-gentle-occupancy-state", lane.state.as_str())
+                        .set("data-gentle-occupancy-source", lane.source_id.as_str())
+                        .set(
+                            "data-gentle-occupancy-source-sha256",
+                            lane.source_sha256.as_deref().unwrap_or(""),
+                        )
+                        .set(
+                            "data-gentle-occupancy-assay",
+                            lane.assay.as_deref().unwrap_or(""),
+                        )
+                        .set(
+                            "data-gentle-occupancy-mark",
+                            lane.mark.as_deref().unwrap_or(""),
+                        )
+                        .set(
+                            "data-gentle-occupancy-factor",
+                            lane.factor.as_deref().unwrap_or(""),
+                        )
                         .set(
                             "data-gentle-cell-line",
                             lane.cell_line_label.as_deref().unwrap_or(""),
@@ -5537,12 +5585,16 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
                 );
             }
             doc = doc.add(
-                Text::new(format!("scale {:.3}", lane.display_abs_max_score))
-                    .set("x", metrics_left)
-                    .set("y", y + 4.0)
-                    .set("font-family", "monospace")
-                    .set("font-size", 8)
-                    .set("fill", "#64748b"),
+                Text::new(if lane.state == GeneLocusOccupancyLaneState::Available {
+                    format!("scale {:.3}", lane.display_abs_max_score)
+                } else {
+                    lane.state.as_str().replace('_', " ")
+                })
+                .set("x", metrics_left)
+                .set("y", y + 4.0)
+                .set("font-family", "monospace")
+                .set("font-size", 8)
+                .set("fill", "#64748b"),
             );
             occupancy_y += 29.0;
         }
@@ -5592,6 +5644,12 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
             } else {
                 track.source_ids.join(",")
             };
+            let legacy_motif_id =
+                if track.provider_kind == GeneLocusRegulatoryScoreProviderKind::JasparPwm {
+                    track.source_ids.first().map(String::as_str).unwrap_or("")
+                } else {
+                    ""
+                };
             doc = doc
                 .add(
                     Text::new(format!(
@@ -5627,8 +5685,21 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
                             "data-gentle-regulatory-score-track",
                             track.track_id.as_str(),
                         )
+                        .set("data-gentle-motif-track", legacy_motif_id)
                         .set("data-gentle-regulatory-provider", provider)
-                        .set("data-gentle-score-kind", track.score_kind.as_str()),
+                        .set("data-gentle-score-kind", track.score_kind.as_str())
+                        .set(
+                            "data-gentle-calibration-state",
+                            track.calibration_state.as_str(),
+                        )
+                        .set(
+                            "data-gentle-calibration-id",
+                            track.calibration_id.as_deref().unwrap_or(""),
+                        )
+                        .set(
+                            "data-gentle-calibration-sha256",
+                            track.calibration_sha256.as_deref().unwrap_or(""),
+                        ),
                 )
                 .add(
                     Text::new("F solid | R dashed")
@@ -6716,12 +6787,15 @@ mod tests {
                 }],
                 ..Default::default()
             },
+            state: GeneLocusOccupancyLaneState::Available,
+            source_id: "synthetic:h3k4me3".to_string(),
             display_label: Some("H3K4me3".to_string()),
             condition_label: Some("untreated".to_string()),
             cell_line_label: Some("Saos-2".to_string()),
             batch_label: Some("batch-1".to_string()),
             role: GeneLocusOccupancyLaneRole::ChromatinContext,
             display_abs_max_score: 12.0,
+            ..Default::default()
         };
         let report = GeneLocusEvidenceDisplayReport {
             schema: GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA.to_string(),

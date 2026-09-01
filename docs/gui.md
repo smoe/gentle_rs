@@ -1126,10 +1126,17 @@ Feature tree grouping:
   - regulatory-score JSON may define several JASPAR matrices/TFs and offline
     external-model outputs with independent score semantics and scales. The GUI
     does not numerically compare unlike providers and never labels an
-    uncalibrated prediction as affinity
+    uncalibrated prediction as affinity. Matrix/model-specific factor bindings
+    remain distinct, and only an exact typed cross-source calibration id/digest
+    can authorize a shared scale; descriptive prose cannot
   - H3K4me3 and related marks use the explicit `chromatin_context` lane role,
     visually separate from TF occupancy. Cell line, condition, batch, and
     scaling remain caller-declared rather than inferred from filenames
+  - every explicitly requested occupancy/chromatin lane remains visible even
+    when no interval can be drawn. Dashed rows report `not prepared`, `no
+    compatible interval`, or `assembly mismatch` and retain stable source,
+    assay, mark, and factor metadata, so unavailable evidence is not mistaken
+    for an observed zero signal
   - report JSON, SVG, and PDF exports reuse shared operation/render paths. The
     GUI does not implement a second locus-composition algorithm
   - existing qPCR candidates can open their persisted report or create a

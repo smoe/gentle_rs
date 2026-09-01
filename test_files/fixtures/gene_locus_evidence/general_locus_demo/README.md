@@ -20,13 +20,17 @@ credential, or network-derived payload. The names `LOCUSDEMO`,
 - `tp73_occupancy.bed` is synthetic locus-level TP73 occupancy evidence.
 - `h3k4me3_context.bed` is a separately declared synthetic chromatin-context
   lane. Neither BED file represents a biological experiment.
-- `occupancy_layout.json` assigns explicit roles, condition, cell line, batch,
-  and independent scales. No role is inferred from a filename.
+- `occupancy_layout.json` assigns stable source ids, assembly, assay,
+  mark/factor, roles, condition, cell line, batch, and independent scales. It
+  also requests one deliberately absent SERPINE1 lane so `not_prepared` is
+  visible rather than silently omitted. No role is inferred from a filename.
 - `external_model_scores.json` is a provider-neutral, coordinate-bound set of
-  synthetic forward/reverse model scores and two site calls. No model was run.
+  synthetic forward/reverse model scores and two site calls with the typed
+  `provider_declared_uncalibrated` state. No model was run.
 - `preparation_request.json` composes those sources with two local JASPAR
   requests, a fixed 1000 bp scale bar, and the canonical three-way reporter
-  architecture comparison for both transcripts (six design rows total).
+  architecture comparison for both transcripts (six design rows total), and
+  SVG, PNG, and PDF outputs.
 
 ## Deterministic recreation
 
@@ -51,8 +55,9 @@ executes the typed `PrepareGeneLocusEvidence` operation directly against the
 offline entry without network access or pre-existing project state. The test verifies
 the canonical genome anchor, automatic isoform panel, two transcript/TSS and
 CDS-start classes, explicit occupancy/chromatin roles, normalized JASPAR and
-external-model score tracks, six canonical reporter architecture rows, and
-non-empty combined SVG/PNG exports. The architecture report embeds the same
+external-model score tracks, one explicit unavailable occupancy row, six
+canonical reporter architecture rows, and non-empty combined SVG/PNG/PDF
+exports. The architecture report embeds the same
 normalized locus-evidence report rendered in the figure; no reporter geometry
 is re-derived by the display adapter. Genomically sourced architecture segments
 remain to scale; each red `LUC` block is an explicitly schematic synthetic

@@ -732,6 +732,13 @@ state only after every artifact is written.
 Adapters may present or transport that contract but must not reconstruct the
 biology or reduce approval to a boolean.
 
+Portable locus-evidence composition also fails closed. Every requested
+occupancy/chromatin source remains represented with a typed availability state
+instead of disappearing when unavailable. Predicted regulatory-score rows may
+share a scale across different matrices, models, or providers only through an
+exact typed cross-source calibration id and digest; display labels,
+calibration prose, and matching units are not calibration contracts.
+
 Progress/cancellation contract:
 
 - Engine progress callbacks are cooperative and return `bool`.

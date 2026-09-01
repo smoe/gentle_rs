@@ -4037,7 +4037,16 @@ external coding agent runtime, see:
     offline `gentle.gene_locus_external_regulatory_scores.v1` payloads into one
     renderer-owned shape. Every row binds provider/model, factor/source IDs,
     sequence digest, assembly/anchor, coordinate convention, score semantics,
-    calibration status, strand-specific vectors/sites, scales, and digests.
+    typed calibration state, strand-specific vectors/sites, scales, and
+    digests. Calibration uses `unspecified`, `matrix_specific`,
+    `provider_declared_uncalibrated`, `provider_declared_calibrated`, or
+    `cross_source_calibrated`; descriptive calibration prose is retained for
+    readers but is never parsed as policy. Cross-source shared scaling requires
+    the exact same non-empty `calibration_id` plus `calibration_sha256`, while
+    identical provider/model/matrix sources may share their own scale. A
+    `source_factor_bindings[]` entry binds factors to one exact matrix/model so
+    a multi-matrix request does not copy one ambiguous factor list to every
+    output row.
     Stale sequence/locus bindings fail closed. Legacy `motifs[]` remain
     compatible and normalize to local-JASPAR tracks with historical settings
   - `scale_bar` stores the resolved `hidden`, deterministic `auto`, or exact
@@ -4069,9 +4078,14 @@ external coding agent runtime, see:
     Each group declares `group_id`, label, `scale_mode`
     (`shared_group`, `shared_all`, `independent`, or `fixed`), optional fixed
     scale/comparability rationale, and lanes with exact projected track name,
-    optional display/condition/cell-line/batch labels, and role (`experimental`, `gfp_control`,
-    `input_control`, `igg_control`, `positive_control`, `negative_control`, or
-    `chromatin_context` or `other`)
+    stable source id/digest/assembly, optional assay/mark/factor and
+    display/condition/cell-line/batch labels, and role (`experimental`,
+    `gfp_control`, `input_control`, `igg_control`, `positive_control`,
+    `negative_control`, `chromatin_context`, or `other`). Every explicitly
+    requested lane remains in the portable report with state `available`,
+    `not_prepared`, `no_compatible_interval`, or `assembly_mismatch`; a missing
+    source or non-overlapping interval therefore cannot disappear and look like
+    negative occupancy evidence
   - GENtle never infers cell line, condition, lane role, or cross-group
     comparability from a filename. `shared_all` without an explicit
     `cross_group_scale_justification` is retained but warned about
@@ -4088,7 +4102,12 @@ external coding agent runtime, see:
   - the GUI `Locus figure` tab is a thin client of this same report and shared
     SVG renderer. The deterministic offline example and synthetic fixture are
     `docs/examples/workflows/patz1_gene_locus_evidence_offline.json` and
-    `test_files/fixtures/gene_locus_evidence/patz1_offline_composer/`
+    `test_files/fixtures/gene_locus_evidence/patz1_offline_composer/`. The
+    general offline preparation fixture exercises combined reporter rows,
+    explicit unavailable occupancy, SVG/PNG/PDF, and typed score calibration;
+    a separate pinned public Ensembl-116 SERPINE1 acceptance case composes
+    reporter rows with clearly synthetic locus evidence without claiming
+    experimental promoter use
 - shared-shell UniProt routes:
   - `uniprot fetch QUERY [--entry-id ID]`
     - `QUERY` is a UniProtKB/Swiss-Prot accession or entry name, for example

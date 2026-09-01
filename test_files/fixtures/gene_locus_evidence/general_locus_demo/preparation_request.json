@@ -17,12 +17,20 @@
       "source_kind": "bed",
       "path": "test_files/fixtures/gene_locus_evidence/general_locus_demo/tp73_occupancy.bed",
       "track_name": "TP73 CUT&RUN",
+      "source_id": "synthetic:cutrun:tp73",
+      "assembly": "GRCh38",
+      "assay": "CUT&RUN",
+      "factor": "TP73",
       "clear_existing": false
     },
     {
       "source_kind": "bed",
       "path": "test_files/fixtures/gene_locus_evidence/general_locus_demo/h3k4me3_context.bed",
       "track_name": "H3K4me3 CUT&RUN",
+      "source_id": "synthetic:cutrun:h3k4me3",
+      "assembly": "GRCh38",
+      "assay": "CUT&RUN",
+      "mark": "H3K4me3",
       "clear_existing": false
     }
   ],
@@ -40,6 +48,18 @@
             "condition_label": "TP73",
             "cell_line_label": "Synthetic cells",
             "batch_label": "fixture-batch-1",
+            "role": "experimental"
+          },
+          {
+            "track_name": "SERPINE1 CUT&RUN (not supplied)",
+            "source_id": "synthetic:cutrun:serpine1:not_prepared",
+            "source_assembly": "GRCh38",
+            "display_label": "SERPINE1 CUT&RUN",
+            "condition_label": "requested comparison",
+            "cell_line_label": "Synthetic cells",
+            "batch_label": "not supplied",
+            "assay": "CUT&RUN",
+            "factor": "SERPINE1",
             "role": "experimental"
           }
         ]
@@ -150,6 +170,7 @@
   },
   "svg_path": "target/gene_locus_evidence_demo/general_locus_demo.svg",
   "png_path": "target/gene_locus_evidence_demo/general_locus_demo.png",
+  "pdf_path": "target/gene_locus_evidence_demo/general_locus_demo.pdf",
   "display_report_path": "target/gene_locus_evidence_demo/general_locus_demo.report.json",
   "reporter_report_path": "target/gene_locus_evidence_demo/general_locus_demo.reporter.json",
   "receipt_path": "target/gene_locus_evidence_demo/general_locus_demo.receipt.json",

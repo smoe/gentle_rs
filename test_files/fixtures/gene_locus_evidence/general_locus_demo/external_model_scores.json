@@ -25,6 +25,7 @@
   "score_directionality": "higher_is_stronger_model_prediction",
   "theoretical_min": 0,
   "theoretical_max": 1,
+  "calibration_state": "provider_declared_uncalibrated",
   "calibration_statement": "Uncalibrated synthetic model prediction for adapter testing; not measured binding or affinity.",
   "track_start_0based": 0,
   "forward_scores": [
