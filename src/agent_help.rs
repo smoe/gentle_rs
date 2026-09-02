@@ -395,7 +395,7 @@ mod tests {
         let ctx = egui::Context::default();
         let _ = ctx.begin_pass(egui::RawInput::default());
         request_egui_viewport_capture(&ctx, "Splicing Expert");
-        let output = ctx.end_pass();
+        let output = crate::egui_compat::end_test_pass(&ctx);
         assert!(output.viewport_output.values().any(|viewport| {
             viewport.commands.iter().any(|command| {
                 let egui::ViewportCommand::Screenshot(user_data) = command else {
@@ -422,7 +422,7 @@ mod tests {
         input.viewports.insert(target, Default::default());
         let _ = ctx.begin_pass(input);
         let request_id = request_egui_viewport_capture_for(&ctx, target, "Sequence map");
-        let output = ctx.end_pass();
+        let output = crate::egui_compat::end_test_pass(&ctx);
 
         let screenshot_tokens = output
             .viewport_output
@@ -465,7 +465,7 @@ mod tests {
         collect_egui_capture_events(&ctx);
         collect_egui_capture_events(&ctx);
         let events = take_capture_events();
-        let _ = ctx.end_pass();
+        crate::egui_compat::discard_test_pass_output(&ctx);
 
         assert_eq!(events.len(), 1);
         let AgentHelpCaptureEvent::Captured(capture) = &events[0] else {
@@ -485,7 +485,7 @@ mod tests {
             render_agent_help_button(ui, "Shared visible title", "window.dna_viewer");
             render_agent_help_button(ui, "Shared visible title", "window.specialist");
         });
-        let _ = ctx.end_pass();
+        crate::egui_compat::discard_test_pass_output(&ctx);
 
         let snapshot = crate::gui_test_support::snapshot(&ctx);
         let window_ids = snapshot

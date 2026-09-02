@@ -200,7 +200,8 @@ fn first_lineage_render_does_not_dirty_a_clean_loaded_project() {
     app.mark_clean_snapshot();
 
     let ctx = egui::Context::default();
-    let _ = ctx.run_ui(egui::RawInput::default(), |ui| app.render_main_lineage(ui));
+    ctx.run_ui(egui::RawInput::default(), |ui| app.render_main_lineage(ui))
+        .drop_without_applying_deltas();
 
     assert!(!app.is_project_dirty());
 }
@@ -3816,7 +3817,7 @@ fn render_routine_assistant_contents_texts(app: &mut GENtleApp) -> Vec<String> {
             app.render_routine_assistant_contents(ui);
         },
     );
-    let full_output = ctx.end_pass();
+    let full_output = crate::egui_compat::end_test_pass(&ctx);
     let mut texts = Vec::new();
     for clipped in full_output.shapes {
         collect_rendered_text_from_shape(&clipped.shape, &mut texts);
@@ -3834,7 +3835,7 @@ fn render_help_contents_texts(app: &mut GENtleApp) -> Vec<String> {
             app.render_help_contents(ui);
         },
     );
-    let full_output = ctx.end_pass();
+    let full_output = crate::egui_compat::end_test_pass(&ctx);
     let mut texts = Vec::new();
     for clipped in full_output.shapes {
         collect_rendered_text_from_shape(&clipped.shape, &mut texts);
@@ -9370,15 +9371,15 @@ fn root_viewport_fullscreen_or_maximized_tracks_root_viewport_state() {
 
     ctx.begin_pass(raw_input_with_root_window_state(true, false));
     assert!(GENtleApp::root_viewport_fullscreen_or_maximized(&ctx));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 
     ctx.begin_pass(raw_input_with_root_window_state(false, true));
     assert!(GENtleApp::root_viewport_fullscreen_or_maximized(&ctx));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 
     ctx.begin_pass(raw_input_with_root_window_state(false, false));
     assert!(!GENtleApp::root_viewport_fullscreen_or_maximized(&ctx));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -9398,7 +9399,7 @@ fn pending_native_child_windows_wait_for_regular_macos_root_viewport() {
 
     ctx.begin_pass(raw_input_with_root_window_state(true, false));
     app.open_pending_sequence_windows(&ctx);
-    let full_output = ctx.end_pass();
+    let full_output = crate::egui_compat::end_test_pass(&ctx);
 
     if cfg!(target_os = "macos") {
         assert_eq!(app.new_windows.len(), 1);
@@ -9434,7 +9435,7 @@ fn hosted_child_viewport_mode_does_not_defer_for_root_window_state() {
 
     ctx.begin_pass(raw_input_with_root_window_state(true, false));
     assert!(!GENtleApp::should_defer_native_child_viewport_open_for_root_state(&ctx));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -9493,7 +9494,7 @@ fn render_main_workspace_host_does_not_spawn_hosted_window_area() {
         },
     );
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -9508,7 +9509,7 @@ fn hosted_main_workspace_window_renders_as_separate_embedded_window() {
     ctx.begin_pass(egui::RawInput::default());
     app.render_hosted_main_workspace_window(&ctx, false);
     assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -9648,7 +9649,7 @@ fn embedded_root_tool_windows_render_as_sibling_hosted_windows() {
             egui::Id::new(GENtleApp::configuration_viewport_id()),
         ))
     }));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 
     let ctx = egui::Context::default();
     ctx.set_embed_viewports(true);
@@ -9671,7 +9672,7 @@ fn embedded_root_tool_windows_render_as_sibling_hosted_windows() {
             egui::Id::new(GENtleApp::routine_assistant_viewport_id()),
         ))
     }));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 
     let ctx = egui::Context::default();
     ctx.set_embed_viewports(true);
@@ -9694,7 +9695,7 @@ fn embedded_root_tool_windows_render_as_sibling_hosted_windows() {
             egui::Id::new(GENtleApp::command_palette_viewport_id()),
         ))
     }));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 
     let ctx = egui::Context::default();
     ctx.set_embed_viewports(true);
@@ -9717,7 +9718,7 @@ fn embedded_root_tool_windows_render_as_sibling_hosted_windows() {
             egui::Id::new(GENtleApp::external_services_viewport_id()),
         ))
     }));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 
     let ctx = egui::Context::default();
     ctx.set_embed_viewports(true);
@@ -9740,7 +9741,7 @@ fn embedded_root_tool_windows_render_as_sibling_hosted_windows() {
             egui::Id::new(GENtleApp::history_viewport_id()),
         ))
     }));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -9789,7 +9790,7 @@ fn embedded_sequence_viewport_renders_without_legacy_title_bar_window() {
         ui.label("legacy title shell");
     });
     assert!(ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 
     ctx.begin_pass(egui::RawInput::default());
     app.pending_focus_viewports.clear();
@@ -9799,7 +9800,7 @@ fn embedded_sequence_viewport_renders_without_legacy_title_bar_window() {
     app.show_window(&ctx, viewport_id, window, initial_position);
     assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
 }
 
@@ -9860,7 +9861,7 @@ fn embedded_sequence_viewport_clamps_stale_full_width_shell() {
             || stale_rect.height() > max_size.y + OUTER_CHROME_TOLERANCE_PX,
         "stale_rect={stale_rect:?}, max_size={max_size:?}"
     );
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 
     ctx.begin_pass(egui::RawInput {
         screen_rect: Some(screen_rect),
@@ -9880,7 +9881,7 @@ fn embedded_sequence_viewport_clamps_stale_full_width_shell() {
         rect.height() <= max_size.y + OUTER_CHROME_TOLERANCE_PX,
         "rect={rect:?}, max_size={max_size:?}"
     );
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -9926,7 +9927,7 @@ fn embedded_sequence_stale_clamp_keeps_project_window_area() {
             ui.label("stale full-width sequence shell");
         },
     );
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 
     ctx.begin_pass(egui::RawInput {
         screen_rect: Some(screen_rect),
@@ -9959,7 +9960,7 @@ fn embedded_sequence_stale_clamp_keeps_project_window_area() {
         sequence_rect.width() >= 820.0 && sequence_rect.height() >= 520.0,
         "sequence_rect={sequence_rect:?}"
     );
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -9987,7 +9988,7 @@ fn embedded_sequence_window_does_not_auto_expand_to_safe_rect_with_overflowing_c
             ..Default::default()
         });
         app.show_window(&ctx, viewport_id, window, initial_position);
-        let _ = ctx.end_pass();
+        crate::egui_compat::discard_test_pass_output(&ctx);
     }
 
     let rect = ctx
@@ -10015,7 +10016,9 @@ fn embedded_sequence_window_can_shrink_after_overflowing_content_render() {
         app.register_window(Window::new_dna(dna, "seq1".to_string(), app.engine.clone()));
     let sequence_stable_id = egui::Id::new(("hosted_sequence_window_v2", viewport_id));
 
-    for _ in 0..2 {
+    // egui 0.36 uses one sizing pass, followed by the requested foreground
+    // pass and one settled pass at the normal hosted-window layer order.
+    for _ in 0..3 {
         let window = app
             .windows
             .get(&viewport_id)
@@ -10027,7 +10030,7 @@ fn embedded_sequence_window_can_shrink_after_overflowing_content_render() {
             ..Default::default()
         });
         app.show_window(&ctx, viewport_id, window, initial_position);
-        let _ = ctx.end_pass();
+        crate::egui_compat::discard_test_pass_output(&ctx);
     }
     let initial_rect = ctx
         .memory(|mem| mem.area_rect(sequence_stable_id))
@@ -10053,7 +10056,7 @@ fn embedded_sequence_window_can_shrink_after_overflowing_content_render() {
         ..Default::default()
     });
     app.show_window(&ctx, viewport_id, window, None);
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 
     let drag_mid = drag_start - egui::vec2(80.0, 60.0);
     let window = app
@@ -10067,7 +10070,7 @@ fn embedded_sequence_window_can_shrink_after_overflowing_content_render() {
         ..Default::default()
     });
     app.show_window(&ctx, viewport_id, window, None);
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 
     let drag_end = drag_start - egui::vec2(180.0, 120.0);
     let window = app
@@ -10092,7 +10095,7 @@ fn embedded_sequence_window_can_shrink_after_overflowing_content_render() {
         shrunken_rect.height() <= initial_rect.height() - 50.0,
         "initial_rect={initial_rect:?}, shrunken_rect={shrunken_rect:?}"
     );
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 
     let window = app
         .windows
@@ -10110,7 +10113,7 @@ fn embedded_sequence_window_can_shrink_after_overflowing_content_render() {
         ..Default::default()
     });
     app.show_window(&ctx, viewport_id, window, None);
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -10140,6 +10143,23 @@ fn newly_focused_embedded_sequence_window_renders_above_hosted_project_window() 
     app.render_hosted_main_workspace_window(&ctx, false);
     let initial_position = app.pending_window_initial_positions.remove(&viewport_id);
     app.show_window(&ctx, viewport_id, window, initial_position);
+    assert!(
+        app.viewport_foreground_requested(viewport_id),
+        "the foreground request must survive egui's non-interactable sizing pass"
+    );
+    crate::egui_compat::discard_test_pass_output(&ctx);
+
+    ctx.begin_pass(egui::RawInput {
+        screen_rect: Some(screen_rect),
+        ..Default::default()
+    });
+    app.render_hosted_main_workspace_window(&ctx, false);
+    let window = app
+        .windows
+        .get(&viewport_id)
+        .cloned()
+        .expect("registered sequence window");
+    app.show_window(&ctx, viewport_id, window, None);
 
     let project_layer_id = ctx
         .memory(|mem| {
@@ -10181,7 +10201,7 @@ fn newly_focused_embedded_sequence_window_renders_above_hosted_project_window() 
         "a newly focused sequence window should cover the project window at overlapping points"
     );
     assert!(!app.viewport_foreground_requested(viewport_id));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -10313,7 +10333,7 @@ fn focusing_rna_mapping_from_windows_menu_renders_child_above_sequence_window() 
         ctx.memory(|mem| mem.areas().visible_layer_ids().contains(&mapping_layer_id)),
         "focused RNA-read Mapping should render as a foreground hosted layer above its middle-order DNA host"
     );
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -10414,7 +10434,7 @@ fn focusing_promoter_design_from_windows_menu_renders_child_above_sequence_windo
         ctx.memory(|mem| mem.areas().visible_layer_ids().contains(&promoter_layer_id)),
         "focused Promoter design should render as a foreground hosted layer above its middle-order DNA host"
     );
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 
     let window = app
         .windows
@@ -10483,7 +10503,7 @@ fn stale_rna_mapping_title_area_in_root_context_is_reset_when_detected() {
 
     assert!(app.reset_root_auxiliary_areas_if_legacy_title_layers_visible(&ctx));
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -10507,7 +10527,7 @@ fn stale_splicing_expert_title_area_in_root_context_is_reset_when_detected() {
 
     assert!(app.reset_root_auxiliary_areas_if_legacy_title_layers_visible(&ctx));
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -10530,7 +10550,7 @@ fn embedded_help_viewport_renders_without_nested_help_window_area() {
     assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_help_layer_id)));
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -10557,7 +10577,7 @@ fn embedded_help_tutorial_viewport_renders_without_second_title_bar_window() {
     assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_help_layer_id)));
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -10591,7 +10611,7 @@ fn embedded_help_viewport_keeps_huge_markdown_in_bounded_window() {
             .memory(|mem| mem.area_rect(hosted_help_id))
             .expect("hosted help window should be visible");
         heights.push(rect.height());
-        let _ = ctx.end_pass();
+        crate::egui_compat::discard_test_pass_output(&ctx);
     }
 
     assert!(
@@ -10623,7 +10643,7 @@ fn focused_embedded_help_window_renders_in_foreground_without_viewport_title_she
     assert!(ctx.memory(|mem| mem.areas().is_visible(&foreground_help_layer_id)));
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
     assert!(!app.viewport_foreground_requested(GENtleApp::help_viewport_id()));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -10647,7 +10667,7 @@ fn embedded_agent_assistant_renders_as_single_hosted_window_without_viewport_tit
     assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
     assert!(!app.viewport_foreground_requested(GENtleApp::agent_assistant_viewport_id()));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -10660,7 +10680,7 @@ fn embedded_agent_assistant_focus_does_not_emit_child_viewport_focus_commands() 
     ctx.begin_pass(egui::RawInput::default());
     app.render_agent_assistant_dialog(&ctx);
     app.focus_window_viewport(&ctx, GENtleApp::agent_assistant_viewport_id());
-    let output = ctx.end_pass();
+    let output = crate::egui_compat::end_test_pass(&ctx);
 
     let root_output = output
         .viewport_output
@@ -10744,7 +10764,7 @@ fn agent_assistant_content_scrolls_on_small_viewport() {
         scroll_output.inner_rect,
         screen_rect
     );
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -10771,7 +10791,7 @@ fn embedded_configuration_graphics_window_width_stays_bounded_across_frames() {
                 .unwrap_or_default()
         });
         widths.push(width);
-        let _ = ctx.end_pass();
+        crate::egui_compat::discard_test_pass_output(&ctx);
     }
 
     let max_width = widths.iter().copied().fold(0.0, f32::max);
@@ -10846,7 +10866,7 @@ fn prepare_dialog_scroll_area_keeps_long_checklist_reachable_on_small_viewport()
         scroll_output.inner_rect,
         screen_rect
     );
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -10873,7 +10893,7 @@ fn stale_help_window_area_in_root_context_is_reset_when_detected() {
     for layer_id in stale_help_layer_ids {
         assert!(!ctx.memory(|mem| mem.areas().is_visible(&layer_id)));
     }
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -10895,7 +10915,7 @@ fn root_help_cleanup_ignores_stable_hosted_help_window_id() {
         &ctx, title
     ));
     assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_help_layer_id)));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -10949,7 +10969,7 @@ fn unsaved_changes_dialog_renders_in_foreground_above_hosted_workspace() {
     app.render_unsaved_changes_dialog(&ctx);
     assert!(ctx.memory(|mem| mem.areas().is_visible(&project_layer_id)));
     assert!(ctx.memory(|mem| mem.areas().is_visible(&unsaved_layer_id)));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -12658,7 +12678,7 @@ fn agent_screenshot_request_and_auto_run_emit_no_capture() {
 
     activate_test_agent_screenshot_request(&mut app, true, "inspect-main-1");
 
-    let output = ctx.end_pass();
+    let output = crate::egui_compat::end_test_pass(&ctx);
     assert!(app.agent_screenshot_consent.is_some());
     assert!(app.agent_screenshot_capture.is_none());
     assert!(app.agent_pending_image_attachment.is_none());
@@ -12675,7 +12695,7 @@ fn declining_agent_screenshot_request_captures_nothing() {
 
     app.decline_agent_screenshot_request();
 
-    let output = ctx.end_pass();
+    let output = crate::egui_compat::end_test_pass(&ctx);
     assert!(app.agent_screenshot_consent.is_none());
     assert!(app.agent_screenshot_capture.is_none());
     assert!(app.agent_pending_image_attachment.is_none());
@@ -12693,7 +12713,7 @@ fn approved_agent_screenshot_is_one_shot_and_previews_before_transport() {
     app.approve_agent_screenshot_request(&ctx);
     app.approve_agent_screenshot_request(&ctx);
 
-    let output = ctx.end_pass();
+    let output = crate::egui_compat::end_test_pass(&ctx);
     assert_eq!(screenshot_commands(&output), 1);
     assert!(app.agent_screenshot_consent.is_none());
     assert!(app.agent_pending_image_attachment.is_none());
@@ -12727,7 +12747,7 @@ fn approved_agent_screenshot_is_one_shot_and_previews_before_transport() {
         ..Default::default()
     });
     app.poll_agent_help_capture_events(&ctx);
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 
     let attachment = app
         .agent_pending_image_attachment
@@ -12754,7 +12774,7 @@ fn approved_agent_screenshot_is_one_shot_and_previews_before_transport() {
         ..Default::default()
     });
     app.poll_agent_help_capture_events(&ctx);
-    let replay_output = ctx.end_pass();
+    let replay_output = crate::egui_compat::end_test_pass(&ctx);
     assert_eq!(screenshot_commands(&replay_output), 0);
     assert_eq!(
         app.agent_pending_image_attachment
@@ -12774,7 +12794,7 @@ fn unsupported_agent_screenshot_provider_refuses_before_capture() {
 
     app.approve_agent_screenshot_request(&ctx);
 
-    let output = ctx.end_pass();
+    let output = crate::egui_compat::end_test_pass(&ctx);
     assert_eq!(screenshot_commands(&output), 0);
     assert!(app.agent_screenshot_capture.is_none());
     assert!(app.agent_pending_image_attachment.is_none());
@@ -12867,7 +12887,7 @@ fn timed_out_agent_screenshot_capture_discards_late_reply_id() {
 
     app.validate_agent_screenshot_state();
 
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
     assert!(app.agent_screenshot_capture.is_none());
     assert!(app.agent_pending_image_attachment.is_none());
     assert!(

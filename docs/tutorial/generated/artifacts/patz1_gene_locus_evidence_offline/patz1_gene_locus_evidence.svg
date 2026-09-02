@@ -168,7 +168,7 @@ Saos-2 synthetic occupancy | shared within group | observed group max 900.000
 <text fill="#475569" font-family="monospace" font-size="8" x="52" y="525">
 TP73 TAp73alpha | TA (experimental)
 </text>
-<line data-gentle-batch="" data-gentle-cell-line="" data-gentle-occupancy-lane="OCC:SAOS-2_TP73_TAp73alpha:saos2_tap73alpha.bed:a20ef7a2caf4" data-gentle-occupancy-role="experimental" stroke="#cbd5e1" stroke-width="1" x1="255" x2="1050" y1="521" y2="521"/>
+<line data-gentle-batch="" data-gentle-cell-line="" data-gentle-occupancy-assay="" data-gentle-occupancy-factor="" data-gentle-occupancy-lane="OCC:SAOS-2_TP73_TAp73alpha:saos2_tap73alpha.bed:a20ef7a2caf4" data-gentle-occupancy-mark="" data-gentle-occupancy-role="experimental" data-gentle-occupancy-source="OCC:SAOS-2_TP73_TAp73alpha:saos2_tap73alpha.bed:a20ef7a2caf4" data-gentle-occupancy-source-sha256="" data-gentle-occupancy-state="available" stroke="#cbd5e1" stroke-dasharray="1,0" stroke-width="1" x1="255" x2="1050" y1="521" y2="521"/>
 <rect data-gentle-occupancy-interval="OCC:SAOS-2_TP73_TAp73alpha:saos2_tap73alpha.bed:a20ef7a2caf4:31325871-31325912:1" data-gentle-occupancy-role="experimental" fill="#2563eb" fill-opacity="0.84" height="10" width="137.53168" x="677.6582" y="511"/>
 <text fill="#64748b" font-family="monospace" font-size="8" x="1070" y="525">
 scale 900.000
@@ -176,7 +176,7 @@ scale 900.000
 <text fill="#475569" font-family="monospace" font-size="8" x="52" y="554">
 TP73 DNp73beta | DN (experimental)
 </text>
-<line data-gentle-batch="" data-gentle-cell-line="" data-gentle-occupancy-lane="OCC:SAOS-2_TP73_DNp73beta:saos2_dnp73beta.bed:3590500ec46b" data-gentle-occupancy-role="experimental" stroke="#cbd5e1" stroke-width="1" x1="255" x2="1050" y1="550" y2="550"/>
+<line data-gentle-batch="" data-gentle-cell-line="" data-gentle-occupancy-assay="" data-gentle-occupancy-factor="" data-gentle-occupancy-lane="OCC:SAOS-2_TP73_DNp73beta:saos2_dnp73beta.bed:3590500ec46b" data-gentle-occupancy-mark="" data-gentle-occupancy-role="experimental" data-gentle-occupancy-source="OCC:SAOS-2_TP73_DNp73beta:saos2_dnp73beta.bed:3590500ec46b" data-gentle-occupancy-source-sha256="" data-gentle-occupancy-state="available" stroke="#cbd5e1" stroke-dasharray="1,0" stroke-width="1" x1="255" x2="1050" y1="550" y2="550"/>
 <rect data-gentle-occupancy-interval="OCC:SAOS-2_TP73_DNp73beta:saos2_dnp73beta.bed:3590500ec46b:31325923-31325966:1" data-gentle-occupancy-role="experimental" fill="#2563eb" fill-opacity="0.84" height="5.777778" width="144.24054" x="496.51898" y="544.2222"/>
 <text fill="#64748b" font-family="monospace" font-size="8" x="1070" y="554">
 scale 900.000
@@ -187,7 +187,7 @@ SK-MEL-29 synthetic occupancy | shared within group | observed group max 760.000
 <text fill="#475569" font-family="monospace" font-size="8" x="52" y="614">
 TP73 TAp73alpha | TA (experimental)
 </text>
-<line data-gentle-batch="" data-gentle-cell-line="" data-gentle-occupancy-lane="OCC:SK-MEL-29_TP73_TAp73alpha:skmel29_tap73alpha.bed:744ac6eb26ac" data-gentle-occupancy-role="experimental" stroke="#cbd5e1" stroke-width="1" x1="255" x2="1050" y1="610" y2="610"/>
+<line data-gentle-batch="" data-gentle-cell-line="" data-gentle-occupancy-assay="" data-gentle-occupancy-factor="" data-gentle-occupancy-lane="OCC:SK-MEL-29_TP73_TAp73alpha:skmel29_tap73alpha.bed:744ac6eb26ac" data-gentle-occupancy-mark="" data-gentle-occupancy-role="experimental" data-gentle-occupancy-source="OCC:SK-MEL-29_TP73_TAp73alpha:skmel29_tap73alpha.bed:744ac6eb26ac" data-gentle-occupancy-source-sha256="" data-gentle-occupancy-state="available" stroke="#cbd5e1" stroke-dasharray="1,0" stroke-width="1" x1="255" x2="1050" y1="610" y2="610"/>
 <rect data-gentle-occupancy-interval="OCC:SK-MEL-29_TP73_TAp73alpha:skmel29_tap73alpha.bed:744ac6eb26ac:31325889-31325944:1" data-gentle-occupancy-role="experimental" fill="#2563eb" fill-opacity="0.84" height="10" width="184.49371" x="570.3164" y="600"/>
 <text fill="#64748b" font-family="monospace" font-size="8" x="1070" y="614">
 scale 760.000
@@ -195,7 +195,7 @@ scale 760.000
 <text fill="#475569" font-family="monospace" font-size="8" x="52" y="643">
 TP73 DNp73beta | DN (experimental)
 </text>
-<line data-gentle-batch="" data-gentle-cell-line="" data-gentle-occupancy-lane="OCC:SK-MEL-29_TP73_DNp73beta:skmel29_dnp73beta.bed:6a1253b45ecf" data-gentle-occupancy-role="experimental" stroke="#cbd5e1" stroke-width="1" x1="255" x2="1050" y1="639" y2="639"/>
+<line data-gentle-batch="" data-gentle-cell-line="" data-gentle-occupancy-assay="" data-gentle-occupancy-factor="" data-gentle-occupancy-lane="OCC:SK-MEL-29_TP73_DNp73beta:skmel29_dnp73beta.bed:6a1253b45ecf" data-gentle-occupancy-mark="" data-gentle-occupancy-role="experimental" data-gentle-occupancy-source="OCC:SK-MEL-29_TP73_DNp73beta:skmel29_dnp73beta.bed:6a1253b45ecf" data-gentle-occupancy-source-sha256="" data-gentle-occupancy-state="available" stroke="#cbd5e1" stroke-dasharray="1,0" stroke-width="1" x1="255" x2="1050" y1="639" y2="639"/>
 <rect data-gentle-occupancy-interval="OCC:SK-MEL-29_TP73_DNp73beta:skmel29_dnp73beta.bed:6a1253b45ecf:31325955-31325996:1" data-gentle-occupancy-role="experimental" fill="#2563eb" fill-opacity="0.84" height="5.6578946" width="137.53162" x="395.8861" y="633.3421"/>
 <text fill="#64748b" font-family="monospace" font-size="8" x="1070" y="643">
 scale 760.000
@@ -206,7 +206,7 @@ Predicted TF binding scores
 <text data-gentle-regulatory-factor="MA0861.2" data-gentle-regulatory-provider="jaspar_pwm" data-gentle-regulatory-score-track="legacy_1_MA0861.2" fill="#374151" font-family="monospace" font-size="8" x="34" y="710">
 TP73 | jaspar_pwm | TP73 | MA0861.2 | llr_background_tail_log10
 </text>
-<rect data-gentle-regulatory-provider="jaspar_pwm" data-gentle-regulatory-score-track="legacy_1_MA0861.2" data-gentle-score-kind="llr_background_tail_log10" fill="#f8fafc" height="50" stroke="#cbd5e1" stroke-width="1" width="795" x="255" y="724"/>
+<rect data-gentle-calibration-id="" data-gentle-calibration-sha256="" data-gentle-calibration-state="matrix_specific" data-gentle-motif-track="MA0861.2" data-gentle-regulatory-provider="jaspar_pwm" data-gentle-regulatory-score-track="legacy_1_MA0861.2" data-gentle-score-kind="llr_background_tail_log10" fill="#f8fafc" height="50" stroke="#cbd5e1" stroke-width="1" width="795" x="255" y="724"/>
 <text fill="#005f73" font-family="monospace" font-size="7" x="52" y="737">
 F solid | R dashed
 </text>

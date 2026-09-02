@@ -17207,7 +17207,14 @@ Error: `{err}`"
                     crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
                         w.update_embedded(ui);
                     });
-                    self.clear_viewport_foreground_request_after_render(id);
+                    // egui 0.36 makes a newly sized area non-interactable for its
+                    // first pass. Keep the one-shot foreground request until the
+                    // hosted window can actually receive focus and pointer input.
+                    if egui::containers::AreaState::load(ctx, spec.stable_id)
+                        .is_some_and(|state| state.interactable)
+                    {
+                        self.clear_viewport_foreground_request_after_render(id);
+                    }
                     w.update_auxiliary_windows_only(ctx);
                     if !open {
                         w.take_close_requested();

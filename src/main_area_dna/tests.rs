@@ -237,7 +237,7 @@ fn with_linear_map_response(
             inspect(&response);
         },
     );
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 fn probe_region_validation_fixture_dir() -> String {
@@ -671,7 +671,7 @@ fn collect_rendered_text_rects_from_shape(
 }
 
 fn collect_pass_texts(ctx: &egui::Context) -> Vec<String> {
-    let full_output = ctx.end_pass();
+    let full_output = crate::egui_compat::end_test_pass(&ctx);
     let mut texts = Vec::new();
     for clipped in full_output.shapes {
         collect_rendered_text_from_shape(&clipped.shape, &mut texts);
@@ -692,7 +692,7 @@ fn render_selection_formula_control_pass(
             area.render_selection_formula_inline_controls(ui, 420.0);
         },
     );
-    let full_output = ctx.end_pass();
+    let full_output = crate::egui_compat::end_test_pass(&ctx);
     let mut rects = Vec::new();
     for clipped in full_output.shapes {
         collect_rendered_text_rects_from_shape(&clipped.shape, &mut rects);
@@ -713,7 +713,7 @@ fn render_feature_tree_pass(
             area.render_features(ui);
         },
     );
-    let full_output = ctx.end_pass();
+    let full_output = crate::egui_compat::end_test_pass(&ctx);
     let mut rects = Vec::new();
     for clipped in full_output.shapes {
         collect_rendered_text_rects_from_shape(&clipped.shape, &mut rects);
@@ -9317,7 +9317,7 @@ fn isoform_expert_embed_mode_uses_single_hosted_shell_without_viewport_title_lay
 
     assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -9397,7 +9397,7 @@ fn rna_read_mapping_embedded_window_registers_visible_window_area() {
         false,
     );
     assert!(ctx.memory(|mem| mem.areas().is_visible(&layer_id)));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -9442,7 +9442,7 @@ fn rna_read_mapping_embedded_window_focus_request_uses_foreground_order() {
         true,
     );
     assert!(ctx.memory(|mem| mem.areas().is_visible(&layer_id)));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -9482,7 +9482,7 @@ fn rna_read_mapping_embedded_window_clears_legacy_title_bar_area() {
         ui.label("legacy mapping title shell");
     });
     assert!(ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 
     ctx.begin_pass(egui::RawInput::default());
     area.show_rna_read_mapping_window = true;
@@ -9496,7 +9496,7 @@ fn rna_read_mapping_embedded_window_clears_legacy_title_bar_area() {
         false,
     );
     assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
 }
 
@@ -9532,7 +9532,7 @@ fn rna_read_mapping_embed_mode_uses_single_hosted_shell_without_viewport_title_l
     assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -9567,7 +9567,7 @@ fn splicing_expert_embed_mode_uses_single_hosted_shell_without_viewport_title_la
     assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -9673,7 +9673,7 @@ fn dotplot_embed_mode_uses_single_hosted_shell_without_viewport_title_layer() {
 
     assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -9705,7 +9705,7 @@ fn variant_followup_embed_mode_uses_single_hosted_shell_without_viewport_title_l
 
     assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -13070,7 +13070,7 @@ fn rna_read_support_and_preview_tables_reserve_practical_minimum_heights() {
             "preview table should reserve at least as much space as the support tables"
         );
     });
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]

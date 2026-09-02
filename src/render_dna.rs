@@ -1911,7 +1911,7 @@ mod tests {
         });
         let first_response = render_map_after_spacer(&ctx, render_dna.clone(), 20.0);
         assert!(!first_response.rect.contains(press_pos));
-        let _ = ctx.end_pass();
+        crate::egui_compat::discard_test_pass_output(&ctx);
 
         let move_pos = egui::pos2(10.0, 70.0);
         ctx.begin_pass(egui::RawInput {
@@ -1924,6 +1924,7 @@ mod tests {
         assert!(shifted_response.rect.contains(move_pos));
         assert!(!shifted_response.drag_started());
         assert_ne!(ctx.dragged_id(), Some(shifted_response.id));
+        crate::egui_compat::discard_test_pass_output(&ctx);
     }
 
     #[test]
@@ -1948,7 +1949,7 @@ mod tests {
                 assert!(response.rect.height() <= 1.0);
             },
         );
-        let _ = ctx.end_pass();
+        crate::egui_compat::discard_test_pass_output(&ctx);
     }
 
     #[test]

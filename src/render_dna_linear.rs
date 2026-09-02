@@ -4155,7 +4155,7 @@ mod tests {
             egui::CentralPanel::default(),
             |ui| renderer.render(ui, renderer.area),
         );
-        let _ = ctx.end_pass();
+        crate::egui_compat::discard_test_pass_output(ctx);
     }
 
     fn refresh_test_feature_index(renderer: &mut RenderDnaLinear) {
@@ -5756,7 +5756,7 @@ mod tests {
                 renderer.render(ui, renderer.area);
             },
         );
-        let _ = ctx.end_pass();
+        crate::egui_compat::discard_test_pass_output(&ctx);
 
         let site = renderer
             .restriction_enzyme_sites
@@ -5796,7 +5796,7 @@ mod tests {
                 egui::CentralPanel::default(),
                 |ui| renderer.render(ui, renderer.area),
             );
-            let _ = ctx.end_pass();
+            crate::egui_compat::discard_test_pass_output(&ctx);
         }
         assert_eq!(renderer.gc_cache_misses, 1);
         assert!(renderer.gc_cache_hits >= 1);

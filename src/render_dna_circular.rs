@@ -1846,7 +1846,7 @@ mod tests {
                 egui::CentralPanel::default(),
                 |ui| renderer.draw_gc_contents(ui.painter()),
             );
-            let _ = ctx.end_pass();
+            crate::egui_compat::discard_test_pass_output(&ctx);
         }
         assert_eq!(renderer.gc_cache_misses, 1);
         assert!(renderer.gc_cache_hits >= 1);

@@ -22412,13 +22412,31 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             ],
             "reads": [],
             "effects": [
-                {"fact": "sequence.created", "subject": {"literal": "resolved Ensembl gene sequence"}, "effect_kind": "project_state"},
+                {"effect_kind": "may_on_success", "description": "Adds the resolved Ensembl gene sequence and derived panel to project state; their ids are nested in the typed request or derived from the resolved entry."},
                 {"fact": "artifact.written", "subject": {"literal": "declared SVG/PNG/PDF/report/receipt outputs"}, "effect_kind": "external_handoff"}
             ],
             "precondition_expr": {"all": []},
             "description": "Compose stored or explicitly retrieved Ensembl annotation, declared local BED/BigWig tracks, normalized TF score tracks, and shared gene-locus SVG/PNG/PDF exports with a hash-bound receipt.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("gene-locus prepare")
+        }),
+        json!({
+            "id": "PrepareGeneLocusEvidence",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "gentle.gene_locus_evidence_preparation_request.v1 operation payload; network consent and all output paths are explicit in the request"}
+            ],
+            "reads": [],
+            "effects": [
+                {"effect_kind": "may_on_success", "description": "Adds the resolved Ensembl gene sequence and derived panel to project state; their ids are nested in the typed request or derived from the resolved entry."},
+                {"fact": "artifact.written", "subject": {"literal": "declared SVG/PNG/PDF/report/receipt outputs"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Compose stored or explicitly retrieved Ensembl annotation, declared local BED/BigWig tracks, normalized TF score tracks, and shared gene-locus SVG/PNG/PDF exports with a hash-bound receipt through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("PrepareGeneLocusEvidence")
         }),
         json!({
             "id": "features tfbs-summary",

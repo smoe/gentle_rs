@@ -754,6 +754,23 @@ pub(crate) fn show_central_panel_for_test_context<R>(
     show_central_panel(&mut root_ui, panel, add_contents)
 }
 
+/// Finishes a headless egui test pass while explicitly discarding texture uploads.
+///
+/// egui 0.36 treats dropping a non-empty `TexturesDelta` as a test failure. Tests
+/// that inspect shapes or viewport commands still need the rest of `FullOutput`,
+/// but no renderer is present to apply font-atlas texture updates.
+#[cfg(test)]
+pub(crate) fn end_test_pass(ctx: &egui::Context) -> egui::FullOutput {
+    let mut output = ctx.end_pass();
+    output.textures_delta.clear();
+    output
+}
+
+#[cfg(test)]
+pub(crate) fn discard_test_pass_output(ctx: &egui::Context) {
+    drop(end_test_pass(ctx));
+}
+
 pub(crate) fn show_central_panel_inside<R>(
     ui: &mut egui::Ui,
     panel: egui::CentralPanel,
@@ -802,10 +819,11 @@ mod tests {
         HOSTED_WINDOW_SAFE_INSET_BOTTOM_PX, HOSTED_WINDOW_SAFE_INSET_TOP_PX,
         HOSTED_WINDOW_SAFE_INSET_X_PX, HostedWindowSpec, ModalWindowSpec,
         clamp_hosted_window_default_pos, clamp_hosted_window_default_size,
-        hosted_window_frame_drag_ids, hosted_window_frame_drag_owner, hosted_window_max_inner_size,
-        hosted_window_press_origin_frame_owner, hosted_window_safe_rect_for_rect,
-        hosted_window_status_message, register_hosted_window_frame_drag_ids,
-        should_request_hosted_window_stale_repaint, show_hosted_window, show_modal_window,
+        discard_test_pass_output, hosted_window_frame_drag_ids, hosted_window_frame_drag_owner,
+        hosted_window_max_inner_size, hosted_window_press_origin_frame_owner,
+        hosted_window_safe_rect_for_rect, hosted_window_status_message,
+        register_hosted_window_frame_drag_ids, should_request_hosted_window_stale_repaint,
+        show_hosted_window, show_modal_window,
     };
     use eframe::egui::{self, Rect, pos2, vec2};
 
@@ -879,7 +897,7 @@ mod tests {
             mem.areas()
                 .is_visible(&egui::LayerId::new(egui::Order::Middle, stable_id))
         }));
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
     }
 
     #[test]
@@ -902,7 +920,7 @@ mod tests {
         });
         assert!(ctx.memory(|mem| mem.areas().is_visible(&stable_layer)));
         assert!(!ctx.memory(|mem| mem.areas().is_visible(&title_layer)));
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
     }
 
     #[test]
@@ -932,7 +950,7 @@ mod tests {
             ui.label("legacy shell");
         });
         assert!(ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer)));
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
 
         ctx.begin_pass(egui::RawInput::default());
         show_hosted_window(&ctx, &sibling_spec, &mut sibling_open, |ui| {
@@ -948,7 +966,7 @@ mod tests {
             .memory(|mem| mem.area_rect(sibling_id))
             .expect("sibling area should remain visible");
         assert_eq!(sibling_after, sibling_before);
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
         assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer)));
     }
 
@@ -981,7 +999,7 @@ mod tests {
             ui.label("legacy extra shell");
         });
         assert!(ctx.memory(|mem| mem.areas().is_visible(&stale_extra_layer)));
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
 
         ctx.begin_pass(egui::RawInput::default());
         show_hosted_window(&ctx, &sibling_spec, &mut sibling_open, |ui| {
@@ -997,7 +1015,7 @@ mod tests {
             .memory(|mem| mem.area_rect(sibling_id))
             .expect("sibling area should remain visible");
         assert_eq!(sibling_after, sibling_before);
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
         assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_extra_layer)));
     }
 
@@ -1042,7 +1060,7 @@ mod tests {
         ctx.set_dragged_id(edge_drag_id);
 
         assert_eq!(hosted_window_frame_drag_owner(&ctx), Some(owner_id));
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
 
         ctx.begin_pass(egui::RawInput {
             events: vec![egui::Event::PointerButton {
@@ -1054,7 +1072,7 @@ mod tests {
             ..Default::default()
         });
         assert_eq!(hosted_window_frame_drag_owner(&ctx), None);
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
     }
 
     #[test]
@@ -1082,7 +1100,7 @@ mod tests {
             .memory(|mem| mem.area_rect(upper_id))
             .expect("upper hosted window should be visible");
         let title_origin = pos2(upper_rect.center().x, upper_rect.top() + 10.0);
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
 
         ctx.begin_pass(egui::RawInput {
             events: vec![egui::Event::PointerButton {
@@ -1095,7 +1113,7 @@ mod tests {
         });
 
         assert_eq!(hosted_window_press_origin_frame_owner(&ctx), Some(upper_id));
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
     }
 
     #[test]
@@ -1122,7 +1140,7 @@ mod tests {
         let upper_rect = ctx
             .memory(|mem| mem.area_rect(upper_id))
             .expect("upper hosted window should be visible");
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
 
         let edge_origin = pos2(upper_rect.right() + 2.0, upper_rect.center().y);
         let lower_edge_drag_id = hosted_window_frame_drag_ids(&lower_spec)
@@ -1145,7 +1163,7 @@ mod tests {
         ctx.set_dragged_id(lower_edge_drag_id);
 
         assert_eq!(hosted_window_frame_drag_owner(&ctx), Some(upper_id));
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
     }
 
     #[test]
@@ -1166,7 +1184,7 @@ mod tests {
         let upper_rect = ctx
             .memory(|mem| mem.area_rect(upper_id))
             .expect("upper hosted window should be visible");
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
 
         let lower_spec =
             HostedWindowSpec::new("Lower", lower_id, vec2(320.0, 240.0), vec2(160.0, 120.0))
@@ -1189,7 +1207,7 @@ mod tests {
             lower_rect.contains(edge_origin) && !upper_rect.contains(edge_origin),
             "test setup should put the upper resize edge over the lower body: upper={upper_rect:?}, lower={lower_rect:?}, origin={edge_origin:?}"
         );
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
 
         ctx.begin_pass(egui::RawInput {
             events: vec![egui::Event::PointerButton {
@@ -1202,7 +1220,7 @@ mod tests {
         });
 
         assert_eq!(hosted_window_press_origin_frame_owner(&ctx), Some(upper_id));
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
     }
 
     #[test]
@@ -1231,7 +1249,7 @@ mod tests {
             rect.contains(body_origin),
             "test setup should press in the hosted window body: rect={rect:?}, origin={body_origin:?}"
         );
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
 
         ctx.begin_pass(egui::RawInput {
             events: vec![egui::Event::PointerButton {
@@ -1245,7 +1263,7 @@ mod tests {
 
         assert_eq!(hosted_window_press_origin_frame_owner(&ctx), None);
         assert_eq!(hosted_window_frame_drag_owner(&ctx), None);
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
     }
 
     #[test]
@@ -1268,7 +1286,7 @@ mod tests {
         let rect = ctx
             .memory(|mem| mem.area_rect(stable_id))
             .expect("hosted window should be visible");
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
 
         let origin = pos2(rect.right() + 2.0, rect.center().y);
         ctx.begin_pass(egui::RawInput {
@@ -1289,7 +1307,7 @@ mod tests {
             status.contains("Status Drag") && status.contains("other hosted windows locked"),
             "status={status}"
         );
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
     }
 
     #[test]
@@ -1334,7 +1352,7 @@ mod tests {
             mem.areas()
                 .is_visible(&egui::LayerId::new(egui::Order::Foreground, foreground_id))
         }));
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
     }
 
     #[test]
@@ -1378,7 +1396,7 @@ mod tests {
             stale_rect.width() > max_size.x || stale_rect.height() > max_size.y,
             "stale_rect={stale_rect:?}, max_size={max_size:?}"
         );
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
 
         ctx.begin_pass(egui::RawInput {
             screen_rect: Some(screen_rect),
@@ -1398,7 +1416,7 @@ mod tests {
             rect.height() <= max_size.y,
             "rect={rect:?}, max_size={max_size:?}"
         );
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
     }
 
     #[test]
@@ -1433,7 +1451,7 @@ mod tests {
                 ui.label("stale full-size shell");
             },
         );
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
 
         ctx.begin_pass(egui::RawInput {
             screen_rect: Some(screen_rect),
@@ -1452,7 +1470,7 @@ mod tests {
             .memory(|mem| mem.area_rect(sibling_id))
             .expect("sibling hosted area should remain visible");
         assert_eq!(sibling_after, sibling_before);
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
     }
 
     #[test]
@@ -1480,7 +1498,7 @@ mod tests {
             .memory(|mem| mem.area_rect(stable_id))
             .expect("hosted area should be visible");
         let drag_start = pos2(initial_rect.center().x, initial_rect.top() + 10.0);
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
 
         ctx.begin_pass(egui::RawInput {
             screen_rect: Some(screen_rect),
@@ -1498,7 +1516,7 @@ mod tests {
         show_hosted_window(&ctx, &spec, &mut open, |ui| {
             ui.label("content");
         });
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
 
         let drag_mid = drag_start + vec2(40.0, 0.0);
         ctx.begin_pass(egui::RawInput {
@@ -1509,7 +1527,7 @@ mod tests {
         show_hosted_window(&ctx, &spec, &mut open, |ui| {
             ui.label("content");
         });
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
 
         let drag_end = drag_start + vec2(100.0, 0.0);
         ctx.begin_pass(egui::RawInput {
@@ -1527,7 +1545,7 @@ mod tests {
             moved_rect.min.x > initial_rect.min.x + 40.0,
             "initial_rect={initial_rect:?}, moved_rect={moved_rect:?}"
         );
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
 
         ctx.begin_pass(egui::RawInput {
             screen_rect: Some(screen_rect),
@@ -1542,7 +1560,7 @@ mod tests {
         show_hosted_window(&ctx, &spec, &mut open, |ui| {
             ui.label("content");
         });
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
     }
 
     #[test]
@@ -1567,7 +1585,7 @@ mod tests {
             .memory(|mem| mem.area_rect(stable_id))
             .expect("hosted area should be visible");
         let drag_start = pos2(initial_rect.center().x, initial_rect.top() + 10.0);
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
 
         ctx.begin_pass(egui::RawInput {
             screen_rect: Some(screen_rect),
@@ -1593,7 +1611,7 @@ mod tests {
             pressed_rect.min, initial_rect.min,
             "press frame should not consume hover-to-press pointer delta as window movement: before={initial_rect:?}, after={pressed_rect:?}"
         );
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
     }
 
     #[test]
@@ -1628,7 +1646,7 @@ mod tests {
             )
         });
         let drag_start = pos2(upper_initial.center().x, upper_initial.top() + 10.0);
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
 
         ctx.begin_pass(egui::RawInput {
             screen_rect: Some(screen_rect),
@@ -1649,7 +1667,7 @@ mod tests {
         show_hosted_window(&ctx, &upper_spec, &mut upper_open, |ui| {
             ui.label("upper");
         });
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
 
         let drag_end = drag_start + vec2(96.0, 0.0);
         ctx.begin_pass(egui::RawInput {
@@ -1678,7 +1696,7 @@ mod tests {
             upper_after.min.x > upper_initial.min.x + 40.0,
             "top window did not move with title drag: before={upper_initial:?}, after={upper_after:?}"
         );
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
     }
 
     #[test]
@@ -1696,7 +1714,7 @@ mod tests {
         });
         assert!(ctx.memory(|mem| mem.areas().is_visible(&modal_layer)));
         assert!(!ctx.memory(|mem| mem.areas().is_visible(&title_layer)));
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
     }
 
     #[test]
@@ -1721,7 +1739,7 @@ mod tests {
             .expect("modal area should be visible");
         assert!(rect.width() <= 320.0);
         assert!(rect.height() <= 220.0);
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
     }
 
     #[test]
@@ -1741,6 +1759,6 @@ mod tests {
             mem.areas()
                 .is_visible(&egui::LayerId::new(egui::Order::Foreground, modal_id))
         }));
-        let _ = ctx.end_pass();
+        discard_test_pass_output(&ctx);
     }
 }
