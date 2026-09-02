@@ -1,10 +1,11 @@
 # GENtle Roadmap
 
-Last session: 2026-09-01 - composed transcript-aware promoter-reporter plans
-with the canonical locus-evidence figure, retained unavailable occupancy lanes
-as typed portable rows, and made shared regulatory-score scales depend on exact
-typed source/calibration bindings; final exact-revision PATZ1 GUI, benchmark,
-and copied-state acceptance remain before the unreleased
+Last session: 2026-09-02 - composed transcript-aware promoter-reporter plans
+with the canonical locus-evidence figure, added its explicit material legend
+and broader LOCUSDEMO TF inputs, and separated local display direction from
+genomic strand so gene-oriented negative-strand Ensembl loci are not mirrored
+twice; final exact-revision PATZ1/TGFB1 GUI, benchmark, and copied-state
+acceptance remain before the unreleased
 `v0.1.0-internal.10` tag
 
 Purpose: fast session orientation. This file answers "what next?" and should be

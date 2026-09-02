@@ -9024,11 +9024,12 @@ impl MainAreaDna {
         ui.label(&report.instruction);
         Self::render_isoform_evidence_status_legend(ui);
         ui.monospace(format!(
-            "{}:{}..{} | strand {} | transcript axis {} -> {}",
+            "{}:{}..{} | genomic strand {} | local axis {} | genomic labels {} -> {}",
             report.isoform_evidence.chromosome.as_deref().unwrap_or("?"),
             report.locus_genomic_start_1based,
             report.locus_genomic_end_1based,
             report.gene_strand,
+            report.local_axis_direction.as_str(),
             report.axis_left_genomic_1based,
             report.axis_right_genomic_1based
         ));

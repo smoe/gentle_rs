@@ -8,8 +8,9 @@ use crate::engine::{
     PromoterReporterAtgDisposition, PromoterReporterCutRunLaneState,
 };
 use gentle_render::{
-    GeneLocusEvidenceOverlay, GeneLocusEvidenceOverlayRow, GeneLocusEvidenceOverlaySchematicTail,
-    GeneLocusEvidenceOverlaySegment, render_gene_locus_evidence_with_overlay_svg,
+    GeneLocusEvidenceOverlay, GeneLocusEvidenceOverlayLegendItem, GeneLocusEvidenceOverlayRow,
+    GeneLocusEvidenceOverlaySchematicTail, GeneLocusEvidenceOverlaySegment,
+    render_gene_locus_evidence_with_overlay_svg,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
@@ -23,6 +24,25 @@ const ROW_HEIGHT: f64 = 38.0;
 const SECTION_GAP: f64 = 32.0;
 const SECTION_SPACER: f64 = 10.0;
 const FOOTER_HEIGHT: f64 = 92.0;
+const GENOMIC_SOURCE_FILL: &str = "#27847c";
+const SPLICED_CDNA_FILL: &str = "#d58a3a";
+const SCHEMATIC_REPORTER_FILL: &str = "#b54b43";
+
+fn reporter_material_legend_items() -> [(&'static str, &'static str, &'static str); 3] {
+    [
+        (
+            "genomic_source",
+            "genomic source interval",
+            GENOMIC_SOURCE_FILL,
+        ),
+        ("spliced_cdna", "spliced exon / cDNA", SPLICED_CDNA_FILL),
+        (
+            "schematic_reporter",
+            "schematic LUC (not genomic scale)",
+            SCHEMATIC_REPORTER_FILL,
+        ),
+    ]
+}
 
 fn escape_svg_text(raw: &str) -> String {
     raw.replace('&', "&amp;")
@@ -190,9 +210,9 @@ fn normalized_locus_overlay(
                         local_start_1based: start,
                         local_end_1based: end,
                         fill: match segment.material.as_str() {
-                            "spliced_cdna" | "spliced_genomic_exon" => "#d58a3a",
-                            "reporter_sequence" => "#b54b43",
-                            _ => "#27847c",
+                            "spliced_cdna" | "spliced_genomic_exon" => SPLICED_CDNA_FILL,
+                            "reporter_sequence" => SCHEMATIC_REPORTER_FILL,
+                            _ => GENOMIC_SOURCE_FILL,
                         }
                         .to_string(),
                     })
@@ -233,7 +253,7 @@ fn normalized_locus_overlay(
                             "{}; luciferase coding body is schematic and not to genomic scale",
                             architecture.junction.reporter_atg_source
                         ),
-                        fill: "#b54b43".to_string(),
+                        fill: SCHEMATIC_REPORTER_FILL.to_string(),
                         anchor_local_1based,
                     }
                 }),
@@ -257,6 +277,16 @@ fn normalized_locus_overlay(
             report.transcripts.len(),
             report.architectures.len()
         ),
+        legend_items: reporter_material_legend_items()
+            .into_iter()
+            .map(
+                |(item_id, label, fill)| GeneLocusEvidenceOverlayLegendItem {
+                    item_id: item_id.to_string(),
+                    label: label.to_string(),
+                    fill: fill.to_string(),
+                },
+            )
+            .collect(),
         rows,
         non_claims: report.non_claims.clone(),
     }
@@ -319,13 +349,35 @@ pub fn render_promoter_reporter_architecture_svg(
     );
     let _ = write!(
         svg,
-        "<text x=\"28\" y=\"38\" class=\"title\">{} promoter-reporter architectures</text><text x=\"28\" y=\"64\" class=\"subtitle\">sequence {} | {} TSS class(es) | {} transcript(s) | {} explicit architecture row(s)</text><text x=\"28\" y=\"86\" class=\"subtitle\">orange TSS | gold common CDS start | teal genomic DNA | amber spliced cDNA | blue CDS | violet occupancy support</text>",
+        "<text x=\"28\" y=\"38\" class=\"title\">{} promoter-reporter architectures</text><text x=\"28\" y=\"64\" class=\"subtitle\">sequence {} | {} TSS class(es) | {} transcript(s) | {} explicit architecture row(s)</text>",
         escape_svg_text(title_gene),
         escape_svg_text(&report.seq_id),
         report.tss_classes.len(),
         report.transcripts.len(),
         report.architectures.len()
     );
+    let legend_items = [
+        ("tss", "TSS", "#db6b3f"),
+        ("cds_start", "CDS/ATG boundary", "#d29d21"),
+        reporter_material_legend_items()[0],
+        reporter_material_legend_items()[1],
+        ("cds", "annotated CDS", "#225f73"),
+        ("occupancy", "occupancy support", "#8063a6"),
+        reporter_material_legend_items()[2],
+    ];
+    for (index, (item_id, label, fill)) in legend_items.into_iter().enumerate() {
+        let x = 28.0 + index as f64 * 230.0;
+        let _ = write!(
+            svg,
+            "<rect x=\"{:.2}\" y=\"78\" width=\"14\" height=\"10\" rx=\"2\" fill=\"{}\" data-gentle-reporter-legend=\"{}\"/><text x=\"{:.2}\" y=\"87\" class=\"row-meta\" data-gentle-reporter-legend-label=\"{}\">{}</text>",
+            x,
+            fill,
+            item_id,
+            x + 20.0,
+            item_id,
+            escape_svg_text(label)
+        );
+    }
 
     let axis_y = HEADER_HEIGHT;
     let _ = write!(
@@ -486,9 +538,9 @@ pub fn render_promoter_reporter_architecture_svg(
         source_segments.sort_by_key(|(_, start, end)| (*start, *end));
         for (segment, start, end) in &source_segments {
             let fill = match segment.material.as_str() {
-                "spliced_cdna" | "spliced_genomic_exon" => "#d58a3a",
-                "reporter_sequence" => "#b54b43",
-                _ => "#27847c",
+                "spliced_cdna" | "spliced_genomic_exon" => SPLICED_CDNA_FILL,
+                "reporter_sequence" => SCHEMATIC_REPORTER_FILL,
+                _ => GENOMIC_SOURCE_FILL,
             };
             range_rect(
                 &mut svg,
@@ -740,6 +792,13 @@ mod tests {
         };
 
         let overlay = normalized_locus_overlay(&report);
+        assert_eq!(overlay.legend_items.len(), 3);
+        assert!(
+            overlay
+                .legend_items
+                .iter()
+                .any(|item| item.item_id == "spliced_cdna" && item.label == "spliced exon / cDNA")
+        );
         assert_eq!(
             overlay.rows[0]
                 .schematic_tail
@@ -798,6 +857,8 @@ mod tests {
         let svg = render_promoter_reporter_architecture_svg(&report);
         assert!(svg.starts_with("<svg"));
         assert!(svg.contains("arch_main_spliced"));
+        assert!(svg.contains("data-gentle-reporter-legend=\"spliced_cdna\""));
+        assert!(svg.contains("spliced exon / cDNA"));
         assert!(svg.contains("endogenous ATG replaced"));
         assert!(svg.contains("No CUT&amp;RUN lane selected"));
         assert!(svg.contains("Annotation does not establish promoter usage."));

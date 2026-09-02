@@ -125,6 +125,48 @@
       "color_hint": "#ae2012"
     },
     {
+      "track_id": "patz1_jaspar",
+      "label": "PATZ1 JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "PATZ1"
+      ],
+      "factors": [
+        {
+          "factor_id": "PATZ1",
+          "factor_label": "PATZ1"
+        }
+      ],
+      "score_kind": "llr_bits",
+      "strand_policy": "both",
+      "clip_negative": false,
+      "display_threshold": 0,
+      "top_hit_count": 3,
+      "scale_mode": "independent",
+      "color_hint": "#aa4499"
+    },
+    {
+      "track_id": "e2f1_jaspar",
+      "label": "E2F1 JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "E2F1"
+      ],
+      "factors": [
+        {
+          "factor_id": "E2F1",
+          "factor_label": "E2F1"
+        }
+      ],
+      "score_kind": "llr_bits",
+      "strand_policy": "both",
+      "clip_negative": false,
+      "display_threshold": 0,
+      "top_hit_count": 3,
+      "scale_mode": "independent",
+      "color_hint": "#4477aa"
+    },
+    {
       "track_id": "external_tp73_context",
       "label": "Synthetic TP73-context model",
       "provider_kind": "external_model_scores",

@@ -3,11 +3,11 @@
 use gentle_protocol::{
     CrypticSplicingScreenView, CrypticSplicingSignalStatus, FeatureExpertView,
     GeneIsoformEvidenceReport, GeneLocusCodonKind, GeneLocusEvidenceDisplayReport,
-    GeneLocusOccupancyLaneRole, GeneLocusOccupancyLaneState, GeneLocusOccupancyScaleMode,
-    GeneLocusProbeClass, GeneLocusProbeEffectContrast, GeneLocusRegulatoryScoreProviderKind,
-    GeneLocusRegulatoryScoreTrack, GeneLocusScaleBarMode, IsoformArchitectureExpertView,
-    RestrictionSiteExpertView, SplicingExonSummary, SplicingExpertView, SplicingJunctionArc,
-    TfbsExpertView,
+    GeneLocusLocalAxisDirection, GeneLocusOccupancyLaneRole, GeneLocusOccupancyLaneState,
+    GeneLocusOccupancyScaleMode, GeneLocusProbeClass, GeneLocusProbeEffectContrast,
+    GeneLocusRegulatoryScoreProviderKind, GeneLocusRegulatoryScoreTrack, GeneLocusScaleBarMode,
+    IsoformArchitectureExpertView, RestrictionSiteExpertView, SplicingExonSummary,
+    SplicingExpertView, SplicingJunctionArc, TfbsExpertView,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use svg::Document;
@@ -4449,6 +4449,14 @@ pub struct GeneLocusEvidenceOverlaySchematicTail {
     pub anchor_local_1based: usize,
 }
 
+/// One explicit material key supplied by the engine-owned overlay projection.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GeneLocusEvidenceOverlayLegendItem {
+    pub item_id: String,
+    pub label: String,
+    pub fill: String,
+}
+
 /// One design row projected onto the normalized locus coordinate axis.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GeneLocusEvidenceOverlayRow {
@@ -4468,8 +4476,43 @@ pub struct GeneLocusEvidenceOverlay {
     pub title: String,
     pub document_title: String,
     pub summary: String,
+    pub legend_items: Vec<GeneLocusEvidenceOverlayLegendItem>,
     pub rows: Vec<GeneLocusEvidenceOverlayRow>,
     pub non_claims: Vec<String>,
+}
+
+fn gene_locus_local_axis_decreases(report: &GeneLocusEvidenceDisplayReport) -> bool {
+    match report.local_axis_direction {
+        GeneLocusLocalAxisDirection::IncreasingLeftToRight => false,
+        GeneLocusLocalAxisDirection::DecreasingLeftToRight => true,
+        GeneLocusLocalAxisDirection::LegacyGeneStrandFallback => report.gene_strand == "-",
+    }
+}
+
+fn gene_locus_position_x(
+    report: &GeneLocusEvidenceDisplayReport,
+    position_1based: usize,
+    plot_left: f32,
+    plot_right: f32,
+) -> f32 {
+    let span = report
+        .locus_local_end_1based
+        .saturating_sub(report.locus_local_start_1based)
+        .max(1) as f32;
+    let fraction = position_1based.saturating_sub(report.locus_local_start_1based) as f32 / span;
+    if gene_locus_local_axis_decreases(report) {
+        plot_right - fraction * (plot_right - plot_left)
+    } else {
+        plot_left + fraction * (plot_right - plot_left)
+    }
+}
+
+fn explicit_strand<'a>(explicit: &'a str, legacy: &'a str) -> &'a str {
+    if explicit.trim().is_empty() {
+        legacy
+    } else {
+        explicit
+    }
 }
 
 fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String {
@@ -4486,18 +4529,8 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
     let plot_left = 255.0_f32;
     let plot_right = 1050.0_f32;
     let metrics_left = 1070.0_f32;
-    let span = report
-        .locus_local_end_1based
-        .saturating_sub(report.locus_local_start_1based)
-        .max(1) as f32;
     let x_for = |position_1based: usize| {
-        let fraction =
-            position_1based.saturating_sub(report.locus_local_start_1based) as f32 / span;
-        if report.gene_strand == "-" {
-            plot_right - fraction * (plot_right - plot_left)
-        } else {
-            plot_left + fraction * (plot_right - plot_left)
-        }
+        gene_locus_position_x(report, position_1based, plot_left, plot_right)
     };
     let splicing = report.isoform_evidence.splicing.as_ref();
     let transcript_count = splicing.map(|view| view.transcripts.len()).unwrap_or(0);
@@ -4514,9 +4547,13 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
     let transcript_height = transcript_count.max(1) as f32 * transcript_pitch;
     let overlay_top = transcript_top + transcript_height + 34.0;
     let overlay_pitch = 38.0_f32;
+    let overlay_legend_height = overlay
+        .filter(|overlay| !overlay.rows.is_empty() && !overlay.legend_items.is_empty())
+        .map(|_| 28.0_f32)
+        .unwrap_or_default();
     let overlay_height = overlay
         .filter(|overlay| !overlay.rows.is_empty())
-        .map(|overlay| 28.0 + overlay.rows.len() as f32 * overlay_pitch)
+        .map(|overlay| 28.0 + overlay_legend_height + overlay.rows.len() as f32 * overlay_pitch)
         .unwrap_or_default();
     let probe_top = if overlay_height > 0.0 {
         overlay_top + overlay_height + 28.0
@@ -4583,6 +4620,10 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
         .set("height", doc_height)
         .set("data-gentle-schema", report.schema.as_str())
         .set("data-gentle-panel-id", report.panel_id.as_str())
+        .set(
+            "data-gentle-local-axis-direction",
+            report.local_axis_direction.as_str(),
+        )
         .add(
             Rectangle::new()
                 .set("x", 0)
@@ -4973,7 +5014,21 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
                             Path::new()
                                 .set("d", triangle)
                                 .set("fill", "#16a34a")
-                                .set("data-gentle-codon", "start"),
+                                .set("data-gentle-codon", "start")
+                                .set("data-gentle-display-x", x)
+                                .set("data-gentle-local-position", marker.local_position_1based)
+                                .set(
+                                    "data-gentle-genomic-position",
+                                    marker.genomic_position_1based,
+                                )
+                                .set(
+                                    "data-gentle-local-strand",
+                                    explicit_strand(&marker.local_strand, &marker.strand),
+                                )
+                                .set(
+                                    "data-gentle-genomic-strand",
+                                    explicit_strand(&marker.genomic_strand, &marker.strand),
+                                ),
                         );
                     }
                     GeneLocusCodonKind::Stop => {
@@ -4984,7 +5039,21 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
                                 .set("width", 5)
                                 .set("height", 10)
                                 .set("fill", "#dc2626")
-                                .set("data-gentle-codon", "stop"),
+                                .set("data-gentle-codon", "stop")
+                                .set("data-gentle-display-x", x)
+                                .set("data-gentle-local-position", marker.local_position_1based)
+                                .set(
+                                    "data-gentle-genomic-position",
+                                    marker.genomic_position_1based,
+                                )
+                                .set(
+                                    "data-gentle-local-strand",
+                                    explicit_strand(&marker.local_strand, &marker.strand),
+                                )
+                                .set(
+                                    "data-gentle-genomic-strand",
+                                    explicit_strand(&marker.genomic_strand, &marker.strand),
+                                ),
                         );
                     }
                 }
@@ -5016,8 +5085,51 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
                 .set("fill", "#64748b")
                 .set("data-gentle-overlay-scale-note", "true"),
         );
+        if !overlay.legend_items.is_empty() {
+            doc = doc.add(
+                Text::new("Reporter materials")
+                    .set("x", 34)
+                    .set("y", overlay_top + 4.0)
+                    .set("font-family", "sans-serif")
+                    .set("font-size", 9)
+                    .set("font-weight", "bold")
+                    .set("fill", "#475569")
+                    .set("data-gentle-overlay-legend", "title"),
+            );
+            let item_width = (plot_right - plot_left) / overlay.legend_items.len().max(1) as f32;
+            for (index, item) in overlay.legend_items.iter().enumerate() {
+                let x = plot_left + index as f32 * item_width;
+                doc = doc
+                    .add(
+                        Rectangle::new()
+                            .set("x", x)
+                            .set("y", overlay_top - 6.0)
+                            .set("width", 14)
+                            .set("height", 10)
+                            .set("rx", 2)
+                            .set(
+                                "fill",
+                                if item.fill.trim().is_empty() {
+                                    "#64748b"
+                                } else {
+                                    item.fill.as_str()
+                                },
+                            )
+                            .set("data-gentle-overlay-legend", item.item_id.as_str()),
+                    )
+                    .add(
+                        Text::new(isoform_evidence_compact_label(&item.label, 38))
+                            .set("x", x + 20.0)
+                            .set("y", overlay_top + 3.0)
+                            .set("font-family", "sans-serif")
+                            .set("font-size", 8)
+                            .set("fill", "#475569")
+                            .set("data-gentle-overlay-legend-label", item.item_id.as_str()),
+                    );
+            }
+        }
         for (index, row) in overlay.rows.iter().enumerate() {
-            let y = overlay_top + index as f32 * overlay_pitch;
+            let y = overlay_top + overlay_legend_height + index as f32 * overlay_pitch;
             doc = doc
                 .add(
                     Text::new(isoform_evidence_compact_label(&row.label, 37))
@@ -5581,7 +5693,12 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
                             "data-gentle-occupancy-interval",
                             interval.interval_id.as_str(),
                         )
-                        .set("data-gentle-occupancy-role", locus_role_token(lane.role)),
+                        .set("data-gentle-occupancy-role", locus_role_token(lane.role))
+                        .set("data-gentle-display-x", x1.min(x2))
+                        .set("data-gentle-local-start", interval.local_start_1based)
+                        .set("data-gentle-local-end", interval.local_end_1based)
+                        .set("data-gentle-genomic-start", interval.genomic_start_1based)
+                        .set("data-gentle-genomic-end", interval.genomic_end_1based),
                 );
             }
             doc = doc.add(
@@ -5795,6 +5912,8 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
             }
             for site in &track.sites {
                 let x = x_for(site.local_start_0based.saturating_add(1));
+                let local_strand = explicit_strand(&site.local_strand, &site.strand);
+                let genomic_strand = explicit_strand(&site.genomic_strand, &site.strand);
                 doc = doc
                     .add(
                         Line::new()
@@ -5806,7 +5925,7 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
                             .set("stroke-width", 1)
                             .set(
                                 "stroke-dasharray",
-                                if site.strand == "-" { "4,2" } else { "1,0" },
+                                if genomic_strand == "-" { "4,2" } else { "1,0" },
                             )
                             .set("data-gentle-regulatory-site", site.site_id.as_str())
                             .set(
@@ -5815,10 +5934,15 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
                             )
                             .set("data-gentle-regulatory-provider", provider)
                             .set("data-gentle-regulatory-factor", factor_ids.as_str())
-                            .set("data-gentle-regulatory-strand", site.strand.as_str()),
+                            .set("data-gentle-regulatory-strand", genomic_strand)
+                            .set("data-gentle-local-strand", local_strand)
+                            .set("data-gentle-genomic-strand", genomic_strand)
+                            .set("data-gentle-display-x", x)
+                            .set("data-gentle-local-start", site.local_start_0based + 1)
+                            .set("data-gentle-genomic-start", site.genomic_start_1based),
                     )
                     .add(
-                        Text::new(format!("{}:{:.2}", site.strand, site.score))
+                        Text::new(format!("{}:{:.2}", genomic_strand, site.score))
                             .set("x", x + 2.0)
                             .set("y", lane_top - 3.0)
                             .set("font-family", "monospace")
@@ -5953,6 +6077,8 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
         }
         for hit in &track.top_hits {
             let x = x_for(hit.local_start_0based.saturating_add(1));
+            let local_strand = explicit_strand(&hit.local_strand, &hit.strand);
+            let genomic_strand = explicit_strand(&hit.genomic_strand, &hit.strand);
             doc = doc
                 .add(
                     Line::new()
@@ -5963,10 +6089,15 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
                         .set("stroke", "#9f1239")
                         .set("stroke-width", 1)
                         .set("stroke-dasharray", "2,2")
-                        .set("data-gentle-motif-hit", hit.rank),
+                        .set("data-gentle-motif-hit", hit.rank)
+                        .set("data-gentle-local-strand", local_strand)
+                        .set("data-gentle-genomic-strand", genomic_strand)
+                        .set("data-gentle-display-x", x)
+                        .set("data-gentle-local-start", hit.local_start_0based + 1)
+                        .set("data-gentle-genomic-start", hit.genomic_start_1based),
                 )
                 .add(
-                    Text::new(format!("{}:{:.2}", hit.strand, hit.score))
+                    Text::new(format!("{}:{:.2}", genomic_strand, hit.score))
                         .set("x", x + 2.0)
                         .set("y", baseline - 34.0)
                         .set("font-family", "monospace")
@@ -6615,6 +6746,7 @@ mod tests {
             panel_id: "demo_panel".to_string(),
             instruction: "Distinct evidence layers remain non-causal.".to_string(),
             gene_strand: "+".to_string(),
+            local_axis_direction: GeneLocusLocalAxisDirection::IncreasingLeftToRight,
             locus_local_start_1based: 90,
             locus_local_end_1based: 270,
             axis_left_genomic_1based: 90,
@@ -6640,6 +6772,8 @@ mod tests {
                     local_position_1based: 110,
                     genomic_position_1based: 110,
                     strand: "+".to_string(),
+                    local_strand: "+".to_string(),
+                    genomic_strand: "+".to_string(),
                     basis: "annotated CDS".to_string(),
                 },
                 GeneLocusCodonMarker {
@@ -6648,6 +6782,8 @@ mod tests {
                     local_position_1based: 176,
                     genomic_position_1based: 176,
                     strand: "+".to_string(),
+                    local_strand: "+".to_string(),
+                    genomic_strand: "+".to_string(),
                     basis: "annotated CDS".to_string(),
                 },
             ],
@@ -6667,12 +6803,20 @@ mod tests {
         assert!(svg.contains("data-gentle-transcript-legend=\"stop-codon\""));
         assert!(svg.contains("annotated start codon"));
         assert!(svg.contains("annotated stop codon"));
+        assert!(svg.contains("data-gentle-local-axis-direction=\"increasing_left_to_right\""));
+        assert!(svg.contains("data-gentle-local-strand=\"+\""));
+        assert!(svg.contains("data-gentle-genomic-strand=\"+\""));
 
         let overlay = GeneLocusEvidenceOverlay {
             overlay_id: "reporter_comparison".to_string(),
             title: "Proposed reporter architectures".to_string(),
             document_title: "DEMO promoter-reporter architectures".to_string(),
             summary: "Canonical reporter geometry plus normalized evidence.".to_string(),
+            legend_items: vec![GeneLocusEvidenceOverlayLegendItem {
+                item_id: "spliced_cdna".to_string(),
+                label: "spliced exon / cDNA".to_string(),
+                fill: "#d58a3a".to_string(),
+            }],
             rows: vec![GeneLocusEvidenceOverlayRow {
                 row_id: "demo_spliced_luc".to_string(),
                 label: "NM_demo_1 · spliced 5' UTR".to_string(),
@@ -6710,9 +6854,43 @@ mod tests {
         assert!(combined.contains("demo_spliced_luc"));
         assert!(combined.contains("data-gentle-overlay-segment=\"leader_1\""));
         assert!(combined.contains("data-gentle-overlay-schematic=\"demo_luciferase\""));
+        assert!(combined.contains("data-gentle-overlay-legend=\"spliced_cdna\""));
+        assert!(combined.contains("spliced exon / cDNA"));
         assert!(combined.contains("synthetic tails are schematic"));
         assert!(combined.contains("Reporter interpretation boundaries"));
         assert!(combined.contains("DEMO promoter-reporter architectures"));
+    }
+
+    #[test]
+    fn gene_locus_renderer_distinguishes_local_axis_direction_from_genomic_strand() {
+        let mut report = GeneLocusEvidenceDisplayReport {
+            gene_strand: "-".to_string(),
+            local_axis_direction: GeneLocusLocalAxisDirection::IncreasingLeftToRight,
+            locus_local_start_1based: 1,
+            locus_local_end_1based: 1_000,
+            ..Default::default()
+        };
+        let increasing_start = gene_locus_position_x(&report, 100, 0.0, 100.0);
+        let increasing_stop = gene_locus_position_x(&report, 800, 0.0, 100.0);
+        assert!(
+            increasing_start < increasing_stop,
+            "gene-oriented negative-strand imports must not be mirrored twice"
+        );
+
+        report.local_axis_direction = GeneLocusLocalAxisDirection::DecreasingLeftToRight;
+        let decreasing_start = gene_locus_position_x(&report, 100, 0.0, 100.0);
+        let decreasing_stop = gene_locus_position_x(&report, 800, 0.0, 100.0);
+        assert!(
+            decreasing_start > decreasing_stop,
+            "genomic-orientation minus-strand inputs must retain their biological reversal"
+        );
+
+        report.local_axis_direction = GeneLocusLocalAxisDirection::LegacyGeneStrandFallback;
+        assert!(
+            gene_locus_position_x(&report, 100, 0.0, 100.0)
+                > gene_locus_position_x(&report, 800, 0.0, 100.0),
+            "old payloads must retain the historical gene-strand fallback"
+        );
     }
 
     #[test]
@@ -6758,6 +6936,8 @@ mod tests {
                 genomic_start_1based: 100_020,
                 genomic_end_1based: 100_031,
                 strand: "-".to_string(),
+                local_strand: "-".to_string(),
+                genomic_strand: "-".to_string(),
                 score: 0.9,
                 label: Some("model site".to_string()),
             }],
@@ -6804,6 +6984,7 @@ mod tests {
             panel_id: "demo_panel".to_string(),
             instruction: "Distinct evidence layers remain non-causal.".to_string(),
             gene_strand: "-".to_string(),
+            local_axis_direction: GeneLocusLocalAxisDirection::DecreasingLeftToRight,
             locus_local_start_1based: 1,
             locus_local_end_1based: 2_000,
             axis_left_genomic_1based: 101_999,

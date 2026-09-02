@@ -20,6 +20,40 @@ impl GentleEngine {
                 .eq_ignore_ascii_case(Self::promoter_architecture_transcript_id_stem(right))
     }
 
+    fn promoter_architecture_genomic_strand(
+        local_strand: &str,
+        anchor: Option<&SequenceGenomeAnchorSummary>,
+    ) -> String {
+        match (local_strand.trim(), anchor.and_then(|value| value.strand)) {
+            ("+", Some('-')) => "-",
+            ("-", Some('-')) => "+",
+            ("+", _) => "+",
+            ("-", _) => "-",
+            _ => "?",
+        }
+        .to_string()
+    }
+
+    fn promoter_architecture_explicit_tss_class_id(
+        class_id: &str,
+        local_strand: &str,
+        genomic_strand: &str,
+    ) -> String {
+        let local = if local_strand == "-" { "minus" } else { "plus" };
+        let genomic = if genomic_strand == "-" {
+            "minus"
+        } else {
+            "plus"
+        };
+        let legacy_marker = format!("_{local}_tss_");
+        let explicit_marker = format!("_local_{local}_genomic_{genomic}_tss_");
+        if class_id.contains(&legacy_marker) {
+            class_id.replacen(&legacy_marker, &explicit_marker, 1)
+        } else {
+            format!("{class_id}_local_{local}_genomic_{genomic}")
+        }
+    }
+
     fn promoter_architecture_local_point_to_genomic(
         anchor: Option<&SequenceGenomeAnchorSummary>,
         local_0based: usize,
@@ -212,12 +246,16 @@ impl GentleEngine {
                 .cds_start_codon_source_end_0based_exclusive
                 .saturating_sub(record.tss_local_0based)
         };
+        let local_strand = record.strand.clone();
+        let genomic_strand = Self::promoter_architecture_genomic_strand(&local_strand, anchor);
         Ok(PromoterReporterTranscriptArchitectureAudit {
             transcript_id: record.transcript_id.clone(),
             transcript_label: record.transcript_label.clone(),
             transcript_feature_id,
             gene_label: record.gene_label.clone(),
-            strand: record.strand.clone(),
+            strand: local_strand.clone(),
+            local_strand,
+            genomic_strand,
             tss_class_id: class_id.to_string(),
             tss_local_0based: record.tss_local_0based,
             tss_genomic_1based: Self::promoter_architecture_local_point_to_genomic(
@@ -688,6 +726,12 @@ impl GentleEngine {
             tss_class_transcript_ids: class.transcript_ids.clone(),
             transcript_id: audit.transcript_id.clone(),
             strand: audit.strand.clone(),
+            local_strand: if audit.local_strand.is_empty() {
+                audit.strand.clone()
+            } else {
+                audit.local_strand.clone()
+            },
+            genomic_strand: audit.genomic_strand.clone(),
             tss_local_0based: audit.tss_local_0based,
             tss_genomic_1based: audit.tss_genomic_1based,
             cds_start_codon_source_ranges_0based: audit
@@ -1365,6 +1409,14 @@ impl GentleEngine {
                     class_record.tss_local_0based.saturating_add(1)
                 )
             });
+            let local_strand = class_record.strand.clone();
+            let genomic_strand =
+                Self::promoter_architecture_genomic_strand(&local_strand, anchor.as_ref());
+            let class_id = Self::promoter_architecture_explicit_tss_class_id(
+                &class_id,
+                &local_strand,
+                &genomic_strand,
+            );
             let member_windows = transcript_windows
                 .iter()
                 .filter(|record| {
@@ -1389,7 +1441,9 @@ impl GentleEngine {
             tss_classes.push(PromoterReporterTssClass {
                 class_id,
                 gene_label: class_record.gene_label.clone(),
-                strand: class_record.strand.clone(),
+                strand: local_strand.clone(),
+                local_strand,
+                genomic_strand,
                 representative_transcript_id: class_record.transcript_id.clone(),
                 representative_tss_local_0based: class_record.tss_local_0based,
                 representative_tss_genomic_1based:
@@ -1987,6 +2041,15 @@ mod tests {
         assert_eq!(report.tss_classes.len(), 2);
         assert_eq!(report.transcripts.len(), 3);
         assert_eq!(report.architectures.len(), 9);
+        assert!(report.transcripts.iter().all(|row| {
+            row.strand == "+" && row.local_strand == "+" && row.genomic_strand == "+"
+        }));
+        assert!(
+            report
+                .tss_classes
+                .iter()
+                .all(|class| { class.class_id.contains("_local_plus_genomic_plus_tss_") })
+        );
         assert_eq!(report.common_cds_start_local_0based, Some(360));
         let intronless = report
             .transcripts
@@ -2187,6 +2250,8 @@ mod tests {
 
         assert_eq!(report.common_cds_start_local_0based, Some(499));
         assert_eq!(report.transcripts[0].strand, "-");
+        assert_eq!(report.transcripts[0].local_strand, "-");
+        assert_eq!(report.transcripts[0].genomic_strand, "-");
         assert_eq!(
             report.transcripts[0].cds_start_codon_5prime_to_3prime,
             "ATG"

@@ -3641,6 +3641,12 @@ Sequencing-trace evidence notes:
     payload's strand-aware axis, so designs, occupancy/chromatin, TF-score
     traces, transcript models, and scale bar appear in one SVG. It does not
     recalculate reporter geometry or merge evidence semantics
+  - reporter transcript audits, TSS classes, and architecture rows retain the
+    legacy local `strand` field and additionally export unambiguous
+    `local_strand` and `genomic_strand` values. TSS class ids spell out both
+    frames (`local_plus_genomic_minus`, for example), so a gene-oriented
+    reverse-complemented import is not mislabeled as a genomic plus-strand
+    promoter
   - omitting `locus_evidence_request` preserves the original v1 report content
     and renderer path
   - requested transcript and fusion-target ids use version-tolerant Ensembl
@@ -4032,7 +4038,15 @@ external coding agent runtime, see:
     `transcript_metrics[]`, annotation-backed `codon_markers[]`, optional
     `probe_effect_overlays[]`, grouped `occupancy_groups[]`, continuous
     `motif_tracks[]`, deduplicated junction `assay_overlays[]`, a combined
-    `provenance[]` inventory, strand-aware locus/flank coordinates, and warnings
+    `provenance[]` inventory, strand-aware locus/flank coordinates, and warnings.
+    `gene_strand` is genomic, while `local_axis_direction` records whether
+    loaded-sequence coordinates increase or decrease from left to right. This
+    distinction prevents a negative-strand Ensembl locus that was already
+    reverse-complemented into gene orientation from being mirrored again.
+    Payloads written before this additive field use
+    `legacy_gene_strand_fallback`. Codon markers, motif hits, and normalized
+    regulatory sites expose separate `local_strand` and `genomic_strand`
+    values; their legacy `strand` field remains readable for compatibility
   - additive `regulatory_score_tracks[]` normalizes local JASPAR matrices and
     offline `gentle.gene_locus_external_regulatory_scores.v1` payloads into one
     renderer-owned shape. Every row binds provider/model, factor/source IDs,
@@ -4062,7 +4076,10 @@ external coding agent runtime, see:
     reporter renderer; `reporter_report_path` persists its JSON. Ensembl network
     access is explicit; an offline `ensembl_entry_path` is the mutually
     exclusive reproducible alternative. Receipts retain hashes and redact
-    local source paths by default
+    local source paths by default. The combined renderer receives an explicit
+    reporter-material legend rather than inferring semantics from colors; the
+    LOCUSDEMO fixture also demonstrates independent TP73, PATZ1, E2F1, and SP1
+    JASPAR score inputs
   - probe-effect tables are tab-separated and retain PSR intervals and JUC
     junction-edge geometry as distinct classes. Abundance columns follow the
     `log2_mean_*` convention and differential-activity columns follow

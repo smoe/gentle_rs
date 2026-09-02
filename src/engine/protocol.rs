@@ -76,8 +76,8 @@ pub use gentle_protocol::{
     GENE_SET_CUTRUN_REGULATORY_SUPPORT_SCHEMA, GENE_SET_DIRECT_LIST_CACHE_SCHEMA,
     GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA, GENE_SET_PROMOTER_COHORT_SCHEMA,
     GENE_SET_RESOLUTION_SCHEMA, GeneIsoformExonFamilyRow, GeneIsoformJunctionRow,
-    GeneLocusEvidenceDisplayReport, GeneLocusEvidenceDisplayRequest, GeneLocusOccupancyLaneState,
-    GeneLocusOccupancyLayout, GeneLocusRegulatoryCalibrationState,
+    GeneLocusEvidenceDisplayReport, GeneLocusEvidenceDisplayRequest, GeneLocusLocalAxisDirection,
+    GeneLocusOccupancyLaneState, GeneLocusOccupancyLayout, GeneLocusRegulatoryCalibrationState,
     GeneLocusRegulatoryScoreProviderKind, GeneLocusRegulatoryScoreTrackRequest,
     GeneLocusScaleBarPolicy, GeneLocusTranscriptMetrics, GeneSetCoRegulatedProducerMetadata,
     GeneSetCohortRelationship, GeneSetCohortRelationshipFlag, GeneSetCutRunEvaluationState,
@@ -9711,7 +9711,12 @@ pub struct PromoterReporterTranscriptArchitectureAudit {
     pub transcript_feature_id: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gene_label: Option<String>,
+    /// Legacy local-sequence strand retained for backward compatibility.
     pub strand: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub local_strand: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub genomic_strand: String,
     pub tss_class_id: String,
     pub tss_local_0based: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -9746,7 +9751,12 @@ pub struct PromoterReporterTssClass {
     pub class_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gene_label: Option<String>,
+    /// Legacy local-sequence strand retained for backward compatibility.
     pub strand: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub local_strand: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub genomic_strand: String,
     pub representative_transcript_id: String,
     pub representative_tss_local_0based: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -9802,7 +9812,12 @@ pub struct PromoterReporterArchitectureRow {
     #[serde(default)]
     pub tss_class_transcript_ids: Vec<String>,
     pub transcript_id: String,
+    /// Legacy local-sequence strand retained for backward compatibility.
     pub strand: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub local_strand: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub genomic_strand: String,
     pub tss_local_0based: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tss_genomic_1based: Option<usize>,
