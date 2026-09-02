@@ -17,11 +17,11 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 38 | 672 | 0 |
-| gentle_cli | 428 | 306 | 0 |
-| MCP | 109 | 470 | 58 |
-| JS | 78 | 481 | 63 |
-| Lua | 77 | 482 | 63 |
+| GUI | 38 | 674 | 0 |
+| gentle_cli | 429 | 307 | 0 |
+| MCP | 110 | 471 | 58 |
+| JS | 78 | 483 | 63 |
+| Lua | 77 | 484 | 63 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -29,6 +29,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | Capability | Source | GUI | gentle_cli | MCP | JS | Lua | ClawBio | Notes |
 |---|---|---|---|---|---|---|---|---|
 | help | glossary-command | shell-only | prominent | prominent | n/a | n/a | n/a | JS: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>Lua: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| gene-locus prepare | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | features edit-location | glossary-command | prominent | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | features create | glossary-command | prominent | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | features delete | glossary-command | prominent | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -573,6 +574,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | RenderTfbsScoreTracksSvg | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | RenderTfbsScoreTrackCorrelationSvg | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | RenderFeatureExpertSvg | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| PrepareGeneLocusEvidence | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | InspectCrypticSplicingScreen | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | RenderCrypticSplicingScreenSvg | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | InspectCrypticSplicingEvidenceOverlay | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |

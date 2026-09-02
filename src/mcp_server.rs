@@ -1346,6 +1346,7 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
         "agent_execute_plan" => &["agents execute-plan"],
         "op" => &[
             "op",
+            "gene-locus prepare",
             "features edit-location",
             "features create",
             "features delete",

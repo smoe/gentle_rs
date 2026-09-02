@@ -5831,6 +5831,7 @@ const MCP_PROMINENT_GLOSSARY_COMMAND_PATHS: &[&str] = &[
     "agents plan",
     "agents execute-plan",
     "op",
+    "gene-locus prepare",
     "features edit-location",
     "features create",
     "features delete",
