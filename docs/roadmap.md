@@ -1,12 +1,11 @@
 # GENtle Roadmap
 
-Last session: 2026-09-02 - composed transcript-aware promoter-reporter plans
-with the canonical locus-evidence figure, added its explicit material legend
-and broader LOCUSDEMO TF inputs, and separated local display direction from
-genomic strand so gene-oriented negative-strand Ensembl loci are not mirrored
-twice; final exact-revision PATZ1/TGFB1 GUI, benchmark, and copied-state
-acceptance remain before the unreleased
-`v0.1.0-internal.10` tag
+Last session: 2026-09-03 - closed the reported negative-strand and MCP parity
+defects, restored the PATZ1 tutorial artifact, repaired the dedicated GUI
+benchmark target, and added a typed Simple-PCR tutorial GUI runner with
+isolated starter/oracle state and checkpoint evidence; final exact-revision
+PATZ1/TGFB1 GUI, Criterion, and copied-state acceptance remain before the
+unreleased `v0.1.0-internal.10` tag
 
 Purpose: fast session orientation. This file answers "what next?" and should be
 readable in under two minutes. Completed work belongs in
@@ -307,11 +306,10 @@ wet-lab conclusions or unconfirmed mutations.
 - Extend the feature-gated semantic GUI test identifier registry beyond the
   bounded TP73/PATZ1 DNA-viewer, Splicing Expert, and Agent Assistant release
   controls as additional native acceptance stories require it.
-- Complete a Python/X11 runner for the typed `simple_pcr_selection_gui`
-  contract using the closed control catalog, clipped snapshots, explicit effect
-  flags, report assertions, isolated known-path saves, and a content-bound
-  checkpoint ledger; keep shell smoke as liveness evidence.
-- After that proof, extend context-labelled GUI/CLI/agent tutorial actions;
+- Extend the typed tutorial GUI runner beyond its first sequence-scoped
+  Simple-PCR report adapter only when another chapter supplies a validated
+  subject/report contract; keep shell smoke as compact liveness evidence.
+- Extend context-labelled GUI/CLI/agent tutorial actions;
   defer skill activation and inverse discovery until readiness is safeguarded.
 - Optional OS credential-store persistence for Agent Assistant API keys.
 - Separate opt-in inner coding-agent mode for Codex, Pi, or comparable local

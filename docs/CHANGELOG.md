@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+- Closed the final reported PATZ1/GUI-audit regressions after the strand fix.
+  The dedicated Criterion package now enables the feature-gated desktop GUI
+  modules it benchmarks without restoring root application binaries to the
+  benchmark build, and its headless frame path explicitly consumes egui 0.36
+  texture deltas instead of panicking without a renderer. Added a
+  contract-driven Linux/X11 tutorial acceptance runner
+  that validates the Rust-owned closed control catalog, materializes isolated
+  starter/oracle projects through shared workflow rewriting, sends only ordinary
+  desktop events, saves through the GUI, and retains content-bound snapshot,
+  screenshot, project, command, fact, and report evidence with distinct product,
+  contract, and harness failure classes. Regenerated and re-reviewed the PATZ1
+  locus evidence artifact against the corrected strand-aware renderer.
+
 - Corrected negative-strand Ensembl locus rendering by separating genomic gene
   strand from the direction of the already-oriented local sequence axis.
   Gene-locus reports now carry an explicit, backward-compatible local-axis

@@ -33,10 +33,12 @@ matching profile directory. Never compare results across these modes: the
 routine mode deliberately differs in LTO, codegen units, and panic strategy.
 The benchmarks live in the dedicated, non-published `gentle-benchmarks`
 workspace package. It depends on GENtle as a library with default features
-disabled, so Cargo does not prepare the application's GUI, CLI, MCP,
-documentation, or publication-report binaries before sampling. The first
-library build and link can still be substantial; subsequent runs reuse the
-profile cache. GENtle's build fingerprint follows the current loose branch ref
+disabled and explicitly enables `desktop-gui` plus `benchmark-support`, because
+the GUI target imports the feature-gated DNA-window modules it measures. Cargo
+still does not prepare the application's GUI, CLI, MCP, documentation, or
+publication-report binaries before sampling. The first library build and link
+can remain substantial; subsequent runs reuse the profile cache. GENtle's
+build fingerprint follows the current loose branch ref
 and consults repository-wide `packed-refs` only when that loose ref is absent,
 so Git maintenance in another worktree does not invalidate an otherwise
 unchanged audit build.
@@ -69,8 +71,9 @@ keeping the background record clone outside the timed loop. Benchmark IDs
 include sequence length, feature count, and the first 12 characters of the
 input SHA-256. This headless target cannot measure native window creation, GPU
 submission, compositor latency, input delivery, or whether interaction feels
-responsive. Those remain part of the external GUI/Puffin acceptance described
-in `docs/testing.md`.
+responsive. It explicitly clears each returned egui texture delta because no
+renderer exists to upload it. Those native concerns remain part of the external
+GUI/Puffin acceptance described in `docs/testing.md`.
 
 ## Specificity finalization
 

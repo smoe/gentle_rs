@@ -254,8 +254,16 @@ expensive GUI work that runs safely away from the egui thread.
   the DNA viewer and splitter before interacting.
 - Moved Criterion performance audits into the non-published
   `gentle-benchmarks` workspace package. Audit runs now compile the GENtle
-  library without preparing unrelated application binaries, while preserving
-  the existing routine and exact release-like profiles and hash-bound fixtures.
+  library, including the feature-gated DNA-window modules actually measured,
+  without preparing unrelated application binaries. Headless frame cases
+  explicitly clear unapplied egui texture deltas; the routine and exact
+  release-like profiles and hash-bound fixtures remain distinct.
+- Added a contract-driven Linux/X11 runner for the Simple-PCR GUI tutorial.
+  It materializes independent starter/oracle projects, drives only
+  Rust-validated semantic controls through ordinary desktop events, saves through
+  the GUI, and retains content-bound visual plus typed scientific evidence.
+  A non-GUI validation is not presented as GUI acceptance, and host limitations
+  remain separate from product failures.
 
 ### 6. Gene Sets, Promoters, and Construct Reasoning
 

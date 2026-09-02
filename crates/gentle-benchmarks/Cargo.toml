@@ -12,7 +12,7 @@ path = "src/lib.rs"
 [dev-dependencies]
 criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
 egui = { workspace = true }
-gentle = { package = "GENtle", path = "../..", default-features = false, features = ["benchmark-support"] }
+gentle = { package = "GENtle", path = "../..", default-features = false, features = ["benchmark-support", "desktop-gui"] }
 ring = "0.17.14"
 serde_json = { workspace = true }
 tempfile = { workspace = true }

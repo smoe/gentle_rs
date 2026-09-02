@@ -60,7 +60,7 @@
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "f73fdfda96c43be8ad6294d84da4a0aa42529dc6320c3b300313347213b77e03",
+    "README.md": "b05f234fddb58b8209e9b12ceaec51e2d76d5d70161f3db2121b7c4d369f8ecc",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_cohort.json": "a3a9093760934082e5e9ea8c06b2528978908de49e59a6142766d90f8baad5a5",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_comparison.json": "f324456edd43ceb5f6c0f263e085844cddb27da1a454b40b63a68e8d69bc9a0e",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json": "e415893e3a32ed0ed4fc75d5e637bb7f19ac0552d0f671d5a5d0421db17f079d",
@@ -68,7 +68,7 @@
     "artifacts/gibson_arrangements_baseline/artifacts/gibson_lab_assistant_handoff.md": "e4b7e229f41b122dbbb6e4d8d1fe8feca090e1fed779a4ca5cb403a3b7c69512",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv": "49e60ce8db8fee3b193398ef6831f280017bbcfe34ea4732c2d19aea97e7adeb",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt": "beecd9e82a0336053bf82d63fd54fed530f3357f94f0ff29a7c46ac33d74a092",
-    "artifacts/patz1_gene_locus_evidence_offline/patz1_gene_locus_evidence.svg": "10923aa865c3c11a57089ab0e8e43e558662adc95555762eeb4f3b6ffd7927f9",
+    "artifacts/patz1_gene_locus_evidence_offline/patz1_gene_locus_evidence.svg": "7c08eb07866f30c80b6dd57bce251b09b6a980ea54d1dd11023e3cf70a0a826f",
     "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_endpoint_end_matrix.report.json": "38525a97891ecda14ac707089751696ac9fcd6b1d860b7dab3123e504ed7c082",
     "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_routine_common_region_screen.report.json": "055e4b52e8789baa1e14857406ac9be79d942612ed2d01f6f288b42bda66c87d",
     "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_sybr_juc_panel.report.json": "998afc4d2e28b91d5dc226d37bb2851dab653b65efa80dd6b3017ff55d095d26",
@@ -106,7 +106,7 @@
     "chapters/06-03_tp53_isoform_architecture_online.md": "32291f972a2c4bf7cd61dd3b34824da79b9a1ee14aa07a13832962ee9e46b9a2",
     "chapters/06-04_tp53_uniprot_projection_online.md": "f30fadf1131f7e49ec281741b92d2e74f243e290c62c81680566e773d4b81d8c",
     "chapters/06-05_tp73_uniprot_projection_audit_cli.md": "bfbbeb700eea96654ff2b446128f7dc774429fc0106b2b3a64a71c987f9ac605",
-    "chapters/06-06_patz1_gene_locus_evidence_offline.md": "7d78781da965868ff4641e45467c3d433d46bbe32af311a0228a342e7a6a4109",
+    "chapters/06-06_patz1_gene_locus_evidence_offline.md": "ac745b5fe2fda33f02392aa06a12451990984d20e67d79701ae5ef51b1468bf1",
     "chapters/07-02_tp53_multi_gene_sparse_mapping_online.md": "9def3fb7d79ccf23e05f994bd738cf248e379c185f4eb8ce4cca15672bacdb5c",
     "chapters/08-03_promoter_design_artifact_slice_offline.md": "76336ac96f1cd0b5f078428676bb203eb0185ef98a6a0b85bada7e27aeea592a",
     "chapters/08-07_promoter_gene_set_ortholog_cohort_offline.md": "1d5c822a6427c7237f839b55642501224e37119aaac21112a9d3800e77feacc8",
@@ -704,7 +704,7 @@
       ],
       "executed": true,
       "review_status": "codex_reviewed",
-      "codex_reviewed_at": "2026-07-19",
+      "codex_reviewed_at": "2026-09-02",
       "graphics": [
         {
           "kind": "generated",

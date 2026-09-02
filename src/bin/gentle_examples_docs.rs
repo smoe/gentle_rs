@@ -7,8 +7,9 @@ use gentle::workflow_examples::{
     DEFAULT_TUTORIAL_MANIFEST_PATH, DEFAULT_TUTORIAL_OUTPUT_DIR, DEFAULT_TUTORIAL_SOURCE_DIR,
     DEFAULT_WORKFLOW_EXAMPLE_DIR, DEFAULT_WORKFLOW_SNIPPET_DIR, check_tutorial_catalog_generated,
     check_tutorial_generated, check_tutorial_manifest_generated, generate_tutorial_docs,
-    generate_workflow_example_docs, load_workflow_examples, validate_example_required_files,
-    write_tutorial_catalog_from_sources, write_tutorial_manifest_from_sources,
+    generate_workflow_example_docs, load_workflow_examples, run_example_workflow_for_project_state,
+    validate_example_required_files, write_tutorial_catalog_from_sources,
+    write_tutorial_manifest_from_sources,
 };
 use serde_json::json;
 use std::{
@@ -30,6 +31,7 @@ enum Mode {
     TutorialCatalogCheck,
     TutorialManifestGenerate,
     TutorialManifestCheck,
+    ExampleProject,
     ParityMatrixGenerate,
     ParityMatrixCheck,
 }
@@ -51,6 +53,9 @@ struct CliArgs {
     tutorial_output_dir: String,
     parity_matrix_output: String,
     repo_root: String,
+    example_id: String,
+    project_output: String,
+    run_dir: String,
 }
 
 impl Default for CliArgs {
@@ -71,6 +76,9 @@ impl Default for CliArgs {
             tutorial_output_dir: DEFAULT_TUTORIAL_OUTPUT_DIR.to_string(),
             parity_matrix_output: "docs/gui_cli_mcp_parity.md".to_string(),
             repo_root: ".".to_string(),
+            example_id: String::new(),
+            project_output: String::new(),
+            run_dir: String::new(),
         }
     }
 }
@@ -87,6 +95,7 @@ gentle_examples_docs tutorial-catalog-generate [--catalog-meta FILE] [--tutorial
 gentle_examples_docs tutorial-catalog-check [--catalog-meta FILE] [--tutorial-sources DIR] [--tutorial-catalog FILE]\n  \
 gentle_examples_docs tutorial-manifest-generate [--catalog-meta FILE] [--tutorial-sources DIR] [--manifest FILE]\n  \
 gentle_examples_docs tutorial-manifest-check [--catalog-meta FILE] [--tutorial-sources DIR] [--manifest FILE]\n  \
+gentle_examples_docs example-project EXAMPLE_ID PROJECT.json --run-dir DIR [--source DIR] [--repo-root DIR]\n  \
 gentle_examples_docs parity-matrix-generate [--output FILE]\n  \
 gentle_examples_docs parity-matrix-check [--output FILE]\n\n  \
 Defaults:\n  \
@@ -192,6 +201,13 @@ fn parse_args(args: &[String]) -> Result<CliArgs, String> {
                 parsed.repo_root = args[idx + 1].clone();
                 idx += 2;
             }
+            "--run-dir" => {
+                if idx + 1 >= args.len() {
+                    return Err("Missing DIR after --run-dir".to_string());
+                }
+                parsed.run_dir = args[idx + 1].clone();
+                idx += 2;
+            }
             "generate" => {
                 parsed.mode = Mode::ExampleGenerate;
                 idx += 1;
@@ -224,6 +240,10 @@ fn parse_args(args: &[String]) -> Result<CliArgs, String> {
                 parsed.mode = Mode::TutorialManifestCheck;
                 idx += 1;
             }
+            "example-project" => {
+                parsed.mode = Mode::ExampleProject;
+                idx += 1;
+            }
             "parity-matrix-generate" => {
                 parsed.mode = Mode::ParityMatrixGenerate;
                 idx += 1;
@@ -240,6 +260,16 @@ fn parse_args(args: &[String]) -> Result<CliArgs, String> {
                 }
                 if parsed.mode == Mode::SvgPng && parsed.png_output.is_empty() {
                     parsed.png_output = other.to_string();
+                    idx += 1;
+                    continue;
+                }
+                if parsed.mode == Mode::ExampleProject && parsed.example_id.is_empty() {
+                    parsed.example_id = other.to_string();
+                    idx += 1;
+                    continue;
+                }
+                if parsed.mode == Mode::ExampleProject && parsed.project_output.is_empty() {
+                    parsed.project_output = other.to_string();
                     idx += 1;
                     continue;
                 }
@@ -409,6 +439,60 @@ fn run_tutorial_manifest_check_mode(
     Ok(())
 }
 
+fn run_example_project_mode(
+    source_dir: &Path,
+    example_id: &str,
+    project_output: &Path,
+    run_dir: &Path,
+    repo_root: &Path,
+) -> Result<(), String> {
+    if example_id.trim().is_empty() || project_output.as_os_str().is_empty() {
+        return Err("example-project requires EXAMPLE_ID and PROJECT.json".to_string());
+    }
+    if run_dir.as_os_str().is_empty() {
+        return Err("example-project requires --run-dir DIR".to_string());
+    }
+    let examples = load_workflow_examples(source_dir)?;
+    let loaded = examples
+        .iter()
+        .find(|loaded| loaded.example.id == example_id)
+        .ok_or_else(|| {
+            format!(
+                "Workflow example '{}' was not found under '{}'",
+                example_id,
+                source_dir.display()
+            )
+        })?;
+    validate_example_required_files(&loaded.example, repo_root)?;
+    fs::create_dir_all(run_dir)
+        .map_err(|error| format!("Could not create '{}': {error}", run_dir.display()))?;
+    if let Some(parent) = project_output.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Could not create '{}': {error}", parent.display()))?;
+    }
+    let state = run_example_workflow_for_project_state(&loaded.example, repo_root, run_dir)?;
+    state
+        .save_to_path(&project_output.to_string_lossy())
+        .map_err(|error| {
+            format!(
+                "Could not save workflow example '{}' project to '{}': {error}",
+                example_id,
+                project_output.display()
+            )
+        })?;
+    let summary = json!({
+        "status": "ok",
+        "mode": "example-project",
+        "example_id": example_id,
+        "project_output": project_output.to_string_lossy(),
+        "sequence_count": state.sequences.len(),
+    });
+    let pretty = serde_json::to_string_pretty(&summary)
+        .map_err(|error| format!("Could not serialize example-project report: {error}"))?;
+    println!("{pretty}");
+    Ok(())
+}
+
 fn run_parity_matrix_generate_mode(output_path: &Path) -> Result<(), String> {
     let markdown = gentle_protocol::render_gui_cli_mcp_parity_matrix_markdown();
     if let Some(parent) = output_path.parent() {
@@ -461,6 +545,8 @@ fn run_selected_mode(parsed: CliArgs) -> Result<(), String> {
     let repo_root = PathBuf::from(parsed.repo_root);
     let svg_input = PathBuf::from(parsed.svg_input);
     let png_output = PathBuf::from(parsed.png_output);
+    let project_output = PathBuf::from(parsed.project_output);
+    let run_dir = PathBuf::from(parsed.run_dir);
     match parsed.mode {
         Mode::ExampleGenerate => run_generate_mode(&source_dir, &example_output),
         Mode::ExampleCheck => run_check_mode(&source_dir),
@@ -501,6 +587,13 @@ fn run_selected_mode(parsed: CliArgs) -> Result<(), String> {
             &tutorial_catalog_meta,
             &tutorial_source_dir,
             &tutorial_manifest,
+        ),
+        Mode::ExampleProject => run_example_project_mode(
+            &source_dir,
+            &parsed.example_id,
+            &project_output,
+            &run_dir,
+            &repo_root,
         ),
         Mode::ParityMatrixGenerate => run_parity_matrix_generate_mode(&parity_matrix_output),
         Mode::ParityMatrixCheck => run_parity_matrix_check_mode(&parity_matrix_output),
@@ -565,5 +658,21 @@ mod tests {
         assert_eq!(parsed.png_output, "output.png");
         assert!((parsed.svg_scale - 1.5).abs() < 1e-6);
         assert!(parsed.drop_dotplot_metadata);
+    }
+
+    #[test]
+    fn parse_example_project_mode() {
+        let args = vec![
+            "example-project".to_string(),
+            "simple_pcr_selection_gui".to_string(),
+            "/tmp/starter.project.gentle.json".to_string(),
+            "--run-dir".to_string(),
+            "/tmp/starter-run".to_string(),
+        ];
+        let parsed = parse_args(&args).expect("parse example-project args");
+        assert_eq!(parsed.mode, Mode::ExampleProject);
+        assert_eq!(parsed.example_id, "simple_pcr_selection_gui");
+        assert_eq!(parsed.project_output, "/tmp/starter.project.gentle.json");
+        assert_eq!(parsed.run_dir, "/tmp/starter-run");
     }
 }

@@ -70,7 +70,7 @@ Online execution was disabled (`GENTLE_TEST_ONLINE=0` during generation).
 - `06.03` [TP53 isoform architecture expert panel (online)](./chapters/06-03_tp53_isoform_architecture_online.md) - `online` - example `tp53_isoform_architecture_online` - executed `no` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
 - `06.04` [TP53 UniProt domain mapping and feature-coding DNA query (online)](./chapters/06-04_tp53_uniprot_projection_online.md) - `online` - example `tp53_uniprot_projection_online` - executed `no` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
 - `06.05` [Audit a TP73 UniProt Projection Against Ensembl and Derived Coding Sequence (CLI Tutorial)](./chapters/06-05_tp73_uniprot_projection_audit_cli.md) - `online` - example `tp73_uniprot_projection_audit_online` - executed `no` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
-- `06.06` [PATZ1 Gene-Locus Evidence Composition (Offline Synthetic Demo)](./chapters/06-06_patz1_gene_locus_evidence_offline.md) - `core` - example `patz1_gene_locus_evidence_offline` - executed `yes` - review `codex_reviewed` - codex 2026-07-19
+- `06.06` [PATZ1 Gene-Locus Evidence Composition (Offline Synthetic Demo)](./chapters/06-06_patz1_gene_locus_evidence_offline.md) - `core` - example `patz1_gene_locus_evidence_offline` - executed `yes` - review `codex_reviewed` - codex 2026-09-02
 
 ### RNA Reads, Splicing & Expression
 

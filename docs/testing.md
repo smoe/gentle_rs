@@ -248,8 +248,10 @@ cargo bench --profile bench-audit -p gentle-benchmarks \
 thin LTO, 16 codegen units, and `panic=unwind` for practical routine audits.
 Cargo forces unwind for benchmark targets regardless of the release panic
 setting. The dedicated, non-published `gentle-benchmarks` package depends on
-GENtle only as a library with default features disabled, so Cargo does not
-prepare the root package's application binaries before sampling. Plain
+GENtle only as a library with default features disabled, while explicitly
+enabling the `desktop-gui` modules imported by the GUI benchmark together with
+`benchmark-support`. Cargo therefore compiles the measured GUI library code but
+does not prepare the root package's application binaries before sampling. Plain
 `cargo bench -p gentle-benchmarks --bench gui_operations ...` remains the exact
 release-like fat-LTO, one-codegen-unit mode. The two modes characterize
 different binaries and their results must never be compared. A cold library
@@ -404,9 +406,50 @@ selection formula rather than pixel-coordinate dragging, enters the PCR
 Designer through the ordinary selection context action, and proves creation of
 the closed-world `primer_design_report.exists` fact against the separate
 `simple_pcr_primer_design_offline` oracle. The existing shell Xvfb script
-remains a liveness example; a contract-driven Python runner with an isolation
-record and checkpoint ledger is still required before this contract becomes a
-release acceptance result.
+remains a compact liveness example. The contract-driven runner is
+[`../scripts/tutorial_gui_acceptance.py`](../scripts/tutorial_gui_acceptance.py).
+It first asks `gentle_examples_docs` to validate the source-derived manifest and
+materialize independent starter/oracle projects through GENtle's normal example
+path rewriting. It then drives only the validated semantic targets through
+ordinary `xdotool` events, saves known-path projects through `Ctrl+S`, and uses
+`gentle_cli` to evaluate facts and typed report assertions against the saved
+project. If a catalogued PCR control is clipped inside its owning scroll area,
+the runner first sends recorded ordinary wheel events inside the semantically
+identified window and interacts only after the control reports a positive
+visible rectangle. Pixels alone never establish a scientific result.
+
+Build one exact revision and validate the non-GUI half on any supported host:
+
+```bash
+cargo build --locked --features gui-test-support \
+  --bin gentle --bin gentle_cli --bin gentle_examples_docs
+python3 scripts/tutorial_gui_acceptance.py \
+  --validate-only \
+  --output-dir /tmp/gentle-simple-pcr-contract-validation
+```
+
+Run the actual acceptance on Linux/X11 with `xdotool` and one of `scrot`,
+`gnome-screenshot`, or ImageMagick `import` available:
+
+```bash
+xvfb-run -a -s '-screen 0 1600x1000x24' \
+  python3 scripts/tutorial_gui_acceptance.py \
+  --tutorial-id simple_pcr_selection_gui \
+  --output-dir /tmp/gentle-simple-pcr-gui-acceptance
+```
+
+The output directory must be absent or empty. The runner retains the exact Git
+revision, binary/manifest/contract hashes, isolated starter and oracle projects,
+command logs, per-step semantic snapshots, required screenshots, saved-project
+hashes, typed verifier results, and a content-bound
+`acceptance-ledger.json`. Result classes are deliberately distinct:
+`product_failure` means GENtle or its saved scientific state contradicted the
+contract, `contract_error` means the committed contract/materialization was not
+valid, and `harness_gap` means the host could not perform the claimed audit.
+`--validate-only` records `validated_only` and must not be presented as GUI
+acceptance. The current subject-scope and report adapters cover the Simple-PCR
+contract; a future chapter using another subject identity or report family must
+extend the runner explicitly rather than silently weakening verification.
 
 ## 6. Practical implementation order
 

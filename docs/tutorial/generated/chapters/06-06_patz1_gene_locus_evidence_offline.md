@@ -9,7 +9,7 @@ executed_during_generation: true
 automated_status: "passing"
 review_status: "codex_reviewed"
 review_stale: false
-codex_reviewed_at: "2026-07-19"
+codex_reviewed_at: "2026-09-02"
 human_reviewed_at: null
 human_reviewer: null
 review_stale_reason: null
@@ -175,7 +175,7 @@ cargo run --bin gentle_cli -- workflow @docs/examples/workflows/patz1_gene_locus
 - Executed during generation: `yes`
 - Automated status: `passing`
 - Review status: `codex_reviewed`
-- Codex reviewed at: `2026-07-19`
+- Codex reviewed at: `2026-09-02`
 - Human reviewed at: `not recorded`
 - Inspect the source JSON when you need full option-level detail.
 

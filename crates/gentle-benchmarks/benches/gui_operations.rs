@@ -120,13 +120,17 @@ fn raw_input() -> egui::RawInput {
     }
 }
 
-fn render_embedded_frame(context: &egui::Context, window: &mut WindowDna) -> egui::FullOutput {
-    context.run_ui(raw_input(), |ui| window.update_embedded(ui))
+fn render_embedded_frame(context: &egui::Context, window: &mut WindowDna) -> usize {
+    let mut output = context.run_ui(raw_input(), |ui| window.update_embedded(ui));
+    let shape_count = output.shapes.len();
+    // This headless benchmark has no renderer to apply texture uploads.
+    output.textures_delta.clear();
+    shape_count
 }
 
-fn assert_nonempty_frame(fixture: &GuiFixture, output: &egui::FullOutput) {
+fn assert_nonempty_frame(fixture: &GuiFixture, shape_count: usize) {
     assert!(
-        !output.shapes.is_empty(),
+        shape_count > 0,
         "{} GUI fixture produced no paint shapes",
         fixture.id
     );
@@ -175,9 +179,9 @@ fn benchmark_gui_operations(c: &mut Criterion) {
     for fixture in &fixtures {
         let mut verification_window = benchmark_window(fixture);
         let verification_context = egui::Context::default();
-        let verification_output =
+        let verification_shape_count =
             render_embedded_frame(&verification_context, &mut verification_window);
-        assert_nonempty_frame(fixture, &verification_output);
+        assert_nonempty_frame(fixture, verification_shape_count);
 
         first_frame_group.bench_with_input(
             BenchmarkId::from_parameter(fixture.benchmark_id()),
@@ -197,8 +201,8 @@ fn benchmark_gui_operations(c: &mut Criterion) {
     for fixture in &fixtures {
         let context = egui::Context::default();
         let mut window = benchmark_window(fixture);
-        let first_output = render_embedded_frame(&context, &mut window);
-        assert_nonempty_frame(fixture, &first_output);
+        let first_shape_count = render_embedded_frame(&context, &mut window);
+        assert_nonempty_frame(fixture, first_shape_count);
         steady_frame_group.bench_with_input(
             BenchmarkId::from_parameter(fixture.benchmark_id()),
             fixture,
