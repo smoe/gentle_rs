@@ -14418,21 +14418,34 @@ Error: `{err}`"
         self.show_rack_labels_preview_dialog = open;
     }
 
-    fn render_pcr_design_contents(&mut self, ui: &mut Ui, ctx: &egui::Context) -> bool {
-        let mut close_requested = false;
-        #[cfg(feature = "gui-test-support")]
+    #[cfg(feature = "gui-test-support")]
+    fn pcr_design_semantic_state(content_ready: bool) -> (bool, &'static str) {
+        if content_ready {
+            (true, "ready")
+        } else {
+            (false, "blocked")
+        }
+    }
+
+    #[cfg(feature = "gui-test-support")]
+    fn register_pcr_design_semantic_window(ui: &Ui, ctx: &egui::Context, content_ready: bool) {
+        let (enabled, outcome_role) = Self::pcr_design_semantic_state(content_ready);
         crate::gui_test_support::register_rect(
             ctx.clone(),
-            "window.pcr_design",
-            "window.pcr_design",
+            crate::tutorial_gui_semantics::WINDOW_PCR_DESIGN,
+            crate::tutorial_gui_semantics::WINDOW_PCR_DESIGN,
             None,
             crate::gui_test_support::GuiTestWidgetKind::Window,
             ui.max_rect(),
             true,
+            enabled,
             true,
-            true,
-            Some("ready"),
+            Some(outcome_role),
         );
+    }
+
+    fn render_pcr_design_contents(&mut self, ui: &mut Ui, ctx: &egui::Context) -> bool {
+        let mut close_requested = false;
         let close_hover = Self::specialist_window_close_hover_text("PCR Designer");
         if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
             close_requested = true;
@@ -14452,6 +14465,8 @@ Error: `{err}`"
                 egui::Color32::from_rgb(190, 70, 70),
                 "No sequence is available. Load/open one sequence window first.",
             );
+            #[cfg(feature = "gui-test-support")]
+            Self::register_pcr_design_semantic_window(ui, ctx, false);
             return close_requested;
         }
         let seq_id = self.pcr_design_seq_id.trim().to_string();
@@ -14467,6 +14482,8 @@ Error: `{err}`"
                 "Target sequence window '{}' is not open yet.",
                 seq_id
             ));
+            #[cfg(feature = "gui-test-support")]
+            Self::register_pcr_design_semantic_window(ui, ctx, false);
             return close_requested;
         }
         let mut rendered = false;
@@ -14489,6 +14506,8 @@ Error: `{err}`"
                 ),
             );
         }
+        #[cfg(feature = "gui-test-support")]
+        Self::register_pcr_design_semantic_window(ui, ctx, rendered);
         close_requested
     }
 

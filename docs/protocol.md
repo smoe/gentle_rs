@@ -197,6 +197,30 @@ cargo run --bin gentle_examples_docs -- tutorial-manifest-generate
 cargo run --bin gentle_examples_docs -- tutorial-manifest-check
 ```
 
+Tutorial GUI acceptance contract:
+
+- optional source/manifest field: `gui_acceptance`
+- schema: `gentle.tutorial_gui_acceptance.v1`
+- authoring stays in `docs/tutorial/sources/*.json`; the generated manifest is
+  a byte-checked projection
+- starter and oracle are distinct workflow-example references; optional
+  `seq_id_map` entries are checked against their executed project states
+- `target` and `window` values must resolve through the closed
+  `tutorial_gui_semantics` catalog
+- the catalog binds each target to allowed interactions and one authority:
+  view-only, project-metadata persistence, or engine-owned scientific state
+- steps independently declare `persists_project_state` and
+  `scientific_effect`; only the latter permits/requires `before` and `after`
+  fact expressions
+- replacement text is target-constrained and replaces the existing field
+  value; arbitrary command-bearing text inputs are not tutorial-eligible
+- report verifiers support required field paths, equality/non-empty/numeric
+  value assertions, and numeric field-to-field relations
+- visual claims consume only `gentle.gui_semantic_snapshot.v2`; scientific
+  facts/reports/state consume only the saved project or retained artifacts
+- GENtle validates and answers typed questions, but the isolated external
+  runner owns GUI input delivery, checkpoint evidence, and the final verdict
+
 ## TFBS region summary contract
 
 GENtle now exposes a portable grouped TFBS summary contract for comparing one

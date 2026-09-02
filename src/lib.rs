@@ -204,6 +204,8 @@ pub mod test_support;
 pub mod tf_motifs;
 /// Process-local tool-path override registry.
 pub mod tool_overrides;
+/// Closed semantic-control catalog used by typed tutorial GUI acceptance contracts.
+pub mod tutorial_gui_semantics;
 /// UCSC RepeatMasker (`rmsk`) table resource contracts and indexing guidance.
 pub mod ucsc_rmsk;
 /// UniProt/SWISS-PROT parsing contracts and projection payload models.

@@ -5837,7 +5837,7 @@ impl MainAreaDna {
                         #[cfg(feature = "gui-test-support")]
                         crate::gui_test_support::register_response(
                             &_report_id_response,
-                            "pcr.design.report_id",
+                            crate::tutorial_gui_semantics::PCR_DESIGN_REPORT_ID,
                             self.semantic_control_window_id(),
                             Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
                                 self.seq_id.as_deref().unwrap_or("unnamed"),
@@ -5866,7 +5866,7 @@ impl MainAreaDna {
                     #[cfg(feature = "gui-test-support")]
                     crate::gui_test_support::register_response(
                         &_starter_label,
-                        "pcr.simple_starter.panel",
+                        crate::tutorial_gui_semantics::PCR_SIMPLE_STARTER_PANEL,
                         self.semantic_control_window_id(),
                         Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
                             self.seq_id.as_deref().unwrap_or("unnamed"),
@@ -5895,7 +5895,7 @@ impl MainAreaDna {
                         #[cfg(feature = "gui-test-support")]
                         crate::gui_test_support::register_response(
                             &seed_simple_response,
-                            "pcr.simple_starter.seed_from_selection",
+                            crate::tutorial_gui_semantics::PCR_SIMPLE_STARTER_SEED_FROM_SELECTION,
                             self.semantic_control_window_id(),
                             Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
                                 self.seq_id.as_deref().unwrap_or("unnamed"),
@@ -6185,7 +6185,7 @@ impl MainAreaDna {
                 #[cfg(feature = "gui-test-support")]
                 crate::gui_test_support::register_response(
                     &design_response,
-                    "pcr.design.run",
+                    crate::tutorial_gui_semantics::PCR_DESIGN_RUN,
                     self.semantic_control_window_id(),
                     Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
                         self.seq_id.as_deref().unwrap_or("unnamed"),

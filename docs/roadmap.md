@@ -307,8 +307,9 @@ wet-lab conclusions or unconfirmed mutations.
   bounded TP73/PATZ1 DNA-viewer, Splicing Expert, and Agent Assistant release
   controls as additional native acceptance stories require it.
 - Complete a Python/X11 runner for the typed `simple_pcr_selection_gui`
-  contract, with isolated environment/network policy, known-path saves, and a
-  content-bound checkpoint ledger; keep shell smoke as liveness evidence.
+  contract using the closed control catalog, clipped snapshots, explicit effect
+  flags, report assertions, isolated known-path saves, and a content-bound
+  checkpoint ledger; keep shell smoke as liveness evidence.
 - After that proof, extend context-labelled GUI/CLI/agent tutorial actions;
   defer skill activation and inverse discovery until readiness is safeguarded.
 - Optional OS credential-store persistence for Agent Assistant API keys.

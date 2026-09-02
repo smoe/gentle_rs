@@ -124,11 +124,12 @@
             "sequence": "tp73_locus"
           },
           "interaction": {
-            "kind": "type_text",
+            "kind": "replace_text",
             "text": "=61721 .. 62120"
           },
           "timeout_class": "interactive",
-          "mutating": false,
+          "persists_project_state": true,
+          "scientific_effect": false,
           "verifiers": [
             {
               "kind": "visible_claim",
@@ -154,7 +155,8 @@
             "kind": "click"
           },
           "timeout_class": "interactive",
-          "mutating": false,
+          "persists_project_state": false,
+          "scientific_effect": false,
           "verifiers": [
             {
               "kind": "visible_claim",
@@ -180,7 +182,8 @@
             "kind": "right_click"
           },
           "timeout_class": "interactive",
-          "mutating": false,
+          "persists_project_state": false,
+          "scientific_effect": false,
           "verifiers": [
             {
               "kind": "visible_claim",
@@ -206,7 +209,8 @@
             "kind": "click"
           },
           "timeout_class": "interactive",
-          "mutating": false,
+          "persists_project_state": true,
+          "scientific_effect": false,
           "verifiers": [
             {
               "kind": "visible_claim",
@@ -235,11 +239,12 @@
             "sequence": "tp73_locus"
           },
           "interaction": {
-            "kind": "type_text",
+            "kind": "replace_text",
             "text": "simple_pcr_demo_primers"
           },
           "timeout_class": "interactive",
-          "mutating": false,
+          "persists_project_state": false,
+          "scientific_effect": false,
           "verifiers": [
             {
               "kind": "visible_claim",
@@ -265,7 +270,8 @@
             "kind": "click"
           },
           "timeout_class": "compute",
-          "mutating": true,
+          "persists_project_state": true,
+          "scientific_effect": true,
           "before": {
             "fact": "primer_design_report.exists",
             "subject": {
@@ -287,7 +293,48 @@
               "schema": "gentle.primer_design_report.v1",
               "required_fields": [
                 "report_id",
+                "roi_start_0based",
+                "roi_end_0based",
+                "pair_constraints.require_roi_flanking",
+                "pair_count",
                 "pairs"
+              ],
+              "assertions": [
+                {
+                  "kind": "value",
+                  "path": "report_id",
+                  "equals": "simple_pcr_demo_primers"
+                },
+                {
+                  "kind": "value",
+                  "path": "pair_constraints.require_roi_flanking",
+                  "equals": true
+                },
+                {
+                  "kind": "value",
+                  "path": "pair_count",
+                  "compare": {
+                    "op": "gt",
+                    "value": 0
+                  }
+                },
+                {
+                  "kind": "value",
+                  "path": "pairs",
+                  "non_empty": true
+                },
+                {
+                  "kind": "relation",
+                  "left_path": "pairs.0.forward.end_0based_exclusive",
+                  "op": "lte",
+                  "right_path": "roi_start_0based"
+                },
+                {
+                  "kind": "relation",
+                  "left_path": "pairs.0.reverse.start_0based",
+                  "op": "gte",
+                  "right_path": "roi_end_0based"
+                }
               ]
             }
           ],

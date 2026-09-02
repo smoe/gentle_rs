@@ -1,6 +1,16 @@
 # GENtle Changelog
 
-- Added the first typed, non-executable tutorial GUI acceptance contract for
+- Hardened typed tutorial GUI acceptance before adding an external runner.
+  Contracts now target only a closed semantic-control catalog with declared
+  interactions and authority, distinguish project persistence from scientific
+  effects, replace rather than append text under target-specific policies,
+  reject vacuous verifiers and unsafe artifact paths, and verify sequence-id
+  mappings against executed starter/oracle state. The Simple PCR oracle now
+  proves a non-empty ROI-flanking pair rather than report existence alone.
+  Semantic snapshots publish clipped interaction geometry, and the PCR
+  Designer reports `blocked` until active sequence content renders.
+
+- Added the first typed tutorial GUI acceptance contract for
   the offline Simple PCR walkthrough. The source-owned contract binds prose
   steps to semantic GUI controls, an incomplete starter, a separate oracle,
   closed interaction kinds, visual evidence, and engine fact expressions;

@@ -2,7 +2,10 @@
 
 use crate::engine::{
     Engine, GentleEngine, Operation, OperationProgress, ProjectState, Workflow,
-    protocol::FactExpression,
+    protocol::{FactComparison, FactExpression},
+};
+use crate::tutorial_gui_semantics::{
+    TutorialGuiInteractionKind, tutorial_gui_control, validate_replacement_text,
 };
 use gentle_protocol::FeatureExpertTarget;
 use serde::{Deserialize, Serialize};
@@ -255,7 +258,12 @@ pub struct TutorialGuiAcceptanceStep {
     pub subject: BTreeMap<String, String>,
     pub interaction: TutorialGuiInteraction,
     pub timeout_class: TutorialGuiTimeoutClass,
-    pub mutating: bool,
+    /// Whether the ordinary GUI action persists any project state, including
+    /// auxiliary GUI metadata that makes the project dirty.
+    pub persists_project_state: bool,
+    /// Whether the step establishes an engine-owned scientific result and must
+    /// therefore prove a before/after fact transition.
+    pub scientific_effect: bool,
     #[serde(default, skip_serializing_if = "is_false")]
     pub allow_preexisting: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -273,10 +281,17 @@ pub enum TutorialGuiInteraction {
     Click,
     RightClick,
     DoubleClick,
-    TypeText { text: String },
-    SetCheckbox { selected: bool },
+    /// Select the complete existing value before typing the supplied text.
+    ReplaceText {
+        text: String,
+    },
+    SetCheckbox {
+        selected: bool,
+    },
     SelectTab,
-    PressKey { key: String },
+    PressKey {
+        key: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -304,6 +319,8 @@ pub enum TutorialGuiVerifier {
         schema: String,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         required_fields: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        assertions: Vec<TutorialGuiReportAssertion>,
     },
     Artifact {
         path: String,
@@ -328,6 +345,28 @@ pub enum TutorialGuiVerifier {
         selected: Option<bool>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         outcome_role: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum TutorialGuiReportAssertion {
+    /// Assert one scalar/container field by equality, numeric comparison, or
+    /// non-empty status. Multiple predicates on one field are conjunctive.
+    Value {
+        path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        equals: Option<serde_json::Value>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        compare: Option<FactComparison>,
+        #[serde(default, skip_serializing_if = "is_false")]
+        non_empty: bool,
+    },
+    /// Compare two numeric fields from the same report.
+    Relation {
+        left_path: String,
+        op: String,
+        right_path: String,
     },
 }
 
@@ -2300,7 +2339,18 @@ fn validate_tutorial_gui_acceptance(
                 project.example_id
             ));
         }
+        for (source_seq_id, target_seq_id) in &project.seq_id_map {
+            if source_seq_id.trim().is_empty() || target_seq_id.trim().is_empty() {
+                return Err(format!(
+                    "{context} {role}.seq_id_map requires non-empty source and target sequence ids"
+                ));
+            }
+        }
     }
+    validate_tutorial_fact_expression(
+        &format!("{context} completion_condition"),
+        &acceptance.completion_condition,
+    )?;
     if acceptance.steps.is_empty() {
         return Err(format!("{context} must declare at least one step"));
     }
@@ -2326,34 +2376,97 @@ fn validate_tutorial_gui_acceptance(
                 step.id
             ));
         }
-        match (step.mutating, step.before.is_some(), step.after.is_some()) {
+        let window_spec = tutorial_gui_control(step.window.as_str()).ok_or_else(|| {
+            format!(
+                "{context} step '{}' references uncatalogued window '{}'",
+                step.id, step.window
+            )
+        })?;
+        if window_spec.semantic_id != window_spec.window_id
+            || !window_spec.allowed_interactions.is_empty()
+        {
+            return Err(format!(
+                "{context} step '{}' window '{}' is not a catalogued window identity",
+                step.id, step.window
+            ));
+        }
+        let target_spec = tutorial_gui_control(step.target.as_str()).ok_or_else(|| {
+            format!(
+                "{context} step '{}' references tutorial-ineligible target '{}'",
+                step.id, step.target
+            )
+        })?;
+        if target_spec.window_id != step.window {
+            return Err(format!(
+                "{context} step '{}' target '{}' belongs to window '{}', not '{}'",
+                step.id, step.target, target_spec.window_id, step.window
+            ));
+        }
+        let interaction_kind = tutorial_gui_interaction_kind(&step.interaction);
+        if !target_spec.allowed_interactions.contains(&interaction_kind) {
+            return Err(format!(
+                "{context} step '{}' interaction {:?} is not allowed for target '{}'",
+                step.id, interaction_kind, step.target
+            ));
+        }
+        if step.persists_project_state != target_spec.authority.persists_project_state() {
+            return Err(format!(
+                "{context} step '{}' persists_project_state={} disagrees with target '{}' authority ({})",
+                step.id,
+                step.persists_project_state,
+                step.target,
+                target_spec.authority.persists_project_state()
+            ));
+        }
+        if step.scientific_effect != target_spec.authority.requires_scientific_effect() {
+            return Err(format!(
+                "{context} step '{}' scientific_effect={} disagrees with target '{}' authority ({})",
+                step.id,
+                step.scientific_effect,
+                step.target,
+                target_spec.authority.requires_scientific_effect()
+            ));
+        }
+        match (
+            step.scientific_effect,
+            step.before.is_some(),
+            step.after.is_some(),
+        ) {
             (true, true, true) => {}
             (true, _, _) => {
                 return Err(format!(
-                    "{context} mutating step '{}' requires before and after fact expressions",
+                    "{context} scientific-effect step '{}' requires before and after fact expressions",
                     step.id
                 ));
             }
             (false, false, false) => {}
             (false, _, _) => {
                 return Err(format!(
-                    "{context} non-mutating step '{}' must not declare before or after effects",
+                    "{context} step '{}' without a scientific effect must not declare before or after facts",
                     step.id
                 ));
             }
         }
-        if step.allow_preexisting && !step.mutating {
+        if step.allow_preexisting && !step.scientific_effect {
             return Err(format!(
-                "{context} non-mutating step '{}' cannot allow a pre-existing effect",
+                "{context} step '{}' without a scientific effect cannot allow a pre-existing effect",
                 step.id
             ));
         }
         match &step.interaction {
-            TutorialGuiInteraction::TypeText { text } if text.is_empty() => {
-                return Err(format!(
-                    "{context} step '{}' type_text value must not be empty",
-                    step.id
-                ));
+            TutorialGuiInteraction::ReplaceText { text } => {
+                let policy = target_spec.text_policy.ok_or_else(|| {
+                    format!(
+                        "{context} step '{}' target '{}' has no replacement-text policy",
+                        step.id, step.target
+                    )
+                })?;
+                validate_replacement_text(policy, text).map_err(|error| {
+                    format!(
+                        "{context} step '{}' replacement text is invalid for '{}': {error}",
+                        step.id, step.target
+                    )
+                })?;
             }
             TutorialGuiInteraction::PressKey { key } if key.trim().is_empty() => {
                 return Err(format!(
@@ -2362,6 +2475,285 @@ fn validate_tutorial_gui_acceptance(
                 ));
             }
             _ => {}
+        }
+        if step.scientific_effect
+            && !step
+                .verifiers
+                .iter()
+                .any(|verifier| !matches!(verifier, TutorialGuiVerifier::VisibleClaim { .. }))
+        {
+            return Err(format!(
+                "{context} scientific-effect step '{}' requires at least one engine/report/artifact/state verifier",
+                step.id
+            ));
+        }
+        if let Some(before) = &step.before {
+            validate_tutorial_fact_expression(
+                &format!("{context} step '{}' before", step.id),
+                before,
+            )?;
+        }
+        if let Some(after) = &step.after {
+            validate_tutorial_fact_expression(
+                &format!("{context} step '{}' after", step.id),
+                after,
+            )?;
+        }
+        for verifier in &step.verifiers {
+            validate_tutorial_gui_verifier(&context, step, verifier)?;
+        }
+    }
+    Ok(())
+}
+
+fn tutorial_gui_interaction_kind(
+    interaction: &TutorialGuiInteraction,
+) -> TutorialGuiInteractionKind {
+    match interaction {
+        TutorialGuiInteraction::Click => TutorialGuiInteractionKind::Click,
+        TutorialGuiInteraction::RightClick => TutorialGuiInteractionKind::RightClick,
+        TutorialGuiInteraction::DoubleClick => TutorialGuiInteractionKind::DoubleClick,
+        TutorialGuiInteraction::ReplaceText { .. } => TutorialGuiInteractionKind::ReplaceText,
+        TutorialGuiInteraction::SetCheckbox { .. } => TutorialGuiInteractionKind::SetCheckbox,
+        TutorialGuiInteraction::SelectTab => TutorialGuiInteractionKind::SelectTab,
+        TutorialGuiInteraction::PressKey { .. } => TutorialGuiInteractionKind::PressKey,
+    }
+}
+
+fn validate_tutorial_fact_expression(
+    context: &str,
+    expression: &FactExpression,
+) -> Result<(), String> {
+    match expression {
+        FactExpression::All { all } => {
+            if all.is_empty() {
+                return Err(format!(
+                    "{context} must not contain an empty all expression"
+                ));
+            }
+            for child in all {
+                validate_tutorial_fact_expression(context, child)?;
+            }
+        }
+        FactExpression::Any { any } => {
+            if any.is_empty() {
+                return Err(format!(
+                    "{context} must not contain an empty any expression"
+                ));
+            }
+            for child in any {
+                validate_tutorial_fact_expression(context, child)?;
+            }
+        }
+        FactExpression::Not { not } => validate_tutorial_fact_expression(context, not)?,
+        FactExpression::Atom(atom) => {
+            if atom.fact.trim().is_empty() {
+                return Err(format!(
+                    "{context} contains an atom with an empty fact name"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn valid_tutorial_json_path(path: &str) -> bool {
+    !path.is_empty()
+        && path.split('.').all(|segment| {
+            !segment.is_empty()
+                && segment
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+        })
+}
+
+fn valid_numeric_comparison_op(op: &str) -> bool {
+    matches!(
+        op,
+        "eq" | "=" | "==" | "ne" | "!=" | "gt" | ">" | "gte" | ">=" | "lt" | "<" | "lte" | "<="
+    )
+}
+
+fn validate_tutorial_gui_report_assertion(
+    context: &str,
+    assertion: &TutorialGuiReportAssertion,
+) -> Result<(), String> {
+    match assertion {
+        TutorialGuiReportAssertion::Value {
+            path,
+            equals,
+            compare,
+            non_empty,
+        } => {
+            if !valid_tutorial_json_path(path) {
+                return Err(format!("{context} has invalid report field path '{path}'"));
+            }
+            if equals.is_none() && compare.is_none() && !non_empty {
+                return Err(format!(
+                    "{context} report value assertion '{path}' must declare equals, compare, or non_empty"
+                ));
+            }
+            if let Some(compare) = compare {
+                if !valid_numeric_comparison_op(compare.op.as_str())
+                    || compare.value.as_f64().is_none()
+                {
+                    return Err(format!(
+                        "{context} report value assertion '{path}' requires a supported numeric comparison"
+                    ));
+                }
+            }
+        }
+        TutorialGuiReportAssertion::Relation {
+            left_path,
+            op,
+            right_path,
+        } => {
+            if !valid_tutorial_json_path(left_path) || !valid_tutorial_json_path(right_path) {
+                return Err(format!(
+                    "{context} report relation requires valid left_path and right_path"
+                ));
+            }
+            if !valid_numeric_comparison_op(op) {
+                return Err(format!(
+                    "{context} report relation uses unsupported comparison '{op}'"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_tutorial_gui_verifier(
+    context: &str,
+    step: &TutorialGuiAcceptanceStep,
+    verifier: &TutorialGuiVerifier,
+) -> Result<(), String> {
+    let verifier_context = format!("{context} step '{}' verifier", step.id);
+    match verifier {
+        TutorialGuiVerifier::Facts { expression } => {
+            validate_tutorial_fact_expression(&verifier_context, expression)?;
+        }
+        TutorialGuiVerifier::ExpectedEffects {
+            capability_id,
+            args,
+        } => {
+            if capability_id.trim().is_empty() {
+                return Err(format!(
+                    "{verifier_context} capability_id must not be empty"
+                ));
+            }
+            if args
+                .iter()
+                .any(|(key, value)| key.trim().is_empty() || value.trim().is_empty())
+            {
+                return Err(format!(
+                    "{verifier_context} expected-effect args must not contain empty keys or values"
+                ));
+            }
+        }
+        TutorialGuiVerifier::Report {
+            report_id,
+            schema,
+            required_fields,
+            assertions,
+        } => {
+            if report_id.trim().is_empty() || schema.trim().is_empty() {
+                return Err(format!(
+                    "{verifier_context} report_id and schema must not be empty"
+                ));
+            }
+            if required_fields.is_empty() && assertions.is_empty() {
+                return Err(format!(
+                    "{verifier_context} report must declare required_fields or assertions"
+                ));
+            }
+            for field in required_fields {
+                if !valid_tutorial_json_path(field) {
+                    return Err(format!(
+                        "{verifier_context} has invalid required report field '{field}'"
+                    ));
+                }
+            }
+            for assertion in assertions {
+                validate_tutorial_gui_report_assertion(&verifier_context, assertion)?;
+            }
+        }
+        TutorialGuiVerifier::Artifact {
+            path,
+            sha256,
+            schema,
+            required_attributes,
+        } => {
+            let artifact_path = Path::new(path);
+            if path.trim().is_empty()
+                || artifact_path.is_absolute()
+                || artifact_path.components().any(|component| {
+                    matches!(
+                        component,
+                        std::path::Component::ParentDir
+                            | std::path::Component::RootDir
+                            | std::path::Component::Prefix(_)
+                    )
+                })
+            {
+                return Err(format!(
+                    "{verifier_context} artifact path must stay relative to the isolated run directory"
+                ));
+            }
+            if let Some(sha256) = sha256
+                && (sha256.len() != 64 || !sha256.bytes().all(|byte| byte.is_ascii_hexdigit()))
+            {
+                return Err(format!(
+                    "{verifier_context} artifact sha256 must be exactly 64 hexadecimal characters"
+                ));
+            }
+            let structured = schema
+                .as_ref()
+                .is_some_and(|value| !value.trim().is_empty())
+                && !required_attributes.is_empty()
+                && required_attributes
+                    .iter()
+                    .all(|value| !value.trim().is_empty());
+            if sha256.is_none() && !structured {
+                return Err(format!(
+                    "{verifier_context} artifact requires sha256 or a schema with required_attributes"
+                ));
+            }
+        }
+        TutorialGuiVerifier::State { seq_ids } => {
+            if seq_ids.is_empty() || seq_ids.iter().any(|seq_id| seq_id.trim().is_empty()) {
+                return Err(format!(
+                    "{verifier_context} state verifier requires non-empty seq_ids"
+                ));
+            }
+        }
+        TutorialGuiVerifier::VisibleClaim {
+            semantic_id,
+            visible,
+            enabled,
+            selected,
+            outcome_role,
+        } => {
+            if tutorial_gui_control(semantic_id).is_none() {
+                return Err(format!(
+                    "{verifier_context} references uncatalogued semantic id '{semantic_id}'"
+                ));
+            }
+            if visible.is_none()
+                && enabled.is_none()
+                && selected.is_none()
+                && outcome_role.is_none()
+            {
+                return Err(format!(
+                    "{verifier_context} visible_claim must assert at least one state property"
+                ));
+            }
+            if outcome_role
+                .as_ref()
+                .is_some_and(|role| role.trim().is_empty())
+            {
+                return Err(format!("{verifier_context} outcome_role must not be empty"));
+            }
         }
     }
     Ok(())
@@ -6468,17 +6860,24 @@ mod tests {
 
         let manifest =
             load_tutorial_manifest(&tutorial_manifest_path()).expect("load tutorial manifest");
-        let acceptance = manifest
+        let acceptances = manifest
             .chapters
             .iter()
-            .find_map(|chapter| chapter.gui_acceptance.as_ref())
-            .expect("at least one committed GUI acceptance contract");
-        let value = serde_json::to_value(acceptance).expect("serialize GUI acceptance contract");
-        assert_no_execution_keys(&value);
+            .filter_map(|chapter| chapter.gui_acceptance.as_ref())
+            .collect::<Vec<_>>();
+        assert!(
+            !acceptances.is_empty(),
+            "at least one committed GUI acceptance contract"
+        );
+        for acceptance in acceptances {
+            let value =
+                serde_json::to_value(acceptance).expect("serialize GUI acceptance contract");
+            assert_no_execution_keys(&value);
+        }
     }
 
     #[test]
-    fn tutorial_gui_acceptance_rejects_mutation_without_before_and_after_facts() {
+    fn tutorial_gui_acceptance_rejects_scientific_effect_without_before_and_after_facts() {
         let mut manifest =
             load_tutorial_manifest(&tutorial_manifest_path()).expect("load tutorial manifest");
         let acceptance = manifest
@@ -6489,17 +6888,177 @@ mod tests {
         let step = acceptance
             .steps
             .iter_mut()
-            .find(|step| step.mutating)
-            .expect("at least one mutating GUI acceptance step");
+            .find(|step| step.scientific_effect)
+            .expect("at least one scientific-effect GUI acceptance step");
         step.before = None;
 
         let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
         let error = validate_tutorial_manifest_against_examples(&manifest, &examples)
-            .expect_err("mutating step without before facts must be rejected");
+            .expect_err("scientific-effect step without before facts must be rejected");
         assert!(
             error.contains("requires before and after fact expressions"),
             "unexpected validation error: {error}"
         );
+    }
+
+    #[test]
+    fn tutorial_gui_acceptance_rejects_unknown_targets_and_persistence_mismatches() {
+        let manifest =
+            load_tutorial_manifest(&tutorial_manifest_path()).expect("load tutorial manifest");
+        let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
+
+        let mut unknown = manifest.clone();
+        unknown
+            .chapters
+            .iter_mut()
+            .find_map(|chapter| chapter.gui_acceptance.as_mut())
+            .expect("GUI acceptance")
+            .steps[0]
+            .target = "agent.command.input".to_string();
+        let error = validate_tutorial_manifest_against_examples(&unknown, &examples)
+            .expect_err("uncatalogued control must be rejected");
+        assert!(error.contains("tutorial-ineligible target"), "{error}");
+
+        let mut mismatched = manifest;
+        let step = &mut mismatched
+            .chapters
+            .iter_mut()
+            .find_map(|chapter| chapter.gui_acceptance.as_mut())
+            .expect("GUI acceptance")
+            .steps[0];
+        step.persists_project_state = false;
+        let error = validate_tutorial_manifest_against_examples(&mismatched, &examples)
+            .expect_err("incorrect persistence declaration must be rejected");
+        assert!(
+            error.contains("persists_project_state=false disagrees"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn tutorial_gui_acceptance_rejects_vacuous_report_verifiers() {
+        let mut manifest =
+            load_tutorial_manifest(&tutorial_manifest_path()).expect("load tutorial manifest");
+        let report_verifier = manifest
+            .chapters
+            .iter_mut()
+            .find_map(|chapter| chapter.gui_acceptance.as_mut())
+            .expect("GUI acceptance")
+            .steps
+            .iter_mut()
+            .flat_map(|step| step.verifiers.iter_mut())
+            .find(|verifier| matches!(verifier, TutorialGuiVerifier::Report { .. }))
+            .expect("report verifier");
+        let TutorialGuiVerifier::Report {
+            required_fields,
+            assertions,
+            ..
+        } = report_verifier
+        else {
+            unreachable!()
+        };
+        required_fields.clear();
+        assertions.clear();
+
+        let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
+        let error = validate_tutorial_manifest_against_examples(&manifest, &examples)
+            .expect_err("vacuous report verifier must be rejected");
+        assert!(
+            error.contains("must declare required_fields or assertions"),
+            "{error}"
+        );
+    }
+
+    fn tutorial_json_path<'a>(
+        value: &'a serde_json::Value,
+        path: &str,
+    ) -> Option<&'a serde_json::Value> {
+        path.split('.')
+            .try_fold(value, |current, segment| match current {
+                serde_json::Value::Object(map) => map.get(segment),
+                serde_json::Value::Array(values) => segment
+                    .parse::<usize>()
+                    .ok()
+                    .and_then(|index| values.get(index)),
+                _ => None,
+            })
+    }
+
+    fn tutorial_numeric_comparison(actual: f64, op: &str, expected: f64) -> bool {
+        match op {
+            "eq" | "=" | "==" => (actual - expected).abs() < f64::EPSILON,
+            "ne" | "!=" => (actual - expected).abs() >= f64::EPSILON,
+            "gt" | ">" => actual > expected,
+            "gte" | ">=" => actual >= expected,
+            "lt" | "<" => actual < expected,
+            "lte" | "<=" => actual <= expected,
+            _ => false,
+        }
+    }
+
+    fn assert_tutorial_report_verifier(
+        report: &serde_json::Value,
+        required_fields: &[String],
+        assertions: &[TutorialGuiReportAssertion],
+    ) {
+        for path in required_fields {
+            assert!(
+                tutorial_json_path(report, path).is_some(),
+                "oracle report is missing required path '{path}'"
+            );
+        }
+        for assertion in assertions {
+            match assertion {
+                TutorialGuiReportAssertion::Value {
+                    path,
+                    equals,
+                    compare,
+                    non_empty,
+                } => {
+                    let actual = tutorial_json_path(report, path).unwrap_or_else(|| {
+                        panic!("oracle report is missing asserted path '{path}'")
+                    });
+                    if let Some(expected) = equals {
+                        assert_eq!(actual, expected, "report equality failed at '{path}'");
+                    }
+                    if let Some(compare) = compare {
+                        assert!(
+                            tutorial_numeric_comparison(
+                                actual.as_f64().expect("numeric report value"),
+                                &compare.op,
+                                compare.value.as_f64().expect("numeric expected value"),
+                            ),
+                            "report numeric comparison failed at '{path}'"
+                        );
+                    }
+                    if *non_empty {
+                        let populated = match actual {
+                            serde_json::Value::Array(values) => !values.is_empty(),
+                            serde_json::Value::Object(values) => !values.is_empty(),
+                            serde_json::Value::String(value) => !value.is_empty(),
+                            _ => false,
+                        };
+                        assert!(populated, "report value at '{path}' must be non-empty");
+                    }
+                }
+                TutorialGuiReportAssertion::Relation {
+                    left_path,
+                    op,
+                    right_path,
+                } => {
+                    let left = tutorial_json_path(report, left_path)
+                        .and_then(serde_json::Value::as_f64)
+                        .unwrap_or_else(|| panic!("missing numeric left path '{left_path}'"));
+                    let right = tutorial_json_path(report, right_path)
+                        .and_then(serde_json::Value::as_f64)
+                        .unwrap_or_else(|| panic!("missing numeric right path '{right_path}'"));
+                    assert!(
+                        tutorial_numeric_comparison(left, op, right),
+                        "report relation failed: {left_path} {op} {right_path}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]
@@ -6528,6 +7087,7 @@ mod tests {
             starter_dir.path(),
         )
         .expect("run starter workflow");
+        let starter_sequence_ids = starter.sequences.keys().cloned().collect::<HashSet<_>>();
         let starter_engine = GentleEngine::from_state(starter);
         assert_eq!(
             starter_engine
@@ -6536,15 +7096,29 @@ mod tests {
             crate::engine::protocol::FactTruth::Unsatisfied,
             "the GUI starter must not already satisfy the tutorial completion condition"
         );
-        for step in acceptance.steps.iter().filter(|step| step.mutating) {
-            assert_eq!(
-                starter_engine
-                    .evaluate_fact_expression(step.before.as_ref().expect("validated before"), &[])
-                    .truth,
-                crate::engine::protocol::FactTruth::Unsatisfied,
-                "mutating step '{}' must have an unsatisfied starter precondition",
-                step.id
-            );
+        for step in acceptance
+            .steps
+            .iter()
+            .filter(|step| step.scientific_effect)
+        {
+            let truth = starter_engine
+                .evaluate_fact_expression(step.before.as_ref().expect("validated before"), &[])
+                .truth;
+            if step.allow_preexisting {
+                assert_ne!(
+                    truth,
+                    crate::engine::protocol::FactTruth::Unknown,
+                    "scientific-effect step '{}' may allow pre-existing state but not unknown readiness",
+                    step.id
+                );
+            } else {
+                assert_eq!(
+                    truth,
+                    crate::engine::protocol::FactTruth::Unsatisfied,
+                    "scientific-effect step '{}' must have an unsatisfied starter precondition",
+                    step.id
+                );
+            }
         }
 
         let oracle_dir = TempDir::new().expect("oracle run dir");
@@ -6557,6 +7131,17 @@ mod tests {
             oracle_dir.path(),
         )
         .expect("run oracle workflow");
+        let oracle_sequence_ids = oracle.sequences.keys().cloned().collect::<HashSet<_>>();
+        for (starter_seq_id, oracle_seq_id) in &acceptance.oracle.seq_id_map {
+            assert!(
+                starter_sequence_ids.contains(starter_seq_id),
+                "seq_id_map source '{starter_seq_id}' must exist in starter state"
+            );
+            assert!(
+                oracle_sequence_ids.contains(oracle_seq_id),
+                "seq_id_map target '{oracle_seq_id}' must exist in oracle state"
+            );
+        }
         let oracle_engine = GentleEngine::from_state(oracle);
         assert_eq!(
             oracle_engine
@@ -6565,15 +7150,35 @@ mod tests {
             crate::engine::protocol::FactTruth::Satisfied,
             "the oracle must satisfy the tutorial completion condition"
         );
-        for step in acceptance.steps.iter().filter(|step| step.mutating) {
+        for step in acceptance
+            .steps
+            .iter()
+            .filter(|step| step.scientific_effect)
+        {
             assert_eq!(
                 oracle_engine
                     .evaluate_fact_expression(step.after.as_ref().expect("validated after"), &[])
                     .truth,
                 crate::engine::protocol::FactTruth::Satisfied,
-                "mutating step '{}' must have a satisfied oracle postcondition",
+                "scientific-effect step '{}' must have a satisfied oracle postcondition",
                 step.id
             );
+            for verifier in &step.verifiers {
+                if let TutorialGuiVerifier::Report {
+                    report_id,
+                    schema,
+                    required_fields,
+                    assertions,
+                } = verifier
+                {
+                    let report = oracle_engine
+                        .get_primer_design_report(report_id)
+                        .expect("oracle primer-design report");
+                    assert_eq!(report.schema, *schema);
+                    let report = serde_json::to_value(report).expect("serialize oracle report");
+                    assert_tutorial_report_verifier(&report, required_fields, assertions);
+                }
+            }
         }
     }
 

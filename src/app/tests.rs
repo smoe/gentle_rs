@@ -36,6 +36,16 @@ use super::{
     preferred_mistral_agent_system_id, preferred_openai_agent_system_id,
     request_open_about_from_native_menu,
 };
+
+#[cfg(feature = "gui-test-support")]
+#[test]
+fn pcr_design_semantic_window_is_blocked_until_content_renders() {
+    assert_eq!(
+        GENtleApp::pcr_design_semantic_state(false),
+        (false, "blocked")
+    );
+    assert_eq!(GENtleApp::pcr_design_semantic_state(true), (true, "ready"));
+}
 use crate::{
     agent_bridge::{
         AgentAttachmentSummary, AgentConversation, AgentConversationTurn, AgentExecutionIntent,

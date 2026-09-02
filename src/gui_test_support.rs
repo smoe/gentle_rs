@@ -183,6 +183,27 @@ pub fn register_response(
     widget_kind: GuiTestWidgetKind,
     selected: bool,
 ) {
+    register_response_with_outcome(
+        response,
+        semantic_id,
+        window_id,
+        subject_scope,
+        widget_kind,
+        selected,
+        None,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn register_response_with_outcome(
+    response: &Response,
+    semantic_id: impl Into<GuiTestId>,
+    window_id: impl Into<GuiTestId>,
+    subject_scope: Option<&str>,
+    widget_kind: GuiTestWidgetKind,
+    selected: bool,
+    outcome_role: Option<&str>,
+) {
     let semantic_id = semantic_id.into();
     let window_id = window_id.into();
     register_rect(
@@ -191,11 +212,11 @@ pub fn register_response(
         window_id,
         subject_scope,
         widget_kind,
-        response.rect,
-        true,
+        response.interact_rect,
+        response.interact_rect.is_positive(),
         response.enabled(),
         selected,
-        None,
+        outcome_role,
     );
 }
 
@@ -220,6 +241,9 @@ pub fn register_rect(
         assert_pseudonymous_scope(scope);
     }
     let pixels_per_point = ctx.pixels_per_point();
+    let clipped_rect = rect.intersect(ctx.content_rect());
+    let visible = visible && clipped_rect.is_positive();
+    let clipped_rect = if visible { clipped_rect } else { Rect::ZERO };
     let viewport_origin = ctx.input(|input| {
         input
             .viewport()
@@ -227,7 +251,7 @@ pub fn register_rect(
             .map(|rect| rect.min)
             .unwrap_or(egui::Pos2::ZERO)
     });
-    let screen_rect = rect.translate(viewport_origin.to_vec2());
+    let screen_rect = clipped_rect.translate(viewport_origin.to_vec2());
     ctx.data_mut(|data| {
         let mut registry = data
             .get_temp::<GuiTestRegistry>(registry_id())
@@ -356,13 +380,18 @@ fn assert_pseudonymous_scope(value: &str) {
 mod tests {
     use super::*;
 
+    fn end_pass(ctx: &Context) {
+        let mut output = ctx.end_pass();
+        output.textures_delta.clear();
+    }
+
     fn response(ctx: &Context, label: &str, enabled: bool) -> Response {
         let mut result = None;
         ctx.begin_pass(egui::RawInput::default());
         egui::Window::new("semantic test").show(ctx, |ui| {
             result = Some(ui.add_enabled(enabled, egui::Button::new(label)));
         });
-        let _ = ctx.end_pass();
+        end_pass(ctx);
         result.expect("button response")
     }
 
@@ -424,6 +453,39 @@ mod tests {
             true,
         );
         assert_eq!(snapshot(&ctx).items[0].semantic_id, "agent.ask");
+    }
+
+    #[test]
+    fn response_registration_marks_controls_outside_the_clip_rect_invisible() {
+        let ctx = Context::default();
+        ctx.begin_pass(egui::RawInput::default());
+        begin_frame(&ctx);
+        egui::Window::new("clip test").show(&ctx, |ui| {
+            ui.set_clip_rect(Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(20.0, 20.0),
+            ));
+            let response = ui.put(
+                Rect::from_min_size(egui::pos2(100.0, 100.0), egui::vec2(40.0, 20.0)),
+                egui::Button::new("Off screen"),
+            );
+            register_response(
+                &response,
+                "pcr.design.run",
+                "window.pcr_design",
+                None,
+                GuiTestWidgetKind::Button,
+                false,
+            );
+        });
+        let snapshot = snapshot(&ctx);
+        assert_eq!(snapshot.items.len(), 1);
+        assert!(!snapshot.items[0].state.visible);
+        assert_eq!(
+            snapshot.items[0].rect_logical_points,
+            GuiTestRect::from(Rect::ZERO)
+        );
+        end_pass(&ctx);
     }
 
     #[test]
@@ -519,7 +581,7 @@ mod tests {
             true,
             Some("ready"),
         );
-        let _ = ctx.end_pass();
+        end_pass(&ctx);
 
         ctx.begin_pass(input_for_viewport(child, &[root, child]));
         begin_viewport_frame(&ctx);
@@ -535,7 +597,7 @@ mod tests {
             false,
             None,
         );
-        let _ = ctx.end_pass();
+        end_pass(&ctx);
 
         ctx.begin_pass(input_for_viewport(root, &[root, child]));
         begin_frame(&ctx);
@@ -564,7 +626,7 @@ mod tests {
                 .iter()
                 .any(|item| item.semantic_id == "window.main")
         );
-        let _ = ctx.end_pass();
+        end_pass(&ctx);
 
         ctx.begin_pass(input_for_viewport(root, &[root]));
         begin_frame(&ctx);
@@ -574,7 +636,7 @@ mod tests {
                 .iter()
                 .all(|item| item.window_id != "window.dna_viewer")
         );
-        let _ = ctx.end_pass();
+        end_pass(&ctx);
     }
 
     #[test]
@@ -586,17 +648,17 @@ mod tests {
         ctx.begin_pass(input_for_viewport(child, &[root, child]));
         begin_viewport_frame(&ctx);
         mark_unsettled(&ctx);
-        let _ = ctx.end_pass();
+        end_pass(&ctx);
 
         ctx.begin_pass(input_for_viewport(root, &[root, child]));
         begin_frame(&ctx);
         assert!(!snapshot(&ctx).settled);
-        let _ = ctx.end_pass();
+        end_pass(&ctx);
 
         ctx.begin_pass(input_for_viewport(child, &[root, child]));
         begin_viewport_frame(&ctx);
         assert!(snapshot(&ctx).settled);
-        let _ = ctx.end_pass();
+        end_pass(&ctx);
     }
 
     #[test]

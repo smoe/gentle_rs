@@ -2629,9 +2629,9 @@ impl MainAreaDna {
     #[cfg(feature = "gui-test-support")]
     fn semantic_control_window_id(&self) -> &'static str {
         if self.rendering_pcr_specialist {
-            "window.pcr_design"
+            crate::tutorial_gui_semantics::WINDOW_PCR_DESIGN
         } else {
-            "window.dna_viewer"
+            crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER
         }
     }
 
@@ -6400,17 +6400,14 @@ impl MainAreaDna {
                     .italics(),
                 );
                 #[cfg(feature = "gui-test-support")]
-                crate::gui_test_support::register_rect(
-                    _selection_status.ctx.clone(),
-                    "dna.selection.status",
-                    "window.dna_viewer",
+                crate::gui_test_support::register_response_with_outcome(
+                    &_selection_status,
+                    crate::tutorial_gui_semantics::DNA_SELECTION_STATUS,
+                    crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER,
                     Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
                         self.seq_id.as_deref().unwrap_or("unnamed"),
                     ])),
                     crate::gui_test_support::GuiTestWidgetKind::Status,
-                    _selection_status.rect,
-                    true,
-                    true,
                     true,
                     Some("ready"),
                 );
@@ -13517,8 +13514,8 @@ impl MainAreaDna {
         #[cfg(feature = "gui-test-support")]
         crate::gui_test_support::register_response(
             &response,
-            "dna.selection.simple_pcr",
-            "window.dna_viewer",
+            crate::tutorial_gui_semantics::DNA_SELECTION_SIMPLE_PCR,
+            crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER,
             Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
                 self.seq_id.as_deref().unwrap_or("unnamed"),
             ])),
@@ -27055,8 +27052,8 @@ impl MainAreaDna {
                 #[cfg(feature = "gui-test-support")]
                 crate::gui_test_support::register_response(
                     &response,
-                    "dna.map.canvas",
-                    "window.dna_viewer",
+                    crate::tutorial_gui_semantics::DNA_MAP_CANVAS,
+                    crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER,
                     Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
                         self.seq_id.as_deref().unwrap_or("unnamed"),
                     ])),

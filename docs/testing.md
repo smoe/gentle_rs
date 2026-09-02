@@ -357,18 +357,34 @@ Tutorial source units may carry an optional
 and validates this block, but the runtime GUI and engine never read it. The
 contract names a deliberately incomplete starter workflow, a completed oracle,
 semantic GUI targets, closed interaction kinds, and typed postconditions. Its
-Rust representation has no command, script, shell, or executable-text field;
-the external runner owns input delivery and the final verdict.
+Rust representation has no raw command, script, shell, or executable-text
+field. Every target must also exist in the closed tutorial-control catalog,
+which declares the owning window, allowed interaction, persistence class,
+scientific-effect authority, and any constrained replacement-text policy.
+Snapshot-only or command-capable controls therefore cannot become tutorial
+input targets merely by naming their semantic ids. The external runner owns
+input delivery and the final verdict.
 
-Mutating steps declare `mutating: true` and both `before` and `after` fact
-expressions. Deterministic tests require the completion condition and every
-mutating `before` expression to be `Unsatisfied` on the starter, not `Unknown`,
-and require the completion condition and every `after` expression to be
-`Satisfied` on the oracle. This prevents an already completed starter from
-producing a meaningless green GUI run. At runtime the eventual external runner
-must repeat those checks around each mutation and classify an `Unknown` truth
-as a harness gap unless its isolated dependency inventory proves a declared
-optional tool is missing.
+Persistence and scientific proof are separate. A step declares
+`persists_project_state: true` whenever the ordinary GUI action dirties the
+project, including auxiliary GUI metadata. Only a step with
+`scientific_effect: true` declares `before` and `after` fact expressions and
+must include at least one non-visual typed verifier. Deterministic tests require
+each non-preexisting `before` expression to be `Unsatisfied` on the starter,
+not `Unknown`, and require the completion condition and every `after`
+expression to be `Satisfied` on the oracle. This prevents both an already
+completed starter and a view-only GUI change from producing a meaningless
+green scientific result. At runtime the eventual external runner must repeat
+those checks around each scientific effect and save whenever a
+project-persisting step leaves `main.project.save_state` unsaved.
+
+Text entry uses `replace_text`, never implicit append semantics. The catalog
+currently permits it only for selection formulas and bounded identifiers, with
+format validation appropriate to each target. Report verifiers reject vacuous
+field lists and may add typed value or field-to-field assertions. The Simple
+PCR contract consequently checks a non-empty pair set, the persisted
+`require_roi_flanking` constraint, and first-pair coordinates on the correct
+sides of the ROI rather than treating report existence alone as completion.
 
 GUI state and scientific state remain independent evidence channels. Visible
 claims use only `gentle.gui_semantic_snapshot.v2`; facts, expected effects,
@@ -376,7 +392,11 @@ reports, and state checks use only a project saved by the ordinary GUI action.
 For a project opened from a known path, `Ctrl+S` and `File -> Save Project` save
 in place without invoking a native file dialog. Harnesses should wait for
 `main.project.save_state` to change from `unsaved` to `saved` before inspecting
-that project with `gentle_cli --project`. Artifact checks inspect the artifact
+that project with `gentle_cli --project`. Semantic response rectangles use
+egui's clipped interaction rectangle; controls outside a scroll viewport report
+`visible=false` and zero geometry. Specialist windows report `ready` only after
+their active sequence content renders; blocked windows remain visible but
+disabled with outcome role `blocked`. Artifact checks inspect the artifact
 directly and do not force an otherwise unnecessary project save.
 
 The first contract is attached to `simple_pcr_selection_gui`. It uses a

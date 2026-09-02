@@ -754,3 +754,23 @@ abort-panic audit binaries are distinct evidence classes. Baselines are
 comparable only when profile, host, toolchain, fixture hash, and GENtle revision
 match; retained metadata and baseline labels must identify the profile
 explicitly.
+
+## DEC-040: Tutorial GUI Contracts Cannot Invent Execution Authority
+
+Status: active
+
+Tutorial GUI acceptance contracts may select only controls in a closed shared
+semantic-control catalog. Each catalog row fixes the owning window, allowed
+interaction, whether the action persists project state, whether it may
+establish a scientific result, and any replacement-text policy. Merely knowing
+a semantic snapshot id is not authority to type into or activate that control;
+command-capable and snapshot-only controls are unavailable unless deliberately
+added with a narrow typed policy.
+
+Project persistence and scientific proof are independent. Metadata edits may
+make the project dirty without claiming a scientific result. A scientific
+effect requires before/after facts plus an engine/report/artifact/state
+verifier; visual state never substitutes for that proof. GENtle validates the
+contract and exposes read-only semantic state, while an isolated external
+runner owns input delivery, evidence collection, and the final acceptance
+verdict.

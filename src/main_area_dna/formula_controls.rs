@@ -120,7 +120,7 @@ impl MainAreaDna {
                 #[cfg(feature = "gui-test-support")]
                 crate::gui_test_support::register_response(
                     &response,
-                    "dna.selection_formula.input",
+                    crate::tutorial_gui_semantics::DNA_SELECTION_FORMULA_INPUT,
                     self.semantic_control_window_id(),
                     Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
                         self.seq_id.as_deref().unwrap_or("unnamed"),
@@ -139,7 +139,7 @@ impl MainAreaDna {
                 #[cfg(feature = "gui-test-support")]
                 crate::gui_test_support::register_response(
                     &apply_response,
-                    "dna.selection_formula.apply",
+                    crate::tutorial_gui_semantics::DNA_SELECTION_FORMULA_APPLY,
                     self.semantic_control_window_id(),
                     Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
                         self.seq_id.as_deref().unwrap_or("unnamed"),
