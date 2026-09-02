@@ -4846,6 +4846,9 @@ Isoform architecture panel workflow:
       canonical architecture rows in the same SVG/PNG/PDF as occupancy,
       chromatin, TF-score, transcript, and scale-bar evidence. Nested callers
       must not supply a competing `locus_evidence_request`
+    - combined reporter rows include a material legend for genomic source,
+      spliced exon/cDNA, and schematic `LUC` segments. The offline LOCUSDEMO
+      request demonstrates independent TP73, PATZ1, E2F1, and SP1 JASPAR rows
     - repeat `--probe-effect-table` for compact TSV sources whose abundance
       columns are named `log2_mean_*` and whose differential columns are named
       `log2_*_minus_*`; repeat `--probe-effect-contrast` to select a subset.

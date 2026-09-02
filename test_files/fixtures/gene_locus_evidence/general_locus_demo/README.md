@@ -27,10 +27,12 @@ credential, or network-derived payload. The names `LOCUSDEMO`,
 - `external_model_scores.json` is a provider-neutral, coordinate-bound set of
   synthetic forward/reverse model scores and two site calls with the typed
   `provider_declared_uncalibrated` state. No model was run.
-- `preparation_request.json` composes those sources with two local JASPAR
-  requests, a fixed 1000 bp scale bar, and the canonical three-way reporter
-  architecture comparison for both transcripts (six design rows total), and
-  SVG, PNG, and PDF outputs.
+- `preparation_request.json` composes those sources with four local JASPAR
+  requests for TP73, PATZ1, E2F1, and SP1, a fixed 1000 bp scale bar, the
+  canonical three-way reporter architecture comparison for both transcripts
+  (six design rows total), and SVG, PNG, and PDF outputs. The combined figure
+  includes an explicit material key for genomic source intervals, orange
+  spliced exon/cDNA segments, and schematic red `LUC` blocks.
 
 ## Deterministic recreation
 
@@ -52,12 +54,12 @@ credential, or network-derived payload. The names `LOCUSDEMO`,
 
 `prepare_gene_locus_evidence_runs_fully_offline_with_normalized_score_sources`
 executes the typed `PrepareGeneLocusEvidence` operation directly against the
-offline entry without network access or pre-existing project state. The test verifies
-the canonical genome anchor, automatic isoform panel, two transcript/TSS and
-CDS-start classes, explicit occupancy/chromatin roles, normalized JASPAR and
-external-model score tracks, one explicit unavailable occupancy row, six
-canonical reporter architecture rows, and non-empty combined SVG/PNG/PDF
-exports. The architecture report embeds the same
+offline entry without network access or pre-existing project state. The test
+verifies the canonical genome anchor, automatic isoform panel, two
+transcript/TSS and CDS-start classes, explicit occupancy/chromatin roles, four
+normalized JASPAR and external-model score tracks, one explicit unavailable
+occupancy row, six canonical reporter architecture rows, and non-empty combined
+SVG/PNG/PDF exports. The architecture report embeds the same
 normalized locus-evidence report rendered in the figure; no reporter geometry
 is re-derived by the display adapter. Genomically sourced architecture segments
 remain to scale; each red `LUC` block is an explicitly schematic synthetic

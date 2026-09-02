@@ -2218,6 +2218,13 @@ Important separation:
 - Rendering remains presentation-centric
 - Image interpretation remains probabilistic and should output proposals,
   not direct mutations without confirmation
+- Local sequence orientation and genomic strand are independent contracts.
+  Engine-owned locus reports must state both the genomic gene strand and the
+  direction in which local coordinates increase on the display. Renderers use
+  the latter exactly once; they must not infer a second reversal from genomic
+  strand after an import has already produced a gene-oriented reverse
+  complement. Coordinate-bearing strand metadata should expose explicit local
+  and genomic values rather than one frame-ambiguous field.
 
 ### Feature expert view contract (implemented baseline)
 

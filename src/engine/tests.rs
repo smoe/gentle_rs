@@ -24863,8 +24863,22 @@ fn prepare_gene_locus_evidence_runs_fully_offline_with_normalized_score_sources(
             .iter()
             .filter(|track| track.provider_kind == GeneLocusRegulatoryScoreProviderKind::JasparPwm)
             .count()
-            >= 2
+            >= 4
     );
+    let patz1_track = report
+        .regulatory_score_tracks
+        .iter()
+        .find(|track| track.track_id == "patz1_jaspar")
+        .expect("PATZ1 JASPAR track");
+    assert_eq!(patz1_track.source_ids, ["MA1961.2"]);
+    assert_eq!(patz1_track.factors[0].factor_id, "PATZ1");
+    let e2f1_track = report
+        .regulatory_score_tracks
+        .iter()
+        .find(|track| track.track_id == "e2f1_jaspar")
+        .expect("E2F1 JASPAR track");
+    assert_eq!(e2f1_track.source_ids, ["MA0024.3"]);
+    assert_eq!(e2f1_track.factors[0].factor_id, "E2F1");
     let tp73_sites = &report
         .regulatory_score_tracks
         .iter()
@@ -24973,6 +24987,10 @@ fn prepare_gene_locus_evidence_runs_fully_offline_with_normalized_score_sources(
     assert!(svg.contains("data-gentle-regulatory-provider=\"external_model_scores\""));
     assert!(svg.contains("data-gentle-overlay-id=\"promoter_reporter_architecture_comparison\""));
     assert!(svg.contains("data-gentle-overlay-schematic="));
+    assert!(svg.contains("data-gentle-overlay-legend=\"spliced_cdna\""));
+    assert!(svg.contains("spliced exon / cDNA"));
+    assert!(svg.contains("data-gentle-regulatory-score-track=\"patz1_jaspar\""));
+    assert!(svg.contains("data-gentle-regulatory-score-track=\"e2f1_jaspar\""));
     assert!(svg.contains("LUC"));
     assert!(svg.contains("synthetic tails are schematic"));
     for architecture_id in &receipt.reporter_architecture_ids {
@@ -25124,6 +25142,32 @@ fn test_ensembl_gene_import_negative_strand_derives_gene_oriented_protein() {
         !matches!(mrna.location, gb_io::seq::Location::Complement(_)),
         "same-strand transcripts should be forward on Ensembl's gene-oriented sequence"
     );
+    engine
+        .state_mut()
+        .sequences
+        .get_mut("toy_negative_locus")
+        .expect("imported negative-strand locus")
+        .features_mut()
+        .push(gb_io::seq::Feature {
+            kind: "track".into(),
+            location: gb_io::seq::Location::simple_range(90, 100),
+            qualifiers: vec![
+                (
+                    "gentle_generated".into(),
+                    Some(GENOME_BIGWIG_TRACK_GENERATED_TAG.to_string()),
+                ),
+                ("gentle_track_source".into(), Some("BigWig".to_string())),
+                (
+                    "gentle_track_name".into(),
+                    Some("TOYNEG occupancy".to_string()),
+                ),
+                (
+                    "gentle_track_file".into(),
+                    Some("synthetic://toy-negative.bigWig".to_string()),
+                ),
+                ("score".into(), Some("8.000000".to_string())),
+            ],
+        });
 
     let feature_query = SequenceFeatureQuery {
         seq_id: "toy_negative_locus".to_string(),
@@ -25159,6 +25203,118 @@ fn test_ensembl_gene_import_negative_strand_derives_gene_oriented_protein() {
         derive.warnings.is_empty(),
         "negative-strand Ensembl import should not introduce stop-codon warnings: {:?}",
         derive.warnings
+    );
+
+    let locus_view = engine
+        .inspect_feature_expert(
+            "toy_negative_locus",
+            &FeatureExpertTarget::GeneLocusEvidence {
+                request: GeneLocusEvidenceDisplayRequest {
+                    isoform_evidence: GeneIsoformEvidenceRequest {
+                        panel_id: "ensembl_ensgtoyneg1_v1".to_string(),
+                        annotation_release: Some(
+                            "synthetic Ensembl negative-strand fixture".to_string(),
+                        ),
+                        occupancy_track_names: vec!["TOYNEG occupancy".to_string()],
+                        ..Default::default()
+                    },
+                    upstream_bp: 30,
+                    downstream_bp: 20,
+                    motifs: vec!["TP73".to_string()],
+                    motif_top_hit_count: 1,
+                    ..Default::default()
+                },
+            },
+        )
+        .expect("compose negative-strand Ensembl locus evidence");
+    let FeatureExpertView::GeneLocusEvidence(locus_report) = locus_view else {
+        panic!("expected gene-locus evidence for negative-strand Ensembl import");
+    };
+    assert_eq!(locus_report.gene_strand, "-");
+    assert_eq!(
+        locus_report.local_axis_direction,
+        GeneLocusLocalAxisDirection::IncreasingLeftToRight,
+        "the imported sequence is already gene-oriented and must not be mirrored again"
+    );
+    assert!(
+        locus_report.axis_left_genomic_1based > locus_report.axis_right_genomic_1based,
+        "gene-oriented local coordinates should carry descending genomic labels"
+    );
+    let start = locus_report
+        .codon_markers
+        .iter()
+        .find(|marker| marker.kind == GeneLocusCodonKind::Start)
+        .expect("annotation-backed start marker");
+    let stop = locus_report
+        .codon_markers
+        .iter()
+        .find(|marker| marker.kind == GeneLocusCodonKind::Stop)
+        .expect("annotation-backed stop marker");
+    assert!(start.local_position_1based < stop.local_position_1based);
+    assert!(start.genomic_position_1based > stop.genomic_position_1based);
+    assert_eq!(start.local_strand, "+");
+    assert_eq!(start.genomic_strand, "-");
+    let interval = &locus_report.occupancy_groups[0].lanes[0].lane.intervals[0];
+    assert_eq!(
+        (
+            interval.local_start_1based,
+            interval.local_end_1based,
+            interval.genomic_start_1based,
+            interval.genomic_end_1based,
+        ),
+        (91, 100, 1_010, 1_019),
+        "the known local BigWig interval must retain its labelled genomic side"
+    );
+    let motif_hit = &locus_report.motif_tracks[0].top_hits[0];
+    assert!(!motif_hit.local_strand.is_empty());
+    assert_eq!(
+        motif_hit.genomic_strand,
+        if motif_hit.local_strand == "+" {
+            "-"
+        } else {
+            "+"
+        }
+    );
+    assert_eq!(
+        motif_hit.genomic_start_1based,
+        1_109usize.saturating_sub(motif_hit.local_end_0based_exclusive.saturating_sub(1))
+    );
+    assert_eq!(
+        motif_hit.genomic_end_1based,
+        1_109usize.saturating_sub(motif_hit.local_start_0based)
+    );
+    let score_site = &locus_report.regulatory_score_tracks[0].sites[0];
+    assert_eq!(score_site.local_strand, motif_hit.local_strand);
+    assert_eq!(score_site.genomic_strand, motif_hit.genomic_strand);
+    let svg = render_feature_expert_svg(&FeatureExpertView::GeneLocusEvidence(locus_report));
+    assert!(svg.contains("data-gentle-local-axis-direction=\"increasing_left_to_right\""));
+    assert!(svg.contains("data-gentle-genomic-strand=\"-\""));
+
+    let reporter = engine
+        .compare_promoter_reporter_architectures(PromoterReporterArchitectureComparisonRequest {
+            seq_id: "toy_negative_locus".to_string(),
+            gene_label: Some("TOYNEG".to_string()),
+            transcript_ids: vec!["ENSTTOYNEG1.1".to_string()],
+            promoter_upstream_bp: 20,
+            tss_proximal_downstream_bp: 5,
+            ..Default::default()
+        })
+        .expect("compose reporter geometry for gene-oriented negative-strand import");
+    assert_eq!(reporter.transcripts[0].strand, "+");
+    assert_eq!(reporter.transcripts[0].local_strand, "+");
+    assert_eq!(reporter.transcripts[0].genomic_strand, "-");
+    assert_eq!(reporter.tss_classes[0].local_strand, "+");
+    assert_eq!(reporter.tss_classes[0].genomic_strand, "-");
+    assert!(
+        reporter.tss_classes[0]
+            .class_id
+            .contains("_local_plus_genomic_minus_tss_")
+    );
+    assert!(
+        reporter
+            .architectures
+            .iter()
+            .all(|row| { row.local_strand == "+" && row.genomic_strand == "-" })
     );
 }
 
@@ -27645,6 +27801,11 @@ fn gene_isoform_evidence_inspector_composes_gene_locus_evidence_for_patz1_minus_
     };
     assert_eq!(locus_report.schema, GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA);
     assert_eq!(locus_report.gene_strand, "-");
+    assert_eq!(
+        locus_report.local_axis_direction,
+        GeneLocusLocalAxisDirection::DecreasingLeftToRight,
+        "the genomic-orientation PATZ1 fixture still needs local coordinate reversal"
+    );
     assert_eq!(locus_report.probe_effect_overlays.len(), 2);
     assert_eq!(locus_report.probe_effect_contrasts.len(), 2);
     assert_eq!(

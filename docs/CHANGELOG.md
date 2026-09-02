@@ -1,5 +1,21 @@
 # GENtle Changelog
 
+- Corrected negative-strand Ensembl locus rendering by separating genomic gene
+  strand from the direction of the already-oriented local sequence axis.
+  Gene-locus reports now carry an explicit, backward-compatible local-axis
+  direction; codons, TF-score sites, motif hits, and reporter transcript/TSS
+  rows expose both local and genomic strand semantics. A gene-oriented
+  negative-strand regression covers descending genomic labels, ATG-before-stop
+  display order, occupancy/PWM coordinates, reporter geometry, and the
+  existing genomic-orientation PATZ1 counterexample.
+
+- Added an explicit reporter-material legend to every promoter-reporter SVG
+  path so orange spliced exon/cDNA stretches are distinguished from teal
+  genomic source intervals and schematic red `LUC` blocks in both standalone
+  and combined gene-locus figures. Expanded the offline LOCUSDEMO acceptance
+  figure with independently scaled local JASPAR inputs for PATZ1 and E2F1
+  alongside its existing TP73 and SP1 rows.
+
 - Hardened typed tutorial GUI acceptance before adding an external runner.
   Contracts now target only a closed semantic-control catalog with declared
   interactions and authority, distinguish project persistence from scientific

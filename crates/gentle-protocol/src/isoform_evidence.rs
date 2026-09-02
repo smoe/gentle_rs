@@ -575,6 +575,33 @@ pub enum GeneLocusCodonKind {
     Stop,
 }
 
+/// Direction in which loaded-sequence coordinates increase on the rendered
+/// locus axis.
+///
+/// This is intentionally independent of the genomic gene strand: an imported
+/// negative-strand Ensembl locus may already be reverse-complemented into
+/// gene-oriented local coordinates.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GeneLocusLocalAxisDirection {
+    /// Compatibility behavior for reports written before the local-axis field
+    /// existed. Renderers fall back to the historical genomic-strand rule.
+    #[default]
+    LegacyGeneStrandFallback,
+    IncreasingLeftToRight,
+    DecreasingLeftToRight,
+}
+
+impl GeneLocusLocalAxisDirection {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::LegacyGeneStrandFallback => "legacy_gene_strand_fallback",
+            Self::IncreasingLeftToRight => "increasing_left_to_right",
+            Self::DecreasingLeftToRight => "decreasing_left_to_right",
+        }
+    }
+}
+
 /// One evidence-backed translation boundary drawn on one transcript lane.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
@@ -583,7 +610,12 @@ pub struct GeneLocusCodonMarker {
     pub kind: GeneLocusCodonKind,
     pub local_position_1based: usize,
     pub genomic_position_1based: usize,
+    /// Legacy local-sequence strand retained for backward compatibility.
     pub strand: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub local_strand: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub genomic_strand: String,
     pub basis: String,
 }
 
@@ -732,7 +764,12 @@ pub struct GeneLocusMotifHit {
     pub local_end_0based_exclusive: usize,
     pub genomic_start_1based: usize,
     pub genomic_end_1based: usize,
+    /// Legacy local-sequence strand retained for backward compatibility.
     pub strand: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub local_strand: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub genomic_strand: String,
     pub score: f64,
 }
 
@@ -765,7 +802,13 @@ pub struct GeneLocusRegulatoryScoreSite {
     pub local_end_0based_exclusive: usize,
     pub genomic_start_1based: usize,
     pub genomic_end_1based: usize,
+    /// Legacy strand field retained for backward compatibility. New reports
+    /// must use the explicit local/genomic fields below.
     pub strand: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub local_strand: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub genomic_strand: String,
     pub score: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
@@ -1169,7 +1212,11 @@ pub struct GeneLocusEvidenceDisplayReport {
     pub gene_symbol: String,
     pub panel_id: String,
     pub instruction: String,
+    /// Genomic strand of the interpreted gene.
     pub gene_strand: String,
+    /// Presentation direction of loaded-sequence coordinates. This prevents a
+    /// gene-oriented negative-strand import from being mirrored a second time.
+    pub local_axis_direction: GeneLocusLocalAxisDirection,
     pub upstream_bp: usize,
     pub downstream_bp: usize,
     pub locus_local_start_1based: usize,
@@ -1251,6 +1298,32 @@ mod tests {
         assert!(report.regulatory_score_tracks.is_empty());
         assert_eq!(report.scale_bar.mode, GeneLocusScaleBarMode::Hidden);
         assert_eq!(report.scale_bar.length_bp, 0);
+        assert_eq!(
+            report.local_axis_direction,
+            GeneLocusLocalAxisDirection::LegacyGeneStrandFallback
+        );
+    }
+
+    #[test]
+    fn locus_axis_direction_and_explicit_strands_round_trip() {
+        let report = GeneLocusEvidenceDisplayReport {
+            local_axis_direction: GeneLocusLocalAxisDirection::IncreasingLeftToRight,
+            codon_markers: vec![GeneLocusCodonMarker {
+                strand: "+".to_string(),
+                local_strand: "+".to_string(),
+                genomic_strand: "-".to_string(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let encoded = serde_json::to_value(&report).expect("serialize explicit axis semantics");
+        assert_eq!(encoded["local_axis_direction"], "increasing_left_to_right");
+        assert_eq!(encoded["codon_markers"][0]["local_strand"], "+");
+        assert_eq!(encoded["codon_markers"][0]["genomic_strand"], "-");
+        let decoded: GeneLocusEvidenceDisplayReport =
+            serde_json::from_value(encoded).expect("deserialize explicit axis semantics");
+        assert_eq!(decoded.local_axis_direction, report.local_axis_direction);
+        assert_eq!(decoded.codon_markers[0].genomic_strand, "-");
     }
 
     #[test]

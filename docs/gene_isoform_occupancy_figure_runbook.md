@@ -40,7 +40,9 @@ canonical comparison JSON; SVG/PNG/PDF then include the proposed luciferase
 architectures themselves rather than only their surrounding locus evidence.
 Source intervals use the shared genomic scale, while the attached `LUC` coding
 blocks are visibly marked as schematic so no synthetic sequence is assigned a
-false genome coordinate.
+false genome coordinate. The reporter section carries its own material legend:
+teal denotes genomic source intervals, orange denotes spliced exon/cDNA
+segments, and red denotes schematic `LUC` sequence.
 
 The request must state `allow_ensembl_network`. With `false`, either
 `ensembl_entry_path` supplies an offline `gentle.ensembl_gene_entry.v1` resource
@@ -63,6 +65,9 @@ an empty project in the shared Shell/CLI:
 ```text
 gene-locus prepare @test_files/fixtures/gene_locus_evidence/general_locus_demo/preparation_request.json
 ```
+
+Its independent local JASPAR inputs include TP73, PATZ1, E2F1, and SP1. Their
+matrix-specific scores share a coordinate axis but not a quantitative scale.
 
 For a real gene, either fetch once explicitly with `ensembl-gene fetch` and
 keep `allow_ensembl_network=false` in later reproducible runs, or set it to

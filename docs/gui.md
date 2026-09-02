@@ -5692,6 +5692,9 @@ Tutorial projects:
       biology in the GUI
     - JSON and SVG paths invoke the shared exporter/renderer; leaving either
       path empty keeps that artifact in memory
+    - every reporter SVG uses visible material swatches for genomic source,
+      spliced exon/cDNA, and schematic `LUC` sequence; combined locus figures
+      retain the same keys, and their PNG/PDF exports derive from that SVG
     - an existing laboratory construct remains unverified until exact insert,
       vector, and boundary evidence is supplied, while CUT&RUN overlap remains
       occupancy support rather than evidence of TSS use or reporter output

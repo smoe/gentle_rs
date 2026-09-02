@@ -12101,6 +12101,11 @@ impl GentleEngine {
                     } else {
                         first.0.saturating_add(codon_offset)
                     };
+                    let local_strand = lane.strand.clone();
+                    let genomic_strand = Self::isoform_evidence_report_strand(
+                        &local_strand,
+                        anchor.and_then(|value| value.strand),
+                    );
                     markers.push(GeneLocusCodonMarker {
                         transcript_id: lane.transcript_id.clone(),
                         kind: GeneLocusCodonKind::Start,
@@ -12110,13 +12115,20 @@ impl GentleEngine {
                                 anchor,
                                 local_position,
                             ),
-                        strand: lane.strand.clone(),
+                        strand: local_strand.clone(),
+                        local_strand,
+                        genomic_strand,
                         basis: "annotated CDS translated with initiating methionine".to_string(),
                     });
                 }
                 if has_stop {
                     let last = transcript_order[transcript_order.len() - 1];
                     let local_position = if lane.strand == "-" { last.0 } else { last.1 };
+                    let local_strand = lane.strand.clone();
+                    let genomic_strand = Self::isoform_evidence_report_strand(
+                        &local_strand,
+                        anchor.and_then(|value| value.strand),
+                    );
                     markers.push(GeneLocusCodonMarker {
                         transcript_id: lane.transcript_id.clone(),
                         kind: GeneLocusCodonKind::Stop,
@@ -12126,7 +12138,9 @@ impl GentleEngine {
                                 anchor,
                                 local_position,
                             ),
-                        strand: lane.strand.clone(),
+                        strand: local_strand.clone(),
+                        local_strand,
+                        genomic_strand,
                         basis: "annotated CDS translation contained a terminal stop codon"
                             .to_string(),
                     });
@@ -13298,13 +13312,21 @@ impl GentleEngine {
                                 peak.start_0based.saturating_add(1),
                                 peak.end_0based_exclusive,
                             );
+                        let local_strand =
+                            if peak.is_reverse { "-" } else { "+" }.to_string();
+                        let genomic_strand = Self::isoform_evidence_report_strand(
+                            &local_strand,
+                            anchor.and_then(|value| value.strand),
+                        );
                         GeneLocusMotifHit {
                             rank: peak.rank,
                             local_start_0based: peak.start_0based,
                             local_end_0based_exclusive: peak.end_0based_exclusive,
                             genomic_start_1based: genomic_start,
                             genomic_end_1based: genomic_end,
-                            strand: if peak.is_reverse { "-" } else { "+" }.to_string(),
+                            strand: local_strand.clone(),
+                            local_strand,
+                            genomic_strand,
                             score: peak.score,
                         }
                     })
@@ -13551,19 +13573,33 @@ impl GentleEngine {
                     sites: track
                         .top_hits
                         .iter()
-                        .map(|hit| GeneLocusRegulatoryScoreSite {
-                            site_id: format!("legacy-{}-site-{}", index + 1, hit.rank),
-                            rank: hit.rank,
-                            local_start_0based: hit.local_start_0based,
-                            local_end_0based_exclusive: hit.local_end_0based_exclusive,
-                            genomic_start_1based: hit.genomic_start_1based,
-                            genomic_end_1based: hit.genomic_end_1based,
-                            strand: Self::isoform_evidence_report_strand(
-                                &hit.strand,
-                                anchor.and_then(|value| value.strand),
-                            ),
-                            score: hit.score,
-                            label: None,
+                        .map(|hit| {
+                            let local_strand = if hit.local_strand.is_empty() {
+                                hit.strand.clone()
+                            } else {
+                                hit.local_strand.clone()
+                            };
+                            let genomic_strand = if hit.genomic_strand.is_empty() {
+                                Self::isoform_evidence_report_strand(
+                                    &local_strand,
+                                    anchor.and_then(|value| value.strand),
+                                )
+                            } else {
+                                hit.genomic_strand.clone()
+                            };
+                            GeneLocusRegulatoryScoreSite {
+                                site_id: format!("legacy-{}-site-{}", index + 1, hit.rank),
+                                rank: hit.rank,
+                                local_start_0based: hit.local_start_0based,
+                                local_end_0based_exclusive: hit.local_end_0based_exclusive,
+                                genomic_start_1based: hit.genomic_start_1based,
+                                genomic_end_1based: hit.genomic_end_1based,
+                                strand: genomic_strand.clone(),
+                                local_strand,
+                                genomic_strand,
+                                score: hit.score,
+                                label: None,
+                            }
                         })
                         .collect(),
                     display_threshold: track.display_threshold,
@@ -13739,6 +13775,12 @@ impl GentleEngine {
                                 peak.start_0based.saturating_add(1),
                                 peak.end_0based_exclusive,
                             );
+                        let local_strand =
+                            if peak.is_reverse { "-" } else { "+" }.to_string();
+                        let genomic_strand = Self::isoform_evidence_report_strand(
+                            &local_strand,
+                            anchor.and_then(|value| value.strand),
+                        );
                         GeneLocusRegulatoryScoreSite {
                             site_id: format!(
                                 "{}-{}-site-{}",
@@ -13751,10 +13793,9 @@ impl GentleEngine {
                             local_end_0based_exclusive: peak.end_0based_exclusive,
                             genomic_start_1based: genomic_start,
                             genomic_end_1based: genomic_end,
-                            strand: Self::isoform_evidence_report_strand(
-                                if peak.is_reverse { "-" } else { "+" },
-                                anchor.and_then(|value| value.strand),
-                            ),
+                            strand: genomic_strand.clone(),
+                            local_strand,
+                            genomic_strand,
                             score: peak.score,
                             label: track.tf_name.clone(),
                         }
@@ -14355,6 +14396,14 @@ impl GentleEngine {
         sites.truncate(request.top_hit_count.min(50));
         for (index, site) in sites.iter_mut().enumerate() {
             site.rank = index + 1;
+            let local_strand = if site.local_strand.is_empty() {
+                site.strand.clone()
+            } else {
+                site.local_strand.clone()
+            };
+            site.local_strand = local_strand.clone();
+            site.genomic_strand =
+                Self::isoform_evidence_report_strand(&local_strand, anchor.strand);
         }
         let (mut scale_min, mut scale_max) =
             Self::gene_locus_regulatory_scale_bounds(&forward_scores, &reverse_scores);
@@ -14829,6 +14878,11 @@ impl GentleEngine {
             panel_id: isoform_evidence.panel_id.clone(),
             instruction: GENE_LOCUS_EVIDENCE_DISPLAY_INSTRUCTION.to_string(),
             gene_strand: isoform_evidence.gene_strand.clone(),
+            local_axis_direction: if splicing.strand == "-" {
+                GeneLocusLocalAxisDirection::DecreasingLeftToRight
+            } else {
+                GeneLocusLocalAxisDirection::IncreasingLeftToRight
+            },
             upstream_bp: request.upstream_bp,
             downstream_bp: request.downstream_bp,
             locus_local_start_1based: local_start,
@@ -16285,6 +16339,8 @@ mod gene_locus_probe_effect_tests {
         assert_eq!(track.calibration_status, "provider_declared_uncalibrated");
         assert_eq!(track.sites.len(), 1);
         assert_eq!(track.sites[0].strand, "-");
+        assert_eq!(track.sites[0].local_strand, "-");
+        assert_eq!(track.sites[0].genomic_strand, "-");
 
         let forward_request = GeneLocusRegulatoryScoreTrackRequest {
             strand_policy: GeneLocusRegulatoryScoreStrandPolicy::ForwardOnly,
