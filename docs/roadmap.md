@@ -386,9 +386,8 @@ wet-lab conclusions or unconfirmed mutations.
 - Engine-owned regulatory-reporter study composer that consumes a
   perturbation-response gene cohort plus explicit TSS/evidence policies and
   emits per-gene candidate sets and a ready panel request without duplicating
-  the existing terminal panel planner. It should hand its result to the landed
-  context-bound panel-readiness inspector rather than introducing persistent
-  Boolean readiness state.
+  the existing terminal panel planner; its output should feed the landed
+  context-bound inspector rather than persistent Boolean readiness state.
 - Extend the promoter regulatory-partner screen beyond its exact motif-tuple
   ledger with explicit matched/background cohorts, calibrated enrichment and
   multiple-testing correction, local ontology/hallmark interpretation, and
