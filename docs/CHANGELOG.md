@@ -1,5 +1,26 @@
 # GENtle Changelog
 
+- Added optional Ensembl Regulation 2026-08 annotation resources for human
+  GRCh38/hg38 and mouse GRCm39/mm39. Explicit resource commands fetch a pinned
+  annotation API snapshot (or consume a complete offline API response),
+  normalize it into a deterministic interval file, and build a content-bound
+  sparse index. Shared engine/shell operations query or materialize promoter,
+  enhancer, open-chromatin, CTCF, and EMAR features with release,
+  species/assembly, coordinate, associated-gene, and source-digest provenance.
+  The catalog exposes the corresponding activity-matrix and primary-analysis
+  locations while keeping annotation, activity, and quantitative signal as
+  separate evidence layers. Missing optional resources do not affect startup
+  or unrelated GENtle functionality.
+
+- Added optional ENCODE SCREEN Registry V4 enhancer-like cCRE resources for
+  human GRCh38/hg38 and mouse GRCm38/mm10. Explicit resource commands can
+  download or index the external ELS BEDs; content-bound sparse indexes support
+  fast anchored-locus overlap reports and materialization as ordinary
+  `regulatory_region` features. Species/assembly and BED hashes are checked
+  before projection, biological non-claims are carried in the report, and
+  missing optional resources add no startup work or loss of unrelated
+  functionality.
+
 - Closed the final reported PATZ1/GUI-audit regressions after the strand fix.
   The dedicated Criterion package now enables the feature-gated desktop GUI
   modules it benchmarks without restoring root application binaries to the

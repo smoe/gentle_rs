@@ -354,6 +354,8 @@ wet-lab conclusions or unconfirmed mutations.
 - CUT&RUN controls/replicate comparison, calibrated differential support,
   formal peak calling, and whole-genome read processing beyond the ROI-first
   release scope.
+- Add viewport-bounded quantitative Ensembl/ENCODE regulatory-signal lanes,
+  retaining assay/biosample/condition/replicate/units and separate activity rules.
 - Primer3 parity, virtual PCR/off-target filtering, multiplex tiling, LAMP, and
   allele-specific assay families.
 - First-class global RT-PCR specificity/redesign workflow building on the

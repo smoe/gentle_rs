@@ -1214,6 +1214,36 @@ pub enum ShellCommand {
         assembly_database: Option<String>,
         output: Option<String>,
     },
+    ResourcesListEncodeCcreSources {
+        assembly: Option<String>,
+        output: Option<String>,
+    },
+    ResourcesInstallEncodeCcres {
+        source_id: String,
+        input: Option<String>,
+        bed_output: Option<String>,
+        index_output: Option<String>,
+    },
+    ResourcesPrepareEncodeCcreIndex {
+        source_id: String,
+        bed_path: String,
+        output: Option<String>,
+    },
+    ResourcesListEnsemblRegulationSources {
+        assembly: Option<String>,
+        output: Option<String>,
+    },
+    ResourcesInstallEnsemblRegulatoryFeatures {
+        source_id: String,
+        input: Option<String>,
+        intervals_output: Option<String>,
+        index_output: Option<String>,
+    },
+    ResourcesPrepareEnsemblRegulationIndex {
+        source_id: String,
+        intervals_path: String,
+        output: Option<String>,
+    },
     ResourcesSyncJasparRemoteMetadata {
         motifs: Vec<String>,
         filter: Option<String>,
@@ -2464,6 +2494,44 @@ pub enum ShellCommand {
     FeaturesMaterializeRepeats {
         seq_id: String,
         rmsk_index_path: String,
+        max_features: Option<usize>,
+        clear_existing: bool,
+        path: Option<String>,
+    },
+    FeaturesEncodeCcreOverlaps {
+        seq_id: String,
+        index_path: String,
+        bed_path: Option<String>,
+        start_0based: Option<usize>,
+        end_0based_exclusive: Option<usize>,
+        classes: Vec<String>,
+        limit: Option<usize>,
+        path: Option<String>,
+    },
+    FeaturesMaterializeEncodeCcres {
+        seq_id: String,
+        index_path: String,
+        bed_path: Option<String>,
+        classes: Vec<String>,
+        max_features: Option<usize>,
+        clear_existing: bool,
+        path: Option<String>,
+    },
+    FeaturesEnsemblRegulationOverlaps {
+        seq_id: String,
+        index_path: String,
+        intervals_path: Option<String>,
+        start_0based: Option<usize>,
+        end_0based_exclusive: Option<usize>,
+        feature_types: Vec<String>,
+        limit: Option<usize>,
+        path: Option<String>,
+    },
+    FeaturesMaterializeEnsemblRegulation {
+        seq_id: String,
+        index_path: String,
+        intervals_path: Option<String>,
+        feature_types: Vec<String>,
         max_features: Option<usize>,
         clear_existing: bool,
         path: Option<String>,
@@ -8027,6 +8095,60 @@ impl ShellCommand {
                     .unwrap_or(ucsc_rmsk::DEFAULT_UCSC_RMSK_ASSEMBLY),
                 output.as_deref().unwrap_or("-"),
             ),
+            Self::ResourcesListEncodeCcreSources { assembly, output } => format!(
+                "list ENCODE SCREEN Registry V4 cCRE sources (assembly={}, output={})",
+                assembly.as_deref().unwrap_or("all"),
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::ResourcesInstallEncodeCcres {
+                source_id,
+                input,
+                bed_output,
+                index_output,
+            } => format!(
+                "install ENCODE SCREEN cCRE source '{}' from '{}' (bed_output={}, index_output={})",
+                source_id,
+                input.as_deref().unwrap_or("catalog URL"),
+                bed_output.as_deref().unwrap_or("default"),
+                index_output.as_deref().unwrap_or("default"),
+            ),
+            Self::ResourcesPrepareEncodeCcreIndex {
+                source_id,
+                bed_path,
+                output,
+            } => format!(
+                "prepare ENCODE SCREEN cCRE interval index for '{}' from '{}' (output={})",
+                source_id,
+                bed_path,
+                output.as_deref().unwrap_or("default"),
+            ),
+            Self::ResourcesListEnsemblRegulationSources { assembly, output } => format!(
+                "list Ensembl Regulation sources (assembly={}, output={})",
+                assembly.as_deref().unwrap_or("all"),
+                output.as_deref().unwrap_or("-")
+            ),
+            Self::ResourcesInstallEnsemblRegulatoryFeatures {
+                source_id,
+                input,
+                intervals_output,
+                index_output,
+            } => format!(
+                "install Ensembl Regulation source '{}' (input={}, intervals={}, index={})",
+                source_id,
+                input.as_deref().unwrap_or("pinned API"),
+                intervals_output.as_deref().unwrap_or("default"),
+                index_output.as_deref().unwrap_or("default"),
+            ),
+            Self::ResourcesPrepareEnsemblRegulationIndex {
+                source_id,
+                intervals_path,
+                output,
+            } => format!(
+                "prepare Ensembl Regulation index for '{}' from '{}' (output={})",
+                source_id,
+                intervals_path,
+                output.as_deref().unwrap_or("default"),
+            ),
             Self::ResourcesSyncJasparRemoteMetadata {
                 motifs,
                 filter,
@@ -11322,6 +11444,114 @@ impl ShellCommand {
                 max_features
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| "all".to_string()),
+                clear_existing,
+                path.as_deref().unwrap_or("-"),
+            ),
+            Self::FeaturesEncodeCcreOverlaps {
+                seq_id,
+                index_path,
+                bed_path,
+                start_0based,
+                end_0based_exclusive,
+                classes,
+                limit,
+                path,
+            } => format!(
+                "query ENCODE SCREEN cCRE overlaps on '{}' from '{}' (bed={}, range={}..{}, classes={}, limit={}, path={})",
+                seq_id,
+                index_path,
+                bed_path.as_deref().unwrap_or("index-bound"),
+                start_0based
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "0".to_string()),
+                end_0based_exclusive
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "full".to_string()),
+                if classes.is_empty() {
+                    "all source classes".to_string()
+                } else {
+                    classes.join(",")
+                },
+                limit
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "default".to_string()),
+                path.as_deref().unwrap_or("-"),
+            ),
+            Self::FeaturesMaterializeEncodeCcres {
+                seq_id,
+                index_path,
+                bed_path,
+                classes,
+                max_features,
+                clear_existing,
+                path,
+            } => format!(
+                "materialize ENCODE SCREEN cCREs on '{}' from '{}' (bed={}, classes={}, max_features={}, clear_existing={}, path={})",
+                seq_id,
+                index_path,
+                bed_path.as_deref().unwrap_or("index-bound"),
+                if classes.is_empty() {
+                    "all source classes".to_string()
+                } else {
+                    classes.join(",")
+                },
+                max_features
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "default".to_string()),
+                clear_existing,
+                path.as_deref().unwrap_or("-"),
+            ),
+            Self::FeaturesEnsemblRegulationOverlaps {
+                seq_id,
+                index_path,
+                intervals_path,
+                start_0based,
+                end_0based_exclusive,
+                feature_types,
+                limit,
+                path,
+            } => format!(
+                "query Ensembl Regulation overlaps on '{}' from '{}' (intervals={}, range={}..{}, types={}, limit={}, path={})",
+                seq_id,
+                index_path,
+                intervals_path.as_deref().unwrap_or("index-bound"),
+                start_0based
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "0".to_string()),
+                end_0based_exclusive
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "full".to_string()),
+                if feature_types.is_empty() {
+                    "all source types".to_string()
+                } else {
+                    feature_types.join(",")
+                },
+                limit
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "default".to_string()),
+                path.as_deref().unwrap_or("-"),
+            ),
+            Self::FeaturesMaterializeEnsemblRegulation {
+                seq_id,
+                index_path,
+                intervals_path,
+                feature_types,
+                max_features,
+                clear_existing,
+                path,
+            } => format!(
+                "materialize Ensembl regulatory features on '{}' from '{}' (intervals={}, types={}, max_features={}, clear_existing={}, path={})",
+                seq_id,
+                index_path,
+                intervals_path.as_deref().unwrap_or("index-bound"),
+                if feature_types.is_empty() {
+                    "all source types".to_string()
+                } else {
+                    feature_types.join(",")
+                },
+                max_features
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "default".to_string()),
                 clear_existing,
                 path.as_deref().unwrap_or("-"),
             ),
@@ -22762,6 +22992,178 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             ],
         ),
         optional_artifact_resource_report_descriptor(
+            "resources list-encode-ccre-sources",
+            "optional external gentle.encode_ccre_source_catalog.v1 JSON output path",
+            "List the built-in, species- and assembly-bound ENCODE SCREEN Registry V4 cCRE sources without accessing the network or local BED files.",
+            vec![
+                json!({"name": "--assembly", "required": false, "subject_kind": "other", "detail": "optional GRCh38/hg38 or GRCm38/mm10 source filter"}),
+            ],
+        ),
+        optional_artifact_resource_report_descriptor(
+            "resources install-encode-ccres",
+            "external BED and gentle.encode_ccre_interval_index.v1 output paths",
+            "Explicitly download or copy one catalog-selected SCREEN Registry V4 ELS BED and build its content-bound sparse interval index.",
+            vec![
+                json!({"name": "SOURCE_ID", "required": true, "subject_kind": "other", "detail": "exact built-in source id selecting species, assembly, Registry version, and subset"}),
+                json!({"name": "--input", "required": false, "subject_kind": "other", "detail": "optional local path or URL override"}),
+            ],
+        ),
+        optional_artifact_resource_report_descriptor(
+            "resources prepare-encode-ccre-index",
+            "external gentle.encode_ccre_interval_index.v1 output path",
+            "Build a compact content-bound interval index for an existing local SCREEN Registry V4 ELS BED.",
+            vec![
+                json!({"name": "SOURCE_ID", "required": true, "subject_kind": "other", "detail": "exact built-in source id selecting species, assembly, Registry version, and subset"}),
+                json!({"name": "BED_PATH", "required": true, "subject_kind": "other", "detail": "local six-column SCREEN Registry V4 ELS BED"}),
+            ],
+        ),
+        sequence_optional_artifact_operation_descriptor(
+            "features encode-ccre-overlaps",
+            "false",
+            false,
+            "SEQ_ID",
+            "loaded genome-anchored sequence id",
+            "optional external gentle.encode_ccre_overlap.v1 JSON output path",
+            "Query a content-bound local SCREEN Registry V4 cCRE index, rejecting assembly/species mismatches before projecting overlaps into sequence-local coordinates.",
+            vec![
+                json!({"name": "INDEX_PATH", "required": true, "subject_kind": "other", "detail": "prepared SCREEN cCRE interval-index path"}),
+                json!({"name": "--bed", "required": false, "subject_kind": "other", "detail": "optional relocated BED override, still verified against the index digest"}),
+                json!({"name": "--range", "required": false, "subject_kind": "other", "detail": "optional sequence-local interval"}),
+                json!({"name": "--class", "required": false, "subject_kind": "other", "detail": "optional pELS/dELS filter"}),
+            ],
+        ),
+        sequence_optional_artifact_operation_descriptor(
+            "QueryEncodeCcreOverlaps",
+            "false",
+            false,
+            "SEQ_ID",
+            "loaded genome-anchored sequence id carried by seq_id",
+            "optional external gentle.encode_ccre_overlap.v1 JSON output path carried by path",
+            "Query content-bound local SCREEN Registry V4 cCRE overlaps through the shared read-only engine operation.",
+            vec![
+                json!({"name": "INDEX_PATH", "required": true, "subject_kind": "other", "detail": "prepared SCREEN cCRE interval-index path carried by index_path"}),
+                json!({"name": "BED_PATH", "required": false, "subject_kind": "other", "detail": "optional relocated BED override carried by bed_path"}),
+                json!({"name": "CLASSES", "required": false, "subject_kind": "other", "detail": "optional exact cCRE class filters"}),
+                json!({"name": "LIMIT", "required": false, "subject_kind": "other", "detail": "optional maximum returned rows"}),
+            ],
+        ),
+        sequence_optional_artifact_operation_descriptor(
+            "features materialize-encode-ccres",
+            "true",
+            false,
+            "SEQ_ID",
+            "loaded genome-anchored sequence id receiving regulatory_region features",
+            "optional external gentle.encode_ccre_materialization.v1 JSON output path",
+            "Materialize verified SCREEN Registry V4 cCRE overlaps as ordinary generated regulatory_region features.",
+            vec![
+                json!({"name": "INDEX_PATH", "required": true, "subject_kind": "other", "detail": "prepared SCREEN cCRE interval-index path"}),
+                json!({"name": "--bed", "required": false, "subject_kind": "other", "detail": "optional relocated BED override, still verified against the index digest"}),
+                json!({"name": "--class", "required": false, "subject_kind": "other", "detail": "optional pELS/dELS filter"}),
+                json!({"name": "--max-features", "required": false, "subject_kind": "other", "detail": "bounded maximum generated feature count"}),
+            ],
+        ),
+        sequence_optional_artifact_operation_descriptor(
+            "MaterializeEncodeCcreFeatures",
+            "true",
+            false,
+            "SEQ_ID",
+            "loaded genome-anchored sequence id carried by seq_id",
+            "optional external gentle.encode_ccre_materialization.v1 JSON output path carried by path",
+            "Materialize verified SCREEN Registry V4 cCRE overlaps through the shared engine operation.",
+            vec![
+                json!({"name": "INDEX_PATH", "required": true, "subject_kind": "other", "detail": "prepared SCREEN cCRE interval-index path carried by index_path"}),
+                json!({"name": "BED_PATH", "required": false, "subject_kind": "other", "detail": "optional relocated BED override carried by bed_path"}),
+                json!({"name": "CLASSES", "required": false, "subject_kind": "other", "detail": "optional exact cCRE class filters"}),
+                json!({"name": "MAX_FEATURES", "required": false, "subject_kind": "other", "detail": "bounded maximum generated feature count"}),
+            ],
+        ),
+        optional_artifact_resource_report_descriptor(
+            "resources list-ensembl-regulation-sources",
+            "optional external gentle.ensembl_regulation_source_catalog.v1 JSON output path",
+            "List pinned, species- and assembly-bound Ensembl Regulation annotation sources without accessing the network or local interval files.",
+            vec![
+                json!({"name": "--assembly", "required": false, "subject_kind": "other", "detail": "optional GRCh38/hg38 or GRCm39/mm39 source filter"}),
+            ],
+        ),
+        optional_artifact_resource_report_descriptor(
+            "resources install-ensembl-regulatory-features",
+            "external normalized intervals and gentle.ensembl_regulation_interval_index.v1 output paths",
+            "Explicitly fetch the pinned Ensembl Regulation annotation API snapshot, normalize it, and build a content-bound sparse interval index; activity and primary signals remain separate.",
+            vec![
+                json!({"name": "SOURCE_ID", "required": true, "subject_kind": "other", "detail": "exact built-in source id selecting release, species, and assembly"}),
+                json!({"name": "--input", "required": false, "subject_kind": "other", "detail": "optional complete annotation API JSON response for offline installation"}),
+            ],
+        ),
+        optional_artifact_resource_report_descriptor(
+            "resources prepare-ensembl-regulation-index",
+            "external gentle.ensembl_regulation_interval_index.v1 output path",
+            "Build a compact content-bound sparse index for an existing GENtle-normalized Ensembl Regulation interval snapshot.",
+            vec![
+                json!({"name": "SOURCE_ID", "required": true, "subject_kind": "other", "detail": "exact built-in source id selecting release, species, and assembly"}),
+                json!({"name": "INTERVALS_PATH", "required": true, "subject_kind": "other", "detail": "normalized Ensembl Regulation interval TSV with bound source header"}),
+            ],
+        ),
+        sequence_optional_artifact_operation_descriptor(
+            "features ensembl-regulation-overlaps",
+            "false",
+            false,
+            "SEQ_ID",
+            "loaded genome-anchored sequence id",
+            "optional external gentle.ensembl_regulation_overlap.v1 JSON output path",
+            "Query a content-bound local Ensembl Regulation index, rejecting release/species/assembly mismatches before projecting annotation into sequence-local coordinates.",
+            vec![
+                json!({"name": "INDEX_PATH", "required": true, "subject_kind": "other", "detail": "prepared Ensembl Regulation interval-index path"}),
+                json!({"name": "--intervals", "required": false, "subject_kind": "other", "detail": "optional relocated interval snapshot, still verified against the index digest"}),
+                json!({"name": "--range", "required": false, "subject_kind": "other", "detail": "optional sequence-local interval"}),
+                json!({"name": "--feature-type", "required": false, "subject_kind": "other", "detail": "optional promoter/enhancer/open_chromatin_region/ctcf/emar filter"}),
+            ],
+        ),
+        sequence_optional_artifact_operation_descriptor(
+            "QueryEnsemblRegulationOverlaps",
+            "false",
+            false,
+            "SEQ_ID",
+            "loaded genome-anchored sequence id carried by seq_id",
+            "optional external gentle.ensembl_regulation_overlap.v1 JSON output path carried by path",
+            "Query content-bound local Ensembl Regulation overlaps through the shared read-only engine operation.",
+            vec![
+                json!({"name": "INDEX_PATH", "required": true, "subject_kind": "other", "detail": "prepared Ensembl Regulation interval-index path carried by index_path"}),
+                json!({"name": "INTERVALS_PATH", "required": false, "subject_kind": "other", "detail": "optional relocated interval snapshot carried by intervals_path"}),
+                json!({"name": "FEATURE_TYPES", "required": false, "subject_kind": "other", "detail": "optional exact feature-type filters"}),
+                json!({"name": "LIMIT", "required": false, "subject_kind": "other", "detail": "optional maximum returned rows"}),
+            ],
+        ),
+        sequence_optional_artifact_operation_descriptor(
+            "features materialize-ensembl-regulation",
+            "true",
+            false,
+            "SEQ_ID",
+            "loaded genome-anchored sequence id receiving regulatory_region features",
+            "optional external gentle.ensembl_regulation_materialization.v1 JSON output path",
+            "Materialize verified Ensembl Regulation overlaps as ordinary generated regulatory_region features without claiming biosample activity.",
+            vec![
+                json!({"name": "INDEX_PATH", "required": true, "subject_kind": "other", "detail": "prepared Ensembl Regulation interval-index path"}),
+                json!({"name": "--intervals", "required": false, "subject_kind": "other", "detail": "optional relocated interval snapshot, still verified against the index digest"}),
+                json!({"name": "--feature-type", "required": false, "subject_kind": "other", "detail": "optional regulatory feature-type filter"}),
+                json!({"name": "--max-features", "required": false, "subject_kind": "other", "detail": "bounded maximum generated feature count"}),
+            ],
+        ),
+        sequence_optional_artifact_operation_descriptor(
+            "MaterializeEnsemblRegulationFeatures",
+            "true",
+            false,
+            "SEQ_ID",
+            "loaded genome-anchored sequence id carried by seq_id",
+            "optional external gentle.ensembl_regulation_materialization.v1 JSON output path carried by path",
+            "Materialize verified Ensembl Regulation overlaps through the shared engine operation.",
+            vec![
+                json!({"name": "INDEX_PATH", "required": true, "subject_kind": "other", "detail": "prepared Ensembl Regulation interval-index path carried by index_path"}),
+                json!({"name": "INTERVALS_PATH", "required": false, "subject_kind": "other", "detail": "optional relocated interval snapshot carried by intervals_path"}),
+                json!({"name": "FEATURE_TYPES", "required": false, "subject_kind": "other", "detail": "optional exact feature-type filters"}),
+                json!({"name": "MAX_FEATURES", "required": false, "subject_kind": "other", "detail": "bounded maximum generated feature count"}),
+            ],
+        ),
+        optional_artifact_resource_report_descriptor(
             "features repeat-cohort",
             "optional external repeat-environment cohort JSON output path",
             "Build a repeat-centered window cohort from one genome/rmsk source; genome/rmsk and catalog/cache validation happens during execution.",
@@ -29756,14 +30158,28 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "features repeat-overlaps"
         | "QueryRepeatOverlaps"
         | "features materialize-repeats"
-        | "MaterializeRepeatFeatures" => Some(vec![
+        | "MaterializeRepeatFeatures"
+        | "features encode-ccre-overlaps"
+        | "QueryEncodeCcreOverlaps"
+        | "features materialize-encode-ccres"
+        | "MaterializeEncodeCcreFeatures"
+        | "features ensembl-regulation-overlaps"
+        | "QueryEnsemblRegulationOverlaps"
+        | "features materialize-ensembl-regulation"
+        | "MaterializeEnsemblRegulationFeatures" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
         "features repeat-query"
         | "QueryRepeatAnnotations"
         | "features repeat-cohort"
         | "BuildRepeatEnvironmentCohort"
-        | "features window-cohort-tfbs" => Some(vec![]),
+        | "features window-cohort-tfbs"
+        | "resources list-encode-ccre-sources"
+        | "resources install-encode-ccres"
+        | "resources prepare-encode-ccre-index"
+        | "resources list-ensembl-regulation-sources"
+        | "resources install-ensembl-regulatory-features"
+        | "resources prepare-ensembl-regulation-index" => Some(vec![]),
         "AssessPrimerPairSpecificity"
         | "AssessPrimerPairSpecificityCollection"
         | "collections run primer-specificity"
@@ -44296,7 +44712,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "resources" => {
             if tokens.len() < 2 {
                 return Err(
-                    "resources requires a subcommand: sync-rebase, sync-jaspar, sync-ucsc-rmsk, install-ucsc-rmsk, prepare-ucsc-rmsk-index, suggest-ucsc-rmsk-index, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar, list-publication-datasets, status-publication-dataset, prepare-publication-dataset, inspect-jaspar, sync-attract, sync-maxent, or status".to_string(),
+                    "resources requires a subcommand: sync-rebase, sync-jaspar, sync-ucsc-rmsk, install-ucsc-rmsk, prepare-ucsc-rmsk-index, suggest-ucsc-rmsk-index, list-encode-ccre-sources, install-encode-ccres, prepare-encode-ccre-index, list-ensembl-regulation-sources, install-ensembl-regulatory-features, prepare-ensembl-regulation-index, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar, list-publication-datasets, status-publication-dataset, prepare-publication-dataset, inspect-jaspar, sync-attract, sync-maxent, or status".to_string(),
                 );
             }
             match tokens[1].as_str() {
@@ -44944,6 +45360,264 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     }
                     Ok(ShellCommand::ResourcesSuggestUcscRmskIndex {
                         assembly_database,
+                        output,
+                    })
+                }
+                "list-encode-ccre-sources" | "list-screen-ccre-sources" => {
+                    let mut assembly: Option<String> = None;
+                    let mut output: Option<String> = None;
+                    let mut idx = 2usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--assembly" | "--genome" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing ASSEMBLY after --assembly for resources list-encode-ccre-sources"
+                                            .to_string(),
+                                    );
+                                }
+                                assembly = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--output" | "--path" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH after --output for resources list-encode-ccre-sources"
+                                            .to_string(),
+                                    );
+                                }
+                                output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for resources list-encode-ccre-sources"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ResourcesListEncodeCcreSources { assembly, output })
+                }
+                "install-encode-ccres" | "install-screen-ccres" => {
+                    if tokens.len() < 3 {
+                        return Err(
+                            "resources install-encode-ccres requires SOURCE_ID [--input PATH_OR_URL] [--bed-output PATH] [--index-output PATH]"
+                                .to_string(),
+                        );
+                    }
+                    let source_id = tokens[2].clone();
+                    let mut input: Option<String> = None;
+                    let mut bed_output: Option<String> = None;
+                    let mut index_output: Option<String> = None;
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--input" | "--source" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH_OR_URL after --input for resources install-encode-ccres"
+                                            .to_string(),
+                                    );
+                                }
+                                input = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--bed-output" | "--resource-output" | "--resource" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH after --bed-output for resources install-encode-ccres"
+                                            .to_string(),
+                                    );
+                                }
+                                bed_output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--index-output" | "--index" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH after --index-output for resources install-encode-ccres"
+                                            .to_string(),
+                                    );
+                                }
+                                index_output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for resources install-encode-ccres"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ResourcesInstallEncodeCcres {
+                        source_id,
+                        input,
+                        bed_output,
+                        index_output,
+                    })
+                }
+                "prepare-encode-ccre-index" | "index-encode-ccres" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "resources prepare-encode-ccre-index requires SOURCE_ID BED_PATH [--output PATH]"
+                                .to_string(),
+                        );
+                    }
+                    let source_id = tokens[2].clone();
+                    let bed_path = tokens[3].clone();
+                    let mut output: Option<String> = None;
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--output" | "--index-output" | "--index" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH after --output for resources prepare-encode-ccre-index"
+                                            .to_string(),
+                                    );
+                                }
+                                output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for resources prepare-encode-ccre-index"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ResourcesPrepareEncodeCcreIndex {
+                        source_id,
+                        bed_path,
+                        output,
+                    })
+                }
+                "list-ensembl-regulation-sources" => {
+                    let mut assembly = None;
+                    let mut output = None;
+                    let mut idx = 2usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--assembly" | "--genome" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing ASSEMBLY after --assembly for resources list-ensembl-regulation-sources"
+                                            .to_string(),
+                                    );
+                                }
+                                assembly = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--output" | "--path" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH after --output for resources list-ensembl-regulation-sources"
+                                            .to_string(),
+                                    );
+                                }
+                                output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for resources list-ensembl-regulation-sources"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ResourcesListEnsemblRegulationSources { assembly, output })
+                }
+                "install-ensembl-regulatory-features" => {
+                    if tokens.len() < 3 {
+                        return Err(
+                            "resources install-ensembl-regulatory-features requires SOURCE_ID [--input COMPLETE_API_JSON] [--intervals-output PATH] [--index-output PATH]"
+                                .to_string(),
+                        );
+                    }
+                    let source_id = tokens[2].clone();
+                    let mut input = None;
+                    let mut intervals_output = None;
+                    let mut index_output = None;
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--input" | "--source" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing COMPLETE_API_JSON after --input for resources install-ensembl-regulatory-features"
+                                            .to_string(),
+                                    );
+                                }
+                                input = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--intervals-output" | "--resource-output" | "--resource" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH after --intervals-output for resources install-ensembl-regulatory-features"
+                                            .to_string(),
+                                    );
+                                }
+                                intervals_output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--index-output" | "--index" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH after --index-output for resources install-ensembl-regulatory-features"
+                                            .to_string(),
+                                    );
+                                }
+                                index_output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for resources install-ensembl-regulatory-features"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ResourcesInstallEnsemblRegulatoryFeatures {
+                        source_id,
+                        input,
+                        intervals_output,
+                        index_output,
+                    })
+                }
+                "prepare-ensembl-regulation-index" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "resources prepare-ensembl-regulation-index requires SOURCE_ID INTERVALS_PATH [--output PATH]"
+                                .to_string(),
+                        );
+                    }
+                    let source_id = tokens[2].clone();
+                    let intervals_path = tokens[3].clone();
+                    let mut output = None;
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--output" | "--index-output" | "--index" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH after --output for resources prepare-ensembl-regulation-index"
+                                            .to_string(),
+                                    );
+                                }
+                                output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for resources prepare-ensembl-regulation-index"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ResourcesPrepareEnsemblRegulationIndex {
+                        source_id,
+                        intervals_path,
                         output,
                     })
                 }
@@ -50817,6 +51491,152 @@ fn execute_export_import_and_resource_command(
                 state_changed: false,
                 output: serde_json::to_value(descriptor)
                     .map_err(|e| format!("Could not serialize UCSC rmsk descriptor: {e}"))?,
+            })
+        }
+        ShellCommand::ResourcesListEncodeCcreSources { assembly, output } => {
+            let mut catalog = crate::encode_ccre::source_catalog();
+            if let Some(assembly) = assembly
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                catalog.sources.retain(|source| {
+                    crate::encode_ccre::genome_id_matches_source(assembly, source)
+                });
+            }
+            if let Some(path) = output {
+                ensure_shell_output_parent_dir(path)?;
+                let mut text = serde_json::to_string_pretty(&catalog)
+                    .map_err(|error| format!("Could not serialize ENCODE cCRE catalog: {error}"))?;
+                text.push('\n');
+                fs::write(path, text)
+                    .map_err(|error| format!("Could not write ENCODE cCRE catalog: {error}"))?;
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(catalog)
+                    .map_err(|error| format!("Could not serialize ENCODE cCRE catalog: {error}"))?,
+            })
+        }
+        ShellCommand::ResourcesInstallEncodeCcres {
+            source_id,
+            input,
+            bed_output,
+            index_output,
+        } => {
+            let report = resource_sync::install_encode_ccres(
+                source_id,
+                input.as_deref(),
+                bed_output.as_deref(),
+                index_output.as_deref(),
+            )?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "message": format!(
+                        "Installed {} ENCODE SCREEN cCRE row(s) for '{}' (BED='{}', index='{}')",
+                        report.row_count,
+                        report.source.source_id,
+                        report.bed_output,
+                        report.index_output,
+                    ),
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::ResourcesPrepareEncodeCcreIndex {
+            source_id,
+            bed_path,
+            output,
+        } => {
+            let report =
+                resource_sync::prepare_encode_ccre_index(source_id, bed_path, output.as_deref())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "message": format!(
+                        "Prepared ENCODE SCREEN cCRE index for {} row(s) from '{}'",
+                        report.row_count,
+                        bed_path,
+                    ),
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::ResourcesListEnsemblRegulationSources { assembly, output } => {
+            let mut catalog = crate::ensembl_regulation::source_catalog();
+            if let Some(assembly) = assembly
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                catalog.sources.retain(|source| {
+                    crate::ensembl_regulation::genome_id_matches_source(assembly, source)
+                });
+            }
+            if let Some(path) = output {
+                ensure_shell_output_parent_dir(path)?;
+                let mut text = serde_json::to_string_pretty(&catalog).map_err(|error| {
+                    format!("Could not serialize Ensembl Regulation catalog: {error}")
+                })?;
+                text.push('\n');
+                fs::write(path, text).map_err(|error| {
+                    format!("Could not write Ensembl Regulation catalog: {error}")
+                })?;
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(catalog).map_err(|error| {
+                    format!("Could not serialize Ensembl Regulation catalog: {error}")
+                })?,
+            })
+        }
+        ShellCommand::ResourcesInstallEnsemblRegulatoryFeatures {
+            source_id,
+            input,
+            intervals_output,
+            index_output,
+        } => {
+            let report = resource_sync::install_ensembl_regulatory_features(
+                source_id,
+                input.as_deref(),
+                intervals_output.as_deref(),
+                index_output.as_deref(),
+            )?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "message": format!(
+                        "Installed {} Ensembl regulatory feature row(s) for '{}' (intervals='{}', index='{}')",
+                        report.row_count,
+                        report.source.source_id,
+                        report.intervals_output,
+                        report.index_output,
+                    ),
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::ResourcesPrepareEnsemblRegulationIndex {
+            source_id,
+            intervals_path,
+            output,
+        } => {
+            let report = resource_sync::prepare_ensembl_regulation_index(
+                source_id,
+                intervals_path,
+                output.as_deref(),
+            )?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "message": format!(
+                        "Prepared Ensembl Regulation index for {} row(s) from '{}'",
+                        report.row_count,
+                        intervals_path,
+                    ),
+                    "report": report,
+                }),
             })
         }
         ShellCommand::ResourcesSyncJasparRemoteMetadata {
@@ -58683,6 +59503,126 @@ fn execute_feature_scan_command(
                 }),
             })
         }
+        ShellCommand::FeaturesEncodeCcreOverlaps {
+            seq_id,
+            index_path,
+            bed_path,
+            start_0based,
+            end_0based_exclusive,
+            classes,
+            limit,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::QueryEncodeCcreOverlaps {
+                    seq_id: seq_id.clone(),
+                    index_path: index_path.clone(),
+                    bed_path: bed_path.clone(),
+                    start_0based: *start_0based,
+                    end_0based_exclusive: *end_0based_exclusive,
+                    classes: classes.clone(),
+                    limit: *limit,
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result.encode_ccre_overlaps.clone();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::FeaturesMaterializeEncodeCcres {
+            seq_id,
+            index_path,
+            bed_path,
+            classes,
+            max_features,
+            clear_existing,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::MaterializeEncodeCcreFeatures {
+                    seq_id: seq_id.clone(),
+                    index_path: index_path.clone(),
+                    bed_path: bed_path.clone(),
+                    classes: classes.clone(),
+                    max_features: *max_features,
+                    clear_existing: Some(*clear_existing),
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result.encode_ccre_materialization.clone();
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::FeaturesEnsemblRegulationOverlaps {
+            seq_id,
+            index_path,
+            intervals_path,
+            start_0based,
+            end_0based_exclusive,
+            feature_types,
+            limit,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::QueryEnsemblRegulationOverlaps {
+                    seq_id: seq_id.clone(),
+                    index_path: index_path.clone(),
+                    intervals_path: intervals_path.clone(),
+                    start_0based: *start_0based,
+                    end_0based_exclusive: *end_0based_exclusive,
+                    feature_types: feature_types.clone(),
+                    limit: *limit,
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result.ensembl_regulation_overlaps.clone();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::FeaturesMaterializeEnsemblRegulation {
+            seq_id,
+            index_path,
+            intervals_path,
+            feature_types,
+            max_features,
+            clear_existing,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::MaterializeEnsemblRegulationFeatures {
+                    seq_id: seq_id.clone(),
+                    index_path: index_path.clone(),
+                    intervals_path: intervals_path.clone(),
+                    feature_types: feature_types.clone(),
+                    max_features: *max_features,
+                    clear_existing: Some(*clear_existing),
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result.ensembl_regulation_materialization.clone();
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
         ShellCommand::FeaturesRepeatCohort {
             genome_id,
             rmsk_path,
@@ -64735,6 +65675,12 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::ResourcesInstallUcscRmsk { .. }
             | ShellCommand::ResourcesPrepareUcscRmskIndex { .. }
             | ShellCommand::ResourcesSuggestUcscRmskIndex { .. }
+            | ShellCommand::ResourcesListEncodeCcreSources { .. }
+            | ShellCommand::ResourcesInstallEncodeCcres { .. }
+            | ShellCommand::ResourcesPrepareEncodeCcreIndex { .. }
+            | ShellCommand::ResourcesListEnsemblRegulationSources { .. }
+            | ShellCommand::ResourcesInstallEnsemblRegulatoryFeatures { .. }
+            | ShellCommand::ResourcesPrepareEnsemblRegulationIndex { .. }
             | ShellCommand::ResourcesSyncJasparRemoteMetadata { .. }
             | ShellCommand::ResourcesBenchmarkJaspar { .. }
             | ShellCommand::ResourcesListJaspar { .. }
@@ -64969,6 +65915,10 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::FeaturesRepeatQuery { .. }
             | ShellCommand::FeaturesRepeatOverlaps { .. }
             | ShellCommand::FeaturesMaterializeRepeats { .. }
+            | ShellCommand::FeaturesEncodeCcreOverlaps { .. }
+            | ShellCommand::FeaturesMaterializeEncodeCcres { .. }
+            | ShellCommand::FeaturesEnsemblRegulationOverlaps { .. }
+            | ShellCommand::FeaturesMaterializeEnsemblRegulation { .. }
             | ShellCommand::FeaturesRepeatCohort { .. }
             | ShellCommand::FeaturesWindowCohortTfbs { .. }
             | ShellCommand::FeaturesPromoterEvidenceMatrix { .. }
@@ -65307,6 +66257,10 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::FeaturesRepeatQuery { .. }
         | ShellCommand::FeaturesRepeatOverlaps { .. }
         | ShellCommand::FeaturesMaterializeRepeats { .. }
+        | ShellCommand::FeaturesEncodeCcreOverlaps { .. }
+        | ShellCommand::FeaturesMaterializeEncodeCcres { .. }
+        | ShellCommand::FeaturesEnsemblRegulationOverlaps { .. }
+        | ShellCommand::FeaturesMaterializeEnsemblRegulation { .. }
         | ShellCommand::FeaturesRepeatCohort { .. }
         | ShellCommand::FeaturesWindowCohortTfbs { .. }
         | ShellCommand::FeaturesPromoterEvidenceMatrix { .. }
@@ -65549,6 +66503,12 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ResourcesInstallUcscRmsk { .. }
         | ShellCommand::ResourcesPrepareUcscRmskIndex { .. }
         | ShellCommand::ResourcesSuggestUcscRmskIndex { .. }
+        | ShellCommand::ResourcesListEncodeCcreSources { .. }
+        | ShellCommand::ResourcesInstallEncodeCcres { .. }
+        | ShellCommand::ResourcesPrepareEncodeCcreIndex { .. }
+        | ShellCommand::ResourcesListEnsemblRegulationSources { .. }
+        | ShellCommand::ResourcesInstallEnsemblRegulatoryFeatures { .. }
+        | ShellCommand::ResourcesPrepareEnsemblRegulationIndex { .. }
         | ShellCommand::ResourcesSyncJasparRemoteMetadata { .. }
         | ShellCommand::ResourcesBenchmarkJaspar { .. }
         | ShellCommand::ResourcesListJaspar { .. }

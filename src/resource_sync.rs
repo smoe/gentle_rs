@@ -1,5 +1,5 @@
-//! Resource synchronization (REBASE/JASPAR/ATtRACT/UCSC rmsk) parsing and
-//! snapshot writing.
+//! Resource synchronization for REBASE, JASPAR, ATtRACT, UCSC rmsk, ENCODE
+//! SCREEN cCRE, and related local snapshots/indexes.
 
 use crate::attract_motifs::{
     ATTRACT_MOTIF_SNAPSHOT_SCHEMA, AttractMotifRecord, AttractMotifSnapshot, AttractPfmRows,
@@ -12,13 +12,21 @@ use crate::{
     },
 };
 use gentle_protocol::CrypticSplicingModelTableDigest;
+use gentle_protocol::{
+    ENCODE_CCRE_INSTALL_REPORT_SCHEMA, EncodeCcreInstallReport, EncodeCcreIntervalIndex,
+};
+use gentle_protocol::{
+    ENSEMBL_REGULATION_INSTALL_REPORT_SCHEMA, EnsemblRegulationInstallReport,
+    EnsemblRegulationIntervalIndex,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeSet, HashMap},
     fs,
-    io::{BufRead, BufReader},
+    io::{BufRead, BufReader, Write},
     path::Path,
     process::Command,
+    time::Duration,
 };
 use tempfile::NamedTempFile;
 
@@ -119,6 +127,333 @@ pub struct UcscRmskInstallReport {
     pub resource_report: SyncReport,
     pub index_report: SyncReport,
     pub warnings: Vec<String>,
+}
+
+fn copy_local_or_remote_file(input: &str, output: &str) -> Result<(), String> {
+    let output_path = Path::new(output);
+    ensure_parent_dir(output)?;
+    if !input.starts_with("http://")
+        && !input.starts_with("https://")
+        && Path::new(input) == output_path
+    {
+        return Ok(());
+    }
+    let parent = output_path
+        .parent()
+        .filter(|value| !value.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let mut temporary = NamedTempFile::new_in(parent).map_err(|error| {
+        format!(
+            "Could not create temporary resource beside '{}': {error}",
+            output_path.display()
+        )
+    })?;
+    if input.starts_with("http://") || input.starts_with("https://") {
+        let mut response = std::panic::catch_unwind(|| reqwest::blocking::get(input))
+            .map_err(|_| format!("Could not fetch URL '{input}': networking backend panicked"))?
+            .map_err(|error| format!("Could not fetch URL '{input}': {error}"))?;
+        if !response.status().is_success() {
+            return Err(format!(
+                "Could not fetch URL '{input}': HTTP {}",
+                response.status()
+            ));
+        }
+        std::io::copy(&mut response, &mut temporary)
+            .map_err(|error| format!("Could not stream URL '{input}': {error}"))?;
+    } else {
+        let mut source = fs::File::open(input)
+            .map_err(|error| format!("Could not read file '{input}': {error}"))?;
+        std::io::copy(&mut source, &mut temporary)
+            .map_err(|error| format!("Could not copy resource '{input}' to '{output}': {error}"))?;
+    }
+    temporary
+        .flush()
+        .map_err(|error| format!("Could not flush resource output '{output}': {error}"))?;
+    temporary.persist(output_path).map_err(|error| {
+        format!(
+            "Could not publish resource output '{}': {}",
+            output_path.display(),
+            error.error
+        )
+    })?;
+    Ok(())
+}
+
+pub fn prepare_encode_ccre_index(
+    source_id: &str,
+    bed_path: &str,
+    index_output: Option<&str>,
+) -> Result<EncodeCcreIntervalIndex, String> {
+    let source = crate::encode_ccre::source_descriptor(source_id)?;
+    let output = index_output
+        .map(str::to_string)
+        .unwrap_or_else(|| crate::encode_ccre::default_index_path(&source));
+    crate::encode_ccre::prepare_interval_index(bed_path, &output, source)
+}
+
+pub fn install_encode_ccres(
+    source_id: &str,
+    input_override: Option<&str>,
+    bed_output: Option<&str>,
+    index_output: Option<&str>,
+) -> Result<EncodeCcreInstallReport, String> {
+    let source = crate::encode_ccre::source_descriptor(source_id)?;
+    let input = input_override
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(&source.source_url)
+        .to_string();
+    let bed_output = bed_output
+        .map(str::to_string)
+        .unwrap_or_else(|| crate::encode_ccre::default_bed_path(&source));
+    let index_output = index_output
+        .map(str::to_string)
+        .unwrap_or_else(|| crate::encode_ccre::default_index_path(&source));
+    copy_local_or_remote_file(&input, &bed_output)?;
+    let index =
+        crate::encode_ccre::prepare_interval_index(&bed_output, &index_output, source.clone())?;
+    let report_id = crate::digest_utils::short_sha256_id(
+        "encode_ccre_install",
+        &format!(
+            "{}\n{}\n{}\n{}",
+            source.source_id, index.bed_sha256, index.row_count, index_output
+        ),
+    );
+    Ok(EncodeCcreInstallReport {
+        schema: ENCODE_CCRE_INSTALL_REPORT_SCHEMA.to_string(),
+        report_id,
+        source,
+        input,
+        bed_output,
+        index_output,
+        bed_sha256: index.bed_sha256,
+        row_count: index.row_count,
+        class_counts: index.class_counts,
+        warnings: index.warnings,
+    })
+}
+
+pub fn prepare_ensembl_regulation_index(
+    source_id: &str,
+    intervals_path: &str,
+    index_output: Option<&str>,
+) -> Result<EnsemblRegulationIntervalIndex, String> {
+    let source = crate::ensembl_regulation::source_descriptor(source_id)?;
+    let output = index_output
+        .map(str::to_string)
+        .unwrap_or_else(|| crate::ensembl_regulation::default_index_path(&source));
+    crate::ensembl_regulation::prepare_interval_index(intervals_path, &output, source)
+}
+
+const ENSEMBL_REGULATION_API_PAGE_SIZE: usize = 20_000;
+
+fn ensembl_regulation_http_client() -> Result<reqwest::blocking::Client, String> {
+    reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(20))
+        .timeout(Duration::from_secs(180))
+        .user_agent(concat!("GENtle/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|error| format!("Could not initialize Ensembl Regulation HTTP client: {error}"))
+}
+
+fn fetch_ensembl_regulation_page(
+    client: &reqwest::blocking::Client,
+    source: &gentle_protocol::EnsemblRegulationSourceDescriptor,
+    offset: usize,
+) -> Result<crate::ensembl_regulation::ApiResponse, String> {
+    let page_url = format!(
+        "{}?limit={}&offset={}",
+        source.annotation_api_url, ENSEMBL_REGULATION_API_PAGE_SIZE, offset
+    );
+    let response = client.get(page_url).send().map_err(|error| {
+        format!(
+            "Could not fetch Ensembl Regulation source '{}' page at offset {}: {error}",
+            source.source_id, offset
+        )
+    })?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Could not fetch Ensembl Regulation source '{}' page at offset {}: HTTP {}",
+            source.source_id,
+            offset,
+            response.status()
+        ));
+    }
+    response.json().map_err(|error| {
+        format!(
+            "Could not parse Ensembl Regulation source '{}' page at offset {}: {error}",
+            source.source_id, offset
+        )
+    })
+}
+
+fn write_ensembl_regulation_api_snapshot(
+    source: &gentle_protocol::EnsemblRegulationSourceDescriptor,
+    input_override: Option<&str>,
+    output: &str,
+) -> Result<(usize, usize, String), String> {
+    ensure_parent_dir(output)?;
+    let output_path = Path::new(output);
+    let parent = output_path
+        .parent()
+        .filter(|value| !value.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let mut temporary = NamedTempFile::new_in(parent).map_err(|error| {
+        format!(
+            "Could not create temporary Ensembl Regulation snapshot beside '{}': {error}",
+            output_path.display()
+        )
+    })?;
+    crate::ensembl_regulation::write_intervals_header(&mut temporary, source)?;
+
+    let mut row_count = 0usize;
+    let mut page_count = 0usize;
+    let fetched_release;
+    if let Some(input) = input_override
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let text = read_text_input(input)?;
+        let response = serde_json::from_str::<crate::ensembl_regulation::ApiResponse>(&text)
+            .map_err(|error| {
+                format!(
+                    "Ensembl Regulation --input must be a complete annotation API JSON response: {error}"
+                )
+            })?;
+        let rows = crate::ensembl_regulation::intervals_from_api_response(&response, source)?;
+        if rows.len() != response.total_count {
+            return Err(format!(
+                "Ensembl Regulation --input contains {} feature row(s) but declares total_count={}; provide a complete response, not one API page",
+                rows.len(),
+                response.total_count
+            ));
+        }
+        fetched_release = response.release;
+        for row in &rows {
+            crate::ensembl_regulation::write_interval(&mut temporary, row)?;
+        }
+        row_count = rows.len();
+        page_count = usize::from(!rows.is_empty());
+    } else {
+        let client = ensembl_regulation_http_client()?;
+        let mut offset = 0usize;
+        let mut expected_total = None;
+        loop {
+            let response = fetch_ensembl_regulation_page(&client, source, offset)?;
+            if response.release != source.annotation_release {
+                return Err(format!(
+                    "Ensembl Regulation API returned release '{}' for pinned source '{}' release '{}'; refusing a stale or redirected snapshot",
+                    response.release, source.source_id, source.annotation_release
+                ));
+            }
+            if response.offset.unwrap_or(offset) != offset {
+                return Err(format!(
+                    "Ensembl Regulation API returned offset {:?} while {} was requested",
+                    response.offset, offset
+                ));
+            }
+            if let Some(expected) = expected_total {
+                if response.total_count != expected {
+                    return Err(format!(
+                        "Ensembl Regulation API total_count changed from {} to {} during download",
+                        expected, response.total_count
+                    ));
+                }
+            } else {
+                expected_total = Some(response.total_count);
+            }
+            let rows = crate::ensembl_regulation::intervals_from_api_response(&response, source)?;
+            if rows.is_empty() && offset < response.total_count {
+                return Err(format!(
+                    "Ensembl Regulation API returned an empty page at offset {} before total_count {} was reached",
+                    offset, response.total_count
+                ));
+            }
+            for row in &rows {
+                crate::ensembl_regulation::write_interval(&mut temporary, row)?;
+            }
+            row_count = row_count.saturating_add(rows.len());
+            page_count = page_count.saturating_add(1);
+            offset = offset.saturating_add(rows.len());
+            if offset >= response.total_count {
+                break;
+            }
+        }
+        if row_count != expected_total.unwrap_or_default() {
+            return Err(format!(
+                "Ensembl Regulation snapshot wrote {} row(s), expected {}",
+                row_count,
+                expected_total.unwrap_or_default()
+            ));
+        }
+        fetched_release = source.annotation_release.clone();
+    }
+    temporary
+        .flush()
+        .map_err(|error| format!("Could not flush Ensembl Regulation snapshot: {error}"))?;
+    temporary.persist(output_path).map_err(|error| {
+        format!(
+            "Could not publish Ensembl Regulation snapshot '{}': {}",
+            output_path.display(),
+            error.error
+        )
+    })?;
+    Ok((row_count, page_count, fetched_release))
+}
+
+pub fn install_ensembl_regulatory_features(
+    source_id: &str,
+    input_override: Option<&str>,
+    intervals_output: Option<&str>,
+    index_output: Option<&str>,
+) -> Result<EnsemblRegulationInstallReport, String> {
+    let source = crate::ensembl_regulation::source_descriptor(source_id)?;
+    let input = input_override
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(&source.annotation_api_url)
+        .to_string();
+    let intervals_output = intervals_output
+        .map(str::to_string)
+        .unwrap_or_else(|| crate::ensembl_regulation::default_intervals_path(&source));
+    let index_output = index_output
+        .map(str::to_string)
+        .unwrap_or_else(|| crate::ensembl_regulation::default_index_path(&source));
+    let (_, page_count, fetched_release) =
+        write_ensembl_regulation_api_snapshot(&source, input_override, &intervals_output)?;
+    let index = crate::ensembl_regulation::prepare_interval_index(
+        &intervals_output,
+        &index_output,
+        source.clone(),
+    )?;
+    let report_id = crate::digest_utils::short_sha256_id(
+        "ensembl_regulation_install",
+        &format!(
+            "{}\n{}\n{}\n{}\n{}",
+            source.source_id,
+            index.intervals_sha256,
+            index.row_count,
+            index_output,
+            fetched_release
+        ),
+    );
+    Ok(EnsemblRegulationInstallReport {
+        schema: ENSEMBL_REGULATION_INSTALL_REPORT_SCHEMA.to_string(),
+        report_id,
+        source,
+        input,
+        intervals_output,
+        index_output,
+        intervals_sha256: index.intervals_sha256,
+        row_count: index.row_count,
+        feature_type_counts: index.feature_type_counts,
+        page_count,
+        fetched_release,
+        warnings: vec![
+            "This installation contains Ensembl regulatory annotation only; regulatory activity and epigenome-specific primary signals remain separate optional resources."
+                .to_string(),
+        ],
+    })
 }
 
 fn now_unix_ms() -> u128 {

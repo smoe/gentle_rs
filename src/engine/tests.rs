@@ -61919,6 +61919,315 @@ fn materialize_repeat_features_creates_repeat_regions_on_reverse_anchor() {
     assert_eq!(second.qualifier_values("rmsk_clipped").next(), Some("true"));
 }
 
+fn write_encode_ccre_interval_index_fixture(root: &Path, source_id: &str) -> PathBuf {
+    let bed_path = root.join("screen.registry-v4.els.bed");
+    let source = crate::encode_ccre::source_descriptor(source_id).expect("SCREEN source");
+    let fixture = format!(
+        "chr1\t10400\t10468\t{}0000001\t{}0000001\tpELS\nchr1\t10468\t11020\t{}0000002\t{}0000002\tdELS\n",
+        source.dhs_accession_prefix,
+        source.ccre_accession_prefix,
+        source.dhs_accession_prefix,
+        source.ccre_accession_prefix,
+    );
+    fs::write(&bed_path, fixture).expect("write synthetic SCREEN BED");
+    let index_path = root.join("screen.registry-v4.els.interval-index.json");
+    crate::encode_ccre::prepare_interval_index(
+        bed_path.to_string_lossy().as_ref(),
+        index_path.to_string_lossy().as_ref(),
+        source,
+    )
+    .expect("prepare SCREEN interval index");
+    index_path
+}
+
+#[test]
+fn query_encode_ccre_overlaps_projects_content_bound_v4_evidence() {
+    let root = tempdir().expect("tempdir");
+    let index_path = write_encode_ccre_interval_index_fixture(
+        root.path(),
+        crate::encode_ccre::SCREEN_V4_GRCH38_ELS_SOURCE_ID,
+    );
+    let mut engine = engine_with_rmsk_anchored_sequence("anchored_plus", "+");
+
+    let result = engine
+        .apply(Operation::QueryEncodeCcreOverlaps {
+            seq_id: "anchored_plus".to_string(),
+            index_path: index_path.to_string_lossy().to_string(),
+            bed_path: None,
+            start_0based: Some(400),
+            end_0based_exclusive: Some(700),
+            classes: vec![],
+            limit: None,
+            path: None,
+        })
+        .expect("query SCREEN cCRE overlaps");
+
+    let report = result.encode_ccre_overlaps.expect("cCRE overlap report");
+    assert_eq!(report.schema, "gentle.encode_ccre_overlap.v1");
+    assert!(!report.report_id.is_empty());
+    assert!(report.op_id.is_some());
+    assert!(report.run_id.is_some());
+    assert_eq!(report.source.registry_version, "4");
+    assert_eq!(report.source.taxon_id, 9606);
+    assert_eq!(report.source.assembly_name, "GRCh38");
+    assert_eq!(report.matched_ccre_count, 2);
+    assert_eq!(report.rows[0].local_start_0based, 400);
+    assert_eq!(report.rows[0].local_end_0based_exclusive, 468);
+    assert_eq!(report.rows[0].interval.ccre_class, "pELS");
+    assert_eq!(report.rows[1].local_start_0based, 468);
+    assert_eq!(report.rows[1].local_end_0based_exclusive, 700);
+    assert_eq!(report.rows[1].interval.ccre_class, "dELS");
+    assert!(report.rows[1].clipped);
+    assert!(report.content_identity_verified);
+    assert_eq!(report.assembly_match_status, "assembly_and_species_matched");
+    assert!(
+        report
+            .non_claims
+            .iter()
+            .any(|value| value.contains("does not identify a regulated target gene"))
+    );
+}
+
+#[test]
+fn materialize_encode_ccres_keeps_elements_strandless_on_reverse_anchor() {
+    let root = tempdir().expect("tempdir");
+    let index_path = write_encode_ccre_interval_index_fixture(
+        root.path(),
+        crate::encode_ccre::SCREEN_V4_GRCH38_ELS_SOURCE_ID,
+    );
+    let mut engine = engine_with_rmsk_anchored_sequence("anchored_minus", "-");
+
+    let result = engine
+        .apply(Operation::MaterializeEncodeCcreFeatures {
+            seq_id: "anchored_minus".to_string(),
+            index_path: index_path.to_string_lossy().to_string(),
+            bed_path: None,
+            classes: vec!["pELS".to_string()],
+            max_features: Some(10),
+            clear_existing: Some(true),
+            path: None,
+        })
+        .expect("materialize SCREEN cCRE features");
+
+    let report = result
+        .encode_ccre_materialization
+        .expect("cCRE materialization report");
+    assert_eq!(report.schema, "gentle.encode_ccre_materialization.v1");
+    assert!(!report.report_id.is_empty());
+    assert!(report.op_id.is_some());
+    assert!(report.run_id.is_some());
+    assert_eq!(report.matched_ccre_count, 1);
+    assert_eq!(report.added_feature_count, 1);
+    assert_eq!(result.changed_seq_ids, ["anchored_minus"]);
+    let dna = engine
+        .state()
+        .sequences
+        .get("anchored_minus")
+        .expect("anchored sequence");
+    let feature = dna.features().first().expect("cCRE feature");
+    assert_eq!(feature.kind.to_string(), "regulatory_region");
+    assert!(!crate::feature_location::feature_is_reverse(feature));
+    assert_eq!(feature.location.find_bounds().expect("bounds"), (532, 600));
+    assert_eq!(
+        feature.qualifier_values("encode_ccre_class").next(),
+        Some("pELS")
+    );
+    assert_eq!(
+        feature.qualifier_values("gentle_generated").next(),
+        Some("encode_screen_ccre")
+    );
+}
+
+#[test]
+fn query_encode_ccre_overlaps_rejects_mouse_resource_for_human_anchor() {
+    let root = tempdir().expect("tempdir");
+    let index_path = write_encode_ccre_interval_index_fixture(
+        root.path(),
+        crate::encode_ccre::SCREEN_V4_MM10_ELS_SOURCE_ID,
+    );
+    let mut engine = engine_with_rmsk_anchored_sequence("anchored_human", "+");
+
+    let error = engine
+        .apply(Operation::QueryEncodeCcreOverlaps {
+            seq_id: "anchored_human".to_string(),
+            index_path: index_path.to_string_lossy().to_string(),
+            bed_path: None,
+            start_0based: None,
+            end_0based_exclusive: None,
+            classes: vec![],
+            limit: None,
+            path: None,
+        })
+        .expect_err("mouse resource must not be projected onto human anchor");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(
+        error
+            .message
+            .contains("human and mouse resources must not be mixed")
+    );
+}
+
+fn write_ensembl_regulation_index_fixture(root: &Path, source_id: &str) -> PathBuf {
+    let intervals_path = root.join("ensembl-regulation.intervals.tsv");
+    let source = crate::ensembl_regulation::source_descriptor(source_id).expect("Ensembl source");
+    let file = fs::File::create(&intervals_path).expect("interval fixture");
+    let mut writer = std::io::BufWriter::new(file);
+    crate::ensembl_regulation::write_intervals_header(&mut writer, &source)
+        .expect("interval header");
+    for row in [
+        EnsemblRegulationInterval {
+            chromosome: "1".to_string(),
+            start_0based: 10_400,
+            end_0based_exclusive: 10_468,
+            feature_id: "ENSR_TEST_PROMOTER".to_string(),
+            feature_type: "promoter".to_string(),
+            strand: None,
+            extended_start_0based: Some(10_350),
+            extended_end_0based_exclusive: Some(10_500),
+            associated_gene_ids: vec!["ENSG_TEST".to_string()],
+            associated_gene_names: vec!["GENE1".to_string()],
+            source_line_number: 0,
+        },
+        EnsemblRegulationInterval {
+            chromosome: "1".to_string(),
+            start_0based: 10_468,
+            end_0based_exclusive: 11_020,
+            feature_id: "ENSR_TEST_CTCF".to_string(),
+            feature_type: "ctcf".to_string(),
+            strand: Some('-'),
+            extended_start_0based: None,
+            extended_end_0based_exclusive: None,
+            associated_gene_ids: vec![],
+            associated_gene_names: vec![],
+            source_line_number: 0,
+        },
+    ] {
+        crate::ensembl_regulation::write_interval(&mut writer, &row).expect("interval row");
+    }
+    std::io::Write::flush(&mut writer).expect("flush intervals");
+    let index_path = root.join("ensembl-regulation.interval-index.json");
+    crate::ensembl_regulation::prepare_interval_index(
+        intervals_path.to_string_lossy().as_ref(),
+        index_path.to_string_lossy().as_ref(),
+        source,
+    )
+    .expect("prepare Ensembl Regulation index");
+    index_path
+}
+
+#[test]
+fn query_ensembl_regulation_projects_release_bound_annotation() {
+    let root = tempdir().expect("tempdir");
+    let index_path = write_ensembl_regulation_index_fixture(
+        root.path(),
+        crate::ensembl_regulation::ENSEMBL_REGULATION_2026_08_GRCH38_SOURCE_ID,
+    );
+    let mut engine = engine_with_rmsk_anchored_sequence("ensembl_plus", "+");
+    let result = engine
+        .apply(Operation::QueryEnsemblRegulationOverlaps {
+            seq_id: "ensembl_plus".to_string(),
+            index_path: index_path.to_string_lossy().to_string(),
+            intervals_path: None,
+            start_0based: Some(400),
+            end_0based_exclusive: Some(700),
+            feature_types: vec![],
+            limit: None,
+            path: None,
+        })
+        .expect("query Ensembl Regulation");
+    let report = result
+        .ensembl_regulation_overlaps
+        .expect("Ensembl overlap report");
+    assert_eq!(report.schema, "gentle.ensembl_regulation_overlap.v1");
+    assert_eq!(report.source.annotation_release, "2026-08");
+    assert_eq!(report.source.gene_annotation_release, "50");
+    assert_eq!(report.matched_feature_count, 2);
+    assert_eq!(report.rows[0].interval.feature_id, "ENSR_TEST_PROMOTER");
+    assert_eq!(report.rows[0].interval.associated_gene_names, ["GENE1"]);
+    assert!(report.content_identity_verified);
+    assert_eq!(
+        report.assembly_match_status,
+        "assembly_and_species_matched_source_release_pinned"
+    );
+    assert!(
+        report
+            .non_claims
+            .iter()
+            .any(|value| value.contains("quantitative signals were not evaluated"))
+    );
+}
+
+#[test]
+fn materialized_ensembl_strand_is_relative_to_reverse_anchor() {
+    let root = tempdir().expect("tempdir");
+    let index_path = write_ensembl_regulation_index_fixture(
+        root.path(),
+        crate::ensembl_regulation::ENSEMBL_REGULATION_2026_08_GRCH38_SOURCE_ID,
+    );
+    let mut engine = engine_with_rmsk_anchored_sequence("ensembl_minus", "-");
+    let result = engine
+        .apply(Operation::MaterializeEnsemblRegulationFeatures {
+            seq_id: "ensembl_minus".to_string(),
+            index_path: index_path.to_string_lossy().to_string(),
+            intervals_path: None,
+            feature_types: vec!["ctcf".to_string()],
+            max_features: Some(10),
+            clear_existing: Some(true),
+            path: None,
+        })
+        .expect("materialize Ensembl Regulation");
+    assert_eq!(
+        result
+            .ensembl_regulation_materialization
+            .as_ref()
+            .map(|report| report.added_feature_count),
+        Some(1)
+    );
+    let feature = engine.state().sequences["ensembl_minus"]
+        .features()
+        .first()
+        .expect("materialized Ensembl feature");
+    assert!(!crate::feature_location::feature_is_reverse(feature));
+    assert_eq!(
+        feature.qualifier_values("ensembl_genomic_strand").next(),
+        Some("-")
+    );
+    assert_eq!(
+        feature
+            .qualifier_values("ensembl_regulation_release")
+            .next(),
+        Some("2026-08")
+    );
+}
+
+#[test]
+fn query_ensembl_regulation_rejects_grcm39_for_grch38_anchor() {
+    let root = tempdir().expect("tempdir");
+    let index_path = write_ensembl_regulation_index_fixture(
+        root.path(),
+        crate::ensembl_regulation::ENSEMBL_REGULATION_2026_08_GRCM39_SOURCE_ID,
+    );
+    let mut engine = engine_with_rmsk_anchored_sequence("ensembl_human", "+");
+    let error = engine
+        .apply(Operation::QueryEnsemblRegulationOverlaps {
+            seq_id: "ensembl_human".to_string(),
+            index_path: index_path.to_string_lossy().to_string(),
+            intervals_path: None,
+            start_0based: None,
+            end_0based_exclusive: None,
+            feature_types: vec![],
+            limit: None,
+            path: None,
+        })
+        .expect_err("GRCm39 resource must not be projected onto GRCh38 anchor");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(
+        error
+            .message
+            .contains("species and assemblies must not be mixed")
+    );
+}
+
 #[test]
 fn set_display_visibility_controls_repeat_features() {
     let mut engine = GentleEngine::default();

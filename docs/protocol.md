@@ -11130,6 +11130,7 @@ Repeat-environment cohort contract (implemented baseline):
   - `gentle.repeat_annotation_query.v1`
   - `gentle.repeat_environment_cohort.v1`
   - `gentle.window_cohort_tfbs.v1`
+
 - File format:
   - BED6 core columns:
     `chrom`, `chromStart`, `chromEnd`, `name`, `score`, `strand`
@@ -11145,6 +11146,96 @@ Repeat-environment cohort contract (implemented baseline):
     - `local_coordinate_row_count`, `genomic_coordinate_row_count`
     - `skipped_missing_genomic_coordinates`
     - `bed_columns[]`
+
+ENCODE SCREEN Registry V4 cCRE contract (implemented optional baseline):
+
+- Resource commands:
+  - `resources list-encode-ccre-sources [--assembly GRCh38|hg38|GRCm38|mm10] [--output OUTPUT.json]`
+  - `resources install-encode-ccres SOURCE_ID [--input PATH_OR_URL] [--bed-output PATH] [--index-output PATH]`
+  - `resources prepare-encode-ccre-index SOURCE_ID BED_PATH [--output INDEX.json]`
+- Query/materialization commands:
+  - `features encode-ccre-overlaps SEQ_ID --index INDEX.json [--bed BED] [--range START..END] [--class pELS|dELS] [--limit N] [--path FILE.json]`
+  - `features materialize-encode-ccres SEQ_ID --index INDEX.json [--bed BED] [--class pELS|dELS] [--max-features N] [--append] [--path FILE.json]`
+- Raw/shared operations:
+  - `{"QueryEncodeCcreOverlaps":{"seq_id":"grch38_locus","index_path":"data/resources/screen.registry-v4.hg38.els.bed.interval-index.json","classes":["pELS","dELS"],"limit":1000}}`
+  - `{"MaterializeEncodeCcreFeatures":{"seq_id":"grch38_locus","index_path":"data/resources/screen.registry-v4.hg38.els.bed.interval-index.json","classes":["pELS"],"max_features":1000,"clear_existing":true}}`
+- Built-in sources are `screen_registry_v4_grch38_els` for Homo sapiens
+  GRCh38/hg38 and `screen_registry_v4_mm10_els` for Mus musculus
+  GRCm38/mm10. These source ids bind species, taxon, assembly, Registry
+  version, subset, URL, expected classes, and BED field order; GENtle never
+  infers species from a local filename. Indexing also checks the V4 accession
+  namespace (`EH38D`/`EH38E` for human and `EM10D`/`EM10E` for mouse), so an
+  incorrectly labelled local override fails before it can be queried.
+- Both sources are the Registry V4 enhancer-like-signature subset only
+  (`pELS` and `dELS`), not the complete cCRE registry. A reported overlap is
+  biochemical candidate-regulatory evidence. It does not prove enhancer
+  activity in the experimental cell type, identify a target gene, or establish
+  causal regulation.
+- The large BED remains external. Indexing writes a deterministic sparse
+  chromosome/bin byte-offset sidecar bound to the exact BED SHA-256 and byte
+  size. Querying seeks only relevant bins, validates the BED identity, and
+  returns stable genomic plus sequence-local 0-based half-open coordinates.
+- Querying requires genome-extraction anchor provenance and rejects a human
+  versus mouse or incompatible-assembly source before reading overlaps.
+  Reverse-oriented sequence anchors reverse the local coordinate projection;
+  cCRE features themselves remain strandless.
+- Materialization writes ordinary `regulatory_region` features with source,
+  Registry version, cCRE/DHS accession, class, genomic coordinates, and BED
+  digest qualifiers. Existing generated cCRE rows are replaced by default;
+  `--append` retains them and skips stable duplicates.
+- No SCREEN file is downloaded, indexed, opened, or checked during normal
+  startup. If no optional resource is installed, all unrelated GENtle features
+  behave unchanged; only an explicit cCRE install/query command can report the
+  resource as absent.
+- Schemas:
+  - `gentle.encode_ccre_source_catalog.v1`
+  - `gentle.encode_ccre_interval_index.v1`
+  - `gentle.encode_ccre_install_report.v1`
+  - `gentle.encode_ccre_overlap.v1`
+  - `gentle.encode_ccre_materialization.v1`
+
+Ensembl Regulation annotation contract (implemented optional baseline):
+
+- Resource commands:
+  - `resources list-ensembl-regulation-sources [--assembly GRCh38|hg38|GRCm39|mm39] [--output OUTPUT.json]`
+  - `resources install-ensembl-regulatory-features SOURCE_ID [--input COMPLETE_API_RESPONSE.json] [--intervals-output PATH] [--index-output PATH]`
+  - `resources prepare-ensembl-regulation-index SOURCE_ID INTERVALS_PATH [--output INDEX.json]`
+- Query/materialization commands:
+  - `features ensembl-regulation-overlaps SEQ_ID --index INDEX.json [--intervals PATH] [--range START..END] [--feature-type TYPE] [--limit N] [--path FILE.json]`
+  - `features materialize-ensembl-regulation SEQ_ID --index INDEX.json [--intervals PATH] [--feature-type TYPE] [--max-features N] [--append] [--path FILE.json]`
+- Raw/shared operations:
+  - `{"QueryEnsemblRegulationOverlaps":{"seq_id":"grch38_locus","index_path":"data/resources/ensembl-regulation.2026.08.grch38.intervals.tsv.interval-index.json","feature_types":["promoter","enhancer"],"limit":1000}}`
+  - `{"MaterializeEnsemblRegulationFeatures":{"seq_id":"grch38_locus","index_path":"data/resources/ensembl-regulation.2026.08.grch38.intervals.tsv.interval-index.json","feature_types":["promoter"],"max_features":1000,"clear_existing":true}}`
+- Built-in pinned sources are `ensembl_regulation_2026_08_grch38` for Homo
+  sapiens GRCh38/hg38 (`GCA_000001405.29`, GENCODE 50) and
+  `ensembl_regulation_2026_08_grcm39` for Mus musculus GRCm39/mm39
+  (`GCA_000001635.9`, GENCODE M39). Both use annotation pipeline 2.1 and API
+  v0.15. A returned API release must equal the pinned release on every page.
+- API 1-based inclusive coordinates are normalized once into 0-based half-open
+  intervals. The normalized file header binds source id, release, assembly,
+  and assembly accession. Its sparse index binds the exact file SHA-256 and
+  byte size, and queries require compatible sequence genome-anchor provenance.
+- Rows retain the core regulatory span, optional extended span, provider
+  feature id/type, genomic strand, and associated gene ids/names. Associated
+  genes remain provider annotations and are not converted into causal target
+  assignments. Genomic strand is converted to sequence-local orientation when
+  the anchored sequence itself is reverse-oriented.
+- The annotation types are `promoter`, `enhancer`,
+  `open_chromatin_region`, `ctcf`, and `emar`. An overlap is annotation
+  evidence only; it does not establish activity in a biosample.
+- The source descriptor records the separate regulatory-activity matrix and
+  primary-analysis location. Activity matrices, epigenome-specific peaks, and
+  quantitative signal tracks are not silently folded into annotation rows and
+  require their own content-bound evidence contracts.
+- No Ensembl Regulation resource or endpoint is touched during startup.
+  Missing optional snapshots/indexes leave all unrelated GENtle behavior
+  unchanged.
+- Schemas:
+  - `gentle.ensembl_regulation_source_catalog.v1`
+  - `gentle.ensembl_regulation_interval_index.v1`
+  - `gentle.ensembl_regulation_install_report.v1`
+  - `gentle.ensembl_regulation_overlap.v1`
+  - `gentle.ensembl_regulation_materialization.v1`
 
 Sequence-context view summary contract (implemented baseline):
 

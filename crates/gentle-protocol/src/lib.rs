@@ -10,6 +10,8 @@ pub mod collection_subjects;
 pub mod construct_reasoning;
 pub mod cryptic_splicing;
 pub mod dna_ladder;
+pub mod encode_ccre;
+pub mod ensembl_regulation;
 pub mod feature_location_edit;
 pub mod feature_record_curation;
 pub mod gene_groups;
@@ -86,6 +88,24 @@ pub use cryptic_splicing::{
 pub use dna_ladder::{
     DNALadder, DNALadderBand, DNALadders, Ladder, LadderBand, LadderCatalog, LadderMolecule,
     RNALadder, RNALadderBand, RNALadders, default_dna_ladders, default_rna_ladders,
+};
+pub use encode_ccre::{
+    ENCODE_CCRE_INSTALL_REPORT_SCHEMA, ENCODE_CCRE_INTERVAL_INDEX_SCHEMA,
+    ENCODE_CCRE_MATERIALIZATION_SCHEMA, ENCODE_CCRE_OVERLAP_SCHEMA,
+    ENCODE_CCRE_SOURCE_CATALOG_SCHEMA, EncodeCcreBinCheckpoint, EncodeCcreChromosomeIndex,
+    EncodeCcreClassSummary, EncodeCcreGenomeAnchor, EncodeCcreInstallReport, EncodeCcreInterval,
+    EncodeCcreIntervalIndex, EncodeCcreMaterializationReport, EncodeCcreOverlapReport,
+    EncodeCcreOverlapRow, EncodeCcreSourceCatalog, EncodeCcreSourceDescriptor,
+};
+pub use ensembl_regulation::{
+    ENSEMBL_REGULATION_INSTALL_REPORT_SCHEMA, ENSEMBL_REGULATION_INTERVAL_INDEX_SCHEMA,
+    ENSEMBL_REGULATION_MATERIALIZATION_SCHEMA, ENSEMBL_REGULATION_OVERLAP_SCHEMA,
+    ENSEMBL_REGULATION_SOURCE_CATALOG_SCHEMA, EnsemblRegulationBinCheckpoint,
+    EnsemblRegulationChromosomeIndex, EnsemblRegulationGenomeAnchor,
+    EnsemblRegulationInstallReport, EnsemblRegulationInterval, EnsemblRegulationIntervalIndex,
+    EnsemblRegulationMaterializationReport, EnsemblRegulationOverlapReport,
+    EnsemblRegulationOverlapRow, EnsemblRegulationSourceCatalog, EnsemblRegulationSourceDescriptor,
+    EnsemblRegulationTypeSummary,
 };
 pub use feature_location_edit::{
     FEATURE_LOCATION_EDIT_SCHEMA, FEATURE_LOCATION_EDIT_SCHEMA_V2,
@@ -5453,6 +5473,10 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "QueryRepeatAnnotations",
     "QueryRepeatOverlaps",
     "MaterializeRepeatFeatures",
+    "QueryEncodeCcreOverlaps",
+    "MaterializeEncodeCcreFeatures",
+    "QueryEnsemblRegulationOverlaps",
+    "MaterializeEnsemblRegulationFeatures",
     "PreviewFeatureLocationEdit",
     "EditFeatureLocation",
     "PreviewFeatureRecordCuration",

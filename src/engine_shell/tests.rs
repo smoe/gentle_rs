@@ -917,6 +917,40 @@ fn write_ucsc_rmsk_interval_index_fixture(root: &Path) -> std::path::PathBuf {
     index_path
 }
 
+fn write_encode_ccre_bed_fixture(root: &Path) -> std::path::PathBuf {
+    let bed_path = root.join("screen.registry-v4.grch38.els.bed");
+    fs::write(
+        &bed_path,
+        concat!(
+            "chr1\t10400\t10468\tEH38D0000001\tEH38E0000001\tpELS\n",
+            "chr1\t10468\t11020\tEH38D0000002\tEH38E0000002\tdELS\n",
+        ),
+    )
+    .expect("write synthetic SCREEN BED");
+    bed_path
+}
+
+fn write_ensembl_regulation_api_fixture(root: &Path) -> std::path::PathBuf {
+    let path = root.join("ensembl-regulation-api.json");
+    fs::write(
+        &path,
+        r#"{
+          "release":"2026-08",
+          "regions":[{
+            "region":{"name":"1","length":248956422,"coordinate_system":"chromosome"},
+            "features":[
+              {"id":"ENSR_TEST_PROMOTER","feature_type":"promoter","start":10401,"end":10468,"strand":"independent","extended_start":10351,"extended_end":10500,"associated_genes":["ENSG_TEST"],"associated_gene_names":["GENE1"]},
+              {"id":"ENSR_TEST_CTCF","feature_type":"ctcf","start":10469,"end":11020,"strand":"reverse","associated_genes":[],"associated_gene_names":[]}
+            ]
+          }],
+          "limit":2,
+          "total_count":2
+        }"#,
+    )
+    .expect("write synthetic Ensembl Regulation API response");
+    path
+}
+
 #[cfg(unix)]
 fn write_fake_sra_toolkit_bin(bin_dir: &Path) {
     fs::create_dir_all(bin_dir).expect("create fake SRA Toolkit bin dir");
@@ -9891,6 +9925,140 @@ fn parse_features_repeat_query_and_cohort_commands() {
             assert_eq!(max_features, Some(100));
             assert!(!clear_existing);
             assert_eq!(path.as_deref(), Some("/tmp/materialized.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_encode_ccre_resource_and_feature_commands() {
+    let install = parse_shell_line(
+        "resources install-encode-ccres screen_registry_v4_mm10_els --input mm10.ELS.bed --bed-output local.bed --index-output local.index.json",
+    )
+    .expect("parse cCRE install");
+    match install {
+        ShellCommand::ResourcesInstallEncodeCcres {
+            source_id,
+            input,
+            bed_output,
+            index_output,
+        } => {
+            assert_eq!(source_id, "screen_registry_v4_mm10_els");
+            assert_eq!(input.as_deref(), Some("mm10.ELS.bed"));
+            assert_eq!(bed_output.as_deref(), Some("local.bed"));
+            assert_eq!(index_output.as_deref(), Some("local.index.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let query = parse_shell_line(
+        "features encode-ccre-overlaps locus --index local.index.json --bed local.bed --range 10..90 --class pELS --classes dELS --limit 25 --path overlaps.json",
+    )
+    .expect("parse cCRE query");
+    match query {
+        ShellCommand::FeaturesEncodeCcreOverlaps {
+            seq_id,
+            index_path,
+            bed_path,
+            start_0based,
+            end_0based_exclusive,
+            classes,
+            limit,
+            path,
+        } => {
+            assert_eq!(seq_id, "locus");
+            assert_eq!(index_path, "local.index.json");
+            assert_eq!(bed_path.as_deref(), Some("local.bed"));
+            assert_eq!(start_0based, Some(10));
+            assert_eq!(end_0based_exclusive, Some(90));
+            assert_eq!(classes, ["pELS", "dELS"]);
+            assert_eq!(limit, Some(25));
+            assert_eq!(path.as_deref(), Some("overlaps.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let materialize = parse_shell_line(
+        "features materialize-encode-ccres locus --index local.index.json --class dELS --max-features 12 --append",
+    )
+    .expect("parse cCRE materialization");
+    match materialize {
+        ShellCommand::FeaturesMaterializeEncodeCcres {
+            classes,
+            max_features,
+            clear_existing,
+            ..
+        } => {
+            assert_eq!(classes, ["dELS"]);
+            assert_eq!(max_features, Some(12));
+            assert!(!clear_existing);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_ensembl_regulation_resource_and_feature_commands() {
+    let install = parse_shell_line(
+        "resources install-ensembl-regulatory-features ensembl_regulation_2026_08_grch38 --input snapshot.json --intervals-output local.tsv --index-output local.index.json",
+    )
+    .expect("parse Ensembl Regulation install");
+    match install {
+        ShellCommand::ResourcesInstallEnsemblRegulatoryFeatures {
+            source_id,
+            input,
+            intervals_output,
+            index_output,
+        } => {
+            assert_eq!(source_id, "ensembl_regulation_2026_08_grch38");
+            assert_eq!(input.as_deref(), Some("snapshot.json"));
+            assert_eq!(intervals_output.as_deref(), Some("local.tsv"));
+            assert_eq!(index_output.as_deref(), Some("local.index.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let query = parse_shell_line(
+        "features ensembl-regulation-overlaps locus --index local.index.json --intervals local.tsv --range 10..90 --feature-type promoter --types ctcf,emar --limit 25 --path overlaps.json",
+    )
+    .expect("parse Ensembl Regulation query");
+    match query {
+        ShellCommand::FeaturesEnsemblRegulationOverlaps {
+            seq_id,
+            index_path,
+            intervals_path,
+            start_0based,
+            end_0based_exclusive,
+            feature_types,
+            limit,
+            path,
+        } => {
+            assert_eq!(seq_id, "locus");
+            assert_eq!(index_path, "local.index.json");
+            assert_eq!(intervals_path.as_deref(), Some("local.tsv"));
+            assert_eq!(start_0based, Some(10));
+            assert_eq!(end_0based_exclusive, Some(90));
+            assert_eq!(feature_types, ["promoter", "ctcf", "emar"]);
+            assert_eq!(limit, Some(25));
+            assert_eq!(path.as_deref(), Some("overlaps.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let materialize = parse_shell_line(
+        "features materialize-ensembl-regulation locus --index local.index.json --type enhancer --max-features 12 --append",
+    )
+    .expect("parse Ensembl Regulation materialization");
+    match materialize {
+        ShellCommand::FeaturesMaterializeEnsemblRegulation {
+            feature_types,
+            max_features,
+            clear_existing,
+            ..
+        } => {
+            assert_eq!(feature_types, ["enhancer"]);
+            assert_eq!(max_features, Some(12));
+            assert!(!clear_existing);
         }
         other => panic!("unexpected command: {other:?}"),
     }
@@ -33102,6 +33270,209 @@ fn execute_features_repeat_overlaps_and_materialize_repeats_with_rmsk_index() {
     assert_eq!(
         dna.features()[0].qualifier_values("rmsk_name").next(),
         Some("(TAACCC)n")
+    );
+}
+
+#[test]
+fn execute_encode_ccre_catalog_install_query_and_materialization() {
+    let td = tempdir().expect("tempdir");
+    let source_bed = write_encode_ccre_bed_fixture(td.path());
+    let installed_bed = td.path().join("installed.els.bed");
+    let index_path = td.path().join("installed.els.interval-index.json");
+    let mut engine = GentleEngine::from_state(rmsk_anchored_state("anchored", "+"));
+
+    let catalog = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ResourcesListEncodeCcreSources {
+            assembly: Some("mm10".to_string()),
+            output: None,
+        },
+    )
+    .expect("list cCRE sources");
+    assert!(!catalog.state_changed);
+    assert_eq!(catalog.output["sources"].as_array().map(Vec::len), Some(1));
+    assert_eq!(
+        catalog.output["sources"][0]["taxon_id"].as_u64(),
+        Some(10090)
+    );
+
+    let installed = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ResourcesInstallEncodeCcres {
+            source_id: crate::encode_ccre::SCREEN_V4_GRCH38_ELS_SOURCE_ID.to_string(),
+            input: Some(source_bed.to_string_lossy().to_string()),
+            bed_output: Some(installed_bed.to_string_lossy().to_string()),
+            index_output: Some(index_path.to_string_lossy().to_string()),
+        },
+    )
+    .expect("install local cCRE source");
+    assert!(!installed.state_changed);
+    assert_eq!(
+        installed.output["report"]["schema"].as_str(),
+        Some("gentle.encode_ccre_install_report.v1")
+    );
+    assert!(
+        installed.output["report"]["report_id"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty())
+    );
+    assert_eq!(installed.output["report"]["row_count"].as_u64(), Some(2));
+    assert!(installed_bed.exists());
+    assert!(index_path.exists());
+
+    let queried = execute_shell_command(
+        &mut engine,
+        &ShellCommand::FeaturesEncodeCcreOverlaps {
+            seq_id: "anchored".to_string(),
+            index_path: index_path.to_string_lossy().to_string(),
+            bed_path: None,
+            start_0based: Some(400),
+            end_0based_exclusive: Some(700),
+            classes: vec!["pELS".to_string()],
+            limit: Some(10),
+            path: None,
+        },
+    )
+    .expect("query cCRE overlaps");
+    assert!(!queried.state_changed);
+    assert_eq!(
+        queried.output["report"]["source"]["source_id"].as_str(),
+        Some("screen_registry_v4_grch38_els")
+    );
+    assert_eq!(
+        queried.output["report"]["matched_ccre_count"].as_u64(),
+        Some(1)
+    );
+
+    let materialized = execute_shell_command(
+        &mut engine,
+        &ShellCommand::FeaturesMaterializeEncodeCcres {
+            seq_id: "anchored".to_string(),
+            index_path: index_path.to_string_lossy().to_string(),
+            bed_path: None,
+            classes: vec!["pELS".to_string()],
+            max_features: Some(10),
+            clear_existing: true,
+            path: None,
+        },
+    )
+    .expect("materialize cCRE overlaps");
+    assert!(materialized.state_changed);
+    assert_eq!(
+        materialized.output["report"]["added_feature_count"].as_u64(),
+        Some(1)
+    );
+    let feature = engine.state().sequences["anchored"]
+        .features()
+        .first()
+        .expect("materialized cCRE feature");
+    assert_eq!(feature.kind.to_string(), "regulatory_region");
+    assert_eq!(
+        feature.qualifier_values("encode_ccre_accession").next(),
+        Some("EH38E0000001")
+    );
+}
+
+#[test]
+fn execute_ensembl_regulation_catalog_install_query_and_materialization() {
+    let td = tempdir().expect("tempdir");
+    let api_snapshot = write_ensembl_regulation_api_fixture(td.path());
+    let intervals_path = td.path().join("installed.regulation.tsv");
+    let index_path = td.path().join("installed.regulation.index.json");
+    let mut engine = GentleEngine::from_state(rmsk_anchored_state("anchored", "+"));
+
+    let catalog = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ResourcesListEnsemblRegulationSources {
+            assembly: Some("mm39".to_string()),
+            output: None,
+        },
+    )
+    .expect("list Ensembl Regulation sources");
+    assert!(!catalog.state_changed);
+    assert_eq!(catalog.output["sources"].as_array().map(Vec::len), Some(1));
+    assert_eq!(catalog.output["sources"][0]["assembly_name"], "GRCm39");
+
+    let installed = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ResourcesInstallEnsemblRegulatoryFeatures {
+            source_id: crate::ensembl_regulation::ENSEMBL_REGULATION_2026_08_GRCH38_SOURCE_ID
+                .to_string(),
+            input: Some(api_snapshot.to_string_lossy().to_string()),
+            intervals_output: Some(intervals_path.to_string_lossy().to_string()),
+            index_output: Some(index_path.to_string_lossy().to_string()),
+        },
+    )
+    .expect("install local Ensembl Regulation source");
+    assert!(!installed.state_changed);
+    assert_eq!(
+        installed.output["report"]["schema"].as_str(),
+        Some("gentle.ensembl_regulation_install_report.v1")
+    );
+    assert_eq!(installed.output["report"]["row_count"].as_u64(), Some(2));
+    assert_eq!(
+        installed.output["report"]["fetched_release"].as_str(),
+        Some("2026-08")
+    );
+    assert!(intervals_path.exists());
+    assert!(index_path.exists());
+
+    let queried = execute_shell_command(
+        &mut engine,
+        &ShellCommand::FeaturesEnsemblRegulationOverlaps {
+            seq_id: "anchored".to_string(),
+            index_path: index_path.to_string_lossy().to_string(),
+            intervals_path: None,
+            start_0based: Some(400),
+            end_0based_exclusive: Some(700),
+            feature_types: vec!["promoter".to_string()],
+            limit: Some(10),
+            path: None,
+        },
+    )
+    .expect("query Ensembl Regulation overlaps");
+    assert!(!queried.state_changed);
+    assert_eq!(
+        queried.output["report"]["source"]["source_id"].as_str(),
+        Some("ensembl_regulation_2026_08_grch38")
+    );
+    assert_eq!(
+        queried.output["report"]["matched_feature_count"].as_u64(),
+        Some(1)
+    );
+    assert_eq!(
+        queried.output["report"]["rows"][0]["interval"]["associated_gene_names"][0],
+        "GENE1"
+    );
+
+    let materialized = execute_shell_command(
+        &mut engine,
+        &ShellCommand::FeaturesMaterializeEnsemblRegulation {
+            seq_id: "anchored".to_string(),
+            index_path: index_path.to_string_lossy().to_string(),
+            intervals_path: None,
+            feature_types: vec!["promoter".to_string()],
+            max_features: Some(10),
+            clear_existing: true,
+            path: None,
+        },
+    )
+    .expect("materialize Ensembl Regulation overlaps");
+    assert!(materialized.state_changed);
+    assert_eq!(
+        materialized.output["report"]["added_feature_count"].as_u64(),
+        Some(1)
+    );
+    let feature = engine.state().sequences["anchored"]
+        .features()
+        .first()
+        .expect("materialized Ensembl feature");
+    assert_eq!(feature.kind.to_string(), "regulatory_region");
+    assert_eq!(
+        feature
+            .qualifier_values("ensembl_regulatory_feature_id")
+            .next(),
+        Some("ENSR_TEST_PROMOTER")
     );
 }
 

@@ -2311,7 +2311,7 @@ fn parse_promoter_artifact_manifest_entry_json(
 pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "features requires a subcommand: formula, edit-location, create, delete, split, merge, query, export-bed, repeat-query, repeat-overlaps, materialize-repeats, repeat-cohort, window-cohort-tfbs, promoter-evidence-matrix, promoter-isoform-comparison, promoter-expression-evidence, promoter-artifact-manifest, tfbs-summary, tfbs-score-tracks-svg, tfbs-track-similarity, tfbs-score-track-correlation-svg, tfbs-scan, genomic-motif-evidence, restriction-scan"
+            "features requires a subcommand: formula, edit-location, create, delete, split, merge, query, export-bed, repeat-query, repeat-overlaps, materialize-repeats, encode-ccre-overlaps, materialize-encode-ccres, ensembl-regulation-overlaps, materialize-ensembl-regulation, repeat-cohort, window-cohort-tfbs, promoter-evidence-matrix, promoter-isoform-comparison, promoter-expression-evidence, promoter-artifact-manifest, tfbs-summary, tfbs-score-tracks-svg, tfbs-track-similarity, tfbs-score-track-correlation-svg, tfbs-scan, genomic-motif-evidence, restriction-scan"
                 .to_string(),
         );
     }
@@ -2934,6 +2934,320 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                 rmsk_index_path: rmsk_index_path.ok_or_else(|| {
                     "features materialize-repeats requires --index PATH".to_string()
                 })?,
+                max_features,
+                clear_existing,
+                path,
+            })
+        }
+        "encode-ccre-overlaps" | "screen-ccre-overlaps" => {
+            if tokens.len() < 5 {
+                return Err(
+                    "features encode-ccre-overlaps SEQ_ID --index PATH [--bed PATH] [--range START..END] [--class pELS|dELS] [--limit N] [--path PATH]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].clone();
+            let mut index_path: Option<String> = None;
+            let mut bed_path: Option<String> = None;
+            let mut start_0based = None;
+            let mut end_0based_exclusive = None;
+            let mut classes = Vec::new();
+            let mut limit = None;
+            let mut path = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--index" | "--ccre-index" => {
+                        idx += 1;
+                        index_path = Some(parse_required_value(tokens, &mut idx, "--index")?);
+                    }
+                    "--bed" | "--resource" => {
+                        idx += 1;
+                        bed_path = Some(parse_required_value(tokens, &mut idx, "--bed")?);
+                    }
+                    "--range" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--range")?;
+                        let (start, end) =
+                            parse_feature_range(&raw, "features encode-ccre-overlaps")?;
+                        start_0based = Some(start);
+                        end_0based_exclusive = Some(end);
+                    }
+                    "--class" => {
+                        idx += 1;
+                        classes.push(parse_required_value(tokens, &mut idx, "--class")?);
+                    }
+                    "--classes" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--classes")?;
+                        classes.extend(
+                            raw.split(',')
+                                .map(str::trim)
+                                .filter(|value| !value.is_empty())
+                                .map(str::to_string),
+                        );
+                    }
+                    "--limit" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--limit")?;
+                        limit = Some(parse_usize_option_value(&raw, "--limit")?);
+                    }
+                    "--path" | "--output" => {
+                        idx += 1;
+                        path = Some(parse_required_value(tokens, &mut idx, "--path")?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown features encode-ccre-overlaps option '{other}'"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::FeaturesEncodeCcreOverlaps {
+                seq_id,
+                index_path: index_path.ok_or_else(|| {
+                    "features encode-ccre-overlaps requires --index PATH".to_string()
+                })?,
+                bed_path,
+                start_0based,
+                end_0based_exclusive,
+                classes,
+                limit,
+                path,
+            })
+        }
+        "materialize-encode-ccres" | "materialize-screen-ccres" => {
+            if tokens.len() < 5 {
+                return Err(
+                    "features materialize-encode-ccres SEQ_ID --index PATH [--bed PATH] [--class pELS|dELS] [--max-features N] [--append] [--path PATH]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].clone();
+            let mut index_path: Option<String> = None;
+            let mut bed_path: Option<String> = None;
+            let mut classes = Vec::new();
+            let mut max_features = None;
+            let mut clear_existing = true;
+            let mut path = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--index" | "--ccre-index" => {
+                        idx += 1;
+                        index_path = Some(parse_required_value(tokens, &mut idx, "--index")?);
+                    }
+                    "--bed" | "--resource" => {
+                        idx += 1;
+                        bed_path = Some(parse_required_value(tokens, &mut idx, "--bed")?);
+                    }
+                    "--class" => {
+                        idx += 1;
+                        classes.push(parse_required_value(tokens, &mut idx, "--class")?);
+                    }
+                    "--classes" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--classes")?;
+                        classes.extend(
+                            raw.split(',')
+                                .map(str::trim)
+                                .filter(|value| !value.is_empty())
+                                .map(str::to_string),
+                        );
+                    }
+                    "--max-features" | "--limit" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--max-features")?;
+                        max_features = Some(parse_usize_option_value(&raw, "--max-features")?);
+                    }
+                    "--append" | "--keep-existing" => {
+                        clear_existing = false;
+                        idx += 1;
+                    }
+                    "--clear-existing" => {
+                        clear_existing = true;
+                        idx += 1;
+                    }
+                    "--path" | "--output" => {
+                        idx += 1;
+                        path = Some(parse_required_value(tokens, &mut idx, "--path")?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown features materialize-encode-ccres option '{other}'"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::FeaturesMaterializeEncodeCcres {
+                seq_id,
+                index_path: index_path.ok_or_else(|| {
+                    "features materialize-encode-ccres requires --index PATH".to_string()
+                })?,
+                bed_path,
+                classes,
+                max_features,
+                clear_existing,
+                path,
+            })
+        }
+        "ensembl-regulation-overlaps" => {
+            if tokens.len() < 5 {
+                return Err(
+                    "features ensembl-regulation-overlaps SEQ_ID --index PATH [--intervals PATH] [--range START..END] [--feature-type TYPE] [--limit N] [--path PATH]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].clone();
+            let mut index_path = None;
+            let mut intervals_path = None;
+            let mut start_0based = None;
+            let mut end_0based_exclusive = None;
+            let mut feature_types = Vec::new();
+            let mut limit = None;
+            let mut path = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--index" => {
+                        idx += 1;
+                        index_path = Some(parse_required_value(tokens, &mut idx, "--index")?);
+                    }
+                    "--intervals" | "--resource" => {
+                        idx += 1;
+                        intervals_path =
+                            Some(parse_required_value(tokens, &mut idx, "--intervals")?);
+                    }
+                    "--range" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--range")?;
+                        let (start, end) =
+                            parse_feature_range(&raw, "features ensembl-regulation-overlaps")?;
+                        start_0based = Some(start);
+                        end_0based_exclusive = Some(end);
+                    }
+                    "--feature-type" | "--type" => {
+                        idx += 1;
+                        feature_types.push(parse_required_value(
+                            tokens,
+                            &mut idx,
+                            "--feature-type",
+                        )?);
+                    }
+                    "--feature-types" | "--types" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--feature-types")?;
+                        feature_types.extend(
+                            raw.split(',')
+                                .map(str::trim)
+                                .filter(|value| !value.is_empty())
+                                .map(str::to_string),
+                        );
+                    }
+                    "--limit" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--limit")?;
+                        limit = Some(parse_usize_option_value(&raw, "--limit")?);
+                    }
+                    "--path" | "--output" => {
+                        idx += 1;
+                        path = Some(parse_required_value(tokens, &mut idx, "--path")?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown features ensembl-regulation-overlaps option '{other}'"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::FeaturesEnsemblRegulationOverlaps {
+                seq_id,
+                index_path: index_path.ok_or_else(|| {
+                    "features ensembl-regulation-overlaps requires --index PATH".to_string()
+                })?,
+                intervals_path,
+                start_0based,
+                end_0based_exclusive,
+                feature_types,
+                limit,
+                path,
+            })
+        }
+        "materialize-ensembl-regulation" => {
+            if tokens.len() < 5 {
+                return Err(
+                    "features materialize-ensembl-regulation SEQ_ID --index PATH [--intervals PATH] [--feature-type TYPE] [--max-features N] [--append] [--path PATH]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].clone();
+            let mut index_path = None;
+            let mut intervals_path = None;
+            let mut feature_types = Vec::new();
+            let mut max_features = None;
+            let mut clear_existing = true;
+            let mut path = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--index" => {
+                        idx += 1;
+                        index_path = Some(parse_required_value(tokens, &mut idx, "--index")?);
+                    }
+                    "--intervals" | "--resource" => {
+                        idx += 1;
+                        intervals_path =
+                            Some(parse_required_value(tokens, &mut idx, "--intervals")?);
+                    }
+                    "--feature-type" | "--type" => {
+                        idx += 1;
+                        feature_types.push(parse_required_value(
+                            tokens,
+                            &mut idx,
+                            "--feature-type",
+                        )?);
+                    }
+                    "--feature-types" | "--types" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--feature-types")?;
+                        feature_types.extend(
+                            raw.split(',')
+                                .map(str::trim)
+                                .filter(|value| !value.is_empty())
+                                .map(str::to_string),
+                        );
+                    }
+                    "--max-features" | "--limit" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--max-features")?;
+                        max_features = Some(parse_usize_option_value(&raw, "--max-features")?);
+                    }
+                    "--append" | "--keep-existing" => {
+                        clear_existing = false;
+                        idx += 1;
+                    }
+                    "--clear-existing" => {
+                        clear_existing = true;
+                        idx += 1;
+                    }
+                    "--path" | "--output" => {
+                        idx += 1;
+                        path = Some(parse_required_value(tokens, &mut idx, "--path")?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown features materialize-ensembl-regulation option '{other}'"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::FeaturesMaterializeEnsemblRegulation {
+                seq_id,
+                index_path: index_path.ok_or_else(|| {
+                    "features materialize-ensembl-regulation requires --index PATH".to_string()
+                })?,
+                intervals_path,
+                feature_types,
                 max_features,
                 clear_existing,
                 path,

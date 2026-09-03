@@ -794,3 +794,45 @@ compatibility. Contig aliases and geometry alone may support a
 `contig_geometry_matched_only` result; they do not establish per-contig
 sequence identity. Row queries require an explicit bounded motif set because
 the sparse package is not an all-motif density index.
+
+## DEC-042: SCREEN cCRE Evidence Is Optional, Assembly-Bound, And Non-Causal
+
+Status: active
+
+ENCODE SCREEN Registry files are optional external evidence, not bundled
+project data and not startup dependencies. GENtle accesses them only through an
+explicit install, index, overlap-query, or materialization request. An absent
+BED/index therefore cannot slow startup or disable local sequence, annotation,
+TFBS, promoter, or cloning work.
+
+Every supported source descriptor fixes provider release, species, taxon,
+assembly aliases, subset, expected classes, URL, and BED field order. The
+expected accession namespace is validated while indexing. The derived sparse
+index binds the exact BED SHA-256 and byte size, and every query checks both
+that content identity and the loaded sequence's genome anchor. Human and mouse
+resources are never inferred from filenames or silently mixed.
+
+A cCRE/ELS overlap is biochemical candidate-regulatory evidence. It does not
+prove cell-type activity, identify a target gene, or establish causal
+regulation. Materialized rows remain ordinary strandless
+`regulatory_region` features carrying the source identity and these limits, so
+all adapters and renderers consume the same engine-owned interpretation.
+
+## DEC-043: Regulatory Annotation, Activity, And Primary Signal Stay Distinct
+
+Status: active
+
+Ensembl Regulation resources are optional external evidence and never startup
+dependencies. Annotation snapshots are pinned by provider release, API and
+pipeline versions, gene-annotation release, species, taxon, assembly name and
+accession, then normalized and indexed under exact content hashes. Queries fail
+closed on release or assembly mismatch; notably Ensembl GRCm39/mm39 and SCREEN
+GRCm38/mm10 mouse resources are not interchangeable.
+
+A regulatory-feature overlap, an associated-gene annotation, a regulatory
+activity call, a primary peak, and a quantitative signal are separate claims.
+GENtle must retain their independent source identities and cannot derive a
+biosample-activity or causal target-gene claim from annotation overlap alone.
+Future primary-signal display should use bounded region reads, explicit assay,
+biosample, condition, replicate, output-type and unit provenance, and a
+declared derived-activity rule rather than silently reducing signal to peaks.
