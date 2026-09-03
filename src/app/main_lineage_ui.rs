@@ -1647,8 +1647,8 @@ impl GENtleApp {
                                     );
                                     crate::gui_test_support::register_rect(
                                         ui.ctx().clone(),
-                                        "main.project.sequence.open",
-                                        "window.main",
+                                        crate::tutorial_gui_semantics::MAIN_PROJECT_SEQUENCE_OPEN,
+                                        crate::tutorial_gui_semantics::WINDOW_MAIN,
                                         Some(&subject_scope),
                                         crate::gui_test_support::GuiTestWidgetKind::Button,
                                         visible_rect.unwrap_or(interaction_rect),
@@ -2866,8 +2866,8 @@ impl GENtleApp {
                                                 ]);
                                             crate::gui_test_support::register_response(
                                                 &open_response,
-                                                "main.project.sequence.open",
-                                                "window.main",
+                                                crate::tutorial_gui_semantics::MAIN_PROJECT_SEQUENCE_OPEN,
+                                                crate::tutorial_gui_semantics::WINDOW_MAIN,
                                                 Some(&subject_scope),
                                                 crate::gui_test_support::GuiTestWidgetKind::Button,
                                                 false,

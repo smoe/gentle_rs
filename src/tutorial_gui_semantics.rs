@@ -6,8 +6,11 @@
 //! Tutorial contracts therefore cannot turn an arbitrary semantic text field or
 //! command-capable control into an execution path.
 
+pub const WINDOW_MAIN: &str = "window.main";
 pub const WINDOW_DNA_VIEWER: &str = "window.dna_viewer";
 pub const WINDOW_PCR_DESIGN: &str = "window.pcr_design";
+pub const MAIN_PROJECT_SEQUENCE_OPEN: &str = "main.project.sequence.open";
+pub const MAIN_PROJECT_SAVE_STATE: &str = "main.project.save_state";
 pub const DNA_SELECTION_FORMULA_INPUT: &str = "dna.selection_formula.input";
 pub const DNA_SELECTION_FORMULA_APPLY: &str = "dna.selection_formula.apply";
 pub const DNA_SELECTION_STATUS: &str = "dna.selection.status";
@@ -69,12 +72,34 @@ pub struct TutorialGuiControlSpec {
 const NO_INTERACTIONS: &[TutorialGuiInteractionKind] = &[];
 const CLICK: &[TutorialGuiInteractionKind] = &[TutorialGuiInteractionKind::Click];
 const RIGHT_CLICK: &[TutorialGuiInteractionKind] = &[TutorialGuiInteractionKind::RightClick];
+const DOUBLE_CLICK: &[TutorialGuiInteractionKind] = &[TutorialGuiInteractionKind::DoubleClick];
 const REPLACE_TEXT: &[TutorialGuiInteractionKind] = &[TutorialGuiInteractionKind::ReplaceText];
 
 pub const TUTORIAL_GUI_CONTROLS: &[TutorialGuiControlSpec] = &[
     TutorialGuiControlSpec {
+        semantic_id: WINDOW_MAIN,
+        window_id: WINDOW_MAIN,
+        authority: TutorialGuiControlAuthority::Observe,
+        allowed_interactions: NO_INTERACTIONS,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
         semantic_id: WINDOW_DNA_VIEWER,
         window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::Observe,
+        allowed_interactions: NO_INTERACTIONS,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: MAIN_PROJECT_SEQUENCE_OPEN,
+        window_id: WINDOW_MAIN,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: DOUBLE_CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: MAIN_PROJECT_SAVE_STATE,
+        window_id: WINDOW_MAIN,
         authority: TutorialGuiControlAuthority::Observe,
         allowed_interactions: NO_INTERACTIONS,
         text_policy: None,
@@ -157,6 +182,21 @@ pub fn tutorial_gui_control(semantic_id: &str) -> Option<&'static TutorialGuiCon
         .find(|spec| spec.semantic_id == semantic_id)
 }
 
+/// Build the same path-free subject identity used by semantic GUI snapshots.
+///
+/// External acceptance runners call this through `gentle_examples_docs`
+/// instead of reimplementing the domain separator and length framing.
+pub fn pseudonymous_subject_scope(parts: &[&str]) -> String {
+    let mut identity = b"gentle.gui.subject_scope.v1\0".to_vec();
+    for part in parts {
+        let length = u64::try_from(part.len()).expect("semantic scope part length fits u64");
+        identity.extend_from_slice(&length.to_be_bytes());
+        identity.extend_from_slice(part.as_bytes());
+    }
+    let digest = crate::digest_utils::sha256_hex_bytes(&identity);
+    format!("subject-{}", &digest[..32])
+}
+
 pub fn validate_replacement_text(policy: TutorialGuiTextPolicy, text: &str) -> Result<(), String> {
     if text.is_empty() {
         return Err("replacement text must not be empty".to_string());
@@ -224,5 +264,17 @@ mod tests {
             validate_replacement_text(TutorialGuiTextPolicy::Identifier, "primer report; rm")
                 .is_err()
         );
+    }
+
+    #[test]
+    fn tutorial_subject_scope_is_length_framed_and_path_free() {
+        let scope = pseudonymous_subject_scope(&["tp73_locus"]);
+        assert_eq!(scope.len(), 40);
+        assert!(scope.starts_with("subject-"));
+        assert_ne!(
+            pseudonymous_subject_scope(&["ab", "c"]),
+            pseudonymous_subject_scope(&["a", "bc"])
+        );
+        assert!(!scope.contains("tp73"));
     }
 }

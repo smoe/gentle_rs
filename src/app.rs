@@ -20979,8 +20979,8 @@ Error: `{err}`"
                     #[cfg(feature = "gui-test-support")]
                     crate::gui_test_support::register_rect(
                         status_response.ctx.clone(),
-                        "main.project.save_state",
-                        "window.main",
+                        crate::tutorial_gui_semantics::MAIN_PROJECT_SAVE_STATE,
+                        crate::tutorial_gui_semantics::WINDOW_MAIN,
                         None,
                         crate::gui_test_support::GuiTestWidgetKind::Status,
                         status_response.rect,
@@ -25413,8 +25413,8 @@ impl GENtleApp {
             crate::gui_test_support::begin_frame(ctx);
             crate::gui_test_support::register_rect(
                 ctx.clone(),
-                "window.main",
-                "window.main",
+                crate::tutorial_gui_semantics::WINDOW_MAIN,
+                crate::tutorial_gui_semantics::WINDOW_MAIN,
                 None,
                 crate::gui_test_support::GuiTestWidgetKind::Window,
                 ctx.content_rect(),

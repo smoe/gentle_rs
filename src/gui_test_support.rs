@@ -342,14 +342,7 @@ fn write_snapshot(path: &Path, snapshot: &GuiTestSnapshot) -> Result<(), String>
 }
 
 pub fn pseudonymous_subject_scope(parts: &[&str]) -> String {
-    let mut identity = b"gentle.gui.subject_scope.v1\0".to_vec();
-    for part in parts {
-        let length = u64::try_from(part.len()).expect("semantic scope part length fits u64");
-        identity.extend_from_slice(&length.to_be_bytes());
-        identity.extend_from_slice(part.as_bytes());
-    }
-    let digest = crate::digest_utils::sha256_hex_bytes(&identity);
-    format!("subject-{}", &digest[..32])
+    crate::tutorial_gui_semantics::pseudonymous_subject_scope(parts)
 }
 
 fn registry_id() -> egui::Id {
