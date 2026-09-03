@@ -17,11 +17,11 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 39 | 677 | 0 |
-| gentle_cli | 431 | 309 | 0 |
-| MCP | 113 | 473 | 58 |
-| JS | 78 | 487 | 63 |
-| Lua | 77 | 488 | 63 |
+| GUI | 39 | 691 | 0 |
+| gentle_cli | 441 | 313 | 0 |
+| MCP | 113 | 481 | 64 |
+| JS | 78 | 495 | 69 |
+| Lua | 77 | 496 | 69 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -175,6 +175,12 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | resources install-ucsc-rmsk | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes.<br>JS: Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes.<br>Lua: Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | resources prepare-ucsc-rmsk-index | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes.<br>JS: Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes.<br>Lua: Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | resources suggest-ucsc-rmsk-index | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>JS: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>Lua: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| resources list-encode-ccre-sources | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| resources install-encode-ccres | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| resources prepare-encode-ccre-index | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| resources list-ensembl-regulation-sources | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| resources install-ensembl-regulatory-features | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| resources prepare-ensembl-regulation-index | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | resources sync-jaspar-remote-metadata | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | resources summarize-jaspar | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | promoters compare-architectures | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -368,6 +374,10 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | features repeat-query | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | features repeat-overlaps | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | features materialize-repeats | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| features encode-ccre-overlaps | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| features materialize-encode-ccres | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| features ensembl-regulation-overlaps | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| features materialize-ensembl-regulation | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | features repeat-cohort | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | features window-cohort-tfbs | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | features tfbs-score-tracks-svg | glossary-command | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -674,6 +684,10 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | QueryRepeatAnnotations | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | QueryRepeatOverlaps | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | MaterializeRepeatFeatures | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| QueryEncodeCcreOverlaps | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| MaterializeEncodeCcreFeatures | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| QueryEnsemblRegulationOverlaps | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| MaterializeEnsemblRegulationFeatures | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | PreviewFeatureLocationEdit | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | EditFeatureLocation | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | PreviewFeatureRecordCuration | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
@@ -922,6 +936,12 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | JS | primers transcript-assay-specificity-finalize | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | primers transcript-assay-specificity-plan | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | racks show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| JS | resources install-encode-ccres | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| JS | resources install-ensembl-regulatory-features | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| JS | resources list-encode-ccre-sources | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| JS | resources list-ensembl-regulation-sources | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| JS | resources prepare-encode-ccre-index | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| JS | resources prepare-ensembl-regulation-index | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | resources sync-maxent | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | rna-reads allele-hash-screen | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | rna-reads inspect-alignments | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
@@ -985,6 +1005,12 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | Lua | primers transcript-assay-specificity-finalize | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | primers transcript-assay-specificity-plan | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | racks show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| Lua | resources install-encode-ccres | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| Lua | resources install-ensembl-regulatory-features | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| Lua | resources list-encode-ccre-sources | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| Lua | resources list-ensembl-regulation-sources | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| Lua | resources prepare-encode-ccre-index | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| Lua | resources prepare-ensembl-regulation-index | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | resources sync-maxent | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | rna-reads allele-hash-screen | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | rna-reads inspect-alignments | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
@@ -1044,6 +1070,12 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | MCP | primers transcript-assay-specificity-finalize | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | primers transcript-assay-specificity-plan | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | racks show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| MCP | resources install-encode-ccres | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| MCP | resources install-ensembl-regulatory-features | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| MCP | resources list-encode-ccre-sources | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| MCP | resources list-ensembl-regulation-sources | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| MCP | resources prepare-encode-ccre-index | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| MCP | resources prepare-ensembl-regulation-index | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | resources sync-maxent | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | rna-reads allele-hash-screen | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | rna-reads inspect-alignments | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |

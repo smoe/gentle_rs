@@ -49,6 +49,8 @@ pub mod dna_viewer_repro;
 /// Internal egui compatibility helpers used during GUI API migrations.
 #[cfg(feature = "desktop-gui")]
 pub(crate) mod egui_compat;
+/// Optional ENCODE SCREEN Registry cCRE source, index, and overlap helpers.
+pub mod encode_ccre;
 /// Shared deterministic operation engine and state model.
 pub mod engine;
 /// Shared shell command parser/executor reused by GUI shell and CLI shell mode.
@@ -57,6 +59,8 @@ pub mod engine_shell;
 pub mod ensembl_gene;
 /// Ensembl protein-entry parsing contracts and REST normalization helpers.
 pub mod ensembl_protein;
+/// Optional Ensembl Regulation source, snapshot, index, and overlap helpers.
+pub mod ensembl_regulation;
 /// Restriction-enzyme catalog loading and convenience selection helpers.
 pub mod enzymes;
 /// Shared exon length and coding-frame cue helpers.

@@ -58,10 +58,14 @@ pub use gentle_protocol::{
     DotplotOverlayAnchorExonRef, DotplotOverlayAnchorSeriesSupport, DotplotOverlayQuerySpec,
     DotplotOverlayResolvedAnchorSeries, DotplotOverlayXAxisMode, DotplotQuerySeries,
     DotplotReferenceAnnotationInterval, DotplotReferenceAnnotationTrack, DotplotView,
-    DotplotViewSummary, EXON_SKIP_MATERIALIZATION_SCHEMA, EXON_SKIP_SELECTION_PLAN_SCHEMA,
-    EditableStatus, EngineError, ErrorCode, EvidenceClass, EvidenceScope, ExonSkipCandidateExon,
-    ExonSkipMaterializationReport, ExonSkipReturnKind, ExonSkipReturnPayload,
-    ExonSkipSelectionCriterion, ExonSkipSelectionPlan,
+    DotplotViewSummary, ENCODE_CCRE_MATERIALIZATION_SCHEMA, ENCODE_CCRE_OVERLAP_SCHEMA,
+    ENSEMBL_REGULATION_MATERIALIZATION_SCHEMA, ENSEMBL_REGULATION_OVERLAP_SCHEMA,
+    EXON_SKIP_MATERIALIZATION_SCHEMA, EXON_SKIP_SELECTION_PLAN_SCHEMA, EditableStatus,
+    EncodeCcreClassSummary, EncodeCcreGenomeAnchor, EncodeCcreInterval,
+    EncodeCcreMaterializationReport, EncodeCcreOverlapReport, EncodeCcreOverlapRow, EngineError,
+    EnsemblRegulationMaterializationReport, EnsemblRegulationOverlapReport, ErrorCode,
+    EvidenceClass, EvidenceScope, ExonSkipCandidateExon, ExonSkipMaterializationReport,
+    ExonSkipReturnKind, ExonSkipReturnPayload, ExonSkipSelectionCriterion, ExonSkipSelectionPlan,
     FEATURE_ANNOTATION_STATE_FINGERPRINT_ALGORITHM, FEATURE_LOCATION_EDIT_SCHEMA,
     FEATURE_LOCATION_EDIT_SCHEMA_V2, FEATURE_LOCATION_FINGERPRINT_ALGORITHM,
     FEATURE_RECORD_CURATION_SCHEMA, FEATURE_RECORD_CURATION_SCHEMA_V1, FeatureBedCoordinateMode,
@@ -5278,6 +5282,14 @@ pub struct OpResult {
     pub sequence_repeat_overlaps: Option<SequenceRepeatOverlapReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repeat_feature_materialization: Option<RepeatFeatureMaterializationReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encode_ccre_overlaps: Option<EncodeCcreOverlapReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encode_ccre_materialization: Option<EncodeCcreMaterializationReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ensembl_regulation_overlaps: Option<EnsemblRegulationOverlapReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ensembl_regulation_materialization: Option<EnsemblRegulationMaterializationReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repeat_environment_cohort: Option<RepeatEnvironmentCohortReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

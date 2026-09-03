@@ -38172,6 +38172,178 @@ impl GentleEngine {
                 }
                 result.repeat_feature_materialization = Some(report);
             }
+            Operation::QueryEncodeCcreOverlaps {
+                seq_id,
+                index_path,
+                bed_path,
+                start_0based,
+                end_0based_exclusive,
+                classes,
+                limit,
+                path,
+            } => {
+                let mut report = self.query_encode_ccre_overlaps(
+                    &seq_id,
+                    &index_path,
+                    bed_path.as_deref(),
+                    start_0based,
+                    end_0based_exclusive,
+                    &classes,
+                    limit,
+                )?;
+                report.op_id = Some(result.op_id.clone());
+                report.run_id = Some(run_id.to_string());
+                if let Some(path) = path.as_deref() {
+                    self.write_pretty_json_file(&report, path, "ENCODE cCRE overlap report")?;
+                    result.messages.push(format!(
+                        "Wrote ENCODE cCRE overlap report for '{}' to '{}'",
+                        report.seq_id, path
+                    ));
+                }
+                for warning in &report.warnings {
+                    result.warnings.push(warning.clone());
+                }
+                result.messages.push(format!(
+                    "ENCODE cCRE overlap lookup for '{}' returned {} of {} matched interval(s) from {}",
+                    report.seq_id,
+                    report.returned_ccre_count,
+                    report.matched_ccre_count,
+                    report.source.source_id
+                ));
+                result.encode_ccre_overlaps = Some(report);
+            }
+            Operation::MaterializeEncodeCcreFeatures {
+                seq_id,
+                index_path,
+                bed_path,
+                classes,
+                max_features,
+                clear_existing,
+                path,
+            } => {
+                let mut report = self.materialize_encode_ccre_features(
+                    &seq_id,
+                    &index_path,
+                    bed_path.as_deref(),
+                    &classes,
+                    max_features,
+                    clear_existing.unwrap_or(true),
+                )?;
+                report.op_id = Some(result.op_id.clone());
+                report.run_id = Some(run_id.to_string());
+                if let Some(path) = path.as_deref() {
+                    self.write_pretty_json_file(
+                        &report,
+                        path,
+                        "ENCODE cCRE materialization report",
+                    )?;
+                    result.messages.push(format!(
+                        "Wrote ENCODE cCRE materialization report for '{}' to '{}'",
+                        report.seq_id, path
+                    ));
+                }
+                for warning in &report.warnings {
+                    result.warnings.push(warning.clone());
+                }
+                result.messages.push(format!(
+                    "Materialized {} ENCODE SCREEN cCRE feature(s) on '{}' (matched={}, skipped_existing={}, removed_existing={})",
+                    report.added_feature_count,
+                    report.seq_id,
+                    report.matched_ccre_count,
+                    report.skipped_existing_count,
+                    report.removed_existing_count
+                ));
+                if report.added_feature_count > 0 || report.removed_existing_count > 0 {
+                    result.changed_seq_ids.push(report.seq_id.clone());
+                }
+                result.encode_ccre_materialization = Some(report);
+            }
+            Operation::QueryEnsemblRegulationOverlaps {
+                seq_id,
+                index_path,
+                intervals_path,
+                start_0based,
+                end_0based_exclusive,
+                feature_types,
+                limit,
+                path,
+            } => {
+                let mut report = self.query_ensembl_regulation_overlaps(
+                    &seq_id,
+                    &index_path,
+                    intervals_path.as_deref(),
+                    start_0based,
+                    end_0based_exclusive,
+                    &feature_types,
+                    limit,
+                )?;
+                report.op_id = Some(result.op_id.clone());
+                report.run_id = Some(run_id.to_string());
+                if let Some(path) = path.as_deref() {
+                    self.write_pretty_json_file(
+                        &report,
+                        path,
+                        "Ensembl Regulation overlap report",
+                    )?;
+                    result.messages.push(format!(
+                        "Wrote Ensembl Regulation overlap report for '{}' to '{}'",
+                        report.seq_id, path
+                    ));
+                }
+                result.warnings.extend(report.warnings.iter().cloned());
+                result.messages.push(format!(
+                    "Ensembl Regulation overlap lookup for '{}' returned {} of {} matched feature(s) from {}",
+                    report.seq_id,
+                    report.returned_feature_count,
+                    report.matched_feature_count,
+                    report.source.source_id
+                ));
+                result.ensembl_regulation_overlaps = Some(report);
+            }
+            Operation::MaterializeEnsemblRegulationFeatures {
+                seq_id,
+                index_path,
+                intervals_path,
+                feature_types,
+                max_features,
+                clear_existing,
+                path,
+            } => {
+                let mut report = self.materialize_ensembl_regulation_features(
+                    &seq_id,
+                    &index_path,
+                    intervals_path.as_deref(),
+                    &feature_types,
+                    max_features,
+                    clear_existing.unwrap_or(true),
+                )?;
+                report.op_id = Some(result.op_id.clone());
+                report.run_id = Some(run_id.to_string());
+                if let Some(path) = path.as_deref() {
+                    self.write_pretty_json_file(
+                        &report,
+                        path,
+                        "Ensembl Regulation materialization report",
+                    )?;
+                    result.messages.push(format!(
+                        "Wrote Ensembl Regulation materialization report for '{}' to '{}'",
+                        report.seq_id, path
+                    ));
+                }
+                result.warnings.extend(report.warnings.iter().cloned());
+                result.messages.push(format!(
+                    "Materialized {} Ensembl regulatory feature(s) on '{}' (matched={}, skipped_existing={}, removed_existing={})",
+                    report.added_feature_count,
+                    report.seq_id,
+                    report.matched_feature_count,
+                    report.skipped_existing_count,
+                    report.removed_existing_count
+                ));
+                if report.added_feature_count > 0 || report.removed_existing_count > 0 {
+                    result.changed_seq_ids.push(report.seq_id.clone());
+                }
+                result.ensembl_regulation_materialization = Some(report);
+            }
             Operation::BuildRepeatEnvironmentCohort {
                 genome_id,
                 rmsk_path,
@@ -39694,6 +39866,10 @@ impl GentleEngine {
             repeat_annotation_query: None,
             sequence_repeat_overlaps: None,
             repeat_feature_materialization: None,
+            encode_ccre_overlaps: None,
+            encode_ccre_materialization: None,
+            ensembl_regulation_overlaps: None,
+            ensembl_regulation_materialization: None,
             repeat_environment_cohort: None,
             window_cohort_tfbs: None,
             tfbs_hit_scan: None,
@@ -39740,6 +39916,10 @@ impl GentleEngine {
                 | Operation::QueryRepeatAnnotations { .. }
                 | Operation::QueryRepeatOverlaps { .. }
                 | Operation::MaterializeRepeatFeatures { .. }
+                | Operation::QueryEncodeCcreOverlaps { .. }
+                | Operation::MaterializeEncodeCcreFeatures { .. }
+                | Operation::QueryEnsemblRegulationOverlaps { .. }
+                | Operation::MaterializeEnsemblRegulationFeatures { .. }
                 | Operation::BuildRepeatEnvironmentCohort { .. }
                 | Operation::SummarizeWindowCohortTfbs { .. }
                 | Operation::SummarizeTfbsRegion { .. }
@@ -49540,6 +49720,10 @@ impl GentleEngine {
                 op @ Operation::FindRestrictionSites { .. }
                 | op @ Operation::QueryRepeatOverlaps { .. }
                 | op @ Operation::MaterializeRepeatFeatures { .. }
+                | op @ Operation::QueryEncodeCcreOverlaps { .. }
+                | op @ Operation::MaterializeEncodeCcreFeatures { .. }
+                | op @ Operation::QueryEnsemblRegulationOverlaps { .. }
+                | op @ Operation::MaterializeEnsemblRegulationFeatures { .. }
                 | op @ Operation::SummarizeTfbsRegion { .. }
                 | op @ Operation::SummarizeTfbsScoreTracks { .. }
                 | op @ Operation::SummarizeMultiGenePromoterTfbs { .. }

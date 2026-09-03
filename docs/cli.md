@@ -671,7 +671,7 @@ CLI resolution order:
 
 Resource update capability status:
 
-- `gentle_cli`: supported (`resources sync-rebase`, `resources sync-jaspar`, `resources sync-ucsc-rmsk`, `resources import-gene-list-cache`, `resources import-ontology-assignment-cache`, `resources import-co-regulated-cache`, `resources install-ucsc-rmsk`, `resources prepare-ucsc-rmsk-index`, `resources suggest-ucsc-rmsk-index`, `resources sync-jaspar-remote-metadata`, `resources summarize-jaspar`, `resources resolve-tf-query`, `gene-groups list/show/resolve/doctor/draft`, `gene-sets resolve/produce direct-list/produce ontology-assignment/produce co-regulated/promoter-cohort/regulatory-partner-screen`, `resources benchmark-jaspar`, `resources list-jaspar`, `resources list-publication-datasets`, `resources status-publication-dataset`, `resources prepare-publication-dataset`, `resources inspect-jaspar`)
+- `gentle_cli`: supported (`resources sync-rebase`, `resources sync-jaspar`, `resources sync-ucsc-rmsk`, `resources import-gene-list-cache`, `resources import-ontology-assignment-cache`, `resources import-co-regulated-cache`, `resources install-ucsc-rmsk`, `resources prepare-ucsc-rmsk-index`, `resources suggest-ucsc-rmsk-index`, `resources list-encode-ccre-sources`, `resources install-encode-ccres`, `resources prepare-encode-ccre-index`, `resources list-ensembl-regulation-sources`, `resources install-ensembl-regulatory-features`, `resources prepare-ensembl-regulation-index`, `resources sync-jaspar-remote-metadata`, `resources summarize-jaspar`, `resources resolve-tf-query`, `gene-groups list/show/resolve/doctor/draft`, `gene-sets resolve/produce direct-list/produce ontology-assignment/produce co-regulated/promoter-cohort/regulatory-partner-screen`, `resources benchmark-jaspar`, `resources list-jaspar`, `resources list-publication-datasets`, `resources status-publication-dataset`, `resources prepare-publication-dataset`, `resources inspect-jaspar`)
 - `gentle_js`: supported (`sync_rebase`, `sync_jaspar`)
 - `gentle_lua`: supported (`sync_rebase`, `sync_jaspar`)
 
@@ -2900,6 +2900,12 @@ Shared shell command:
     - `resources install-ucsc-rmsk [--assembly DB] [--input PATH_OR_URL] [--resource-output PATH] [--index-output PATH]`
     - `resources prepare-ucsc-rmsk-index RESOURCE.rmsk.json [OUTPUT.interval-index.json]`
     - `resources suggest-ucsc-rmsk-index [--assembly DB] [--output OUTPUT.json]`
+    - `resources list-encode-ccre-sources [--assembly GRCh38|hg38|GRCm38|mm10] [--output OUTPUT.json]`
+    - `resources install-encode-ccres SOURCE_ID [--input PATH_OR_URL] [--bed-output PATH] [--index-output PATH]`
+    - `resources prepare-encode-ccre-index SOURCE_ID BED_PATH [--output INDEX.json]`
+    - `resources list-ensembl-regulation-sources [--assembly GRCh38|hg38|GRCm39|mm39] [--output OUTPUT.json]`
+    - `resources install-ensembl-regulatory-features SOURCE_ID [--input COMPLETE_API_RESPONSE.json] [--intervals-output PATH] [--index-output PATH]`
+    - `resources prepare-ensembl-regulation-index SOURCE_ID INTERVALS_PATH [--output INDEX.json]`
     - `resources sync-jaspar-remote-metadata [--motif TOKEN ...] [--motifs CSV] [--all] [--filter TOKEN] [--limit N] [--output OUTPUT.json]`
     - `resources summarize-jaspar [--motif TOKEN ...] [--motifs CSV] [--all] [--random-length N] [--seed N] [--output OUTPUT.json]`
     - `resources resolve-tf-query QUERY [QUERY ...] [--output OUTPUT.json]`
@@ -3049,6 +3055,10 @@ Shared shell command:
     - `features repeat-query GENOME_ID --rmsk PATH [--rep-class CLASS] [--rep-family FAMILY] [--rep-name NAME] [--alias ALIAS] [--chromosome CHR] [--range START..END] [--limit N] [--path FILE.json]`
     - `features repeat-overlaps SEQ_ID --index RMSK_INTERVAL_INDEX.json [--range START..END] [--limit N] [--path FILE.json]`
     - `features materialize-repeats SEQ_ID --index RMSK_INTERVAL_INDEX.json [--max-features N] [--append] [--path FILE.json]`
+    - `features encode-ccre-overlaps SEQ_ID --index INDEX.json [--bed BED] [--range START..END] [--class pELS|dELS] [--limit N] [--path FILE.json]`
+    - `features materialize-encode-ccres SEQ_ID --index INDEX.json [--bed BED] [--class pELS|dELS] [--max-features N] [--append] [--path FILE.json]`
+    - `features ensembl-regulation-overlaps SEQ_ID --index INDEX.json [--intervals PATH] [--range START..END] [--feature-type TYPE] [--limit N] [--path FILE.json]`
+    - `features materialize-ensembl-regulation SEQ_ID --index INDEX.json [--intervals PATH] [--feature-type TYPE] [--max-features N] [--append] [--path FILE.json]`
     - `features repeat-cohort GENOME_ID --rmsk PATH [--rep-class CLASS] [--rep-family FAMILY] [--rep-name NAME] [--alias ALIAS] [--geometry repeat_midpoint|transcript_5utr_start|pol2_promoter_upstream|cds_stop_context] [--upstream-bp N] [--downstream-bp N] [--limit N] [--catalog PATH] [--cache DIR] [--path FILE.json]`
     - `features window-cohort-tfbs COHORT_JSON --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache DIR] [--path FILE.json]`
     - `features promoter-evidence-matrix SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--promoter-upstream-bp N] [--promoter-downstream-bp N] [--no-feature-overlaps] [--path FILE.json]`
@@ -4654,6 +4664,50 @@ Shared shell command:
         - `gentle_cli shell 'features materialize-repeats grch38_tp53 --index data/resources/ucsc.rmsk.hg38.interval-index.json --max-features 1000 --path /tmp/tp53_repeat_materialization.json'`
         - `gentle_cli shell 'features repeat-cohort "Human GRCh38 Ensembl 116" --rmsk data/rmsk.txt.gz --alias LINE/L1 --geometry pol2_promoter_upstream --upstream-bp 2000 --downstream-bp 2000 --limit 50 --path /tmp/grch38_l1_promoter_context.json'`
         - `gentle_cli shell 'features window-cohort-tfbs /tmp/grch38_l1_promoter_context.json --motif SP1 --motif TP73 --score-kind llr_background_tail_log10 --path /tmp/grch38_l1_promoter_tfbs.json'`
+    - Optional ENCODE SCREEN Registry V4 cCRE notes:
+      - inspect the built-in species/assembly catalog without downloading:
+        - `gentle_cli resources list-encode-ccre-sources`
+        - `gentle_cli resources list-encode-ccre-sources --assembly mm10`
+      - explicitly install the current enhancer-like-signature BED and sparse
+        content-bound index:
+        - human: `gentle_cli resources install-encode-ccres screen_registry_v4_grch38_els`
+        - mouse: `gentle_cli resources install-encode-ccres screen_registry_v4_mm10_els`
+      - an already downloaded BED can be indexed offline with
+        `gentle_cli resources prepare-encode-ccre-index SOURCE_ID BED_PATH --output INDEX.json`
+      - query a genome-anchored locus without changing project state:
+        - `gentle_cli features encode-ccre-overlaps LOCUS_SEQ_ID --index INDEX.json --range 0..5000 --class pELS --class dELS --path /tmp/locus_ccres.json`
+      - materialize verified rows for the existing regulatory-feature display:
+        - `gentle_cli features materialize-encode-ccres LOCUS_SEQ_ID --index INDEX.json --max-features 1000 --path /tmp/locus_ccre_materialization.json`
+      - the source id, not the filename, selects human GRCh38/hg38 versus mouse
+        GRCm38/mm10. The engine cross-checks that choice against sequence anchor
+        provenance and refuses incompatible species/assemblies.
+      - the V4 `ELS` files contain `pELS` and `dELS`, not the complete SCREEN
+        registry. Overlap is candidate regulatory evidence, not proof of
+        enhancer activity or target-gene regulation.
+      - the large resource files are fully optional: GENtle performs
+        no SCREEN I/O or network access at startup, and missing files affect
+        only an explicit cCRE command.
+    - Optional Ensembl Regulation annotation notes:
+      - inspect the pinned source catalog without downloading:
+        - `gentle_cli resources list-ensembl-regulation-sources`
+        - `gentle_cli resources list-ensembl-regulation-sources --assembly mm39`
+      - explicitly fetch and index the release-bound annotation:
+        - human: `gentle_cli resources install-ensembl-regulatory-features ensembl_regulation_2026_08_grch38`
+        - mouse: `gentle_cli resources install-ensembl-regulatory-features ensembl_regulation_2026_08_grcm39`
+      - a complete saved API response can be installed offline with `--input`;
+        a partial/paginated response is rejected rather than mistaken for a
+        complete annotation snapshot
+      - query without changing project state:
+        - `gentle_cli features ensembl-regulation-overlaps LOCUS_SEQ_ID --index INDEX.json --range 0..5000 --feature-type promoter --feature-type enhancer --path /tmp/locus_ensembl_regulation.json`
+      - materialize verified rows into the existing feature display:
+        - `gentle_cli features materialize-ensembl-regulation LOCUS_SEQ_ID --index INDEX.json --max-features 1000 --path /tmp/locus_ensembl_regulation_materialization.json`
+      - Ensembl mouse annotations use GRCm39/mm39 and are not interchangeable
+        with SCREEN Registry V4 mouse GRCm38/mm10 resources
+      - source descriptors expose the separate regulatory-activity matrix and
+        primary-analysis page. This annotation route does not download those
+        files or claim biosample activity from overlap alone.
+      - no Ensembl Regulation file or network endpoint is touched at startup;
+        absence affects only explicit Ensembl Regulation commands.
     - TFBS/JASPAR direct scan helper notes (`features tfbs-scan`):
       - non-mutating structured result schema:
         `gentle.tfbs_hit_scan.v1`

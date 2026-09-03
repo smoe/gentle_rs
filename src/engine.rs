@@ -119,18 +119,25 @@ pub use gentle_protocol::{
     DEFAULT_GENOMIC_MOTIF_EVIDENCE_TIMEOUT_SECONDS, DecisionMethod, DesignDecisionNode,
     DesignEvidence, DesignFact, DotplotInspectionProvenanceCitation,
     DotplotInspectionProvenanceStatus, DotplotInspectionRequestSnapshot, DotplotMode,
-    EditableStatus, EvidenceClass, EvidenceScope, ExonSkipReturnKind, ExonSkipReturnPayload,
-    ExonSkipSelectionCriterion, GelBandLabelLayout, GelBufferModel, GelIsoformMarkerMode,
-    GelLaneLabelLayout, GelRunConditions, GelTopologyForm, GenomicMotifEvidenceCoverageStatus,
-    GenomicMotifEvidenceInterval, GenomicMotifEvidenceMotifCoverage, GenomicMotifEvidenceReport,
-    GenomicMotifEvidenceRequest, GenomicMotifEvidenceTarget, HostLifecycleRole, LineageEdge,
-    LineageGraph, LineageMacroInstance, LineageMacroPortBinding, LineageNode,
-    MAX_GENOMIC_MOTIF_EVIDENCE_QUERY_MOTIFS, MacroInstanceStatus, NodeId, OpId,
-    OrthologAmbiguityPolicy, OrthologCutRunNormalizationInput, OrthologPromoterCohortReport,
-    OrthologPromoterComparisonReport, PoolGelRenderOptions, PrimerSpecificityAmpliconCeilingSource,
-    PrimerSpecificityReportDetailMode, ProteinExternalOpinionSource, ProteinFeatureFilter, Rack,
-    RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
-    RackOccupant, RackPhysicalTemplateFamily, RackPhysicalTemplateKind, RackPhysicalTemplateSpec,
+    ENCODE_CCRE_MATERIALIZATION_SCHEMA, ENCODE_CCRE_OVERLAP_SCHEMA,
+    ENSEMBL_REGULATION_MATERIALIZATION_SCHEMA, ENSEMBL_REGULATION_OVERLAP_SCHEMA, EditableStatus,
+    EncodeCcreClassSummary, EncodeCcreGenomeAnchor, EncodeCcreInterval,
+    EncodeCcreMaterializationReport, EncodeCcreOverlapReport, EncodeCcreOverlapRow,
+    EnsemblRegulationGenomeAnchor, EnsemblRegulationInterval,
+    EnsemblRegulationMaterializationReport, EnsemblRegulationOverlapReport,
+    EnsemblRegulationOverlapRow, EnsemblRegulationTypeSummary, EvidenceClass, EvidenceScope,
+    ExonSkipReturnKind, ExonSkipReturnPayload, ExonSkipSelectionCriterion, GelBandLabelLayout,
+    GelBufferModel, GelIsoformMarkerMode, GelLaneLabelLayout, GelRunConditions, GelTopologyForm,
+    GenomicMotifEvidenceCoverageStatus, GenomicMotifEvidenceInterval,
+    GenomicMotifEvidenceMotifCoverage, GenomicMotifEvidenceReport, GenomicMotifEvidenceRequest,
+    GenomicMotifEvidenceTarget, HostLifecycleRole, LineageEdge, LineageGraph, LineageMacroInstance,
+    LineageMacroPortBinding, LineageNode, MAX_GENOMIC_MOTIF_EVIDENCE_QUERY_MOTIFS,
+    MacroInstanceStatus, NodeId, OpId, OrthologAmbiguityPolicy, OrthologCutRunNormalizationInput,
+    OrthologPromoterCohortReport, OrthologPromoterComparisonReport, PoolGelRenderOptions,
+    PrimerSpecificityAmpliconCeilingSource, PrimerSpecificityReportDetailMode,
+    ProteinExternalOpinionSource, ProteinFeatureFilter, Rack, RackAuthoringTemplate,
+    RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
+    RackPhysicalTemplateFamily, RackPhysicalTemplateKind, RackPhysicalTemplateSpec,
     RackPlacementEntry, RackProfileKind, RackProfileSnapshot, ReadAcquisitionAnalysisFormat,
     ReadAcquisitionReadLayout, RegulatoryPartnerAnchorMode, RegulatoryPartnerMotifThreshold,
     RegulatoryPartnerScreenReport, RunId, SeqId, SequenceOrigin,
@@ -1248,6 +1255,10 @@ mod candidate_metrics;
 mod cryptic_splicing;
 #[path = "engine/cutrun.rs"]
 mod cutrun;
+#[path = "engine/analysis/encode_ccre.rs"]
+mod encode_ccre_analysis;
+#[path = "engine/analysis/ensembl_regulation.rs"]
+mod ensembl_regulation_analysis;
 #[path = "engine/ops/external_primer_pairs.rs"]
 mod external_primer_pairs;
 #[path = "engine/state/feature_coordinate_formulas.rs"]
@@ -4305,6 +4316,66 @@ pub enum Operation {
     MaterializeRepeatFeatures {
         seq_id: SeqId,
         rmsk_index_path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_features: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        clear_existing: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    QueryEncodeCcreOverlaps {
+        seq_id: SeqId,
+        index_path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        bed_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        start_0based: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        end_0based_exclusive: Option<usize>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        classes: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    MaterializeEncodeCcreFeatures {
+        seq_id: SeqId,
+        index_path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        bed_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        classes: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_features: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        clear_existing: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    QueryEnsemblRegulationOverlaps {
+        seq_id: SeqId,
+        index_path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        intervals_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        start_0based: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        end_0based_exclusive: Option<usize>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        feature_types: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    MaterializeEnsemblRegulationFeatures {
+        seq_id: SeqId,
+        index_path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        intervals_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        feature_types: Vec<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         max_features: Option<usize>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -9727,6 +9798,8 @@ impl GentleEngine {
                 | Operation::CreateGeneSetPool { dry_run: true, .. }
                 | Operation::QueryRepeatAnnotations { .. }
                 | Operation::QueryRepeatOverlaps { .. }
+                | Operation::QueryEncodeCcreOverlaps { .. }
+                | Operation::QueryEnsemblRegulationOverlaps { .. }
                 | Operation::BuildRepeatEnvironmentCohort { .. }
                 | Operation::SummarizeTfbsRegion { .. }
                 | Operation::SummarizeTfbsScoreTracks { .. }
