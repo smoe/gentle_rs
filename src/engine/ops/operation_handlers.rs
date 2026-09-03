@@ -39620,6 +39620,7 @@ impl GentleEngine {
             reporter_construct_handoff: None,
             reporter_vector_validation: None,
             promoter_reporter_panel_proposal: None,
+            promoter_reporter_panel_readiness: None,
             promoter_reporter_panel_receipt: None,
             uniprot_projection_audit: None,
             uniprot_linked_transcript_inventory: None,
@@ -50221,6 +50222,26 @@ impl GentleEngine {
                     ));
                     result.warnings.extend(proposal.warnings.iter().cloned());
                     result.promoter_reporter_panel_proposal = Some(Box::new(proposal));
+                }
+                Operation::InspectPromoterReporterPanelReadiness { request, path } => {
+                    let readiness = self.inspect_promoter_reporter_panel_readiness(*request)?;
+                    if let Some(path) = path.as_deref() {
+                        self.write_pretty_json_file(
+                            &readiness,
+                            path,
+                            "promoter-reporter panel readiness report",
+                        )?;
+                        result.messages.push(format!(
+                            "Wrote promoter-reporter panel readiness for '{}' to '{}'",
+                            readiness.panel_id, path
+                        ));
+                    }
+                    result.messages.push(format!(
+                        "Promoter-reporter panel '{}' readiness is {:?}",
+                        readiness.panel_id, readiness.overall
+                    ));
+                    result.warnings.extend(readiness.warnings.iter().cloned());
+                    result.promoter_reporter_panel_readiness = Some(Box::new(readiness));
                 }
                 Operation::MaterializePromoterReporterPanel {
                     proposal,

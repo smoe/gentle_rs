@@ -429,12 +429,15 @@ Required distinctions:
 - enumerate transcript-derived TSS/promoter classes before choosing one fragment per gene;
 - keep native regulatory fragments as the default; engineered motif controls are optional per member and require an explicit mutation policy;
 - when retaining the complete annotated 5' UTR but excluding source translation, use canonical_cds_start_exclusive with one explicit transcript_id;
+- treat ready_to_plan, ready_for_approval, and ready_to_materialize as distinct transitions; only the last permits the exact approved proposal to proceed;
 - do not materialize constructs, download external data, or run a mutation without explicit confirmation.
 
 Useful shared GENtle surfaces after their operands are known:
 - `features promoter-evidence-matrix SEQ_ID --gene-label GENE ...`
 - `op '{"SuggestPromoterReporterFragments":{...}}'`
+- `promoters panel-readiness request @REQUEST.json --path READINESS.json`
 - `promoters panel-plan @REQUEST.json --path PROPOSAL.json`
+- `promoters panel-readiness proposal @PROPOSAL.json [--approve DIGEST] --path READINESS.json`
 - `promoters panel-materialize @PROPOSAL.json --approve DIGEST`
 
 Output wanted:
@@ -668,6 +671,10 @@ mod tests {
         assert!(
             agent_prompt_template_text("regulatory_reporter_study")
                 .contains("`op '{\"SuggestPromoterReporterFragments\"")
+        );
+        assert!(
+            agent_prompt_template_text("regulatory_reporter_study")
+                .contains("promoters panel-readiness request")
         );
         assert!(!agent_prompt_template_text("regulatory_reporter_study").contains("op apply"));
         assert!(

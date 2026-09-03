@@ -25,6 +25,19 @@
   `gentle.agent_web_research.v1`, and the GUI shows those sources separately
   from model prose. Native models cannot self-assert that audited provenance.
 
+- Added context-bound promoter-reporter panel readiness inspection. The new
+  engine report and `promoters panel-readiness` route accept either a panel
+  request or a prior proposal, reuse exact vector and candidate/TSS/evidence
+  resolution, rerun the complete detached planner, reject stale proposal
+  content, and distinguish review-ready from exact-digest materialization
+  readiness. Per-member evidence kinds remain machine-readable; missing
+  evidence stays explicit without being interpreted as absent occupancy, and
+  no durable Boolean can outlive changed project or file content. The route has
+  direct CLI, GUI-shell, dedicated read-only MCP, and
+  generic operation parity. Also linked the promoter-architecture CLI example
+  to its protocol schemas while leaving the broader gene/cohort-to-panel
+  composer on the roadmap.
+
 - Closed the final reported PATZ1/GUI-audit regressions after the strand fix.
   The dedicated Criterion package now enables the feature-gated desktop GUI
   modules it benchmarks without restoring root application binaries to the

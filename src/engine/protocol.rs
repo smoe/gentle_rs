@@ -181,7 +181,8 @@ use crate::genomes::BlastExternalBinaryPreflightReport;
 
 use super::{
     CLONING_MACRO_TEMPLATE_SCHEMA, OpId, Operation, PROMOTER_REPORTER_ARCHITECTURE_REQUEST_SCHEMA,
-    PrepareGenomeProgress, ProtocolCartoonTemplateBindings, RunId, SeqId,
+    PROMOTER_REPORTER_PANEL_READINESS_REQUEST_SCHEMA, PrepareGenomeProgress,
+    ProtocolCartoonTemplateBindings, RunId, SeqId,
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -5331,6 +5332,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub promoter_reporter_panel_proposal: Option<Box<PromoterReporterPanelProposal>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_reporter_panel_readiness: Option<Box<PromoterReporterPanelReadinessReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub promoter_reporter_panel_receipt: Option<Box<PromoterReporterPanelReceipt>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub uniprot_projection_audit: Option<Box<UniprotProjectionAuditReport>>,
@@ -10163,6 +10166,120 @@ pub struct PromoterReporterPanelProposal {
     pub artifacts: Vec<PromoterReporterPanelArtifactProposal>,
     pub approval_required: bool,
     pub warnings: Vec<String>,
+    pub nonclaims: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Input artifact being assessed by the promoter-reporter readiness contract.
+pub enum PromoterReporterPanelReadinessInputKind {
+    #[default]
+    PanelRequest,
+    PanelProposal,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Stable stage names used by promoter-reporter readiness checks.
+pub enum PromoterReporterPanelReadinessCheckKind {
+    #[default]
+    RequestContract,
+    ReporterVectorValidation,
+    CandidateSelection,
+    TssResolution,
+    EvidenceCompatibility,
+    PanelSimulation,
+    ProposalCurrency,
+    ApprovalMatch,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// State of one context-bound promoter-reporter readiness check.
+pub enum PromoterReporterPanelReadinessState {
+    Ready,
+    Blocked,
+    NotSupplied,
+    NotApplicable,
+    #[default]
+    NotEvaluated,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Next safe transition established by the complete readiness report.
+pub enum PromoterReporterPanelReadinessOverall {
+    #[default]
+    Blocked,
+    ReadyToPlan,
+    ReadyForApproval,
+    ReadyToMaterialize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One machine-readable check bound to the supplied request or proposal.
+pub struct PromoterReporterPanelReadinessCheck {
+    pub kind: PromoterReporterPanelReadinessCheckKind,
+    pub state: PromoterReporterPanelReadinessState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject_id: Option<String>,
+    pub detail: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub basis_sha256: Option<String>,
+}
+
+fn promoter_reporter_panel_readiness_request_schema_default() -> String {
+    PROMOTER_REPORTER_PANEL_READINESS_REQUEST_SCHEMA.to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+/// Read-only request for checking either a panel request or a prior proposal.
+///
+/// Exactly one of `panel_request` and `proposal` must be supplied. An approval
+/// digest is meaningful only for a proposal and is compared byte-for-byte.
+pub struct PromoterReporterPanelReadinessRequest {
+    #[serde(default = "promoter_reporter_panel_readiness_request_schema_default")]
+    pub schema: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub panel_request: Option<Box<PromoterReporterPanelRequest>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proposal: Option<Box<PromoterReporterPanelProposal>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval_digest: Option<String>,
+}
+
+impl Default for PromoterReporterPanelReadinessRequest {
+    fn default() -> Self {
+        Self {
+            schema: promoter_reporter_panel_readiness_request_schema_default(),
+            panel_request: None,
+            proposal: None,
+            approval_digest: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Context-bound, read-only promoter-reporter planning readiness report.
+pub struct PromoterReporterPanelReadinessReport {
+    pub schema: String,
+    pub input_kind: PromoterReporterPanelReadinessInputKind,
+    pub panel_id: String,
+    pub overall: PromoterReporterPanelReadinessOverall,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proposal_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub evidence_kinds_by_member_id: BTreeMap<String, Vec<String>>,
+    #[serde(default)]
+    pub checks: Vec<PromoterReporterPanelReadinessCheck>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    #[serde(default)]
     pub nonclaims: Vec<String>,
 }
 

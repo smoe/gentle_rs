@@ -1105,6 +1105,499 @@ impl GentleEngine {
             .map(|(proposal, _)| proposal)
     }
 
+    /// Inspect whether a request can be planned, or whether an existing
+    /// proposal and optional approval digest still match the current project.
+    /// The operation is read-only and deliberately recomputes canonical
+    /// planning inputs rather than trusting persisted booleans.
+    pub fn inspect_promoter_reporter_panel_readiness(
+        &self,
+        mut input: PromoterReporterPanelReadinessRequest,
+    ) -> Result<PromoterReporterPanelReadinessReport, EngineError> {
+        if input.schema.trim().is_empty() {
+            input.schema = PROMOTER_REPORTER_PANEL_READINESS_REQUEST_SCHEMA.to_string();
+        }
+        if input.schema != PROMOTER_REPORTER_PANEL_READINESS_REQUEST_SCHEMA {
+            return Err(EngineError::invalid_input(format!(
+                "Unsupported promoter-reporter panel readiness request schema '{}'",
+                input.schema
+            )));
+        }
+
+        let approval_digest = input
+            .approval_digest
+            .take()
+            .map(|value| value.trim().to_string());
+        let (input_kind, request, supplied_proposal) = match (
+            input.panel_request.take(),
+            input.proposal.take(),
+        ) {
+            (Some(request), None) => {
+                if approval_digest.is_some() {
+                    return Err(EngineError::invalid_input(
+                        "A promoter-reporter approval digest can only be checked with a proposal",
+                    ));
+                }
+                (
+                    PromoterReporterPanelReadinessInputKind::PanelRequest,
+                    *request,
+                    None,
+                )
+            }
+            (None, Some(proposal)) => (
+                PromoterReporterPanelReadinessInputKind::PanelProposal,
+                proposal.request.clone(),
+                Some(*proposal),
+            ),
+            (Some(_), Some(_)) => {
+                return Err(EngineError::invalid_input(
+                    "Promoter-reporter readiness accepts either panel_request or proposal, not both",
+                ));
+            }
+            (None, None) => {
+                return Err(EngineError::invalid_input(
+                    "Promoter-reporter readiness requires panel_request or proposal",
+                ));
+            }
+        };
+
+        let mut report = PromoterReporterPanelReadinessReport {
+            schema: PROMOTER_REPORTER_PANEL_READINESS_REPORT_SCHEMA.to_string(),
+            input_kind,
+            panel_id: request.panel_id.clone(),
+            overall: PromoterReporterPanelReadinessOverall::Blocked,
+            proposal_digest: supplied_proposal
+                .as_ref()
+                .map(|proposal| proposal.proposal_digest.clone()),
+            nonclaims: vec![
+                "Readiness is bound to the supplied content and current project state; any input or state change requires another inspection."
+                    .to_string(),
+                "Compatible evidence means that supplied rows can be bound to the selected source coordinates; it does not prove occupancy, causality, or promoter function."
+                    .to_string(),
+            ],
+            ..PromoterReporterPanelReadinessReport::default()
+        };
+
+        if let Some(proposal) = supplied_proposal.as_ref() {
+            if proposal.schema != PROMOTER_REPORTER_PANEL_PROPOSAL_SCHEMA {
+                Self::append_promoter_reporter_preproposal_not_evaluated_checks(
+                    &mut report.checks,
+                    "The proposal envelope must be valid before its embedded planning inputs can be trusted.",
+                );
+                report.checks.push(PromoterReporterPanelReadinessCheck {
+                    kind: PromoterReporterPanelReadinessCheckKind::ProposalCurrency,
+                    state: PromoterReporterPanelReadinessState::Blocked,
+                    subject_id: Some(proposal.proposal_id.clone()),
+                    detail: format!("Proposal schema '{}' is not supported", proposal.schema),
+                    basis_sha256: Some(proposal.proposal_digest.clone()),
+                });
+                report.checks.push(PromoterReporterPanelReadinessCheck {
+                    kind: PromoterReporterPanelReadinessCheckKind::ApprovalMatch,
+                    state: PromoterReporterPanelReadinessState::NotApplicable,
+                    subject_id: None,
+                    detail: "Approval cannot be evaluated for an invalid proposal.".to_string(),
+                    basis_sha256: None,
+                });
+                return Ok(report);
+            }
+            let embedded_digest = Self::promoter_reporter_panel_proposal_digest(proposal)?;
+            if proposal.proposal_digest != embedded_digest {
+                Self::append_promoter_reporter_preproposal_not_evaluated_checks(
+                    &mut report.checks,
+                    "The proposal content must match its digest before its embedded planning inputs can be trusted.",
+                );
+                report.checks.push(PromoterReporterPanelReadinessCheck {
+                    kind: PromoterReporterPanelReadinessCheckKind::ProposalCurrency,
+                    state: PromoterReporterPanelReadinessState::Blocked,
+                    subject_id: Some(proposal.proposal_id.clone()),
+                    detail: "Proposal content does not match its embedded proposal_digest."
+                        .to_string(),
+                    basis_sha256: Some(embedded_digest),
+                });
+                report.checks.push(PromoterReporterPanelReadinessCheck {
+                    kind: PromoterReporterPanelReadinessCheckKind::ApprovalMatch,
+                    state: PromoterReporterPanelReadinessState::NotApplicable,
+                    subject_id: None,
+                    detail: "Approval cannot be evaluated for a content-invalid proposal."
+                        .to_string(),
+                    basis_sha256: None,
+                });
+                return Ok(report);
+            }
+        }
+
+        let normalized_request = match Self::normalize_promoter_reporter_panel_request(request) {
+            Ok(request) => request,
+            Err(error) => {
+                report.checks.push(PromoterReporterPanelReadinessCheck {
+                    kind: PromoterReporterPanelReadinessCheckKind::RequestContract,
+                    state: PromoterReporterPanelReadinessState::Blocked,
+                    subject_id: Some(report.panel_id.clone()),
+                    detail: error.to_string(),
+                    basis_sha256: None,
+                });
+                Self::append_promoter_reporter_not_evaluated_checks(
+                    &mut report.checks,
+                    "The request contract must be valid first.",
+                );
+                return Ok(report);
+            }
+        };
+        report.panel_id = normalized_request.panel_id.clone();
+        let request_sha256 = self.promoter_reporter_panel_value_sha256(
+            &normalized_request,
+            "promoter-reporter readiness request",
+        )?;
+        report.request_sha256 = Some(request_sha256.clone());
+        report.checks.push(PromoterReporterPanelReadinessCheck {
+            kind: PromoterReporterPanelReadinessCheckKind::RequestContract,
+            state: PromoterReporterPanelReadinessState::Ready,
+            subject_id: Some(normalized_request.panel_id.clone()),
+            detail: "The panel request schema, policies, paths, and output location are structurally valid."
+                .to_string(),
+            basis_sha256: Some(request_sha256),
+        });
+
+        let backbone = match self.resolve_reporter_backbone(
+            &normalized_request.vector_seq_id,
+            None,
+            true,
+            Some(&normalized_request.vector_catalog_id),
+            normalized_request.helper_catalog_path.as_deref(),
+        ) {
+            Ok(backbone) => backbone,
+            Err(error) => {
+                report.checks.push(PromoterReporterPanelReadinessCheck {
+                    kind: PromoterReporterPanelReadinessCheckKind::ReporterVectorValidation,
+                    state: PromoterReporterPanelReadinessState::Blocked,
+                    subject_id: Some(normalized_request.vector_seq_id.clone()),
+                    detail: error.to_string(),
+                    basis_sha256: None,
+                });
+                Self::append_promoter_reporter_member_not_evaluated_checks(
+                    &mut report.checks,
+                    "Exact reporter-vector validation must pass first.",
+                );
+                return Ok(report);
+            }
+        };
+        let validation = backbone.validation.as_ref();
+        let vector_ready = validation.is_some_and(|validation| {
+            validation.status == ReporterVectorValidationStatus::Verified
+        }) && self
+            .state
+            .sequences
+            .contains_key(&normalized_request.vector_seq_id);
+        report.checks.push(PromoterReporterPanelReadinessCheck {
+            kind: PromoterReporterPanelReadinessCheckKind::ReporterVectorValidation,
+            state: if vector_ready {
+                PromoterReporterPanelReadinessState::Ready
+            } else {
+                PromoterReporterPanelReadinessState::Blocked
+            },
+            subject_id: Some(normalized_request.vector_seq_id.clone()),
+            detail: validation
+                .map(|validation| {
+                    format!(
+                        "Exact catalog identity '{}' is {:?}; {}",
+                        normalized_request.vector_catalog_id, validation.status, backbone.note
+                    )
+                })
+                .unwrap_or_else(|| backbone.note.clone()),
+            basis_sha256: self
+                .state
+                .sequences
+                .get(&normalized_request.vector_seq_id)
+                .map(|dna| sha256_prefixed_str(&dna.get_forward_string())),
+        });
+        if !vector_ready {
+            Self::append_promoter_reporter_member_not_evaluated_checks(
+                &mut report.checks,
+                "Exact reporter-vector validation must pass first.",
+            );
+            return Ok(report);
+        }
+
+        if let Err(error) = self.resolve_promoter_reporter_panel_members(&normalized_request) {
+            report.checks.push(PromoterReporterPanelReadinessCheck {
+                kind: PromoterReporterPanelReadinessCheckKind::CandidateSelection,
+                state: PromoterReporterPanelReadinessState::Blocked,
+                subject_id: None,
+                detail: format!("Candidate, TSS, or evidence resolution failed: {error}"),
+                basis_sha256: None,
+            });
+            for kind in [
+                PromoterReporterPanelReadinessCheckKind::TssResolution,
+                PromoterReporterPanelReadinessCheckKind::EvidenceCompatibility,
+                PromoterReporterPanelReadinessCheckKind::PanelSimulation,
+                PromoterReporterPanelReadinessCheckKind::ProposalCurrency,
+                PromoterReporterPanelReadinessCheckKind::ApprovalMatch,
+            ] {
+                report.checks.push(PromoterReporterPanelReadinessCheck {
+                    kind,
+                    state: PromoterReporterPanelReadinessState::NotEvaluated,
+                    subject_id: None,
+                    detail: "All selected members must resolve first.".to_string(),
+                    basis_sha256: None,
+                });
+            }
+            return Ok(report);
+        }
+
+        let fresh_proposal = match self.plan_promoter_reporter_panel(normalized_request) {
+            Ok(proposal) => proposal,
+            Err(error) => {
+                report.checks.push(PromoterReporterPanelReadinessCheck {
+                    kind: PromoterReporterPanelReadinessCheckKind::PanelSimulation,
+                    state: PromoterReporterPanelReadinessState::Blocked,
+                    subject_id: Some(report.panel_id.clone()),
+                    detail: error.to_string(),
+                    basis_sha256: None,
+                });
+                for kind in [
+                    PromoterReporterPanelReadinessCheckKind::ProposalCurrency,
+                    PromoterReporterPanelReadinessCheckKind::ApprovalMatch,
+                ] {
+                    report.checks.push(PromoterReporterPanelReadinessCheck {
+                        kind,
+                        state: PromoterReporterPanelReadinessState::NotEvaluated,
+                        subject_id: None,
+                        detail: "The complete panel simulation must pass first.".to_string(),
+                        basis_sha256: None,
+                    });
+                }
+                return Ok(report);
+            }
+        };
+        for member in &fresh_proposal.members {
+            report.checks.push(PromoterReporterPanelReadinessCheck {
+                kind: PromoterReporterPanelReadinessCheckKind::CandidateSelection,
+                state: PromoterReporterPanelReadinessState::Ready,
+                subject_id: Some(member.member_id.clone()),
+                detail: format!(
+                    "Candidate '{}' resolves against loaded source sequence '{}'.",
+                    member.candidate_id, member.source_seq_id
+                ),
+                basis_sha256: Some(member.candidate_set.sha256.clone()),
+            });
+            report.checks.push(PromoterReporterPanelReadinessCheck {
+                kind: PromoterReporterPanelReadinessCheckKind::TssResolution,
+                state: PromoterReporterPanelReadinessState::Ready,
+                subject_id: Some(member.member_id.clone()),
+                detail: match member.fragment_role {
+                    PromoterReporterPanelFragmentRole::Core => format!(
+                        "Candidate '{}' retains its resolved transcript/TSS geometry.",
+                        member.candidate_id
+                    ),
+                    PromoterReporterPanelFragmentRole::Extended => format!(
+                        "Candidate '{}' has a phase-aware canonical-CDS boundary for transcript '{}'.",
+                        member.candidate_id,
+                        member
+                            .extended_boundary_audit
+                            .as_ref()
+                            .map(|audit| audit.policy.transcript_id.as_str())
+                            .unwrap_or("unresolved")
+                    ),
+                },
+                basis_sha256: Some(member.source_sequence_sha256.clone()),
+            });
+            let evidence_kinds = member
+                .evidence
+                .iter()
+                .map(|item| item.kind.clone())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+            report
+                .evidence_kinds_by_member_id
+                .insert(member.member_id.clone(), evidence_kinds.clone());
+            report.checks.push(PromoterReporterPanelReadinessCheck {
+                kind: PromoterReporterPanelReadinessCheckKind::EvidenceCompatibility,
+                state: if evidence_kinds.is_empty() {
+                    PromoterReporterPanelReadinessState::NotSupplied
+                } else {
+                    PromoterReporterPanelReadinessState::Ready
+                },
+                subject_id: Some(member.member_id.clone()),
+                detail: if evidence_kinds.is_empty() {
+                    "No independent or sequence-annotation evidence is bound; this is not a technical planning blocker."
+                        .to_string()
+                } else {
+                    format!(
+                        "{} structurally compatible evidence row(s) are bound (kinds: {}).",
+                        member.evidence.len(),
+                        evidence_kinds.join(", ")
+                    )
+                },
+                basis_sha256: None,
+            });
+        }
+
+        report.checks.push(PromoterReporterPanelReadinessCheck {
+            kind: PromoterReporterPanelReadinessCheckKind::PanelSimulation,
+            state: PromoterReporterPanelReadinessState::Ready,
+            subject_id: Some(report.panel_id.clone()),
+            detail: format!(
+                "The canonical planner produced {} product(s) and {} workflow step(s) without changing project state.",
+                fresh_proposal.products.len(),
+                fresh_proposal.workflow.len()
+            ),
+            basis_sha256: Some(fresh_proposal.workflow_sha256.clone()),
+        });
+        report.warnings = fresh_proposal.warnings.clone();
+
+        let Some(supplied_proposal) = supplied_proposal else {
+            report.checks.push(PromoterReporterPanelReadinessCheck {
+                kind: PromoterReporterPanelReadinessCheckKind::ProposalCurrency,
+                state: PromoterReporterPanelReadinessState::NotSupplied,
+                subject_id: None,
+                detail: "The request is ready for panel-plan; no reviewable proposal was supplied."
+                    .to_string(),
+                basis_sha256: None,
+            });
+            report.checks.push(PromoterReporterPanelReadinessCheck {
+                kind: PromoterReporterPanelReadinessCheckKind::ApprovalMatch,
+                state: PromoterReporterPanelReadinessState::NotApplicable,
+                subject_id: None,
+                detail: "Approval applies only after reviewing a generated proposal.".to_string(),
+                basis_sha256: None,
+            });
+            report.overall = PromoterReporterPanelReadinessOverall::ReadyToPlan;
+            return Ok(report);
+        };
+
+        if fresh_proposal.proposal_digest != supplied_proposal.proposal_digest {
+            report.checks.push(PromoterReporterPanelReadinessCheck {
+                kind: PromoterReporterPanelReadinessCheckKind::ProposalCurrency,
+                state: PromoterReporterPanelReadinessState::Blocked,
+                subject_id: Some(supplied_proposal.proposal_id),
+                detail: "The proposal is stale because current project state or a bound input produces a different digest."
+                    .to_string(),
+                basis_sha256: Some(fresh_proposal.proposal_digest),
+            });
+            report.checks.push(PromoterReporterPanelReadinessCheck {
+                kind: PromoterReporterPanelReadinessCheckKind::ApprovalMatch,
+                state: PromoterReporterPanelReadinessState::NotApplicable,
+                subject_id: None,
+                detail: "A stale proposal must be planned and reviewed again before approval."
+                    .to_string(),
+                basis_sha256: None,
+            });
+            return Ok(report);
+        }
+
+        report.checks.push(PromoterReporterPanelReadinessCheck {
+            kind: PromoterReporterPanelReadinessCheckKind::ProposalCurrency,
+            state: PromoterReporterPanelReadinessState::Ready,
+            subject_id: Some(supplied_proposal.proposal_id),
+            detail: "The supplied proposal exactly matches a fresh canonical plan for current project state."
+                .to_string(),
+            basis_sha256: Some(supplied_proposal.proposal_digest.clone()),
+        });
+        match approval_digest {
+            None => {
+                report.checks.push(PromoterReporterPanelReadinessCheck {
+                    kind: PromoterReporterPanelReadinessCheckKind::ApprovalMatch,
+                    state: PromoterReporterPanelReadinessState::NotSupplied,
+                    subject_id: None,
+                    detail:
+                        "The current proposal is ready for human review and exact-digest approval."
+                            .to_string(),
+                    basis_sha256: Some(supplied_proposal.proposal_digest),
+                });
+                report.overall = PromoterReporterPanelReadinessOverall::ReadyForApproval;
+            }
+            Some(approval_digest) if approval_digest == supplied_proposal.proposal_digest => {
+                report.checks.push(PromoterReporterPanelReadinessCheck {
+                    kind: PromoterReporterPanelReadinessCheckKind::ApprovalMatch,
+                    state: PromoterReporterPanelReadinessState::Ready,
+                    subject_id: None,
+                    detail: "The supplied approval digest exactly matches the current proposal."
+                        .to_string(),
+                    basis_sha256: Some(approval_digest),
+                });
+                report.overall = PromoterReporterPanelReadinessOverall::ReadyToMaterialize;
+            }
+            Some(approval_digest) => {
+                report.checks.push(PromoterReporterPanelReadinessCheck {
+                    kind: PromoterReporterPanelReadinessCheckKind::ApprovalMatch,
+                    state: PromoterReporterPanelReadinessState::Blocked,
+                    subject_id: None,
+                    detail: "The supplied approval digest does not match the current proposal."
+                        .to_string(),
+                    basis_sha256: Some(approval_digest),
+                });
+            }
+        }
+        Ok(report)
+    }
+
+    fn append_promoter_reporter_not_evaluated_checks(
+        checks: &mut Vec<PromoterReporterPanelReadinessCheck>,
+        detail: &str,
+    ) {
+        for kind in [
+            PromoterReporterPanelReadinessCheckKind::ReporterVectorValidation,
+            PromoterReporterPanelReadinessCheckKind::CandidateSelection,
+            PromoterReporterPanelReadinessCheckKind::TssResolution,
+            PromoterReporterPanelReadinessCheckKind::EvidenceCompatibility,
+            PromoterReporterPanelReadinessCheckKind::PanelSimulation,
+            PromoterReporterPanelReadinessCheckKind::ProposalCurrency,
+            PromoterReporterPanelReadinessCheckKind::ApprovalMatch,
+        ] {
+            checks.push(PromoterReporterPanelReadinessCheck {
+                kind,
+                state: PromoterReporterPanelReadinessState::NotEvaluated,
+                subject_id: None,
+                detail: detail.to_string(),
+                basis_sha256: None,
+            });
+        }
+    }
+
+    fn append_promoter_reporter_preproposal_not_evaluated_checks(
+        checks: &mut Vec<PromoterReporterPanelReadinessCheck>,
+        detail: &str,
+    ) {
+        for kind in [
+            PromoterReporterPanelReadinessCheckKind::RequestContract,
+            PromoterReporterPanelReadinessCheckKind::ReporterVectorValidation,
+            PromoterReporterPanelReadinessCheckKind::CandidateSelection,
+            PromoterReporterPanelReadinessCheckKind::TssResolution,
+            PromoterReporterPanelReadinessCheckKind::EvidenceCompatibility,
+            PromoterReporterPanelReadinessCheckKind::PanelSimulation,
+        ] {
+            checks.push(PromoterReporterPanelReadinessCheck {
+                kind,
+                state: PromoterReporterPanelReadinessState::NotEvaluated,
+                subject_id: None,
+                detail: detail.to_string(),
+                basis_sha256: None,
+            });
+        }
+    }
+
+    fn append_promoter_reporter_member_not_evaluated_checks(
+        checks: &mut Vec<PromoterReporterPanelReadinessCheck>,
+        detail: &str,
+    ) {
+        for kind in [
+            PromoterReporterPanelReadinessCheckKind::CandidateSelection,
+            PromoterReporterPanelReadinessCheckKind::TssResolution,
+            PromoterReporterPanelReadinessCheckKind::EvidenceCompatibility,
+            PromoterReporterPanelReadinessCheckKind::PanelSimulation,
+            PromoterReporterPanelReadinessCheckKind::ProposalCurrency,
+            PromoterReporterPanelReadinessCheckKind::ApprovalMatch,
+        ] {
+            checks.push(PromoterReporterPanelReadinessCheck {
+                kind,
+                state: PromoterReporterPanelReadinessState::NotEvaluated,
+                subject_id: None,
+                detail: detail.to_string(),
+                basis_sha256: None,
+            });
+        }
+    }
+
     fn build_promoter_reporter_panel_proposal(
         &self,
         request: PromoterReporterPanelRequest,
@@ -3834,6 +4327,164 @@ mod tests {
             "promoter-panel-proposal-test",
             promoter_reporter_panel_proposal_runs_on_expanded_stack,
         );
+    }
+
+    #[test]
+    fn promoter_reporter_panel_readiness_is_content_bound_and_fail_closed() {
+        run_promoter_reporter_panel_end_to_end_test(
+            "promoter-panel-readiness-test",
+            promoter_reporter_panel_readiness_runs_on_expanded_stack,
+        );
+    }
+
+    fn promoter_reporter_panel_readiness_runs_on_expanded_stack() {
+        let (_temp, engine, mut request) = promoter_reporter_panel_materialization_fixture();
+        request.members[0].evidence.push(PromoterEvidenceItem {
+            evidence_id: "synthetic_cutrun_support".to_string(),
+            kind: "occupancy".to_string(),
+            source: "synthetic readiness regression".to_string(),
+            summary: "Synthetic independent occupancy input for typed readiness output."
+                .to_string(),
+            ..PromoterEvidenceItem::default()
+        });
+        let request_report = engine
+            .inspect_promoter_reporter_panel_readiness(PromoterReporterPanelReadinessRequest {
+                panel_request: Some(Box::new(request.clone())),
+                ..PromoterReporterPanelReadinessRequest::default()
+            })
+            .expect("request readiness");
+        assert_eq!(
+            request_report.overall,
+            PromoterReporterPanelReadinessOverall::ReadyToPlan
+        );
+        assert!(request_report.checks.iter().any(|check| {
+            check.kind == PromoterReporterPanelReadinessCheckKind::ReporterVectorValidation
+                && check.state == PromoterReporterPanelReadinessState::Ready
+        }));
+        assert!(request_report.checks.iter().any(|check| {
+            check.kind == PromoterReporterPanelReadinessCheckKind::TssResolution
+                && check.state == PromoterReporterPanelReadinessState::Ready
+        }));
+        assert!(
+            request_report
+                .evidence_kinds_by_member_id
+                .values()
+                .any(|kinds| kinds.iter().any(|kind| kind == "occupancy"))
+        );
+
+        let mut missing_vector_request = request.clone();
+        missing_vector_request.vector_seq_id = "missing_vector".to_string();
+        let missing_vector_report = engine
+            .inspect_promoter_reporter_panel_readiness(PromoterReporterPanelReadinessRequest {
+                panel_request: Some(Box::new(missing_vector_request)),
+                ..PromoterReporterPanelReadinessRequest::default()
+            })
+            .expect("missing-vector readiness remains inspectable");
+        assert_eq!(
+            missing_vector_report.overall,
+            PromoterReporterPanelReadinessOverall::Blocked
+        );
+        assert!(missing_vector_report.checks.iter().any(|check| {
+            check.kind == PromoterReporterPanelReadinessCheckKind::ReporterVectorValidation
+                && check.state == PromoterReporterPanelReadinessState::Blocked
+                && check.subject_id.as_deref() == Some("missing_vector")
+        }));
+
+        let proposal = engine
+            .plan_promoter_reporter_panel(request)
+            .expect("current proposal");
+        let proposal_report = engine
+            .inspect_promoter_reporter_panel_readiness(PromoterReporterPanelReadinessRequest {
+                proposal: Some(Box::new(proposal.clone())),
+                ..PromoterReporterPanelReadinessRequest::default()
+            })
+            .expect("proposal readiness");
+        assert_eq!(
+            proposal_report.overall,
+            PromoterReporterPanelReadinessOverall::ReadyForApproval
+        );
+
+        let approval_report = engine
+            .inspect_promoter_reporter_panel_readiness(PromoterReporterPanelReadinessRequest {
+                proposal: Some(Box::new(proposal.clone())),
+                approval_digest: Some(proposal.proposal_digest.clone()),
+                ..PromoterReporterPanelReadinessRequest::default()
+            })
+            .expect("approval readiness");
+        assert_eq!(
+            approval_report.overall,
+            PromoterReporterPanelReadinessOverall::ReadyToMaterialize
+        );
+
+        let mismatched_approval = engine
+            .inspect_promoter_reporter_panel_readiness(PromoterReporterPanelReadinessRequest {
+                proposal: Some(Box::new(proposal.clone())),
+                approval_digest: Some("sha256:not-the-reviewed-proposal".to_string()),
+                ..PromoterReporterPanelReadinessRequest::default()
+            })
+            .expect("mismatched approval readiness");
+        assert_eq!(
+            mismatched_approval.overall,
+            PromoterReporterPanelReadinessOverall::Blocked
+        );
+        assert!(mismatched_approval.checks.iter().any(|check| {
+            check.kind == PromoterReporterPanelReadinessCheckKind::ApprovalMatch
+                && check.state == PromoterReporterPanelReadinessState::Blocked
+        }));
+
+        let empty_approval = engine
+            .inspect_promoter_reporter_panel_readiness(PromoterReporterPanelReadinessRequest {
+                proposal: Some(Box::new(proposal.clone())),
+                approval_digest: Some("   ".to_string()),
+                ..PromoterReporterPanelReadinessRequest::default()
+            })
+            .expect("empty approval readiness");
+        assert_eq!(
+            empty_approval.overall,
+            PromoterReporterPanelReadinessOverall::Blocked
+        );
+
+        let mut altered_proposal = proposal.clone();
+        altered_proposal.request.panel_id.push_str("_altered");
+        let altered_report = engine
+            .inspect_promoter_reporter_panel_readiness(PromoterReporterPanelReadinessRequest {
+                proposal: Some(Box::new(altered_proposal)),
+                ..PromoterReporterPanelReadinessRequest::default()
+            })
+            .expect("altered proposal readiness");
+        assert_eq!(
+            altered_report.overall,
+            PromoterReporterPanelReadinessOverall::Blocked
+        );
+        assert!(altered_report.checks.iter().any(|check| {
+            check.kind == PromoterReporterPanelReadinessCheckKind::ProposalCurrency
+                && check.state == PromoterReporterPanelReadinessState::Blocked
+                && check.detail.contains("embedded proposal_digest")
+        }));
+        assert!(altered_report.checks.iter().any(|check| {
+            check.kind == PromoterReporterPanelReadinessCheckKind::RequestContract
+                && check.state == PromoterReporterPanelReadinessState::NotEvaluated
+        }));
+
+        let candidate_set_path = &proposal.request.members[0].candidate_set_path;
+        let mut candidate_set_bytes = fs::read(candidate_set_path).expect("candidate set bytes");
+        candidate_set_bytes.push(b'\n');
+        fs::write(candidate_set_path, candidate_set_bytes).expect("touch candidate set content");
+        let stale_report = engine
+            .inspect_promoter_reporter_panel_readiness(PromoterReporterPanelReadinessRequest {
+                proposal: Some(Box::new(proposal)),
+                ..PromoterReporterPanelReadinessRequest::default()
+            })
+            .expect("stale proposal readiness");
+        assert_eq!(
+            stale_report.overall,
+            PromoterReporterPanelReadinessOverall::Blocked
+        );
+        assert!(stale_report.checks.iter().any(|check| {
+            check.kind == PromoterReporterPanelReadinessCheckKind::ProposalCurrency
+                && check.state == PromoterReporterPanelReadinessState::Blocked
+                && check.detail.contains("stale")
+        }));
     }
 
     fn promoter_reporter_panel_proposal_runs_on_expanded_stack() {

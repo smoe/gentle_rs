@@ -5526,6 +5526,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "ExportReporterCorpus",
     "PlanReporterConstructHandoff",
     "PlanPromoterReporterPanel",
+    "InspectPromoterReporterPanelReadiness",
     "MaterializePromoterReporterPanel",
     "ScanTfbsHits",
     "InspectJasparEntry",
@@ -5638,6 +5639,12 @@ const MCP_TOOL_NAMES: &[(&str, &str, &str, CapabilityMutation)] = &[
         "promoter_reporter_panel_plan",
         "Promoter Reporter Panel Plan",
         "Build a read-only, content-addressed promoter-reporter panel proposal through the shared `promoters panel-plan` shell contract.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
+        "promoter_reporter_panel_readiness",
+        "Promoter Reporter Panel Readiness",
+        "Recompute context-bound promoter-reporter planning, proposal-currency, and exact-approval readiness through the shared `promoters panel-readiness` shell contract.",
         CapabilityMutation::ReadOnly,
     ),
     (
@@ -7125,6 +7132,7 @@ fn infer_engine_operation_mutation(operation: &str) -> CapabilityMutation {
         || operation == "SuggestPromoterReporterFragments"
         || operation == "ComparePromoterReporterArchitectures"
         || operation == "PlanPromoterReporterPanel"
+        || operation == "InspectPromoterReporterPanelReadiness"
         || operation == "BuildRepeatEnvironmentCohort"
         || operation == "BuildProteinToDnaHandoffReasoning"
         || operation == "DesignPrimerGroupTarget"

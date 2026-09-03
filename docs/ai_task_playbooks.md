@@ -357,8 +357,14 @@ is a resolved motif hit. Native-only members may use non-motif anchors and do
 not acquire a synthetic mutant by default.
 
 ```text
+promoters panel-readiness request @panel_request.json --path panel_readiness.json
 promoters panel-plan @panel_request.json --path panel_proposal.json
 ```
+
+Proceed to `panel-plan` only when the context-bound readiness report says
+`ready_to_plan`. The inspector reruns exact-vector, candidate/TSS,
+evidence-coordinate, and detached-simulation checks; `not_supplied` evidence is
+not a mechanical failure and is not evidence of absent occupancy.
 
 Review before approval:
 
@@ -372,12 +378,17 @@ Review before approval:
 - one `native` product per native-only member, plus only those engineered
   controls that were explicitly requested.
 
-Stop before materialization. After a human reviews the complete proposal, use
-its exact digest:
+Stop before materialization. After a human reviews the complete proposal,
+confirm that it remains current and then use its exact digest:
 
 ```text
+promoters panel-readiness proposal @panel_proposal.json --approve DIGEST --path panel_approval_readiness.json
 promoters panel-materialize @panel_proposal.json --approve DIGEST
 ```
+
+Materialize only when the second report says `ready_to_materialize`.
+`ready_for_approval` means that the proposal is current but no matching human
+approval digest was supplied.
 
 External retrieval, mutation design, and final materialization remain
 confirmation-gated. A proposal predicts constructs; it does not establish

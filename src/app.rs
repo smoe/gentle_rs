@@ -12111,6 +12111,7 @@ Error: `{err}`"
                 reporter_construct_handoff: None,
                 reporter_vector_validation: None,
                 promoter_reporter_panel_proposal: None,
+                promoter_reporter_panel_readiness: None,
                 promoter_reporter_panel_receipt: None,
                 uniprot_projection_audit: None,
                 uniprot_linked_transcript_inventory: None,

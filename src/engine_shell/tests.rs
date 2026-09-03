@@ -108,6 +108,19 @@ fn promoters_panel_routes_parse_typed_request_and_exact_approval() {
         other => panic!("unexpected panel plan command: {other:?}"),
     }
 
+    let readiness = parse_shell_line(&format!(
+        "promoters panel-readiness request '{request_json}' --path /tmp/tp73_readiness.json"
+    ))
+    .expect("parse panel readiness");
+    match readiness {
+        ShellCommand::PromotersPanelReadiness { request, output } => {
+            assert!(request.panel_request.is_some());
+            assert!(request.proposal.is_none());
+            assert_eq!(output.as_deref(), Some("/tmp/tp73_readiness.json"));
+        }
+        other => panic!("unexpected panel readiness command: {other:?}"),
+    }
+
     let proposal = PromoterReporterPanelProposal {
         schema: crate::engine::PROMOTER_REPORTER_PANEL_PROPOSAL_SCHEMA.to_string(),
         proposal_id: "panel_1".to_string(),
@@ -116,6 +129,25 @@ fn promoters_panel_routes_parse_typed_request_and_exact_approval() {
         ..PromoterReporterPanelProposal::default()
     };
     let proposal_json = serde_json::to_string(&proposal).expect("proposal JSON");
+    let readiness = parse_shell_line(&format!(
+        "promoters panel-readiness proposal '{proposal_json}' --approve sha256:approved"
+    ))
+    .expect("parse proposal readiness");
+    match readiness {
+        ShellCommand::PromotersPanelReadiness { request, output } => {
+            assert!(request.panel_request.is_none());
+            assert_eq!(
+                request
+                    .proposal
+                    .as_ref()
+                    .map(|proposal| proposal.proposal_id.as_str()),
+                Some("panel_1")
+            );
+            assert_eq!(request.approval_digest.as_deref(), Some("sha256:approved"));
+            assert!(output.is_none());
+        }
+        other => panic!("unexpected proposal readiness command: {other:?}"),
+    }
     let materialize = parse_shell_line(&format!(
         "promoters panel-materialize '{proposal_json}' --approve sha256:approved"
     ))

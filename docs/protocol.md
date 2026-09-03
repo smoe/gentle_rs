@@ -3771,6 +3771,25 @@ Sequencing-trace evidence notes:
   - `gentle.promoter_reporter_panel_receipt.v1` records the approved digest,
     committed sequence/product ids, artifact paths, manifest path, and final
     project-state hash
+  - `gentle.promoter_reporter_panel_readiness_request.v1` contains exactly one
+    `panel_request` or `proposal`, plus an optional `approval_digest` for a
+    proposal; `InspectPromoterReporterPanelReadiness { request, path? }`
+    emits `gentle.promoter_reporter_panel_readiness.v1` without changing state
+  - readiness checks are context-bound typed rows for the request contract,
+    exact reporter-vector validation, candidate selection, transcript/TSS
+    geometry, evidence compatibility, full detached simulation, proposal
+    currency, and exact approval match; the report's overall state is
+    `blocked`, `ready_to_plan`, `ready_for_approval`, or
+    `ready_to_materialize`
+  - `evidence_kinds_by_member_id` preserves the normalized open evidence kinds
+    for each resolved panel member, so callers can distinguish typed
+    `occupancy`, `expression_response`, motif, and future evidence rows without
+    parsing human-readable check details
+  - the inspector reruns the canonical panel planner and recomputes proposal
+    digests against current project and bound file contents. It does not expose
+    persistent Boolean readiness facts that could survive input drift, and a
+    missing evidence row remains `not_supplied` rather than being treated as
+    either a technical blocker or proof of absent occupancy
   - `PlanPromoterReporterPanel { request, path? }` is read-only and performs its
     complete construct simulation in detached state
   - `MaterializePromoterReporterPanel { proposal, approval_digest }` recomputes
@@ -4374,6 +4393,9 @@ external coding agent runtime, see:
       contract; requires explicit `confirm=true`)
     - `promoter_reporter_panel_plan` (read-only shared `promoters panel-plan`
       contract)
+    - `promoter_reporter_panel_readiness` (read-only shared
+      `promoters panel-readiness` contract for request, proposal-currency, and
+      optional exact-approval checks)
     - `promoter_reporter_panel_materialize` (shared
       `promoters panel-materialize` contract; requires explicit `confirm=true`
       plus the exact approved proposal digest)

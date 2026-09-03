@@ -289,6 +289,13 @@ argument bindings as `unknown`. Host-domain availability facts must project
 from existing deterministic preflight/probe logic rather than creating a
 parallel detector.
 
+Content-addressed approval workflows whose truth depends on external files,
+catalog bytes, or an exact proposal digest use an operation-specific,
+context-bound readiness report rather than a durable Boolean project fact. The
+readiness operation must rerun the canonical validator/planner against current
+state and preserve `not_supplied` separately from `blocked`; otherwise an old
+fact could incorrectly authorize a changed proposal.
+
 ## DEC-025: Legacy SHA-1 Download Verification Uses External Tools
 
 Status: active

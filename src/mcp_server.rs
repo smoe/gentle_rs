@@ -993,6 +993,38 @@ fn tool_list() -> Value {
             }
         }));
         items.push(json!({
+            "name": "promoter_reporter_panel_readiness",
+            "title": "Promoter Reporter Panel Readiness",
+            "description": "Recompute context-bound promoter-reporter planning, proposal-currency, and exact-approval readiness through the shared `promoters panel-readiness` shell contract.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "state_path": {
+                        "type": "string",
+                        "description": "Optional project state path. Defaults to server startup state path."
+                    },
+                    "input_kind": {
+                        "type": "string",
+                        "enum": ["request", "proposal"],
+                        "description": "Whether input is a gentle.promoter_reporter_panel_request.v1 request or gentle.promoter_reporter_panel_proposal.v1 proposal."
+                    },
+                    "input": {
+                        "description": "Exact request/proposal object or JSON string selected by input_kind.",
+                        "oneOf": [
+                            { "type": "object" },
+                            { "type": "string" }
+                        ]
+                    },
+                    "approval_digest": {
+                        "type": "string",
+                        "description": "Optional exact proposal_digest to test for materialization readiness; valid only with input_kind=proposal."
+                    }
+                },
+                "required": ["input_kind", "input"],
+                "additionalProperties": false
+            }
+        }));
+        items.push(json!({
             "name": "promoter_reporter_panel_materialize",
             "title": "Promoter Reporter Panel Materialize",
             "description": "Materialize an unchanged promoter-reporter panel proposal through the shared `promoters panel-materialize` shell contract after exact digest approval.",
@@ -1406,6 +1438,7 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
         "exon_skip_materialize" => &["transcripts exon-skip-materialize"],
         "transcript_assay_feasibility" => &["primers inspect-transcript-assay-feasibility"],
         "promoter_reporter_panel_plan" => &["promoters panel-plan"],
+        "promoter_reporter_panel_readiness" => &["promoters panel-readiness"],
         "promoter_reporter_panel_materialize" => &["promoters panel-materialize"],
         _ => &[],
     }
@@ -2447,6 +2480,74 @@ fn promoter_reporter_panel_plan_tool_result(default_state_path: &str, arguments:
         &args,
         vec!["promoters".to_string(), "panel-plan".to_string(), request],
         "promoter_reporter_panel_plan",
+    ) {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
+fn promoter_reporter_panel_readiness_tool_result(
+    default_state_path: &str,
+    arguments: &Value,
+) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let input_kind = match required_string_arg(&args, "input_kind") {
+        Ok(value) if value == "request" || value == "proposal" => value,
+        Ok(value) => {
+            return tool_result_text(
+                format!("MCP argument 'input_kind' must be 'request' or 'proposal', got '{value}'"),
+                "text",
+                true,
+            );
+        }
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let input = match optional_json_string_arg(&args, "input") {
+        Ok(Some(value)) => value,
+        Ok(None) => {
+            return tool_result_text(
+                "MCP argument 'input' is required and must be an exact promoter-reporter panel request/proposal object or JSON string"
+                    .to_string(),
+                "text",
+                true,
+            );
+        }
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let approval_digest = match args.get("approval_digest") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(value)) => Some(value.trim().to_string()),
+        Some(_) => {
+            return tool_result_text(
+                "MCP argument 'approval_digest' must be a string".to_string(),
+                "text",
+                true,
+            );
+        }
+    };
+    if input_kind == "request" && approval_digest.is_some() {
+        return tool_result_text(
+            "MCP argument 'approval_digest' is valid only with input_kind='proposal'".to_string(),
+            "text",
+            true,
+        );
+    }
+
+    let mut tokens = vec![
+        "promoters".to_string(),
+        "panel-readiness".to_string(),
+        input_kind,
+        input,
+    ];
+    if let Some(approval_digest) = approval_digest {
+        tokens.push("--approve".to_string());
+        tokens.push(approval_digest);
+    }
+    match run_non_mutating_shell_tool(
+        default_state_path,
+        &args,
+        tokens,
+        "promoter_reporter_panel_readiness",
     ) {
         Ok(output) => tool_result_json(output, false),
         Err(err) => tool_result_text(err, "text", true),
@@ -3520,6 +3621,9 @@ fn tool_call_result(default_state_path: &str, params: ToolCallParams) -> Value {
         "promoter_reporter_panel_plan" => {
             promoter_reporter_panel_plan_tool_result(default_state_path, &params.arguments)
         }
+        "promoter_reporter_panel_readiness" => {
+            promoter_reporter_panel_readiness_tool_result(default_state_path, &params.arguments)
+        }
         "promoter_reporter_panel_materialize" => {
             promoter_reporter_panel_materialize_tool_result(default_state_path, &params.arguments)
         }
@@ -4092,6 +4196,34 @@ mod tests {
             .expect("promoter panel plan tool");
         assert_eq!(plan["mutating"].as_bool(), Some(false));
         assert_eq!(plan["commandPaths"], json!(["promoters panel-plan"]));
+        let readiness = tools
+            .iter()
+            .find(|tool| tool["name"].as_str() == Some("promoter_reporter_panel_readiness"))
+            .expect("promoter panel readiness tool");
+        assert_eq!(readiness["mutating"].as_bool(), Some(false));
+        assert_eq!(
+            readiness["commandPaths"],
+            json!(["promoters panel-readiness"])
+        );
+        let invalid_readiness_approval = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "promoter_reporter_panel_readiness",
+            json!({
+                "input_kind": "request",
+                "input": {},
+                "approval_digest": " "
+            }),
+        );
+        assert_eq!(
+            invalid_readiness_approval["result"]["isError"].as_bool(),
+            Some(true)
+        );
+        assert!(
+            invalid_readiness_approval["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("valid only with input_kind='proposal'")
+        );
         let materialize = tools
             .iter()
             .find(|tool| tool["name"].as_str() == Some("promoter_reporter_panel_materialize"))

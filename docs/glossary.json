@@ -1986,6 +1986,21 @@
       {
          "aliases": [],
          "engine_operations": [
+            "InspectPromoterReporterPanelReadiness"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "promoters panel-readiness",
+         "summary": "Recompute request, exact-vector, candidate/TSS, evidence, proposal-currency, and approval readiness without changing project state.",
+         "usage": "promoters panel-readiness request REQUEST_JSON_OR_@FILE | proposal PROPOSAL_JSON_OR_@FILE [--approve DIGEST] [--path REPORT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "PlanPromoterReporterPanel"
          ],
          "interfaces": [

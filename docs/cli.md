@@ -1564,6 +1564,9 @@ Current tools:
   contract; requires `confirm=true` and accepts requested return payloads)
 - `promoter_reporter_panel_plan` (read-only shared `promoters panel-plan`
   contract; accepts the exact request object)
+- `promoter_reporter_panel_readiness` (read-only shared
+  `promoters panel-readiness` contract; accepts a request or proposal and an
+  optional exact approval digest)
 - `promoter_reporter_panel_materialize` (shared `promoters panel-materialize`
   contract; requires `confirm=true` and the exact approved proposal digest)
 - `op` (apply one operation; requires `confirm=true`)
@@ -7341,16 +7344,47 @@ vector-ATG removal, and junction sequence.
 `--path` and `--svg-path` are independent. Omitting either keeps that artifact
 in memory while returning the same portable report. MCP callers use the same
 `ComparePromoterReporterArchitectures` operation through the confirmed generic
-`op` route; there is no MCP-only analysis or scoring model.
+`op` route; there is no MCP-only analysis or scoring model. The corresponding
+request and report schemas are
+`gentle.promoter_reporter_architecture_comparison_request.v1` and
+`gentle.promoter_reporter_architecture_comparison.v1`; their field-level
+contract is documented in [protocol.md](protocol.md).
 
-Build and inspect a complete promoter-reporter panel proposal through the
+Inspect and then build a complete promoter-reporter panel proposal through the
 distinct `promoters` command family (`reporters` remains the reporter-gene
 catalog family):
 
 ```bash
 cargo run --quiet --bin gentle_cli -- --state STATE.json \
+  promoters panel-readiness request @panel_request.json \
+  --path panel_readiness.json
+
+cargo run --quiet --bin gentle_cli -- --state STATE.json \
   promoters panel-plan @panel_request.json --path panel_proposal.json
 ```
+
+When resuming from the saved proposal, ask GENtle to check its currency before
+materialization. Omit `--approve` to stop at `ready_for_approval`:
+
+```bash
+DIGEST=$(jq -r .proposal_digest panel_proposal.json)
+cargo run --quiet --bin gentle_cli -- --state STATE.json \
+  promoters panel-readiness proposal @panel_proposal.json \
+  --approve "$DIGEST" --path panel_approval_readiness.json
+```
+
+The first form reports `ready_to_plan` only after the exact vector, selected
+candidate/TSS geometry, supplied evidence coordinates, and complete detached
+panel simulation pass. The proposal form additionally recomputes the canonical
+proposal against current project and file contents; it reports
+`ready_for_approval` without a digest and `ready_to_materialize` only when the
+supplied digest matches exactly. Evidence may be `not_supplied` without making
+the mechanics invalid, and evidence compatibility is not a claim of occupancy
+or promoter function. `evidence_kinds_by_member_id` exposes the normalized
+per-member evidence vocabulary without requiring callers to parse check prose.
+The wrapper/report schemas are
+`gentle.promoter_reporter_panel_readiness_request.v1` and
+`gentle.promoter_reporter_panel_readiness.v1`.
 
 The request names one loaded, exactly catalog-validated vector and one or more
 saved `gentle.promoter_reporter_candidates.v1` members. Use

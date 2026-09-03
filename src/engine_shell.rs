@@ -94,24 +94,24 @@ use crate::{
         ProjectFactGraph, ProjectFactTypeSpec, ProjectState, PromoterArtifactManifestEntry,
         PromoterCohortKind, PromoterExpressionEvidenceInput,
         PromoterReporterArchitectureComparisonRequest, PromoterReporterFragmentPolicy,
-        PromoterReporterPanelProposal, PromoterReporterPanelRequest, PromoterTfbsGeneQuery,
-        PromoterWindowCollapseMode, ProteinExpressionCdsAssessment,
-        ProteinExpressionFeatureSummary, ProteinExpressionHandoffReport,
-        ProteinExpressionHostChassisCandidate, ProteinExpressionProductDefinition,
-        ProteinExpressionProductReadiness, ProteinExpressionRequirements,
-        ProteinExpressionSequenceContext, ProteinExpressionServiceHandoffCandidate,
-        ProteinExpressionTagAssessment, ProteinExpressionVectorRouteCandidate,
-        ProteinExternalOpinionSource, ProteinFeatureFilter, ProteinToDnaHandoffRankingGoal,
-        QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
-        RNA_READ_ALIGNMENT_DISPLAY_BATCH_SCHEMA, RackAuthoringTemplate, RackCarrierLabelPreset,
-        RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
-        RackProfileKind, ReadAcquisitionAnalysisFormat, ReadAcquisitionReadLayout,
-        RegulatoryPartnerAnchorMode, RegulatoryPartnerMotifThreshold, RenderSvgMode,
-        RepeatAnnotationFilter, RepeatEnvironmentCohortReport, RepeatEnvironmentGeometryMode,
-        ReporterConstraints, ReporterCorpusExportFormat, RestrictionCloningPcrHandoffMode,
-        RestrictionSiteScanCollectionMemberBinding, RestrictionSiteScanReport,
-        ReverseTranslationReport, ReverseTranslationReportSummary, RnaReadAlignConfig,
-        RnaReadAlignmentDisplayBatch, RnaReadAlignmentInspectionEffectFilter,
+        PromoterReporterPanelProposal, PromoterReporterPanelReadinessRequest,
+        PromoterReporterPanelRequest, PromoterTfbsGeneQuery, PromoterWindowCollapseMode,
+        ProteinExpressionCdsAssessment, ProteinExpressionFeatureSummary,
+        ProteinExpressionHandoffReport, ProteinExpressionHostChassisCandidate,
+        ProteinExpressionProductDefinition, ProteinExpressionProductReadiness,
+        ProteinExpressionRequirements, ProteinExpressionSequenceContext,
+        ProteinExpressionServiceHandoffCandidate, ProteinExpressionTagAssessment,
+        ProteinExpressionVectorRouteCandidate, ProteinExternalOpinionSource, ProteinFeatureFilter,
+        ProteinToDnaHandoffRankingGoal, QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting,
+        QpcrTranscriptTargetingMode, RNA_READ_ALIGNMENT_DISPLAY_BATCH_SCHEMA,
+        RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
+        RackOccupant, RackPhysicalTemplateKind, RackProfileKind, ReadAcquisitionAnalysisFormat,
+        ReadAcquisitionReadLayout, RegulatoryPartnerAnchorMode, RegulatoryPartnerMotifThreshold,
+        RenderSvgMode, RepeatAnnotationFilter, RepeatEnvironmentCohortReport,
+        RepeatEnvironmentGeometryMode, ReporterConstraints, ReporterCorpusExportFormat,
+        RestrictionCloningPcrHandoffMode, RestrictionSiteScanCollectionMemberBinding,
+        RestrictionSiteScanReport, ReverseTranslationReport, ReverseTranslationReportSummary,
+        RnaReadAlignConfig, RnaReadAlignmentDisplayBatch, RnaReadAlignmentInspectionEffectFilter,
         RnaReadAlignmentInspectionSortKey, RnaReadAlignmentInspectionSubsetSpec,
         RnaReadConcatemerInspectionSettings, RnaReadGeneSupportAuditCohortFilter,
         RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
@@ -1091,6 +1091,10 @@ pub enum ShellCommand {
     },
     PromotersPanelPlan {
         request: PromoterReporterPanelRequest,
+        output: Option<String>,
+    },
+    PromotersPanelReadiness {
+        request: PromoterReporterPanelReadinessRequest,
         output: Option<String>,
     },
     PromotersCompareArchitectures {
@@ -8449,6 +8453,15 @@ impl ShellCommand {
                 request.panel_id,
                 request.members.len(),
                 request.vector_seq_id,
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::PromotersPanelReadiness { request, output } => format!(
+                "inspect promoter-reporter panel readiness from {} (output='{}')",
+                if request.proposal.is_some() {
+                    "a proposal"
+                } else {
+                    "a panel request"
+                },
                 output.as_deref().unwrap_or("-"),
             ),
             Self::PromotersCompareArchitectures {
@@ -26269,6 +26282,44 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "registry": registry_metadata_for_introspection("ComparePromoterReporterArchitectures")
         }),
         json!({
+            "id": "promoters panel-readiness",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "INPUT_KIND", "required": true, "subject_kind": "other", "detail": "request or proposal; an explicit gentle.promoter_reporter_panel_readiness_request.v1 wrapper is also accepted"},
+                {"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "gentle.promoter_reporter_panel_request.v1 or gentle.promoter_reporter_panel_proposal.v1 selected by INPUT_KIND"},
+                {"name": "APPROVAL_DIGEST", "required": false, "subject_kind": "other", "detail": "optional exact proposal digest supplied by --approve for proposal input"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional portable readiness JSON supplied by --path"}
+            ],
+            "reads": [],
+            "effects": [
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Recompute context-bound promoter-reporter vector, candidate/TSS, evidence, proposal-currency, and exact-approval readiness without changing project state.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("promoters panel-readiness")
+        }),
+        json!({
+            "id": "InspectPromoterReporterPanelReadiness",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "gentle.promoter_reporter_panel_readiness_request.v1"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional readiness JSON carried by path"}
+            ],
+            "reads": [],
+            "effects": [
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Inspect promoter-reporter panel readiness through the shared engine operation; blocked inputs remain inspectable instead of being hidden by a coarse precondition.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("InspectPromoterReporterPanelReadiness")
+        }),
+        json!({
             "id": "promoters panel-plan",
             "kind": "operation",
             "mutating": "false",
@@ -40979,7 +41030,7 @@ fn parse_gene_groups_command(tokens: &[String]) -> Result<ShellCommand, String> 
 fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "promoters requires a subcommand: compare-architectures, panel-plan, or panel-materialize"
+            "promoters requires a subcommand: compare-architectures, panel-readiness, panel-plan, or panel-materialize"
                 .to_string(),
         );
     }
@@ -41060,6 +41111,94 @@ fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
             }
             Ok(ShellCommand::PromotersPanelPlan { request, output })
         }
+        "panel-readiness" => {
+            if tokens.len() < 3 || tokens[2].starts_with("--") {
+                return Err(
+                    "promoters panel-readiness requires request REQUEST_JSON_OR_@FILE or proposal PROPOSAL_JSON_OR_@FILE [--approve DIGEST] [--path REPORT.json]"
+                        .to_string(),
+                );
+            }
+            let (mut request, mut idx) = match tokens[2].as_str() {
+                "request" => {
+                    if tokens.len() < 4 || tokens[3].starts_with("--") {
+                        return Err(
+                            "promoters panel-readiness request requires REQUEST_JSON_OR_@FILE"
+                                .to_string(),
+                        );
+                    }
+                    let panel_request = parse_required_json_payload::<PromoterReporterPanelRequest>(
+                        &tokens[3],
+                        "promoter-reporter panel request",
+                    )?;
+                    (
+                        PromoterReporterPanelReadinessRequest {
+                            panel_request: Some(Box::new(panel_request)),
+                            ..PromoterReporterPanelReadinessRequest::default()
+                        },
+                        4,
+                    )
+                }
+                "proposal" => {
+                    if tokens.len() < 4 || tokens[3].starts_with("--") {
+                        return Err(
+                            "promoters panel-readiness proposal requires PROPOSAL_JSON_OR_@FILE"
+                                .to_string(),
+                        );
+                    }
+                    let proposal = parse_required_json_payload::<PromoterReporterPanelProposal>(
+                        &tokens[3],
+                        "promoter-reporter panel proposal",
+                    )?;
+                    (
+                        PromoterReporterPanelReadinessRequest {
+                            proposal: Some(Box::new(proposal)),
+                            ..PromoterReporterPanelReadinessRequest::default()
+                        },
+                        4,
+                    )
+                }
+                _ => (
+                    parse_required_json_payload::<PromoterReporterPanelReadinessRequest>(
+                        &tokens[2],
+                        "promoter-reporter panel readiness request",
+                    )?,
+                    3,
+                ),
+            };
+            let mut output = None;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--approve" => {
+                        if request.proposal.is_none() {
+                            return Err(
+                                "promoters panel-readiness --approve requires proposal input"
+                                    .to_string(),
+                            );
+                        }
+                        request.approval_digest = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--approve",
+                            "promoters panel-readiness",
+                        )?);
+                    }
+                    "--path" | "--output" => {
+                        output = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--path",
+                            "promoters panel-readiness",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for promoters panel-readiness"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PromotersPanelReadiness { request, output })
+        }
         "panel-materialize" => {
             if tokens.len() < 3 || tokens[2].starts_with("--") {
                 return Err(
@@ -41099,7 +41238,7 @@ fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
             })
         }
         other => Err(format!(
-            "Unknown promoters subcommand '{other}' (expected compare-architectures, panel-plan, or panel-materialize)"
+            "Unknown promoters subcommand '{other}' (expected compare-architectures, panel-readiness, panel-plan, or panel-materialize)"
         )),
     }
 }
@@ -51488,6 +51627,21 @@ fn execute_export_import_and_resource_command(
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({ "result": proposal }),
+            })
+        }
+        ShellCommand::PromotersPanelReadiness { request, output } => {
+            let op_result = engine
+                .apply(Operation::InspectPromoterReporterPanelReadiness {
+                    request: Box::new(request.clone()),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result.promoter_reporter_panel_readiness.ok_or_else(|| {
+                "Promoter-reporter panel readiness operation returned no report".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": report }),
             })
         }
         ShellCommand::PromotersCompareArchitectures {
@@ -64684,6 +64838,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::ReportersExportCorpus { .. }
             | ShellCommand::PromotersCompareArchitectures { .. }
             | ShellCommand::PromotersPanelPlan { .. }
+            | ShellCommand::PromotersPanelReadiness { .. }
             | ShellCommand::PromotersPanelMaterialize { .. }
             | ShellCommand::ResourcesListPublicationDatasets { .. }
             | ShellCommand::ResourcesPublicationDatasetStatus { .. }
@@ -65496,6 +65651,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ReportersExportCorpus { .. }
         | ShellCommand::PromotersCompareArchitectures { .. }
         | ShellCommand::PromotersPanelPlan { .. }
+        | ShellCommand::PromotersPanelReadiness { .. }
         | ShellCommand::PromotersPanelMaterialize { .. }
         | ShellCommand::ResourcesListPublicationDatasets { .. }
         | ShellCommand::ResourcesPublicationDatasetStatus { .. }
