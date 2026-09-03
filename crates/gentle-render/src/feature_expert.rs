@@ -4344,6 +4344,118 @@ fn locus_regulatory_palette(index: usize) -> &'static str {
     COLORS[index % COLORS.len()]
 }
 
+fn locus_regulatory_display_bounds(track: &GeneLocusRegulatoryScoreTrack) -> (f64, f64) {
+    let observed_max = track
+        .forward_scores
+        .iter()
+        .chain(track.reverse_scores.iter())
+        .copied()
+        .filter(|value| value.is_finite() && *value >= 0.0)
+        .max_by(f64::total_cmp)
+        .unwrap_or(0.0);
+    let configured_max = if track.display_scale_max.is_finite() {
+        track.display_scale_max
+    } else {
+        0.0
+    };
+    let display_max = configured_max.max(observed_max);
+    (0.0, if display_max > 0.0 { display_max } else { 1.0 })
+}
+
+fn locus_regulatory_axis_label(score_kind: &str, score_units: &str) -> String {
+    match score_kind {
+        "llr_background_tail_log10" | "true_log_odds_background_tail_log10" => {
+            "-log10 Ptail".to_string()
+        }
+        "llr_bits" => "LLR (bits)".to_string(),
+        "true_log_odds_bits" => "log odds (bits)".to_string(),
+        "llr_quantile" | "true_log_odds_quantile" => "window quantile".to_string(),
+        "llr_background_quantile" | "true_log_odds_background_quantile" => {
+            "background quantile".to_string()
+        }
+        _ => isoform_evidence_compact_label(score_units, 22),
+    }
+}
+
+fn locus_regulatory_tick_label(value: f64) -> String {
+    if value == 0.0 {
+        "0".to_string()
+    } else if value.abs() >= 1_000.0 || value.abs() < 0.01 {
+        format!("{value:.1e}")
+    } else if value.abs() >= 10.0 {
+        format!("{value:.1}")
+    } else {
+        format!("{value:.2}")
+    }
+}
+
+fn add_locus_regulatory_y_axis(
+    mut doc: Document,
+    track_id: &str,
+    score_kind: &str,
+    score_units: &str,
+    plot_left: f32,
+    lane_top: f32,
+    lane_height: f32,
+    display_min: f64,
+    display_max: f64,
+) -> Document {
+    let lane_bottom = lane_top + lane_height;
+    doc = doc
+        .add(
+            Text::new(locus_regulatory_axis_label(score_kind, score_units))
+                .set("x", plot_left - 7.0)
+                .set("y", lane_top - 4.0)
+                .set("text-anchor", "end")
+                .set("font-family", "monospace")
+                .set("font-size", 7)
+                .set("fill", "#475569")
+                .set("data-gentle-regulatory-y-axis-label", track_id),
+        )
+        .add(
+            Line::new()
+                .set("x1", plot_left)
+                .set("x2", plot_left)
+                .set("y1", lane_top)
+                .set("y2", lane_bottom)
+                .set("stroke", "#64748b")
+                .set("stroke-width", 1)
+                .set("data-gentle-regulatory-y-axis", track_id)
+                .set("data-gentle-regulatory-y-min", display_min)
+                .set("data-gentle-regulatory-y-max", display_max)
+                .set("data-gentle-regulatory-display-floor", 0),
+        );
+    for (fraction, value) in [
+        (1.0_f32, display_max),
+        (0.5_f32, display_min + (display_max - display_min) * 0.5),
+        (0.0_f32, display_min),
+    ] {
+        let y = lane_bottom - fraction * lane_height;
+        doc = doc
+            .add(
+                Line::new()
+                    .set("x1", plot_left - 4.0)
+                    .set("x2", plot_left)
+                    .set("y1", y)
+                    .set("y2", y)
+                    .set("stroke", "#64748b")
+                    .set("stroke-width", 0.8)
+                    .set("data-gentle-regulatory-y-tick", value),
+            )
+            .add(
+                Text::new(locus_regulatory_tick_label(value))
+                    .set("x", plot_left - 6.0)
+                    .set("y", y + 2.5)
+                    .set("text-anchor", "end")
+                    .set("font-family", "monospace")
+                    .set("font-size", 6.5)
+                    .set("fill", "#475569")
+                    .set("data-gentle-regulatory-y-tick-label", value),
+            );
+    }
+    doc
+}
+
 fn locus_regulatory_path(
     track: &GeneLocusRegulatoryScoreTrack,
     scores: &[f64],
@@ -4352,15 +4464,15 @@ fn locus_regulatory_path(
     x_for: &impl Fn(usize) -> f32,
     lane_top: f32,
     lane_height: f32,
+    display_min: f64,
+    display_max: f64,
 ) -> Option<Data> {
     if scores.is_empty() {
         return None;
     }
     let bucket_count = (plot_right - plot_left).round().max(1.0) as usize;
     let bucket_width = scores.len().div_ceil(bucket_count).max(1);
-    let scale_span = (track.display_scale_max - track.display_scale_min)
-        .abs()
-        .max(f64::EPSILON);
+    let scale_span = (display_max - display_min).abs().max(f64::EPSILON);
     let mut data = Data::new();
     let mut point_count = 0usize;
     for (bucket, values) in scores.chunks(bucket_width).enumerate() {
@@ -4368,15 +4480,16 @@ fn locus_regulatory_path(
             .iter()
             .copied()
             .filter(|value| value.is_finite())
-            .max_by(|left, right| left.abs().total_cmp(&right.abs()))
-            .unwrap_or(track.display_scale_min);
+            .map(|value| value.max(display_min))
+            .max_by(f64::total_cmp)
+            .unwrap_or(display_min);
         let source_index = bucket.saturating_mul(bucket_width);
         let local_position = track
             .track_start_0based
             .saturating_add(source_index.saturating_mul(track.stride_bp.max(1)))
             .saturating_add(1);
         let x = x_for(local_position);
-        let fraction = ((score - track.display_scale_min) / scale_span).clamp(0.0, 1.0) as f32;
+        let fraction = ((score - display_min) / scale_span).clamp(0.0, 1.0) as f32;
         let y = lane_top + lane_height - fraction * lane_height;
         data = if point_count == 0 {
             data.move_to((x, y))
@@ -5734,6 +5847,7 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
             let lane_top = y + 18.0;
             let lane_height = 50.0;
             let lane_bottom = lane_top + lane_height;
+            let (display_min, display_max) = locus_regulatory_display_bounds(track);
             let provider = locus_regulatory_provider_token(track.provider_kind);
             let color = track
                 .color_hint
@@ -5828,11 +5942,8 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
                 )
                 .add(
                     Text::new(format!(
-                        "scale {:.3}..{:.3} | {} | {}",
-                        track.display_scale_min,
-                        track.display_scale_max,
-                        track.score_units,
-                        track.calibration_status
+                        "display {:.3}..{:.3} | {} | {}",
+                        display_min, display_max, track.score_units, track.calibration_status
                     ))
                     .set("x", metrics_left)
                     .set("y", lane_top + 13.0)
@@ -5840,6 +5951,17 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
                     .set("font-size", 7)
                     .set("fill", "#64748b"),
                 );
+            doc = add_locus_regulatory_y_axis(
+                doc,
+                &track.track_id,
+                &track.score_kind,
+                &track.score_units,
+                plot_left,
+                lane_top,
+                lane_height,
+                display_min,
+                display_max,
+            );
             if let Some(data) = locus_regulatory_path(
                 track,
                 &track.forward_scores,
@@ -5848,6 +5970,8 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
                 &x_for,
                 lane_top,
                 lane_height,
+                display_min,
+                display_max,
             ) {
                 doc = doc.add(
                     Path::new()
@@ -5871,6 +5995,8 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
                 &x_for,
                 lane_top,
                 lane_height,
+                display_min,
+                display_max,
             ) {
                 doc = doc.add(
                     Path::new()
@@ -5887,12 +6013,12 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
                         .set("data-gentle-regulatory-strand", "reverse"),
                 );
             }
-            if let Some(threshold) = track.display_threshold.filter(|value| value.is_finite()) {
-                let scale_span = (track.display_scale_max - track.display_scale_min)
-                    .abs()
-                    .max(f64::EPSILON);
-                let fraction =
-                    ((threshold - track.display_scale_min) / scale_span).clamp(0.0, 1.0) as f32;
+            if let Some(threshold) = track
+                .display_threshold
+                .filter(|value| value.is_finite() && *value >= display_min)
+            {
+                let scale_span = (display_max - display_min).abs().max(f64::EPSILON);
+                let fraction = ((threshold - display_min) / scale_span).clamp(0.0, 1.0) as f32;
                 let threshold_y = lane_bottom - fraction * lane_height;
                 doc = doc.add(
                     Line::new()
@@ -5910,7 +6036,11 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
                         ),
                 );
             }
-            for site in &track.sites {
+            for site in track
+                .sites
+                .iter()
+                .filter(|site| site.score.is_finite() && site.score >= display_min)
+            {
                 let x = x_for(site.local_start_0based.saturating_add(1));
                 let local_strand = explicit_strand(&site.local_strand, &site.strand);
                 let genomic_strand = explicit_strand(&site.genomic_strand, &site.strand);
@@ -5990,22 +6120,19 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
             .forward_scores
             .iter()
             .zip(track.reverse_scores.iter())
-            .map(|(forward, reverse)| forward.max(*reverse))
+            .map(|(forward, reverse)| forward.max(*reverse).max(0.0))
             .collect::<Vec<_>>();
-        let min_score = scores
+        let observed_max = scores
             .iter()
             .copied()
-            .filter(|value| value.is_finite())
-            .min_by(f64::total_cmp)
-            .unwrap_or(0.0);
-        let max_abs = scores
-            .iter()
-            .copied()
-            .map(f64::abs)
             .filter(|value| value.is_finite())
             .max_by(f64::total_cmp)
-            .unwrap_or(1.0)
-            .max(f64::EPSILON);
+            .unwrap_or(0.0);
+        let display_max = if observed_max > 0.0 {
+            observed_max
+        } else {
+            1.0
+        };
         doc = doc
             .add(
                 Text::new(format!(
@@ -6015,6 +6142,7 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
                     track.score_kind,
                     track
                         .display_threshold
+                        .filter(|value| value.is_finite() && *value >= 0.0)
                         .map(|value| format!("> {value:.3}"))
                         .unwrap_or_else(|| "not set".to_string())
                 ))
@@ -6034,6 +6162,17 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
                     .set("stroke-width", 1)
                     .set("data-gentle-motif-track", track.motif_id.as_str()),
             );
+        doc = add_locus_regulatory_y_axis(
+            doc,
+            &track.motif_id,
+            &track.score_kind,
+            "",
+            plot_left,
+            baseline - 28.0,
+            28.0,
+            0.0,
+            display_max,
+        );
         if !scores.is_empty() {
             let bucket_count = (plot_right - plot_left).round().max(1.0) as usize;
             let bucket_width = scores.len().div_ceil(bucket_count).max(1);
@@ -6045,7 +6184,8 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
                         .iter()
                         .copied()
                         .filter(|value| value.is_finite())
-                        .max_by(|left, right| left.abs().total_cmp(&right.abs()))
+                        .map(|value| value.max(0.0))
+                        .max_by(f64::total_cmp)
                         .unwrap_or(0.0);
                     let source_index = bucket.saturating_mul(bucket_width);
                     (source_index, score)
@@ -6055,12 +6195,8 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
             for (sample_index, (source_index, score)) in sampled.iter().enumerate() {
                 let local_position = track.track_start_0based + source_index + 1;
                 let x = x_for(local_position);
-                let normalized = (*score / max_abs) as f32;
-                let score_y = if min_score < 0.0 {
-                    baseline - normalized * 20.0
-                } else {
-                    baseline - normalized.max(0.0) * 28.0
-                };
+                let normalized = (*score / display_max) as f32;
+                let score_y = baseline - normalized.clamp(0.0, 1.0) * 28.0;
                 data = if sample_index == 0 {
                     data.move_to((x, score_y))
                 } else {
@@ -6075,7 +6211,11 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
                     .set("stroke-width", 1.4),
             );
         }
-        for hit in &track.top_hits {
+        for hit in track
+            .top_hits
+            .iter()
+            .filter(|hit| hit.score.is_finite() && hit.score >= 0.0)
+        {
             let x = x_for(hit.local_start_0based.saturating_add(1));
             let local_strand = explicit_strand(&hit.local_strand, &hit.strand);
             let genomic_strand = explicit_strand(&hit.genomic_strand, &hit.strand);
@@ -6926,23 +7066,30 @@ mod tests {
                 "Synthetic model prediction; not measured binding or affinity.".to_string(),
             ),
             track_start_0based: 0,
-            forward_scores: vec![0.1, 0.8, 0.3],
-            reverse_scores: vec![0.2, 0.4, 0.9],
-            sites: vec![GeneLocusRegulatoryScoreSite {
-                site_id: "site-reverse".to_string(),
-                rank: 1,
-                local_start_0based: 20,
-                local_end_0based_exclusive: 32,
-                genomic_start_1based: 100_020,
-                genomic_end_1based: 100_031,
-                strand: "-".to_string(),
-                local_strand: "-".to_string(),
-                genomic_strand: "-".to_string(),
-                score: 0.9,
-                label: Some("model site".to_string()),
-            }],
-            display_threshold: Some(0.5),
-            display_scale_min: 0.0,
+            forward_scores: vec![-0.1, 0.8, 0.3],
+            reverse_scores: vec![0.2, -0.4, 0.9],
+            sites: vec![
+                GeneLocusRegulatoryScoreSite {
+                    site_id: "site-reverse".to_string(),
+                    rank: 1,
+                    local_start_0based: 20,
+                    local_end_0based_exclusive: 32,
+                    genomic_start_1based: 100_020,
+                    genomic_end_1based: 100_031,
+                    strand: "-".to_string(),
+                    local_strand: "-".to_string(),
+                    genomic_strand: "-".to_string(),
+                    score: 0.9,
+                    label: Some("model site".to_string()),
+                },
+                GeneLocusRegulatoryScoreSite {
+                    site_id: "site-negative-hidden".to_string(),
+                    score: -0.2,
+                    ..Default::default()
+                },
+            ],
+            display_threshold: Some(-0.5),
+            display_scale_min: -1.0,
             display_scale_max: 1.0,
             state: GeneLocusRegulatoryScoreState::Available,
             provenance: "synthetic renderer test".to_string(),
@@ -7019,6 +7166,20 @@ mod tests {
         assert!(svg.contains("data-gentle-regulatory-strand=\"forward\""));
         assert!(svg.contains("data-gentle-regulatory-strand=\"reverse\""));
         assert!(svg.contains("data-gentle-regulatory-site=\"site-reverse\""));
+        assert!(!svg.contains("site-negative-hidden"));
+        assert!(svg.contains("data-gentle-regulatory-y-axis=\"external_tp73\""));
+        assert!(svg.contains("data-gentle-regulatory-y-min=\"0\""));
+        assert!(svg.contains("data-gentle-regulatory-y-max=\"1\""));
+        assert!(svg.contains("data-gentle-regulatory-display-floor=\"0\""));
+        assert!(svg.contains("arbitrary_units"));
+        assert!(!svg.contains("data-gentle-regulatory-threshold=\"-0.5\""));
+        assert_eq!(
+            locus_regulatory_axis_label(
+                "llr_background_tail_log10",
+                "-log10 modeled background-tail probability"
+            ),
+            "-log10 Ptail"
+        );
         assert!(svg.contains("not measured binding or affinity"));
     }
 

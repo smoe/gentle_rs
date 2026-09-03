@@ -1129,6 +1129,13 @@ Feature tree grouping:
     uncalibrated prediction as affinity. Matrix/model-specific factor bindings
     remain distinct, and only an exact typed cross-source calibration id/digest
     can authorize a shared scale; descriptive prose cannot
+  - every regulatory-score lane has a visible Y axis beginning at `0`, with
+    midpoint and maximum ticks plus a score-family label. In particular,
+    `llr_background_tail_log10` is labeled `-log10 Ptail`: it is a modeled
+    background-tail probability derived from an LLR, not the raw log-odds
+    score. Negative source samples remain auditable in report JSON but are
+    floored at zero in the figure, and negative site/threshold labels are not
+    drawn
   - H3K4me3 and related marks use the explicit `chromatin_context` lane role,
     visually separate from TF occupancy. Cell line, condition, batch, and
     scaling remain caller-declared rather than inferred from filenames

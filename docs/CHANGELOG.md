@@ -1,5 +1,13 @@
 # GENtle Changelog
 
+- Made gene-locus regulatory score lanes quantitatively readable. Every JASPAR
+  or provider-neutral lane now has a labeled zero-based Y axis with midpoint
+  and maximum ticks; background-tail rows identify their displayed value as
+  `-log10 Ptail`, rather than suggesting that it is the underlying LLR. The
+  shared renderer floors negative source samples at zero and omits negative
+  thresholds/sites from SVG, PNG, and PDF presentation while retaining the
+  original values in the portable report for audit.
+
 - Added optional Ensembl Regulation 2026-08 annotation resources for human
   GRCh38/hg38 and mouse GRCm39/mm39. Explicit resource commands fetch a pinned
   annotation API snapshot (or consume a complete offline API response),

@@ -4123,6 +4123,15 @@ external coding agent runtime, see:
     output row.
     Stale sequence/locus bindings fail closed. Legacy `motifs[]` remain
     compatible and normalize to local-JASPAR tracks with historical settings
+  - regulatory-score rendering uses a visible zero-based Y axis for every row,
+    with labeled zero, midpoint, and maximum ticks. Raw report vectors are not
+    rewritten, but negative samples are floored at zero and negative
+    sites/thresholds are omitted from the rendered SVG/PNG/PDF. Tail-score rows
+    label `llr_background_tail_log10` and
+    `true_log_odds_background_tail_log10` as `-log10 Ptail`; these values are
+    modeled background-tail probabilities derived from the respective bit
+    scores, not raw log-odds ratios. Consequently a raw-bit threshold such as
+    `-1` must not be transferred numerically to a tail-score view
   - `scale_bar` stores the resolved `hidden`, deterministic `auto`, or exact
     positive `fixed` policy. The renderer derives its geometry from the same
     locus transform and exposes stable SVG scale attributes
