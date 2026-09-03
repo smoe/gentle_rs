@@ -3936,6 +3936,22 @@
       {
          "aliases": [],
          "engine_operations": [
+            "QueryGenomicMotifEvidence"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "mcp",
+            "cli-direct"
+         ],
+         "path": "features genomic-motif-evidence",
+         "summary": "Query bounded genomic intervals from an optional finalized jaspar-mapping DuckDB/Parquet package, returning typed unavailable evidence when the package or DuckDB is absent.",
+         "usage": "features genomic-motif-evidence SEQ_ID --motif MOTIF_ID [--motif MOTIF_ID ...] [--range START..END] [--package DIR] [--database FILE] [--duckdb FILE] [--genome-id ID] [--min-score VALUE] [--min-pwm-relative-score VALUE] [--max-rows N] [--max-payload-files N] [--timeout-seconds N] [--path OUTPUT.json]; alternatively omit SEQ_ID and repeat --region [ID=]CHR:START..END"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "BuildExperimentalAssayHandoff"
          ],
          "interfaces": [

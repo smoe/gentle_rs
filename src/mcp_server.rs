@@ -1357,6 +1357,7 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
             "collections run restriction-scan",
             "collections run construct-reasoning-inspection",
             "collections run tfbs-scan",
+            "features genomic-motif-evidence",
             "collections run digest",
             "primers specificity-plan",
             "primers specificity-import",

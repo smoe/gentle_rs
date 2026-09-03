@@ -214,6 +214,12 @@ const GUI_PROMINENT_GLOSSARY_ENTRIES: &[GuiProminentGlossaryEntry] = &[
         ui_intent_target: None,
     },
     GuiProminentGlossaryEntry {
+        glossary_path: "features genomic-motif-evidence",
+        menu_path: "DNA Sequence Viewer > TFBS scan > Precomputed hits",
+        palette_title: "Precomputed Genomic Motif Evidence",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
         glossary_path: "collections run digest",
         menu_path: "Genome > Gene Set Inspector...",
         palette_title: "Gene Set Inspector",

@@ -2590,6 +2590,21 @@ Controls:
    - The same window now also caches the shared hit report in `Direct scan
      inspectors`, where you can inspect the portable hit table and export it
      again as JSON.
+   - The same menu offers an optional `Precomputed hits` section for 1-64
+     explicit JASPAR matrix IDs. It queries a configured finalized
+     `jaspar-mapping` sparse package for the current selection, visible span,
+     or whole anchored sequence through the shared
+     `QueryGenomicMotifEvidence` operation.
+   - This query runs in the existing background TFBS worker from an immutable
+     engine snapshot. Its report and map strips are transient display state;
+     they do not add features or dirty the project.
+   - Package discovery is lazy. When
+     `GENTLE_JASPAR_GENOME_SCAN_PACKAGE` or DuckDB is absent, the inspector
+     reports that optional provider as unavailable while ordinary local TFBS
+     hits, score tracks, and the rest of GENtle continue unchanged.
+   - Package-native scores and local scores remain separate. The inspector
+     shows per-motif retention-floor completeness and warns that a sparse
+     package miss is not biological absence.
 21. TFBS score tracks
    - Toolbar menu for direct non-mutating continuous TFBS/JASPAR score
      inspection on the current active DNA window.

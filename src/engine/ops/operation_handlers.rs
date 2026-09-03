@@ -31,6 +31,7 @@ use crate::{
         BlastHit, BlastSubjectAnnotation, GenomeBlastReport, default_catalog_discovery_label,
         default_catalog_discovery_token, ensembl_transcript_stable_id, parse_blastn_tabular_hits,
     },
+    genomic_motif_evidence::{GenomicMotifQueryRegion, query_genomic_motif_evidence},
     gibson_planning::{GibsonAssemblyPlan, derive_gibson_execution_plan},
     protein_gel::{
         Protein2dGelSpot, ProteinGelGroup, ProteinGelSample, build_grouped_protein_gel_layout,
@@ -38550,6 +38551,108 @@ impl GentleEngine {
                 }
                 result.tfbs_hit_scan = Some(report);
             }
+            Operation::QueryGenomicMotifEvidence { request, path } => {
+                let regions = match &request.target {
+                    GenomicMotifEvidenceTarget::AnchoredSequence {
+                        seq_id,
+                        span_start_0based,
+                        span_end_0based_exclusive,
+                    } => {
+                        let sequence =
+                            self.state
+                                .sequences
+                                .get(seq_id)
+                                .ok_or_else(|| EngineError {
+                                    code: ErrorCode::NotFound,
+                                    message: format!("Sequence '{}' not found", seq_id),
+                                    cause_chain: vec![],
+                                })?;
+                        let sequence_length = sequence.len();
+                        let start = span_start_0based.unwrap_or(0);
+                        let end = span_end_0based_exclusive.unwrap_or(sequence_length);
+                        if end <= start || end > sequence_length {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "QueryGenomicMotifEvidence span must satisfy 0 <= start < end <= {} (got {}..{})",
+                                    sequence_length, start, end
+                                ),
+                                cause_chain: vec![],
+                            });
+                        }
+                        let anchor = self.sequence_genome_anchor_summary(seq_id)?;
+                        let reverse = anchor.strand == Some('-');
+                        let (genomic_start, genomic_end) = if reverse {
+                            (
+                                anchor.end_1based.saturating_sub(end) as u64,
+                                anchor.end_1based.saturating_sub(start) as u64,
+                            )
+                        } else {
+                            let anchor_start_0based = anchor.start_1based.saturating_sub(1) as u64;
+                            (
+                                anchor_start_0based.saturating_add(start as u64),
+                                anchor_start_0based.saturating_add(end as u64),
+                            )
+                        };
+                        vec![GenomicMotifQueryRegion {
+                            interval_id: format!("{}:{}..{}", seq_id, start, end),
+                            label: Some(seq_id.clone()),
+                            chromosome: anchor.chromosome.clone(),
+                            start_0based: genomic_start,
+                            end_0based_exclusive: genomic_end,
+                            source_seq_id: Some(seq_id.clone()),
+                            source_start_0based: Some(start),
+                            source_end_0based_exclusive: Some(end),
+                            source_sequence_length_bp: Some(sequence_length),
+                            source_anchor_start_1based: Some(anchor.start_1based),
+                            source_anchor_end_1based: Some(anchor.end_1based),
+                            source_anchor_reverse: reverse,
+                        }]
+                    }
+                    GenomicMotifEvidenceTarget::GenomicIntervals { intervals } => intervals
+                        .iter()
+                        .map(|interval| GenomicMotifQueryRegion {
+                            interval_id: interval.interval_id.clone(),
+                            label: interval.label.clone(),
+                            chromosome: interval.chromosome.clone(),
+                            start_0based: interval.start_0based,
+                            end_0based_exclusive: interval.end_0based_exclusive,
+                            source_seq_id: None,
+                            source_start_0based: None,
+                            source_end_0based_exclusive: None,
+                            source_sequence_length_bp: None,
+                            source_anchor_start_1based: None,
+                            source_anchor_end_1based: None,
+                            source_anchor_reverse: false,
+                        })
+                        .collect(),
+                };
+                let mut report =
+                    query_genomic_motif_evidence(&request, &regions).map_err(|message| {
+                        EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message,
+                            cause_chain: vec![],
+                        }
+                    })?;
+                report.op_id = Some(result.op_id.clone());
+                report.run_id = Some(run_id.to_string());
+                if let Some(path) = path.as_deref() {
+                    self.write_pretty_json_file(&report, path, "genomic motif evidence report")?;
+                    result.messages.push(format!(
+                        "Wrote genomic motif evidence report '{}' to '{}'",
+                        report.report_id, path
+                    ));
+                }
+                result.warnings.extend(report.warnings.iter().cloned());
+                result.messages.push(format!(
+                    "Genomic motif evidence is {}: {} hit(s) from {} selected payload file(s)",
+                    report.availability.as_str(),
+                    report.returned_hit_count,
+                    report.selected_payload_file_count
+                ));
+                result.genomic_motif_evidence = Some(report);
+            }
             _ => unreachable!("non-feature-scan operation passed to helper"),
         }
         Ok(())
@@ -39594,6 +39697,7 @@ impl GentleEngine {
             repeat_environment_cohort: None,
             window_cohort_tfbs: None,
             tfbs_hit_scan: None,
+            genomic_motif_evidence: None,
             restriction_site_scan: None,
             jaspar_remote_metadata_snapshot: None,
             jaspar_catalog_report: None,
@@ -39643,6 +39747,7 @@ impl GentleEngine {
                 | Operation::SummarizePromoterCohortComparison { .. }
                 | Operation::SummarizeTfbsTrackSimilarity { .. }
                 | Operation::ScanTfbsHits { .. }
+                | Operation::QueryGenomicMotifEvidence { .. }
         ) {
             self.apply_feature_scan_operation(op, run_id, &mut result, on_progress)?;
         } else if matches!(
@@ -49438,7 +49543,8 @@ impl GentleEngine {
                 | op @ Operation::SummarizeTfbsScoreTracks { .. }
                 | op @ Operation::SummarizeMultiGenePromoterTfbs { .. }
                 | op @ Operation::SummarizeTfbsTrackSimilarity { .. }
-                | op @ Operation::ScanTfbsHits { .. } => {
+                | op @ Operation::ScanTfbsHits { .. }
+                | op @ Operation::QueryGenomicMotifEvidence { .. } => {
                     self.apply_feature_scan_operation(op, run_id, &mut result, on_progress)?;
                 }
                 Operation::SummarizeJasparEntries {

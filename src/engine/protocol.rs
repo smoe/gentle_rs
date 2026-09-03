@@ -88,6 +88,11 @@ pub use gentle_protocol::{
     GeneSetResolutionReport, GeneSetResolutionReviewStatus, GeneSetResolvedMember,
     GeneSetUnresolvedMember, GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode,
     GenomeTrackImportProgress, GenomeTrackSource, GenomeTrackSubscription,
+    GenomicMotifEvidenceAvailability, GenomicMotifEvidenceCompatibilityStatus,
+    GenomicMotifEvidenceCoverageStatus, GenomicMotifEvidenceHit, GenomicMotifEvidenceInterval,
+    GenomicMotifEvidenceMotifCoverage, GenomicMotifEvidencePayloadProvenance,
+    GenomicMotifEvidenceProviderProvenance, GenomicMotifEvidenceReport,
+    GenomicMotifEvidenceRequest, GenomicMotifEvidenceResolvedRegion, GenomicMotifEvidenceTarget,
     HOST_PROFILE_CATALOG_SCHEMA, HelperConstructProfile, HostLifecycleRole, HostProfileCatalog,
     HostProfileRecord, HostRouteStep, LEGACY_BIOLOGICAL_CONTEXT_ID,
     ORTHOLOG_PROMOTER_COHORT_SCHEMA, ORTHOLOG_PROMOTER_COMPARISON_SCHEMA, ORTHOLOG_RESOURCE_SCHEMA,
@@ -5278,6 +5283,8 @@ pub struct OpResult {
     pub window_cohort_tfbs: Option<WindowCohortTfbsReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tfbs_hit_scan: Option<TfbsHitScanReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_motif_evidence: Option<GenomicMotifEvidenceReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub restriction_site_scan: Option<RestrictionSiteScanReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

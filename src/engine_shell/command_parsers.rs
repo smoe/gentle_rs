@@ -15,16 +15,17 @@ use super::*;
 use crate::engine::{
     CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder, CutRunAlignConfig,
     CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig,
-    PrimerSpecificityAmpliconCeilingSource, PrimerSpecificityCheckMode,
-    PrimerSpecificityFullAlignmentMode, PrimerSpecificityPolicy, PrimerSpecificityReportDetailMode,
-    PrimerSpecificityReviewedOffTargetAllowance, QpcrTranscriptSpecificityEvidence,
-    QpcrTranscriptTargeting, QpcrTranscriptTargetingMode, ReadAcquisitionAnalysisFormat,
-    ReadAcquisitionReadLayout, RepeatEnvironmentGeometryMode, TfbsScoreTrackCorrelationMetric,
-    TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
-    TfbsTrackSimilarityRankingMetric, TranscriptAssayCdnaSynthesis, TranscriptAssayCoveragePolicy,
-    TranscriptAssayCoverageUniverse, TranscriptAssayJunctionPriority, TranscriptAssayKind,
-    TranscriptAssayPanelObjective, TranscriptAssayPracticalityPolicy,
-    TranscriptAssaySpecificityRequest, TranscriptAssayUseTier,
+    DEFAULT_GENOMIC_MOTIF_EVIDENCE_MAX_PAYLOAD_FILES, DEFAULT_GENOMIC_MOTIF_EVIDENCE_MAX_ROWS,
+    DEFAULT_GENOMIC_MOTIF_EVIDENCE_TIMEOUT_SECONDS, PrimerSpecificityAmpliconCeilingSource,
+    PrimerSpecificityCheckMode, PrimerSpecificityFullAlignmentMode, PrimerSpecificityPolicy,
+    PrimerSpecificityReportDetailMode, PrimerSpecificityReviewedOffTargetAllowance,
+    QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
+    ReadAcquisitionAnalysisFormat, ReadAcquisitionReadLayout, RepeatEnvironmentGeometryMode,
+    TfbsScoreTrackCorrelationMetric, TfbsScoreTrackCorrelationSignalSource,
+    TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric, TranscriptAssayCdnaSynthesis,
+    TranscriptAssayCoveragePolicy, TranscriptAssayCoverageUniverse,
+    TranscriptAssayJunctionPriority, TranscriptAssayKind, TranscriptAssayPanelObjective,
+    TranscriptAssayPracticalityPolicy, TranscriptAssaySpecificityRequest, TranscriptAssayUseTier,
 };
 
 fn parse_primer_specificity_report_detail_mode(
@@ -1767,6 +1768,59 @@ fn parse_feature_range(raw: &str, context: &str) -> Result<(usize, usize), Strin
     Ok((start, end_exclusive))
 }
 
+fn parse_genomic_motif_interval(
+    raw: &str,
+    generated_index: usize,
+) -> Result<GenomicMotifEvidenceInterval, String> {
+    let trimmed = raw.trim();
+    let (explicit_id, coordinates) = match trimmed.split_once('=') {
+        Some((id, coordinates)) => (Some(id.trim()), coordinates.trim()),
+        None => (None, trimmed),
+    };
+    let (chromosome, span) = coordinates.rsplit_once(':').ok_or_else(|| {
+        format!(
+            "Invalid --region value '{raw}' for features genomic-motif-evidence; expected [ID=]CHR:START..END"
+        )
+    })?;
+    let chromosome = chromosome.trim();
+    if chromosome.is_empty() {
+        return Err("features genomic-motif-evidence chromosome must not be empty".to_string());
+    }
+    let (start, end) = span.split_once("..").ok_or_else(|| {
+        format!(
+            "Invalid --region value '{raw}' for features genomic-motif-evidence; expected [ID=]CHR:START..END"
+        )
+    })?;
+    let start_0based = start.trim().parse::<u64>().map_err(|error| {
+        format!(
+            "Invalid genomic interval start '{}' for features genomic-motif-evidence: {error}",
+            start.trim()
+        )
+    })?;
+    let end_0based_exclusive = end.trim().parse::<u64>().map_err(|error| {
+        format!(
+            "Invalid genomic interval end '{}' for features genomic-motif-evidence: {error}",
+            end.trim()
+        )
+    })?;
+    if end_0based_exclusive <= start_0based {
+        return Err(format!(
+            "Invalid --region value '{raw}' for features genomic-motif-evidence: end must be greater than start"
+        ));
+    }
+    let interval_id = explicit_id
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("region-{generated_index}"));
+    Ok(GenomicMotifEvidenceInterval {
+        interval_id,
+        label: None,
+        chromosome: chromosome.to_string(),
+        start_0based,
+        end_0based_exclusive,
+    })
+}
+
 fn parse_feature_query_strand(raw: &str) -> Result<SequenceFeatureStrandFilter, String> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "any" => Ok(SequenceFeatureStrandFilter::Any),
@@ -2257,7 +2311,7 @@ fn parse_promoter_artifact_manifest_entry_json(
 pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "features requires a subcommand: formula, edit-location, create, delete, split, merge, query, export-bed, repeat-query, repeat-overlaps, materialize-repeats, repeat-cohort, window-cohort-tfbs, promoter-evidence-matrix, promoter-isoform-comparison, promoter-expression-evidence, promoter-artifact-manifest, tfbs-summary, tfbs-score-tracks-svg, tfbs-track-similarity, tfbs-score-track-correlation-svg, tfbs-scan, restriction-scan"
+            "features requires a subcommand: formula, edit-location, create, delete, split, merge, query, export-bed, repeat-query, repeat-overlaps, materialize-repeats, repeat-cohort, window-cohort-tfbs, promoter-evidence-matrix, promoter-isoform-comparison, promoter-expression-evidence, promoter-artifact-manifest, tfbs-summary, tfbs-score-tracks-svg, tfbs-track-similarity, tfbs-score-track-correlation-svg, tfbs-scan, genomic-motif-evidence, restriction-scan"
                 .to_string(),
         );
     }
@@ -4439,6 +4493,253 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                 path,
             })
         }
+        "genomic-motif-evidence" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "features genomic-motif-evidence requires SEQ_ID or one or more --region [ID=]CHR:START..END, plus --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END] [--package DIR] [--database FILE] [--duckdb FILE] [--genome-id ID] [--min-score VALUE] [--min-pwm-relative-score VALUE] [--max-rows N] [--max-payload-files N] [--timeout-seconds N] [--path FILE.json]"
+                        .to_string(),
+                );
+            }
+            let mut seq_id: Option<String> = None;
+            let mut span_start_0based: Option<usize> = None;
+            let mut span_end_0based_exclusive: Option<usize> = None;
+            let mut intervals = vec![];
+            let mut motif_ids = vec![];
+            let mut package_root: Option<String> = None;
+            let mut database_path: Option<String> = None;
+            let mut duckdb_executable: Option<String> = None;
+            let mut expected_genome_id: Option<String> = None;
+            let mut minimum_score: Option<f64> = None;
+            let mut minimum_pwm_relative_score: Option<f64> = None;
+            let mut max_rows = DEFAULT_GENOMIC_MOTIF_EVIDENCE_MAX_ROWS;
+            let mut max_payload_files = DEFAULT_GENOMIC_MOTIF_EVIDENCE_MAX_PAYLOAD_FILES;
+            let mut timeout_seconds = DEFAULT_GENOMIC_MOTIF_EVIDENCE_TIMEOUT_SECONDS;
+            let mut path: Option<String> = None;
+            let mut idx = 2usize;
+            if !tokens[idx].starts_with("--") {
+                let value = tokens[idx].trim();
+                if value.is_empty() {
+                    return Err(
+                        "features genomic-motif-evidence SEQ_ID must not be empty".to_string()
+                    );
+                }
+                seq_id = Some(value.to_string());
+                idx += 1;
+            }
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--region" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--region",
+                            "features genomic-motif-evidence",
+                        )?;
+                        intervals.push(parse_genomic_motif_interval(&raw, intervals.len() + 1)?);
+                    }
+                    "--range" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--range",
+                            "features genomic-motif-evidence",
+                        )?;
+                        if span_start_0based.is_some() || span_end_0based_exclusive.is_some() {
+                            return Err(
+                                "features genomic-motif-evidence --range was specified more than once"
+                                    .to_string(),
+                            );
+                        }
+                        let (start, end) =
+                            parse_feature_range(&raw, "features genomic-motif-evidence")?;
+                        span_start_0based = Some(start);
+                        span_end_0based_exclusive = Some(end);
+                    }
+                    "--motif" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--motif",
+                            "features genomic-motif-evidence",
+                        )?;
+                        let motif = raw.trim();
+                        if motif.is_empty() {
+                            return Err("--motif must not be empty".to_string());
+                        }
+                        if !motif_ids.iter().any(|existing| existing == motif) {
+                            motif_ids.push(motif.to_string());
+                        }
+                    }
+                    "--motifs" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--motifs",
+                            "features genomic-motif-evidence",
+                        )?;
+                        for motif in raw
+                            .split(',')
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                        {
+                            if !motif_ids.iter().any(|existing| existing == motif) {
+                                motif_ids.push(motif.to_string());
+                            }
+                        }
+                    }
+                    "--package" => {
+                        package_root = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--package",
+                            "features genomic-motif-evidence",
+                        )?);
+                    }
+                    "--database" => {
+                        database_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--database",
+                            "features genomic-motif-evidence",
+                        )?);
+                    }
+                    "--duckdb" => {
+                        duckdb_executable = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--duckdb",
+                            "features genomic-motif-evidence",
+                        )?);
+                    }
+                    "--genome-id" => {
+                        expected_genome_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--genome-id",
+                            "features genomic-motif-evidence",
+                        )?);
+                    }
+                    "--min-score" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-score",
+                            "features genomic-motif-evidence",
+                        )?;
+                        minimum_score = Some(raw.parse::<f64>().map_err(|error| {
+                            format!("Invalid --min-score value '{raw}': {error}")
+                        })?);
+                    }
+                    "--min-pwm-relative-score" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-pwm-relative-score",
+                            "features genomic-motif-evidence",
+                        )?;
+                        minimum_pwm_relative_score = Some(raw.parse::<f64>().map_err(|error| {
+                            format!("Invalid --min-pwm-relative-score value '{raw}': {error}")
+                        })?);
+                    }
+                    "--max-rows" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-rows",
+                            "features genomic-motif-evidence",
+                        )?;
+                        max_rows = raw.parse::<usize>().map_err(|error| {
+                            format!("Invalid --max-rows value '{raw}': {error}")
+                        })?;
+                    }
+                    "--max-payload-files" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-payload-files",
+                            "features genomic-motif-evidence",
+                        )?;
+                        max_payload_files = raw.parse::<usize>().map_err(|error| {
+                            format!("Invalid --max-payload-files value '{raw}': {error}")
+                        })?;
+                    }
+                    "--timeout-seconds" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--timeout-seconds",
+                            "features genomic-motif-evidence",
+                        )?;
+                        timeout_seconds = raw.parse::<u64>().map_err(|error| {
+                            format!("Invalid --timeout-seconds value '{raw}': {error}")
+                        })?;
+                    }
+                    "--path" => {
+                        path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--path",
+                            "features genomic-motif-evidence",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for features genomic-motif-evidence"
+                        ));
+                    }
+                }
+            }
+            if motif_ids.is_empty() {
+                return Err(
+                    "features genomic-motif-evidence requires at least one --motif TOKEN"
+                        .to_string(),
+                );
+            }
+            let target = match (seq_id, intervals.is_empty()) {
+                (Some(seq_id), true) => GenomicMotifEvidenceTarget::AnchoredSequence {
+                    seq_id,
+                    span_start_0based,
+                    span_end_0based_exclusive,
+                },
+                (None, false) if span_start_0based.is_none() => {
+                    GenomicMotifEvidenceTarget::GenomicIntervals { intervals }
+                }
+                (Some(_), false) => {
+                    return Err(
+                        "features genomic-motif-evidence accepts either SEQ_ID or --region values, not both"
+                            .to_string(),
+                    );
+                }
+                (None, false) => {
+                    return Err(
+                        "features genomic-motif-evidence --range is valid only with SEQ_ID"
+                            .to_string(),
+                    );
+                }
+                (None, true) => {
+                    return Err(
+                        "features genomic-motif-evidence requires SEQ_ID or at least one --region"
+                            .to_string(),
+                    );
+                }
+            };
+            Ok(ShellCommand::FeaturesGenomicMotifEvidence {
+                request: GenomicMotifEvidenceRequest {
+                    package_root,
+                    database_path,
+                    duckdb_executable,
+                    expected_genome_id,
+                    target,
+                    motif_ids,
+                    minimum_score,
+                    minimum_pwm_relative_score,
+                    max_rows,
+                    max_payload_files,
+                    timeout_seconds,
+                },
+                path,
+            })
+        }
         "restriction-scan" => {
             if tokens.len() < 3 {
                 return Err(
@@ -4598,7 +4899,7 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
             })
         }
         other => Err(format!(
-            "Unknown features subcommand '{other}' (expected formula, query, export-bed, tfbs-summary, tfbs-score-tracks-svg, tfbs-score-track-correlation-svg, tfbs-scan, or restriction-scan)"
+            "Unknown features subcommand '{other}' (expected formula, query, export-bed, tfbs-summary, tfbs-score-tracks-svg, tfbs-score-track-correlation-svg, tfbs-scan, genomic-motif-evidence, or restriction-scan)"
         )),
     }
 }

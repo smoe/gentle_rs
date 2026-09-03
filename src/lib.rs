@@ -79,6 +79,8 @@ pub mod gene_groups;
 pub mod gene_set_publication;
 /// Genome catalog, preparation, indexing, extraction, and BLAST integration.
 pub mod genomes;
+/// Optional read-only access to precomputed whole-genome motif scan packages.
+pub mod genomic_motif_evidence;
 /// Gibson assembly planning contracts and deterministic preview derivation.
 pub mod gibson_planning;
 /// Optional GUI profiling hooks for evidence-based latency investigations.

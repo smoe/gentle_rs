@@ -12078,6 +12078,7 @@ Error: `{err}`"
                 repeat_environment_cohort: None,
                 window_cohort_tfbs: None,
                 tfbs_hit_scan: None,
+                genomic_motif_evidence: None,
                 restriction_site_scan: None,
                 jaspar_remote_metadata_snapshot: None,
                 jaspar_catalog_report: None,
