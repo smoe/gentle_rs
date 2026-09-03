@@ -1569,6 +1569,34 @@
         },
         "steps": [
           {
+            "id": "open_sequence",
+            "prose_step": 1,
+            "window": "window.main",
+            "target": "main.project.sequence.open",
+            "subject": {
+              "sequence": "tp73_locus"
+            },
+            "interaction": {
+              "kind": "double_click"
+            },
+            "timeout_class": "io",
+            "persists_project_state": false,
+            "scientific_effect": false,
+            "verifiers": [
+              {
+                "kind": "visible_claim",
+                "semantic_id": "window.dna_viewer",
+                "visible": true,
+                "enabled": true,
+                "outcome_role": "ready"
+              }
+            ],
+            "evidence": {
+              "screenshot": "optional",
+              "snapshot": "required"
+            }
+          },
+          {
             "id": "enter_core_formula",
             "prose_step": 2,
             "window": "window.dna_viewer",

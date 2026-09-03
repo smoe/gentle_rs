@@ -309,11 +309,11 @@ wet-lab conclusions or unconfirmed mutations.
 - Extend the feature-gated semantic GUI test identifier registry beyond the
   bounded TP73/PATZ1 DNA-viewer, Splicing Expert, and Agent Assistant release
   controls as additional native acceptance stories require it.
-- Extend the typed tutorial GUI runner beyond its first sequence-scoped
-  Simple-PCR report adapter only when another chapter supplies a validated
-  subject/report contract; keep shell smoke as compact liveness evidence.
-- Extend context-labelled GUI/CLI/agent tutorial actions;
-  defer skill activation and inverse discovery until readiness is safeguarded.
+- Extend typed tutorial GUI acceptance from Simple PCR to three representative
+  offline tutorials as each gains a validated subject/report contract; promote
+  `offline-core` only after stable clean-profile replay through external X11.
+- Then extend context-labelled GUI/CLI/agent tutorial actions; defer skill
+  activation and inverse discovery until readiness is safeguarded.
 - Optional OS credential-store persistence for Agent Assistant API keys.
 - Separate opt-in inner coding-agent mode for Codex, Pi, or comparable local
   harnesses, with explicit workspace scope, tool permissions, diff review,

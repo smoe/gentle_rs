@@ -118,6 +118,18 @@
   viewer for this workflow and falls back to genomic-sequence retrieval when
   that prerequisite is missing.
 
+- Added an external Linux/X11 tutorial-acceptance runner for the typed GUI
+  contract. It prepares distinct starter/oracle projects through
+  `gentle_examples_docs`, resolves pseudonymous sequence scopes with GENtle's
+  canonical helper, drives only ordinary `xdotool` events, saves through the
+  GUI, and independently verifies typed facts and reports. Per-step ledgers
+  bind semantic rectangles, snapshot generations, X11 events, verifier output,
+  screenshots, project/artifact hashes, clean-profile settings, and an explicit
+  network-enforcement declaration. Linux acceptance also records a named EWMH
+  window manager and the exact starter/oracle workflow sources. The Simple PCR
+  contract now includes the main-window sequence-opening action, removing its
+  former untyped setup step.
+
 - Hardened typed tutorial GUI acceptance before adding an external runner.
   Contracts now target only a closed semantic-control catalog with declared
   interactions and authority, distinguish project persistence from scientific

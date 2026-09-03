@@ -6946,12 +6946,15 @@ mod tests {
         assert!(error.contains("tutorial-ineligible target"), "{error}");
 
         let mut mismatched = manifest;
-        let step = &mut mismatched
+        let step = mismatched
             .chapters
             .iter_mut()
             .find_map(|chapter| chapter.gui_acceptance.as_mut())
             .expect("GUI acceptance")
-            .steps[0];
+            .steps
+            .iter_mut()
+            .find(|step| step.persists_project_state)
+            .expect("persistent GUI acceptance step");
         step.persists_project_state = false;
         let error = validate_tutorial_manifest_against_examples(&mismatched, &examples)
             .expect_err("incorrect persistence declaration must be rejected");
@@ -7100,6 +7103,19 @@ mod tests {
             .gui_acceptance
             .as_ref()
             .expect("simple PCR GUI acceptance contract");
+        let opening_step = acceptance.steps.first().expect("opening GUI step");
+        assert_eq!(
+            opening_step.window,
+            crate::tutorial_gui_semantics::WINDOW_MAIN
+        );
+        assert_eq!(
+            opening_step.target,
+            crate::tutorial_gui_semantics::MAIN_PROJECT_SEQUENCE_OPEN
+        );
+        assert!(matches!(
+            opening_step.interaction,
+            TutorialGuiInteraction::DoubleClick
+        ));
         let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
         let by_id = example_lookup(&examples);
 

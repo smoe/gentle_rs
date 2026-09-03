@@ -1,17 +1,14 @@
 #!/usr/bin/env python3
-"""Drive a typed GENtle tutorial GUI contract through ordinary X11 events.
+"""Run typed GENtle tutorial GUI acceptance contracts through ordinary X11 input.
 
-The runner deliberately has no synthetic GUI input API. Rust validates the
-closed semantic-control contract; this process reads only the opt-in semantic
-snapshot, translates rectangles into xdotool events, saves through Ctrl+S, and
-checks scientific outcomes against the persisted project with gentle_cli.
+The tutorial manifest supplies intent and typed postconditions. This runner owns
+input delivery, independent verification, and the final pass/fail verdict. It
+never executes prose or command strings from a tutorial.
 """
 
 from __future__ import annotations
 
 import argparse
-import copy
-import datetime as dt
 import hashlib
 import json
 import os
@@ -20,56 +17,72 @@ import re
 import shlex
 import shutil
 import signal
-import struct
 import subprocess
 import sys
-import tempfile
 import time
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Iterable, Optional
+from typing import Any, Callable, Iterable
 
 
-LEDGER_SCHEMA = "gentle.tutorial_gui_acceptance_run.v1"
 SNAPSHOT_SCHEMA = "gentle.gui_semantic_snapshot.v2"
 CONTRACT_SCHEMA = "gentle.tutorial_gui_acceptance.v1"
-TIMEOUT_SECONDS = {
-    "instant": 3.0,
-    "interactive": 30.0,
-    "compute": 180.0,
-    "io": 90.0,
+LEDGER_SCHEMA = "gentle.tutorial_gui_acceptance_ledger.v1"
+RUN_SCHEMA = "gentle.tutorial_gui_acceptance_run.v1"
+ENVIRONMENT_SCHEMA = "gentle.tutorial_acceptance_environment.v1"
+PREPARATION_SCHEMA = "gentle.tutorial_gui_project_preparation.v1"
+
+TIMEOUT_DEFAULTS = {
+    "instant": 5.0,
+    "interactive": 25.0,
+    "io": 75.0,
+    "compute": 300.0,
+}
+
+SAFE_KEY_NAMES = {
+    "enter": "Return",
+    "return": "Return",
+    "escape": "Escape",
+    "tab": "Tab",
+    "space": "space",
+    "up": "Up",
+    "down": "Down",
+    "left": "Left",
+    "right": "Right",
 }
 
 
-class AuditFailure(RuntimeError):
-    def __init__(self, result: str, message: str):
+class AcceptanceFailure(RuntimeError):
+    def __init__(self, failure_class: str, message: str):
         super().__init__(message)
-        self.result = result
+        self.failure_class = failure_class
 
 
-def utc_now() -> str:
-    return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
-
-
-def canonical_json_bytes(value: Any) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
-
-
-def sha256_bytes(value: bytes) -> str:
-    return hashlib.sha256(value).hexdigest()
+def sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
 
 
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
     return digest.hexdigest()
+
+
+def canonical_json_bytes(value: Any) -> bytes:
+    return json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    ).encode("ascii")
 
 
 def atomic_write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.write_text(
+        json.dumps(value, indent=2, sort_keys=True, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )
     temporary.replace(path)
 
 
@@ -77,23 +90,9 @@ def load_json(path: Path) -> Any:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
-        raise AuditFailure("contract_error", f"Could not read JSON '{path}': {error}") from error
-
-
-def subject_scope(subject: dict[str, str]) -> Optional[str]:
-    if not subject:
-        return None
-    if set(subject) != {"sequence"} or not subject["sequence"]:
-        raise AuditFailure(
-            "contract_error",
-            "The X11 runner currently supports only a non-empty 'sequence' subject; "
-            f"received keys {sorted(subject)}",
-        )
-    identity = bytearray(b"gentle.gui.subject_scope.v1\0")
-    part = subject["sequence"].encode("utf-8")
-    identity.extend(struct.pack(">Q", len(part)))
-    identity.extend(part)
-    return "subject-" + sha256_bytes(bytes(identity))[:32]
+        raise AcceptanceFailure(
+            "tutorial_ambiguity", f"Could not read JSON '{path}': {error}"
+        ) from error
 
 
 def json_path(value: Any, path: str) -> Any:
@@ -111,1217 +110,1445 @@ def json_path(value: Any, path: str) -> Any:
     return current
 
 
-def is_non_empty(value: Any) -> bool:
-    if value is None:
-        return False
-    if isinstance(value, (str, list, dict, tuple, set)):
-        return len(value) > 0
-    return True
+def numeric_compare(actual: float, op: str, expected: float) -> bool:
+    if op in {"eq", "=", "=="}:
+        return actual == expected
+    if op in {"ne", "!="}:
+        return actual != expected
+    if op in {"gt", ">"}:
+        return actual > expected
+    if op in {"gte", ">="}:
+        return actual >= expected
+    if op in {"lt", "<"}:
+        return actual < expected
+    if op in {"lte", "<="}:
+        return actual <= expected
+    raise AcceptanceFailure("tutorial_ambiguity", f"Unsupported comparison '{op}'")
 
 
-def compare_numbers(left: Any, op: str, right: Any) -> bool:
-    if isinstance(left, bool) or isinstance(right, bool):
-        return False
-    if not isinstance(left, (int, float)) or not isinstance(right, (int, float)):
-        return False
-    comparisons = {
-        "eq": lambda: left == right,
-        "=": lambda: left == right,
-        "==": lambda: left == right,
-        "ne": lambda: left != right,
-        "!=": lambda: left != right,
-        "gt": lambda: left > right,
-        ">": lambda: left > right,
-        "gte": lambda: left >= right,
-        ">=": lambda: left >= right,
-        "lt": lambda: left < right,
-        "<": lambda: left < right,
-        "lte": lambda: left <= right,
-        "<=": lambda: left <= right,
-    }
-    return op in comparisons and comparisons[op]()
-
-
-def assert_report(report: Any, verifier: dict[str, Any]) -> list[str]:
-    checks: list[str] = []
+def assert_report_contract(report: dict[str, Any], verifier: dict[str, Any]) -> None:
     if report.get("schema") != verifier["schema"]:
-        raise AuditFailure(
+        raise AcceptanceFailure(
             "product_failure",
-            f"Report '{verifier['report_id']}' schema is {report.get('schema')!r}, "
-            f"expected {verifier['schema']!r}",
+            f"Report schema is {report.get('schema')!r}, expected {verifier['schema']!r}",
         )
     for path in verifier.get("required_fields", []):
         try:
             json_path(report, path)
         except KeyError as error:
-            raise AuditFailure(
-                "product_failure", f"Report is missing required field '{path}'"
+            raise AcceptanceFailure(
+                "product_failure", f"Required report field '{path}' is absent"
             ) from error
-        checks.append(f"required:{path}")
     for assertion in verifier.get("assertions", []):
-        kind = assertion["kind"]
+        kind = assertion.get("kind")
         if kind == "value":
             path = assertion["path"]
             try:
                 actual = json_path(report, path)
             except KeyError as error:
-                raise AuditFailure(
-                    "product_failure", f"Report assertion field '{path}' is missing"
+                raise AcceptanceFailure(
+                    "product_failure", f"Report assertion field '{path}' is absent"
                 ) from error
             if "equals" in assertion and actual != assertion["equals"]:
-                raise AuditFailure(
+                raise AcceptanceFailure(
                     "product_failure",
                     f"Report field '{path}' is {actual!r}, expected {assertion['equals']!r}",
                 )
-            if assertion.get("non_empty") and not is_non_empty(actual):
-                raise AuditFailure("product_failure", f"Report field '{path}' is empty")
-            if "compare" in assertion:
-                comparison = assertion["compare"]
-                if not compare_numbers(actual, comparison["op"], comparison["value"]):
-                    raise AuditFailure(
+            comparison = assertion.get("compare")
+            if comparison is not None:
+                if not isinstance(actual, (int, float)) or isinstance(actual, bool):
+                    raise AcceptanceFailure(
+                        "product_failure", f"Report field '{path}' is not numeric"
+                    )
+                if not numeric_compare(
+                    float(actual), comparison["op"], float(comparison["value"])
+                ):
+                    raise AcceptanceFailure(
                         "product_failure",
-                        f"Report field '{path}' value {actual!r} failed "
+                        f"Report comparison failed: {path}={actual!r} "
                         f"{comparison['op']} {comparison['value']!r}",
                     )
-            checks.append(f"value:{path}")
-        elif kind == "relation":
-            left = json_path(report, assertion["left_path"])
-            right = json_path(report, assertion["right_path"])
-            if not compare_numbers(left, assertion["op"], right):
-                raise AuditFailure(
-                    "product_failure",
-                    f"Report relation {assertion['left_path']}={left!r} "
-                    f"{assertion['op']} {assertion['right_path']}={right!r} failed",
+            if assertion.get("non_empty") and not value_is_non_empty(actual):
+                raise AcceptanceFailure(
+                    "product_failure", f"Report field '{path}' is empty"
                 )
-            checks.append(
-                f"relation:{assertion['left_path']}:{assertion['op']}:{assertion['right_path']}"
-            )
+        elif kind == "relation":
+            try:
+                left = json_path(report, assertion["left_path"])
+                right = json_path(report, assertion["right_path"])
+            except KeyError as error:
+                raise AcceptanceFailure(
+                    "product_failure", f"Report relation field '{error.args[0]}' is absent"
+                ) from error
+            if (
+                not isinstance(left, (int, float))
+                or isinstance(left, bool)
+                or not isinstance(right, (int, float))
+                or isinstance(right, bool)
+            ):
+                raise AcceptanceFailure(
+                    "product_failure", "Report relation operands must be numeric"
+                )
+            if not numeric_compare(float(left), assertion["op"], float(right)):
+                raise AcceptanceFailure(
+                    "product_failure",
+                    f"Report relation failed: {assertion['left_path']}={left!r} "
+                    f"{assertion['op']} {assertion['right_path']}={right!r}",
+                )
         else:
-            raise AuditFailure("contract_error", f"Unsupported report assertion kind '{kind}'")
-    return checks
+            raise AcceptanceFailure(
+                "tutorial_ambiguity", f"Unsupported report assertion kind '{kind}'"
+            )
 
 
-class TutorialGuiRunner:
-    def __init__(self, args: argparse.Namespace):
-        self.args = args
-        self.repo_root = args.repo_root.resolve()
-        self.output_dir = args.output_dir.resolve()
-        self.ledger_path = self.output_dir / "acceptance-ledger.json"
-        self.logs_dir = self.output_dir / "logs"
-        self.checkpoints_dir = self.output_dir / "checkpoints"
-        self.runtime_dir = self.output_dir / "runtime"
-        self.projects_dir = self.output_dir / "projects"
-        self.queries_dir = self.output_dir / "queries"
-        self.snapshot_path = self.runtime_dir / "semantic-snapshot.json"
-        self.command_index = 0
-        self.gui_process: Optional[subprocess.Popen[str]] = None
-        self.screenshot_tool: Optional[str] = None
-        self.evidence_initialized = False
-        self.ledger: dict[str, Any] = {
-            "schema": LEDGER_SCHEMA,
-            "tutorial_id": args.tutorial_id,
-            "result": "running",
-            "acceptance_executed": not args.validate_only,
-            "started_at": utc_now(),
-            "finished_at": None,
-            "source": {},
-            "environment": {},
-            "projects": {},
-            "commands": [],
-            "checkpoints": [],
-            "failure": None,
+def value_is_non_empty(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, (str, list, dict)):
+        return len(value) > 0
+    return True
+
+
+def sanitized_label(value: str) -> str:
+    label = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in value)
+    return label[:80] or "command"
+
+
+def fixed_shell_command(argv: list[str]) -> str:
+    """Quote runner-owned shared-shell arguments without accepting command text."""
+    return shlex.join(argv)
+
+
+def selected_chapters(
+    manifest: dict[str, Any], chapter_ids: list[str], profile: str | None
+) -> list[dict[str, Any]]:
+    chapters = manifest.get("chapters", [])
+    if chapter_ids:
+        by_id = {chapter.get("id"): chapter for chapter in chapters}
+        missing = [chapter_id for chapter_id in chapter_ids if chapter_id not in by_id]
+        if missing:
+            raise AcceptanceFailure(
+                "tutorial_ambiguity",
+                f"Unknown tutorial chapter(s): {', '.join(missing)}",
+            )
+        selected = [by_id[chapter_id] for chapter_id in chapter_ids]
+    else:
+        selected = [
+            chapter
+            for chapter in chapters
+            if chapter.get("gui_acceptance", {}).get("profile") == profile
+        ]
+    missing_contract = [
+        chapter.get("id", "<unknown>")
+        for chapter in selected
+        if not isinstance(chapter.get("gui_acceptance"), dict)
+    ]
+    if missing_contract:
+        raise AcceptanceFailure(
+            "tutorial_ambiguity",
+            f"Selected chapter(s) have no GUI acceptance contract: {', '.join(missing_contract)}",
+        )
+    if not selected:
+        raise AcceptanceFailure(
+            "tutorial_ambiguity", f"No GUI acceptance chapters matched profile '{profile}'"
+        )
+    return selected
+
+
+def redacted_environment(environment: dict[str, str]) -> tuple[list[dict[str, str]], set[str]]:
+    sensitive_names = {
+        name
+        for name in environment
+        if name.startswith("GENTLE_") or name.endswith("_API_KEY")
+    }
+    rows = [
+        {
+            "name": name,
+            "value_sha256": sha256_bytes(environment[name].encode("utf-8")),
         }
+        for name in sorted(sensitive_names)
+    ]
+    return rows, sensitive_names
 
-    def fail(self, result: str, message: str) -> None:
-        raise AuditFailure(result, message)
 
-    def write_ledger(self) -> None:
-        if not self.evidence_initialized:
-            return
-        payload = copy.deepcopy(self.ledger)
-        payload.pop("payload_sha256", None)
-        self.ledger["payload_sha256"] = sha256_bytes(canonical_json_bytes(payload))
-        atomic_write_json(self.ledger_path, self.ledger)
+@dataclass
+class CommandResult:
+    payload: Any
+    receipt: dict[str, Any]
 
-    def relative(self, path: Path) -> str:
-        try:
-            return path.relative_to(self.output_dir).as_posix()
-        except ValueError:
-            return path.name
 
-    def command(
+class CommandRecorder:
+    def __init__(self, output_dir: Path, cwd: Path):
+        self.output_dir = output_dir
+        self.cwd = cwd
+        self.receipts: list[dict[str, Any]] = []
+        self.counter = 0
+
+    def run_json(
         self,
-        label: str,
         argv: list[str],
+        label: str,
         *,
-        cwd: Optional[Path] = None,
-        env: Optional[dict[str, str]] = None,
-        timeout: float = 300.0,
-        failure_result: str = "product_failure",
-    ) -> subprocess.CompletedProcess[str]:
-        self.command_index += 1
-        safe_label = re.sub(r"[^A-Za-z0-9_.-]+", "_", label)
-        stdout_path = self.logs_dir / f"{self.command_index:02d}-{safe_label}.stdout.txt"
-        stderr_path = self.logs_dir / f"{self.command_index:02d}-{safe_label}.stderr.txt"
+        timeout: float = 180.0,
+        env: dict[str, str] | None = None,
+        failure_class: str = "product_failure",
+    ) -> CommandResult:
+        self.counter += 1
+        stem = f"{self.counter:03d}-{sanitized_label(label)}"
         started = time.monotonic()
         try:
             completed = subprocess.run(
                 argv,
-                cwd=str(cwd or self.repo_root),
+                cwd=self.cwd,
                 env=env,
-                text=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 timeout=timeout,
                 check=False,
             )
         except (OSError, subprocess.TimeoutExpired) as error:
-            self.fail(failure_result, f"Could not run {label}: {error}")
-        stdout_path.write_text(completed.stdout, encoding="utf-8")
-        stderr_path.write_text(completed.stderr, encoding="utf-8")
-        record = {
+            raise AcceptanceFailure(
+                failure_class, f"Command '{label}' could not complete: {error}"
+            ) from error
+        elapsed_ms = round((time.monotonic() - started) * 1000)
+        stdout_path = self.output_dir / "commands" / f"{stem}.stdout"
+        stderr_path = self.output_dir / "commands" / f"{stem}.stderr"
+        stdout_path.parent.mkdir(parents=True, exist_ok=True)
+        stdout_path.write_bytes(completed.stdout)
+        stderr_path.write_bytes(completed.stderr)
+        receipt = {
             "label": label,
-            "program": Path(argv[0]).name,
-            "arguments": [Path(argv[0]).name, *argv[1:]],
-            "cwd_role": "repo" if (cwd or self.repo_root) == self.repo_root else "isolated_run",
+            "argv": argv,
+            "cwd": str(self.cwd),
             "exit_code": completed.returncode,
-            "elapsed_seconds": round(time.monotonic() - started, 3),
-            "stdout": self.relative(stdout_path),
-            "stderr": self.relative(stderr_path),
+            "elapsed_ms": elapsed_ms,
+            "stdout_path": str(stdout_path),
+            "stdout_sha256": sha256_bytes(completed.stdout),
+            "stderr_path": str(stderr_path),
+            "stderr_sha256": sha256_bytes(completed.stderr),
         }
-        self.ledger["commands"].append(record)
-        self.write_ledger()
+        self.receipts.append(receipt)
         if completed.returncode != 0:
-            detail = completed.stderr.strip() or completed.stdout.strip() or "no diagnostic"
-            self.fail(failure_result, f"{label} failed ({completed.returncode}): {detail}")
-        return completed
-
-    def command_json(self, label: str, argv: list[str], **kwargs: Any) -> Any:
-        completed = self.command(label, argv, **kwargs)
+            diagnostic = completed.stderr.decode("utf-8", errors="replace").strip()
+            raise AcceptanceFailure(
+                failure_class,
+                f"Command '{label}' exited {completed.returncode}: {diagnostic[-1000:]}",
+            )
         try:
-            return json.loads(completed.stdout)
+            payload = json.loads(completed.stdout)
         except json.JSONDecodeError as error:
-            self.fail("harness_gap", f"{label} did not emit one JSON value: {error}")
+            raise AcceptanceFailure(
+                failure_class, f"Command '{label}' did not emit one JSON document: {error}"
+            ) from error
+        return CommandResult(payload=payload, receipt=receipt)
 
-    def tool_version(self, argv: list[str]) -> str:
-        try:
-            completed = subprocess.run(
-                argv,
-                cwd=str(self.repo_root),
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                timeout=15.0,
-                check=False,
+
+class TutorialAcceptanceRun:
+    def __init__(
+        self,
+        args: argparse.Namespace,
+        repo_root: Path,
+        chapter: dict[str, Any],
+        environment_record: dict[str, Any],
+    ):
+        self.args = args
+        self.repo_root = repo_root
+        self.chapter = chapter
+        self.acceptance = chapter["gui_acceptance"]
+        self.chapter_dir = args.evidence_dir / chapter["id"]
+        if self.chapter_dir.exists() and any(self.chapter_dir.iterdir()):
+            raise AcceptanceFailure(
+                "harness_gap", f"Evidence directory is not empty: {self.chapter_dir}"
             )
-        except (OSError, subprocess.TimeoutExpired) as error:
-            return f"unavailable: {error}"
-        return completed.stdout.strip().splitlines()[0] if completed.stdout.strip() else "unknown"
-
-    def prepare_directories(self) -> None:
-        if self.output_dir.exists() and any(self.output_dir.iterdir()):
-            self.fail(
-                "harness_gap",
-                f"Refusing to overwrite non-empty audit directory '{self.output_dir}'",
-            )
-        for path in (
-            self.logs_dir,
-            self.checkpoints_dir,
-            self.runtime_dir,
-            self.projects_dir,
-            self.queries_dir,
-        ):
-            path.mkdir(parents=True, exist_ok=True)
-        self.evidence_initialized = True
-
-    def require_file(self, path: Path, label: str) -> None:
-        if not path.is_file():
-            self.fail("harness_gap", f"{label} does not exist: '{path}'")
-
-    def establish_provenance(self) -> None:
-        manifest = self.args.manifest.resolve()
-        source_dir = self.args.tutorial_sources.resolve()
-        examples_dir = self.args.examples.resolve()
-        for path, label in (
-            (manifest, "tutorial manifest"),
-            (self.args.gentle_cli.resolve(), "gentle_cli"),
-            (self.args.examples_bin.resolve(), "gentle_examples_docs"),
-        ):
-            self.require_file(path, label)
-        if not self.args.validate_only:
-            self.require_file(self.args.gentle_bin.resolve(), "GENtle GUI binary")
-        revision = self.command(
-            "git-revision", ["git", "rev-parse", "HEAD"], failure_result="harness_gap"
-        ).stdout.strip()
-        self.ledger["source"] = {
-            "revision": revision,
-            "manifest_sha256": sha256_file(manifest),
-            "tutorial_sources_role": source_dir.name,
-            "examples_role": examples_dir.name,
-            "binaries": {
-                "gentle_cli": sha256_file(self.args.gentle_cli.resolve()),
-                "gentle_examples_docs": sha256_file(self.args.examples_bin.resolve()),
-                "gentle": None
-                if self.args.validate_only
-                else sha256_file(self.args.gentle_bin.resolve()),
+        self.chapter_dir.mkdir(parents=True, exist_ok=True)
+        self.recorder = CommandRecorder(self.chapter_dir, repo_root)
+        self.snapshot_path = self.chapter_dir / "live-semantic-snapshot.json"
+        self.gui_stdout_path = self.chapter_dir / "gui.stdout"
+        self.gui_stderr_path = self.chapter_dir / "gui.stderr"
+        self.gui_process: subprocess.Popen[bytes] | None = None
+        self.gui_stdout = None
+        self.gui_stderr = None
+        self.isolation_paths = self.prepare_isolation_paths()
+        self.process_environment = self.isolated_process_environment()
+        self.starter_preparation: dict[str, Any] = {}
+        self.oracle_preparation: dict[str, Any] = {}
+        self.sequence_scopes: dict[str, str] = {}
+        self.steps: list[dict[str, Any]] = []
+        self.ledger: dict[str, Any] = {
+            "schema": LEDGER_SCHEMA,
+            "chapter_id": chapter["id"],
+            "chapter_title": chapter.get("title", ""),
+            "profile": self.acceptance.get("profile"),
+            "network_policy": self.acceptance.get("network"),
+            "network_enforcement": args.network_enforcement,
+            "manifest_path": str(args.manifest),
+            "manifest_sha256": sha256_file(args.manifest),
+            "acceptance_contract_sha256": sha256_bytes(
+                canonical_json_bytes(self.acceptance)
+            ),
+            "environment": environment_record,
+            "isolation_paths": {
+                name: str(path) for name, path in self.isolation_paths.items()
             },
+            "steps": self.steps,
+            "status": "running",
+            "failure_class": None,
+            "message": "",
         }
-        self.ledger["environment"] = {
-            "platform": platform.platform(),
-            "python": platform.python_version(),
-            "gentle_cli": self.tool_version([str(self.args.gentle_cli.resolve()), "--version"]),
-            "gentle": None
-            if self.args.validate_only
-            else self.tool_version([str(self.args.gentle_bin.resolve()), "--version"]),
-            "display_present": bool(os.environ.get("DISPLAY")),
-            "network_policy": "contract-recorded; OS-level isolation remains auditor-owned",
-            "profile_isolation": "temporary HOME, TMPDIR, and XDG directories; inherited GENTLE_* and secret variables removed",
-        }
-        self.write_ledger()
 
-    def validate_manifest(self) -> None:
-        self.command(
-            "tutorial-manifest-check",
+    @property
+    def ledger_path(self) -> Path:
+        return self.chapter_dir / "acceptance-ledger.json"
+
+    def write_ledger(self) -> None:
+        self.ledger["command_receipts"] = self.recorder.receipts
+        atomic_write_json(self.ledger_path, self.ledger)
+
+    def prepare_project(self, phase: str) -> dict[str, Any]:
+        project_path = self.chapter_dir / f"{phase}.project.gentle.json"
+        run_dir = self.chapter_dir / f"{phase}-workflow"
+        result = self.recorder.run_json(
             [
-                str(self.args.examples_bin.resolve()),
-                "tutorial-manifest-check",
-                "--catalog-meta",
-                str(self.args.catalog_meta.resolve()),
-                "--tutorial-sources",
-                str(self.args.tutorial_sources.resolve()),
-                "--manifest",
-                str(self.args.manifest.resolve()),
-            ],
-            failure_result="contract_error",
-        )
-
-    def load_contract(self) -> tuple[dict[str, Any], dict[str, Any]]:
-        manifest = load_json(self.args.manifest.resolve())
-        chapters = [
-            chapter
-            for chapter in manifest.get("chapters", [])
-            if chapter.get("id") == self.args.tutorial_id
-        ]
-        if len(chapters) != 1:
-            self.fail(
-                "contract_error",
-                f"Expected one tutorial chapter '{self.args.tutorial_id}', found {len(chapters)}",
-            )
-        chapter = chapters[0]
-        contract = chapter.get("gui_acceptance")
-        if not isinstance(contract, dict):
-            self.fail("contract_error", "Tutorial chapter has no GUI acceptance contract")
-        if contract.get("schema") != CONTRACT_SCHEMA:
-            self.fail(
-                "contract_error",
-                f"Unsupported GUI acceptance schema {contract.get('schema')!r}",
-            )
-        self.ledger["source"]["contract_sha256"] = sha256_bytes(
-            canonical_json_bytes(contract)
-        )
-        self.ledger["contract"] = {
-            "schema": contract["schema"],
-            "profile": contract["profile"],
-            "network": contract["network"],
-            "starter_example_id": contract["starter"]["example_id"],
-            "oracle_example_id": contract["oracle"]["example_id"],
-            "step_count": len(contract["steps"]),
-        }
-        self.write_ledger()
-        return chapter, contract
-
-    def materialize_project(self, role: str, example_id: str) -> Path:
-        project = self.projects_dir / f"{role}.project.gentle.json"
-        run_dir = self.output_dir / role
-        result = self.command_json(
-            f"materialize-{role}",
-            [
-                str(self.args.examples_bin.resolve()),
-                "example-project",
-                example_id,
-                str(project),
+                str(self.args.examples_docs),
+                "tutorial-gui-project",
+                "--chapter",
+                self.chapter["id"],
+                "--phase",
+                phase,
+                "--project-output",
+                str(project_path),
                 "--run-dir",
                 str(run_dir),
                 "--source",
-                str(self.args.examples.resolve()),
+                str(self.args.workflow_source),
+                "--manifest",
+                str(self.args.manifest),
                 "--repo-root",
                 str(self.repo_root),
             ],
-            failure_result="product_failure",
-            timeout=600.0,
-        )
-        materializer = {
-            key: result.get(key)
-            for key in ("status", "mode", "example_id", "sequence_count")
-        }
-        self.ledger["projects"][role] = {
-            "example_id": example_id,
-            "project": self.relative(project),
-            "sha256": sha256_file(project),
-            "materializer": materializer,
-        }
-        self.write_ledger()
-        return project
+            f"prepare-{phase}",
+            env=self.process_environment,
+            failure_class="tutorial_ambiguity",
+        ).payload
+        if result.get("schema") != PREPARATION_SCHEMA:
+            raise AcceptanceFailure(
+                "tutorial_ambiguity",
+                f"Unexpected {phase} preparation schema {result.get('schema')!r}",
+            )
+        if result.get("project_sha256") != sha256_file(project_path):
+            raise AcceptanceFailure(
+                "harness_gap", f"{phase} preparation project hash does not match its file"
+            )
+        return result
 
-    def shell_json(self, project: Path, label: str, tokens: Iterable[str]) -> Any:
-        token_list = list(tokens)
-        for token in token_list:
-            if not token or any(ord(character) < 32 or ord(character) == 127 for character in token):
-                self.fail("contract_error", f"Unsafe token in typed verifier: {token!r}")
-        command_text = shlex.join(token_list)
-        return self.command_json(
-            label,
-            [str(self.args.gentle_cli.resolve()), "--project", str(project), "shell", command_text],
-            timeout=180.0,
-        )
-
-    def fact_evaluation(self, project: Path, expression: dict[str, Any], label: str) -> Any:
-        digest = sha256_bytes(canonical_json_bytes(expression))[:16]
-        query = self.queries_dir / f"fact-{digest}.json"
-        if not query.exists():
-            atomic_write_json(query, expression)
-        return self.shell_json(project, label, ["facts", "eval", "@" + str(query)])
-
-    def state_summary(self, project: Path, label: str) -> Any:
-        return self.command_json(
-            label,
-            [str(self.args.gentle_cli.resolve()), "--project", str(project), "state-summary"],
-            timeout=120.0,
-        )
-
-    def report(self, project: Path, report_id: str, label: str) -> Any:
-        payload = self.shell_json(project, label, ["primers", "show-report", report_id])
-        report = payload.get("report") if isinstance(payload, dict) else None
-        if not isinstance(report, dict):
-            self.fail("product_failure", f"Report '{report_id}' did not yield a report object")
-        return report
-
-    def verify_nonvisual(
-        self,
-        project: Path,
-        verifier: dict[str, Any],
-        label: str,
-        artifact_root: Path,
+    def fact_eval(
+        self, project_path: Path, expression: dict[str, Any], label: str
     ) -> dict[str, Any]:
-        kind = verifier["kind"]
-        if kind == "facts":
-            result = self.fact_evaluation(project, verifier["expression"], label)
-            if result.get("truth") != "satisfied":
-                self.fail("product_failure", f"Typed fact verifier is {result.get('truth')!r}")
-            return {"kind": kind, "truth": result.get("truth")}
-        if kind == "expected_effects":
-            tokens = ["introspect", "verify-effects", verifier["capability_id"]]
-            for key, value in sorted(verifier.get("args", {}).items()):
-                tokens.extend(["--arg", f"{key}={value}"])
-            result = self.shell_json(project, label, tokens)
-            if result.get("verified") is not True:
-                self.fail(
-                    "product_failure",
-                    f"Expected effects for '{verifier['capability_id']}' are not verified",
-                )
-            return {"kind": kind, "status": result.get("status")}
-        if kind == "report":
-            if verifier["schema"] != "gentle.primer_design_report.v1":
-                self.fail(
-                    "harness_gap",
-                    "No typed CLI report adapter is registered for "
-                    f"schema {verifier['schema']!r}",
-                )
-            report = self.report(project, verifier["report_id"], label)
-            checks = assert_report(report, verifier)
-            return {
-                "kind": kind,
-                "report_id": verifier["report_id"],
-                "schema": report.get("schema"),
-                "checks": checks,
-            }
-        if kind == "artifact":
-            relative_path = Path(verifier["path"])
-            if relative_path.is_absolute() or ".." in relative_path.parts:
-                self.fail("contract_error", f"Unsafe artifact path '{relative_path}'")
-            artifact = artifact_root / relative_path
-            if not artifact.is_file():
-                self.fail("product_failure", f"Typed artifact does not exist: '{relative_path}'")
-            digest = sha256_file(artifact)
-            if verifier.get("sha256") and digest.lower() != verifier["sha256"].lower():
-                self.fail("product_failure", f"Artifact '{relative_path}' digest differs")
-            structured = None
-            if verifier.get("schema") or verifier.get("required_attributes"):
-                structured = load_json(artifact)
-                if not isinstance(structured, dict):
-                    self.fail(
-                        "product_failure",
-                        f"Typed artifact '{relative_path}' is not a JSON object",
-                    )
-            if verifier.get("schema") and structured.get("schema") != verifier["schema"]:
-                self.fail("product_failure", f"Artifact '{relative_path}' schema differs")
-            for path in verifier.get("required_attributes", []):
-                try:
-                    json_path(structured, path)
-                except KeyError as error:
-                    self.fail("product_failure", f"Artifact '{relative_path}' lacks '{path}'")
-            return {"kind": kind, "path": relative_path.as_posix(), "sha256": digest}
-        if kind == "state":
-            summary = self.state_summary(project, label)
-            actual = {row["id"] for row in summary.get("sequences", [])}
-            missing = sorted(set(verifier["seq_ids"]) - actual)
-            if missing:
-                self.fail("product_failure", f"Project state is missing sequence ids {missing}")
-            return {"kind": kind, "sequence_ids": sorted(actual)}
-        if kind == "visible_claim":
-            self.fail("contract_error", "Visible claims require a live semantic snapshot")
-        self.fail("contract_error", f"Unsupported verifier kind '{kind}'")
+        expression_path = self.chapter_dir / "verifiers" / f"{sanitized_label(label)}.fact.json"
+        atomic_write_json(expression_path, expression)
+        output = self.recorder.run_json(
+            [
+                str(self.args.gentle_cli),
+                "--project",
+                str(project_path),
+                "shell",
+                fixed_shell_command(["facts", "eval", f"@{expression_path}"]),
+            ],
+            label,
+            env=self.process_environment,
+        ).payload
+        if output.get("schema") != "gentle.fact_evaluation.v1":
+            raise AcceptanceFailure(
+                "product_failure", f"Fact verifier '{label}' returned an unexpected schema"
+            )
+        return output
 
-    def preflight_projects(
-        self, contract: dict[str, Any], starter: Path, oracle: Path
-    ) -> None:
-        starter_completion = self.fact_evaluation(
-            starter, contract["completion_condition"], "starter-completion"
+    def show_report(
+        self, project_path: Path, verifier: dict[str, Any], label: str
+    ) -> dict[str, Any]:
+        schema = verifier["schema"]
+        if schema != "gentle.primer_design_report.v1":
+            raise AcceptanceFailure(
+                "harness_gap",
+                f"No fixed tutorial verifier route is registered for report schema '{schema}'",
+            )
+        output = self.recorder.run_json(
+            [
+                str(self.args.gentle_cli),
+                "--project",
+                str(project_path),
+                "primers",
+                "show-report",
+                verifier["report_id"],
+            ],
+            label,
+            env=self.process_environment,
+        ).payload
+        report = output.get("report")
+        if not isinstance(report, dict):
+            raise AcceptanceFailure("product_failure", f"Report '{label}' is absent")
+        assert_report_contract(report, verifier)
+        return {
+            "status": "pass",
+            "schema": report.get("schema"),
+            "report_id": report.get("report_id"),
+            "content_sha256": sha256_bytes(canonical_json_bytes(report)),
+        }
+
+    def state_verify(
+        self, project_path: Path, verifier: dict[str, Any], phase: str, label: str
+    ) -> dict[str, Any]:
+        output = self.recorder.run_json(
+            [str(self.args.gentle_cli), "--project", str(project_path), "state-summary"],
+            label,
+            env=self.process_environment,
+        ).payload
+        present = {row.get("id") for row in output.get("sequences", [])}
+        mapping = self.binding_map(
+            self.starter_preparation if phase == "starter" else self.oracle_preparation
+        )
+        required = [mapping.get(seq_id, seq_id) for seq_id in verifier.get("seq_ids", [])]
+        missing = [seq_id for seq_id in required if seq_id not in present]
+        if missing:
+            raise AcceptanceFailure(
+                "product_failure", f"State verifier is missing sequence(s): {', '.join(missing)}"
+            )
+        return {"status": "pass", "sequence_ids": required}
+
+    def expected_effects_verify(
+        self, project_path: Path, verifier: dict[str, Any], label: str
+    ) -> dict[str, Any]:
+        argv = [
+            str(self.args.gentle_cli),
+            "--project",
+            str(project_path),
+            "introspect",
+            "verify-effects",
+            verifier["capability_id"],
+        ]
+        for name, value in sorted(verifier.get("args", {}).items()):
+            argv.extend(["--arg", f"{name}={value}"])
+        output = self.recorder.run_json(
+            argv, label, env=self.process_environment
+        ).payload
+        if output.get("schema") != "gentle.introspection.v1" or not output.get("verified"):
+            raise AcceptanceFailure(
+                "product_failure",
+                f"Expected effects were not verified for {verifier['capability_id']}: "
+                f"{output.get('status')}",
+            )
+        return {
+            "status": "pass",
+            "capability_id": output.get("canonical_capability_id"),
+            "verification_status": output.get("status"),
+        }
+
+    def artifact_verify(
+        self, verifier: dict[str, Any], artifact_root: Path
+    ) -> dict[str, Any]:
+        relative = Path(verifier["path"])
+        if relative.is_absolute() or ".." in relative.parts:
+            raise AcceptanceFailure(
+                "tutorial_ambiguity", f"Artifact path is not confined: {relative}"
+            )
+        path = artifact_root / relative
+        if not path.is_file():
+            raise AcceptanceFailure("product_failure", f"Artifact is absent: {path}")
+        actual_sha = sha256_file(path)
+        if verifier.get("sha256") and actual_sha != verifier["sha256"]:
+            raise AcceptanceFailure(
+                "product_failure", f"Artifact hash differs for '{relative}'"
+            )
+        content: Any = None
+        if verifier.get("schema") or verifier.get("required_attributes"):
+            try:
+                content = json.loads(path.read_text(encoding="utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                content = path.read_text(encoding="utf-8", errors="replace")
+        if verifier.get("schema"):
+            if not isinstance(content, dict) or content.get("schema") != verifier["schema"]:
+                raise AcceptanceFailure(
+                    "product_failure", f"Artifact schema differs for '{relative}'"
+                )
+        for attribute in verifier.get("required_attributes", []):
+            if isinstance(content, dict):
+                try:
+                    json_path(content, attribute)
+                except KeyError as error:
+                    raise AcceptanceFailure(
+                        "product_failure",
+                        f"Artifact '{relative}' lacks attribute '{attribute}'",
+                    ) from error
+            elif attribute not in str(content):
+                raise AcceptanceFailure(
+                    "product_failure",
+                    f"Artifact '{relative}' lacks marker '{attribute}'",
+                )
+        return {"status": "pass", "path": str(path), "sha256": actual_sha}
+
+    @staticmethod
+    def binding_map(preparation: dict[str, Any]) -> dict[str, str]:
+        return {
+            row["source_sequence_id"]: row["resolved_sequence_id"]
+            for row in preparation.get("sequence_bindings", [])
+        }
+
+    @staticmethod
+    def scope_map(preparation: dict[str, Any]) -> dict[str, str]:
+        return {
+            row["source_sequence_id"]: row["subject_scope"]
+            for row in preparation.get("sequence_bindings", [])
+        }
+
+    def preflight_contract(self) -> None:
+        self.starter_preparation = self.prepare_project("starter")
+        self.oracle_preparation = self.prepare_project("oracle")
+        self.sequence_scopes = self.scope_map(self.starter_preparation)
+        starter_path = Path(self.starter_preparation["project_path"])
+        oracle_path = Path(self.oracle_preparation["project_path"])
+        starter_completion = self.fact_eval(
+            starter_path, self.acceptance["completion_condition"], "starter-completion"
         )
         if starter_completion.get("truth") != "unsatisfied":
-            self.fail(
-                "contract_error",
-                "Starter completion condition must be unsatisfied, not "
-                f"{starter_completion.get('truth')!r}",
+            failure_class = (
+                "starter_precompleted"
+                if starter_completion.get("truth") == "satisfied"
+                else "tutorial_ambiguity"
             )
-        oracle_completion = self.fact_evaluation(
-            oracle, contract["completion_condition"], "oracle-completion"
+            raise AcceptanceFailure(
+                failure_class,
+                f"Starter completion fact is {starter_completion.get('truth')!r}, expected 'unsatisfied'",
+            )
+        oracle_completion = self.fact_eval(
+            oracle_path, self.acceptance["completion_condition"], "oracle-completion"
         )
         if oracle_completion.get("truth") != "satisfied":
-            self.fail(
-                "contract_error",
-                f"Oracle completion condition is {oracle_completion.get('truth')!r}",
+            raise AcceptanceFailure(
+                "tutorial_ambiguity",
+                f"Oracle completion fact is {oracle_completion.get('truth')!r}, expected 'satisfied'",
             )
-        starter_ids = {
-            row["id"]
-            for row in self.state_summary(starter, "starter-state").get("sequences", [])
-        }
-        oracle_ids = {
-            row["id"]
-            for row in self.state_summary(oracle, "oracle-state").get("sequences", [])
-        }
-        for source, target in contract["oracle"].get("seq_id_map", {}).items():
-            if source not in starter_ids or target not in oracle_ids:
-                self.fail(
-                    "contract_error",
-                    f"Oracle seq_id_map entry {source!r}->{target!r} is not present",
-                )
-        oracle_checks: list[dict[str, Any]] = []
-        for step in contract["steps"]:
+        for step in self.acceptance["steps"]:
             if not step.get("scientific_effect"):
                 continue
-            after = self.fact_evaluation(
-                oracle, step["after"], f"oracle-after-{step['id']}"
+            before = self.fact_eval(
+                starter_path, step["before"], f"oracle-check-{step['id']}-before"
+            )
+            expected_before = {"unsatisfied"}
+            if step.get("allow_preexisting"):
+                expected_before.add("satisfied")
+            if before.get("truth") not in expected_before:
+                raise AcceptanceFailure(
+                    "tutorial_ambiguity",
+                    f"Starter fact for step '{step['id']}' is {before.get('truth')!r}",
+                )
+            after = self.fact_eval(
+                oracle_path, step["after"], f"oracle-check-{step['id']}-after"
             )
             if after.get("truth") != "satisfied":
-                self.fail(
-                    "contract_error",
-                    f"Oracle postcondition for '{step['id']}' is {after.get('truth')!r}",
+                raise AcceptanceFailure(
+                    "tutorial_ambiguity",
+                    f"Oracle fact for step '{step['id']}' is not satisfied",
                 )
-            for index, verifier in enumerate(step.get("verifiers", []), 1):
-                if verifier["kind"] == "visible_claim":
-                    continue
-                oracle_checks.append(
-                    self.verify_nonvisual(
-                        oracle,
+            for index, verifier in enumerate(step.get("verifiers", []), start=1):
+                if verifier["kind"] == "report":
+                    self.show_report(
+                        oracle_path,
                         verifier,
-                        f"oracle-{step['id']}-{index}",
-                        self.output_dir / "oracle",
+                        f"oracle-check-{step['id']}-report-{index}",
                     )
-                )
-        self.ledger["oracle_preflight"] = {
-            "starter_completion": "unsatisfied",
-            "oracle_completion": "satisfied",
-            "typed_checks": oracle_checks,
+                elif verifier["kind"] == "facts":
+                    result = self.fact_eval(
+                        oracle_path,
+                        verifier["expression"],
+                        f"oracle-check-{step['id']}-facts-{index}",
+                    )
+                    if result.get("truth") != "satisfied":
+                        raise AcceptanceFailure(
+                            "tutorial_ambiguity", "Oracle typed fact verifier is not satisfied"
+                        )
+        self.ledger["starter"] = self.starter_preparation
+        self.ledger["oracle"] = self.oracle_preparation
+        self.ledger["preflight"] = {
+            "status": "pass",
+            "starter_completion_truth": starter_completion.get("truth"),
+            "oracle_completion_truth": oracle_completion.get("truth"),
         }
         self.write_ledger()
+
+    def prepare_isolation_paths(self) -> dict[str, Path]:
+        profile_root = self.chapter_dir / "profile"
+        paths = {
+            "home": profile_root / "home",
+            "xdg_config": profile_root / "xdg-config",
+            "xdg_cache": profile_root / "xdg-cache",
+            "xdg_data": profile_root / "xdg-data",
+            "tmpdir": profile_root / "tmp",
+        }
+        for path in paths.values():
+            path.mkdir(parents=True, exist_ok=True)
+        return paths
+
+    def isolated_process_environment(self) -> dict[str, str]:
+        inherited = dict(os.environ)
+        _, sensitive_names = redacted_environment(inherited)
+        environment = {
+            key: value
+            for key, value in inherited.items()
+            if key not in sensitive_names
+        }
+        environment.update(
+            {
+                "HOME": str(self.isolation_paths["home"]),
+                "XDG_CONFIG_HOME": str(self.isolation_paths["xdg_config"]),
+                "XDG_CACHE_HOME": str(self.isolation_paths["xdg_cache"]),
+                "XDG_DATA_HOME": str(self.isolation_paths["xdg_data"]),
+                "TMPDIR": str(self.isolation_paths["tmpdir"]),
+                "LANG": "C.UTF-8",
+                "LC_ALL": "C.UTF-8",
+                "TZ": "UTC",
+            }
+        )
+        return environment
 
     def isolated_gui_environment(self) -> dict[str, str]:
-        env = {
-            key: value
-            for key, value in os.environ.items()
-            if not key.startswith("GENTLE_")
-            and not key.endswith("_API_KEY")
-            and not key.endswith("_TOKEN")
+        environment = dict(self.process_environment)
+        environment["GENTLE_GUI_TEST_SNAPSHOT"] = str(self.snapshot_path)
+        return environment
+
+    def launch_gui(self) -> None:
+        self.snapshot_path.unlink(missing_ok=True)
+        self.gui_stdout = self.gui_stdout_path.open("wb")
+        self.gui_stderr = self.gui_stderr_path.open("wb")
+        self.gui_process = subprocess.Popen(
+            [
+                str(self.args.gentle),
+                "--project",
+                self.starter_preparation["project_path"],
+            ],
+            cwd=self.repo_root,
+            env=self.isolated_gui_environment(),
+            stdout=self.gui_stdout,
+            stderr=self.gui_stderr,
+            start_new_session=True,
+        )
+        self.ledger["gui_process"] = {
+            "argv": [
+                str(self.args.gentle),
+                "--project",
+                self.starter_preparation["project_path"],
+            ],
+            "pid": self.gui_process.pid,
+            "stdout_path": str(self.gui_stdout_path),
+            "stderr_path": str(self.gui_stderr_path),
         }
-        profile = self.runtime_dir / "profile"
-        env.update(
-            {
-                "HOME": str(profile / "home"),
-                "XDG_CONFIG_HOME": str(profile / "config"),
-                "XDG_CACHE_HOME": str(profile / "cache"),
-                "XDG_DATA_HOME": str(profile / "data"),
-                "TMPDIR": str(profile / "tmp"),
-                "GENTLE_GUI_TEST_SNAPSHOT": str(self.snapshot_path),
-            }
-        )
-        for path in (
-            env["HOME"],
-            env["XDG_CONFIG_HOME"],
-            env["XDG_CACHE_HOME"],
-            env["XDG_DATA_HOME"],
-            env["TMPDIR"],
-        ):
-            Path(path).mkdir(parents=True, exist_ok=True)
-        return env
-
-    def discover_screenshot_tool(self) -> Optional[str]:
-        for candidate in ("scrot", "gnome-screenshot", "import"):
-            if shutil.which(candidate):
-                return candidate
-        return None
-
-    def require_x11(self, contract: dict[str, Any]) -> None:
-        if sys.platform != "linux":
-            self.fail("harness_gap", "The tutorial GUI executor currently requires Linux/X11")
-        if not os.environ.get("DISPLAY"):
-            self.fail("harness_gap", "DISPLAY is not set; run under xvfb-run or an X11 session")
-        if not shutil.which("xdotool"):
-            self.fail("harness_gap", "xdotool is required for ordinary X11 input delivery")
-        needs_screenshot = any(
-            step["evidence"]["screenshot"] == "required" for step in contract["steps"]
-        )
-        self.screenshot_tool = self.discover_screenshot_tool()
-        if needs_screenshot and self.screenshot_tool is None:
-            self.fail(
-                "harness_gap",
-                "The contract requires screenshots, but scrot, gnome-screenshot, and ImageMagick import are unavailable",
-            )
-        self.ledger["environment"].update(
-            {
-                "display": os.environ["DISPLAY"],
-                "xdotool": self.tool_version(["xdotool", "version"]),
-                "screenshot_tool": self.screenshot_tool,
-            }
-        )
-        self.write_ledger()
-
-    def start_gui(self, project: Path) -> None:
-        if self.snapshot_path.exists():
-            self.snapshot_path.unlink()
-        stdout_path = self.logs_dir / "gui.stdout.txt"
-        stderr_path = self.logs_dir / "gui.stderr.txt"
-        stdout = stdout_path.open("w", encoding="utf-8")
-        stderr = stderr_path.open("w", encoding="utf-8")
-        try:
-            self.gui_process = subprocess.Popen(
-                [str(self.args.gentle_bin.resolve()), "--project", str(project)],
-                cwd=str(self.runtime_dir),
-                env=self.isolated_gui_environment(),
-                text=True,
-                stdout=stdout,
-                stderr=stderr,
-            )
-        except OSError as error:
-            stdout.close()
-            stderr.close()
-            self.fail("harness_gap", f"Could not launch GENtle GUI: {error}")
-        stdout.close()
-        stderr.close()
-        self.ledger["gui"] = {
-            "program": self.args.gentle_bin.name,
-            "stdout": self.relative(stdout_path),
-            "stderr": self.relative(stderr_path),
-        }
-        self.write_ledger()
 
     def stop_gui(self) -> None:
-        if self.gui_process is None or self.gui_process.poll() is not None:
-            return
-        self.gui_process.terminate()
-        try:
-            self.gui_process.wait(timeout=10.0)
-        except subprocess.TimeoutExpired:
-            self.gui_process.kill()
-            self.gui_process.wait(timeout=5.0)
-
-    def read_snapshot(self) -> Optional[dict[str, Any]]:
-        if self.gui_process is not None and self.gui_process.poll() is not None:
-            self.fail(
-                "product_failure",
-                f"GENtle exited before acceptance completed (exit {self.gui_process.returncode})",
+        if self.gui_process is not None and self.gui_process.poll() is None:
+            try:
+                os.killpg(self.gui_process.pid, signal.SIGTERM)
+                self.gui_process.wait(timeout=10)
+            except (ProcessLookupError, subprocess.TimeoutExpired):
+                try:
+                    os.killpg(self.gui_process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                self.gui_process.wait(timeout=5)
+        if self.gui_stdout is not None:
+            self.gui_stdout.close()
+        if self.gui_stderr is not None:
+            self.gui_stderr.close()
+        process_info = self.ledger.get("gui_process")
+        if isinstance(process_info, dict):
+            process_info["exit_code"] = (
+                None if self.gui_process is None else self.gui_process.returncode
             )
-        if not self.snapshot_path.is_file():
-            return None
+            if self.gui_stdout_path.is_file():
+                process_info["stdout_sha256"] = sha256_file(self.gui_stdout_path)
+            if self.gui_stderr_path.is_file():
+                process_info["stderr_sha256"] = sha256_file(self.gui_stderr_path)
+
+    def read_snapshot(self) -> dict[str, Any] | None:
         try:
             snapshot = json.loads(self.snapshot_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return None
         if snapshot.get("schema") != SNAPSHOT_SCHEMA:
-            self.fail(
-                "product_failure",
-                f"GUI emitted unsupported semantic snapshot schema {snapshot.get('schema')!r}",
+            raise AcceptanceFailure(
+                "harness_gap", f"Unexpected GUI snapshot schema {snapshot.get('schema')!r}"
             )
         return snapshot
 
     def wait_snapshot(
         self,
-        description: str,
-        timeout: float,
         predicate: Callable[[dict[str, Any]], bool],
+        timeout: float,
+        description: str,
+        *,
+        after_generation: int | None = None,
     ) -> dict[str, Any]:
-        deadline = time.monotonic() + timeout * self.args.timeout_scale
-        last_snapshot: Optional[dict[str, Any]] = None
+        deadline = time.monotonic() + timeout
+        observed_ids: set[str] = set()
+        last_snapshot: dict[str, Any] | None = None
         while time.monotonic() < deadline:
+            if self.gui_process is not None and self.gui_process.poll() is not None:
+                raise AcceptanceFailure(
+                    "product_failure",
+                    f"GENtle exited {self.gui_process.returncode} while waiting for {description}",
+                )
             snapshot = self.read_snapshot()
             if snapshot is not None:
                 last_snapshot = snapshot
-                if snapshot.get("settled") and predicate(snapshot):
+                observed_ids.update(
+                    item.get("semantic_id", "") for item in snapshot.get("items", [])
+                )
+                generation_ok = after_generation is None or snapshot.get("generation", 0) > after_generation
+                if snapshot.get("settled") and generation_ok and predicate(snapshot):
                     return snapshot
             time.sleep(0.1)
+        failure_class = "harness_gap" if not observed_ids else "product_failure"
         generation = None if last_snapshot is None else last_snapshot.get("generation")
-        self.fail(
-            "product_failure",
-            f"Timed out waiting for {description}; last semantic generation={generation}",
+        raise AcceptanceFailure(
+            failure_class,
+            f"Timed out waiting for {description}; last generation={generation}, "
+            f"observed semantic ids={sorted(observed_ids)}",
         )
 
-    @staticmethod
-    def matching_items(
+    def item_for(
+        self,
         snapshot: dict[str, Any],
         semantic_id: str,
-        scope: Optional[str] = None,
-        window: Optional[str] = None,
-    ) -> list[dict[str, Any]]:
-        return [
+        *,
+        window_id: str | None = None,
+        subject_scope: str | None = None,
+        allow_unscoped_fallback: bool = False,
+    ) -> dict[str, Any] | None:
+        candidates = [
             item
             for item in snapshot.get("items", [])
             if item.get("semantic_id") == semantic_id
-            and (scope is None or item.get("subject_scope") == scope)
-            and (window is None or item.get("window_id") == window)
+            and (window_id is None or item.get("window_id") == window_id)
         ]
+        if subject_scope is not None:
+            scoped = [
+                item for item in candidates if item.get("subject_scope") == subject_scope
+            ]
+            if scoped:
+                candidates = scoped
+            elif allow_unscoped_fallback:
+                candidates = [item for item in candidates if item.get("subject_scope") is None]
+            else:
+                candidates = []
+        if len(candidates) > 1:
+            raise AcceptanceFailure(
+                "harness_gap",
+                f"Semantic target '{semantic_id}' is ambiguous ({len(candidates)} matches)",
+            )
+        return candidates[0] if candidates else None
 
-    def unique_item(
+    def scope_for_step(self, step: dict[str, Any]) -> str | None:
+        sequence_id = step.get("subject", {}).get("sequence")
+        if sequence_id is None:
+            return None
+        if sequence_id not in self.sequence_scopes:
+            raise AcceptanceFailure(
+                "tutorial_ambiguity",
+                f"Step '{step['id']}' sequence '{sequence_id}' has no prepared subject scope",
+            )
+        return self.sequence_scopes[sequence_id]
+
+    def target_ready(
+        self, snapshot: dict[str, Any], step: dict[str, Any], scope: str | None
+    ) -> bool:
+        item = self.item_for(
+            snapshot,
+            step["target"],
+            window_id=step["window"],
+            subject_scope=scope,
+        )
+        return bool(item and item.get("state", {}).get("visible") and item.get("state", {}).get("enabled"))
+
+    def visible_claim_holds(
         self,
         snapshot: dict[str, Any],
-        semantic_id: str,
-        scope: Optional[str] = None,
-        window: Optional[str] = None,
-    ) -> dict[str, Any]:
-        items = self.matching_items(snapshot, semantic_id, scope, window)
-        if len(items) != 1:
-            self.fail(
-                "product_failure",
-                f"Expected one semantic item '{semantic_id}' (scope={scope}, window={window}), found {len(items)}",
-            )
-        return items[0]
-
-    @staticmethod
-    def item_ready(item: dict[str, Any], enabled: bool = True) -> bool:
-        state = item.get("state", {})
-        return state.get("visible") is True and (not enabled or state.get("enabled") is True)
-
-    def wait_item(
-        self,
-        semantic_id: str,
-        scope: Optional[str],
-        window: Optional[str],
-        timeout: float,
-        *,
-        enabled: bool = True,
-        min_generation: int = 0,
-        allow_scroll: bool = False,
-    ) -> tuple[dict[str, Any], dict[str, Any]]:
-        deadline = time.monotonic() + timeout * self.args.timeout_scale
-        last_snapshot: Optional[dict[str, Any]] = None
-        scroll_attempts = 0
-        while time.monotonic() < deadline:
-            snapshot = self.read_snapshot()
-            if snapshot is not None:
-                last_snapshot = snapshot
-                generation = int(snapshot.get("generation", 0))
-                items = self.matching_items(snapshot, semantic_id, scope, window)
-                if (
-                    snapshot.get("settled")
-                    and generation >= min_generation
-                    and len(items) == 1
-                ):
-                    if self.item_ready(items[0], enabled):
-                        return snapshot, items[0]
-                    if (
-                        allow_scroll
-                        and items[0].get("state", {}).get("visible") is False
-                        and scroll_attempts < 16
-                        and self.scroll_owning_window(
-                            snapshot,
-                            items[0],
-                            f"reveal-{semantic_id}-{scroll_attempts + 1}",
-                        )
-                    ):
-                        scroll_attempts += 1
-            time.sleep(0.15)
-        generation = None if last_snapshot is None else last_snapshot.get("generation")
-        self.fail(
-            "product_failure",
-            f"Timed out waiting for {semantic_id}; last semantic generation={generation}; "
-            f"scroll attempts={scroll_attempts}",
-        )
-
-    def xdotool(self, label: str, args: list[str]) -> None:
-        self.command(
-            label,
-            ["xdotool", *args],
-            cwd=self.runtime_dir,
-            timeout=20.0,
-            failure_result="harness_gap",
-        )
-
-    def point_for_item(self, item: dict[str, Any]) -> tuple[int, int]:
-        rect = item["rect_logical_points"]
-        scale = float(item["pixels_per_point"])
-        x = round((float(rect["min_x"]) + float(rect["max_x"])) * 0.5 * scale)
-        y = round((float(rect["min_y"]) + float(rect["max_y"])) * 0.5 * scale)
-        return x, y
-
-    def scroll_owning_window(
-        self, snapshot: dict[str, Any], item: dict[str, Any], label: str
+        verifier: dict[str, Any],
+        scope: str | None,
     ) -> bool:
-        window_id = item.get("window_id")
-        if window_id != "window.pcr_design":
-            return False
-        windows = self.matching_items(snapshot, window_id, None, window_id)
-        if len(windows) != 1 or not self.item_ready(windows[0], enabled=False):
-            return False
-        rect = windows[0]["rect_logical_points"]
-        scale = float(windows[0]["pixels_per_point"])
-        min_x = float(rect["min_x"])
-        max_x = float(rect["max_x"])
-        min_y = float(rect["min_y"])
-        max_y = float(rect["max_y"])
-        # The first supported contract uses the right-hand PCR constraint
-        # scroll area. Ordinary wheel input keeps clipping authoritative while
-        # allowing the harness to reveal a catalogued control before using it.
-        x = round((min_x + (max_x - min_x) * 0.75) * scale)
-        y = round((min_y + (max_y - min_y) * 0.60) * scale)
-        self.xdotool(
-            label,
-            [
-                "mousemove",
-                "--sync",
-                str(x),
-                str(y),
-                "click",
-                "--repeat",
-                "5",
-                "--delay",
-                "80",
-                "5",
-            ],
+        semantic_id = verifier["semantic_id"]
+        item = self.item_for(
+            snapshot,
+            semantic_id,
+            subject_scope=scope,
+            allow_unscoped_fallback=semantic_id.startswith("window."),
         )
-        return True
-
-    def apply_interaction(self, step: dict[str, Any], item: dict[str, Any]) -> None:
-        interaction = step["interaction"]
-        kind = interaction["kind"]
-        x, y = self.point_for_item(item)
-        self.xdotool(f"move-{step['id']}", ["mousemove", "--sync", str(x), str(y)])
-        if kind == "click" or kind == "select_tab":
-            self.xdotool(f"click-{step['id']}", ["click", "1"])
-        elif kind == "right_click":
-            self.xdotool(f"right-click-{step['id']}", ["click", "3"])
-        elif kind == "double_click":
-            self.xdotool(
-                f"double-click-{step['id']}", ["click", "--repeat", "2", "--delay", "100", "1"]
-            )
-        elif kind == "replace_text":
-            self.xdotool(f"focus-{step['id']}", ["click", "1"])
-            self.xdotool(f"select-{step['id']}", ["key", "--clearmodifiers", "ctrl+a"])
-            self.xdotool(
-                f"type-{step['id']}",
-                ["type", "--clearmodifiers", "--delay", "1", interaction["text"]],
-            )
-        elif kind == "set_checkbox":
-            if item.get("state", {}).get("selected") != interaction["selected"]:
-                self.xdotool(f"checkbox-{step['id']}", ["click", "1"])
-        elif kind == "press_key":
-            key = interaction["key"]
-            if not re.fullmatch(r"[A-Za-z0-9_+-]+", key):
-                self.fail("contract_error", f"Unsupported X11 key token {key!r}")
-            self.xdotool(f"key-{step['id']}", ["key", "--clearmodifiers", key])
-        else:
-            self.fail("contract_error", f"Unsupported interaction kind '{kind}'")
-
-    def visible_claim_matches(
-        self, snapshot: dict[str, Any], verifier: dict[str, Any], scope: Optional[str]
-    ) -> bool:
-        items = self.visible_claim_items(snapshot, verifier, scope)
-        if len(items) != 1:
+        if item is None:
             return False
-        item = items[0]
         state = item.get("state", {})
-        for key in ("visible", "enabled", "selected"):
-            if key in verifier and state.get(key) != verifier[key]:
+        for field in ("visible", "enabled", "selected"):
+            if field in verifier and state.get(field) != verifier[field]:
                 return False
         if "outcome_role" in verifier and item.get("outcome_role") != verifier["outcome_role"]:
             return False
         return True
 
-    def visible_claim_items(
-        self, snapshot: dict[str, Any], verifier: dict[str, Any], scope: Optional[str]
-    ) -> list[dict[str, Any]]:
-        all_items = self.matching_items(snapshot, verifier["semantic_id"])
-        items = [item for item in all_items if item.get("subject_scope") == scope]
-        if not items and scope is not None:
-            items = [item for item in all_items if item.get("subject_scope") is None]
-        return items
+    def emit_x11(self, step: dict[str, Any], item: dict[str, Any]) -> dict[str, Any]:
+        rectangle = item["rect_logical_points"]
+        scale = float(item["pixels_per_point"])
+        x = round((float(rectangle["min_x"]) + float(rectangle["max_x"])) / 2 * scale)
+        y = round((float(rectangle["min_y"]) + float(rectangle["max_y"])) / 2 * scale)
+        interaction = step["interaction"]
+        kind = interaction["kind"]
+        commands: list[list[str]] = [
+            [str(self.args.xdotool), "mousemove", "--sync", str(x), str(y)]
+        ]
+        if kind in {"click", "select_tab"}:
+            commands.append([str(self.args.xdotool), "click", "1"])
+        elif kind == "right_click":
+            commands.append([str(self.args.xdotool), "click", "3"])
+        elif kind == "double_click":
+            commands.append(
+                [
+                    str(self.args.xdotool),
+                    "click",
+                    "--repeat",
+                    "2",
+                    "--delay",
+                    "100",
+                    "1",
+                ]
+            )
+        elif kind == "replace_text":
+            commands.extend(
+                [
+                    [str(self.args.xdotool), "click", "1"],
+                    [str(self.args.xdotool), "key", "--clearmodifiers", "ctrl+a"],
+                    [
+                        str(self.args.xdotool),
+                        "type",
+                        "--clearmodifiers",
+                        "--delay",
+                        "1",
+                        "--",
+                        interaction["text"],
+                    ],
+                ]
+            )
+        elif kind == "set_checkbox":
+            if bool(item.get("state", {}).get("selected")) != bool(interaction["selected"]):
+                commands.append([str(self.args.xdotool), "click", "1"])
+        elif kind == "press_key":
+            key = SAFE_KEY_NAMES.get(str(interaction["key"]).lower())
+            if key is None:
+                raise AcceptanceFailure(
+                    "tutorial_ambiguity", f"Unsupported typed key '{interaction['key']}'"
+                )
+            commands = [[str(self.args.xdotool), "key", "--clearmodifiers", key]]
+        else:
+            raise AcceptanceFailure(
+                "tutorial_ambiguity", f"Unsupported interaction kind '{kind}'"
+            )
+        for command in commands:
+            completed = subprocess.run(
+                command,
+                cwd=self.repo_root,
+                env=self.process_environment,
+                timeout=10,
+                check=False,
+            )
+            if completed.returncode != 0:
+                raise AcceptanceFailure(
+                    "harness_gap",
+                    f"X11 event command exited {completed.returncode}: {command}",
+                )
+        return {"kind": kind, "screen_x": x, "screen_y": y, "argv": commands}
 
-    def first_hidden_visible_claim(
-        self,
-        snapshot: dict[str, Any],
-        claims: list[dict[str, Any]],
-        scope: Optional[str],
-    ) -> Optional[dict[str, Any]]:
-        for claim in claims:
-            if claim.get("visible") is not True:
-                continue
-            items = self.visible_claim_items(snapshot, claim, scope)
-            if len(items) == 1 and items[0].get("state", {}).get("visible") is False:
-                return items[0]
-        return None
-
-    def wait_visible_claims(
+    def wait_after_interaction(
         self,
         step: dict[str, Any],
-        scope: Optional[str],
-        min_generation: int,
+        scope: str | None,
+        prior_generation: int,
         timeout: float,
     ) -> dict[str, Any]:
-        claims = [v for v in step.get("verifiers", []) if v["kind"] == "visible_claim"]
-        deadline = time.monotonic() + timeout * self.args.timeout_scale
-        last_snapshot: Optional[dict[str, Any]] = None
-        scroll_attempts = 0
-        while time.monotonic() < deadline:
-            snapshot = self.read_snapshot()
-            if snapshot is not None:
-                last_snapshot = snapshot
-                generation = int(snapshot.get("generation", 0))
-                if snapshot.get("settled") and generation >= min_generation:
-                    if all(
-                        self.visible_claim_matches(snapshot, claim, scope)
-                        for claim in claims
-                    ):
-                        return snapshot
-                    if scroll_attempts < 16:
-                        hidden_item = self.first_hidden_visible_claim(
-                            snapshot, claims, scope
-                        )
-                        if hidden_item is not None and self.scroll_owning_window(
-                            snapshot,
-                            hidden_item,
-                            f"reveal-{step['id']}-claim-{scroll_attempts + 1}",
-                        ):
-                            scroll_attempts += 1
-            time.sleep(0.15)
-        generation = None if last_snapshot is None else last_snapshot.get("generation")
-        self.fail(
-            "product_failure",
-            f"Timed out waiting for step '{step['id']}' visible claims; "
-            f"last semantic generation={generation}; scroll attempts={scroll_attempts}",
-        )
+        visible_verifiers = [
+            verifier
+            for verifier in step.get("verifiers", [])
+            if verifier["kind"] == "visible_claim"
+        ]
 
-    def wait_save_state(self, role: str, timeout: float, min_generation: int = 0) -> dict[str, Any]:
-        def predicate(snapshot: dict[str, Any]) -> bool:
-            if snapshot.get("generation", 0) < min_generation:
+        def ready(snapshot: dict[str, Any]) -> bool:
+            if not all(
+                self.visible_claim_holds(snapshot, verifier, scope)
+                for verifier in visible_verifiers
+            ):
                 return False
-            items = self.matching_items(snapshot, "main.project.save_state", None, "window.main")
-            return len(items) == 1 and items[0].get("outcome_role") == role
-
-        return self.wait_snapshot(f"project save state '{role}'", timeout, predicate)
-
-    def capture_evidence(
-        self, index: int, step: dict[str, Any], snapshot: dict[str, Any]
-    ) -> dict[str, Any]:
-        stem = f"{index:02d}-{step['id']}"
-        snapshot_output = self.checkpoints_dir / f"{stem}.snapshot.json"
-        atomic_write_json(snapshot_output, snapshot)
-        evidence: dict[str, Any] = {
-            "snapshot": self.relative(snapshot_output),
-            "snapshot_sha256": sha256_file(snapshot_output),
-            "screenshot": None,
-            "screenshot_sha256": None,
-        }
-        screenshot_policy = step["evidence"]["screenshot"]
-        should_capture = screenshot_policy == "required" or (
-            screenshot_policy == "optional" and self.args.capture_optional_screenshots
-        )
-        if should_capture:
-            if self.screenshot_tool is None:
-                if screenshot_policy == "required":
-                    self.fail("harness_gap", f"Step '{step['id']}' requires a screenshot")
-            else:
-                screenshot = self.checkpoints_dir / f"{stem}.png"
-                if self.screenshot_tool == "scrot":
-                    argv = ["scrot", str(screenshot)]
-                elif self.screenshot_tool == "gnome-screenshot":
-                    argv = ["gnome-screenshot", "-f", str(screenshot)]
-                else:
-                    argv = ["import", "-window", "root", str(screenshot)]
-                self.command(
-                    f"screenshot-{step['id']}",
-                    argv,
-                    cwd=self.runtime_dir,
-                    timeout=30.0,
-                    failure_result="harness_gap",
+            if step.get("persists_project_state"):
+                save_state = self.item_for(snapshot, "main.project.save_state")
+                if not save_state or save_state.get("outcome_role") != "unsaved":
+                    return False
+            if step.get("scientific_effect"):
+                target = self.item_for(
+                    snapshot,
+                    step["target"],
+                    window_id=step["window"],
+                    subject_scope=scope,
                 )
-                self.require_file(screenshot, "captured screenshot")
-                evidence["screenshot"] = self.relative(screenshot)
-                evidence["screenshot_sha256"] = sha256_file(screenshot)
+                return bool(target and target.get("state", {}).get("enabled"))
+            return True
+
+        return self.wait_snapshot(
+            ready,
+            timeout,
+            f"postconditions for step '{step['id']}'",
+            after_generation=prior_generation,
+        )
+
+    def save_project(self, prior_generation: int, timeout: float) -> dict[str, Any]:
+        completed = subprocess.run(
+            [str(self.args.xdotool), "key", "--clearmodifiers", "ctrl+s"],
+            cwd=self.repo_root,
+            env=self.process_environment,
+            timeout=10,
+            check=False,
+        )
+        if completed.returncode != 0:
+            raise AcceptanceFailure("harness_gap", "Could not emit Ctrl+S through X11")
+
+        def saved(snapshot: dict[str, Any]) -> bool:
+            item = self.item_for(snapshot, "main.project.save_state")
+            return bool(item and item.get("outcome_role") == "saved")
+
+        snapshot = self.wait_snapshot(
+            saved,
+            timeout,
+            "known-path project save",
+            after_generation=prior_generation,
+        )
+        return {
+            "event": "ctrl+s",
+            "generation": snapshot["generation"],
+            "project_sha256": sha256_file(Path(self.starter_preparation["project_path"])),
+        }
+
+    def verify_step(
+        self,
+        step: dict[str, Any],
+        snapshot: dict[str, Any],
+        scope: str | None,
+    ) -> list[dict[str, Any]]:
+        project_path = Path(self.starter_preparation["project_path"])
+        results = []
+        for index, verifier in enumerate(step.get("verifiers", []), start=1):
+            kind = verifier["kind"]
+            label = f"runtime-{step['id']}-{kind}-{index}"
+            if kind == "visible_claim":
+                if not self.visible_claim_holds(snapshot, verifier, scope):
+                    raise AcceptanceFailure(
+                        "product_failure", f"Visible claim failed in step '{step['id']}'"
+                    )
+                semantic_id = verifier["semantic_id"]
+                item = self.item_for(
+                    snapshot,
+                    semantic_id,
+                    subject_scope=scope,
+                    allow_unscoped_fallback=semantic_id.startswith("window."),
+                )
+                results.append(
+                    {
+                        "kind": kind,
+                        "status": "pass",
+                        "semantic_id": verifier["semantic_id"],
+                        "observed": item,
+                    }
+                )
+            elif kind == "facts":
+                output = self.fact_eval(project_path, verifier["expression"], label)
+                if output.get("truth") != "satisfied":
+                    raise AcceptanceFailure(
+                        "product_failure", f"Fact verifier failed in step '{step['id']}'"
+                    )
+                results.append({"kind": kind, "status": "pass", "truth": "satisfied"})
+            elif kind == "expected_effects":
+                results.append(
+                    {"kind": kind, **self.expected_effects_verify(project_path, verifier, label)}
+                )
+            elif kind == "report":
+                results.append({"kind": kind, **self.show_report(project_path, verifier, label)})
+            elif kind == "state":
+                results.append(
+                    {
+                        "kind": kind,
+                        **self.state_verify(project_path, verifier, "starter", label),
+                    }
+                )
+            elif kind == "artifact":
+                results.append(
+                    {
+                        "kind": kind,
+                        **self.artifact_verify(verifier, self.chapter_dir),
+                    }
+                )
+            else:
+                raise AcceptanceFailure(
+                    "tutorial_ambiguity", f"Unsupported verifier kind '{kind}'"
+                )
+        return results
+
+    def retain_step_evidence(
+        self, step: dict[str, Any], snapshot: dict[str, Any]
+    ) -> dict[str, Any]:
+        evidence: dict[str, Any] = {}
+        policy = step["evidence"]
+        snapshot_requirement = policy["snapshot"]
+        if snapshot_requirement != "omitted":
+            snapshot_path = self.chapter_dir / "checkpoints" / f"{step['id']}.snapshot.json"
+            atomic_write_json(snapshot_path, snapshot)
+            evidence["snapshot"] = {
+                "requirement": snapshot_requirement,
+                "path": str(snapshot_path),
+                "sha256": sha256_file(snapshot_path),
+            }
+        screenshot_requirement = policy["screenshot"]
+        if screenshot_requirement != "omitted" and self.args.scrot is not None:
+            screenshot_path = self.chapter_dir / "checkpoints" / f"{step['id']}.png"
+            screenshot_path.parent.mkdir(parents=True, exist_ok=True)
+            completed = subprocess.run(
+                [str(self.args.scrot), str(screenshot_path)],
+                cwd=self.repo_root,
+                env=self.process_environment,
+                timeout=20,
+                check=False,
+            )
+            if completed.returncode != 0 or not screenshot_path.is_file():
+                if screenshot_requirement == "required":
+                    raise AcceptanceFailure(
+                        "harness_gap", f"Required screenshot failed for step '{step['id']}'"
+                    )
+            else:
+                evidence["screenshot"] = {
+                    "requirement": screenshot_requirement,
+                    "path": str(screenshot_path),
+                    "sha256": sha256_file(screenshot_path),
+                }
+        elif screenshot_requirement == "required":
+            raise AcceptanceFailure(
+                "missing_dependency", f"Step '{step['id']}' requires scrot"
+            )
         return evidence
 
-    def bootstrap_sequence_window(self, contract: dict[str, Any]) -> None:
-        first_subject = contract["steps"][0].get("subject", {})
-        scope = subject_scope(first_subject)
-        snapshot, item = self.wait_item(
-            "main.project.sequence.open", scope, "window.main", 90.0
-        )
-        x, y = self.point_for_item(item)
-        self.xdotool("bootstrap-sequence-move", ["mousemove", "--sync", str(x), str(y)])
-        self.xdotool(
-            "bootstrap-sequence-open", ["click", "--repeat", "2", "--delay", "100", "1"]
-        )
-        self.wait_item(
-            contract["steps"][0]["target"],
-            scope,
-            contract["steps"][0]["window"],
-            90.0,
-            min_generation=int(snapshot.get("generation", 0)) + 1,
-        )
-
-    def execute_steps(self, contract: dict[str, Any], project: Path) -> None:
-        self.bootstrap_sequence_window(contract)
-        for index, step in enumerate(contract["steps"], 1):
-            timeout = TIMEOUT_SECONDS.get(step["timeout_class"])
-            if timeout is None:
-                self.fail(
-                    "contract_error", f"Unknown timeout class {step['timeout_class']!r}"
-                )
-            scope = subject_scope(step.get("subject", {}))
-            if step.get("scientific_effect"):
-                before = self.fact_evaluation(
-                    project, step["before"], f"before-{step['id']}"
-                )
-                accepted_truths = {"unsatisfied"}
-                if step.get("allow_preexisting"):
-                    accepted_truths.add("satisfied")
-                if before.get("truth") not in accepted_truths:
-                    self.fail(
-                        "product_failure",
-                        f"Before fact for '{step['id']}' is {before.get('truth')!r}",
-                    )
-            snapshot, item = self.wait_item(
-                step["target"], scope, step["window"], timeout, allow_scroll=True
-            )
-            before_generation = int(snapshot.get("generation", 0))
-            self.apply_interaction(step, item)
-            snapshot = self.wait_visible_claims(
-                step, scope, before_generation + 1, timeout
-            )
-            if step.get("persists_project_state"):
-                snapshot = self.wait_save_state(
-                    "unsaved", timeout, min_generation=before_generation + 1
-                )
-                save_generation = int(snapshot.get("generation", 0))
-                self.xdotool(f"save-{step['id']}", ["key", "--clearmodifiers", "ctrl+s"])
-                snapshot = self.wait_save_state(
-                    "saved", timeout, min_generation=save_generation + 1
-                )
-            typed_checks: list[dict[str, Any]] = []
-            if step.get("scientific_effect"):
-                after = self.fact_evaluation(project, step["after"], f"after-{step['id']}")
-                if after.get("truth") != "satisfied":
-                    self.fail(
-                        "product_failure",
-                        f"After fact for '{step['id']}' is {after.get('truth')!r}",
-                    )
-            for verifier_index, verifier in enumerate(step.get("verifiers", []), 1):
-                if verifier["kind"] == "visible_claim":
-                    typed_checks.append(
-                        {
-                            "kind": "visible_claim",
-                            "semantic_id": verifier["semantic_id"],
-                            "matched": True,
-                        }
-                    )
-                else:
-                    typed_checks.append(
-                        self.verify_nonvisual(
-                            project,
-                            verifier,
-                            f"verify-{step['id']}-{verifier_index}",
-                            self.runtime_dir,
-                        )
-                    )
-            evidence = self.capture_evidence(index, step, snapshot)
-            checkpoint = {
-                "step_id": step["id"],
+    def execute_steps(self) -> None:
+        starter_path = Path(self.starter_preparation["project_path"])
+        for step in self.acceptance["steps"]:
+            started = time.monotonic()
+            timeout = self.args.timeouts[step["timeout_class"]]
+            scope = self.scope_for_step(step)
+            step_record: dict[str, Any] = {
+                "id": step["id"],
+                "step_sha256": sha256_bytes(canonical_json_bytes(step)),
                 "prose_step": step["prose_step"],
-                "interaction": step["interaction"]["kind"],
+                "requested_action": step["interaction"],
                 "semantic_target": step["target"],
+                "window": step["window"],
                 "subject_scope": scope,
-                "generation": snapshot.get("generation"),
-                "project_sha256": sha256_file(project),
-                "typed_checks": typed_checks,
-                "evidence": evidence,
-                "result": "passed",
+                "timeout_class": step["timeout_class"],
+                "status": "running",
             }
-            self.ledger["checkpoints"].append(checkpoint)
+            self.steps.append(step_record)
             self.write_ledger()
-        completion = self.fact_evaluation(
-            project, contract["completion_condition"], "runtime-completion"
-        )
-        if completion.get("truth") != "satisfied":
-            self.fail(
-                "product_failure",
-                f"Final completion condition is {completion.get('truth')!r}",
+            before_snapshot = self.wait_snapshot(
+                lambda snapshot: self.target_ready(snapshot, step, scope),
+                timeout,
+                f"enabled target for step '{step['id']}'",
             )
-        self.ledger["runtime_completion"] = completion
+            target = self.item_for(
+                before_snapshot,
+                step["target"],
+                window_id=step["window"],
+                subject_scope=scope,
+            )
+            if target is None:
+                raise AcceptanceFailure(
+                    "harness_gap", f"Target vanished for step '{step['id']}'"
+                )
+            step_record["before_generation"] = before_snapshot["generation"]
+            step_record["resolved_target"] = target
+            if step.get("scientific_effect"):
+                before = self.fact_eval(
+                    starter_path, step["before"], f"runtime-{step['id']}-before"
+                )
+                expected = {"unsatisfied"}
+                if step.get("allow_preexisting"):
+                    expected.add("satisfied")
+                if before.get("truth") not in expected:
+                    raise AcceptanceFailure(
+                        "product_failure",
+                        f"Before fact for step '{step['id']}' is {before.get('truth')!r}",
+                    )
+                step_record["before_fact"] = before
+            step_record["x11_event"] = self.emit_x11(step, target)
+            after_snapshot = self.wait_after_interaction(
+                step, scope, before_snapshot["generation"], timeout
+            )
+            step_record["after_generation"] = after_snapshot["generation"]
+            if step.get("persists_project_state"):
+                step_record["save"] = self.save_project(
+                    after_snapshot["generation"], self.args.timeouts["io"]
+                )
+                after_snapshot = self.wait_snapshot(
+                    lambda snapshot: snapshot.get("generation", 0)
+                    >= step_record["save"]["generation"],
+                    self.args.timeouts["instant"],
+                    "post-save semantic snapshot",
+                )
+            if step.get("scientific_effect"):
+                after = self.fact_eval(
+                    starter_path, step["after"], f"runtime-{step['id']}-after"
+                )
+                if after.get("truth") != "satisfied":
+                    raise AcceptanceFailure(
+                        "product_failure",
+                        f"After fact for step '{step['id']}' is {after.get('truth')!r}",
+                    )
+                step_record["after_fact"] = after
+            step_record["verifiers"] = self.verify_step(step, after_snapshot, scope)
+            verifier_kinds = {
+                verifier["kind"] for verifier in step.get("verifiers", [])
+            }
+            step_record["visual_verdict"] = (
+                "pass" if "visible_claim" in verifier_kinds else "not_requested"
+            )
+            step_record["scientific_verdict"] = (
+                "pass"
+                if any(kind != "visible_claim" for kind in verifier_kinds)
+                else "not_requested"
+            )
+            step_record["evidence"] = self.retain_step_evidence(step, after_snapshot)
+            step_record["elapsed_ms"] = round((time.monotonic() - started) * 1000)
+            step_record["status"] = "pass"
+            self.write_ledger()
 
-    def run(self) -> None:
-        self.prepare_directories()
-        self.write_ledger()
-        self.establish_provenance()
-        self.validate_manifest()
-        _chapter, contract = self.load_contract()
-        starter = self.materialize_project("starter", contract["starter"]["example_id"])
-        oracle = self.materialize_project("oracle", contract["oracle"]["example_id"])
-        self.preflight_projects(contract, starter, oracle)
-        if self.args.validate_only:
-            self.ledger["result"] = "validated_only"
-            return
-        self.require_x11(contract)
-        self.start_gui(starter)
-        self.execute_steps(contract, starter)
-        self.ledger["result"] = "passed"
-
-
-def self_test() -> None:
-    expected = "subject-f33b2c9685525d19be7ecd5efd1f518f"
-    actual = subject_scope({"sequence": "tp73_locus"})
-    assert actual == expected, (actual, expected)
-    report = {
-        "schema": "demo.v1",
-        "count": 2,
-        "items": [{"start": 3}, {"start": 8}],
-        "enabled": True,
-    }
-    checks = assert_report(
-        report,
-        {
-            "report_id": "demo",
-            "schema": "demo.v1",
-            "required_fields": ["items.0.start"],
-            "assertions": [
-                {"kind": "value", "path": "enabled", "equals": True},
-                {
-                    "kind": "value",
-                    "path": "count",
-                    "compare": {"op": "gt", "value": 0},
-                },
-                {
-                    "kind": "relation",
-                    "left_path": "items.0.start",
-                    "op": "lt",
-                    "right_path": "items.1.start",
-                },
-            ],
-        },
-    )
-    assert len(checks) == 4
-    with tempfile.TemporaryDirectory(prefix="gentle-tutorial-gui-self-test-") as directory:
-        args = argparse.Namespace(
-            repo_root=Path.cwd(),
-            output_dir=Path(directory),
-            tutorial_id="self-test",
-            validate_only=True,
-        )
-        runner = TutorialGuiRunner(args)
-        isolated = runner.isolated_gui_environment()
-        expected_tmpdir = runner.runtime_dir / "profile" / "tmp"
-        assert Path(isolated["TMPDIR"]) == expected_tmpdir
-        assert expected_tmpdir.is_dir()
-    print("tutorial_gui_acceptance self-test: ok")
-
-
-def parser() -> argparse.ArgumentParser:
-    repo_default = Path(__file__).resolve().parents[1]
-    result = argparse.ArgumentParser(
-        description="Execute one typed GENtle tutorial GUI acceptance contract on Linux/X11."
-    )
-    result.add_argument("--tutorial-id", default="simple_pcr_selection_gui")
-    result.add_argument("--repo-root", type=Path, default=repo_default)
-    result.add_argument("--manifest", type=Path)
-    result.add_argument("--tutorial-sources", type=Path)
-    result.add_argument("--catalog-meta", type=Path)
-    result.add_argument("--examples", type=Path)
-    result.add_argument("--gentle-bin", type=Path)
-    result.add_argument("--gentle-cli", type=Path)
-    result.add_argument("--examples-bin", type=Path)
-    result.add_argument("--output-dir", type=Path)
-    result.add_argument("--timeout-scale", type=float, default=1.0)
-    result.add_argument("--capture-optional-screenshots", action="store_true")
-    result.add_argument("--validate-only", action="store_true")
-    result.add_argument("--self-test", action="store_true")
-    return result
-
-
-def resolve_defaults(args: argparse.Namespace) -> None:
-    repo = args.repo_root.resolve()
-    args.repo_root = repo
-    args.manifest = (args.manifest or repo / "docs/tutorial/manifest.json").resolve()
-    args.tutorial_sources = (
-        args.tutorial_sources or repo / "docs/tutorial/sources"
-    ).resolve()
-    args.catalog_meta = (
-        args.catalog_meta or repo / "docs/tutorial/sources/catalog_meta.json"
-    ).resolve()
-    args.examples = (args.examples or repo / "docs/examples/workflows").resolve()
-    args.gentle_bin = (args.gentle_bin or repo / "target/debug/gentle").resolve()
-    args.gentle_cli = (args.gentle_cli or repo / "target/debug/gentle_cli").resolve()
-    args.examples_bin = (
-        args.examples_bin or repo / "target/debug/gentle_examples_docs"
-    ).resolve()
-    if args.output_dir is None:
-        raise AuditFailure("harness_gap", "--output-dir is required for retained audit evidence")
-    args.output_dir = args.output_dir.resolve()
-    if args.timeout_scale <= 0:
-        raise AuditFailure("harness_gap", "--timeout-scale must be greater than zero")
+    def run(self) -> dict[str, Any]:
+        try:
+            self.preflight_contract()
+            self.launch_gui()
+            self.execute_steps()
+            completion = self.fact_eval(
+                Path(self.starter_preparation["project_path"]),
+                self.acceptance["completion_condition"],
+                "runtime-completion",
+            )
+            if completion.get("truth") != "satisfied":
+                raise AcceptanceFailure(
+                    "product_failure", "Final tutorial completion fact is not satisfied"
+                )
+            self.ledger["completion"] = completion
+            self.ledger["final_project_sha256"] = sha256_file(
+                Path(self.starter_preparation["project_path"])
+            )
+            self.ledger["status"] = "pass"
+            self.ledger["message"] = "GUI actions and typed scientific verification passed"
+        except AcceptanceFailure as error:
+            self.ledger["status"] = "fail"
+            self.ledger["failure_class"] = error.failure_class
+            self.ledger["message"] = str(error)
+            if self.steps and self.steps[-1].get("status") == "running":
+                self.steps[-1]["status"] = "fail"
+                self.steps[-1]["failure_class"] = error.failure_class
+                self.steps[-1]["message"] = str(error)
+        except Exception as error:  # retain unexpected harness failures as evidence
+            self.ledger["status"] = "fail"
+            self.ledger["failure_class"] = "harness_gap"
+            self.ledger["message"] = f"Unexpected runner failure: {type(error).__name__}: {error}"
+        finally:
+            self.stop_gui()
+            self.write_ledger()
+        return self.ledger
 
 
-def main() -> int:
-    args = parser().parse_args()
-    if args.self_test:
-        self_test()
-        return 0
-    runner: Optional[TutorialGuiRunner] = None
+def tool_version(argv: list[str]) -> dict[str, Any]:
     try:
-        resolve_defaults(args)
-        runner = TutorialGuiRunner(args)
-        runner.run()
-        return 0
-    except AuditFailure as error:
-        if runner is not None:
-            runner.ledger["result"] = error.result
-            runner.ledger["failure"] = {"kind": error.result, "message": str(error)}
-        print(f"{error.result}: {error}", file=sys.stderr)
-        return {"product_failure": 1, "contract_error": 2, "harness_gap": 3}.get(
-            error.result, 1
+        completed = subprocess.run(
+            argv,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=10,
+            check=False,
         )
-    except KeyboardInterrupt:
-        if runner is not None:
-            runner.ledger["result"] = "interrupted"
-            runner.ledger["failure"] = {"kind": "interrupted", "message": "Interrupted"}
-        print("interrupted", file=sys.stderr)
-        return 130
-    finally:
-        if runner is not None:
-            runner.stop_gui()
-            runner.ledger["finished_at"] = utc_now()
-            runner.write_ledger()
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return {"argv": argv, "available": False, "diagnostic": str(error)}
+    output = completed.stdout.decode("utf-8", errors="replace").strip()
+    return {
+        "argv": argv,
+        "available": completed.returncode == 0,
+        "exit_code": completed.returncode,
+        "output": output[:1000],
+    }
 
 
-def interrupt_on_signal(_signum: int, _frame: Any) -> None:
-    raise KeyboardInterrupt
+def detect_window_manager(xprop: Path) -> dict[str, Any]:
+    root = tool_version([str(xprop), "-root", "_NET_SUPPORTING_WM_CHECK"])
+    output = str(root.get("output", ""))
+    match = re.search(r"0x[0-9a-fA-F]+", output)
+    if not root.get("available") or match is None:
+        return {
+            "available": False,
+            "diagnostic": "No EWMH window manager was detected on the X11 root window",
+            "root_probe": root,
+        }
+    window_id = match.group(0)
+    name = tool_version([str(xprop), "-id", window_id, "_NET_WM_NAME"])
+    if not name.get("available"):
+        return {
+            "available": False,
+            "diagnostic": f"Could not read the window-manager name from {window_id}",
+            "root_probe": root,
+            "name_probe": name,
+        }
+    return {
+        "available": True,
+        "window_id": window_id,
+        "name": name.get("output", ""),
+        "root_probe": root,
+        "name_probe": name,
+    }
+
+
+def build_environment_record(
+    args: argparse.Namespace, repo_root: Path
+) -> dict[str, Any]:
+    inherited, cleared_names = redacted_environment(dict(os.environ))
+    git_revision = tool_version(["git", "-C", str(repo_root), "rev-parse", "HEAD"])
+    git_status = tool_version(["git", "-C", str(repo_root), "status", "--short"])
+    tools = {
+        "xdotool": tool_version([str(args.xdotool), "version"]),
+        "xdpyinfo": tool_version([str(args.xdpyinfo)]),
+        "xprop": tool_version([str(args.xprop), "-version"]),
+        "window_manager": detect_window_manager(args.xprop),
+        "scrot": (
+            tool_version([str(args.scrot), "--version"])
+            if args.scrot is not None
+            else {"available": False}
+        ),
+        "rustc": tool_version(["rustc", "--version"]),
+        "python": {"available": True, "version": sys.version},
+        "primer3": tool_version(
+            [str(args.gentle_cli), "primers", "preflight", "--backend", "primer3"]
+        ),
+        "blastn": optional_tool_version("blastn", ["-version"]),
+        "blastdbcmd": optional_tool_version("blastdbcmd", ["-version"]),
+        "pandoc": optional_tool_version("pandoc", ["--version"]),
+        "ghostscript": optional_tool_version("gs", ["--version"]),
+    }
+    return {
+        "schema": ENVIRONMENT_SCHEMA,
+        "source_revision": git_revision.get("output"),
+        "git_status": git_status.get("output", ""),
+        "os": platform.platform(),
+        "kernel": platform.release(),
+        "machine": platform.machine(),
+        "display": os.environ.get("DISPLAY"),
+        "display_geometry": tools["xdpyinfo"],
+        "locale": {"LANG": "C.UTF-8", "LC_ALL": "C.UTF-8", "TZ": "UTC"},
+        "profile_isolation": [
+            "HOME",
+            "XDG_CONFIG_HOME",
+            "XDG_CACHE_HOME",
+            "XDG_DATA_HOME",
+            "TMPDIR",
+        ],
+        "cleared_inherited_variables": inherited,
+        "cleared_variable_names": sorted(cleared_names),
+        "network_enforcement": args.network_enforcement,
+        "binaries": {
+            "gentle": {
+                "path": str(args.gentle),
+                "sha256": sha256_file(args.gentle),
+            },
+            "gentle_cli": {
+                "path": str(args.gentle_cli),
+                "sha256": sha256_file(args.gentle_cli),
+            },
+            "gentle_examples_docs": {
+                "path": str(args.examples_docs),
+                "sha256": sha256_file(args.examples_docs),
+            },
+        },
+        "cargo_lock_sha256": sha256_file(repo_root / "Cargo.lock"),
+        "tools": tools,
+    }
+
+
+def resolve_tool(value: str | None, name: str, required: bool) -> Path | None:
+    resolved = value or shutil.which(name)
+    if resolved is None:
+        if required:
+            raise AcceptanceFailure("missing_dependency", f"Required tool '{name}' is absent")
+        return None
+    path = Path(resolved).expanduser().resolve()
+    if not path.is_file() or not os.access(path, os.X_OK):
+        raise AcceptanceFailure("missing_dependency", f"Tool is not executable: {path}")
+    return path
+
+
+def optional_tool_version(name: str, version_args: list[str]) -> dict[str, Any]:
+    resolved = shutil.which(name)
+    if resolved is None:
+        return {"available": False, "name": name}
+    return tool_version([resolved, *version_args])
+
+
+def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo-root", type=Path, default=Path("."))
+    parser.add_argument("--manifest", type=Path, default=Path("docs/tutorial/manifest.json"))
+    parser.add_argument(
+        "--workflow-source", type=Path, default=Path("docs/examples/workflows")
+    )
+    parser.add_argument("--chapter", action="append", default=[])
+    parser.add_argument("--profile", default="smoke")
+    parser.add_argument("--evidence-dir", type=Path, required=True)
+    parser.add_argument("--gentle", type=Path, default=Path("target/debug/gentle"))
+    parser.add_argument(
+        "--gentle-cli", type=Path, default=Path("target/debug/gentle_cli")
+    )
+    parser.add_argument(
+        "--examples-docs", type=Path, default=Path("target/debug/gentle_examples_docs")
+    )
+    parser.add_argument("--xdotool")
+    parser.add_argument("--xdpyinfo")
+    parser.add_argument("--xprop")
+    parser.add_argument("--scrot")
+    parser.add_argument(
+        "--network-enforcement",
+        choices=["not_enforced", "linux_network_namespace", "container_none", "external_policy"],
+        default="not_enforced",
+        help="How the caller enforces an offline tutorial's no-network boundary.",
+    )
+    for timeout_class, default in TIMEOUT_DEFAULTS.items():
+        parser.add_argument(
+            f"--timeout-{timeout_class}", type=float, default=default, metavar="SECONDS"
+        )
+    parsed = parser.parse_args(argv)
+    parsed.repo_root = parsed.repo_root.resolve()
+    parsed.manifest = (parsed.repo_root / parsed.manifest).resolve() if not parsed.manifest.is_absolute() else parsed.manifest.resolve()
+    parsed.workflow_source = (parsed.repo_root / parsed.workflow_source).resolve() if not parsed.workflow_source.is_absolute() else parsed.workflow_source.resolve()
+    parsed.evidence_dir = parsed.evidence_dir.resolve()
+    for field in ("gentle", "gentle_cli", "examples_docs"):
+        path = getattr(parsed, field)
+        path = (parsed.repo_root / path).resolve() if not path.is_absolute() else path.resolve()
+        setattr(parsed, field, path)
+    parsed.xdotool = resolve_tool(parsed.xdotool, "xdotool", required=True)
+    parsed.xdpyinfo = resolve_tool(parsed.xdpyinfo, "xdpyinfo", required=True)
+    parsed.xprop = resolve_tool(parsed.xprop, "xprop", required=True)
+    parsed.scrot = resolve_tool(parsed.scrot, "scrot", required=False)
+    parsed.timeouts = {
+        timeout_class: getattr(parsed, f"timeout_{timeout_class}")
+        for timeout_class in TIMEOUT_DEFAULTS
+    }
+    return parsed
+
+
+def validate_runtime(args: argparse.Namespace, manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    if platform.system() != "Linux":
+        raise AcceptanceFailure(
+            "missing_dependency", "Tutorial GUI acceptance currently supports Linux/X11 only"
+        )
+    if not os.environ.get("DISPLAY"):
+        raise AcceptanceFailure(
+            "missing_dependency", "DISPLAY is unset; run this under Xvfb/X11"
+        )
+    window_manager = detect_window_manager(args.xprop)
+    if not window_manager.get("available"):
+        raise AcceptanceFailure(
+            "harness_gap",
+            "No named EWMH window manager is active; start one inside the Xvfb session",
+        )
+    for path in (args.gentle, args.gentle_cli, args.examples_docs):
+        if not path.is_file() or not os.access(path, os.X_OK):
+            raise AcceptanceFailure("missing_dependency", f"Binary is not executable: {path}")
+    chapters = selected_chapters(manifest, args.chapter, args.profile)
+    if any(chapter["gui_acceptance"].get("network") == "offline" for chapter in chapters):
+        if args.network_enforcement == "not_enforced":
+            raise AcceptanceFailure(
+                "harness_gap",
+                "Offline acceptance requires an explicit network-enforcement method",
+            )
+        if args.network_enforcement == "linux_network_namespace":
+            try:
+                own_namespace = os.readlink("/proc/self/ns/net")
+                init_namespace = os.readlink("/proc/1/ns/net")
+            except OSError as error:
+                raise AcceptanceFailure(
+                    "harness_gap", f"Could not verify Linux network namespace: {error}"
+                ) from error
+            if own_namespace == init_namespace:
+                raise AcceptanceFailure(
+                    "harness_gap",
+                    "linux_network_namespace was declared but the runner shares PID 1's network namespace",
+                )
+    if any(
+        step.get("evidence", {}).get("screenshot") == "required"
+        for chapter in chapters
+        for step in chapter["gui_acceptance"].get("steps", [])
+    ) and args.scrot is None:
+        raise AcceptanceFailure(
+            "missing_dependency", "Selected acceptance contract requires scrot"
+        )
+    return chapters
+
+
+def main(argv: Iterable[str] | None = None) -> int:
+    args: argparse.Namespace | None = None
+    try:
+        args = parse_args(argv)
+        manifest = load_json(args.manifest)
+        if manifest.get("schema") != "gentle.tutorial_manifest.v2":
+            raise AcceptanceFailure(
+                "tutorial_ambiguity", f"Unsupported tutorial manifest schema {manifest.get('schema')!r}"
+            )
+        chapters = validate_runtime(args, manifest)
+        args.evidence_dir.mkdir(parents=True, exist_ok=True)
+        environment_record = build_environment_record(args, args.repo_root)
+        atomic_write_json(args.evidence_dir / "environment.json", environment_record)
+        ledgers = []
+        for chapter in chapters:
+            run = TutorialAcceptanceRun(args, args.repo_root, chapter, environment_record)
+            ledgers.append(run.run())
+        status = "pass" if all(ledger["status"] == "pass" for ledger in ledgers) else "fail"
+        report = {
+            "schema": RUN_SCHEMA,
+            "status": status,
+            "profile": args.profile,
+            "chapter_count": len(ledgers),
+            "chapters": [
+                {
+                    "chapter_id": ledger["chapter_id"],
+                    "status": ledger["status"],
+                    "failure_class": ledger.get("failure_class"),
+                    "message": ledger.get("message"),
+                    "ledger_path": str(args.evidence_dir / ledger["chapter_id"] / "acceptance-ledger.json"),
+                    "ledger_sha256": sha256_file(
+                        args.evidence_dir / ledger["chapter_id"] / "acceptance-ledger.json"
+                    ),
+                }
+                for ledger in ledgers
+            ],
+        }
+        atomic_write_json(args.evidence_dir / "acceptance-report.json", report)
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0 if status == "pass" else 1
+    except AcceptanceFailure as error:
+        report = {
+            "schema": RUN_SCHEMA,
+            "status": "fail",
+            "failure_class": error.failure_class,
+            "message": str(error),
+        }
+        evidence_dir = None if args is None else args.evidence_dir
+        if evidence_dir is not None:
+            evidence_dir.mkdir(parents=True, exist_ok=True)
+            atomic_write_json(evidence_dir / "acceptance-report.json", report)
+        print(json.dumps(report, indent=2, sort_keys=True), file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
-    signal.signal(signal.SIGTERM, interrupt_on_signal)
     raise SystemExit(main())

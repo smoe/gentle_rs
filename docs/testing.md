@@ -405,57 +405,64 @@ their active sequence content renders; blocked windows remain visible but
 disabled with outcome role `blocked`. Artifact checks inspect the artifact
 directly and do not force an otherwise unnecessary project save.
 
-The first contract is attached to `simple_pcr_selection_gui`. It uses a
-selection formula rather than pixel-coordinate dragging, enters the PCR
-Designer through the ordinary selection context action, and proves creation of
-the closed-world `primer_design_report.exists` fact against the separate
-`simple_pcr_primer_design_offline` oracle. The existing shell Xvfb script
-remains a compact liveness example. The contract-driven runner is
-[`../scripts/tutorial_gui_acceptance.py`](../scripts/tutorial_gui_acceptance.py).
-It first asks `gentle_examples_docs` to validate the source-derived manifest and
-materialize independent starter/oracle projects through GENtle's normal example
-path rewriting. It then drives only the validated semantic targets through
-ordinary `xdotool` events, saves known-path projects through `Ctrl+S`, and uses
-`gentle_cli` to evaluate facts and typed report assertions against the saved
-project. The GUI receives isolated `HOME`, `TMPDIR`, and XDG directories, with
-inherited `GENTLE_*`, API-key, and token variables removed. If a catalogued PCR
-control is clipped inside its owning scroll area,
-the runner first sends recorded ordinary wheel events inside the semantically
-identified window and interacts only after the control reports a positive
-visible rectangle. Pixels alone never establish a scientific result.
+The first contract is attached to `simple_pcr_selection_gui`. It opens the
+starter sequence from the main project graph, uses a selection formula rather
+than pixel-coordinate dragging, enters the PCR Designer through the ordinary
+selection context action, and proves creation of the closed-world
+`primer_design_report.exists` fact against the separate
+`simple_pcr_primer_design_offline` oracle. The first main-window action is part
+of the typed contract; a harness must not rely on an unrecorded setup click.
 
-Build one exact revision and validate the non-GUI half on any supported host:
+`scripts/tutorial_gui_acceptance.py` is the external Linux/X11 runner. It uses
+ordinary `xdotool` events and the read-only semantic rectangles; GENtle does
+not inject input or certify its own GUI. Before launching the GUI, the runner
+asks `gentle_examples_docs tutorial-gui-project` to materialize the incomplete
+starter and separate completed oracle with path rewriting. That helper also
+returns the engine-owned, pseudonymous sequence scopes, so the Python code does
+not duplicate subject-identity hashing. The runner then independently repeats
+starter/oracle fact checks, drives only the closed interaction vocabulary,
+saves through ordinary `Ctrl+S`, and verifies facts/reports/state/artifacts
+through fixed `gentle_cli` routes. Tutorial prose and fields can never supply a
+shell command.
+
+Build the GUI with semantic test support and run the smoke profile inside an
+explicitly isolated Linux network namespace:
 
 ```bash
 cargo build --locked --features gui-test-support \
   --bin gentle --bin gentle_cli --bin gentle_examples_docs
-python3 scripts/tutorial_gui_acceptance.py \
-  --validate-only \
-  --output-dir /tmp/gentle-simple-pcr-contract-validation
+
+xvfb-run -a -s "-screen 0 1600x1000x24" \
+  sh -c 'openbox >/tmp/gentle-tutorial-openbox.log 2>&1 & \
+    exec unshare --user --map-root-user --net -- \
+      python3 scripts/tutorial_gui_acceptance.py \
+        --repo-root . \
+        --profile smoke \
+        --evidence-dir /tmp/gentle-tutorial-gui-smoke \
+        --network-enforcement linux_network_namespace'
 ```
 
-Run the actual acceptance on Linux/X11 with `xdotool` and one of `scrot`,
-`gnome-screenshot`, or ImageMagick `import` available:
+The runner requires `xdotool`, `xdpyinfo`, `xprop`, and a named EWMH window
+manager; the example uses Openbox. It also requires `scrot` whenever a selected
+contract marks a screenshot as required. Use repeated `--chapter ID` instead
+of `--profile` for a bounded chapter set. `smoke` currently contains the Simple
+PCR contract; `offline-core` and `full` become meaningful only as chapters gain
+complete typed acceptance metadata. Online chapters must remain explicit and
+authorized.
 
-```bash
-xvfb-run -a -s '-screen 0 1600x1000x24' \
-  python3 scripts/tutorial_gui_acceptance.py \
-  --tutorial-id simple_pcr_selection_gui \
-  --output-dir /tmp/gentle-simple-pcr-gui-acceptance
-```
-
-The output directory must be absent or empty. The runner retains the exact Git
-revision, binary/manifest/contract hashes, isolated starter and oracle projects,
-command logs, per-step semantic snapshots, required screenshots, saved-project
-hashes, typed verifier results, and a content-bound
-`acceptance-ledger.json`. Result classes are deliberately distinct:
-`product_failure` means GENtle or its saved scientific state contradicted the
-contract, `contract_error` means the committed contract/materialization was not
-valid, and `harness_gap` means the host could not perform the claimed audit.
-`--validate-only` records `validated_only` and must not be presented as GUI
-acceptance. The current subject-scope and report adapters cover the Simple-PCR
-contract; a future chapter using another subject identity or report family must
-extend the runner explicitly rather than silently weakening verification.
+Each chapter receives a clean `HOME`, XDG roots, temporary directory, and
+starter project. Inherited `GENTLE_*` and `*_API_KEY` variables are removed from
+the GUI process and represented only by names plus value hashes in
+`environment.json`. An offline contract with
+`--network-enforcement not_enforced` fails as `harness_gap`; the runner never
+claims isolation from Xvfb alone. The retained
+`gentle.tutorial_gui_acceptance_ledger.v1` records every requested interaction,
+resolved semantic item, emitted X11 event, before/after snapshot generation,
+typed verifier result, project/report/artifact hash, exact workflow-source
+hash, screenshot, timeout class, and failure class. `environment.json` records
+the X display and window manager alongside required and optional tool versions.
+`acceptance-report.json` contains the external aggregate verdict. The older
+shell Xvfb script remains only a liveness example.
 
 ## 6. Practical implementation order
 
