@@ -6621,6 +6621,26 @@ fn command_palette_includes_gui_prominent_glossary_entries() {
 }
 
 #[test]
+fn command_palette_precomputed_motif_evidence_opens_missing_anchor_prerequisite() {
+    let mut app = GENtleApp::default();
+    let action = app
+        .collect_command_palette_entries()
+        .iter()
+        .find(|entry| entry.title == "Precomputed Genomic Motif Evidence")
+        .map(|entry| entry.action)
+        .expect("precomputed genomic motif evidence command palette entry");
+
+    app.execute_command_palette_action(&egui::Context::default(), action);
+
+    assert!(app.show_reference_genome_retrieve_dialog);
+    assert_eq!(app.genome_dialog_scope, GenomeDialogScope::Reference);
+    assert!(
+        app.app_status
+            .contains("requires a genome-anchored sequence")
+    );
+}
+
+#[test]
 fn command_palette_project_overview_focuses_container_actions() {
     let mut app = GENtleApp::default();
     let action = app

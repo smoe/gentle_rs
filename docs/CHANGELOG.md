@@ -97,7 +97,9 @@
   Parquet-inventory, threshold-floor, compatibility, and truncation
   provenance. Missing packages or DuckDB executables are typed optional
   states: they add no startup work and do not disable GENtle's local TFBS
-  scans or score tracks.
+  scans or score tracks. The command palette opens an existing anchored DNA
+  viewer for this workflow and falls back to genomic-sequence retrieval when
+  that prerequisite is missing.
 
 - Hardened typed tutorial GUI acceptance before adding an external runner.
   Contracts now target only a closed semantic-control catalog with declared

@@ -698,6 +698,8 @@ fn skip_glossary_flag_parse(path: &str, flag: &str) -> bool {
                     "primers design-transcript-assay-panel",
                     "--preferred-min-amplicon-bp" | "--preferred-max-amplicon-bp"
                 )
+                | ("promoters panel-readiness", "--approve")
+                | ("features genomic-motif-evidence", "--region")
                 | ("ui selection", "--start" | "--end")
         )
 }

@@ -2528,6 +2528,7 @@ enum CommandPaletteAction {
     OpenGibson,
     OpenMirnaTargetScan,
     OpenCrypticSplicingScreen,
+    OpenPrecomputedGenomicMotifEvidence,
     OpenEvidencePreparation,
     OpenPlanning,
     OpenRoutineAssistant,
@@ -5589,6 +5590,15 @@ Error: `{err}`"
                 action: CommandPaletteAction::OpenCrypticSplicingScreen,
             },
             CommandPaletteEntry {
+                title: "Precomputed Genomic Motif Evidence".to_string(),
+                detail: "Open an anchored DNA sequence for optional precomputed JASPAR genome-scan queries"
+                    .to_string(),
+                keywords:
+                    "tfbs jaspar motif precomputed genomic evidence package duckdb parquet"
+                        .to_string(),
+                action: CommandPaletteAction::OpenPrecomputedGenomicMotifEvidence,
+            },
+            CommandPaletteEntry {
                 title: "Evidence Preparation".to_string(),
                 detail: "Prepare the TP73 evidence-viewer proof material through shared GENtle operations and copyable handoff commands".to_string(),
                 keywords: "tp73 evidence preparation array clariom repeat rmsk cutrun bed tfbs proof".to_string(),
@@ -5711,6 +5721,9 @@ Error: `{err}`"
             CommandPaletteAction::OpenGibson => self.open_gibson_dialog(),
             CommandPaletteAction::OpenMirnaTargetScan => self.open_mirna_target_scan_dialog(),
             CommandPaletteAction::OpenCrypticSplicingScreen => self.open_cryptic_splicing_screen(),
+            CommandPaletteAction::OpenPrecomputedGenomicMotifEvidence => {
+                self.open_precomputed_genomic_motif_evidence()
+            }
             CommandPaletteAction::OpenEvidencePreparation => {
                 self.open_evidence_preparation_dialog()
             }
@@ -8282,6 +8295,30 @@ Error: `{err}`"
 
     fn open_reference_genome_retrieve_dialog(&mut self) {
         self.open_retrieve_genome_dialog_for_scope(GenomeDialogScope::Reference);
+    }
+
+    fn open_precomputed_genomic_motif_evidence(&mut self) {
+        let anchored_seq_ids = self
+            .engine
+            .read()
+            .map(|engine| engine.list_sequences_with_genome_anchor())
+            .unwrap_or_default();
+        let preferred_seq_id = anchored_seq_ids
+            .iter()
+            .find(|seq_id| self.find_open_sequence_viewport_id(seq_id).is_some())
+            .or_else(|| anchored_seq_ids.first())
+            .cloned();
+
+        if let Some(seq_id) = preferred_seq_id {
+            self.open_sequence_window(&seq_id);
+            self.app_status = format!(
+                "Opened anchored sequence '{seq_id}'; choose explicit motifs in the TFBS annotation panel, then use TFBS scan > Precomputed hits"
+            );
+        } else {
+            self.open_reference_genome_retrieve_dialog();
+            self.app_status = "Precomputed genomic motif evidence requires a genome-anchored sequence; retrieve one first"
+                .to_string();
+        }
     }
 
     fn open_reference_genome_blast_dialog(&mut self) {

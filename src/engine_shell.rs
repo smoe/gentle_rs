@@ -26796,6 +26796,24 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "registry": registry_metadata_for_introspection("InspectPromoterReporterPanelReadiness")
         }),
         json!({
+            "id": "promoter_reporter_panel_readiness",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "INPUT_KIND", "required": true, "subject_kind": "other", "detail": "request or proposal"},
+                {"name": "INPUT", "required": true, "subject_kind": "other", "detail": "exact request/proposal object or JSON string selected by INPUT_KIND"},
+                {"name": "APPROVAL_DIGEST", "required": false, "subject_kind": "other", "detail": "optional exact proposal digest; valid only for proposal input"},
+                {"name": "STATE_PATH", "required": false, "subject_kind": "other", "detail": "optional persisted project-state path"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Recompute context-bound promoter-reporter readiness through the MCP projection while keeping blocked inputs inspectable.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("promoter_reporter_panel_readiness")
+        }),
+        json!({
             "id": "promoters panel-plan",
             "kind": "operation",
             "mutating": "false",
