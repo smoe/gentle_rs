@@ -10038,6 +10038,60 @@ fn parse_features_tfbs_scan_for_stored_and_inline_targets() {
 }
 
 #[test]
+fn parse_features_genomic_motif_evidence_for_sequence_and_intervals() {
+    let command = parse_shell_line(
+        "features genomic-motif-evidence seq_a --range 10..120 --motif MA0525.2 --motifs MA0106.3,MA0107.1 --package /tmp/genome-scan --duckdb /opt/duckdb --genome-id grch38_ensembl116 --min-score 0.5 --min-pwm-relative-score 0.8 --max-rows 250 --max-payload-files 12 --timeout-seconds 8 --path /tmp/hits.json",
+    )
+    .expect("parse anchored genomic motif evidence");
+    match command {
+        ShellCommand::FeaturesGenomicMotifEvidence { request, path } => {
+            assert_eq!(
+                request.target,
+                GenomicMotifEvidenceTarget::AnchoredSequence {
+                    seq_id: "seq_a".to_string(),
+                    span_start_0based: Some(10),
+                    span_end_0based_exclusive: Some(120),
+                }
+            );
+            assert_eq!(request.motif_ids, vec!["MA0525.2", "MA0106.3", "MA0107.1"]);
+            assert_eq!(request.package_root.as_deref(), Some("/tmp/genome-scan"));
+            assert_eq!(request.duckdb_executable.as_deref(), Some("/opt/duckdb"));
+            assert_eq!(
+                request.expected_genome_id.as_deref(),
+                Some("grch38_ensembl116")
+            );
+            assert_eq!(request.minimum_score, Some(0.5));
+            assert_eq!(request.minimum_pwm_relative_score, Some(0.8));
+            assert_eq!(request.max_rows, 250);
+            assert_eq!(request.max_payload_files, 12);
+            assert_eq!(request.timeout_seconds, 8);
+            assert_eq!(path.as_deref(), Some("/tmp/hits.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let command = parse_shell_line(
+        "features genomic-motif-evidence --region promoter=chr1:100..200 --region chr22:300..420 --motif MA0525.2",
+    )
+    .expect("parse explicit genomic intervals");
+    match command {
+        ShellCommand::FeaturesGenomicMotifEvidence { request, .. } => match request.target {
+            GenomicMotifEvidenceTarget::GenomicIntervals { intervals } => {
+                assert_eq!(intervals.len(), 2);
+                assert_eq!(intervals[0].interval_id, "promoter");
+                assert_eq!(intervals[0].chromosome, "chr1");
+                assert_eq!(intervals[0].start_0based, 100);
+                assert_eq!(intervals[0].end_0based_exclusive, 200);
+                assert_eq!(intervals[1].interval_id, "region-2");
+                assert_eq!(intervals[1].chromosome, "chr22");
+            }
+            other => panic!("unexpected target: {other:?}"),
+        },
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_variant_reporter_fragments_with_context_options() {
     let cmd = parse_shell_line(
         "variant reporter-fragments seq_a --variant rs9923231 --gene-label VKORC1 --retain-downstream-from-tss-bp 200 --retain-upstream-beyond-variant-bp 500 --max-candidates 3 --path out.json",
@@ -19903,6 +19957,52 @@ fn execute_features_tfbs_scan_matches_inline_and_stored_sequence_targets() {
     assert_eq!(
         stored.output["report"]["motifs_scanned"],
         inline.output["report"]["motifs_scanned"]
+    );
+}
+
+#[test]
+fn execute_genomic_motif_evidence_keeps_missing_provider_optional_and_read_only() {
+    let temp = tempfile::tempdir().expect("temporary directory");
+    let missing_package = temp.path().join("not-installed-package");
+    let mut engine = GentleEngine::default();
+    let before = serde_json::to_vec(engine.state()).expect("serialize state before query");
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::FeaturesGenomicMotifEvidence {
+            request: GenomicMotifEvidenceRequest {
+                package_root: Some(missing_package.display().to_string()),
+                target: GenomicMotifEvidenceTarget::GenomicIntervals {
+                    intervals: vec![GenomicMotifEvidenceInterval {
+                        interval_id: "region-1".to_string(),
+                        label: None,
+                        chromosome: "1".to_string(),
+                        start_0based: 100,
+                        end_0based_exclusive: 200,
+                    }],
+                },
+                motif_ids: vec!["MA0525.2".to_string()],
+                ..GenomicMotifEvidenceRequest::default()
+            },
+            path: None,
+        },
+    )
+    .expect("missing optional package returns a report");
+    let after = serde_json::to_vec(engine.state()).expect("serialize state after query");
+
+    assert!(!run.state_changed);
+    assert_eq!(before, after);
+    assert_eq!(
+        run.output["report"]["schema"].as_str(),
+        Some("gentle.genomic_motif_evidence.v1")
+    );
+    assert_eq!(
+        run.output["report"]["availability"].as_str(),
+        Some("package_missing")
+    );
+    assert!(
+        run.output["report"]["warnings"][0]
+            .as_str()
+            .is_some_and(|warning| warning.contains("local GENtle TFBS scoring remains available"))
     );
 }
 

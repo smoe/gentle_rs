@@ -2816,6 +2816,45 @@ Current draft operations:
     materialize `TFBS` features
   - `path` writes the same structured JSON report to disk for reuse outside the
     current adapter session
+- `QueryGenomicMotifEvidence { request, path? }`
+  - optional non-mutating access to a finalized `jaspar-mapping` sparse
+    whole-genome package through schema `gentle.genomic_motif_evidence.v1`
+  - accepts one stored sequence with a genome anchor or an explicit list of
+    genomic intervals; resolved coordinates are BED 0-based half-open and are
+    echoed in the report
+  - requires an explicit bounded JASPAR matrix-id list. `ALL` is invalid for a
+    row query because the sparse package is not an all-motif density index
+  - package and DuckDB resolution is request-scoped. `package_not_configured`,
+    `package_missing`, and `duckdb_unavailable` are successful typed evidence
+    states, not startup failures, and do not change local TFBS availability
+  - the provider invokes external DuckDB in read-only mode only after an
+    explicit request. It validates manifest version/finalization and path
+    containment, selects exact Parquet paths from `scan_file_inventory`, and
+    enforces motif, interval, payload-file, row, process-output, and timeout
+    limits
+  - provider provenance binds the manifest hash, selected inventory identities
+    and declared payload hashes, database and DuckDB identities, genome and
+    assembly labels, JASPAR version, score mode, pseudocount, background,
+    coordinate mode, N policy, and matched-sequence policy
+  - `motif_coverage[]` records each requested motif's source retention floor,
+    informative threshold, density-limit state, requested thresholds, returned
+    row count, and one of
+    `complete_for_package_retention`,
+    `complete_for_requested_threshold`,
+    `incomplete_below_storage_floor`, `density_limited_at_source`,
+    `motif_not_in_package`, or `truncated_at_max_rows`
+  - package retention and density policies are engineering/calibration facts,
+    not biological binding thresholds. Absence of a retained row is never by
+    itself evidence of biological absence
+  - package scores remain in package-native units and must not be merged onto
+    a GENtle-local score axis: the underlying pseudocount estimators differ
+    even where score-family names sound similar
+  - package `ensembl_release` is sequence-source provenance; the sparse package
+    contains no gene annotation. Until GENtle and the package share per-contig
+    sequence hashes, compatibility is explicitly
+    `contig_geometry_matched_only`, not sequence-identity verified
+  - `path` writes the same deterministic report exposed to shell, CLI, MCP,
+    JavaScript, Lua, and GUI callers
 - `RenderIsoformArchitectureSvg { seq_id, panel_id, expression_tsv_path?, path }`
 - `RenderRnaStructureSvg { seq_id, path }`
 - `RenderLineageSvg { path }`

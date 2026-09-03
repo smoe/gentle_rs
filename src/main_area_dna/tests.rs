@@ -21,21 +21,22 @@ use crate::{
         DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine,
         EngineError, ErrorCode, EvidenceClass, FeatureLocationEditStrand,
         FeatureRecordCurationOutcome, FlexibilityModel, FlexibilityTrack,
-        GeneIsoformEvidenceReport, GentleEngine, LinearSequenceLetterLayoutMode, OpResult,
-        Operation, PairwiseAlignmentMode, Primer3Progress, PrimerDesignBackend,
-        PrimerDesignPairConstraint, PrimerDesignProgress, PrimerDesignSideConstraint,
-        ProbeRegionEvidenceInterpretationReport, ProbeRegionEvidenceMappingRow, ProjectState,
-        PromoterExpressionEvidenceInput, PromoterReporterCandidateSet,
-        ProtocolCartoonPreviewTelemetry, QpcrTranscriptSpecificityEvidence,
-        QpcrTranscriptTargeting, QpcrTranscriptTargetingMode, RestrictionCloningPcrHandoffMode,
-        RestrictionEnzymeDisplayMode, RnaReadAlignmentEffect, RnaReadAlignmentInspection,
-        RnaReadAlignmentInspectionRow, RnaReadHitSelection, RnaReadInputFormat,
-        RnaReadInterpretProgress, RnaReadInterpretationHit, RnaReadInterpretationProfile,
-        RnaReadInterpretationReport, RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow,
-        RnaReadIsoformTriageBin, RnaReadMappingHit, RnaReadOriginMode, RnaReadReportMode,
-        RnaReadScoreDensityVariant, RnaReadSeedFilterConfig, RnaReadSeedHistogramBin,
-        RnaReadTopHitPreview, RnaSeedHashCatalogEntry, RnaSeedHashTemplateAuditEntry,
-        SequenceAlignmentReport, SequenceGenomeAnchorSummary, SequencingConfirmationReadResult,
+        GeneIsoformEvidenceReport, GenomicMotifEvidenceReport, GentleEngine,
+        LinearSequenceLetterLayoutMode, OpResult, Operation, PairwiseAlignmentMode,
+        Primer3Progress, PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignProgress,
+        PrimerDesignSideConstraint, ProbeRegionEvidenceInterpretationReport,
+        ProbeRegionEvidenceMappingRow, ProjectState, PromoterExpressionEvidenceInput,
+        PromoterReporterCandidateSet, ProtocolCartoonPreviewTelemetry,
+        QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
+        RestrictionCloningPcrHandoffMode, RestrictionEnzymeDisplayMode, RnaReadAlignmentEffect,
+        RnaReadAlignmentInspection, RnaReadAlignmentInspectionRow, RnaReadHitSelection,
+        RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
+        RnaReadInterpretationProfile, RnaReadInterpretationReport,
+        RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadIsoformTriageBin,
+        RnaReadMappingHit, RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityVariant,
+        RnaReadSeedFilterConfig, RnaReadSeedHistogramBin, RnaReadTopHitPreview,
+        RnaSeedHashCatalogEntry, RnaSeedHashTemplateAuditEntry, SequenceAlignmentReport,
+        SequenceGenomeAnchorSummary, SequencingConfirmationReadResult,
         SequencingConfirmationReport, SequencingConfirmationStatus,
         SequencingConfirmationTargetKind, SequencingConfirmationTargetResult,
         SequencingConfirmationVariantRow, SequencingPrimerOrientation,
@@ -1264,6 +1265,7 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
         repeat_environment_cohort: None,
         window_cohort_tfbs: None,
         tfbs_hit_scan: None,
+        genomic_motif_evidence: None,
         restriction_site_scan: None,
         jaspar_remote_metadata_snapshot: None,
         jaspar_catalog_report: None,
@@ -5322,6 +5324,7 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
             repeat_environment_cohort: None,
             window_cohort_tfbs: None,
             tfbs_hit_scan: None,
+            genomic_motif_evidence: None,
             restriction_site_scan: None,
             jaspar_remote_metadata_snapshot: None,
             jaspar_catalog_report: None,
@@ -8527,6 +8530,20 @@ fn replace_active_dna_invalidates_feature_tree_cache() {
     area.replace_active_dna(replacement_dna, true);
 
     assert!(area.feature_tree_cache.is_none());
+}
+
+#[test]
+fn replace_active_dna_invalidates_transient_genomic_motif_evidence() {
+    let initial_dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+    let mut area = MainAreaDna::new(initial_dna, Some("initial".to_string()), None);
+    area.cached_genomic_motif_evidence = Some(GenomicMotifEvidenceReport::default());
+
+    area.replace_active_dna(
+        DNAsequence::from_sequence("TGCATGCA").expect("replacement sequence"),
+        true,
+    );
+
+    assert!(area.cached_genomic_motif_evidence.is_none());
 }
 
 #[test]

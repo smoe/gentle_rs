@@ -114,19 +114,23 @@ pub use gentle_protocol::{
     ConstructReasoningTaskSeverity, ConstructRole, Container, ContainerId, ContainerKind,
     ContainerState, CrypticSplicingEvidenceOverlayReport, CrypticSplicingEvidenceOverlayRequest,
     CrypticSplicingProteinProjectionReport, CrypticSplicingProteinProjectionRequest,
-    CrypticSplicingScreenRequest, CrypticSplicingScreenView, DecisionMethod, DesignDecisionNode,
+    CrypticSplicingScreenRequest, CrypticSplicingScreenView,
+    DEFAULT_GENOMIC_MOTIF_EVIDENCE_MAX_PAYLOAD_FILES, DEFAULT_GENOMIC_MOTIF_EVIDENCE_MAX_ROWS,
+    DEFAULT_GENOMIC_MOTIF_EVIDENCE_TIMEOUT_SECONDS, DecisionMethod, DesignDecisionNode,
     DesignEvidence, DesignFact, DotplotInspectionProvenanceCitation,
     DotplotInspectionProvenanceStatus, DotplotInspectionRequestSnapshot, DotplotMode,
     EditableStatus, EvidenceClass, EvidenceScope, ExonSkipReturnKind, ExonSkipReturnPayload,
     ExonSkipSelectionCriterion, GelBandLabelLayout, GelBufferModel, GelIsoformMarkerMode,
-    GelLaneLabelLayout, GelRunConditions, GelTopologyForm, HostLifecycleRole, LineageEdge,
-    LineageGraph, LineageMacroInstance, LineageMacroPortBinding, LineageNode, MacroInstanceStatus,
-    NodeId, OpId, OrthologAmbiguityPolicy, OrthologCutRunNormalizationInput,
-    OrthologPromoterCohortReport, OrthologPromoterComparisonReport, PoolGelRenderOptions,
-    PrimerSpecificityAmpliconCeilingSource, PrimerSpecificityReportDetailMode,
-    ProteinExternalOpinionSource, ProteinFeatureFilter, Rack, RackAuthoringTemplate,
-    RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
-    RackPhysicalTemplateFamily, RackPhysicalTemplateKind, RackPhysicalTemplateSpec,
+    GelLaneLabelLayout, GelRunConditions, GelTopologyForm, GenomicMotifEvidenceCoverageStatus,
+    GenomicMotifEvidenceInterval, GenomicMotifEvidenceMotifCoverage, GenomicMotifEvidenceReport,
+    GenomicMotifEvidenceRequest, GenomicMotifEvidenceTarget, HostLifecycleRole, LineageEdge,
+    LineageGraph, LineageMacroInstance, LineageMacroPortBinding, LineageNode,
+    MAX_GENOMIC_MOTIF_EVIDENCE_QUERY_MOTIFS, MacroInstanceStatus, NodeId, OpId,
+    OrthologAmbiguityPolicy, OrthologCutRunNormalizationInput, OrthologPromoterCohortReport,
+    OrthologPromoterComparisonReport, PoolGelRenderOptions, PrimerSpecificityAmpliconCeilingSource,
+    PrimerSpecificityReportDetailMode, ProteinExternalOpinionSource, ProteinFeatureFilter, Rack,
+    RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
+    RackOccupant, RackPhysicalTemplateFamily, RackPhysicalTemplateKind, RackPhysicalTemplateSpec,
     RackPlacementEntry, RackProfileKind, RackProfileSnapshot, ReadAcquisitionAnalysisFormat,
     ReadAcquisitionReadLayout, RegulatoryPartnerAnchorMode, RegulatoryPartnerMotifThreshold,
     RegulatoryPartnerScreenReport, RunId, SeqId, SequenceOrigin,
@@ -5382,6 +5386,11 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    QueryGenomicMotifEvidence {
+        request: GenomicMotifEvidenceRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     SummarizeJasparEntries {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         motifs: Vec<String>,
@@ -9734,6 +9743,7 @@ impl GentleEngine {
                 | Operation::SummarizeOrthologPromoterComparison { .. }
                 | Operation::RenderMultiGenePromoterTfbsSvg { .. }
                 | Operation::ScanTfbsHits { .. }
+                | Operation::QueryGenomicMotifEvidence { .. }
                 | Operation::InspectJasparEntry { .. }
                 | Operation::SummarizeJasparEntries { .. }
                 | Operation::ResolveTfQueries { .. }

@@ -67,6 +67,17 @@
   figure with independently scaled local JASPAR inputs for PATZ1 and E2F1
   alongside its existing TP73 and SP1 rows.
 
+- Added optional, read-only access to finalized `jaspar-mapping` sparse
+  whole-genome motif packages through `gentle.genomic_motif_evidence.v1`.
+  Explicit bounded motif sets can be queried over an anchored DNA window or
+  several BED-style genomic intervals from the shared CLI/shell/agent route;
+  the DNA viewer runs the same operation in the background and displays a
+  transient overlay. Reports retain package, DuckDB, score-policy, selected
+  Parquet-inventory, threshold-floor, compatibility, and truncation
+  provenance. Missing packages or DuckDB executables are typed optional
+  states: they add no startup work and do not disable GENtle's local TFBS
+  scans or score tracks.
+
 - Hardened typed tutorial GUI acceptance before adding an external runner.
   Contracts now target only a closed semantic-control catalog with declared
   interactions and authority, distinguish project persistence from scientific

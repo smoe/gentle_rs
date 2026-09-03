@@ -15,6 +15,7 @@ pub mod feature_record_curation;
 pub mod gene_groups;
 pub mod gene_set_publication;
 pub mod gene_sets;
+pub mod genomic_motif_evidence;
 pub mod isoform_evidence;
 pub mod orthologs;
 pub mod regulatory_partners;
@@ -140,6 +141,16 @@ pub use gene_sets::{
     GeneSetPromoterWindow, GeneSetProvenanceRow, GeneSetRandomProvenance, GeneSetRequest,
     GeneSetResolutionReport, GeneSetResolutionReviewStatus, GeneSetResolvedMember,
     GeneSetUnresolvedMember,
+};
+pub use genomic_motif_evidence::{
+    DEFAULT_GENOMIC_MOTIF_EVIDENCE_MAX_PAYLOAD_FILES, DEFAULT_GENOMIC_MOTIF_EVIDENCE_MAX_ROWS,
+    DEFAULT_GENOMIC_MOTIF_EVIDENCE_TIMEOUT_SECONDS, GENOMIC_MOTIF_EVIDENCE_SCHEMA,
+    GenomicMotifEvidenceAvailability, GenomicMotifEvidenceCompatibilityStatus,
+    GenomicMotifEvidenceCoverageStatus, GenomicMotifEvidenceHit, GenomicMotifEvidenceInterval,
+    GenomicMotifEvidenceMotifCoverage, GenomicMotifEvidencePayloadProvenance,
+    GenomicMotifEvidenceProviderProvenance, GenomicMotifEvidenceReport,
+    GenomicMotifEvidenceRequest, GenomicMotifEvidenceResolvedRegion, GenomicMotifEvidenceTarget,
+    MAX_GENOMIC_MOTIF_EVIDENCE_QUERY_MOTIFS,
 };
 pub use isoform_evidence::{
     CDNA_EST_EVIDENCE_RESOURCE_SCHEMA, CdnaEstEvidenceKind, CdnaEstEvidenceRecord,
@@ -5529,6 +5540,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "InspectPromoterReporterPanelReadiness",
     "MaterializePromoterReporterPanel",
     "ScanTfbsHits",
+    "QueryGenomicMotifEvidence",
     "InspectJasparEntry",
     "SummarizeJasparEntries",
     "ResolveTfQueries",
@@ -7164,6 +7176,7 @@ fn inline_operand_ok_for_operation(operation: &str) -> Option<bool> {
         | "SummarizeTfbsTrackSimilarity"
         | "ScanTfbsHits"
         | "AlignSequences" => Some(true),
+        "QueryGenomicMotifEvidence" => Some(false),
         "RenderSequenceSvg"
         | "RenderRnaStructureSvg"
         | "RenderTfbsScoreTrackCorrelationSvg"

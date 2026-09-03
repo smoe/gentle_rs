@@ -807,3 +807,23 @@ execution and is displayed separately from model prose. A model cannot certify
 its own browsing by emitting provenance fields, and web content remains
 untrusted evidence that cannot alter the response contract, parser validation,
 confirmation policy, or nested-agent guardrail.
+
+## DEC-042: Precomputed Genome Motif Evidence Is Optional And Scale-Separate
+
+Status: active
+
+Finalized sparse whole-genome motif packages are optional evidence providers,
+not GENtle runtime resources. GENtle discovers and invokes an external DuckDB
+executable only for an explicit query, opens only payload paths selected from
+the package's exact inventory, and imposes motif, interval, file, row, output,
+and wall-clock bounds. An absent package or executable therefore has no startup
+cost and cannot disable local JASPAR scoring or any unrelated workflow.
+
+Package hits remain on the package-declared score and retention policy. They
+must not share a numerical axis with GENtle's local scorer unless a future
+contract proves cross-source calibration. Every report states per-motif
+retention-floor completeness, density limiting, row truncation, and genome
+compatibility. Contig aliases and geometry alone may support a
+`contig_geometry_matched_only` result; they do not establish per-contig
+sequence identity. Row queries require an explicit bounded motif set because
+the sparse package is not an all-motif density index.

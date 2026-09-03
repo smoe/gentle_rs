@@ -111,18 +111,20 @@ use crate::{
         EvidenceClass, ExonSkipSelectionCriterion, ExonSkipSelectionPlan,
         ExperimentalAssayHandoffReport, ExperimentalAssayReadinessPolicy,
         ExperimentalAssayReadinessState, ExportFormat, FlexibilityModel, FlexibilityTrack,
-        GenomeAnchorPreparedFallbackPolicy, GenomeAnchorSide, GentleEngine,
-        IsoformPromoterComparisonGroup, IsoformPromoterComparisonReport,
+        GenomeAnchorPreparedFallbackPolicy, GenomeAnchorSide, GenomicMotifEvidenceAvailability,
+        GenomicMotifEvidenceReport, GenomicMotifEvidenceRequest, GenomicMotifEvidenceTarget,
+        GentleEngine, IsoformPromoterComparisonGroup, IsoformPromoterComparisonReport,
         JasparCatalogRemoteSummary, LigationProtocol, LinearSequenceLetterLayoutMode,
-        MAX_DOTPLOT_PAIR_EVALUATIONS, MicroarrayProjectionReport, OpResult, Operation,
-        OperationProgress, PairwiseAlignmentMode, PcrPrimerSpec, PrimerDesignBackend,
-        PrimerDesignBaseLock, PrimerDesignPairConstraint, PrimerDesignProgress, PrimerDesignReport,
-        PrimerDesignSideConstraint, PrimerSpecificityPolicy, ProbeRegionAptImportReport,
-        ProbeRegionBackendRunReport, ProbeRegionEvidenceInterpretationReport,
-        ProbeRegionEvidenceMappingRow, ProbeRegionEvidenceSvgExport,
-        ProbeRegionEvidenceTranscriptMapping, ProbeRegionOutputInspection,
-        PromoterEvidenceMatrixReport, PromoterEvidenceMatrixRow, PromoterExpressionEvidenceInput,
-        PromoterExpressionEvidenceReport, PromoterReporterArchitectureComparisonReport,
+        MAX_DOTPLOT_PAIR_EVALUATIONS, MAX_GENOMIC_MOTIF_EVIDENCE_QUERY_MOTIFS,
+        MicroarrayProjectionReport, OpResult, Operation, OperationProgress, PairwiseAlignmentMode,
+        PcrPrimerSpec, PrimerDesignBackend, PrimerDesignBaseLock, PrimerDesignPairConstraint,
+        PrimerDesignProgress, PrimerDesignReport, PrimerDesignSideConstraint,
+        PrimerSpecificityPolicy, ProbeRegionAptImportReport, ProbeRegionBackendRunReport,
+        ProbeRegionEvidenceInterpretationReport, ProbeRegionEvidenceMappingRow,
+        ProbeRegionEvidenceSvgExport, ProbeRegionEvidenceTranscriptMapping,
+        ProbeRegionOutputInspection, PromoterEvidenceMatrixReport, PromoterEvidenceMatrixRow,
+        PromoterExpressionEvidenceInput, PromoterExpressionEvidenceReport,
+        PromoterReporterArchitectureComparisonReport,
         PromoterReporterArchitectureComparisonRequest, PromoterReporterCandidateSet,
         PromoterReporterPanelProposal, PromoterReporterPanelReceipt, PromoterReporterPanelRequest,
         PromoterWindowCollapseMode, ProtocolCartoonPreviewTelemetry, QpcrDesignReport,
@@ -1248,6 +1250,7 @@ enum TfbsTaskKind {
     Annotation,
     ActiveSequenceScoreTracks { source_label: String },
     ActiveSequenceTrackSimilarity { source_label: String },
+    ActiveSequenceGenomicMotifEvidence { source_label: String },
     VariantFollowupScoreTracks,
     VariantFollowupTrackSimilarity,
 }
@@ -1585,6 +1588,7 @@ pub struct MainAreaDna {
     cached_probe_region_interpretation: Option<ProbeRegionEvidenceInterpretationReport>,
     cached_restriction_site_scan: Option<RestrictionSiteScanReport>,
     cached_tfbs_hit_scan: Option<TfbsHitScanReport>,
+    cached_genomic_motif_evidence: Option<GenomicMotifEvidenceReport>,
     cached_tfbs_score_tracks: Option<TfbsScoreTrackReport>,
     cached_tfbs_track_similarity: Option<TfbsTrackSimilarityReport>,
     tfbs_task: Option<TfbsTask>,
@@ -2386,6 +2390,7 @@ impl MainAreaDna {
             cached_probe_region_interpretation: None,
             cached_restriction_site_scan: None,
             cached_tfbs_hit_scan: None,
+            cached_genomic_motif_evidence: None,
             cached_tfbs_score_tracks: None,
             cached_tfbs_track_similarity: None,
             tfbs_task: None,
@@ -3058,6 +3063,7 @@ impl MainAreaDna {
         self.invalidate_feature_tree_cache();
         self.cached_restriction_site_scan = None;
         self.cached_tfbs_hit_scan = None;
+        self.cached_genomic_motif_evidence = None;
         self.cached_tfbs_score_tracks = None;
         self.cached_tfbs_track_similarity = None;
         self.mark_dna_layout_dirty();
@@ -6052,6 +6058,14 @@ impl MainAreaDna {
                     }
                 });
                 let tfbs_scan_ready = self.has_tfbs_scan_motifs_configured();
+                let precomputed_genomic_motif_count = if self.tfbs_use_all_motifs {
+                    usize::MAX
+                } else {
+                    Self::parse_ids(&self.tfbs_motifs).len()
+                };
+                let precomputed_genomic_motif_ready =
+                    (1..=MAX_GENOMIC_MOTIF_EVIDENCE_QUERY_MOTIFS)
+                        .contains(&precomputed_genomic_motif_count);
                 ui.menu_button("TFBS scan", |ui| {
                     ui.small(
                         "Uses current TFBS/JASPAR motif and threshold settings from the TFBS annotation panel.",
@@ -6123,6 +6137,57 @@ impl MainAreaDna {
                     };
                     if whole_sequence_response.clicked() {
                         self.scan_whole_sequence_for_tfbs_hits();
+                        ui.close();
+                    }
+
+                    ui.separator();
+                    ui.small("Optional precomputed whole-genome evidence");
+                    ui.small(
+                        "Uses a configured jaspar-mapping package in a background task. Local GENtle scoring remains available when the package or DuckDB is absent.",
+                    );
+                    let selection_response = ui
+                        .add_enabled(
+                            selection_roi.is_some() && precomputed_genomic_motif_ready,
+                            egui::Button::new("Precomputed hits in selection"),
+                        )
+                        .on_hover_text(if precomputed_genomic_motif_ready {
+                            "Query exact inventory-selected package files for the current selection"
+                        } else {
+                            "Select between 1 and 64 explicit JASPAR motif IDs; the all-motifs option is intentionally unavailable for row queries"
+                        });
+                    if selection_response.clicked() {
+                        self.query_selection_genomic_motif_evidence();
+                        ui.close();
+                    }
+                    let visible_response = ui
+                        .add_enabled(
+                            visible_span_roi.is_some() && precomputed_genomic_motif_ready,
+                            egui::Button::new("Precomputed hits in visible span"),
+                        )
+                        .on_hover_text(if precomputed_genomic_motif_ready {
+                            "Query exact inventory-selected package files for the visible linear span"
+                        } else {
+                            "Select between 1 and 64 explicit JASPAR motif IDs"
+                        });
+                    if visible_response.clicked() {
+                        self.query_visible_span_genomic_motif_evidence();
+                        ui.close();
+                    }
+                    let whole_response = ui
+                        .add_enabled(
+                            self.seq_id
+                                .as_deref()
+                                .is_some_and(|value| !value.trim().is_empty())
+                                && precomputed_genomic_motif_ready,
+                            egui::Button::new("Precomputed hits in whole sequence"),
+                        )
+                        .on_hover_text(if precomputed_genomic_motif_ready {
+                            "Query exact inventory-selected package files for the active anchored sequence"
+                        } else {
+                            "Select between 1 and 64 explicit JASPAR motif IDs"
+                        });
+                    if whole_response.clicked() {
+                        self.query_whole_sequence_genomic_motif_evidence();
                         ui.close();
                     }
                 });
@@ -7876,6 +7941,7 @@ impl MainAreaDna {
                 );
                 if tfbs_hit_scan_settings_changed {
                     self.cached_tfbs_hit_scan = None;
+                    self.cached_genomic_motif_evidence = None;
                 }
                 if tfbs_score_track_settings_changed {
                     self.cached_tfbs_score_tracks = None;
@@ -8243,7 +8309,7 @@ impl MainAreaDna {
                     .show(ui, |ui| {
                         ui.small(
                             egui::RichText::new(
-                                "Toolbar actions `RE scan`, `TFBS scan`, and `TFBS score tracks` cache their shared engine reports here so you can inspect the same portable records before exporting them.",
+                                "Toolbar actions `RE scan`, `TFBS scan`, precomputed genomic motif evidence, and `TFBS score tracks` cache their shared engine reports here so you can inspect the same portable records before exporting them.",
                             )
                             .color(egui::Color32::from_rgb(100, 116, 139)),
                         );
@@ -8279,6 +8345,23 @@ impl MainAreaDna {
                         self.render_restriction_site_scan_summary_panel(ui);
                         ui.add_space(6.0);
                         self.render_tfbs_hit_scan_summary_panel(ui);
+                        ui.add_space(6.0);
+                        if let Some(task) = self.tfbs_task.as_ref().filter(|task| {
+                            matches!(
+                                task.task_kind,
+                                TfbsTaskKind::ActiveSequenceGenomicMotifEvidence { .. }
+                            )
+                        }) && Self::render_tfbs_task_progress_panel(
+                            ui,
+                            task,
+                            self.tfbs_progress.as_ref(),
+                            true,
+                        ) {
+                            task.cancel_requested.store(true, AtomicOrdering::Relaxed);
+                            self.op_status =
+                                format!("Cancel requested for {}", task.operation_label);
+                        }
+                        self.render_genomic_motif_evidence_summary_panel(ui);
                     });
 
                 egui::CollapsingHeader::new("Isoform architecture panels")
@@ -11676,6 +11759,77 @@ impl MainAreaDna {
         }
     }
 
+    fn genomic_motif_overlay_color(motif_id: &str) -> egui::Color32 {
+        const COLORS: [egui::Color32; 6] = [
+            egui::Color32::from_rgb(14, 116, 144),
+            egui::Color32::from_rgb(190, 24, 93),
+            egui::Color32::from_rgb(22, 163, 74),
+            egui::Color32::from_rgb(202, 138, 4),
+            egui::Color32::from_rgb(124, 58, 237),
+            egui::Color32::from_rgb(220, 38, 38),
+        ];
+        let index = motif_id
+            .bytes()
+            .fold(0usize, |sum, byte| sum.wrapping_add(byte as usize))
+            % COLORS.len();
+        COLORS[index]
+    }
+
+    fn draw_genomic_motif_evidence_overlays(&self, ui: &mut egui::Ui, response: &egui::Response) {
+        if self.is_circular() {
+            return;
+        }
+        let Some(report) = self
+            .cached_genomic_motif_evidence
+            .as_ref()
+            .filter(|report| report.availability == GenomicMotifEvidenceAvailability::Available)
+        else {
+            return;
+        };
+        let Some(active_seq_id) = self.seq_id.as_deref() else {
+            return;
+        };
+        let (viewport_start, span_bp, sequence_length) = self.current_linear_viewport();
+        if span_bp == 0 || sequence_length == 0 {
+            return;
+        }
+        let viewport_end = viewport_start.saturating_add(span_bp).min(sequence_length);
+        let mut motif_lanes = BTreeMap::<&str, usize>::new();
+        for hit in &report.hits {
+            if hit.source_seq_id.as_deref() != Some(active_seq_id) {
+                continue;
+            }
+            let Some(start) = hit.source_start_0based else {
+                continue;
+            };
+            let Some(end) = hit.source_end_0based_exclusive else {
+                continue;
+            };
+            if end <= viewport_start || start >= viewport_end {
+                continue;
+            }
+            let next_lane = motif_lanes.len().min(3);
+            let lane = *motif_lanes
+                .entry(hit.motif_id.as_str())
+                .or_insert(next_lane);
+            let clip_start = start.max(viewport_start);
+            let clip_end = end.min(viewport_end);
+            let x0 = response.rect.left()
+                + response.rect.width()
+                    * ((clip_start - viewport_start) as f32 / span_bp as f32).clamp(0.0, 1.0);
+            let x1 = response.rect.left()
+                + response.rect.width()
+                    * ((clip_end - viewport_start) as f32 / span_bp as f32).clamp(0.0, 1.0);
+            let y0 = response.rect.top() + 14.0 + lane as f32 * 4.0;
+            let strip = egui::Rect::from_min_max(
+                egui::pos2(x0, y0),
+                egui::pos2(x1.max(x0 + 1.0), y0 + 3.0),
+            );
+            ui.painter()
+                .rect_filled(strip, 0.0, Self::genomic_motif_overlay_color(&hit.motif_id));
+        }
+    }
+
     fn render_pcr_paint_role_controls(&mut self, ui: &mut egui::Ui, include_clear_all: bool) {
         ui.label("PCR paint role:");
         for role in [
@@ -12440,6 +12594,77 @@ impl MainAreaDna {
         self.run_tfbs_hit_scan_for_active_sequence(None, "whole sequence");
     }
 
+    fn run_genomic_motif_evidence_for_active_sequence(
+        &mut self,
+        span: Option<(usize, usize)>,
+        source_label: &str,
+    ) {
+        let seq_id = self.seq_id.clone().unwrap_or_default();
+        if seq_id.trim().is_empty() {
+            self.op_status = "No active template sequence".to_string();
+            return;
+        }
+        let motif_ids = self.collect_tfbs_motifs();
+        if motif_ids.is_empty() {
+            self.op_status =
+                "Select at least one explicit JASPAR motif before querying genomic evidence"
+                    .to_string();
+            return;
+        }
+        if motif_ids.len() > MAX_GENOMIC_MOTIF_EVIDENCE_QUERY_MOTIFS {
+            self.op_status = format!(
+                "Precomputed genomic row queries accept at most {} explicit motifs; {} are selected",
+                MAX_GENOMIC_MOTIF_EVIDENCE_QUERY_MOTIFS,
+                motif_ids.len()
+            );
+            return;
+        }
+        self.cached_genomic_motif_evidence = None;
+        self.start_tfbs_operation(
+            Operation::QueryGenomicMotifEvidence {
+                request: GenomicMotifEvidenceRequest {
+                    target: GenomicMotifEvidenceTarget::AnchoredSequence {
+                        seq_id,
+                        span_start_0based: span.map(|(start, _)| start),
+                        span_end_0based_exclusive: span.map(|(_, end)| end),
+                    },
+                    motif_ids,
+                    max_rows: 2_000,
+                    max_payload_files: 256,
+                    timeout_seconds: 30,
+                    ..GenomicMotifEvidenceRequest::default()
+                },
+                path: None,
+            },
+            TfbsTaskKind::ActiveSequenceGenomicMotifEvidence {
+                source_label: source_label.to_string(),
+            },
+            "Precomputed genomic motif evidence",
+        );
+    }
+
+    fn query_selection_genomic_motif_evidence(&mut self) {
+        let Some(span) = self.current_selection_range_0based() else {
+            self.op_status =
+                "No non-empty linear selection available for genomic motif evidence".to_string();
+            return;
+        };
+        self.run_genomic_motif_evidence_for_active_sequence(Some(span), "current selection");
+    }
+
+    fn query_visible_span_genomic_motif_evidence(&mut self) {
+        let Some(span) = self.current_visible_linear_span_range_0based() else {
+            self.op_status =
+                "Visible linear span is unavailable for genomic motif evidence".to_string();
+            return;
+        };
+        self.run_genomic_motif_evidence_for_active_sequence(Some(span), "visible span");
+    }
+
+    fn query_whole_sequence_genomic_motif_evidence(&mut self) {
+        self.run_genomic_motif_evidence_for_active_sequence(None, "whole sequence");
+    }
+
     fn tfbs_score_track_value_kind_options() -> [TfbsScoreTrackValueKind; 8] {
         [
             TfbsScoreTrackValueKind::LlrBits,
@@ -13115,6 +13340,183 @@ impl MainAreaDna {
         };
         if let Some((start, end_exclusive, context_label)) = navigate_to {
             let _ = self.inspect_sequence_span_0based(start, end_exclusive, &context_label);
+        }
+    }
+
+    fn render_genomic_motif_evidence_summary_panel(&mut self, ui: &mut egui::Ui) {
+        let navigate_to = {
+            let Some(report) = self.cached_genomic_motif_evidence.as_ref() else {
+                ui.small(
+                    egui::RichText::new(
+                        "No precomputed genomic motif evidence cached. Use `TFBS scan` in the toolbar with 1-64 explicit JASPAR motif IDs. This optional provider is not required for local TFBS scoring.",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+                return;
+            };
+            let mut navigate_to: Option<(usize, usize, String)> = None;
+            ui.group(|ui| {
+                ui.label(egui::RichText::new("Precomputed genomic motif evidence").strong());
+                let availability_color = if report.availability
+                    == GenomicMotifEvidenceAvailability::Available
+                {
+                    egui::Color32::from_rgb(22, 101, 52)
+                } else {
+                    egui::Color32::from_rgb(180, 83, 9)
+                };
+                ui.small(
+                    egui::RichText::new(format!(
+                        "status {} | {} hit(s) returned | {} payload file(s) | {} motif(s)",
+                        report.availability.as_str(),
+                        report.returned_hit_count,
+                        report.selected_payload_file_count,
+                        report.request.motif_ids.len()
+                    ))
+                    .color(availability_color),
+                );
+                if let Some(provider) = report.provider.as_ref() {
+                    ui.small(
+                        egui::RichText::new(format!(
+                            "{} | genome {} | assembly {} | JASPAR {} | score {}",
+                            provider.run_id,
+                            provider.genome_id,
+                            provider.assembly_name.as_deref().unwrap_or("not recorded"),
+                            provider.jaspar_version.as_deref().unwrap_or("not recorded"),
+                            provider.score_mode
+                        ))
+                        .color(egui::Color32::from_rgb(71, 85, 105)),
+                    );
+                    ui.small(
+                        egui::RichText::new(format!(
+                            "manifest {} | {}",
+                            provider.manifest_sha256,
+                            provider.database_path
+                        ))
+                        .monospace()
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                }
+                for region in &report.regions {
+                    ui.small(
+                        egui::RichText::new(format!(
+                            "{}: {}:{}..{} | {}",
+                            region.interval_id,
+                            region
+                                .resolved_chromosome
+                                .as_deref()
+                                .unwrap_or(&region.requested_chromosome),
+                            region.start_0based,
+                            region.end_0based_exclusive,
+                            region.compatibility_status.as_str()
+                        ))
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                }
+                for coverage in report.motif_coverage.iter().take(8) {
+                    ui.small(
+                        egui::RichText::new(format!(
+                            "motif {} | {} | package floor {} | {} returned",
+                            coverage.motif_id,
+                            coverage.status.as_str(),
+                            coverage
+                                .source_minimum_score
+                                .map(|value| format!("{value:.3}"))
+                                .unwrap_or_else(|| "not recorded".to_string()),
+                            coverage.returned_hit_count
+                        ))
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                }
+                if report.motif_coverage.len() > 8 {
+                    ui.small(format!(
+                        "{} additional motif coverage row(s) are available in the shared report",
+                        report.motif_coverage.len() - 8
+                    ));
+                }
+                for warning in &report.warnings {
+                    ui.small(
+                        egui::RichText::new(warning)
+                            .color(egui::Color32::from_rgb(180, 83, 9)),
+                    );
+                }
+                if report.availability != GenomicMotifEvidenceAvailability::Available {
+                    ui.small(
+                        egui::RichText::new(
+                            "GENtle remains fully usable: configure the optional package later, or use the local TFBS hit and score-track routes now.",
+                        )
+                        .color(egui::Color32::from_rgb(71, 85, 105)),
+                    );
+                    return;
+                }
+                if report.hits.is_empty() {
+                    ui.small(
+                        egui::RichText::new(
+                            "No retained package hits overlap the requested interval. This is not a claim of biological absence.",
+                        )
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                    return;
+                }
+                ui.small(
+                    egui::RichText::new(
+                        "Click a locally projected row to select its span. Package and local GENtle scores are intentionally not mixed on one numerical scale.",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+                let preview_rows = report.hits.iter().take(20).collect::<Vec<_>>();
+                egui::Grid::new(("genomic_motif_evidence_grid", report.report_id.as_str()))
+                    .num_columns(5)
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.small(egui::RichText::new("motif").strong());
+                        ui.small(egui::RichText::new("genomic span").strong());
+                        ui.small(egui::RichText::new("strand").strong());
+                        ui.small(egui::RichText::new("score").strong());
+                        ui.small(egui::RichText::new("match").strong());
+                        ui.end_row();
+                        for hit in &preview_rows {
+                            let label = hit.motif_name.as_deref().unwrap_or(&hit.motif_id);
+                            let can_navigate = hit.source_seq_id.as_deref() == self.seq_id.as_deref()
+                                && hit.source_start_0based.is_some()
+                                && hit.source_end_0based_exclusive.is_some();
+                            let response = ui.add_enabled(can_navigate, egui::Link::new(label));
+                            if response.clicked()
+                                && let (Some(start), Some(end)) = (
+                                    hit.source_start_0based,
+                                    hit.source_end_0based_exclusive,
+                                )
+                            {
+                                navigate_to = Some((
+                                    start,
+                                    end,
+                                    format!("precomputed genomic motif hit {}", hit.motif_id),
+                                ));
+                            }
+                            ui.small(format!(
+                                "{}:{}..{}",
+                                hit.chromosome, hit.start_0based, hit.end_0based_exclusive
+                            ));
+                            ui.small(&hit.strand);
+                            ui.small(format!("{:.3}", hit.score));
+                            ui.small(hit.matched_sequence.as_deref().unwrap_or("-"));
+                            ui.end_row();
+                        }
+                    });
+                if report.hits.len() > preview_rows.len() {
+                    ui.small(
+                        egui::RichText::new(format!(
+                            "showing first {} of {} returned hits",
+                            preview_rows.len(),
+                            report.hits.len()
+                        ))
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                }
+            });
+            navigate_to
+        };
+        if let Some((start, end, label)) = navigate_to {
+            let _ = self.inspect_sequence_span_0based(start, end, &label);
         }
     }
 
@@ -21114,6 +21516,9 @@ impl MainAreaDna {
             TfbsTaskKind::Annotation => "TFBS annotation",
             TfbsTaskKind::ActiveSequenceScoreTracks { .. } => "TFBS score tracks",
             TfbsTaskKind::ActiveSequenceTrackSimilarity { .. } => "TFBS similarity ranking",
+            TfbsTaskKind::ActiveSequenceGenomicMotifEvidence { .. } => {
+                "precomputed genomic motif evidence"
+            }
             TfbsTaskKind::VariantFollowupScoreTracks => "Promoter TF score tracks",
             TfbsTaskKind::VariantFollowupTrackSimilarity => "Promoter TFBS similarity ranking",
         }
@@ -21198,6 +21603,7 @@ impl MainAreaDna {
             Operation::SummarizeTfbsTrackSimilarity {
                 candidate_motifs, ..
             } => candidate_motifs.len().saturating_add(1).max(1),
+            Operation::QueryGenomicMotifEvidence { request, .. } => request.motif_ids.len(),
             _ => 0,
         };
         let (tx, rx) = mpsc::channel::<TfbsTaskMessage>();
@@ -21255,6 +21661,32 @@ impl MainAreaDna {
         result: OpResult,
         started: Instant,
     ) {
+        if let Some(report) = result.genomic_motif_evidence.clone()
+            && let TfbsTaskKind::ActiveSequenceGenomicMotifEvidence { source_label } = task_kind
+        {
+            self.cached_genomic_motif_evidence = Some(report.clone());
+            let warning = report
+                .warnings
+                .first()
+                .map(|value| format!(" | {value}"))
+                .unwrap_or_default();
+            self.op_status = if report.availability == GenomicMotifEvidenceAvailability::Available {
+                format!(
+                    "Precomputed genomic motif evidence for {source_label}: {} returned hit(s) across {} region(s){}",
+                    report.returned_hit_count,
+                    report.regions.len(),
+                    if report.truncated { " (truncated)" } else { "" }
+                )
+            } else {
+                format!(
+                    "Precomputed genomic motif evidence is {} for {source_label}{}",
+                    report.availability.as_str(),
+                    warning
+                )
+            };
+            self.op_error_popup = None;
+            return;
+        }
         if let Some(report) = result.tfbs_track_similarity.clone()
             && let TfbsTaskKind::ActiveSequenceTrackSimilarity { source_label } = task_kind
         {
@@ -21288,6 +21720,7 @@ impl MainAreaDna {
                 }
                 TfbsTaskKind::VariantFollowupTrackSimilarity => {}
                 TfbsTaskKind::ActiveSequenceTrackSimilarity { .. } => {}
+                TfbsTaskKind::ActiveSequenceGenomicMotifEvidence { .. } => {}
             }
         }
         if let Some(report) = result.tfbs_track_similarity.clone()
@@ -25001,6 +25434,7 @@ impl MainAreaDna {
             };
         self.cached_restriction_site_scan = None;
         self.cached_tfbs_hit_scan = None;
+        self.cached_genomic_motif_evidence = None;
         self.cached_tfbs_score_tracks = None;
         self.cached_tfbs_track_similarity = None;
         self.cached_cutrun_regulatory_support = None;
@@ -27061,6 +27495,7 @@ impl MainAreaDna {
                     false,
                 );
                 self.draw_pcr_paint_overlays(ui, &response);
+                self.draw_genomic_motif_evidence_overlays(ui, &response);
                 self.render_pcr_post_drag_actions(ui);
                 let mut map_open_variant_followup_feature: Option<usize> = None;
                 let mut map_open_variant_followup_reasoning_evidence: Option<String> = None;

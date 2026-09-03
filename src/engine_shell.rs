@@ -73,6 +73,7 @@ use crate::{
         GeneSetPromoterCohortReport, GeneSetRequest, GeneSetResolutionReport,
         GeneSetResolutionReviewStatus, GeneTranscriptAssayRoutineRequest, GenomeAnchorSide,
         GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource, GenomeTrackSubscription,
+        GenomicMotifEvidenceInterval, GenomicMotifEvidenceRequest, GenomicMotifEvidenceTarget,
         GentleEngine, GuideCandidate, GuideOligoExportFormat, GuideOligoPlateFormat,
         GuidePracticalFilterConfig, InlineSequenceTopology, LabAssistantInstructionsFormat,
         LineageMacroInstance, LineageMacroPortBinding, MacroInstanceStatus,
@@ -2437,6 +2438,10 @@ pub enum ShellCommand {
         min_llr_quantile: Option<f64>,
         per_tf_thresholds: Vec<TfThresholdOverride>,
         max_hits: Option<usize>,
+        path: Option<String>,
+    },
+    FeaturesGenomicMotifEvidence {
+        request: GenomicMotifEvidenceRequest,
         path: Option<String>,
     },
     FeaturesRestrictionScan {
@@ -11180,6 +11185,31 @@ impl ShellCommand {
                         .map(|v| v.to_string())
                         .unwrap_or_else(|| "none".to_string()),
                     path.as_deref().unwrap_or("-"),
+                )
+            }
+            Self::FeaturesGenomicMotifEvidence { request, path } => {
+                let target = match &request.target {
+                    GenomicMotifEvidenceTarget::AnchoredSequence {
+                        seq_id,
+                        span_start_0based,
+                        span_end_0based_exclusive,
+                    } => format!(
+                        "sequence '{}' span={}",
+                        seq_id,
+                        format_optional_span(*span_start_0based, *span_end_0based_exclusive)
+                    ),
+                    GenomicMotifEvidenceTarget::GenomicIntervals { intervals } => {
+                        format!("{} explicit genomic interval(s)", intervals.len())
+                    }
+                };
+                format!(
+                    "query precomputed genomic motif evidence for {} (motifs={}, max_rows={}, max_payload_files={}, timeout_seconds={}, path={})",
+                    target,
+                    request.motif_ids.join(","),
+                    request.max_rows,
+                    request.max_payload_files,
+                    request.timeout_seconds,
+                    path.as_deref().unwrap_or("-")
                 )
             }
             Self::FeaturesRestrictionScan {
@@ -22608,6 +22638,50 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "MAX_HITS", "required": false, "subject_kind": "other", "detail": "optional maximum number of hits"}),
             ],
         ),
+        json!({
+            "id": "features genomic-motif-evidence",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "optional loaded genome-anchored sequence target; alternative to explicit genomic intervals"},
+                {"name": "--region", "required": false, "subject_kind": "other", "detail": "one or more explicit BED-style [ID=]CHR:START..END intervals; alternative to SEQ_ID"},
+                {"name": "--motif|--motifs", "required": true, "subject_kind": "other", "detail": "bounded explicit JASPAR motif identifiers; ALL is refused for row queries"},
+                {"name": "--package", "required": false, "subject_kind": "other", "detail": "optional finalized jaspar-mapping package root; otherwise GENTLE_JASPAR_GENOME_SCAN_PACKAGE is consulted"},
+                {"name": "--max-rows", "required": false, "subject_kind": "other", "detail": "bounded returned-row limit"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external gentle.genomic_motif_evidence.v1 JSON path"}
+            ],
+            "reads": [],
+            "effects": [{
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "external_handoff"
+            }],
+            "precondition_expr": {"all": []},
+            "description": "Query exact inventory-selected Parquet payloads in an optional finalized jaspar-mapping package without making DuckDB or the package a GENtle runtime dependency.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("features genomic-motif-evidence")
+        }),
+        json!({
+            "id": "QueryGenomicMotifEvidence",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "typed anchored-sequence or explicit-interval request with motif, score, file, row, and timeout bounds"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external gentle.genomic_motif_evidence.v1 JSON path"}
+            ],
+            "reads": [],
+            "effects": [{
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "external_handoff"
+            }],
+            "precondition_expr": {"all": []},
+            "description": "Query optional precomputed whole-genome motif evidence through the shared read-only engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("QueryGenomicMotifEvidence")
+        }),
         sequence_optional_artifact_operation_descriptor(
             "features tfbs-scan",
             "false",
@@ -29715,6 +29789,8 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         ]),
         "ScanTfbsHitsCollection"
         | "collections run tfbs-scan"
+        | "features genomic-motif-evidence"
+        | "QueryGenomicMotifEvidence"
         | "DigestCollection"
         | "collections run digest"
         | "CreateGeneSetPool"
@@ -58683,6 +58759,22 @@ fn execute_feature_scan_command(
                 }),
             })
         }
+        ShellCommand::FeaturesGenomicMotifEvidence { request, path } => {
+            let op_result = engine
+                .apply(Operation::QueryGenomicMotifEvidence {
+                    request: request.clone(),
+                    path: path.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result.genomic_motif_evidence.clone();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
         ShellCommand::FeaturesRepeatQuery {
             genome_id,
             rmsk_path,
@@ -65045,6 +65137,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::FeaturesTfbsTrackSimilarity { .. }
             | ShellCommand::FeaturesTfbsScoreTrackCorrelationSvg { .. }
             | ShellCommand::FeaturesTfbsScan { .. }
+            | ShellCommand::FeaturesGenomicMotifEvidence { .. }
             | ShellCommand::FeaturesRepeatQuery { .. }
             | ShellCommand::FeaturesRepeatOverlaps { .. }
             | ShellCommand::FeaturesMaterializeRepeats { .. }
@@ -65382,6 +65475,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::FeaturesTfbsTrackSimilarity { .. }
         | ShellCommand::FeaturesTfbsScoreTrackCorrelationSvg { .. }
         | ShellCommand::FeaturesTfbsScan { .. }
+        | ShellCommand::FeaturesGenomicMotifEvidence { .. }
         | ShellCommand::FeaturesRepeatQuery { .. }
         | ShellCommand::FeaturesRepeatOverlaps { .. }
         | ShellCommand::FeaturesMaterializeRepeats { .. }
