@@ -5,11 +5,15 @@ description = "Molecular biology workbench for sequence analysis, cloning design
 keywords = ["plasmid", "vector", "primer", "biology", "pcr", "cloning"]
 categories = ["science", "science::bioinformatics"]
 repository = "https://github.com/smoe/gentle_rs/"
-readme = "README.md"
 version.workspace = true
 edition.workspace = true
 default-run = "gentle"
 build = "build.rs"
+
+[lints.cargo]
+# These executable names are established compatibility surfaces across scripts,
+# containers, tests, documentation, and external agent integrations.
+non_kebab_case_bins = "allow"
 
 [workspace]
 resolver = "3"
@@ -135,7 +139,7 @@ snapgene-reader = { path = "packages/snapgene-reader", features = ["gb-io"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_with = { workspace = true }
-quick-xml = { version = "0.41.0", features = ["serialize"] }
+quick-xml = { version = "*", features = ["serialize"] }
 bio = { workspace = true }
 csv = "^1"
 itertools = { workspace = true }
@@ -156,7 +160,7 @@ eframe = { version = "0.36.1", features = [
 egui_extras = { version = "0.36.1", features = ["all_loaders"], optional = true }
 egui_commonmark = { version = "0.22.0", default-features = false, features = ["pulldown_cmark", "load-images"], optional = true }
 image = { workspace = true, features = ["jpeg", "png"] }
-resvg = "0.47.0"
+resvg = "*"
 rfd = { workspace = true, optional = true }
 reqwest = { workspace = true, features = ["blocking", "form", "json"] }
 tempfile = { workspace = true }
@@ -166,7 +170,7 @@ regex = "^1"
 scraper = "0.27.0"
 pulldown-cmark = "0.13.4"
 ring = "0.17.14"
-base64 = "0.22.1"
+base64 = "*"
 puffin = { version = "0.20.0", optional = true }
 puffin_http = { version = "0.17.0", optional = true }
 
@@ -186,7 +190,7 @@ libc = "0.2.189"
 objc2 = { version = "0.6.4", optional = true }
 objc2-foundation = { version = "0.3.2", optional = true }
 objc2-app-kit = { version = "0.3.2", features = ["NSApplication", "NSMenu", "NSMenuItem", "NSResponder", "NSWindow"], optional = true }
-screencapturekit = { version = "8.0.1", optional = true, features = ["macos_14_0"] }
+screencapturekit = { version = "9.*", optional = true, features = ["macos_14_0"] }
 
 [target.'cfg(target_os = "windows")'.build-dependencies]
 winres = "0.1"
