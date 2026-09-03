@@ -375,6 +375,7 @@ fn ask_agent_system_impl(
         max_response_bytes: None,
         include_state_summary,
         allow_auto_exec,
+        allow_web_research: false,
         execute_all,
         execute_indices: execute_indices.iter().map(|idx| *idx as usize).collect(),
     };

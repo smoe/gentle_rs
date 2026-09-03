@@ -201,6 +201,8 @@ Tutorial GUI acceptance contract:
 
 - optional source/manifest field: `gui_acceptance`
 - schema: `gentle.tutorial_gui_acceptance.v1`
+- `profile` is a closed value: `smoke`, `offline-core`, or `full`; unknown
+  values are contract errors rather than implicit new suites
 - authoring stays in `docs/tutorial/sources/*.json`; the generated manifest is
   a byte-checked projection
 - starter and oracle are distinct workflow-example references; optional
@@ -5072,7 +5074,7 @@ Agent Assistant image attachment extension:
   - `pi_local_stdio` invokes `pi --list-models`, returns provider-qualified ids,
     and reports a deterministic setup error when Pi has no authenticated model.
 
-- `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
+- `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--allow-web-research] [--execute-all] [--execute-index N ...] [--no-state-summary]`
   - Invokes one configured agent system via catalog transport.
   - `--base-url` applies a per-request runtime base URL override for native
     transports (`native_openai`, `native_anthropic`, `native_mistral`,
@@ -5092,6 +5094,9 @@ Agent Assistant image attachment extension:
     (maps to `GENTLE_AGENT_MAX_RETRIES`; `0` disables retries).
   - `--max-response-bytes` applies a per-request response body/output cap
     override (maps to `GENTLE_AGENT_MAX_RESPONSE_BYTES`).
+  - `--allow-web-research` grants public HTTP/HTTPS search and page reading to
+    a transport that explicitly declares support. The bundled Pi Local adapter
+    is currently the only such transport; unsupported systems reject the flag.
   - `--no-state-summary` suppresses project context injection.
   - Suggested-command execution is per-suggestion only (no global always-execute).
 
@@ -5167,7 +5172,8 @@ Agent bridge catalog schema (`gentle.agent_systems.v1`):
       "transport": "external_json_stdio",
       "command": ["openai-agent-bridge", "--model", "gpt-5"],
       "env": {},
-      "working_dir": null
+      "working_dir": null,
+      "supports_web_research": false
     },
     {
       "id": "openai_gpt5_native",
@@ -5214,10 +5220,13 @@ Transport notes:
   The default catalog also includes `pi_local_stdio`, which runs
   `scripts/pi-agent-bridge`. That bridge delegates authentication to Pi,
   launches one ephemeral print request in an empty temporary directory, and
-  disables tools, sessions, project context files, extensions, skills, and
-  prompt templates. It resolves Pi from `PI_BIN`, `PATH`, or common local
-  install paths. `pi --list-models` supplies provider-qualified model ids;
-  leaving `Pi default` selected omits an explicit model argument.
+  disables sessions, built-in tools, project context files, extension
+  discovery, skills, and prompt templates. Its catalog row declares
+  `supports_web_research=true`; when one request explicitly opts in, the bridge
+  loads only GENtle's public search/page extension and allowlists only those two
+  tools. It resolves Pi from `PI_BIN`, `PATH`, or common local install paths.
+  `pi --list-models` supplies provider-qualified model ids; leaving `Pi default`
+  selected omits an explicit model argument.
 - `native_openai`: built-in OpenAI HTTP adapter; requires `OPENAI_API_KEY`
   (environment or system-level `env` override in catalog entry).
 - `native_anthropic`: built-in Anthropic Claude HTTP adapter; requires
@@ -5347,6 +5356,50 @@ Agent request payload schema (`gentle.agent_request.v1`):
     ],
     "warnings": []
   },
+  "x_helper_catalog": {
+    "schema": "gentle.agent_helper_catalog_context.v1",
+    "catalog_entry_count": 120,
+    "matched_card_count": 1,
+    "included_card_count": 1,
+    "omitted_card_count": 0,
+    "truncated": false,
+    "query_terms": ["promega", "luciferase"],
+    "cards": [
+      {
+        "helper_id": "Reporter Promega Luciferase AY738222 (online)",
+        "description": "Promega pGL4.10[luc2] promoterless luciferase reporter vector",
+        "aliases": ["pGL4.10[luc2]", "Promega E6651"],
+        "catalog_number": "E6651",
+        "exact_sequence_identity": {
+          "provider": "Promega",
+          "product_name": "pGL4.10[luc2]",
+          "catalog_number": "E6651",
+          "accession_version": "AY738222.1",
+          "expected_length_bp": 4242,
+          "expected_topology": "circular"
+        },
+        "source_urls": [
+          "https://www.promega.com/products/luciferase-assays/genetic-reporter-vectors-and-cell-lines/promoterless-firefly-luciferase-basic-vectors/?catNum=E6651",
+          "https://www.ncbi.nlm.nih.gov/nuccore/AY738222.1"
+        ]
+      }
+    ],
+    "retrieval_routes": [
+      { "purpose": "inspect prompt-matched helper/vector catalog cards", "command": "helpers show-card --filter TEXT" },
+      { "purpose": "prepare a catalogued helper sequence with explicit network access", "command": "helpers prepare HELPER_ID" }
+    ],
+    "warnings": []
+  },
+  "x_web_access": {
+    "schema": "gentle.agent_web_access.v1",
+    "enabled": true,
+    "scope": "public_http_https_only",
+    "tools": ["gentle_web_search", "gentle_web_fetch"],
+    "safeguards": [
+      "no shell, filesystem, project-state, or credential access",
+      "localhost and private, loopback, link-local, and reserved network addresses are blocked"
+    ]
+  },
   "x_gui_context": {
     "schema": "gentle.agent_gui_context.v1",
     "host_available": true,
@@ -5466,6 +5519,29 @@ result. They must not claim that catalog-only entries are installed. Direct
 Ensembl retrieval remains a confirmation-gated fallback when no compatible
 prepared reference is present.
 
+`x_helper_catalog` is included on every request. It is a deterministic,
+prompt-matched projection of at most six records from GENtle's bundled
+helper/vector catalog, with exact known product/catalogue/accession identity,
+constraints, provenance URLs, and valid GENtle inspection/preparation/fetch
+routes. Matching also considers the bounded recent conversation so follow-up
+turns remain grounded. The projection performs no download and does not assert
+that a catalogued sequence is loaded in project state. Agents consult it before
+guessing an identity or searching externally.
+
+`x_web_access` is included for transports that declare public-web research
+support. `enabled=false` exposes capability without permission;
+`enabled=true` is a per-request user opt-in. Scope is unrestricted by public
+domain name but limited technically to public HTTP/HTTPS text resources.
+Localhost, local/private/reserved addresses (including redirect and DNS
+targets), URL credentials, binary content, oversized responses, and access to
+shell, files, project state, or credentials are excluded. The first supported
+transport is Pi Local, which receives only `gentle_web_search` and
+`gentle_web_fetch`; this is not a general GENtle browser capability. Search
+terms derived from the prompt may leave the machine, so sensitive projects
+must keep the capability disabled. The agent contract forbids sending sequence
+data, local paths, credentials, personal data, or confidential project details
+in queries or URLs.
+
 `x_gui_context` is an optional, backward-compatible extension attached by the
 live GUI Agent Assistant even when project-state injection is disabled. It
 mirrors the current recent-project menu, generated executable tutorial catalog,
@@ -5552,6 +5628,30 @@ Agent response payload schema (`gentle.agent_response.v1`):
   "screenshot_request": {
     "id": "inspect-visible-map-1",
     "reason": "Inspect the visible feature lanes and disabled controls."
+  },
+  "x_web_research": {
+    "schema": "gentle.agent_web_research.v1",
+    "searches": [
+      {
+        "query": "Promega pGL4.10 E6651 official",
+        "retrieved_at_unix_ms": 1768860001000,
+        "results": [
+          { "title": "Promoterless Firefly Luciferase Basic Vectors", "url": "https://www.promega.com/products/luciferase-assays/genetic-reporter-vectors-and-cell-lines/promoterless-firefly-luciferase-basic-vectors/?catNum=E6651" }
+        ]
+      }
+    ],
+    "pages": [
+      {
+        "requested_url": "https://www.promega.com/products/luciferase-assays/genetic-reporter-vectors-and-cell-lines/promoterless-firefly-luciferase-basic-vectors/?catNum=E6651",
+        "final_url": "https://ch.promega.com/products/luciferase-assays/genetic-reporter-vectors-and-cell-lines/promoterless-firefly-luciferase-basic-vectors/?catNum=E6651",
+        "title": "pGL4 Luciferase Reporter Vectors",
+        "retrieved_at_unix_ms": 1768860001200,
+        "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "included_char_count": 12000,
+        "truncated": true
+      }
+    ],
+    "warnings": []
   }
 }
 ```
@@ -5563,6 +5663,15 @@ object is the v1 maximum, and it counts as response content. A request does not
 name a target and does not authorize or initiate capture. Arrays, paths,
 coordinates, native window ids, capture commands, approval fields, unknown
 fields, and excessive values fail response validation.
+
+`x_web_research` is optional adapter-owned provenance, not model-authored
+content. The bundled Pi bridge overwrites any model-supplied value with its
+audit of actual web tool calls, or removes the field when web access was not
+enabled. Native HTTP model text cannot assert this field. It records bounded
+search queries/results and pages actually supplied to the model, including
+retrieval time, final URL, content digest, included character count, and
+truncation. It is displayed separately from assistant prose and grants no
+command authority.
 
 Native HTTP transports parse stochastic LLM text after provider extraction. If
 that text is already a JSON object with `assistant_message`, `questions`, or

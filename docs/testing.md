@@ -367,6 +367,10 @@ Snapshot-only or command-capable controls therefore cannot become tutorial
 input targets merely by naming their semantic ids. The external runner owns
 input delivery and the final verdict.
 
+The acceptance `profile` is also closed: `smoke`, `offline-core`, or `full`.
+Misspellings fail source/manifest parsing instead of silently creating another
+profile.
+
 Persistence and scientific proof are separate. A step declares
 `persists_project_state: true` whenever the ordinary GUI action dirties the
 project, including auxiliary GUI metadata. Only a step with
@@ -413,7 +417,9 @@ materialize independent starter/oracle projects through GENtle's normal example
 path rewriting. It then drives only the validated semantic targets through
 ordinary `xdotool` events, saves known-path projects through `Ctrl+S`, and uses
 `gentle_cli` to evaluate facts and typed report assertions against the saved
-project. If a catalogued PCR control is clipped inside its owning scroll area,
+project. The GUI receives isolated `HOME`, `TMPDIR`, and XDG directories, with
+inherited `GENTLE_*`, API-key, and token variables removed. If a catalogued PCR
+control is clipped inside its owning scroll area,
 the runner first sends recorded ordinary wheel events inside the semantically
 identified window and interacts only after the control reports a positive
 visible rectangle. Pixels alone never establish a scientific result.

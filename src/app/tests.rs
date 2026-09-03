@@ -466,6 +466,7 @@ fn test_agent_system(id: &str, transport: AgentSystemTransport) -> AgentSystemSp
         model: None,
         working_dir: None,
         supports_image_attachments: false,
+        supports_web_research: false,
     }
 }
 
@@ -853,6 +854,41 @@ fn pi_local_selected_model_is_forwarded_without_gui_api_key() {
         Some("mistral/codestral-latest")
     );
     assert_eq!(overrides.get(OPENAI_API_KEY_ENV), None);
+}
+
+#[test]
+fn pi_local_public_web_research_requires_session_opt_in_and_catalog_support() {
+    let mut app = GENtleApp::default();
+    let mut pi = test_agent_system("pi_local_stdio", AgentSystemTransport::ExternalJsonStdio);
+    pi.supports_web_research = true;
+
+    let disabled = app
+        .selected_agent_session_env_overrides(&pi)
+        .expect("disabled Pi web overrides");
+    assert_eq!(
+        disabled.get(crate::agent_bridge::AGENT_ALLOW_WEB_RESEARCH_ENV),
+        None
+    );
+
+    app.agent_allow_web_research = true;
+    let enabled = app
+        .selected_agent_session_env_overrides(&pi)
+        .expect("enabled Pi web overrides");
+    assert_eq!(
+        enabled
+            .get(crate::agent_bridge::AGENT_ALLOW_WEB_RESEARCH_ENV)
+            .map(String::as_str),
+        Some("1")
+    );
+
+    let unsupported = test_agent_system("builtin_echo", AgentSystemTransport::BuiltinEcho);
+    let unsupported_overrides = app
+        .selected_agent_session_env_overrides(&unsupported)
+        .expect("unsupported agent overrides");
+    assert_eq!(
+        unsupported_overrides.get(crate::agent_bridge::AGENT_ALLOW_WEB_RESEARCH_ENV),
+        None
+    );
 }
 
 #[test]
@@ -1988,6 +2024,7 @@ fn agent_response_sanity_flags_generic_placeholder_retrieval_reply() {
             },
         ],
         screenshot_request: None,
+        web_research: None,
     };
 
     let warnings = GENtleApp::agent_response_sanity_warnings_for_prompt(
@@ -2062,6 +2099,7 @@ fn agent_response_sanity_accepts_fus_retrieval_commands() {
             },
         ],
         screenshot_request: None,
+        web_research: None,
     };
 
     let warnings = GENtleApp::agent_response_sanity_warnings_for_prompt(
@@ -2114,6 +2152,7 @@ fn agent_response_sanity_flags_list_as_filesystem_hallucination() {
             execution: AgentExecutionIntent::Chat,
         }],
         screenshot_request: None,
+        web_research: None,
     };
 
     let warnings = GENtleApp::agent_response_sanity_warnings_for_prompt("", &response);
@@ -2143,6 +2182,7 @@ fn agent_response_sanity_flags_auto_history_transition() {
             execution: AgentExecutionIntent::Auto,
         }],
         screenshot_request: None,
+        web_research: None,
     };
 
     let warnings =
@@ -10728,6 +10768,7 @@ fn agent_assistant_content_scrolls_on_small_viewport() {
                 questions: vec![],
                 suggested_commands: vec![],
                 screenshot_request: None,
+                web_research: None,
             },
             attachments: vec![],
             system_id: "builtin_echo".to_string(),
@@ -11060,6 +11101,23 @@ fn agent_interfaces_tutorial_is_pinned_when_catalog_fallback_is_used() {
         "GENtle Agent Assistant and Agent Interfaces Tutorial"
     );
     assert!(matches[0].summary.contains("operational_reference"));
+}
+
+#[test]
+fn tutorial_project_cache_roots_are_isolated_per_invocation() {
+    let first = GENtleApp::tutorial_cache_root_dir();
+    let second = GENtleApp::tutorial_cache_root_dir();
+    let shared_parent = env::temp_dir().join("gentle_tutorial_projects");
+
+    assert_ne!(first, second);
+    assert_eq!(first.parent(), Some(shared_parent.as_path()));
+    assert_eq!(second.parent(), Some(shared_parent.as_path()));
+    assert!(
+        first
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with("process-") && name.contains("-invocation-"))
+    );
 }
 
 #[test]
@@ -12645,6 +12703,7 @@ fn activate_test_agent_screenshot_request(
             questions: vec![],
             suggested_commands: vec![],
             screenshot_request: Some(request.clone()),
+            web_research: None,
         },
         attachments: vec![],
         system_id: "image_agent".to_string(),
@@ -12936,6 +12995,7 @@ fn poll_agent_assistant_task_stores_successful_turn_for_followup_context() {
                 questions: vec![],
                 suggested_commands: vec![],
                 screenshot_request: None,
+                web_research: None,
             },
             raw_stdout: String::new(),
             raw_stderr: String::new(),
@@ -12987,6 +13047,7 @@ fn agent_conversation_reloads_from_project_metadata_without_credentials() {
                 questions: vec![],
                 suggested_commands: vec![],
                 screenshot_request: None,
+                web_research: None,
             },
             attachments: vec![],
             system_id: "builtin_echo".to_string(),

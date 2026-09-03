@@ -44,9 +44,10 @@
     {
       "id": "pi_local_stdio",
       "label": "Pi Local (uses Pi provider login)",
-      "description": "Routes Agent Assistant requests through a locally installed Pi CLI. GENtle starts an ephemeral, tool-free Pi process and keeps conversation history in the GENtle project. Selectable provider/model ids are read from 'pi --list-models'.",
+      "description": "Routes Agent Assistant requests through a locally installed Pi CLI. GENtle starts an ephemeral process with no shell or project-file tools; optional session-approved public-web search and page reading use a GENtle-supplied restricted extension. Conversation history stays in the GENtle project. Selectable provider/model ids are read from 'pi --list-models'.",
       "transport": "external_json_stdio",
       "supports_image_attachments": true,
+      "supports_web_research": true,
       "command": [
         "scripts/pi-agent-bridge"
       ],

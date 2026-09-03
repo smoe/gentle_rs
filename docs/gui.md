@@ -2983,8 +2983,10 @@ Behavior:
   existing Codex CLI/App login instead of `OPENAI_API_KEY`
 - the `Pi Local (uses Pi provider login)` entry calls
   `scripts/pi-agent-bridge`; it uses provider authentication configured by Pi,
-  not the API-key field in GENtle, and runs Pi without tools or direct
-  project-file access
+  not the API-key field in GENtle, and runs Pi without built-in tools or direct
+  project-file access. The Agent Assistant offers a session-only `Allow public
+  internet research` checkbox for this capable system. When checked, only
+  GENtle's co-shipped public search/page tools are enabled for that request
 - `Attach text document...` beside the prompt inserts an exact absolute path
   and shows every detected document path before submission. A supported text
   path written directly in the prompt is detected in the same way.
@@ -3056,9 +3058,8 @@ Behavior:
     (`GET /models`, with `/v1/models` fallback for OpenAI-compatible or root
     provider URLs)
   - for `Pi Local`, it runs a non-generating command-shape probe that asks Pi
-    for local help after the exact ephemeral no-tools/no-session flags GENtle
-    will use for real requests; this catches unsupported Pi CLI flags before
-    an assistant prompt is sent
+    for local help after the baseline ephemeral no-tools/no-session flags;
+    this catches unsupported Pi CLI flags before an assistant prompt is sent
   - the live probe reports `status_class`, attempted/selected endpoints or
     local command shape, reachability, authentication, model-list parsing, and
     whether the selected model was present when the transport exposes that
@@ -3088,6 +3089,16 @@ Behavior:
   - the agent is instructed to prefer a compatible local gene extraction plus
     strand-aware anchor-extension chain over external retrieval
   - catalog-only rows are not presented as installed references
+- every request includes a prompt-matched view of GENtle's helper/vector
+  catalog. This lets the assistant recognize existing records such as Promega
+  pGL4.10[luc2] (E6651, GenBank AY738222.1) before guessing or searching the
+  web; a catalog record is not presented as a loaded project sequence
+- successful public-web research appears under a collapsible source section
+  with the actual searches and pages recorded by the Pi bridge
+- public-web research is off by default because prompt-derived search terms may
+  leave the machine; keep it off for sensitive projects, and do not ask the
+  agent to transmit sequences, local paths, credentials, personal data, or
+  confidential project details
 - GUI requests also include `gentle.agent_gui_context.v1`, independently of
   `Include state summary`
   - `recent_projects[]` mirrors the current `File -> Open Recent Project...`
@@ -3278,13 +3289,18 @@ Pi Local setup (multiple providers, no GENtle-managed API key):
    exact absolute text-document path in the prompt. For example, ask Pi to guide
    the manual GUI smoke described by `docs/roadmap.md`; GENtle supplies the
    bounded roadmap/runbook text while Pi remains unable to browse other files.
+7. When current external information is needed, enable `Allow public internet
+   research` before sending that prompt. Leave it off for turns that need only
+   GENtle and project context.
 
 The Pi bridge uses `--no-session` because GENtle stores the project conversation
-and sends its bounded recent turns with each request. It also uses `--no-tools`,
-`--no-context-files`, `--no-extensions`, `--no-skills`, and
-`--no-prompt-templates`; the Agent Assistant can therefore suggest validated
-GENtle commands but cannot edit files or run operating-system commands through
-Pi. GENtle supplies Pi with the same shared command contract used by native
+and sends its bounded recent turns with each request. It also disables built-in
+tools, context files, extension discovery, skills, and prompt templates; the
+Agent Assistant can therefore suggest validated GENtle commands but cannot edit
+files or run operating-system commands through Pi. Public-web opt-in explicitly
+loads only `gentle_web_search` and `gentle_web_fetch`; those tools reject local
+and private networks and do not expose files, credentials, or shell execution.
+GENtle supplies Pi with the same shared command contract used by native
 providers, including exact local genome-extraction/anchor-extension and Ensembl
 assembly/flank syntax, so Pi does not need to guess parser routes. It can return
 reviewable `ui ...` or `display ...` suggestions for exposed
@@ -5510,9 +5526,11 @@ Tutorial projects:
 - Chapters are grouped by tutorial content area using the derived decimal ids
   from `docs/tutorial/catalog.json` / `docs/tutorial/manifest.json`; tier and
   online status remain visible in hover text and labels.
-- Generated tutorial project files are written under the system temp directory
-  (`.../gentle_tutorial_projects`) and opened without adding those temp files
-  to the `Open Recent Project...` list.
+- Generated tutorial project files are written under a process- and
+  invocation-specific directory below the system temp directory
+  (`.../gentle_tutorial_projects/process-PID-invocation-N`) and opened without
+  adding those temp files to the `Open Recent Project...` list. Separate builds
+  therefore never delete or overwrite one another's workspace.
 - While a tutorial project is being built, GENtle keeps the GUI responsive and
   shows live status in the `Background Jobs` panel.
 - Online tutorials can therefore be cancelled explicitly:

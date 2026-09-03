@@ -19,10 +19,10 @@
 
 use crate::{
     agent_bridge::{
-        AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV,
-        AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV,
-        AGENT_TIMEOUT_SECS_ENV, AgentExecutionIntent, build_agent_introspection_context,
-        invoke_agent_support_with_request_context,
+        AGENT_ALLOW_WEB_RESEARCH_ENV, AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV,
+        AGENT_MAX_RESPONSE_BYTES_ENV, AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV,
+        AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV, AgentExecutionIntent,
+        build_agent_introspection_context, invoke_agent_support_with_request_context,
     },
     agent_execution::execute_agent_plan_candidate,
     agent_planner::{load_agent_plan_from_argument, plan_from_shell_options},
@@ -1592,6 +1592,7 @@ pub enum ShellCommand {
         max_response_bytes: Option<usize>,
         include_state_summary: bool,
         allow_auto_exec: bool,
+        allow_web_research: bool,
         execute_all: bool,
         execute_indices: Vec<usize>,
     },
@@ -8908,6 +8909,7 @@ impl ShellCommand {
                 max_response_bytes,
                 include_state_summary,
                 allow_auto_exec,
+                allow_web_research,
                 execute_all,
                 execute_indices,
             } => {
@@ -8949,9 +8951,10 @@ impl ShellCommand {
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| "-".to_string());
                 format!(
-                    "ask agent '{system_id}' (catalog='{catalog}', prompt_len={}, include_state_summary={}, base_url_override={base_url}, model_override={model}, timeout_secs={timeout}, connect_timeout_secs={connect_timeout}, read_timeout_secs={read_timeout}, max_retries={retries}, max_response_bytes={max_bytes}, execute={execute_mode})",
+                    "ask agent '{system_id}' (catalog='{catalog}', prompt_len={}, include_state_summary={}, allow_web_research={}, base_url_override={base_url}, model_override={model}, timeout_secs={timeout}, connect_timeout_secs={connect_timeout}, read_timeout_secs={read_timeout}, max_retries={retries}, max_response_bytes={max_bytes}, execute={execute_mode})",
                     prompt.len(),
-                    include_state_summary
+                    include_state_summary,
+                    allow_web_research
                 )
             }
             Self::AgentsPlan {
@@ -26974,6 +26977,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             vec![
                 json!({"name": "PROMPT", "required": true, "subject_kind": "other", "detail": "user prompt sent to the configured agent system"}),
                 json!({"name": "--allow-auto-exec", "required": false, "subject_kind": "other", "detail": "whether auto-executable suggested commands may run"}),
+                json!({"name": "--allow-web-research", "required": false, "subject_kind": "other", "detail": "whether a capable inner agent may search and read public web pages for this request"}),
             ],
         ),
         agent_system_host_readiness_descriptor(
@@ -38328,7 +38332,7 @@ fn parse_agents_command(tokens: &[String]) -> Result<ShellCommand, String> {
         "ask" => {
             if tokens.len() < 3 {
                 return Err(
-                    "agents ask requires SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]".to_string(),
+                    "agents ask requires SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--allow-web-research] [--execute-all] [--execute-index N ...] [--no-state-summary]".to_string(),
                 );
             }
             let system_id = tokens[2].trim().to_string();
@@ -38347,6 +38351,7 @@ fn parse_agents_command(tokens: &[String]) -> Result<ShellCommand, String> {
             let mut max_response_bytes: Option<usize> = None;
             let mut include_state_summary = true;
             let mut allow_auto_exec = false;
+            let mut allow_web_research = false;
             let mut execute_all = false;
             let mut execute_indices: Vec<usize> = vec![];
             let mut idx = 3usize;
@@ -38456,6 +38461,10 @@ fn parse_agents_command(tokens: &[String]) -> Result<ShellCommand, String> {
                         allow_auto_exec = true;
                         idx += 1;
                     }
+                    "--allow-web-research" => {
+                        allow_web_research = true;
+                        idx += 1;
+                    }
                     "--execute-all" => {
                         execute_all = true;
                         idx += 1;
@@ -38503,6 +38512,7 @@ fn parse_agents_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 max_response_bytes,
                 include_state_summary,
                 allow_auto_exec,
+                allow_web_research,
                 execute_all,
                 execute_indices,
             })
@@ -47943,6 +47953,7 @@ fn execute_agents_ask_command(
     max_response_bytes: Option<usize>,
     include_state_summary: bool,
     allow_auto_exec: bool,
+    allow_web_research: bool,
     execute_all: bool,
     execute_indices: &[usize],
     options: &ShellExecutionOptions,
@@ -48001,6 +48012,9 @@ fn execute_agents_ask_command(
             max_response_bytes.to_string(),
         );
     }
+    if allow_web_research {
+        env_overrides.insert(AGENT_ALLOW_WEB_RESEARCH_ENV.to_string(), "1".to_string());
+    }
     let invocation = invoke_agent_support_with_request_context(
         catalog_path,
         system_id,
@@ -48055,6 +48069,7 @@ fn execute_agents_ask_command(
             "request": {
                 "include_state_summary": include_state_summary,
                 "allow_auto_exec": allow_auto_exec,
+                "allow_web_research": allow_web_research,
                 "execute_all": execute_all,
                 "execute_indices": execute_indices,
                 "base_url_override": base_url_override,
@@ -64389,6 +64404,7 @@ fn execute_shell_command_with_options_dispatch_inner(
         max_response_bytes,
         include_state_summary,
         allow_auto_exec,
+        allow_web_research,
         execute_all,
         execute_indices,
     } = command
@@ -64407,6 +64423,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             *max_response_bytes,
             *include_state_summary,
             *allow_auto_exec,
+            *allow_web_research,
             *execute_all,
             execute_indices,
             options,
@@ -65520,6 +65537,7 @@ fn execute_shell_command_with_options_inner(
             max_response_bytes,
             include_state_summary,
             allow_auto_exec,
+            allow_web_research,
             execute_all,
             execute_indices,
         } => {
@@ -65581,6 +65599,9 @@ fn execute_shell_command_with_options_inner(
                     max_response_bytes.to_string(),
                 );
             }
+            if *allow_web_research {
+                env_overrides.insert(AGENT_ALLOW_WEB_RESEARCH_ENV.to_string(), "1".to_string());
+            }
             let invocation = invoke_agent_support_with_request_context(
                 catalog_path.as_deref(),
                 system_id,
@@ -65635,6 +65656,7 @@ fn execute_shell_command_with_options_inner(
                     "request": {
                         "include_state_summary": include_state_summary,
                         "allow_auto_exec": allow_auto_exec,
+                        "allow_web_research": allow_web_research,
                         "execute_all": execute_all,
                         "execute_indices": execute_indices,
                         "base_url_override": base_url_override,

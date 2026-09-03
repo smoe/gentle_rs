@@ -224,12 +224,20 @@ pub struct TutorialSourceGeneratedChapterSection {
 #[serde(deny_unknown_fields)]
 pub struct TutorialGuiAcceptance {
     pub schema: String,
-    pub profile: String,
+    pub profile: TutorialGuiAcceptanceProfile,
     pub network: TutorialGuiNetworkPolicy,
     pub starter: TutorialGuiProjectReference,
     pub oracle: TutorialGuiProjectReference,
     pub completion_condition: FactExpression,
     pub steps: Vec<TutorialGuiAcceptanceStep>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum TutorialGuiAcceptanceProfile {
+    Smoke,
+    OfflineCore,
+    Full,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -2322,9 +2330,6 @@ fn validate_tutorial_gui_acceptance(
             "{context} uses schema '{}' (expected '{}')",
             acceptance.schema, TUTORIAL_GUI_ACCEPTANCE_SCHEMA
         ));
-    }
-    if acceptance.profile.trim().is_empty() {
-        return Err(format!("{context} profile must not be empty"));
     }
     for (role, project) in [
         ("starter", &acceptance.starter),
@@ -6874,6 +6879,27 @@ mod tests {
                 serde_json::to_value(acceptance).expect("serialize GUI acceptance contract");
             assert_no_execution_keys(&value);
         }
+    }
+
+    #[test]
+    fn tutorial_gui_acceptance_profile_rejects_unknown_values() {
+        let manifest =
+            load_tutorial_manifest(&tutorial_manifest_path()).expect("load tutorial manifest");
+        let acceptance = manifest
+            .chapters
+            .iter()
+            .find_map(|chapter| chapter.gui_acceptance.as_ref())
+            .expect("at least one committed GUI acceptance contract");
+        let mut value =
+            serde_json::to_value(acceptance).expect("serialize GUI acceptance contract");
+        value["profile"] = serde_json::json!("smkoe");
+
+        let error = serde_json::from_value::<TutorialGuiAcceptance>(value)
+            .expect_err("unknown GUI acceptance profile must be rejected");
+        assert!(
+            error.to_string().contains("unknown variant `smkoe`"),
+            "unexpected profile error: {error}"
+        );
     }
 
     #[test]

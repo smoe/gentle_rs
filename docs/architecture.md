@@ -1316,7 +1316,7 @@ GENtle now provides a shared agent-assistance bridge across GUI and CLI shell:
   - `agents list [--catalog PATH]`
   - `agents preflight SYSTEM_ID [--live] [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N]`
   - `agents discover-models SYSTEM_ID [--catalog PATH] [--base-url URL]`
-  - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
+  - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--allow-web-research] [--execute-all] [--execute-index N ...] [--no-state-summary]`
   - `agents plan SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--max-candidates N] [--no-state-summary] [--no-mutating-candidates]`
   - `agents execute-plan PLAN_JSON_OR_@FILE --candidate-id ID [--confirm]`
 - Catalog source defaults to `assets/agent_systems.json`.
@@ -1325,8 +1325,13 @@ GENtle now provides a shared agent-assistance bridge across GUI and CLI shell:
   - `external_json_stdio` (external adapter command over stdin/stdout JSON)
     - co-shipped local harnesses include Codex Local and Pi Local
     - both run in isolated temporary working directories and receive only the
-      explicit GENtle request; Pi Local additionally disables every Pi tool,
-      session, extension, skill, prompt-template, and project-context source
+      explicit GENtle request; Pi Local disables sessions, built-in tools,
+      extension discovery, skills, prompt templates, and project-context
+      discovery. When the user explicitly enables public-web research for one
+      request, GENtle loads only its co-shipped search/page extension and
+      allowlists only those two tools; shell, project-file, credential, and
+      private-network access remain unavailable. Prompt-derived search terms
+      may leave the machine, so sensitive projects should keep this opt-in off
     - Pi Local live preflight checks the exact intended no-tools/no-session Pi
       command shape with `--help`, so unsupported local CLI flags are reported
       without sending a prompt to a model
@@ -1349,6 +1354,16 @@ GENtle now provides a shared agent-assistance bridge across GUI and CLI shell:
     - explicit included/omitted counts and a truncation flag,
     - read-only command routes for complete fact projection, expression
       evaluation, capability readiness, and effect verification
+  - an always-present, prompt-matched `x_helper_catalog` projection of at most
+    six records from GENtle's own helper/vector catalog, including exact known
+    product, catalogue, accession, constraints, provenance URLs, and valid
+    GENtle retrieval routes. Matching also considers the bounded recent
+    conversation so a short follow-up remains grounded
+  - for systems that declare web-research support, an `x_web_access` capability
+    record. It is disabled unless the user opts in for that request and grants
+    only bounded public HTTP/HTTPS search and page reading; agents are forbidden
+    from transmitting sequences, local paths, credentials, personal data, or
+    confidential project details in queries or URLs
   - an optional `x_local_documents` extension when the current prompt names an
     exact absolute path to a supported text document:
     - GENtle reads and validates the document rather than granting the provider
@@ -1382,6 +1397,15 @@ GENtle now provides a shared agent-assistance bridge across GUI and CLI shell:
   reference material, and cannot raise the provider's command or confirmation
   permissions. Sequence files continue through GENtle import operations rather
   than this text-document channel.
+- `x_helper_catalog` is catalog knowledge, not loaded project state. Agents
+  consult it before guessing or searching externally and must not claim a
+  catalogued sequence is loaded until a GENtle retrieval operation succeeds.
+- Public-web research belongs to the selected inner-agent transport, not to a
+  general GENtle browser. The Pi adapter is the first capable transport. Its
+  bridge records actual searches and pages after tool execution as
+  `x_web_research`; model-authored provenance from native HTTP replies is
+  discarded. Web content remains untrusted evidence and cannot increase
+  command-execution authority.
 - GUI provider selection is durable but credentials are not:
   - the selected catalog system id may be stored in GUI settings
   - manual API-key, endpoint, model, and runtime overrides remain session-only

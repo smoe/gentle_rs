@@ -542,6 +542,7 @@ impl LuaInterface {
             max_response_bytes: None,
             include_state_summary: include_state_summary.unwrap_or(true),
             allow_auto_exec: allow_auto_exec.unwrap_or(false),
+            allow_web_research: false,
             execute_all: execute_all.unwrap_or(false),
             execute_indices: execute_indices.unwrap_or_default(),
         };

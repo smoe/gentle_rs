@@ -23,6 +23,7 @@ import signal
 import struct
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Callable, Iterable, Optional
@@ -374,7 +375,7 @@ class TutorialGuiRunner:
             else self.tool_version([str(self.args.gentle_bin.resolve()), "--version"]),
             "display_present": bool(os.environ.get("DISPLAY")),
             "network_policy": "contract-recorded; OS-level isolation remains auditor-owned",
-            "profile_isolation": "temporary HOME and XDG directories; inherited GENTLE_* and secret variables removed",
+            "profile_isolation": "temporary HOME, TMPDIR, and XDG directories; inherited GENTLE_* and secret variables removed",
         }
         self.write_ledger()
 
@@ -650,10 +651,17 @@ class TutorialGuiRunner:
                 "XDG_CONFIG_HOME": str(profile / "config"),
                 "XDG_CACHE_HOME": str(profile / "cache"),
                 "XDG_DATA_HOME": str(profile / "data"),
+                "TMPDIR": str(profile / "tmp"),
                 "GENTLE_GUI_TEST_SNAPSHOT": str(self.snapshot_path),
             }
         )
-        for path in (env["HOME"], env["XDG_CONFIG_HOME"], env["XDG_CACHE_HOME"], env["XDG_DATA_HOME"]):
+        for path in (
+            env["HOME"],
+            env["XDG_CONFIG_HOME"],
+            env["XDG_CACHE_HOME"],
+            env["XDG_DATA_HOME"],
+            env["TMPDIR"],
+        ):
             Path(path).mkdir(parents=True, exist_ok=True)
         return env
 
@@ -1218,6 +1226,18 @@ def self_test() -> None:
         },
     )
     assert len(checks) == 4
+    with tempfile.TemporaryDirectory(prefix="gentle-tutorial-gui-self-test-") as directory:
+        args = argparse.Namespace(
+            repo_root=Path.cwd(),
+            output_dir=Path(directory),
+            tutorial_id="self-test",
+            validate_only=True,
+        )
+        runner = TutorialGuiRunner(args)
+        isolated = runner.isolated_gui_environment()
+        expected_tmpdir = runner.runtime_dir / "profile" / "tmp"
+        assert Path(isolated["TMPDIR"]) == expected_tmpdir
+        assert expected_tmpdir.is_dir()
     print("tutorial_gui_acceptance self-test: ok")
 
 

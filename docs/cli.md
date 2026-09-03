@@ -2131,6 +2131,7 @@ cargo run --bin gentle_cli -- agents ask codex_local_stdio --prompt "summarize p
 cargo run --bin gentle_cli -- agents preflight pi_local_stdio
 cargo run --bin gentle_cli -- agents discover-models pi_local_stdio
 cargo run --bin gentle_cli -- agents ask pi_local_stdio --prompt "summarize project context" --model mistral/codestral-latest
+cargo run --bin gentle_cli -- agents ask pi_local_stdio --prompt "Check the current official product information for Promega pGL4.10[luc2]" --allow-web-research
 cargo run --bin gentle_cli -- op '{"PrepareGenome":{"genome_id":"ToyGenome","catalog_path":"catalog.json"}}'
 cargo run --bin gentle_cli -- op '{"ExtractGenomeRegion":{"genome_id":"ToyGenome","chromosome":"chr1","start_1based":1001,"end_1based":1600,"output_id":"toy_chr1_1001_1600","annotation_scope":"core","catalog_path":"catalog.json"}}'
 cargo run --bin gentle_cli -- op '{"ExtractGenomeGene":{"genome_id":"ToyGenome","gene_query":"MYGENE","occurrence":1,"output_id":"toy_mygene","catalog_path":"catalog.json"}}'
@@ -2915,7 +2916,7 @@ Shared shell command:
     - `resources list-jaspar [--filter TOKEN] [--limit N] [--fetch-remote] [--output OUTPUT.json]`
     - `resources inspect-jaspar MOTIF [--random-length N] [--seed N] [--fetch-remote] [--output OUTPUT.json]`
     - `agents list [--catalog PATH]`
-    - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
+    - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--allow-web-research] [--execute-all] [--execute-index N ...] [--no-state-summary]`
     - `facts graph [--evidence SCAN.json ...]`
     - `facts eval FACT_EXPR_JSON_OR_@FILE [--evidence SCAN.json ...]`
     - `ui open TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]`
@@ -6193,15 +6194,20 @@ Recommended Pi Local workflow:
    To ground the request in one local text document, include its exact absolute
    path in the prompt, for example:
    `cargo run --bin gentle_cli -- agents ask pi_local_stdio --prompt "Guide me through the GUI smoke test described in $PWD/docs/roadmap.md"`.
+   Add `--allow-web-research` when Pi should search and read public pages for
+   current information. This is a per-request permission, not a persistent
+   provider setting.
 5. Inspect the returned command before running it. Keep the default confirmation
    boundary for mutating or network-backed work; use `--execute-index` or
    `--execute-all` only when the corresponding suggestions have been reviewed.
 
 Pi supplies the selected language model, while GENtle supplies the bounded
 project summary/facts, validates the structured response, and controls command
-execution. Each Pi invocation is ephemeral and runs without Pi tools, sessions,
-skills, extensions, prompt templates, or project-file discovery. Therefore this
-adapter helps operate GENtle; it is deliberately not an inner source-code editor.
+execution. Each Pi invocation is ephemeral and runs without sessions, built-in
+tools, extension discovery, skills, prompt templates, or project-file discovery.
+With `--allow-web-research`, GENtle explicitly loads only its public search and
+page-reading extension and allowlists those two tools. Therefore this adapter
+helps operate GENtle; it is deliberately not an inner source-code editor.
 Every Agent Assistant request also carries bounded `x_local_references`
 readiness for prepared, manifest-backed reference genomes. Pi and other
 providers receive catalog ids and reusable-component status, but no local
@@ -6209,6 +6215,25 @@ paths. They should prefer a compatible `gene_extraction_ready` reference and a
 reviewable `genomes extract-gene` plus `genomes extend-anchor` command chain
 before proposing confirmation-gated web retrieval. Merely catalogued genomes
 are not represented as installed.
+
+Every request also carries a prompt-matched `x_helper_catalog` projection from
+GENtle's bundled helper/vector catalog. It includes up to six matching records
+with exact known product/catalogue/accession identity, constraints, source URLs,
+and valid inspection/preparation/fetch routes. Matching includes the bounded
+recent conversation, so a short follow-up such as “verify that vector” retains
+the earlier vector context. This catalog is consulted before web research and
+does not imply that a sequence is loaded in the current project.
+
+For Pi Local, `--allow-web-research` adds `x_web_access.enabled=true`. Pi may
+search the public web and read arbitrary public HTTP/HTTPS text pages, not just
+an allowlist of scientific domains. Localhost, private/reserved networks, URL
+credentials, binary responses, unsafe redirects, oversized responses, shell,
+and filesystem access remain blocked. GENtle records the actual queries and
+pages supplied to Pi as `x_web_research`; these sources are shown separately
+from model prose and do not grant execution authority. Search terms derived
+from the prompt may leave the machine; do not enable this option for sensitive
+projects. The agent contract forbids transmitting sequences, local paths,
+credentials, personal data, or confidential project details.
 
 GUI-originated Agent Assistant requests additionally carry a bounded
 `x_gui_context` with the live recent-project list, generated tutorial catalog,
@@ -6248,7 +6273,7 @@ starting GENtle.
     with `/v1/models` fallback for OpenAI-compatible roots). They do not make a
     chat/completion/responses request and do not intentionally generate tokens.
   - `pi_local_stdio` uses a local command-shape probe: GENtle invokes Pi with
-    the same ephemeral no-tools/no-session flags used by `scripts/pi-agent-bridge`
+    the baseline ephemeral no-tools/no-session flags used by `scripts/pi-agent-bridge`
     and appends `--help`, so Pi parses the intended flags but no prompt is sent
     to a model.
   - `live_probe.status_class` is one of:
@@ -6266,13 +6291,16 @@ starting GENtle.
   - For `pi_local_stdio`, runs `pi --list-models` and returns the
     provider-qualified ids visible to the installed Pi CLI. If none are
     available, start Pi outside GENtle and use `/login` before trying again.
-- `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
+- `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--allow-web-research] [--execute-all] [--execute-index N ...] [--no-state-summary]`
   - Invokes one configured agent system and returns message/questions/suggested shell commands.
   - `--base-url` sets a per-request runtime endpoint override (maps to
     `GENTLE_AGENT_BASE_URL`) for native transports.
   - `--model` sets a per-request model override (maps to `GENTLE_AGENT_MODEL`)
     for native transports, `codex_local_stdio`, and `pi_local_stdio`; each
     local bridge forwards it as its CLI's `--model MODEL` argument.
+  - `--allow-web-research` opts one request into the selected system's declared
+    public-web tools. It is supported by `pi_local_stdio`; other systems reject
+    the flag rather than silently ignoring it.
   - `--timeout-secs` sets per-request timeout override (maps to
     `GENTLE_AGENT_TIMEOUT_SECS`) for stdio/native transports.
   - `--connect-timeout-secs` sets per-request HTTP connect timeout (maps to

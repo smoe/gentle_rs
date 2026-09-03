@@ -3,7 +3,10 @@
 Last session: 2026-09-03 - closed the reported negative-strand and MCP parity
 defects, restored the PATZ1 tutorial artifact, repaired the dedicated GUI
 benchmark target, and added a typed Simple-PCR tutorial GUI runner with
-isolated starter/oracle state and checkpoint evidence; final exact-revision
+isolated starter/oracle state and checkpoint evidence. Agent Assistant turns
+now also receive prompt-matched helper/vector catalog records, while Pi Local
+has opt-in, public-only, provenance-recorded web research without shell,
+project-file, credential, or private-network access. Final exact-revision
 PATZ1/TGFB1 GUI, Criterion, and copied-state acceptance remain before the
 unreleased `v0.1.0-internal.10` tag
 

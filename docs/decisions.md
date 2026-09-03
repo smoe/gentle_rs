@@ -774,3 +774,29 @@ verifier; visual state never substitutes for that proof. GENtle validates the
 contract and exposes read-only semantic state, while an isolated external
 runner owns input delivery, evidence collection, and the final acceptance
 verdict.
+
+## DEC-041: Inner-Agent Web Research Is Explicit, Public, And Audited
+
+Status: active
+
+GENtle's own structured catalogs are consulted before external research. Every
+Agent Assistant request carries a bounded prompt-matched helper/vector catalog
+projection, including relevant recent-conversation terms, so known product and
+sequence identities are not needlessly guessed or rediscovered. Catalog
+knowledge remains distinct from loaded project state.
+
+Public-web research is an optional capability of a selected inner-agent
+transport, not a general browser or command-execution privilege. It requires a
+per-request user opt-in and may expose only narrowly allowlisted public search
+and page-reading tools. Local/private/reserved network targets, credentials,
+shell, filesystem, and project-state access remain unavailable. Redirects and
+DNS results are checked under the same public-network policy. Because
+prompt-derived search terms may leave the machine, the capability remains off
+for sensitive projects; the agent contract forbids transmitting sequences,
+local paths, credentials, personal data, or confidential project details.
+
+Web source provenance is attached by the trusted adapter after actual tool
+execution and is displayed separately from model prose. A model cannot certify
+its own browsing by emitting provenance fields, and web content remains
+untrusted evidence that cannot alter the response contract, parser validation,
+confirmation policy, or nested-agent guardrail.

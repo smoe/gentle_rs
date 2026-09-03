@@ -127,12 +127,12 @@ use std::{
 use crate::{
     about,
     agent_bridge::{
-        AGENT_ATTACHMENT_SCHEMA, AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV,
-        AGENT_GUI_TUTORIAL_PROJECT_LIMIT, AGENT_MAX_RESPONSE_BYTES_ENV, AGENT_MAX_RETRIES_ENV,
-        AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV,
-        ANTHROPIC_API_KEY_AUTH_HINT, ANTHROPIC_API_KEY_ENV, AgentAttachmentSummary,
-        AgentConversation, AgentConversationTurn, AgentExecutionIntent,
-        AgentGuiConfigurationSection, AgentGuiContext, AgentGuiRecentProject,
+        AGENT_ALLOW_WEB_RESEARCH_ENV, AGENT_ATTACHMENT_SCHEMA, AGENT_BASE_URL_ENV,
+        AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_GUI_TUTORIAL_PROJECT_LIMIT,
+        AGENT_MAX_RESPONSE_BYTES_ENV, AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV,
+        AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV, ANTHROPIC_API_KEY_AUTH_HINT,
+        ANTHROPIC_API_KEY_ENV, AgentAttachmentSummary, AgentConversation, AgentConversationTurn,
+        AgentExecutionIntent, AgentGuiConfigurationSection, AgentGuiContext, AgentGuiRecentProject,
         AgentGuiTutorialProject, AgentInvocationOutcome, AgentRequestAttachment, AgentResponse,
         AgentScreenshotRequest, AgentSystemSpec, AgentSystemTransport,
         DEFAULT_AGENT_SYSTEM_CATALOG_PATH, MISTRAL_API_KEY_AUTH_HINT, MISTRAL_API_KEY_ENV,
@@ -332,6 +332,7 @@ static NATIVE_WINDOWS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 const NATIVE_WINDOW_FOCUS_KEY_NONE: u64 = u64::MAX;
 static NATIVE_WINDOWS_FOCUS_KEY_REQUESTED: AtomicU64 = AtomicU64::new(NATIVE_WINDOW_FOCUS_KEY_NONE);
 static ACTIVE_VIEWPORT_KEY_REPORTED: AtomicU64 = AtomicU64::new(NATIVE_WINDOW_FOCUS_KEY_NONE);
+static NEXT_TUTORIAL_CACHE_SCOPE_ID: AtomicU64 = AtomicU64::new(1);
 
 fn viewport_native_menu_key(viewport_id: ViewportId) -> u64 {
     let mut hasher = DefaultHasher::new();
@@ -1146,6 +1147,7 @@ pub struct GENtleApp {
     agent_prompt: String,
     agent_include_state_summary: bool,
     agent_allow_auto_exec: bool,
+    agent_allow_web_research: bool,
     agent_status: String,
     agent_preflight_output: Option<AgentSystemPreflight>,
     agent_task: Option<AgentAskTask>,
@@ -3057,6 +3059,7 @@ impl Default for GENtleApp {
             agent_prompt: String::new(),
             agent_include_state_summary: true,
             agent_allow_auto_exec: false,
+            agent_allow_web_research: false,
             agent_status: String::new(),
             agent_preflight_output: None,
             agent_task: None,
@@ -4402,6 +4405,7 @@ Error: `{err}`"
             "system_id": self.agent_system_id.trim(),
             "include_state_summary": self.agent_include_state_summary,
             "allow_auto_exec": self.agent_allow_auto_exec,
+            "allow_web_research": self.agent_allow_web_research,
             "prompt_length_chars": prompt.len(),
             "prompt_sha1": if prompt.is_empty() {
                 None
@@ -7340,7 +7344,13 @@ Error: `{err}`"
     }
 
     fn tutorial_cache_root_dir() -> PathBuf {
-        env::temp_dir().join("gentle_tutorial_projects")
+        let scope_id = NEXT_TUTORIAL_CACHE_SCOPE_ID.fetch_add(1, Ordering::Relaxed);
+        env::temp_dir()
+            .join("gentle_tutorial_projects")
+            .join(format!(
+                "process-{}-invocation-{scope_id}",
+                std::process::id()
+            ))
     }
 
     fn detect_tutorial_repo_root() -> Option<PathBuf> {

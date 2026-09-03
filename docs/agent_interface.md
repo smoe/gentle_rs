@@ -868,6 +868,12 @@ Key properties:
   `state_summary`; it contains at most 128 concrete facts, complete fact-type
   counts, explicit truncation metadata, and the read-only routes used to obtain
   more detail
+- every request also receives `x_helper_catalog`, a bounded prompt-matched
+  projection of GENtle's own helper/vector records. The projection includes
+  exact known product, catalogue, accession, constraints, source URLs, and
+  valid GENtle retrieval routes; it also uses recent conversation text so
+  follow-up questions remain grounded. Catalog presence does not mean a
+  sequence has already been loaded
 - the prompt's compact introspection card explains the distinction between a
   registered fact name and a currently projected fact. This guidance is
   embedded at runtime because native HTTP models and the isolated Codex Local
@@ -893,15 +899,25 @@ Key properties:
 - Pi can be used as a second local Agent Assistant harness through the
   `Pi Local (uses Pi provider login)` catalog entry. GENtle invokes
   `scripts/pi-agent-bridge`, which runs one ephemeral `pi --print` request with
-  tools, sessions, extensions, skills, prompt templates, and project-context
-  discovery disabled. GENtle keeps the conversation and project-fact context;
-  Pi supplies the selected provider/model. Model discovery uses
-  `pi --list-models`, and authentication remains in Pi's own `/login` flow.
+  sessions, built-in tools, extension discovery, skills, prompt templates, and
+  project-context discovery disabled. GENtle keeps the conversation and
+  project-fact context; Pi supplies the selected provider/model. If the user
+  enables public-web research for the request, the bridge loads one co-shipped
+  extension and allowlists only `gentle_web_search` and `gentle_web_fetch`.
+  Those tools may read arbitrary public HTTP/HTTPS text pages but reject
+  localhost, private/reserved networks, credentials, binaries, unsafe
+  redirects, oversized responses, and shell or filesystem access. Model
+  discovery uses `pi --list-models`, and authentication remains in Pi's own
+  `/login` flow.
   `agents preflight pi_local_stdio --live` and GUI `Test Setup` also run a
-  non-generating command-shape probe: Pi is invoked with the same ephemeral
-  no-tools/no-session flags used for real Agent Assistant requests plus
-  `--help`, so unsupported local Pi CLI flags are reported before any prompt is
-  sent to a model. GENtle does not read or copy Pi's credential store.
+  non-generating command-shape probe: Pi is invoked with the baseline
+  ephemeral no-tools/no-session flags plus `--help`, so unsupported local Pi
+  CLI flags are reported before any prompt is sent to a model. GENtle does not
+  read or copy Pi's credential store.
+- Actual Pi search queries and pages are attached by the bridge as typed
+  `x_web_research` provenance and shown separately in the Agent Assistant.
+  Model-authored source claims are not accepted as that provenance. Public web
+  content remains untrusted evidence and cannot authorize GENtle commands.
 - This Pi entry is not a source-editing developer agent. A future coding mode
   would need a separate workspace, permission, diff-review, and test contract;
   it must not inherit the Agent Assistant's reviewed-command permissions.

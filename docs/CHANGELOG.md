@@ -1,5 +1,30 @@
 # GENtle Changelog
 
+- Closed the remaining tutorial GUI acceptance isolation/typing gaps: acceptance
+  profiles are now the closed `smoke`, `offline-core`, and `full` vocabulary;
+  ordinary tutorial project builds use process- and invocation-specific
+  temporary workspaces; and the external GUI runner supplies an isolated
+  `TMPDIR` alongside its isolated HOME/XDG profile.
+
+- Grounded every Agent Assistant request in a prompt-matched projection of
+  GENtle's helper/vector catalog, including exact known product, catalogue,
+  accession, constraints, source URLs, and valid retrieval routes. Matching
+  also uses bounded recent conversation context, so follow-up questions can
+  recognize an earlier vector reference such as Promega pGL4.10[luc2] instead
+  of asking the user to supply information GENtle already has. The pGL4.10
+  card now points at Promega's current E6651 product page rather than its
+  retired product-family URL.
+
+- Added per-request public-web research for Pi Local. A visible GUI checkbox or
+  `agents ask --allow-web-research` explicitly enables only the co-shipped
+  public search and page-reading tools; Pi still has no shell, project-file,
+  credential, or private-network access. DNS and redirects are checked,
+  responses are bounded, obviously query-unrelated search responses fail
+  closed, and the contract forbids transmitting sensitive project material.
+  Actual search/page provenance is attached by the bridge as
+  `gentle.agent_web_research.v1`, and the GUI shows those sources separately
+  from model prose. Native models cannot self-assert that audited provenance.
+
 - Closed the final reported PATZ1/GUI-audit regressions after the strand fix.
   The dedicated Criterion package now enables the feature-gated desktop GUI
   modules it benchmarks without restoring root application binaries to the

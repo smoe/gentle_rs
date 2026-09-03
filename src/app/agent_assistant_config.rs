@@ -582,6 +582,7 @@ mod tests {
             model: None,
             working_dir: None,
             supports_image_attachments: false,
+            supports_web_research: false,
         }
     }
 

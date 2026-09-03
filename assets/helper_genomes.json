@@ -787,7 +787,7 @@
     "procurement": {
       "vendor_name": "Promega",
       "catalog_number": "E6651",
-      "order_url": "https://www.promega.com/products/reporter-assays-and-detection/reporter-vectors-and-cell-lines/pgl4-luciferase-reporter-vectors/",
+      "order_url": "https://www.promega.com/products/luciferase-assays/genetic-reporter-vectors-and-cell-lines/promoterless-firefly-luciferase-basic-vectors/?catNum=E6651",
       "reference_url": "https://www.ncbi.nlm.nih.gov/nuccore/AY738222.1",
       "notes": "Product and catalogue metadata identify pGL4.10[luc2]; GENtle does not place orders."
     },
@@ -836,8 +836,8 @@
         },
         {
           "source_id": "Promega:pGL4-E6651",
-          "source_url": "https://www.promega.com/products/reporter-assays-and-detection/reporter-vectors-and-cell-lines/pgl4-luciferase-reporter-vectors/",
-          "asserted_on": "2026-08-27",
+          "source_url": "https://www.promega.com/products/luciferase-assays/genetic-reporter-vectors-and-cell-lines/promoterless-firefly-luciferase-basic-vectors/?catNum=E6651",
+          "asserted_on": "2026-09-03",
           "note": "Provider, product, and catalogue identity."
         }
       ]

@@ -904,6 +904,66 @@ impl GENtleApp {
             .unwrap_or_else(|_| invocation.response.assistant_message.clone())
     }
 
+    fn render_agent_web_research(&self, ui: &mut egui::Ui, response: &AgentResponse) {
+        let Some(research) = response.web_research.as_ref() else {
+            return;
+        };
+        if research.searches.is_empty() && research.pages.is_empty() && research.warnings.is_empty()
+        {
+            return;
+        }
+        egui::CollapsingHeader::new(format!(
+            "{} ({} / {})",
+            self.tr("agent.web_sources"),
+            research.searches.len(),
+            research.pages.len()
+        ))
+        .default_open(false)
+        .show(ui, |ui| {
+            for search in &research.searches {
+                ui.small(format!(
+                    "{}: {}",
+                    self.tr("agent.web_sources.search"),
+                    search.query
+                ));
+            }
+            let mut displayed_urls = BTreeSet::new();
+            for page in &research.pages {
+                let url = page.final_url.trim();
+                if url.is_empty() || !displayed_urls.insert(url.to_string()) {
+                    continue;
+                }
+                ui.hyperlink_to(
+                    page.title
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|title| !title.is_empty())
+                        .unwrap_or(url),
+                    url,
+                );
+            }
+            if research.pages.is_empty() {
+                for result in research
+                    .searches
+                    .iter()
+                    .flat_map(|search| search.results.iter())
+                {
+                    let url = result.url.trim();
+                    if url.is_empty() || !displayed_urls.insert(url.to_string()) {
+                        continue;
+                    }
+                    ui.hyperlink_to(result.title.trim(), url);
+                }
+            }
+            for warning in &research.warnings {
+                ui.colored_label(
+                    egui::Color32::from_rgb(180, 120, 50),
+                    format!("{}: {warning}", self.tr("agent.web_sources.warning")),
+                );
+            }
+        });
+    }
+
     pub(super) fn agent_preflight_summary_status(preflight: &AgentSystemPreflight) -> &'static str {
         if !preflight.available {
             return "unavailable";
@@ -1066,6 +1126,9 @@ impl GENtleApp {
             && !session_api_key.is_empty()
         {
             overrides.insert(OPENAI_API_KEY_ENV.to_string(), session_api_key.to_string());
+        }
+        if system.supports_web_research && self.agent_allow_web_research {
+            overrides.insert(AGENT_ALLOW_WEB_RESEARCH_ENV.to_string(), "1".to_string());
         }
         let override_base_url = self.agent_base_url_override.trim();
         if !override_base_url.is_empty()
@@ -5304,7 +5367,9 @@ impl GENtleApp {
         });
         let include_state_summary_label = self.tr("agent.include_state_summary");
         let auto_run_suggestions_label = self.tr("agent.auto_run_suggestions");
-        ui.horizontal(|ui| {
+        let allow_web_research_label = self.tr("agent.allow_web_research");
+        let allow_web_research_tooltip = self.tr("agent.allow_web_research.tooltip");
+        ui.horizontal_wrapped(|ui| {
             ui.checkbox(
                 &mut self.agent_include_state_summary,
                 include_state_summary_label,
@@ -5312,6 +5377,13 @@ impl GENtleApp {
             .on_hover_text(self.tr("agent.include_state_summary.tooltip"));
             ui.checkbox(&mut self.agent_allow_auto_exec, auto_run_suggestions_label)
                 .on_hover_text(self.tr("agent.auto_run_suggestions.tooltip"));
+            if selected_system
+                .as_ref()
+                .is_some_and(|system| system.supports_web_research)
+            {
+                ui.checkbox(&mut self.agent_allow_web_research, allow_web_research_label)
+                    .on_hover_text(allow_web_research_tooltip);
+            }
         });
         self.render_agent_help_attachment_panel(ui);
         self.render_agent_screenshot_consent_card(ui);
@@ -5405,6 +5477,7 @@ impl GENtleApp {
                                 }
                             });
                             ui.add(egui::Label::new(turn.response.assistant_message.trim()).wrap());
+                            self.render_agent_web_research(ui, &turn.response);
                             for question in &turn.response.questions {
                                 ui.add(
                                     egui::Label::new(
@@ -5736,6 +5809,7 @@ impl GENtleApp {
                     ui.add(egui::Label::new(invocation.response.assistant_message.trim()).wrap());
                 });
             }
+            self.render_agent_web_research(ui, &invocation.response);
             if !invocation.response.questions.is_empty() {
                 ui.group(|ui| {
                     ui.strong("Agent questions");

@@ -235,6 +235,7 @@ fn option_value_for_following_token(flag: &str, raw_next: &str) -> Option<String
             flag,
             "--all"
                 | "--allow-auto-exec"
+                | "--allow-web-research"
                 | "--allow-negative"
                 | "--allow-reverse-complement"
                 | "--append"
@@ -22606,7 +22607,7 @@ fn parse_agents_preflight_invalid_options_remain_deterministic() {
 #[test]
 fn parse_agents_ask_command() {
     let cmd = parse_shell_line(
-            "agents ask builtin_echo --prompt 'auto: state-summary' --catalog catalog.json --base-url http://localhost:11964 --model deepseek-r1:8b --timeout-secs 600 --connect-timeout-secs 20 --read-timeout-secs 900 --max-retries 4 --max-response-bytes 2097152 --allow-auto-exec --execute-index 2 --no-state-summary",
+            "agents ask builtin_echo --prompt 'auto: state-summary' --catalog catalog.json --base-url http://localhost:11964 --model deepseek-r1:8b --timeout-secs 600 --connect-timeout-secs 20 --read-timeout-secs 900 --max-retries 4 --max-response-bytes 2097152 --allow-auto-exec --allow-web-research --execute-index 2 --no-state-summary",
         )
         .expect("parse agents ask");
     match cmd {
@@ -22623,6 +22624,7 @@ fn parse_agents_ask_command() {
             max_response_bytes,
             include_state_summary,
             allow_auto_exec,
+            allow_web_research,
             execute_all,
             execute_indices,
         } => {
@@ -22638,6 +22640,7 @@ fn parse_agents_ask_command() {
             assert_eq!(max_response_bytes, Some(2_097_152));
             assert!(!include_state_summary);
             assert!(allow_auto_exec);
+            assert!(allow_web_research);
             assert!(!execute_all);
             assert_eq!(execute_indices, vec![2]);
         }
@@ -22933,6 +22936,7 @@ fn execute_agents_ask_runs_auto_suggestion_when_enabled() {
             max_response_bytes: None,
             include_state_summary: true,
             allow_auto_exec: true,
+            allow_web_research: false,
             execute_all: false,
             execute_indices: vec![],
         },
@@ -22987,6 +22991,7 @@ fn execute_agents_ask_omits_introspection_when_state_context_is_disabled() {
             max_response_bytes: None,
             include_state_summary: false,
             allow_auto_exec: false,
+            allow_web_research: false,
             execute_all: false,
             execute_indices: vec![],
         },
@@ -23029,6 +23034,7 @@ fn execute_agents_ask_rejected_when_context_disallows_agent_commands() {
             max_response_bytes: None,
             include_state_summary: true,
             allow_auto_exec: false,
+            allow_web_research: false,
             execute_all: false,
             execute_indices: vec![],
         },
@@ -23078,6 +23084,7 @@ fn execute_agents_ask_blocks_nested_agent_call_inside_macro_suggestion() {
             max_response_bytes: None,
             include_state_summary: true,
             allow_auto_exec: true,
+            allow_web_research: false,
             execute_all: false,
             execute_indices: vec![],
         },
