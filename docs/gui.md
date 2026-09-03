@@ -1146,6 +1146,12 @@ Feature tree grouping:
     for an observed zero signal
   - report JSON, SVG, and PDF exports reuse shared operation/render paths. The
     GUI does not implement a second locus-composition algorithm
+  - when the shared report carries source-bound Ensembl Regulation evidence,
+    the preview adds a distinct Ensembl-annotated regulatory-regions section.
+    Feature IDs and the provider label are live links in SVG; exported PDFs
+    carry corresponding PDF URI annotations. The rows are annotation evidence,
+    remain separate from occupancy/chromatin/score tracks, and do not enumerate
+    SCREEN-derived project features
   - existing qPCR candidates can open their persisted report or create a
     deterministic reviewed oligo-order form. Junction evidence can seed the
     existing transcript-aware qPCR designer; this is assay planning, not a

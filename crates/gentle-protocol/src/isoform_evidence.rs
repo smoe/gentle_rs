@@ -5,7 +5,7 @@
 //! not evidence of absence, and probe overlap alone is never promoted to an
 //! isoform-validation claim.
 
-use crate::SplicingExpertView;
+use crate::{EnsemblRegulationSourceDescriptor, SplicingExpertView};
 use serde::{Deserialize, Serialize};
 
 /// Legacy machine-readable report produced before per-measurement evidence retention.
@@ -19,12 +19,163 @@ pub const GENE_LOCUS_OCCUPANCY_LAYOUT_SCHEMA: &str = "gentle.gene_locus_occupanc
 /// Portable offline input for externally computed, coordinate-bound TF scores.
 pub const GENE_LOCUS_EXTERNAL_REGULATORY_SCORE_SCHEMA: &str =
     "gentle.gene_locus_external_regulatory_scores.v1";
+/// Optional, source-bound Ensembl Regulation layer in a locus display report.
+pub const GENE_LOCUS_ENSEMBL_REGULATION_EVIDENCE_SCHEMA: &str =
+    "gentle.gene_locus_ensembl_regulation_evidence.v1";
 /// Small offline resource for cDNA/EST support linked to exon/junction geometry.
 pub const CDNA_EST_EVIDENCE_RESOURCE_SCHEMA: &str = "gentle.cdna_est_evidence_resource.v1";
 /// Human-facing interpretation boundary shared by GUI and SVG renderers.
 pub const GENE_ISOFORM_EVIDENCE_INSTRUCTION: &str = "Isoform evidence inspector: transcript models and coordinate geometry are annotation-derived; RNA reads, cDNA/EST records, array probes, expression values, projected occupancy tracks, and qPCR assays are shown as separate evidence layers. Missing evidence is unknown. Occupancy is locus-level evidence; spatial overlap alone neither identifies a regulated isoform nor establishes causality.";
 /// Human-facing interpretation boundary for composed locus figures.
 pub const GENE_LOCUS_EVIDENCE_DISPLAY_INSTRUCTION: &str = "Gene locus evidence display: transcript/CDS geometry, predicted TF binding scores, projected occupancy, chromatin context, and validation-assay candidates are aligned on one strand-aware axis. These are distinct evidence layers. CUT&RUN enrichment is occupancy evidence, not biochemical affinity; chromatin context does not establish TF binding; PWM or model scores are predictions, not observed binding. Shared visual position or scale does not establish isoform-specific regulation, causal binding, or cross-sample comparability.";
+
+/// Whether a missing optional Ensembl Regulation snapshot should abort locus preparation.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GeneLocusEnsemblRegulationAvailabilityPolicy {
+    /// Preserve a typed unavailable layer so reports remain honest and portable.
+    #[default]
+    RetainUnavailable,
+    /// Refuse preparation when the requested source files are unavailable.
+    Required,
+}
+
+/// Availability state of an explicitly requested Ensembl Regulation layer.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GeneLocusEnsemblRegulationAvailability {
+    Available,
+    #[default]
+    Unavailable,
+}
+
+/// Bounded, offline-after-install request for Ensembl Regulation locus evidence.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneLocusEnsemblRegulationRequest {
+    pub source_id: String,
+    pub interval_index_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub intervals_path: Option<String>,
+    /// Optional exact content lock for the selected sparse index JSON.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_index_sha256: Option<String>,
+    /// Optional exact content lock for the normalized interval TSV.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_intervals_sha256: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub feature_types: Vec<String>,
+    pub max_rows: usize,
+    pub availability_policy: GeneLocusEnsemblRegulationAvailabilityPolicy,
+}
+
+impl Default for GeneLocusEnsemblRegulationRequest {
+    fn default() -> Self {
+        Self {
+            source_id: String::new(),
+            interval_index_path: String::new(),
+            intervals_path: None,
+            expected_index_sha256: None,
+            expected_intervals_sha256: None,
+            feature_types: vec![],
+            max_rows: 10_000,
+            availability_policy: GeneLocusEnsemblRegulationAvailabilityPolicy::default(),
+        }
+    }
+}
+
+/// Content and release identity retained for a locus-level Ensembl query.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneLocusEnsemblRegulationSourceBinding {
+    pub source: EnsemblRegulationSourceDescriptor,
+    pub overlap_report_id: String,
+    pub index_sha256: String,
+    pub intervals_sha256: String,
+    pub content_identity_verified: bool,
+    pub assembly_match_status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub interval_index_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolved_intervals_path: Option<String>,
+    pub requested_feature_types: Vec<String>,
+    pub max_rows: usize,
+    pub matched_feature_count: usize,
+    pub returned_feature_count: usize,
+    pub truncated: bool,
+}
+
+/// One source-bound Ensembl regulatory feature projected onto a locus figure.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneLocusEnsemblRegulationFeatureRow {
+    pub source_id: String,
+    pub provider: String,
+    pub annotation_release: String,
+    pub annotation_api_version: String,
+    pub pipeline_version: String,
+    pub assembly_name: String,
+    pub assembly_accession: String,
+    pub feature_id: String,
+    pub feature_type: String,
+    pub core_genomic_start_1based: usize,
+    pub core_genomic_end_1based: usize,
+    pub displayed_genomic_start_1based: usize,
+    pub displayed_genomic_end_1based: usize,
+    pub displayed_local_start_1based: usize,
+    pub displayed_local_end_1based: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extended_genomic_start_1based: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extended_genomic_end_1based: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extended_local_start_1based: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extended_local_end_1based: Option<usize>,
+    pub local_strand: String,
+    pub genomic_strand: String,
+    pub clipped: bool,
+    pub locus_relation: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub associated_gene_ids: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub associated_gene_names: Vec<String>,
+    pub canonical_feature_url: String,
+    pub feature_url_template: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub overlapping_tss_class_ids: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub nearest_tss_class_ids: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signed_distance_to_nearest_tss_bp: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub absolute_distance_to_nearest_tss_bp: Option<u64>,
+    pub signed_distance_basis: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub overlapping_reporter_architecture_ids: Vec<String>,
+    pub relationship_statement: String,
+}
+
+/// Optional Ensembl Regulation layer carried by the portable locus report.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneLocusEnsemblRegulationEvidence {
+    pub schema: String,
+    pub availability: GeneLocusEnsemblRegulationAvailability,
+    pub requested_source_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<EnsemblRegulationSourceDescriptor>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unavailable_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_binding: Option<GeneLocusEnsemblRegulationSourceBinding>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub rows: Vec<GeneLocusEnsemblRegulationFeatureRow>,
+    pub evidence_statement: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub non_claims: Vec<String>,
+    pub provider_link_note: String,
+}
 
 /// References to optional evidence sources composed by a pure-read inspection.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -1240,6 +1391,9 @@ pub struct GeneLocusEvidenceDisplayReport {
     pub regulatory_score_tracks: Vec<GeneLocusRegulatoryScoreTrack>,
     pub scale_bar: GeneLocusScaleBar,
     pub assay_overlays: Vec<GeneLocusAssayOverlay>,
+    /// Present only when Ensembl Regulation evidence was explicitly requested.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ensembl_regulation: Option<GeneLocusEnsemblRegulationEvidence>,
     pub provenance: Vec<GeneIsoformEvidenceProvenanceSource>,
     pub warnings: Vec<String>,
 }
@@ -1301,6 +1455,69 @@ mod tests {
         assert_eq!(
             report.local_axis_direction,
             GeneLocusLocalAxisDirection::LegacyGeneStrandFallback
+        );
+        assert!(report.ensembl_regulation.is_none());
+    }
+
+    #[test]
+    fn ensembl_regulation_locus_contract_round_trips_without_changing_report_schema() {
+        let evidence = GeneLocusEnsemblRegulationEvidence {
+            schema: GENE_LOCUS_ENSEMBL_REGULATION_EVIDENCE_SCHEMA.to_string(),
+            availability: GeneLocusEnsemblRegulationAvailability::Available,
+            requested_source_id: "ensembl_regulation_2026_08_grch38".to_string(),
+            source: Some(EnsemblRegulationSourceDescriptor {
+                source_id: "ensembl_regulation_2026_08_grch38".to_string(),
+                provider: "Ensembl Regulation".to_string(),
+                annotation_release: "2026-08".to_string(),
+                browser_species_slug: "homo_sapiens".to_string(),
+                feature_page_url_template:
+                    "https://regulation.ensembl.org/regulatory_features/homo_sapiens/{FEATURE_ID}"
+                        .to_string(),
+                ..Default::default()
+            }),
+            rows: vec![GeneLocusEnsemblRegulationFeatureRow {
+                source_id: "ensembl_regulation_2026_08_grch38".to_string(),
+                feature_id: "ENSR1_958".to_string(),
+                feature_type: "promoter".to_string(),
+                core_genomic_start_1based: 100,
+                core_genomic_end_1based: 180,
+                displayed_local_start_1based: 11,
+                displayed_local_end_1based: 91,
+                canonical_feature_url:
+                    "https://regulation.ensembl.org/regulatory_features/homo_sapiens/ENSR1_958"
+                        .to_string(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let report = GeneLocusEvidenceDisplayReport {
+            schema: GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA.to_string(),
+            ensembl_regulation: Some(evidence),
+            ..Default::default()
+        };
+        let value = serde_json::to_value(&report).expect("serialize locus report");
+        assert_eq!(value["schema"], GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA);
+        assert_eq!(
+            value["ensembl_regulation"]["rows"][0]["feature_id"],
+            "ENSR1_958"
+        );
+        let decoded: GeneLocusEvidenceDisplayReport =
+            serde_json::from_value(value).expect("deserialize locus report");
+        assert_eq!(
+            decoded.ensembl_regulation.expect("Ensembl evidence").rows[0].feature_id,
+            "ENSR1_958"
+        );
+
+        let request: GeneLocusEnsemblRegulationRequest =
+            serde_json::from_value(serde_json::json!({
+                "source_id": "ensembl_regulation_2026_08_grch38",
+                "interval_index_path": "regulation.index.json"
+            }))
+            .expect("deserialize Ensembl locus request");
+        assert_eq!(request.max_rows, 10_000);
+        assert_eq!(
+            request.availability_policy,
+            GeneLocusEnsemblRegulationAvailabilityPolicy::RetainUnavailable
         );
     }
 

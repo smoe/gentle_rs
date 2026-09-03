@@ -2081,7 +2081,7 @@ mod tests {
 
     #[test]
     fn ensembl_116_serpine1_fixture_matches_observed_representative_geometry() {
-        let report = serpine1_fixture_engine()
+        let mut report = serpine1_fixture_engine()
             .compare_promoter_reporter_architectures(
                 PromoterReporterArchitectureComparisonRequest {
                     seq_id: "serpine1_ensembl116".to_string(),
@@ -2132,6 +2132,88 @@ mod tests {
                 },
             )
             .expect("compare pinned Ensembl 116 SERPINE1 representatives");
+
+        let tss = report.tss_classes[0].representative_tss_local_0based;
+        let tss_genomic = report.tss_classes[0]
+            .representative_tss_genomic_1based
+            .expect("SERPINE1 genomic TSS");
+        let tss_class_id = report.tss_classes[0].class_id.clone();
+        let architecture_id = report.architectures[0].architecture_id.clone();
+        let source = crate::ensembl_regulation::source_descriptor(
+            crate::ensembl_regulation::ENSEMBL_REGULATION_2026_08_GRCH38_SOURCE_ID,
+        )
+        .expect("pinned Ensembl Regulation source");
+        report
+            .locus_evidence
+            .as_mut()
+            .expect("SERPINE1 locus evidence")
+            .ensembl_regulation = Some(GeneLocusEnsemblRegulationEvidence {
+            schema: GENE_LOCUS_ENSEMBL_REGULATION_EVIDENCE_SCHEMA.to_string(),
+            availability: GeneLocusEnsemblRegulationAvailability::Available,
+            requested_source_id: source.source_id.clone(),
+            source: Some(source.clone()),
+            source_binding: Some(GeneLocusEnsemblRegulationSourceBinding {
+                source: source.clone(),
+                overlap_report_id: "synthetic_serpine1_ensembl_overlap".to_string(),
+                index_sha256: "sha256:synthetic-serpine1-index".to_string(),
+                intervals_sha256: "sha256:synthetic-serpine1-intervals".to_string(),
+                content_identity_verified: true,
+                assembly_match_status: "assembly_and_species_matched_source_release_pinned"
+                    .to_string(),
+                requested_feature_types: vec!["promoter".to_string()],
+                max_rows: 10,
+                matched_feature_count: 1,
+                returned_feature_count: 1,
+                ..Default::default()
+            }),
+            rows: vec![GeneLocusEnsemblRegulationFeatureRow {
+                source_id: source.source_id.clone(),
+                provider: source.provider.clone(),
+                annotation_release: source.annotation_release.clone(),
+                annotation_api_version: source.annotation_api_version.clone(),
+                pipeline_version: source.pipeline_version.clone(),
+                assembly_name: source.assembly_name.clone(),
+                assembly_accession: source.assembly_accession.clone(),
+                feature_id: "ENSR_TEST_SERPINE1_PROMOTER".to_string(),
+                feature_type: "promoter".to_string(),
+                core_genomic_start_1based: tss_genomic.saturating_sub(40),
+                core_genomic_end_1based: tss_genomic.saturating_add(40),
+                displayed_genomic_start_1based: tss_genomic.saturating_sub(40),
+                displayed_genomic_end_1based: tss_genomic.saturating_add(40),
+                displayed_local_start_1based: tss.saturating_sub(40).saturating_add(1),
+                displayed_local_end_1based: tss.saturating_add(41),
+                local_strand: ".".to_string(),
+                genomic_strand: ".".to_string(),
+                locus_relation: "contained_in_displayed_locus".to_string(),
+                associated_gene_ids: vec!["ENSG00000106366".to_string()],
+                associated_gene_names: vec!["SERPINE1".to_string()],
+                canonical_feature_url: crate::ensembl_regulation::feature_page_url(
+                    &source,
+                    "ENSR_TEST_SERPINE1_PROMOTER",
+                )
+                .expect("synthetic provider URL"),
+                feature_url_template: source.feature_page_url_template.clone(),
+                overlapping_tss_class_ids: vec![tss_class_id.clone()],
+                nearest_tss_class_ids: vec![tss_class_id],
+                signed_distance_to_nearest_tss_bp: Some(0),
+                absolute_distance_to_nearest_tss_bp: Some(0),
+                signed_distance_basis: "negative=upstream; positive=downstream; zero=contains TSS"
+                    .to_string(),
+                overlapping_reporter_architecture_ids: vec![architecture_id],
+                relationship_statement: "Synthetic geometric overlap for renderer acceptance; provider-associated genes remain annotations, not causal assignments."
+                    .to_string(),
+                ..Default::default()
+            }],
+            evidence_statement: "Synthetic Ensembl Regulation overlap for public SERPINE1 renderer acceptance."
+                .to_string(),
+            non_claims: vec![
+                "This synthetic overlap does not establish activity or causal regulation."
+                    .to_string(),
+            ],
+            provider_link_note: "Link opens the live provider page; plotted evidence is synthetic and release-bound for testing."
+                .to_string(),
+            ..Default::default()
+        });
 
         assert_eq!(report.tss_classes.len(), 2);
         assert_eq!(report.transcripts.len(), 3);
@@ -2209,6 +2291,13 @@ mod tests {
                 .contains("data-gentle-occupancy-source=\"synthetic:serpine1:cutrun:acceptance\"")
         );
         assert!(combined_svg.contains("data-gentle-transcript=\"ENST00000223095.5\""));
+        assert!(combined_svg.contains("Ensembl-annotated regulatory regions"));
+        assert!(combined_svg.contains("ENSR_TEST_SERPINE1_PROMOTER"));
+        let linked =
+            crate::render_promoter_reporter_architecture::render_promoter_reporter_architecture_with_links(
+                &report,
+            );
+        assert_eq!(linked.uri_links.len(), 2);
         if let Some(output_dir) = std::env::var_os("GENTLE_SERPINE1_REPORTER_ARTIFACT_DIR") {
             let output_dir = std::path::PathBuf::from(output_dir);
             std::fs::create_dir_all(&output_dir).expect("create SERPINE1 artifact directory");

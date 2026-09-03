@@ -4149,6 +4149,32 @@ external coding agent runtime, see:
     reporter-material legend rather than inferring semantics from colors; the
     LOCUSDEMO fixture also demonstrates independent TP73, PATZ1, E2F1, and SP1
     JASPAR score inputs
+  - the preparation request may also include an optional
+    `ensembl_regulation` object with `source_id`, `interval_index_path`, an
+    optional relocated `intervals_path`, optional `expected_index_sha256` and
+    `expected_intervals_sha256` content locks, bounded `feature_types[]`,
+    `max_rows`, and `availability_policy` (`retain_unavailable` or `required`). This is a
+    pure indexed overlap query: it does not materialize project features and
+    does not inspect SCREEN/ENCODE rows. `retain_unavailable` preserves a typed
+    unavailable section in JSON/SVG; `required` fails when the pinned snapshot
+    cannot be verified. Source, release, assembly, index digest, and normalized
+    interval digest are bound into the report, receipt, and artifact provenance
+  - source-bound Ensembl rows use
+    `gentle.gene_locus_ensembl_regulation_evidence.v1` inside the unchanged
+    `gentle.gene_locus_evidence_display.v1` envelope. They retain core and
+    extended spans, local/genomic strand and coordinates, clipping, provider
+    associated-gene annotations, nearest selected-TSS distances, reporter
+    architecture overlap, and the pinned basis for the provider URL. These
+    The SVG displays at most 24 such rows in deterministic coordinate order and
+    reports any omitted count; JSON retains every returned row. Relationships
+    are geometric annotations, not claims of biosample activity,
+    occupancy, causal target assignment, promoter use, or reporter effect
+  - the canonical combined SVG links displayed Ensembl feature IDs and the
+    provider data-access label to the exact `regulation.ensembl.org` host. The
+    raster-backed PDF remains visually identical but now carries real PDF URI
+    annotations over those labels. Links open the provider's live browser; the
+    plotted rows remain bound to the release and content digests recorded in
+    the report
   - probe-effect tables are tab-separated and retain PSR intervals and JUC
     junction-edge geometry as distinct classes. Abundance columns follow the
     `log2_mean_*` convention and differential-activity columns follow
@@ -11351,6 +11377,12 @@ Ensembl Regulation annotation contract (implemented optional baseline):
   `ensembl_regulation_2026_08_grcm39` for Mus musculus GRCm39/mm39
   (`GCA_000001635.9`, GENCODE M39). Both use annotation pipeline 2.1 and API
   v0.15. A returned API release must equal the pinned release on every page.
+- Each pinned source also declares a provider-owned browser species slug and
+  feature-page URL template. Human uses `homo_sapiens`, mouse uses
+  `mus_musculus`, and feature links are constructed only for validated `ENSR*`
+  identifiers on the exact HTTPS host `regulation.ensembl.org`. Interval files
+  cannot supply arbitrary link targets. Because that browser is live, it may
+  show a newer provider release than the digest-bound local snapshot.
 - API 1-based inclusive coordinates are normalized once into 0-based half-open
   intervals. The normalized file header binds source id, release, assembly,
   and assembly accession. Its sparse index binds the exact file SHA-256 and
@@ -11376,6 +11408,8 @@ Ensembl Regulation annotation contract (implemented optional baseline):
   - `gentle.ensembl_regulation_install_report.v1`
   - `gentle.ensembl_regulation_overlap.v1`
   - `gentle.ensembl_regulation_materialization.v1`
+  - `gentle.gene_locus_ensembl_regulation_evidence.v1` (optional canonical
+    locus/report layer)
 
 Sequence-context view summary contract (implemented baseline):
 

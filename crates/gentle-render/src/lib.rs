@@ -12,10 +12,12 @@ pub mod protocol_cartoon;
 
 pub use feature_expert::{
     GeneLocusEvidenceOverlay, GeneLocusEvidenceOverlayLegendItem, GeneLocusEvidenceOverlayRow,
-    GeneLocusEvidenceOverlaySchematicTail, GeneLocusEvidenceOverlaySegment, SplicingExonTransition,
-    SplicingExonTransitionMatrix, compute_splicing_exon_transition_matrix,
+    GeneLocusEvidenceOverlaySchematicTail, GeneLocusEvidenceOverlaySegment,
+    GeneLocusEvidenceRenderedSvg, SplicingExonTransition, SplicingExonTransitionMatrix,
+    SvgUriLinkRectangle, compute_splicing_exon_transition_matrix,
     compute_supported_splicing_exon_transitions, render_cryptic_splicing_screen,
-    render_feature_expert_svg, render_gene_locus_evidence_with_overlay_svg,
+    render_feature_expert_svg, render_gene_locus_evidence_with_overlay,
+    render_gene_locus_evidence_with_overlay_svg,
 };
 pub use gene_set_publication::{
     render_gene_isoform_assay_publication_gene, render_gene_isoform_assay_publication_index,

@@ -20,6 +20,15 @@
   separate evidence layers. Missing optional resources do not affect startup
   or unrelated GENtle functionality.
 
+- Integrated pinned Ensembl Regulation annotations into canonical gene-locus
+  and promoter-reporter preparation. Optional bounded index queries now retain
+  source/release/assembly and content-digest bindings, conservative TSS and
+  reporter-overlap geometry, typed unavailable states, and optional exact
+  digest locks without materializing project features. The combined renderer
+  adds a capped Ensembl-only section with safe live provider links; PDF export
+  writes matching URI annotations over the raster-backed page. SCREEN evidence
+  remains a separate capability and missing Ensembl resources remain inert.
+
 - Added optional ENCODE SCREEN Registry V4 enhancer-like cCRE resources for
   human GRCh38/hg38 and mouse GRCm38/mm10. Explicit resource commands can
   download or index the external ELS BEDs; content-bound sparse indexes support

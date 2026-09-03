@@ -76,12 +76,16 @@ pub use gentle_protocol::{
     FeatureRecordCurationOutcome, FeatureRecordCurationReport, FeatureRecordCurationRequest,
     FeatureRecordDeleteRequest, FeatureRecordMergeRequest, FeatureRecordQualifier,
     FeatureRecordReviewCandidate, FeatureRecordReviewEvidence, FeatureRecordSnapshot,
-    FeatureRecordSplitRequest, FlexibilityModel, GENE_SET_CO_REGULATED_CACHE_SCHEMA,
-    GENE_SET_CUTRUN_REGULATORY_SUPPORT_SCHEMA, GENE_SET_DIRECT_LIST_CACHE_SCHEMA,
-    GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA, GENE_SET_PROMOTER_COHORT_SCHEMA,
-    GENE_SET_RESOLUTION_SCHEMA, GeneIsoformExonFamilyRow, GeneIsoformJunctionRow,
-    GeneLocusEvidenceDisplayReport, GeneLocusEvidenceDisplayRequest, GeneLocusLocalAxisDirection,
-    GeneLocusOccupancyLaneState, GeneLocusOccupancyLayout, GeneLocusRegulatoryCalibrationState,
+    FeatureRecordSplitRequest, FlexibilityModel, GENE_LOCUS_ENSEMBL_REGULATION_EVIDENCE_SCHEMA,
+    GENE_SET_CO_REGULATED_CACHE_SCHEMA, GENE_SET_CUTRUN_REGULATORY_SUPPORT_SCHEMA,
+    GENE_SET_DIRECT_LIST_CACHE_SCHEMA, GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA,
+    GENE_SET_PROMOTER_COHORT_SCHEMA, GENE_SET_RESOLUTION_SCHEMA, GeneIsoformExonFamilyRow,
+    GeneIsoformJunctionRow, GeneLocusEnsemblRegulationAvailability,
+    GeneLocusEnsemblRegulationAvailabilityPolicy, GeneLocusEnsemblRegulationEvidence,
+    GeneLocusEnsemblRegulationFeatureRow, GeneLocusEnsemblRegulationRequest,
+    GeneLocusEnsemblRegulationSourceBinding, GeneLocusEvidenceDisplayReport,
+    GeneLocusEvidenceDisplayRequest, GeneLocusLocalAxisDirection, GeneLocusOccupancyLaneState,
+    GeneLocusOccupancyLayout, GeneLocusRegulatoryCalibrationState,
     GeneLocusRegulatoryScoreProviderKind, GeneLocusRegulatoryScoreTrackRequest,
     GeneLocusScaleBarPolicy, GeneLocusTranscriptMetrics, GeneSetCoRegulatedProducerMetadata,
     GeneSetCohortRelationship, GeneSetCohortRelationshipFlag, GeneSetCutRunEvaluationState,
@@ -4691,6 +4695,10 @@ pub struct GeneLocusEvidencePreparationRequest {
     pub occupancy_layout: GeneLocusOccupancyLayout,
     pub regulatory_score_tracks: Vec<GeneLocusRegulatoryScoreTrackRequest>,
     pub scale_bar: GeneLocusScaleBarPolicy,
+    /// Optional source-bound Ensembl Regulation annotation layer. No resource
+    /// is opened when this field is absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ensembl_regulation: Option<GeneLocusEnsemblRegulationRequest>,
     /// Optional canonical reporter comparison to compose with the normalized
     /// locus evidence. The preparation workflow binds its sequence and locus
     /// request; callers must leave those nested fields empty.
@@ -4729,6 +4737,7 @@ impl Default for GeneLocusEvidencePreparationRequest {
             occupancy_layout: GeneLocusOccupancyLayout::default(),
             regulatory_score_tracks: vec![],
             scale_bar: GeneLocusScaleBarPolicy::default(),
+            ensembl_regulation: None,
             reporter_architecture_request: None,
             svg_path: String::new(),
             png_path: None,
@@ -4787,6 +4796,20 @@ pub struct GeneLocusEvidenceRegulatoryBinding {
     pub output_sha256: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Receipt-level identity for an explicitly requested Ensembl Regulation layer.
+pub struct GeneLocusEvidenceEnsemblRegulationBinding {
+    pub availability: GeneLocusEnsemblRegulationAvailability,
+    pub requested_source_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<gentle_protocol::EnsemblRegulationSourceDescriptor>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unavailable_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_binding: Option<GeneLocusEnsemblRegulationSourceBinding>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 /// Machine-readable receipt for the composed preparation operation.
@@ -4815,6 +4838,8 @@ pub struct GeneLocusEvidencePreparationReceipt {
     pub regulatory_provider_bindings: Vec<String>,
     pub regulatory_source_sha256: Vec<String>,
     pub regulatory_bindings: Vec<GeneLocusEvidenceRegulatoryBinding>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ensembl_regulation: Option<GeneLocusEvidenceEnsemblRegulationBinding>,
     pub scale_bar: gentle_protocol::GeneLocusScaleBar,
     pub display_report_sha256: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]

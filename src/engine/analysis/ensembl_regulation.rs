@@ -45,7 +45,7 @@ impl GentleEngine {
         Ok(normalized.into_iter().collect())
     }
 
-    fn ensembl_regulation_genomic_query_span(
+    pub(crate) fn ensembl_regulation_genomic_query_span(
         anchor: &SequenceGenomeAnchorSummary,
         local_start: usize,
         local_end: usize,
@@ -74,7 +74,7 @@ impl GentleEngine {
         Ok(span)
     }
 
-    fn project_ensembl_regulation_interval(
+    pub(crate) fn project_ensembl_regulation_interval(
         interval: EnsemblRegulationInterval,
         anchor: &SequenceGenomeAnchorSummary,
         query_genomic_start: u64,

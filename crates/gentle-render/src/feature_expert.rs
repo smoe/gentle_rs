@@ -2,17 +2,18 @@
 
 use gentle_protocol::{
     CrypticSplicingScreenView, CrypticSplicingSignalStatus, FeatureExpertView,
-    GeneIsoformEvidenceReport, GeneLocusCodonKind, GeneLocusEvidenceDisplayReport,
-    GeneLocusLocalAxisDirection, GeneLocusOccupancyLaneRole, GeneLocusOccupancyLaneState,
-    GeneLocusOccupancyScaleMode, GeneLocusProbeClass, GeneLocusProbeEffectContrast,
-    GeneLocusRegulatoryScoreProviderKind, GeneLocusRegulatoryScoreTrack, GeneLocusScaleBarMode,
-    IsoformArchitectureExpertView, RestrictionSiteExpertView, SplicingExonSummary,
-    SplicingExpertView, SplicingJunctionArc, TfbsExpertView,
+    GeneIsoformEvidenceReport, GeneLocusCodonKind, GeneLocusEnsemblRegulationAvailability,
+    GeneLocusEvidenceDisplayReport, GeneLocusLocalAxisDirection, GeneLocusOccupancyLaneRole,
+    GeneLocusOccupancyLaneState, GeneLocusOccupancyScaleMode, GeneLocusProbeClass,
+    GeneLocusProbeEffectContrast, GeneLocusRegulatoryScoreProviderKind,
+    GeneLocusRegulatoryScoreTrack, GeneLocusScaleBarMode, IsoformArchitectureExpertView,
+    RestrictionSiteExpertView, SplicingExonSummary, SplicingExpertView, SplicingJunctionArc,
+    TfbsExpertView,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use svg::Document;
 use svg::node::element::path::Data;
-use svg::node::element::{Circle, Line, Path, Rectangle, Text};
+use svg::node::element::{Circle, Line, Link, Path, Rectangle, Text};
 
 const W: f32 = 1200.0;
 const H: f32 = 700.0;
@@ -4632,12 +4633,66 @@ fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String
     render_gene_locus_evidence_with_overlay_svg(report, None)
 }
 
+/// One URI hotspot expressed in the source SVG's CSS-pixel coordinate system.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SvgUriLinkRectangle {
+    pub x_px: f32,
+    pub y_px: f32,
+    pub width_px: f32,
+    pub height_px: f32,
+    pub uri: String,
+}
+
+/// Canonical SVG plus URI rectangles for formats that cannot retain SVG links.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GeneLocusEvidenceRenderedSvg {
+    pub svg: String,
+    pub uri_links: Vec<SvgUriLinkRectangle>,
+}
+
+fn ensembl_regulation_safe_link(url: &str) -> bool {
+    let Some(rest) = url.strip_prefix("https://") else {
+        return false;
+    };
+    let authority = rest.split('/').next().unwrap_or_default();
+    authority == "regulation.ensembl.org" && url.is_ascii() && !url.chars().any(char::is_control)
+}
+
+fn ensembl_regulation_palette(feature_type: &str) -> &'static str {
+    match feature_type {
+        "promoter" => "#c2410c",
+        "enhancer" => "#0f766e",
+        "open_chromatin_region" => "#2563eb",
+        "ctcf" => "#7c3aed",
+        "emar" => "#be123c",
+        _ => "#64748b",
+    }
+}
+
+fn ensembl_regulation_distance_label(distance: Option<i64>) -> String {
+    match distance {
+        Some(0) => "contains TSS".to_string(),
+        Some(value) if value < 0 => format!("{} bp upstream of nearest TSS", value.unsigned_abs()),
+        Some(value) => format!("{} bp downstream of nearest TSS", value.unsigned_abs()),
+        None => "TSS relation unavailable".to_string(),
+    }
+}
+
 /// Render normalized locus evidence with an optional already-resolved design
 /// overlay. The renderer never derives transcript or assay biology.
 pub fn render_gene_locus_evidence_with_overlay_svg(
     report: &GeneLocusEvidenceDisplayReport,
     overlay: Option<&GeneLocusEvidenceOverlay>,
 ) -> String {
+    render_gene_locus_evidence_with_overlay(report, overlay).svg
+}
+
+/// Render normalized locus evidence and retain provider URI hotspot geometry.
+pub fn render_gene_locus_evidence_with_overlay(
+    report: &GeneLocusEvidenceDisplayReport,
+    overlay: Option<&GeneLocusEvidenceOverlay>,
+) -> GeneLocusEvidenceRenderedSvg {
+    const ENSEMBL_DISPLAY_ROW_CAP: usize = 24;
     let width = 1400.0_f32;
     let plot_left = 255.0_f32;
     let plot_right = 1050.0_f32;
@@ -4668,10 +4723,33 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
         .filter(|overlay| !overlay.rows.is_empty())
         .map(|overlay| 28.0 + overlay_legend_height + overlay.rows.len() as f32 * overlay_pitch)
         .unwrap_or_default();
-    let probe_top = if overlay_height > 0.0 {
+    let ensembl_top = if overlay_height > 0.0 {
         overlay_top + overlay_height + 28.0
     } else {
         overlay_top
+    };
+    let ensembl_display_count = report
+        .ensembl_regulation
+        .as_ref()
+        .map(|evidence| evidence.rows.len().min(ENSEMBL_DISPLAY_ROW_CAP))
+        .unwrap_or_default();
+    let ensembl_omitted_count = report
+        .ensembl_regulation
+        .as_ref()
+        .map(|evidence| evidence.rows.len().saturating_sub(ensembl_display_count))
+        .unwrap_or_default();
+    let ensembl_height = report
+        .ensembl_regulation
+        .as_ref()
+        .map(|_| {
+            58.0 + ensembl_display_count as f32 * 30.0
+                + if ensembl_omitted_count > 0 { 18.0 } else { 0.0 }
+        })
+        .unwrap_or_default();
+    let probe_top = if ensembl_height > 0.0 {
+        ensembl_top + ensembl_height + 28.0
+    } else {
+        ensembl_top
     };
     let probe_pitch = 22.0_f32;
     let probe_height = if report.probe_effect_overlays.is_empty() {
@@ -4727,6 +4805,7 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
         .filter(|summary| !summary.is_empty())
         .map(str::to_string)
         .unwrap_or_else(|| report.instruction.clone());
+    let mut uri_links = Vec::new();
     let mut doc = Document::new()
         .set("viewBox", (0, 0, width, doc_height))
         .set("width", width)
@@ -5393,6 +5472,267 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
                         .set("font-weight", "bold")
                         .set("fill", "#ffffff"),
                     );
+            }
+        }
+    }
+
+    if let Some(evidence) = report.ensembl_regulation.as_ref() {
+        doc = doc.add(
+            Text::new("Ensembl-annotated regulatory regions")
+                .set("x", 34)
+                .set("y", ensembl_top - 14.0)
+                .set("font-family", "sans-serif")
+                .set("font-size", 13)
+                .set("font-weight", "bold")
+                .set("fill", "#1f2937")
+                .set("data-gentle-ensembl-regulation-section", "true")
+                .set(
+                    "data-gentle-ensembl-availability",
+                    format!("{:?}", evidence.availability).to_ascii_lowercase(),
+                ),
+        );
+        let source = evidence
+            .source_binding
+            .as_ref()
+            .map(|binding| &binding.source)
+            .or(evidence.source.as_ref());
+        if let Some(source) = source {
+            let source_label = format!(
+                "{} | release {} | pipeline {} | {}",
+                source.provider,
+                source.annotation_release,
+                source.pipeline_version,
+                source.assembly_name
+            );
+            doc = doc.add(
+                Text::new(isoform_evidence_compact_label(&source_label, 115))
+                    .set("x", 34)
+                    .set("y", ensembl_top + 5.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 8)
+                    .set("fill", "#475569")
+                    .set("data-gentle-ensembl-source", source.source_id.as_str())
+                    .set(
+                        "data-gentle-ensembl-release",
+                        source.annotation_release.as_str(),
+                    ),
+            );
+            if ensembl_regulation_safe_link(&source.data_access_url) {
+                let x = metrics_left;
+                let y = ensembl_top + 5.0;
+                uri_links.push(SvgUriLinkRectangle {
+                    x_px: x,
+                    y_px: y - 12.0,
+                    width_px: 300.0,
+                    height_px: 16.0,
+                    uri: source.data_access_url.clone(),
+                });
+                doc = doc.add(
+                    Link::new()
+                        .set("href", source.data_access_url.as_str())
+                        .set("target", "_blank")
+                        .set("rel", "noopener noreferrer")
+                        .set("data-gentle-ensembl-provider-link", "data_access")
+                        .add(
+                            Text::new("Ensembl Regulation data access (live provider)")
+                                .set("x", x)
+                                .set("y", y)
+                                .set("font-family", "sans-serif")
+                                .set("font-size", 8)
+                                .set("fill", "#1d4ed8")
+                                .set("text-decoration", "underline"),
+                        ),
+                );
+            }
+        }
+        match evidence.availability {
+            GeneLocusEnsemblRegulationAvailability::Unavailable => {
+                doc = doc.add(
+                    Text::new(isoform_evidence_compact_label(
+                        evidence
+                            .unavailable_reason
+                            .as_deref()
+                            .unwrap_or("requested Ensembl Regulation annotation is unavailable"),
+                        185,
+                    ))
+                    .set("x", 34)
+                    .set("y", ensembl_top + 34.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 9)
+                    .set("fill", "#92400e")
+                    .set("data-gentle-ensembl-unavailable", "true"),
+                );
+            }
+            GeneLocusEnsemblRegulationAvailability::Available => {
+                if evidence.rows.is_empty() {
+                    doc = doc.add(
+                        Text::new(
+                            "No matching Ensembl regulatory regions overlap this displayed locus.",
+                        )
+                        .set("x", 34)
+                        .set("y", ensembl_top + 34.0)
+                        .set("font-family", "monospace")
+                        .set("font-size", 9)
+                        .set("fill", "#64748b")
+                        .set("data-gentle-ensembl-empty", "true"),
+                    );
+                }
+                for (index, row) in evidence
+                    .rows
+                    .iter()
+                    .take(ENSEMBL_DISPLAY_ROW_CAP)
+                    .enumerate()
+                {
+                    let y = ensembl_top + 34.0 + index as f32 * 30.0;
+                    let color = ensembl_regulation_palette(&row.feature_type);
+                    let id_label = isoform_evidence_compact_label(&row.feature_id, 28);
+                    if ensembl_regulation_safe_link(&row.canonical_feature_url) {
+                        uri_links.push(SvgUriLinkRectangle {
+                            x_px: 34.0,
+                            y_px: y - 12.0,
+                            width_px: 205.0,
+                            height_px: 16.0,
+                            uri: row.canonical_feature_url.clone(),
+                        });
+                        doc = doc.add(
+                            Link::new()
+                                .set("href", row.canonical_feature_url.as_str())
+                                .set("target", "_blank")
+                                .set("rel", "noopener noreferrer")
+                                .set("data-gentle-ensembl-feature", row.feature_id.as_str())
+                                .set("data-gentle-ensembl-source", row.source_id.as_str())
+                                .set(
+                                    "data-gentle-ensembl-release",
+                                    row.annotation_release.as_str(),
+                                )
+                                .set(
+                                    "data-gentle-ensembl-feature-url",
+                                    row.canonical_feature_url.as_str(),
+                                )
+                                .add(
+                                    Text::new(id_label)
+                                        .set("x", 34)
+                                        .set("y", y + 3.0)
+                                        .set("font-family", "monospace")
+                                        .set("font-size", 9)
+                                        .set("fill", "#1d4ed8")
+                                        .set("text-decoration", "underline"),
+                                ),
+                        );
+                    } else {
+                        doc = doc.add(
+                            Text::new(id_label)
+                                .set("x", 34)
+                                .set("y", y + 3.0)
+                                .set("font-family", "monospace")
+                                .set("font-size", 9)
+                                .set("fill", "#374151")
+                                .set("data-gentle-ensembl-feature", row.feature_id.as_str())
+                                .set("data-gentle-ensembl-link-state", "rejected"),
+                        );
+                    }
+                    let x1 = x_for(row.displayed_local_start_1based);
+                    let x2 = x_for(row.displayed_local_end_1based);
+                    if let Some((extended_start, extended_end)) = row
+                        .extended_local_start_1based
+                        .zip(row.extended_local_end_1based)
+                    {
+                        let extended_x1 = x_for(extended_start);
+                        let extended_x2 = x_for(extended_end);
+                        doc = doc.add(
+                            Rectangle::new()
+                                .set("x", extended_x1.min(extended_x2))
+                                .set("y", y - 8.0)
+                                .set("width", (extended_x2 - extended_x1).abs().max(2.5))
+                                .set("height", 16)
+                                .set("fill", "none")
+                                .set("stroke", color)
+                                .set("stroke-width", 1)
+                                .set("stroke-dasharray", "3,2")
+                                .set("data-gentle-ensembl-extended-span", row.feature_id.as_str()),
+                        );
+                    }
+                    doc = doc.add(
+                        Rectangle::new()
+                            .set("x", x1.min(x2))
+                            .set("y", y - 5.0)
+                            .set("width", (x2 - x1).abs().max(2.5))
+                            .set("height", 10)
+                            .set("rx", 1.5)
+                            .set("fill", color)
+                            .set("fill-opacity", 0.72)
+                            .set("data-gentle-ensembl-core-span", row.feature_id.as_str())
+                            .set(
+                                "data-gentle-ensembl-feature-type",
+                                row.feature_type.as_str(),
+                            )
+                            .set("data-gentle-local-start", row.displayed_local_start_1based)
+                            .set("data-gentle-local-end", row.displayed_local_end_1based)
+                            .set("data-gentle-genomic-start", row.core_genomic_start_1based)
+                            .set("data-gentle-genomic-end", row.core_genomic_end_1based)
+                            .set("data-gentle-local-strand", row.local_strand.as_str())
+                            .set("data-gentle-genomic-strand", row.genomic_strand.as_str()),
+                    );
+                    let associated = if !row.associated_gene_names.is_empty() {
+                        format!("provider genes: {}", row.associated_gene_names.join(","))
+                    } else if !row.associated_gene_ids.is_empty() {
+                        format!("provider gene ids: {}", row.associated_gene_ids.join(","))
+                    } else {
+                        "provider genes: none recorded".to_string()
+                    };
+                    let reporter_relation = if row.overlapping_reporter_architecture_ids.is_empty()
+                    {
+                        "no reporter-insert overlap".to_string()
+                    } else {
+                        format!(
+                            "reporter overlap: {}",
+                            row.overlapping_reporter_architecture_ids.join(",")
+                        )
+                    };
+                    doc = doc.add(
+                        Text::new(isoform_evidence_compact_label(
+                            &format!(
+                                "{} | {}:{}-{} | {} | {} | {}",
+                                row.feature_type,
+                                row.assembly_name,
+                                row.core_genomic_start_1based,
+                                row.core_genomic_end_1based,
+                                ensembl_regulation_distance_label(
+                                    row.signed_distance_to_nearest_tss_bp
+                                ),
+                                reporter_relation,
+                                associated
+                            ),
+                            78,
+                        ))
+                        .set("x", metrics_left)
+                        .set("y", y + 3.0)
+                        .set("font-family", "monospace")
+                        .set("font-size", 7)
+                        .set("fill", "#475569")
+                        .set(
+                            "data-gentle-ensembl-relationship",
+                            row.locus_relation.as_str(),
+                        ),
+                    );
+                }
+                if ensembl_omitted_count > 0 {
+                    doc = doc.add(
+                        Text::new(format!(
+                            "{} additional source-bound row(s) omitted from SVG; complete rows remain in JSON.",
+                            ensembl_omitted_count
+                        ))
+                        .set("x", 34)
+                        .set(
+                            "y",
+                            ensembl_top + 38.0 + ensembl_display_count as f32 * 30.0,
+                        )
+                        .set("font-family", "monospace")
+                        .set("font-size", 8)
+                        .set("fill", "#64748b")
+                        .set("data-gentle-ensembl-omitted-rows", ensembl_omitted_count),
+                    );
+                }
             }
         }
     }
@@ -6328,7 +6668,10 @@ pub fn render_gene_locus_evidence_with_overlay_svg(
             .set("data-gentle-provenance-source", source.source_kind.as_str()),
         );
     }
-    doc.to_string()
+    GeneLocusEvidenceRenderedSvg {
+        svg: doc.to_string(),
+        uri_links,
+    }
 }
 
 pub fn render_feature_expert_svg(view: &FeatureExpertView) -> String {
@@ -7030,6 +7373,125 @@ mod tests {
             gene_locus_position_x(&report, 100, 0.0, 100.0)
                 > gene_locus_position_x(&report, 800, 0.0, 100.0),
             "old payloads must retain the historical gene-strand fallback"
+        );
+    }
+
+    #[test]
+    fn gene_locus_renderer_emits_source_bound_ensembl_links_and_spans() {
+        let source = gentle_protocol::EnsemblRegulationSourceDescriptor {
+            source_id: "ensembl_regulation_2026_08_grch38".to_string(),
+            provider: "Ensembl Regulation".to_string(),
+            annotation_release: "2026-08".to_string(),
+            pipeline_version: "2.1".to_string(),
+            assembly_name: "GRCh38".to_string(),
+            data_access_url: "https://regulation.ensembl.org/data_access".to_string(),
+            browser_species_slug: "homo_sapiens".to_string(),
+            feature_page_url_template:
+                "https://regulation.ensembl.org/regulatory_features/homo_sapiens/{FEATURE_ID}"
+                    .to_string(),
+            ..Default::default()
+        };
+        let report = GeneLocusEvidenceDisplayReport {
+            schema: GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA.to_string(),
+            gene_symbol: "DEMO".to_string(),
+            locus_local_start_1based: 1,
+            locus_local_end_1based: 1_000,
+            ensembl_regulation: Some(gentle_protocol::GeneLocusEnsemblRegulationEvidence {
+                schema: gentle_protocol::GENE_LOCUS_ENSEMBL_REGULATION_EVIDENCE_SCHEMA.to_string(),
+                availability: GeneLocusEnsemblRegulationAvailability::Available,
+                requested_source_id: source.source_id.clone(),
+                source: Some(source),
+                rows: vec![gentle_protocol::GeneLocusEnsemblRegulationFeatureRow {
+                    source_id: "ensembl_regulation_2026_08_grch38".to_string(),
+                    provider: "Ensembl Regulation".to_string(),
+                    annotation_release: "2026-08".to_string(),
+                    assembly_name: "GRCh38".to_string(),
+                    feature_id: "ENSR1_958".to_string(),
+                    feature_type: "promoter".to_string(),
+                    core_genomic_start_1based: 100_100,
+                    core_genomic_end_1based: 100_180,
+                    displayed_local_start_1based: 101,
+                    displayed_local_end_1based: 181,
+                    extended_local_start_1based: Some(91),
+                    extended_local_end_1based: Some(191),
+                    canonical_feature_url:
+                        "https://regulation.ensembl.org/regulatory_features/homo_sapiens/ENSR1_958"
+                            .to_string(),
+                    signed_distance_to_nearest_tss_bp: Some(0),
+                    relationship_statement: "Geometric annotation only.".to_string(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let rendered = render_gene_locus_evidence_with_overlay(&report, None);
+        assert_eq!(rendered.uri_links.len(), 2);
+        assert!(
+            rendered
+                .svg
+                .contains("Ensembl-annotated regulatory regions")
+        );
+        assert!(
+            rendered
+                .svg
+                .contains("data-gentle-ensembl-feature=\"ENSR1_958\"")
+        );
+        assert!(
+            rendered
+                .svg
+                .contains("data-gentle-ensembl-extended-span=\"ENSR1_958\"")
+        );
+        assert!(rendered.svg.contains(
+            "href=\"https://regulation.ensembl.org/regulatory_features/homo_sapiens/ENSR1_958\""
+        ));
+
+        let mut negative_report = report.clone();
+        negative_report.gene_symbol = "TGFB1".to_string();
+        negative_report.gene_strand = "-".to_string();
+        negative_report.local_axis_direction = GeneLocusLocalAxisDirection::DecreasingLeftToRight;
+        let negative_row = &negative_report
+            .ensembl_regulation
+            .as_ref()
+            .expect("negative-strand Ensembl evidence")
+            .rows[0];
+        assert!(
+            gene_locus_position_x(
+                &negative_report,
+                negative_row.displayed_local_start_1based,
+                0.0,
+                100.0,
+            ) > gene_locus_position_x(
+                &negative_report,
+                negative_row.displayed_local_end_1based,
+                0.0,
+                100.0,
+            ),
+            "a genomic-orientation negative locus must reverse the Ensembl row exactly once"
+        );
+        let negative_svg = render_gene_locus_evidence_with_overlay(&negative_report, None).svg;
+        assert!(
+            negative_svg.contains("data-gentle-local-axis-direction=\"decreasing_left_to_right\"")
+        );
+        assert!(negative_svg.contains("data-gentle-ensembl-core-span=\"ENSR1_958\""));
+
+        let mut unsafe_report = report;
+        unsafe_report
+            .ensembl_regulation
+            .as_mut()
+            .expect("evidence")
+            .rows[0]
+            .canonical_feature_url = "https://example.test/ENSR1_958".to_string();
+        let rendered = render_gene_locus_evidence_with_overlay(&unsafe_report, None);
+        assert_eq!(
+            rendered.uri_links.len(),
+            1,
+            "unsafe feature link is omitted"
+        );
+        assert!(
+            rendered
+                .svg
+                .contains("data-gentle-ensembl-link-state=\"rejected\"")
         );
     }
 

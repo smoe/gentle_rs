@@ -24723,6 +24723,66 @@ fn prepare_gene_locus_evidence_runs_fully_offline_with_normalized_score_sources(
             .to_string_lossy()
             .to_string(),
     );
+    let ensembl_intervals = output.path().join("ensembl-regulation.intervals.tsv");
+    let ensembl_index = output.path().join("ensembl-regulation.index.json");
+    let ensembl_source = crate::ensembl_regulation::source_descriptor(
+        crate::ensembl_regulation::ENSEMBL_REGULATION_2026_08_GRCH38_SOURCE_ID,
+    )
+    .expect("pinned human Ensembl Regulation source");
+    let mut interval_bytes = Vec::new();
+    crate::ensembl_regulation::write_intervals_header(&mut interval_bytes, &ensembl_source)
+        .expect("write Ensembl interval header");
+    for row in [
+        EnsemblRegulationInterval {
+            chromosome: "Synthetic1".to_string(),
+            start_0based: 100_120,
+            end_0based_exclusive: 100_250,
+            feature_id: "ENSR_TEST_LOCUS_PROMOTER".to_string(),
+            feature_type: "promoter".to_string(),
+            strand: None,
+            extended_start_0based: Some(100_090),
+            extended_end_0based_exclusive: Some(100_280),
+            associated_gene_ids: vec!["ENSGDEMO0001".to_string()],
+            associated_gene_names: vec!["LOCUSDEMO".to_string()],
+            ..Default::default()
+        },
+        EnsemblRegulationInterval {
+            chromosome: "Synthetic1".to_string(),
+            start_0based: 100_520,
+            end_0based_exclusive: 100_650,
+            feature_id: "ENSR_TEST_LOCUS_ENHANCER".to_string(),
+            feature_type: "enhancer".to_string(),
+            strand: Some('+'),
+            associated_gene_ids: vec!["ENSGDEMO0001".to_string()],
+            associated_gene_names: vec!["LOCUSDEMO".to_string()],
+            ..Default::default()
+        },
+    ] {
+        crate::ensembl_regulation::write_interval(&mut interval_bytes, &row)
+            .expect("write Ensembl interval row");
+    }
+    fs::write(&ensembl_intervals, interval_bytes).expect("write Ensembl intervals");
+    let prepared_ensembl_index = crate::ensembl_regulation::prepare_interval_index(
+        ensembl_intervals.to_string_lossy().as_ref(),
+        ensembl_index.to_string_lossy().as_ref(),
+        ensembl_source,
+    )
+    .expect("prepare Ensembl interval index");
+    request.ensembl_regulation = Some(GeneLocusEnsemblRegulationRequest {
+        source_id: crate::ensembl_regulation::ENSEMBL_REGULATION_2026_08_GRCH38_SOURCE_ID
+            .to_string(),
+        interval_index_path: ensembl_index.to_string_lossy().to_string(),
+        intervals_path: Some(ensembl_intervals.to_string_lossy().to_string()),
+        expected_index_sha256: Some(format!(
+            "sha256:{}",
+            crate::digest_utils::sha256_file_hex(&ensembl_index)
+                .expect("digest Ensembl interval index")
+        )),
+        expected_intervals_sha256: Some(prepared_ensembl_index.intervals_sha256),
+        feature_types: vec!["promoter".to_string(), "enhancer".to_string()],
+        max_rows: 10,
+        availability_policy: GeneLocusEnsemblRegulationAvailabilityPolicy::Required,
+    });
 
     let mut engine = GentleEngine::default();
     let result = engine
@@ -24758,6 +24818,29 @@ fn prepare_gene_locus_evidence_runs_fully_offline_with_normalized_score_sources(
     assert_eq!(receipt.scale_bar.length_bp, 1_000);
     assert!(receipt.reporter_architecture_report_sha256.is_some());
     assert_eq!(receipt.reporter_architecture_ids.len(), 6);
+    let ensembl_binding = receipt
+        .ensembl_regulation
+        .as_ref()
+        .expect("Ensembl Regulation receipt binding");
+    assert_eq!(
+        ensembl_binding.availability,
+        GeneLocusEnsemblRegulationAvailability::Available
+    );
+    assert_eq!(
+        ensembl_binding
+            .source
+            .as_ref()
+            .map(|source| source.annotation_release.as_str()),
+        Some("2026-08")
+    );
+    assert!(
+        ensembl_binding
+            .source_binding
+            .as_ref()
+            .is_some_and(|binding| binding.index_sha256.starts_with("sha256:")
+                && binding.intervals_sha256.starts_with("sha256:")
+                && binding.interval_index_path.as_deref() == Some("ensembl-regulation.index.json"))
+    );
     assert!(
         receipt
             .warnings
@@ -24831,6 +24914,36 @@ fn prepare_gene_locus_evidence_runs_fully_offline_with_normalized_score_sources(
         "both annotation-derived CDS starts should remain distinct"
     );
     assert_eq!(report.occupancy_groups.len(), 2);
+    let ensembl_evidence = report
+        .ensembl_regulation
+        .as_ref()
+        .expect("source-bound Ensembl Regulation evidence");
+    assert_eq!(ensembl_evidence.rows.len(), 2);
+    let promoter_annotation = ensembl_evidence
+        .rows
+        .iter()
+        .find(|row| row.feature_id == "ENSR_TEST_LOCUS_PROMOTER")
+        .expect("synthetic Ensembl promoter row");
+    assert_eq!(promoter_annotation.extended_local_start_1based, Some(91));
+    assert_eq!(promoter_annotation.extended_local_end_1based, Some(280));
+    assert!(
+        ensembl_evidence
+            .rows
+            .iter()
+            .all(|row| row.relationship_statement.contains("do not establish"))
+    );
+    assert!(ensembl_evidence.rows.iter().all(|row| {
+        row.canonical_feature_url
+            .starts_with("https://regulation.ensembl.org/")
+    }));
+    assert!(
+        ensembl_evidence
+            .rows
+            .iter()
+            .all(|row| row.source_id == ensembl_evidence.requested_source_id
+                && !row.source_id.contains("screen")),
+        "the canonical Ensembl layer must not enumerate SCREEN project features"
+    );
     let tp73_lane = report.occupancy_groups[0]
         .lanes
         .iter()
@@ -24991,6 +25104,9 @@ fn prepare_gene_locus_evidence_runs_fully_offline_with_normalized_score_sources(
     assert!(svg.contains("spliced exon / cDNA"));
     assert!(svg.contains("data-gentle-regulatory-score-track=\"patz1_jaspar\""));
     assert!(svg.contains("data-gentle-regulatory-score-track=\"e2f1_jaspar\""));
+    assert!(svg.contains("Ensembl-annotated regulatory regions"));
+    assert!(svg.contains("data-gentle-ensembl-feature=\"ENSR_TEST_LOCUS_PROMOTER\""));
+    assert!(svg.contains("data-gentle-ensembl-extended-span=\"ENSR_TEST_LOCUS_PROMOTER\""));
     assert!(svg.contains("LUC"));
     assert!(svg.contains("synthetic tails are schematic"));
     for architecture_id in &receipt.reporter_architecture_ids {
@@ -25011,6 +25127,78 @@ fn prepare_gene_locus_evidence_runs_fully_offline_with_normalized_score_sources(
             .len()
             > 0
     );
+    let pdf = fs::read(request.pdf_path.as_ref().expect("pdf path")).expect("read PDF");
+    let pdf_text = String::from_utf8_lossy(&pdf);
+    assert_eq!(pdf_text.matches("/Subtype /Link").count(), 3);
+    assert!(pdf_text.contains("/Annots ["));
+    assert!(pdf_text.contains("regulation.ensembl.org"));
+
+    let mut unavailable_request = request;
+    unavailable_request.svg_path = output
+        .path()
+        .join("locus-unavailable.svg")
+        .to_string_lossy()
+        .to_string();
+    unavailable_request.png_path = None;
+    unavailable_request.pdf_path = None;
+    unavailable_request.display_report_path = None;
+    unavailable_request.reporter_report_path = None;
+    unavailable_request.receipt_path = None;
+    unavailable_request.ensembl_regulation = Some(GeneLocusEnsemblRegulationRequest {
+        source_id: crate::ensembl_regulation::ENSEMBL_REGULATION_2026_08_GRCH38_SOURCE_ID
+            .to_string(),
+        interval_index_path: output
+            .path()
+            .join("not-installed.index.json")
+            .to_string_lossy()
+            .to_string(),
+        availability_policy: GeneLocusEnsemblRegulationAvailabilityPolicy::RetainUnavailable,
+        ..Default::default()
+    });
+    let mut unavailable_engine = GentleEngine::default();
+    let unavailable_result = unavailable_engine
+        .apply(Operation::PrepareGeneLocusEvidence {
+            request: Box::new(unavailable_request.clone()),
+        })
+        .expect("retain unavailable Ensembl Regulation evidence");
+    assert_eq!(
+        unavailable_result
+            .gene_locus_evidence_preparation
+            .as_ref()
+            .and_then(|receipt| receipt.ensembl_regulation.as_ref())
+            .map(|binding| binding.availability),
+        Some(GeneLocusEnsemblRegulationAvailability::Unavailable)
+    );
+    assert_eq!(
+        unavailable_result
+            .gene_locus_evidence_preparation
+            .as_ref()
+            .and_then(|receipt| receipt.ensembl_regulation.as_ref())
+            .and_then(|binding| binding.source.as_ref())
+            .map(|source| source.source_id.as_str()),
+        Some(crate::ensembl_regulation::ENSEMBL_REGULATION_2026_08_GRCH38_SOURCE_ID)
+    );
+    let unavailable_svg =
+        fs::read_to_string(&unavailable_request.svg_path).expect("read unavailable Ensembl SVG");
+    assert!(unavailable_svg.contains("data-gentle-ensembl-unavailable=\"true\""));
+
+    let mut required_request = unavailable_request;
+    required_request.svg_path = output
+        .path()
+        .join("locus-required-missing.svg")
+        .to_string_lossy()
+        .to_string();
+    required_request
+        .ensembl_regulation
+        .as_mut()
+        .expect("required Ensembl request")
+        .availability_policy = GeneLocusEnsemblRegulationAvailabilityPolicy::Required;
+    let error = GentleEngine::default()
+        .apply(Operation::PrepareGeneLocusEvidence {
+            request: Box::new(required_request),
+        })
+        .expect_err("required unavailable Ensembl index must fail");
+    assert_eq!(error.code, ErrorCode::NotFound);
 }
 
 #[test]
@@ -25020,6 +25208,7 @@ fn legacy_gene_locus_preparation_payloads_omit_optional_reporter_composition_fie
         serde_json::to_value(&request).expect("serialize legacy preparation request");
     assert!(request_json.get("reporter_architecture_request").is_none());
     assert!(request_json.get("reporter_report_path").is_none());
+    assert!(request_json.get("ensembl_regulation").is_none());
 
     let receipt = GeneLocusEvidencePreparationReceipt::default();
     let receipt_json =
@@ -25030,6 +25219,7 @@ fn legacy_gene_locus_preparation_payloads_omit_optional_reporter_composition_fie
             .is_none()
     );
     assert!(receipt_json.get("reporter_architecture_ids").is_none());
+    assert!(receipt_json.get("ensembl_regulation").is_none());
 }
 
 #[test]

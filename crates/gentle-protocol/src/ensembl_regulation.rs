@@ -37,6 +37,10 @@ pub struct EnsemblRegulationSourceDescriptor {
     pub regulatory_activity_url: Option<String>,
     pub data_access_url: String,
     pub primary_analysis_url: String,
+    /// Provider-owned species token used by canonical feature browser URLs.
+    pub browser_species_slug: String,
+    /// Pinned provider URL template containing exactly one `{FEATURE_ID}` token.
+    pub feature_page_url_template: String,
     pub coordinate_system: String,
     pub scope_note: String,
     pub activity_note: String,

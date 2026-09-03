@@ -10,6 +10,7 @@ use crate::engine::{
 use gentle_render::{
     GeneLocusEvidenceOverlay, GeneLocusEvidenceOverlayLegendItem, GeneLocusEvidenceOverlayRow,
     GeneLocusEvidenceOverlaySchematicTail, GeneLocusEvidenceOverlaySegment,
+    GeneLocusEvidenceRenderedSvg, render_gene_locus_evidence_with_overlay,
     render_gene_locus_evidence_with_overlay_svg,
 };
 use std::collections::{BTreeMap, BTreeSet};
@@ -738,6 +739,21 @@ pub fn render_promoter_reporter_architecture_svg(
         escape_svg_text(&report.cutrun_evidence.quantitative_comparison_status)
     );
     svg
+}
+
+/// Render a promoter-reporter composition while retaining URI hotspot geometry
+/// for raster-backed PDF exports.
+pub fn render_promoter_reporter_architecture_with_links(
+    report: &PromoterReporterArchitectureComparisonReport,
+) -> GeneLocusEvidenceRenderedSvg {
+    if let Some(locus_evidence) = report.locus_evidence.as_ref() {
+        let overlay = normalized_locus_overlay(report);
+        return render_gene_locus_evidence_with_overlay(locus_evidence, Some(&overlay));
+    }
+    GeneLocusEvidenceRenderedSvg {
+        svg: render_promoter_reporter_architecture_svg(report),
+        uri_links: vec![],
+    }
 }
 
 #[cfg(test)]

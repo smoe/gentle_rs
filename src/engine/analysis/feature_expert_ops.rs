@@ -14908,8 +14908,449 @@ impl GentleEngine {
             regulatory_score_tracks,
             scale_bar,
             assay_overlays,
+            ensembl_regulation: None,
             provenance,
             warnings,
+        })
+    }
+
+    fn gene_locus_ensembl_unavailable(
+        request: &GeneLocusEnsemblRegulationRequest,
+        source: gentle_protocol::EnsemblRegulationSourceDescriptor,
+        reason: String,
+    ) -> GeneLocusEnsemblRegulationEvidence {
+        GeneLocusEnsemblRegulationEvidence {
+            schema: GENE_LOCUS_ENSEMBL_REGULATION_EVIDENCE_SCHEMA.to_string(),
+            availability: GeneLocusEnsemblRegulationAvailability::Unavailable,
+            requested_source_id: request.source_id.clone(),
+            source: Some(source),
+            unavailable_reason: Some(reason),
+            evidence_statement: "Ensembl Regulation annotation was requested but was unavailable; no activity or absence claim is made."
+                .to_string(),
+            non_claims: vec![
+                "Unavailable annotation is not evidence that regulatory regions are absent."
+                    .to_string(),
+                "No biosample activity, TF occupancy, or causal target relationship was evaluated."
+                    .to_string(),
+            ],
+            provider_link_note: "Provider links open live Ensembl Regulation pages; plotted annotations, when available, remain bound to the recorded release and content digests."
+                .to_string(),
+            ..Default::default()
+        }
+    }
+
+    fn gene_locus_local_interval_strand(genomic: Option<char>, anchor: Option<char>) -> String {
+        let genomic = genomic.unwrap_or('.');
+        let local = if anchor == Some('-') {
+            match genomic {
+                '+' => '-',
+                '-' => '+',
+                other => other,
+            }
+        } else {
+            genomic
+        };
+        local.to_string()
+    }
+
+    fn gene_locus_signed_tss_distance(
+        genomic_start_1based: usize,
+        genomic_end_1based: usize,
+        tss_1based: usize,
+        gene_strand: &str,
+    ) -> i64 {
+        let raw = if tss_1based < genomic_start_1based {
+            genomic_start_1based.saturating_sub(tss_1based) as i128
+        } else if tss_1based > genomic_end_1based {
+            -(tss_1based.saturating_sub(genomic_end_1based) as i128)
+        } else {
+            0
+        };
+        let transcript_oriented = if gene_strand == "-" { -raw } else { raw };
+        transcript_oriented.clamp(i64::MIN as i128, i64::MAX as i128) as i64
+    }
+
+    fn gene_locus_validate_expected_digest(
+        label: &str,
+        expected: Option<&str>,
+        observed: &str,
+    ) -> Result<(), EngineError> {
+        let Some(expected) = expected else {
+            return Ok(());
+        };
+        if !Self::gene_locus_is_sha256_binding(expected) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Gene-locus Ensembl Regulation {label} lock '{expected}' is not a canonical sha256:<64 hex> binding"
+                ),
+                cause_chain: vec![],
+            });
+        }
+        if expected != observed {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Gene-locus Ensembl Regulation {label} digest mismatch: expected '{expected}', observed '{observed}'"
+                ),
+                cause_chain: vec![],
+            });
+        }
+        Ok(())
+    }
+
+    fn gene_locus_ensembl_tss_points(
+        display: &GeneLocusEvidenceDisplayReport,
+        reporter: Option<&PromoterReporterArchitectureComparisonReport>,
+        anchor: Option<&SequenceGenomeAnchorSummary>,
+    ) -> Vec<(String, usize)> {
+        let mut points = reporter
+            .into_iter()
+            .flat_map(|report| report.tss_classes.iter())
+            .map(|row| {
+                let genomic = row.representative_tss_genomic_1based.unwrap_or_else(|| {
+                    Self::isoform_evidence_local_position_to_report_1based(
+                        anchor,
+                        row.representative_tss_local_0based.saturating_add(1),
+                    )
+                });
+                (row.class_id.clone(), genomic)
+            })
+            .collect::<Vec<_>>();
+        if points.is_empty()
+            && let Some(splicing) = display.isoform_evidence.splicing.as_ref()
+        {
+            for transcript in &splicing.transcripts {
+                let local_tss = if transcript.strand == "-" {
+                    transcript.exons.iter().map(|exon| exon.end_1based).max()
+                } else {
+                    transcript.exons.iter().map(|exon| exon.start_1based).min()
+                };
+                if let Some(local_tss) = local_tss {
+                    points.push((
+                        format!("transcript:{}", transcript.transcript_id),
+                        Self::isoform_evidence_local_position_to_report_1based(anchor, local_tss),
+                    ));
+                }
+            }
+        }
+        points.sort();
+        points.dedup();
+        points
+    }
+
+    fn gene_locus_ensembl_regulation_evidence(
+        &self,
+        seq_id: &str,
+        display: &GeneLocusEvidenceDisplayReport,
+        reporter: Option<&PromoterReporterArchitectureComparisonReport>,
+        request: &GeneLocusEnsemblRegulationRequest,
+        include_local_source_paths: bool,
+    ) -> Result<GeneLocusEnsemblRegulationEvidence, EngineError> {
+        let source = crate::ensembl_regulation::source_descriptor(&request.source_id).map_err(
+            |message| EngineError {
+                code: ErrorCode::InvalidInput,
+                message,
+                cause_chain: vec![],
+            },
+        )?;
+        if request.interval_index_path.trim().is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Gene-locus Ensembl Regulation evidence requires interval_index_path"
+                    .to_string(),
+                cause_chain: vec![],
+            });
+        }
+        if !std::path::Path::new(&request.interval_index_path).is_file() {
+            let reason = format!(
+                "Ensembl Regulation interval index '{}' is not available",
+                request.interval_index_path
+            );
+            return if request.availability_policy
+                == GeneLocusEnsemblRegulationAvailabilityPolicy::Required
+            {
+                Err(EngineError {
+                    code: ErrorCode::NotFound,
+                    message: reason,
+                    cause_chain: vec![],
+                })
+            } else {
+                Ok(Self::gene_locus_ensembl_unavailable(
+                    request, source, reason,
+                ))
+            };
+        }
+        let index = crate::ensembl_regulation::read_interval_index(&request.interval_index_path)
+            .map_err(|message| EngineError {
+                code: ErrorCode::InvalidInput,
+                message,
+                cause_chain: vec![],
+            })?;
+        if index.source.source_id != request.source_id {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Gene-locus Ensembl Regulation request names source '{}', but index '{}' contains '{}'",
+                    request.source_id, request.interval_index_path, index.source.source_id
+                ),
+                cause_chain: vec![],
+            });
+        }
+        let observed_index_sha256 = format!(
+            "sha256:{}",
+            crate::digest_utils::sha256_file_hex(std::path::Path::new(
+                &request.interval_index_path,
+            ))
+            .map_err(|error| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not hash Ensembl Regulation index '{}': {error}",
+                    request.interval_index_path
+                ),
+                cause_chain: vec![],
+            })?
+        );
+        Self::gene_locus_validate_expected_digest(
+            "index",
+            request.expected_index_sha256.as_deref(),
+            &observed_index_sha256,
+        )?;
+        Self::gene_locus_validate_expected_digest(
+            "interval",
+            request.expected_intervals_sha256.as_deref(),
+            &index.intervals_sha256,
+        )?;
+        let resolved_intervals_path = match crate::ensembl_regulation::resolve_intervals_path(
+            &request.interval_index_path,
+            &index,
+            request.intervals_path.as_deref(),
+        ) {
+            Ok(path) => path,
+            Err(reason)
+                if request.availability_policy
+                    == GeneLocusEnsemblRegulationAvailabilityPolicy::RetainUnavailable =>
+            {
+                return Ok(Self::gene_locus_ensembl_unavailable(
+                    request, source, reason,
+                ));
+            }
+            Err(message) => {
+                return Err(EngineError {
+                    code: ErrorCode::NotFound,
+                    message,
+                    cause_chain: vec![],
+                });
+            }
+        };
+        // Identity failures remain failures even for retain_unavailable: a
+        // present but different snapshot must never be presented as absence.
+        crate::ensembl_regulation::validate_intervals_identity(&resolved_intervals_path, &index)
+            .map_err(|message| EngineError {
+                code: ErrorCode::InvalidInput,
+                message,
+                cause_chain: vec![],
+            })?;
+        let overlap = self.query_ensembl_regulation_overlaps(
+            seq_id,
+            &request.interval_index_path,
+            Some(resolved_intervals_path.to_string_lossy().as_ref()),
+            Some(display.locus_local_start_1based.saturating_sub(1)),
+            Some(display.locus_local_end_1based),
+            &request.feature_types,
+            Some(request.max_rows),
+        )?;
+        let anchor = self.sequence_genome_anchor_summary(seq_id)?;
+        let (query_genomic_start, query_genomic_end) = Self::ensembl_regulation_genomic_query_span(
+            &anchor,
+            display.locus_local_start_1based.saturating_sub(1),
+            display.locus_local_end_1based,
+        )?;
+        let tss_points = Self::gene_locus_ensembl_tss_points(display, reporter, Some(&anchor));
+        let mut rows = Vec::with_capacity(overlap.rows.len());
+        for overlap_row in &overlap.rows {
+            let interval = &overlap_row.interval;
+            let canonical_feature_url =
+                crate::ensembl_regulation::feature_page_url(&overlap.source, &interval.feature_id)
+                    .map_err(|message| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message,
+                        cause_chain: vec![],
+                    })?;
+            let extended_projection = interval
+                .extended_start_0based
+                .zip(interval.extended_end_0based_exclusive)
+                .and_then(|(start, end)| {
+                    let mut extended = interval.clone();
+                    extended.start_0based = start;
+                    extended.end_0based_exclusive = end;
+                    Self::project_ensembl_regulation_interval(
+                        extended,
+                        &anchor,
+                        query_genomic_start,
+                        query_genomic_end,
+                    )
+                });
+            let extended_clipped = extended_projection
+                .as_ref()
+                .is_some_and(|projection| projection.clipped);
+            let genomic_start = interval.start_0based.saturating_add(1) as usize;
+            let genomic_end = interval.end_0based_exclusive as usize;
+            let mut tss_distances = tss_points
+                .iter()
+                .map(|(class_id, tss)| {
+                    (
+                        class_id.clone(),
+                        Self::gene_locus_signed_tss_distance(
+                            genomic_start,
+                            genomic_end,
+                            *tss,
+                            &display.gene_strand,
+                        ),
+                    )
+                })
+                .collect::<Vec<_>>();
+            tss_distances.sort_by(|left, right| {
+                left.1
+                    .unsigned_abs()
+                    .cmp(&right.1.unsigned_abs())
+                    .then(left.0.cmp(&right.0))
+            });
+            let nearest_abs = tss_distances.first().map(|row| row.1.unsigned_abs());
+            let nearest_tss_class_ids = nearest_abs
+                .map(|distance| {
+                    tss_distances
+                        .iter()
+                        .take_while(|row| row.1.unsigned_abs() == distance)
+                        .map(|row| row.0.clone())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let signed_distance_to_nearest_tss_bp = tss_distances.first().map(|row| row.1);
+            let overlapping_tss_class_ids = tss_distances
+                .iter()
+                .filter(|row| row.1 == 0)
+                .map(|row| row.0.clone())
+                .collect::<Vec<_>>();
+            let overlapping_reporter_architecture_ids = reporter
+                .into_iter()
+                .flat_map(|report| report.architectures.iter())
+                .filter(|architecture| {
+                    architecture.segments.iter().any(|segment| {
+                        segment
+                            .source_start_0based
+                            .zip(segment.source_end_0based_exclusive)
+                            .is_some_and(|(start, end)| {
+                                start < overlap_row.local_end_0based_exclusive
+                                    && overlap_row.local_start_0based < end
+                            })
+                    })
+                })
+                .map(|architecture| architecture.architecture_id.clone())
+                .collect::<Vec<_>>();
+            rows.push(GeneLocusEnsemblRegulationFeatureRow {
+                source_id: overlap.source.source_id.clone(),
+                provider: overlap.source.provider.clone(),
+                annotation_release: overlap.source.annotation_release.clone(),
+                annotation_api_version: overlap.source.annotation_api_version.clone(),
+                pipeline_version: overlap.source.pipeline_version.clone(),
+                assembly_name: overlap.source.assembly_name.clone(),
+                assembly_accession: overlap.source.assembly_accession.clone(),
+                feature_id: interval.feature_id.clone(),
+                feature_type: interval.feature_type.clone(),
+                core_genomic_start_1based: genomic_start,
+                core_genomic_end_1based: genomic_end,
+                displayed_genomic_start_1based: overlap_row
+                    .genomic_start_0based
+                    .saturating_add(1) as usize,
+                displayed_genomic_end_1based: overlap_row.genomic_end_0based_exclusive as usize,
+                displayed_local_start_1based: overlap_row.local_start_0based.saturating_add(1),
+                displayed_local_end_1based: overlap_row.local_end_0based_exclusive,
+                extended_genomic_start_1based: interval
+                    .extended_start_0based
+                    .map(|value| value.saturating_add(1) as usize),
+                extended_genomic_end_1based: interval
+                    .extended_end_0based_exclusive
+                    .map(|value| value as usize),
+                extended_local_start_1based: extended_projection
+                    .as_ref()
+                    .map(|row| row.local_start_0based.saturating_add(1)),
+                extended_local_end_1based: extended_projection
+                    .as_ref()
+                    .map(|row| row.local_end_0based_exclusive),
+                local_strand: Self::gene_locus_local_interval_strand(
+                    interval.strand,
+                    anchor.strand,
+                ),
+                genomic_strand: interval.strand.unwrap_or('.').to_string(),
+                clipped: overlap_row.clipped || extended_clipped,
+                locus_relation: if overlap_row.clipped {
+                    "core_clipped_by_displayed_locus".to_string()
+                } else if extended_clipped {
+                    "extended_span_clipped_by_displayed_locus".to_string()
+                } else {
+                    "contained_in_displayed_locus".to_string()
+                },
+                associated_gene_ids: interval.associated_gene_ids.clone(),
+                associated_gene_names: interval.associated_gene_names.clone(),
+                canonical_feature_url,
+                feature_url_template: overlap.source.feature_page_url_template.clone(),
+                overlapping_tss_class_ids,
+                nearest_tss_class_ids,
+                signed_distance_to_nearest_tss_bp,
+                absolute_distance_to_nearest_tss_bp: nearest_abs,
+                signed_distance_basis: "negative=upstream and positive=downstream in displayed gene 5-prime-to-3-prime orientation; zero=feature contains TSS"
+                    .to_string(),
+                overlapping_reporter_architecture_ids,
+                relationship_statement: "Geometric locus/TSS/reporter overlap only; provider-associated genes are annotations and do not establish biosample activity or causal regulation."
+                    .to_string(),
+            });
+        }
+        rows.sort_by(|left, right| {
+            left.displayed_local_start_1based
+                .cmp(&right.displayed_local_start_1based)
+                .then(
+                    left.displayed_local_end_1based
+                        .cmp(&right.displayed_local_end_1based),
+                )
+                .then(left.feature_id.cmp(&right.feature_id))
+        });
+        let portable_path = |path: &str| {
+            include_local_source_paths
+                .then(|| path.to_string())
+                .or_else(|| {
+                    std::path::Path::new(path)
+                        .file_name()
+                        .and_then(|value| value.to_str())
+                        .map(str::to_string)
+                })
+        };
+        Ok(GeneLocusEnsemblRegulationEvidence {
+            schema: GENE_LOCUS_ENSEMBL_REGULATION_EVIDENCE_SCHEMA.to_string(),
+            availability: GeneLocusEnsemblRegulationAvailability::Available,
+            requested_source_id: request.source_id.clone(),
+            source: Some(overlap.source.clone()),
+            source_binding: Some(GeneLocusEnsemblRegulationSourceBinding {
+                source: overlap.source,
+                overlap_report_id: overlap.report_id,
+                index_sha256: overlap.index_sha256,
+                intervals_sha256: overlap.intervals_sha256,
+                content_identity_verified: overlap.content_identity_verified,
+                assembly_match_status: overlap.assembly_match_status,
+                interval_index_path: portable_path(&overlap.index_path),
+                resolved_intervals_path: portable_path(&overlap.resolved_intervals_path),
+                requested_feature_types: overlap.requested_feature_types,
+                max_rows: overlap.max_rows,
+                matched_feature_count: overlap.matched_feature_count,
+                returned_feature_count: overlap.returned_feature_count,
+                truncated: overlap.truncated,
+            }),
+            rows,
+            evidence_statement: overlap.evidence_statement,
+            non_claims: overlap.non_claims,
+            provider_link_note: "Links open the provider's live feature pages; plotted annotation is the pinned local release identified by source and content digests."
+                .to_string(),
+            ..Default::default()
         })
     }
 
@@ -15408,19 +15849,9 @@ impl GentleEngine {
             include_local_source_paths: request.include_local_source_paths,
             ..Default::default()
         };
-        let display_report =
+        let mut display_report =
             self.build_gene_locus_evidence_display_report(&seq_id, &display_request)?;
-        let display_json = serde_json::to_string(&display_report).map_err(|error| EngineError {
-            code: ErrorCode::Internal,
-            message: format!("Could not serialize gene-locus display report: {error}"),
-            cause_chain: vec![],
-        })?;
-        let display_report_sha256 = crate::digest_utils::sha256_prefixed_str(&display_json);
         let mut artifacts = Vec::new();
-        if let Some(path) = request.display_report_path.as_deref() {
-            self.write_pretty_json_file(&display_report, path, "gene-locus evidence report")?;
-            artifacts.push(Self::gene_locus_output_artifact("report_json", path)?);
-        }
         let mut reporter_report = if let Some(nested) =
             request.reporter_architecture_request.as_ref()
         {
@@ -15457,8 +15888,8 @@ impl GentleEngine {
                     .unwrap_or("redacted.svg")
                     .to_string()
             });
-            if let Some(path) = request.reporter_report_path.as_deref() {
-                report.json_path = Some(if request.include_local_source_paths {
+            report.json_path = request.reporter_report_path.as_deref().map(|path| {
+                if request.include_local_source_paths {
                     path.to_string()
                 } else {
                     std::path::Path::new(path)
@@ -15466,31 +15897,94 @@ impl GentleEngine {
                         .and_then(|value| value.to_str())
                         .unwrap_or("redacted.json")
                         .to_string()
-                });
-                self.write_pretty_json_file(
-                    &report,
-                    path,
-                    "promoter-reporter architecture comparison",
-                )?;
-                artifacts.push(Self::gene_locus_output_artifact(
-                    "reporter_report_json",
-                    path,
-                )?);
-            }
+                }
+            });
             Some(report)
         } else {
             None
         };
-        let svg = if let Some(report) = reporter_report.as_ref() {
-            crate::render_promoter_reporter_architecture::render_promoter_reporter_architecture_svg(
+        if let Some(ensembl_request) = request.ensembl_regulation.as_ref() {
+            let evidence = self.gene_locus_ensembl_regulation_evidence(
+                &seq_id,
+                &display_report,
+                reporter_report.as_ref(),
+                ensembl_request,
+                request.include_local_source_paths,
+            )?;
+            if let Some(binding) = evidence.source_binding.as_ref() {
+                display_report
+                    .provenance
+                    .push(GeneIsoformEvidenceProvenanceSource {
+                        source_kind: "ensembl_regulation_annotation_index".to_string(),
+                        source_id: binding.source.source_id.clone(),
+                        schema: Some(ENSEMBL_REGULATION_OVERLAP_SCHEMA.to_string()),
+                        path: request
+                            .include_local_source_paths
+                            .then(|| ensembl_request.interval_index_path.clone()),
+                        sha256: Some(binding.index_sha256.clone()),
+                    });
+                display_report
+                    .provenance
+                    .push(GeneIsoformEvidenceProvenanceSource {
+                        source_kind: "ensembl_regulation_annotation_intervals".to_string(),
+                        source_id: binding.source.source_id.clone(),
+                        schema: Some(GENE_LOCUS_ENSEMBL_REGULATION_EVIDENCE_SCHEMA.to_string()),
+                        path: request
+                            .include_local_source_paths
+                            .then(|| binding.resolved_intervals_path.clone().unwrap_or_default()),
+                        sha256: Some(binding.intervals_sha256.clone()),
+                    });
+            } else if let Some(reason) = evidence.unavailable_reason.as_ref() {
+                display_report
+                    .warnings
+                    .push(format!("Ensembl Regulation evidence unavailable: {reason}"));
+            }
+            display_report.provenance.sort_by(|left, right| {
+                left.source_kind
+                    .cmp(&right.source_kind)
+                    .then(left.source_id.cmp(&right.source_id))
+                    .then(left.path.cmp(&right.path))
+            });
+            display_report.provenance.dedup_by(|left, right| {
+                left.source_kind == right.source_kind
+                    && left.source_id == right.source_id
+                    && left.path == right.path
+                    && left.sha256 == right.sha256
+            });
+            display_report.warnings.sort();
+            display_report.warnings.dedup();
+            display_report.ensembl_regulation = Some(evidence);
+        }
+        if let Some(report) = reporter_report.as_mut() {
+            report.locus_evidence = Some(display_report.clone());
+        }
+        let display_json = serde_json::to_string(&display_report).map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize gene-locus display report: {error}"),
+            cause_chain: vec![],
+        })?;
+        let display_report_sha256 = crate::digest_utils::sha256_prefixed_str(&display_json);
+        if let Some(path) = request.display_report_path.as_deref() {
+            self.write_pretty_json_file(&display_report, path, "gene-locus evidence report")?;
+            artifacts.push(Self::gene_locus_output_artifact("report_json", path)?);
+        }
+        if let Some(report) = reporter_report.as_ref()
+            && let Some(path) = request.reporter_report_path.as_deref()
+        {
+            self.write_pretty_json_file(report, path, "promoter-reporter architecture comparison")?;
+            artifacts.push(Self::gene_locus_output_artifact(
+                "reporter_report_json",
+                path,
+            )?);
+        }
+        let rendered = if let Some(report) = reporter_report.as_ref() {
+            crate::render_promoter_reporter_architecture::render_promoter_reporter_architecture_with_links(
                 report,
             )
         } else {
-            render_feature_expert_svg(&FeatureExpertView::GeneLocusEvidence(
-                display_report.clone(),
-            ))
+            gentle_render::render_gene_locus_evidence_with_overlay(&display_report, None)
         };
-        std::fs::write(&request.svg_path, svg).map_err(|error| EngineError {
+        std::fs::write(&request.svg_path, &rendered.svg).map_err(|error| EngineError {
             code: ErrorCode::Io,
             message: format!(
                 "Could not write gene-locus evidence SVG '{}': {error}",
@@ -15517,10 +16011,23 @@ impl GentleEngine {
             artifacts.push(Self::gene_locus_output_artifact("png", path)?);
         }
         if let Some(path) = request.pdf_path.as_deref() {
-            crate::svg_pdf::render_svg_file_to_pdf(
+            let links = rendered
+                .uri_links
+                .iter()
+                .map(|link| crate::svg_pdf::SvgPdfUriLink {
+                    x_px: link.x_px,
+                    y_px: link.y_px,
+                    width_px: link.width_px,
+                    height_px: link.height_px,
+                    uri: link.uri.clone(),
+                })
+                .collect::<Vec<_>>();
+            crate::svg_pdf::render_svg_file_to_pdf_with_links(
                 std::path::Path::new(&request.svg_path),
                 std::path::Path::new(path),
                 png_options,
+                &links,
+                &["regulation.ensembl.org"],
             )
             .map_err(|message| EngineError {
                 code: ErrorCode::Io,
@@ -15651,6 +16158,15 @@ impl GentleEngine {
                     output_sha256: track.output_sha256.clone(),
                 })
                 .collect(),
+            ensembl_regulation: display_report.ensembl_regulation.as_ref().map(|evidence| {
+                GeneLocusEvidenceEnsemblRegulationBinding {
+                    availability: evidence.availability,
+                    requested_source_id: evidence.requested_source_id.clone(),
+                    source: evidence.source.clone(),
+                    unavailable_reason: evidence.unavailable_reason.clone(),
+                    source_binding: evidence.source_binding.clone(),
+                }
+            }),
             scale_bar: display_report.scale_bar,
             display_report_sha256,
             reporter_architecture_report_sha256,
@@ -15823,6 +16339,60 @@ impl GentleEngine {
 #[cfg(test)]
 mod gene_locus_probe_effect_tests {
     use super::*;
+
+    #[test]
+    fn signed_tss_distance_is_gene_oriented_on_both_strands() {
+        assert_eq!(
+            GentleEngine::gene_locus_signed_tss_distance(100, 200, 250, "+"),
+            -50,
+            "a feature left of a plus-strand TSS is upstream"
+        );
+        assert_eq!(
+            GentleEngine::gene_locus_signed_tss_distance(100, 200, 50, "+"),
+            50,
+            "a feature right of a plus-strand TSS is downstream"
+        );
+        assert_eq!(
+            GentleEngine::gene_locus_signed_tss_distance(100, 200, 250, "-"),
+            50,
+            "the same genomic feature is downstream on a minus-strand gene"
+        );
+        assert_eq!(
+            GentleEngine::gene_locus_signed_tss_distance(300, 400, 250, "-"),
+            -50,
+            "a feature right of a minus-strand TSS is upstream"
+        );
+        assert_eq!(
+            GentleEngine::gene_locus_signed_tss_distance(100, 200, 150, "-"),
+            0,
+            "a feature containing the TSS has zero distance"
+        );
+    }
+
+    #[test]
+    fn expected_ensembl_regulation_digest_lock_fails_closed() {
+        let observed = format!("sha256:{}", "a".repeat(64));
+        GentleEngine::gene_locus_validate_expected_digest("index", None, &observed)
+            .expect("an omitted optional lock accepts the observed digest");
+        GentleEngine::gene_locus_validate_expected_digest("index", Some(&observed), &observed)
+            .expect("an exact lock accepts the observed digest");
+        let mismatch = format!("sha256:{}", "b".repeat(64));
+        let error =
+            GentleEngine::gene_locus_validate_expected_digest("index", Some(&mismatch), &observed)
+                .expect_err("a replaced index must fail its optional content lock");
+        assert_eq!(error.code, ErrorCode::InvalidInput);
+        assert!(error.message.contains("digest mismatch"));
+        assert!(
+            GentleEngine::gene_locus_validate_expected_digest(
+                "interval",
+                Some("sha256:not-a-digest"),
+                &observed,
+            )
+            .expect_err("malformed locks must not be accepted")
+            .message
+            .contains("not a canonical")
+        );
+    }
 
     #[test]
     fn patz1_fixture_preserves_probe_classes_contrasts_and_minus_strand_order() {

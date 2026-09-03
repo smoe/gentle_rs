@@ -4706,6 +4706,31 @@ Shared shell command:
       - source descriptors expose the separate regulatory-activity matrix and
         primary-analysis page. This annotation route does not download those
         files or claim biosample activity from overlap alone.
+      - the canonical `gene-locus prepare @request.json` workflow can consume
+        an installed index directly, without materializing features. Add an
+        optional request member such as:
+
+        ```json
+        "ensembl_regulation": {
+          "source_id": "ensembl_regulation_2026_08_grch38",
+          "interval_index_path": "data/resources/ensembl-regulation.2026-08.grch38.interval-index.json",
+          "feature_types": ["promoter", "enhancer", "open_chromatin_region", "ctcf", "emar"],
+          "max_rows": 1000,
+          "availability_policy": "retain_unavailable"
+        }
+        ```
+
+        Use `required` instead when a missing or unverifiable snapshot must
+        stop figure generation. Provenance-sensitive reruns may additionally
+        set `expected_index_sha256` and `expected_intervals_sha256` to the exact
+        `sha256:...` values from a reviewed prior report/receipt. The report and
+        receipt retain source/release and observed content hashes while local
+        paths follow the request's sharing policy.
+      - the resulting combined SVG contains safe live feature/data-access links
+        to the exact `regulation.ensembl.org` host. PDF export writes matching
+        PDF link annotations rather than relying on rasterized blue text. The
+        link may show the provider's current live record; plotted coordinates
+        remain those of the recorded local release and digest.
       - no Ensembl Regulation file or network endpoint is touched at startup;
         absence affects only explicit Ensembl Regulation commands.
     - TFBS/JASPAR direct scan helper notes (`features tfbs-scan`):
@@ -4942,6 +4967,13 @@ Isoform architecture panel workflow:
       canonical architecture rows in the same SVG/PNG/PDF as occupancy,
       chromatin, TF-score, transcript, and scale-bar evidence. Nested callers
       must not supply a competing `locus_evidence_request`
+    - an optional `ensembl_regulation` member performs a bounded, source-bound
+      overlap query against an explicitly installed Ensembl Regulation index.
+      It adds only Ensembl-annotated regulatory-region rows to the canonical
+      report and combined figure; generic materialized `regulatory_region`
+      features, including SCREEN rows, are not enumerated. The default
+      `retain_unavailable` policy keeps missing evidence visible without
+      affecting unrelated locus preparation, while `required` fails closed
     - combined reporter rows include a material legend for genomic source,
       spliced exon/cDNA, and schematic `LUC` segments. The offline LOCUSDEMO
       request demonstrates independent TP73, PATZ1, E2F1, and SP1 JASPAR rows

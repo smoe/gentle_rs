@@ -54,7 +54,12 @@ credential, or network-derived payload. The names `LOCUSDEMO`,
 
 `prepare_gene_locus_evidence_runs_fully_offline_with_normalized_score_sources`
 executes the typed `PrepareGeneLocusEvidence` operation directly against the
-offline entry without network access or pre-existing project state. The test
+offline entry without network access or pre-existing project state. During the
+test it also writes a tiny deterministic Ensembl Regulation normalized-interval
+file and sparse index into the test's temporary directory. Those two synthetic
+rows exercise source/release/digest binding, promoter/enhancer geometry, live
+feature-link construction, an explicit unavailable policy, and SVG/PDF link
+annotations; they are not persisted as biological fixture data. The test
 verifies the canonical genome anchor, automatic isoform panel, two
 transcript/TSS and CDS-start classes, explicit occupancy/chromatin roles, four
 normalized JASPAR and external-model score tracks, one explicit unavailable

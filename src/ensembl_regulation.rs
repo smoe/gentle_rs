@@ -36,6 +36,7 @@ fn source(
     assembly_accession: &str,
     gene_annotation_release: &str,
     activity_url: &str,
+    browser_species_slug: &str,
 ) -> EnsemblRegulationSourceDescriptor {
     let annotation_release = "2026-08";
     let api_version = "v0.15";
@@ -68,6 +69,10 @@ fn source(
         regulatory_activity_url: Some(activity_url.to_string()),
         data_access_url: ENSEMBL_REGULATION_DATA_ACCESS_URL.to_string(),
         primary_analysis_url: ENSEMBL_REGULATION_PRIMARY_ANALYSIS_URL.to_string(),
+        browser_species_slug: browser_species_slug.to_string(),
+        feature_page_url_template: format!(
+            "https://regulation.ensembl.org/regulatory_features/{browser_species_slug}/{{FEATURE_ID}}"
+        ),
         coordinate_system:
             "Ensembl API 1-based inclusive; GENtle normalized TSV 0-based half-open".to_string(),
         scope_note: "Release-bound Ensembl regulatory annotation. Associated genes are provider annotations, not proof that a feature regulates a named gene."
@@ -92,6 +97,7 @@ pub fn source_catalog() -> EnsemblRegulationSourceCatalog {
                 "GCA_000001405.29",
                 "50",
                 "https://regulation.ensembl.org/api/annotation/v0.15/files/download/2026-08/homo_sapiens/GRCh38/Homo_sapiens.GRCh38.regulatory_activity.tsv.gz",
+                "homo_sapiens",
             ),
             source(
                 ENSEMBL_REGULATION_2026_08_GRCM39_SOURCE_ID,
@@ -102,6 +108,7 @@ pub fn source_catalog() -> EnsemblRegulationSourceCatalog {
                 "GCA_000001635.9",
                 "M39",
                 "https://regulation.ensembl.org/api/annotation/v0.15/files/download/2026-08/mus_musculus/GRCm39/Mus_musculus.GRCm39.regulatory_activity.tsv.gz",
+                "mus_musculus",
             ),
         ],
         notes: vec![
@@ -134,6 +141,54 @@ pub fn source_descriptor(source_id: &str) -> Result<EnsemblRegulationSourceDescr
                     .join(", ")
             )
         })
+}
+
+/// Builds one canonical provider feature URL from the pinned source contract.
+pub fn feature_page_url(
+    source: &EnsemblRegulationSourceDescriptor,
+    feature_id: &str,
+) -> Result<String, String> {
+    let catalog_source = source_descriptor(&source.source_id)?;
+    if source.browser_species_slug != catalog_source.browser_species_slug
+        || source.feature_page_url_template != catalog_source.feature_page_url_template
+    {
+        return Err(format!(
+            "Ensembl Regulation source '{}' does not match the pinned feature-browser contract",
+            source.source_id
+        ));
+    }
+    let feature_id = feature_id.trim();
+    let safe_feature_id = feature_id.starts_with("ENSR")
+        && feature_id.len() <= 128
+        && feature_id
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.'));
+    if !safe_feature_id {
+        return Err(format!(
+            "Ensembl Regulation feature id '{feature_id}' is not safe for a provider URL"
+        ));
+    }
+    if catalog_source
+        .feature_page_url_template
+        .matches("{FEATURE_ID}")
+        .count()
+        != 1
+    {
+        return Err(format!(
+            "Ensembl Regulation source '{}' has an invalid feature URL template",
+            source.source_id
+        ));
+    }
+    let url = catalog_source
+        .feature_page_url_template
+        .replace("{FEATURE_ID}", feature_id);
+    if !url.starts_with("https://regulation.ensembl.org/") {
+        return Err(format!(
+            "Ensembl Regulation source '{}' produced an unsafe feature URL",
+            source.source_id
+        ));
+    }
+    Ok(url)
 }
 
 fn path_token(raw: &str) -> String {
@@ -683,7 +738,7 @@ pub fn prepare_interval_index(
 pub fn read_interval_index(path: &str) -> Result<EnsemblRegulationIntervalIndex, String> {
     let text = fs::read_to_string(path)
         .map_err(|error| format!("Could not read Ensembl Regulation index '{path}': {error}"))?;
-    let index = serde_json::from_str::<EnsemblRegulationIntervalIndex>(&text)
+    let mut index = serde_json::from_str::<EnsemblRegulationIntervalIndex>(&text)
         .map_err(|error| format!("Invalid Ensembl Regulation index '{path}': {error}"))?;
     if index.schema != ENSEMBL_REGULATION_INTERVAL_INDEX_SCHEMA {
         return Err(format!(
@@ -699,6 +754,15 @@ pub fn read_interval_index(path: &str) -> Result<EnsemblRegulationIntervalIndex,
     let catalog_source = source_descriptor(&index.source.source_id).map_err(|error| {
         format!("Ensembl Regulation index '{path}' does not identify a supported source: {error}")
     })?;
+    // Indexes created before the browser-link contract remain usable. Empty
+    // serde-defaulted fields are hydrated only from the same pinned source;
+    // non-empty mismatches still fail closed below.
+    if index.source.browser_species_slug.trim().is_empty()
+        && index.source.feature_page_url_template.trim().is_empty()
+    {
+        index.source.browser_species_slug = catalog_source.browser_species_slug.clone();
+        index.source.feature_page_url_template = catalog_source.feature_page_url_template.clone();
+    }
     if index.source != catalog_source {
         return Err(format!(
             "Ensembl Regulation index '{path}' source descriptor does not match GENtle's '{}' catalog entry; rebuild the index before use",
@@ -945,6 +1009,22 @@ mod tests {
         assert!(genome_id_matches_source("mm39_ensembl", &mouse));
         assert!(!genome_id_matches_source("mm10", &mouse));
         assert!(!genome_id_matches_source("hg38", &mouse));
+        assert_eq!(human.browser_species_slug, "homo_sapiens");
+        assert_eq!(mouse.browser_species_slug, "mus_musculus");
+    }
+
+    #[test]
+    fn feature_urls_use_only_the_pinned_provider_contract() {
+        let human =
+            source_descriptor(ENSEMBL_REGULATION_2026_08_GRCH38_SOURCE_ID).expect("human source");
+        assert_eq!(
+            feature_page_url(&human, "ENSR1_958").expect("feature URL"),
+            "https://regulation.ensembl.org/regulatory_features/homo_sapiens/ENSR1_958"
+        );
+        assert!(feature_page_url(&human, "https://example.test/x").is_err());
+        let mut tampered = human;
+        tampered.feature_page_url_template = "https://example.test/{FEATURE_ID}".to_string();
+        assert!(feature_page_url(&tampered, "ENSR1_958").is_err());
     }
 
     #[test]
@@ -977,6 +1057,64 @@ mod tests {
         let rows = query_overlaps(&index, &intervals, "chr1", 65_570, 65_575, &[]).expect("query");
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].feature_id, "ENSR_TEST_CTCF");
+    }
+
+    #[test]
+    fn legacy_index_hydrates_empty_browser_contract_from_pinned_source() {
+        let root = tempdir().expect("tempdir");
+        let intervals = root.path().join("regulation.tsv");
+        let index_path = root.path().join("regulation.index.json");
+        write_fixture(&intervals);
+        let index = prepare_interval_index(
+            intervals.to_string_lossy().as_ref(),
+            index_path.to_string_lossy().as_ref(),
+            source_descriptor(ENSEMBL_REGULATION_2026_08_GRCH38_SOURCE_ID).expect("source"),
+        )
+        .expect("index");
+        let mut value = serde_json::to_value(index).expect("serialize index");
+        let source = value["source"].as_object_mut().expect("source object");
+        source.remove("browser_species_slug");
+        source.remove("feature_page_url_template");
+        fs::write(
+            &index_path,
+            serde_json::to_vec_pretty(&value).expect("serialize legacy index"),
+        )
+        .expect("write legacy index");
+        let hydrated =
+            read_interval_index(index_path.to_string_lossy().as_ref()).expect("read legacy index");
+        assert_eq!(hydrated.source.browser_species_slug, "homo_sapiens");
+        assert!(
+            hydrated
+                .source
+                .feature_page_url_template
+                .contains("{FEATURE_ID}")
+        );
+    }
+
+    #[test]
+    fn same_size_interval_content_replacement_fails_digest_validation() {
+        let root = tempdir().expect("tempdir");
+        let intervals = root.path().join("regulation.tsv");
+        let index_path = root.path().join("regulation.index.json");
+        write_fixture(&intervals);
+        let index = prepare_interval_index(
+            intervals.to_string_lossy().as_ref(),
+            index_path.to_string_lossy().as_ref(),
+            source_descriptor(ENSEMBL_REGULATION_2026_08_GRCH38_SOURCE_ID).expect("source"),
+        )
+        .expect("index");
+        let mut bytes = fs::read(&intervals).expect("read intervals");
+        let marker = b"ENSR_TEST_PROMOTER";
+        let marker_start = bytes
+            .windows(marker.len())
+            .position(|window| window == marker)
+            .expect("fixture feature id");
+        bytes[marker_start + marker.len() - 1] = b'X';
+        fs::write(&intervals, bytes).expect("replace interval content in place");
+
+        let error = validate_intervals_identity(&intervals, &index)
+            .expect_err("same-size content replacement must fail its digest binding");
+        assert!(error.contains("content digest"));
     }
 
     #[test]
