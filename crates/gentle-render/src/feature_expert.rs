@@ -5520,13 +5520,14 @@ pub fn render_gene_locus_evidence_with_overlay(
             let y = saved_region_top + 8.0 + index as f32 * 24.0;
             let x1 = x_for(row.local_start_1based);
             let x2 = x_for(row.local_end_1based);
-            let color = match row.purpose {
+            let default_color = match row.purpose {
                 GenomicRegionPurpose::CandidateCisRegulatoryRegion => "#7c3aed",
                 GenomicRegionPurpose::OccupancyRegion => "#dc2626",
                 GenomicRegionPurpose::PromoterRegion => "#0f766e",
                 GenomicRegionPurpose::ReporterCandidate => "#c2410c",
                 GenomicRegionPurpose::Other => "#475569",
             };
+            let color = row.display_color_hex.as_deref().unwrap_or(default_color);
             let label = row
                 .label
                 .as_deref()
@@ -7674,6 +7675,7 @@ mod tests {
                 region_id: "roi_promoter".to_string(),
                 label: Some("candidate promoter".to_string()),
                 purpose: gentle_protocol::GenomicRegionPurpose::PromoterRegion,
+                display_color_hex: Some("#123ABC".to_string()),
                 selection_method: gentle_protocol::GenomicRegionSelectionMethod::ManualSpan,
                 evidence_availability:
                     gentle_protocol::GenomicRegionEvidenceAvailability::Unverified,
@@ -7695,6 +7697,7 @@ mod tests {
         );
         let svg = render_gene_locus_evidence_with_overlay(&report, None).svg;
         assert!(svg.contains("data-gentle-saved-region-section=\"true\""));
+        assert!(svg.contains("fill=\"#123ABC\""));
         assert!(svg.contains("data-gentle-saved-region=\"roi_promoter\""));
         assert!(svg.contains("data-gentle-region-set=\"shared_regions\""));
         assert!(svg.contains("data-gentle-region-purpose=\"promoter_region\""));

@@ -1123,6 +1123,18 @@ Feature tree grouping:
     renders its SVG through the shared renderer into the live GUI preview;
     transcript metrics, PSR/JUC effects, occupancy/motif summaries, warnings,
     and provenance remain inspectable beside the figure
+  - the interactive inspector below the publication preview keeps transcript,
+    Ensembl Regulation, predicted TF-score, saved-region, and nucleotide
+    geometry on one local axis. It supports fit/zoom, per-lane visibility,
+    nucleotide letters at <=120 bp, and opening the same span in the full DNA
+    map. Visibility changes affect inspection only; changing scientific inputs
+    still requires explicit recomposition
+  - dragging across the inspector stages an exact local interval as a
+    `reporter_candidate` genomic ROI. Saving it uses the existing
+    assembly-bound region manager, where its colour is persistent and remains
+    presentation metadata rather than biological evidence. A portable locus
+    report JSON can be loaded to inspect the exact evidence behind an existing
+    document, but only when its sequence id matches the active sequence
   - regulatory-score JSON may define several JASPAR matrices/TFs and offline
     external-model outputs with independent score semantics and scales. The GUI
     does not numerically compare unlike providers and never labels an

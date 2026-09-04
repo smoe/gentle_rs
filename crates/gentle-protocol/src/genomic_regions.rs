@@ -253,6 +253,10 @@ pub struct GenomicRegionOfInterest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub local_projection: Option<GenomicRegionLocalProjection>,
     pub purpose: GenomicRegionPurpose,
+    /// Optional persistent presentation colour (`#RRGGBB`). It is excluded
+    /// from region identity, but included in the content digest.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_color_hex: Option<String>,
     pub selection_method: GenomicRegionSelectionMethod,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub evidence: Vec<GenomicRegionEvidenceReference>,
@@ -310,6 +314,8 @@ pub struct GenomicRegionCreateRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub local_projection: Option<GenomicRegionLocalProjection>,
     pub purpose: GenomicRegionPurpose,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_color_hex: Option<String>,
     pub selection_method: GenomicRegionSelectionMethod,
     pub evidence: Vec<GenomicRegionEvidenceReference>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -400,6 +406,8 @@ pub struct GenomicRegionCaptureRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     pub purpose: GenomicRegionPurpose,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_color_hex: Option<String>,
     pub source: GenomicRegionCaptureSource,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub created_at_unix_ms: Option<u128>,
@@ -416,6 +424,8 @@ pub struct GenomicRegionUpdateRequest {
     pub label: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_color_hex: Option<String>,
     pub notes: Vec<String>,
 }
 
@@ -432,6 +442,8 @@ pub struct GenomicRegionDeriveRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     pub purpose: GenomicRegionPurpose,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_color_hex: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub created_at_unix_ms: Option<u128>,
     pub notes: Vec<String>,

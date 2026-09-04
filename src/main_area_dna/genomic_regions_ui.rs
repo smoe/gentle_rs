@@ -17,6 +17,11 @@ enum GenomicRegionManagerAction {
     ImportBed,
     ExportJson(String),
     ExportBed(String),
+    UpdateColor {
+        set_id: String,
+        region: gentle_protocol::GenomicRegionOfInterest,
+        color_hex: String,
+    },
 }
 
 impl MainAreaDna {
@@ -104,6 +109,7 @@ impl MainAreaDna {
                 .then(|| self.genomic_region_default_set_label.trim().to_string()),
             label: (!label.is_empty()).then(|| label.to_string()),
             purpose: self.genomic_region_new_purpose,
+            display_color_hex: Some(self.genomic_region_new_color_hex.clone()),
             source: gentle_protocol::GenomicRegionCaptureSource::SequenceSelection {
                 seq_id,
                 local_start_0based: start as u64,
@@ -141,6 +147,7 @@ impl MainAreaDna {
             set_label: Some(self.genomic_region_default_set_label.trim().to_string()),
             label: Some(format!("CUT&RUN {window_id}")),
             purpose: gentle_protocol::GenomicRegionPurpose::OccupancyRegion,
+            display_color_hex: Some("#DC2626".to_string()),
             source: gentle_protocol::GenomicRegionCaptureSource::CutrunSupportWindow {
                 report: Box::new(report),
                 window_id,
@@ -190,6 +197,7 @@ impl MainAreaDna {
             set_label: Some(self.genomic_region_default_set_label.trim().to_string()),
             label: Some(format!("{} {}", row.feature_type, row.feature_id)),
             purpose: gentle_protocol::GenomicRegionPurpose::CandidateCisRegulatoryRegion,
+            display_color_hex: Some("#7C3AED".to_string()),
             source:
                 gentle_protocol::GenomicRegionCaptureSource::GeneLocusEnsemblRegulatoryFeature {
                     row,
@@ -431,6 +439,13 @@ impl MainAreaDna {
                                             );
                                         }
                                     });
+                                ui.label("Colour");
+                                ui.add(
+                                    egui::TextEdit::singleline(
+                                        &mut self.genomic_region_new_color_hex,
+                                    )
+                                    .desired_width(76.0),
+                                );
                                 let save = ui.button("Save/share region");
                                 #[cfg(feature = "gui-test-support")]
                                 crate::gui_test_support::register_response(
@@ -504,13 +519,13 @@ impl MainAreaDna {
                         });
                         ui.small(format!("set digest {}", set.content_sha256));
                         egui::Grid::new(("genomic_region_table", set.set_id.as_str()))
-                            .num_columns(8)
+                            .num_columns(9)
                             .striped(true)
                             .spacing(Vec2::new(12.0, 4.0))
                             .show(ui, |ui| {
                                 for heading in [
                                     "ID", "label", "assembly", "coordinate", "strand", "method",
-                                    "evidence", "copy",
+                                    "evidence", "colour", "copy",
                                 ] {
                                     ui.small(egui::RichText::new(heading).strong());
                                 }
@@ -543,6 +558,28 @@ impl MainAreaDna {
                                         availability.as_str(),
                                         region.evidence.len()
                                     ));
+                                    let mut color = MainAreaDna::locus_inspector_color(
+                                        region.display_color_hex.as_deref(),
+                                        egui::Color32::from_rgb(194, 65, 12),
+                                    );
+                                    if egui::color_picker::color_edit_button_srgba(
+                                        ui,
+                                        &mut color,
+                                        egui::color_picker::Alpha::Opaque,
+                                    )
+                                    .changed()
+                                    {
+                                        action = Some(GenomicRegionManagerAction::UpdateColor {
+                                            set_id: set.set_id.clone(),
+                                            region: region.clone(),
+                                            color_hex: format!(
+                                                "#{:02X}{:02X}{:02X}",
+                                                color.r(),
+                                                color.g(),
+                                                color.b()
+                                            ),
+                                        });
+                                    }
                                     ui.horizontal(|ui| {
                                         let human = ui.small_button("1-based").on_hover_text(
                                             "Copy human coordinates (1-based inclusive)",
@@ -652,6 +689,23 @@ impl MainAreaDna {
             }
             Some(GenomicRegionManagerAction::ExportBed(set_id)) => {
                 self.export_genomic_region_set_bed(&set_id)
+            }
+            Some(GenomicRegionManagerAction::UpdateColor {
+                set_id,
+                region,
+                color_hex,
+            }) => {
+                let request = gentle_protocol::GenomicRegionUpdateRequest {
+                    set_id,
+                    region_id: region.region_id,
+                    label: region.label,
+                    description: region.description,
+                    display_color_hex: Some(color_hex),
+                    notes: region.notes,
+                };
+                let _ = self.apply_genomic_region_operation(
+                    Operation::UpdateGenomicRegionPresentation { request },
+                );
             }
             None => {}
         }

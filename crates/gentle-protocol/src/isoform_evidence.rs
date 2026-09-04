@@ -582,6 +582,8 @@ pub struct GeneLocusSavedRegionOverlayRow {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
     pub purpose: GenomicRegionPurpose,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_color_hex: Option<String>,
     pub selection_method: GenomicRegionSelectionMethod,
     pub evidence_availability: GenomicRegionEvidenceAvailability,
     pub local_start_1based: usize,

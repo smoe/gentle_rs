@@ -4229,8 +4229,9 @@ external coding agent runtime, see:
   - `gentle.genomic_region_set.v1` groups only species/assembly-compatible
     regions. The immutable identity digest binds geometry, purpose, selection
     method, evidence, derivation, and any exact sequence projection; mutable
-    labels, descriptions, notes, and projection availability affect the
-    content digest without changing that identity
+    labels, descriptions, notes, an optional normalized `#RRGGBB` display
+    colour, and projection availability affect the content digest without
+    changing that identity. Colour is presentation metadata and never evidence
   - an optional local projection binds a sequence id, exact sequence SHA-256,
     genome-anchor coordinates/orientation, and local interval. Import rejects
     a projection whose geometry or strand does not reproduce the canonical

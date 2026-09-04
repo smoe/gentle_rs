@@ -9052,6 +9052,56 @@ fn splicing_locus_resource_rows_distinguish_ready_and_relocated_files() {
 }
 
 #[test]
+fn splicing_locus_interactive_inspector_renders_score_sequence_and_saved_region() {
+    let dna = DNAsequence::from_sequence(&"ACGT".repeat(40)).expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("interactive_locus".to_string()), None);
+    let report = GeneLocusEvidenceDisplayReport {
+        seq_id: "interactive_locus".to_string(),
+        gene_symbol: "DEMO".to_string(),
+        locus_local_start_1based: 1,
+        locus_local_end_1based: 160,
+        local_axis_direction: gentle_protocol::GeneLocusLocalAxisDirection::IncreasingLeftToRight,
+        regulatory_score_tracks: vec![gentle_protocol::GeneLocusRegulatoryScoreTrack {
+            track_id: "demo_tf".to_string(),
+            label: "DEMO TF".to_string(),
+            track_start_0based: 0,
+            stride_bp: 1,
+            display_scale_min: 0.0,
+            display_scale_max: 1.0,
+            forward_scores: vec![0.0, 0.5, 1.0, 0.2],
+            reverse_scores: vec![0.1, 0.4, 0.8, 0.3],
+            ..Default::default()
+        }],
+        saved_region_overlays: vec![gentle_protocol::GeneLocusSavedRegionOverlayRow {
+            set_id: "reporter_regions".to_string(),
+            region_id: "candidate_a".to_string(),
+            local_start_1based: 10,
+            local_end_1based: 40,
+            display_color_hex: Some("#336699".to_string()),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    area.reset_splicing_locus_inspector(&report);
+    area.splicing_locus_inspector_start_1based = 1;
+    area.splicing_locus_inspector_end_1based = 40;
+
+    let ctx = egui::Context::default();
+    ctx.begin_pass(egui::RawInput::default());
+    egui::Area::new("locus_inspector_test".into()).show(&ctx, |ui| {
+        ui.set_width(800.0);
+        area.render_splicing_locus_interactive_inspector(ui, &report);
+    });
+    crate::egui_compat::discard_test_pass_output(&ctx);
+    assert_eq!(area.splicing_locus_inspector_start_1based, 1);
+    assert_eq!(area.splicing_locus_inspector_end_1based, 40);
+    assert_eq!(
+        MainAreaDna::locus_inspector_color(Some("#336699"), egui::Color32::BLACK),
+        egui::Color32::from_rgb(0x33, 0x66, 0x99)
+    );
+}
+
+#[test]
 fn splicing_locus_multiple_imported_panels_require_and_persist_explicit_selection() {
     let fixture = "test_files/fixtures/isoform_evidence/patz1";
     let mut engine = GentleEngine::default();

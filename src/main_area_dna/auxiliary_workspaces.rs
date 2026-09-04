@@ -8385,6 +8385,71 @@ impl MainAreaDna {
         Ok(())
     }
 
+    pub(super) fn reset_splicing_locus_inspector(
+        &mut self,
+        report: &GeneLocusEvidenceDisplayReport,
+    ) {
+        self.splicing_locus_inspector_start_1based = report.locus_local_start_1based;
+        self.splicing_locus_inspector_end_1based = report.locus_local_end_1based;
+        self.splicing_locus_inspector_selection = None;
+        self.splicing_locus_inspector_drag_anchor = None;
+        self.splicing_locus_inspector_hidden_scores.clear();
+        self.splicing_locus_inspector_hidden_ensembl.clear();
+    }
+
+    fn load_splicing_locus_report_json_dialog(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("GENtle locus report", &["json"])
+            .pick_file()
+        else {
+            return;
+        };
+        let result = std::fs::read(&path)
+            .map_err(|error| format!("Could not read '{}': {error}", path.display()))
+            .and_then(|bytes| {
+                if let Ok(report) = serde_json::from_slice::<GeneLocusEvidenceDisplayReport>(&bytes)
+                {
+                    return Ok(report);
+                }
+                let reporter =
+                    serde_json::from_slice::<PromoterReporterArchitectureComparisonReport>(&bytes)
+                        .map_err(|error| {
+                            format!(
+                                "Could not parse '{}' as a locus or reporter report: {error}",
+                                path.display()
+                            )
+                        })?;
+                reporter.locus_evidence.ok_or_else(|| {
+                    format!(
+                        "Reporter report '{}' has no composed locus evidence",
+                        path.display()
+                    )
+                })
+            });
+        match result {
+            Ok(report) if report.seq_id == self.seq_id.as_deref().unwrap_or_default() => {
+                let preview = self.cache_splicing_locus_preview(&report);
+                self.reset_splicing_locus_inspector(&report);
+                self.splicing_locus_report = Some(Arc::new(report));
+                self.splicing_locus_status = match preview {
+                    Ok(()) => format!("Loaded portable locus report '{}'", path.display()),
+                    Err(error) => format!(
+                        "Loaded portable locus report '{}'; preview failed: {error}",
+                        path.display()
+                    ),
+                };
+            }
+            Ok(report) => {
+                self.splicing_locus_status = format!(
+                    "Report sequence '{}' does not match active sequence '{}'",
+                    report.seq_id,
+                    self.seq_id.as_deref().unwrap_or("<none>")
+                );
+            }
+            Err(error) => self.splicing_locus_status = error,
+        }
+    }
+
     pub(super) fn inspect_splicing_locus_evidence(&mut self) {
         crate::gentle_gui_profile_scope!("MainAreaDna::inspect_splicing_locus_evidence");
         let request = match self.splicing_locus_evidence_request() {
@@ -8401,6 +8466,7 @@ impl MainAreaDna {
         {
             Ok(FeatureExpertView::GeneLocusEvidence(report)) => {
                 let preview_status = self.cache_splicing_locus_preview(&report);
+                self.reset_splicing_locus_inspector(&report);
                 self.splicing_locus_status = format!(
                     "Composed {} transcript(s), {} occupancy group(s), {} motif track(s), {} probe-effect row(s), and {} assay marker(s)",
                     report.transcript_metrics.len(),
@@ -9016,6 +9082,431 @@ impl MainAreaDna {
         };
     }
 
+    pub(super) fn locus_inspector_color(
+        value: Option<&str>,
+        fallback: egui::Color32,
+    ) -> egui::Color32 {
+        let Some(value) = value.and_then(|value| value.strip_prefix('#')) else {
+            return fallback;
+        };
+        if value.len() != 6 {
+            return fallback;
+        }
+        let parse = |range| u8::from_str_radix(&value[range], 16).ok();
+        match (parse(0..2), parse(2..4), parse(4..6)) {
+            (Some(r), Some(g), Some(b)) => egui::Color32::from_rgb(r, g, b),
+            _ => fallback,
+        }
+    }
+
+    pub(super) fn render_splicing_locus_interactive_inspector(
+        &mut self,
+        ui: &mut egui::Ui,
+        report: &GeneLocusEvidenceDisplayReport,
+    ) {
+        let locus_start = report.locus_local_start_1based.max(1);
+        let locus_end = report.locus_local_end_1based.max(locus_start);
+        self.splicing_locus_inspector_start_1based = self
+            .splicing_locus_inspector_start_1based
+            .clamp(locus_start, locus_end);
+        self.splicing_locus_inspector_end_1based = self
+            .splicing_locus_inspector_end_1based
+            .clamp(self.splicing_locus_inspector_start_1based, locus_end);
+        let view_span = self
+            .splicing_locus_inspector_end_1based
+            .saturating_sub(self.splicing_locus_inspector_start_1based)
+            .saturating_add(1);
+
+        ui.horizontal_wrapped(|ui| {
+            ui.strong("Interactive locus inspection");
+            let fit = ui.small_button("Fit locus");
+            #[cfg(feature = "gui-test-support")]
+            crate::gui_test_support::register_response(
+                &fit,
+                "splicing.locus.inspector.fit",
+                crate::tutorial_gui_semantics::WINDOW_SPLICING_EXPERT,
+                None,
+                crate::gui_test_support::GuiTestWidgetKind::Button,
+                false,
+            );
+            if fit.clicked() {
+                self.splicing_locus_inspector_start_1based = locus_start;
+                self.splicing_locus_inspector_end_1based = locus_end;
+            }
+            let center = self
+                .splicing_locus_inspector_start_1based
+                .saturating_add(view_span / 2);
+            if ui.small_button("−").on_hover_text("Zoom out").clicked() {
+                let span = view_span.saturating_mul(2).min(locus_end - locus_start + 1);
+                let start = center.saturating_sub(span / 2).max(locus_start);
+                self.splicing_locus_inspector_start_1based = start.min(locus_end + 1 - span);
+                self.splicing_locus_inspector_end_1based =
+                    self.splicing_locus_inspector_start_1based + span - 1;
+            }
+            if ui.small_button("+").on_hover_text("Zoom in").clicked() {
+                let span = (view_span / 2).max(10).min(view_span);
+                let start = center.saturating_sub(span / 2).max(locus_start);
+                self.splicing_locus_inspector_start_1based = start.min(locus_end + 1 - span);
+                self.splicing_locus_inspector_end_1based =
+                    self.splicing_locus_inspector_start_1based + span - 1;
+            }
+            ui.checkbox(
+                &mut self.splicing_locus_inspector_show_sequence,
+                "Sequence at nucleotide zoom",
+            );
+            let open_map = ui.small_button("Open this span in DNA map");
+            #[cfg(feature = "gui-test-support")]
+            crate::gui_test_support::register_response(
+                &open_map,
+                "splicing.locus.inspector.open_in_dna_map",
+                crate::tutorial_gui_semantics::WINDOW_SPLICING_EXPERT,
+                None,
+                crate::gui_test_support::GuiTestWidgetKind::Button,
+                false,
+            );
+            if open_map.clicked() {
+                self.set_linear_viewport(
+                    self.splicing_locus_inspector_start_1based.saturating_sub(1),
+                    view_span,
+                );
+                self.show_map = true;
+                self.show_sequence = true;
+            }
+            ui.monospace(format!(
+                "local {}..{} ({} bp)",
+                self.splicing_locus_inspector_start_1based,
+                self.splicing_locus_inspector_end_1based,
+                view_span
+            ));
+            ui.label("start");
+            ui.add(
+                egui::DragValue::new(&mut self.splicing_locus_inspector_start_1based)
+                    .range(locus_start..=locus_end),
+            );
+            ui.label("end");
+            ui.add(
+                egui::DragValue::new(&mut self.splicing_locus_inspector_end_1based)
+                    .range(locus_start..=locus_end),
+            );
+        });
+        self.splicing_locus_inspector_start_1based = self
+            .splicing_locus_inspector_start_1based
+            .clamp(locus_start, locus_end);
+        self.splicing_locus_inspector_end_1based = self
+            .splicing_locus_inspector_end_1based
+            .clamp(self.splicing_locus_inspector_start_1based, locus_end);
+        let view_span = self
+            .splicing_locus_inspector_end_1based
+            .saturating_sub(self.splicing_locus_inspector_start_1based)
+            .saturating_add(1);
+
+        egui::CollapsingHeader::new("Visible evidence lanes")
+            .default_open(true)
+            .show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    for track in &report.regulatory_score_tracks {
+                        let mut visible = !self
+                            .splicing_locus_inspector_hidden_scores
+                            .contains(&track.track_id);
+                        if ui.checkbox(&mut visible, &track.label).changed() {
+                            if visible {
+                                self.splicing_locus_inspector_hidden_scores.remove(&track.track_id);
+                            } else {
+                                self.splicing_locus_inspector_hidden_scores
+                                    .insert(track.track_id.clone());
+                            }
+                        }
+                    }
+                    if let Some(ensembl) = report.ensembl_regulation.as_ref() {
+                        for row in &ensembl.rows {
+                            let mut visible = !self
+                                .splicing_locus_inspector_hidden_ensembl
+                                .contains(&row.feature_id);
+                            if ui
+                                .checkbox(
+                                    &mut visible,
+                                    format!("{} ({})", row.feature_id, row.feature_type),
+                                )
+                                .changed()
+                            {
+                                if visible {
+                                    self.splicing_locus_inspector_hidden_ensembl
+                                        .remove(&row.feature_id);
+                                } else {
+                                    self.splicing_locus_inspector_hidden_ensembl
+                                        .insert(row.feature_id.clone());
+                                }
+                            }
+                        }
+                    }
+                });
+                ui.small(
+                    "Visibility is an inspection choice only. Add or remove score sources in the composition request, then recompute to change the scientific report.",
+                );
+            });
+
+        let visible_scores = report
+            .regulatory_score_tracks
+            .iter()
+            .filter(|track| {
+                !self
+                    .splicing_locus_inspector_hidden_scores
+                    .contains(&track.track_id)
+            })
+            .collect::<Vec<_>>();
+        let ensembl_rows = report
+            .ensembl_regulation
+            .iter()
+            .flat_map(|evidence| evidence.rows.iter())
+            .filter(|row| {
+                !self
+                    .splicing_locus_inspector_hidden_ensembl
+                    .contains(&row.feature_id)
+                    && row.displayed_local_end_1based >= self.splicing_locus_inspector_start_1based
+                    && row.displayed_local_start_1based <= self.splicing_locus_inspector_end_1based
+            })
+            .collect::<Vec<_>>();
+        let max_sequence_bases = ((ui.available_width() - 142.0).max(90.0) / 9.0) as usize;
+        let sequence_lane =
+            self.splicing_locus_inspector_show_sequence && view_span <= max_sequence_bases;
+        let lane_height = 38.0;
+        let canvas_height = 78.0
+            + visible_scores.len() as f32 * lane_height
+            + if sequence_lane { 34.0 } else { 0.0 };
+        let (response, painter) = ui.allocate_painter(
+            egui::vec2(ui.available_width().max(360.0), canvas_height),
+            egui::Sense::click_and_drag(),
+        );
+        let rect = response.rect;
+        #[cfg(feature = "gui-test-support")]
+        crate::gui_test_support::register_rect(
+            ui.ctx().clone(),
+            "splicing.locus.inspector.canvas",
+            crate::tutorial_gui_semantics::WINDOW_SPLICING_EXPERT,
+            None,
+            crate::gui_test_support::GuiTestWidgetKind::Row,
+            rect,
+            true,
+            true,
+            response.hovered(),
+            Some("ready"),
+        );
+        painter.rect_filled(rect, 4.0, egui::Color32::from_rgb(248, 250, 252));
+        let plot_left = rect.left() + 130.0;
+        let plot_right = rect.right() - 12.0;
+        let increasing = report.local_axis_direction
+            != gentle_protocol::GeneLocusLocalAxisDirection::DecreasingLeftToRight;
+        let view_start = self.splicing_locus_inspector_start_1based;
+        let view_end = self.splicing_locus_inspector_end_1based;
+        let x_for = |position: usize| {
+            let fraction = position.saturating_sub(view_start) as f32
+                / view_end.saturating_sub(view_start).max(1) as f32;
+            if increasing {
+                egui::lerp(plot_left..=plot_right, fraction.clamp(0.0, 1.0))
+            } else {
+                egui::lerp(plot_right..=plot_left, fraction.clamp(0.0, 1.0))
+            }
+        };
+        let position_for_x = |x: f32| {
+            let raw = ((x - plot_left) / (plot_right - plot_left).max(1.0)).clamp(0.0, 1.0);
+            let fraction = if increasing { raw } else { 1.0 - raw };
+            view_start + (fraction * view_end.saturating_sub(view_start) as f32).round() as usize
+        };
+
+        for row in &report.saved_region_overlays {
+            if row.local_end_1based < view_start || row.local_start_1based > view_end {
+                continue;
+            }
+            let x1 = x_for(row.local_start_1based.max(view_start));
+            let x2 = x_for(row.local_end_1based.min(view_end));
+            let color = Self::locus_inspector_color(
+                row.display_color_hex.as_deref(),
+                egui::Color32::from_rgb(194, 65, 12),
+            );
+            painter.rect_filled(
+                egui::Rect::from_x_y_ranges(x1.min(x2)..=x1.max(x2), rect.top()..=rect.bottom()),
+                0.0,
+                color.gamma_multiply(0.14),
+            );
+        }
+
+        let axis_y = rect.top() + 25.0;
+        painter.line_segment(
+            [
+                egui::pos2(plot_left, axis_y),
+                egui::pos2(plot_right, axis_y),
+            ],
+            egui::Stroke::new(1.0, egui::Color32::GRAY),
+        );
+        painter.text(
+            egui::pos2(rect.left() + 4.0, axis_y),
+            egui::Align2::LEFT_CENTER,
+            "transcripts / CDS",
+            egui::FontId::monospace(10.0),
+            egui::Color32::DARK_GRAY,
+        );
+        for exon in &report.isoform_evidence.exon_families {
+            if exon.local_end_1based < view_start || exon.local_start_1based > view_end {
+                continue;
+            }
+            let x1 = x_for(exon.local_start_1based.max(view_start));
+            let x2 = x_for(exon.local_end_1based.min(view_end));
+            painter.rect_filled(
+                egui::Rect::from_min_max(
+                    egui::pos2(x1.min(x2), axis_y - 6.0),
+                    egui::pos2(x1.max(x2).max(x1.min(x2) + 2.0), axis_y + 6.0),
+                ),
+                1.0,
+                egui::Color32::from_rgb(37, 99, 235),
+            );
+        }
+        for row in ensembl_rows {
+            let x1 = x_for(row.displayed_local_start_1based.max(view_start));
+            let x2 = x_for(row.displayed_local_end_1based.min(view_end));
+            painter.rect_filled(
+                egui::Rect::from_min_max(
+                    egui::pos2(x1.min(x2), axis_y + 11.0),
+                    egui::pos2(x1.max(x2).max(x1.min(x2) + 2.0), axis_y + 18.0),
+                ),
+                1.0,
+                egui::Color32::from_rgb(124, 58, 237),
+            );
+        }
+
+        let mut lane_y = rect.top() + 61.0;
+        for track in visible_scores {
+            painter.text(
+                egui::pos2(rect.left() + 4.0, lane_y),
+                egui::Align2::LEFT_CENTER,
+                format!("{} (+ rose / − blue)", track.label),
+                egui::FontId::monospace(9.0),
+                egui::Color32::DARK_GRAY,
+            );
+            painter.line_segment(
+                [
+                    egui::pos2(plot_left, lane_y + 14.0),
+                    egui::pos2(plot_right, lane_y + 14.0),
+                ],
+                egui::Stroke::new(0.5, egui::Color32::LIGHT_GRAY),
+            );
+            let scale = (track.display_scale_max - track.display_scale_min)
+                .abs()
+                .max(f64::EPSILON);
+            let stride = track.stride_bp.max(1);
+            let score_points = |scores: &[f64]| {
+                scores
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, score)| {
+                        let local = track.track_start_0based + index.saturating_mul(stride) + 1;
+                        (local >= view_start && local <= view_end).then(|| {
+                            let fraction =
+                                ((*score - track.display_scale_min) / scale).clamp(0.0, 1.0);
+                            egui::pos2(x_for(local), lane_y + 14.0 - fraction as f32 * 25.0)
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            };
+            let forward_points = score_points(&track.forward_scores);
+            let reverse_points = score_points(&track.reverse_scores);
+            if forward_points.len() > 1 {
+                painter.add(egui::Shape::line(
+                    forward_points,
+                    egui::Stroke::new(1.2, egui::Color32::from_rgb(190, 24, 93)),
+                ));
+            }
+            if reverse_points.len() > 1 {
+                painter.add(egui::Shape::line(
+                    reverse_points,
+                    egui::Stroke::new(1.0, egui::Color32::from_rgb(37, 99, 235)),
+                ));
+            }
+            lane_y += lane_height;
+        }
+
+        if sequence_lane {
+            let sequence = self
+                .dna
+                .read()
+                .ok()
+                .and_then(|dna| dna.get_range_safe(view_start.saturating_sub(1)..view_end));
+            if let Some(sequence) = sequence {
+                painter.text(
+                    egui::pos2(rect.left() + 4.0, lane_y),
+                    egui::Align2::LEFT_CENTER,
+                    "sequence",
+                    egui::FontId::monospace(9.0),
+                    egui::Color32::DARK_GRAY,
+                );
+                for (offset, base) in sequence.iter().enumerate() {
+                    let local = view_start + offset;
+                    painter.text(
+                        egui::pos2(x_for(local), lane_y),
+                        egui::Align2::CENTER_CENTER,
+                        (*base as char).to_ascii_uppercase(),
+                        egui::FontId::monospace(10.0),
+                        egui::Color32::BLACK,
+                    );
+                }
+            }
+        }
+
+        if response.drag_started()
+            && let Some(origin) = response.interact_pointer_pos()
+        {
+            self.splicing_locus_inspector_drag_anchor = Some(position_for_x(origin.x));
+        }
+        if response.dragged()
+            && let Some(origin) = response.interact_pointer_pos()
+        {
+            let current = position_for_x(origin.x);
+            let anchor = self.splicing_locus_inspector_drag_anchor.unwrap_or(current);
+            self.splicing_locus_inspector_selection =
+                Some((anchor.min(current), anchor.max(current)));
+        }
+        if let Some((start, end)) = self.splicing_locus_inspector_selection {
+            let x1 = x_for(start);
+            let x2 = x_for(end);
+            painter.rect_filled(
+                egui::Rect::from_x_y_ranges(x1.min(x2)..=x1.max(x2), rect.top()..=rect.bottom()),
+                0.0,
+                egui::Color32::from_rgba_unmultiplied(234, 88, 12, 42),
+            );
+            ui.horizontal_wrapped(|ui| {
+                ui.label(format!(
+                    "Candidate cloning region: local {start}..{end} ({} bp)",
+                    end - start + 1
+                ));
+                let stage = ui.button("Stage as persistent reporter region");
+                #[cfg(feature = "gui-test-support")]
+                crate::gui_test_support::register_response(
+                    &stage,
+                    "splicing.locus.inspector.stage_reporter_region",
+                    crate::tutorial_gui_semantics::WINDOW_SPLICING_EXPERT,
+                    None,
+                    crate::gui_test_support::GuiTestWidgetKind::Button,
+                    false,
+                );
+                if stage.clicked() {
+                    self.genomic_region_pending_selection = Some((start - 1, end));
+                    self.genomic_region_new_purpose =
+                        gentle_protocol::GenomicRegionPurpose::ReporterCandidate;
+                    self.genomic_region_new_label = format!(
+                        "{} reporter candidate {}-{}",
+                        report.gene_symbol, start, end
+                    );
+                    self.genomic_region_new_color_hex = "#C2410C".to_string();
+                    self.open_genomic_region_manager(Some((start - 1, end)));
+                }
+                if ui.small_button("Clear selection").clicked() {
+                    self.splicing_locus_inspector_selection = None;
+                }
+            });
+        } else {
+            ui.small("Drag across the shared locus axis to define a candidate cloning interval.");
+        }
+    }
+
     fn render_splicing_locus_report_ui(
         &mut self,
         ui: &mut egui::Ui,
@@ -9052,6 +9543,7 @@ impl MainAreaDna {
         } else {
             ui.small("The machine-readable report is available, but no raster preview is cached.");
         }
+        self.render_splicing_locus_interactive_inspector(ui, report);
 
         if !report.warnings.is_empty() {
             egui::CollapsingHeader::new(format!("Warnings ({})", report.warnings.len()))
@@ -9546,8 +10038,50 @@ impl MainAreaDna {
                         ui.small("bp, transcript-direction aware");
                         ui.end_row();
                         ui.label("Motifs");
-                        ui.text_edit_singleline(&mut self.splicing_locus_motifs);
-                        ui.small("Names or matrix ids");
+                        let motifs =
+                            Self::isoform_evidence_ordered_list(&self.splicing_locus_motifs);
+                        let mut remove_motif = None;
+                        ui.horizontal_wrapped(|ui| {
+                            for motif in &motifs {
+                                ui.group(|ui| {
+                                    ui.monospace(motif);
+                                    if ui
+                                        .small_button("×")
+                                        .on_hover_text("Remove TF score from the next composition")
+                                        .clicked()
+                                    {
+                                        remove_motif = Some(motif.clone());
+                                    }
+                                });
+                            }
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.splicing_locus_motif_add)
+                                    .hint_text("TF or JASPAR matrix")
+                                    .desired_width(150.0),
+                            );
+                            if ui.small_button("Add").clicked() {
+                                let candidate = self.splicing_locus_motif_add.trim();
+                                if !candidate.is_empty() {
+                                    let mut updated = motifs.clone();
+                                    if !updated
+                                        .iter()
+                                        .any(|value| value.eq_ignore_ascii_case(candidate))
+                                    {
+                                        updated.push(candidate.to_string());
+                                    }
+                                    self.splicing_locus_motifs = updated.join(", ");
+                                    self.splicing_locus_motif_add.clear();
+                                }
+                            }
+                        });
+                        if let Some(remove) = remove_motif {
+                            self.splicing_locus_motifs = motifs
+                                .into_iter()
+                                .filter(|value| value != &remove)
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                        }
+                        ui.small("Changes take effect after Compose and preview");
                         ui.end_row();
                         ui.label("Motif score kind");
                         ui.text_edit_singleline(&mut self.splicing_locus_motif_score_kind);
@@ -9632,6 +10166,15 @@ impl MainAreaDna {
         let mut export_json = false;
         let mut export_pdf = false;
         ui.horizontal_wrapped(|ui| {
+            if ui
+                .button("Load report JSON...")
+                .on_hover_text(
+                    "Inspect the exact portable locus report behind an existing document",
+                )
+                .clicked()
+            {
+                self.load_splicing_locus_report_json_dialog();
+            }
             let compose_response = ui.button("Compose and preview");
             #[cfg(feature = "gui-test-support")]
             crate::gui_test_support::register_response(

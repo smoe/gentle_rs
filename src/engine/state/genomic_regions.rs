@@ -72,6 +72,23 @@ fn validate_interval(interval: &gp::GenomicRegionInterval) -> Result<(), EngineE
     Ok(())
 }
 
+fn normalize_display_color(value: Option<String>) -> Result<Option<String>, EngineError> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let value = value.trim();
+    if value.len() != 7
+        || !value.starts_with('#')
+        || !value[1..].bytes().all(|byte| byte.is_ascii_hexdigit())
+    {
+        return Err(region_error(
+            ErrorCode::InvalidInput,
+            "display_color_hex must be '#RRGGBB'",
+        ));
+    }
+    Ok(Some(value.to_ascii_uppercase()))
+}
+
 fn validate_sha256(value: &str, field: &str) -> Result<(), EngineError> {
     let Some(hex) = value.strip_prefix("sha256:") else {
         return Err(region_error(
@@ -682,6 +699,7 @@ impl GentleEngine {
                     region_id: region.region_id.clone(),
                     label: region.label.clone(),
                     purpose: region.purpose,
+                    display_color_hex: region.display_color_hex.clone(),
                     selection_method: region.selection_method,
                     evidence_availability: availability,
                     local_start_1based,
@@ -989,9 +1007,10 @@ impl GentleEngine {
 
     fn create_region(
         &mut self,
-        request: gp::GenomicRegionCreateRequest,
+        mut request: gp::GenomicRegionCreateRequest,
     ) -> Result<gp::GenomicRegionOperationReport, EngineError> {
         validate_interval(&request.interval)?;
+        request.display_color_hex = normalize_display_color(request.display_color_hex)?;
         if let Some(supplied) = request.local_projection.as_ref() {
             let expected =
                 self.local_projection_for_interval(&supplied.seq_id, &request.interval)?;
@@ -1018,6 +1037,7 @@ impl GentleEngine {
             interval: request.interval,
             local_projection: request.local_projection,
             purpose: request.purpose,
+            display_color_hex: request.display_color_hex,
             selection_method: request.selection_method,
             evidence: request.evidence,
             derivation: None,
@@ -1462,6 +1482,7 @@ impl GentleEngine {
             interval,
             local_projection,
             purpose: request.purpose,
+            display_color_hex: request.display_color_hex,
             selection_method,
             evidence,
             created_at_unix_ms: request.created_at_unix_ms,
@@ -1578,6 +1599,9 @@ impl GentleEngine {
         let identity_before = region.identity_sha256.clone();
         region.label = request.label;
         region.description = request.description;
+        if request.display_color_hex.is_some() {
+            region.display_color_hex = normalize_display_color(request.display_color_hex)?;
+        }
         region.notes = request.notes;
         recompute_region_digests(region)?;
         if region.identity_sha256 != identity_before {
@@ -1791,6 +1815,7 @@ impl GentleEngine {
             interval,
             local_projection,
             purpose: request.purpose,
+            display_color_hex: normalize_display_color(request.display_color_hex)?,
             selection_method: gp::GenomicRegionSelectionMethod::Derived,
             evidence,
             derivation: Some(derivation),
@@ -2357,6 +2382,7 @@ mod tests {
                     set_id: "update_set".to_string(),
                     region_id: original.region_id.clone(),
                     label: Some("Readable label".to_string()),
+                    display_color_hex: Some("#1a2b3c".to_string()),
                     notes: vec!["reviewed by caller".to_string()],
                     ..Default::default()
                 },
@@ -2369,6 +2395,35 @@ mod tests {
         assert_eq!(updated.identity_sha256, original.identity_sha256);
         assert_ne!(updated.content_sha256, original.content_sha256);
         assert_eq!(updated.label.as_deref(), Some("Readable label"));
+        assert_eq!(updated.display_color_hex.as_deref(), Some("#1A2B3C"));
+
+        let recolored_content_sha256 = updated.content_sha256.clone();
+        let preserved = engine
+            .apply(Operation::UpdateGenomicRegionPresentation {
+                request: gp::GenomicRegionUpdateRequest {
+                    set_id: "update_set".to_string(),
+                    region_id: updated.region_id.clone(),
+                    label: Some("Renamed without a colour field".to_string()),
+                    ..Default::default()
+                },
+            })
+            .expect("legacy presentation update")
+            .genomic_region_operation
+            .expect("report")
+            .region
+            .expect("updated region");
+        assert_eq!(preserved.display_color_hex.as_deref(), Some("#1A2B3C"));
+        assert_ne!(preserved.content_sha256, recolored_content_sha256);
+
+        let invalid = engine.apply(Operation::UpdateGenomicRegionPresentation {
+            request: gp::GenomicRegionUpdateRequest {
+                set_id: "update_set".to_string(),
+                region_id: updated.region_id,
+                display_color_hex: Some("orange".to_string()),
+                ..Default::default()
+            },
+        });
+        assert!(invalid.is_err());
     }
 
     #[test]
