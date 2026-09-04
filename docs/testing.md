@@ -464,6 +464,19 @@ the X display and window manager alongside required and optional tool versions.
 `acceptance-report.json` contains the external aggregate verdict. The older
 shell Xvfb script remains only a liveness example.
 
+When a step retains a screenshot, the runner preserves one untouched X11-root
+PNG and writes a `gentle.tutorial_gui_screenshot_evidence.v1` sidecar. The
+sidecar binds the image to the exact source revision and GUI binary hash,
+tutorial manifest and acceptance-contract hashes, chapter/prose/step identity,
+semantic snapshot generation and canonical hash, pseudonymous subject scope,
+logical rectangle, pixel scale, and physical-pixel focus rectangle. It also
+records the capture backend and timestamp. Two lossless SVG teaching views are
+derived from that same raw PNG: a whole-screen orientation view and a padded
+interaction-context view, each with a numbered outline around the semantic
+focus. Their crop transforms and hashes remain in the sidecar. The raw capture
+is evidence; the SVGs are explanatory projections and never replace typed
+scientific verification.
+
 ## 6. Practical implementation order
 
 1. Keep extending engine tests alongside new operations

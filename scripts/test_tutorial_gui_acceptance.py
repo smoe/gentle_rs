@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from scripts import tutorial_gui_acceptance as acceptance
 
@@ -111,6 +113,54 @@ class TutorialGuiAcceptanceTests(unittest.TestCase):
                 allow_unscoped_fallback=True,
             )
         )
+
+    def test_screenshot_geometry_uses_physical_pixels_and_clamped_context(self) -> None:
+        item = {
+            "rect_logical_points": {
+                "min_x": 100.0,
+                "min_y": 50.0,
+                "max_x": 180.0,
+                "max_y": 90.0,
+            },
+            "pixels_per_point": 1.5,
+        }
+        rectangle = acceptance.semantic_pixel_rect(item)
+        self.assertEqual(
+            rectangle,
+            {"min_x": 150, "min_y": 75, "max_x": 270, "max_y": 135},
+        )
+        crop = acceptance.padded_crop_rect(rectangle, 320, 200)
+        self.assertEqual(crop["min_x"], 0)
+        self.assertEqual(crop["min_y"], 0)
+        self.assertEqual(crop["max_x"], 320)
+        self.assertEqual(crop["max_y"], 200)
+
+    def test_png_dimensions_and_teaching_svg_bind_one_raw_capture(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            png = root / "step.raw.png"
+            png.write_bytes(
+                b"\x89PNG\r\n\x1a\n"
+                + b"\x00\x00\x00\rIHDR"
+                + (640).to_bytes(4, "big")
+                + (480).to_bytes(4, "big")
+            )
+            self.assertEqual(acceptance.png_dimensions(png), (640, 480))
+            output = root / "step.context.svg"
+            acceptance.write_screenshot_view_svg(
+                output,
+                png,
+                640,
+                480,
+                {"min_x": 100, "min_y": 80, "max_x": 500, "max_y": 380},
+                {"min_x": 220, "min_y": 160, "max_x": 280, "max_y": 200},
+                "chapter / step",
+            )
+            svg = output.read_text(encoding="utf-8")
+            self.assertIn('href="step.raw.png"', svg)
+            self.assertIn('x="-100"', svg)
+            self.assertIn('width="60" height="40"', svg)
+            self.assertIn("chapter / step", svg)
 
 
 if __name__ == "__main__":

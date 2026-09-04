@@ -1,5 +1,14 @@
 # GENtle Changelog
 
+- Made tutorial GUI screenshots updateable evidence rather than anonymous
+  bitmaps. The external X11 acceptance runner now preserves one untouched raw
+  capture, binds it to the exact source/binary, tutorial contract, semantic
+  snapshot generation, target scope and physical-pixel rectangle, and emits a
+  versioned provenance sidecar. Whole-screen orientation and padded interaction
+  views are lossless SVG projections of that same PNG, with explicit crop
+  transforms and hashes; typed reports and saved state remain the scientific
+  oracle.
+
 - Added engine-owned, portable genomic regions of interest and region sets.
   Canonical records bind explicit species/assembly/contig identity, 0-based
   half-open geometry, strand, optional exact sequence projections, independent

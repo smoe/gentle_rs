@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import html
 import json
 import os
 import platform
@@ -31,6 +32,7 @@ LEDGER_SCHEMA = "gentle.tutorial_gui_acceptance_ledger.v1"
 RUN_SCHEMA = "gentle.tutorial_gui_acceptance_run.v1"
 ENVIRONMENT_SCHEMA = "gentle.tutorial_acceptance_environment.v1"
 PREPARATION_SCHEMA = "gentle.tutorial_gui_project_preparation.v1"
+SCREENSHOT_EVIDENCE_SCHEMA = "gentle.tutorial_gui_screenshot_evidence.v1"
 
 TIMEOUT_DEFAULTS = {
     "instant": 5.0,
@@ -68,6 +70,80 @@ def sha256_file(path: Path) -> str:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def png_dimensions(path: Path) -> tuple[int, int]:
+    """Read PNG canvas dimensions without adding an image-library dependency."""
+    header = path.read_bytes()[:24]
+    if len(header) != 24 or header[:8] != b"\x89PNG\r\n\x1a\n" or header[12:16] != b"IHDR":
+        raise AcceptanceFailure("harness_gap", f"Screenshot is not a readable PNG: {path}")
+    width = int.from_bytes(header[16:20], "big")
+    height = int.from_bytes(header[20:24], "big")
+    if width <= 0 or height <= 0:
+        raise AcceptanceFailure("harness_gap", f"Screenshot has invalid dimensions: {path}")
+    return width, height
+
+
+def semantic_pixel_rect(item: dict[str, Any]) -> dict[str, int]:
+    rectangle = item.get("rect_logical_points", {})
+    scale = float(item.get("pixels_per_point", 1.0))
+    min_x = round(float(rectangle["min_x"]) * scale)
+    min_y = round(float(rectangle["min_y"]) * scale)
+    max_x = round(float(rectangle["max_x"]) * scale)
+    max_y = round(float(rectangle["max_y"]) * scale)
+    return {
+        "min_x": min(min_x, max_x),
+        "min_y": min(min_y, max_y),
+        "max_x": max(min_x, max_x),
+        "max_y": max(min_y, max_y),
+    }
+
+
+def padded_crop_rect(
+    rectangle: dict[str, int], canvas_width: int, canvas_height: int
+) -> dict[str, int]:
+    target_width = max(1, rectangle["max_x"] - rectangle["min_x"])
+    target_height = max(1, rectangle["max_y"] - rectangle["min_y"])
+    pad_x = max(180, target_width)
+    pad_y = max(120, target_height * 2)
+    min_x = max(0, rectangle["min_x"] - pad_x)
+    min_y = max(0, rectangle["min_y"] - pad_y)
+    max_x = min(canvas_width, rectangle["max_x"] + pad_x)
+    max_y = min(canvas_height, rectangle["max_y"] + pad_y)
+    return {
+        "min_x": min_x,
+        "min_y": min_y,
+        "max_x": max(min_x + 1, max_x),
+        "max_y": max(min_y + 1, max_y),
+    }
+
+
+def write_screenshot_view_svg(
+    output: Path,
+    raw_png: Path,
+    canvas_width: int,
+    canvas_height: int,
+    crop: dict[str, int],
+    focus: dict[str, int],
+    label: str,
+) -> None:
+    """Create a lossless teaching view over one immutable raw X11 capture."""
+    crop_width = crop["max_x"] - crop["min_x"]
+    crop_height = crop["max_y"] - crop["min_y"]
+    relative_raw = os.path.relpath(raw_png, output.parent)
+    focus_x = focus["min_x"] - crop["min_x"]
+    focus_y = focus["min_y"] - crop["min_y"]
+    focus_width = max(1, focus["max_x"] - focus["min_x"])
+    focus_height = max(1, focus["max_y"] - focus["min_y"])
+    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{crop_width}" height="{crop_height}" viewBox="0 0 {crop_width} {crop_height}">
+  <title>{html.escape(label)}</title>
+  <image href="{html.escape(relative_raw)}" x="{-crop['min_x']}" y="{-crop['min_y']}" width="{canvas_width}" height="{canvas_height}"/>
+  <rect x="{focus_x}" y="{focus_y}" width="{focus_width}" height="{focus_height}" fill="none" stroke="#d62728" stroke-width="3"/>
+  <circle cx="{focus_x + 12}" cy="{focus_y + 12}" r="11" fill="#d62728"/>
+  <text x="{focus_x + 12}" y="{focus_y + 17}" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="bold" fill="white">1</text>
+</svg>
+'''
+    output.write_text(svg, encoding="utf-8")
 
 
 def canonical_json_bytes(value: Any) -> bytes:
@@ -1108,7 +1184,8 @@ class TutorialAcceptanceRun:
             }
         screenshot_requirement = policy["screenshot"]
         if screenshot_requirement != "omitted" and self.args.scrot is not None:
-            screenshot_path = self.chapter_dir / "checkpoints" / f"{step['id']}.png"
+            checkpoint_dir = self.chapter_dir / "checkpoints"
+            screenshot_path = checkpoint_dir / f"{step['id']}.raw.png"
             screenshot_path.parent.mkdir(parents=True, exist_ok=True)
             completed = subprocess.run(
                 [str(self.args.scrot), str(screenshot_path)],
@@ -1123,16 +1200,167 @@ class TutorialAcceptanceRun:
                         "harness_gap", f"Required screenshot failed for step '{step['id']}'"
                     )
             else:
-                evidence["screenshot"] = {
+                canvas_width, canvas_height = png_dimensions(screenshot_path)
+                focus_item = self.screenshot_focus_item(step, snapshot)
+                if focus_item is None:
+                    raise AcceptanceFailure(
+                        "harness_gap",
+                        f"Screenshot step '{step['id']}' has no visible semantic focus item",
+                    )
+                focus_rect = semantic_pixel_rect(focus_item)
+                focus_rect = {
+                    "min_x": max(0, min(canvas_width - 1, focus_rect["min_x"])),
+                    "min_y": max(0, min(canvas_height - 1, focus_rect["min_y"])),
+                    "max_x": max(1, min(canvas_width, focus_rect["max_x"])),
+                    "max_y": max(1, min(canvas_height, focus_rect["max_y"])),
+                }
+                context_rect = padded_crop_rect(focus_rect, canvas_width, canvas_height)
+                orientation_rect = {
+                    "min_x": 0,
+                    "min_y": 0,
+                    "max_x": canvas_width,
+                    "max_y": canvas_height,
+                }
+                orientation_path = checkpoint_dir / f"{step['id']}.orientation.svg"
+                context_path = checkpoint_dir / f"{step['id']}.context.svg"
+                write_screenshot_view_svg(
+                    orientation_path,
+                    screenshot_path,
+                    canvas_width,
+                    canvas_height,
+                    orientation_rect,
+                    focus_rect,
+                    f"{self.chapter['id']} / {step['id']} — orientation",
+                )
+                write_screenshot_view_svg(
+                    context_path,
+                    screenshot_path,
+                    canvas_width,
+                    canvas_height,
+                    context_rect,
+                    focus_rect,
+                    f"{self.chapter['id']} / {step['id']} — interaction context",
+                )
+                snapshot_sha256 = sha256_bytes(canonical_json_bytes(snapshot))
+                screenshot_record = {
+                    "schema": SCREENSHOT_EVIDENCE_SCHEMA,
                     "requirement": screenshot_requirement,
-                    "path": str(screenshot_path),
-                    "sha256": sha256_file(screenshot_path),
+                    "chapter_id": self.chapter["id"],
+                    "step_id": step["id"],
+                    "prose_step": step["prose_step"],
+                    "step_sha256": sha256_bytes(canonical_json_bytes(step)),
+                    "acceptance_contract_sha256": self.ledger[
+                        "acceptance_contract_sha256"
+                    ],
+                    "tutorial_manifest_sha256": self.ledger["manifest_sha256"],
+                    "source_revision": self.ledger["environment"].get("source_revision"),
+                    "gentle_binary_sha256": self.ledger["environment"]["binaries"][
+                        "gentle"
+                    ]["sha256"],
+                    "project_state": {
+                        "path": self.starter_preparation["project_path"],
+                        "sha256": sha256_file(
+                            Path(self.starter_preparation["project_path"])
+                        ),
+                    },
+                    "capture": {
+                        "backend": "scrot",
+                        "backend_version": self.ledger["environment"]["tools"].get(
+                            "scrot"
+                        ),
+                        "scope": "x11_root",
+                        "captured_at_unix_ms": int(time.time() * 1000),
+                        "display": self.ledger["environment"].get("display"),
+                        "gui_process_pid": self.ledger.get("gui_process", {}).get("pid"),
+                        "raw": {
+                            "path": str(screenshot_path),
+                            "sha256": sha256_file(screenshot_path),
+                            "width_px": canvas_width,
+                            "height_px": canvas_height,
+                        },
+                    },
+                    "semantic_snapshot": {
+                        "schema": snapshot.get("schema"),
+                        "generation": snapshot.get("generation"),
+                        "settled": snapshot.get("settled"),
+                        "canonical_sha256": snapshot_sha256,
+                        "retained_path": evidence.get("snapshot", {}).get("path"),
+                        "retained_file_sha256": evidence.get("snapshot", {}).get("sha256"),
+                    },
+                    "requested_target": {
+                        "semantic_id": step["target"],
+                        "window_id": step["window"],
+                        "subject_scope": self.scope_for_step(step),
+                    },
+                    "visual_focus": {
+                        "semantic_id": focus_item.get("semantic_id"),
+                        "window_id": focus_item.get("window_id"),
+                        "subject_scope": focus_item.get("subject_scope"),
+                        "rect_logical_points": focus_item.get("rect_logical_points"),
+                        "pixels_per_point": focus_item.get("pixels_per_point"),
+                        "rect_physical_pixels": focus_rect,
+                    },
+                    "derived_views": [
+                        {
+                            "role": "orientation",
+                            "path": str(orientation_path),
+                            "sha256": sha256_file(orientation_path),
+                            "crop_physical_pixels": orientation_rect,
+                            "annotation": "Numbered outline derived from the semantic focus rectangle",
+                        },
+                        {
+                            "role": "interaction_context",
+                            "path": str(context_path),
+                            "sha256": sha256_file(context_path),
+                            "crop_physical_pixels": context_rect,
+                            "annotation": "Padded crop around the same semantic focus rectangle",
+                        },
+                    ],
+                }
+                record_path = checkpoint_dir / f"{step['id']}.screenshot.json"
+                atomic_write_json(record_path, screenshot_record)
+                evidence["screenshot"] = {
+                    "schema": SCREENSHOT_EVIDENCE_SCHEMA,
+                    "requirement": screenshot_requirement,
+                    "record_path": str(record_path),
+                    "record_sha256": sha256_file(record_path),
+                    "raw_path": str(screenshot_path),
+                    "raw_sha256": screenshot_record["capture"]["raw"]["sha256"],
+                    "derived_views": screenshot_record["derived_views"],
                 }
         elif screenshot_requirement == "required":
             raise AcceptanceFailure(
                 "missing_dependency", f"Step '{step['id']}' requires scrot"
             )
         return evidence
+
+    def screenshot_focus_item(
+        self, step: dict[str, Any], snapshot: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Prefer the visible post-action result, then the requested control."""
+        scope = self.scope_for_step(step)
+        visible_ids = [
+            verifier["semantic_id"]
+            for verifier in step.get("verifiers", [])
+            if verifier.get("kind") == "visible_claim"
+        ]
+        # Prefer a concrete control over a whole-window identity.
+        visible_ids.sort(key=lambda semantic_id: semantic_id.startswith("window."))
+        for semantic_id in visible_ids:
+            item = self.item_for(
+                snapshot,
+                semantic_id,
+                subject_scope=scope,
+                allow_unscoped_fallback=semantic_id.startswith("window."),
+            )
+            if item is not None and item.get("state", {}).get("visible"):
+                return item
+        return self.item_for(
+            snapshot,
+            step["target"],
+            window_id=step["window"],
+            subject_scope=scope,
+        )
 
     def execute_steps(self) -> None:
         starter_path = Path(self.starter_preparation["project_path"])
