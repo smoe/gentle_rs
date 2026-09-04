@@ -81,7 +81,7 @@
     "artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r02.report.json": "813dfb83318f0a2de397d4ddcd80d8020fe72586ec637d97598c3ea5a353dd3a",
     "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.bed": "a4c0b3b274099f1336ad956e18952008b0a4cefbd5bde255cc24fffcdf76c54c",
     "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.bed.manifest.json": "bb806ac7ff1c9933ab765a34888cd91b531514cbb7ff477818d6eb439bf4560a",
-    "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.locus.svg": "4d93d607b22f6de35b8afccc64bb074f7fec02ecc28293abaac12b12d9f3dc21",
+    "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.locus.svg": "7885f9a74db07a9d0a5275f6cda2aded88cf8ef52e47aec44f306164b41adef4",
     "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.region_set.json": "f99dd295e6b9d8a7d057d71f89bd38d02314ee63c9fc050ef141cca295316d84",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.alternative_promoters.json": "fcdcdcec09c3d595220276e1dd0a542d876634897ef6c270952c6b40d08c6f54",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.evidence_matrix.json": "a29e3031ecde6dd9f945860bda0be48fbced440bb62f464381d42c331e35db25",
