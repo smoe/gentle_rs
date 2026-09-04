@@ -36,6 +36,8 @@ annotated start codon
 <text fill="#475569" font-family="sans-serif" font-size="9" x="761" y="150">
 annotated stop codon
 </text>
+<line data-gentle-genomic-end-0based-exclusive="101126120" data-gentle-genomic-start-0based="101126000" data-gentle-local-end="4963" data-gentle-local-start="4844" data-gentle-primary-region-guide="serpine1_cutrun_support" data-gentle-region-boundary="start" data-gentle-region-purpose="occupancy_region" data-gentle-region-set="serpine1_regions" pointer-events="none" stroke="#b91c1c" stroke-opacity="0.42" stroke-width="0.65" x1="467.65863" x2="467.65863" y1="164" y2="1642"/>
+<line data-gentle-genomic-end-0based-exclusive="101126120" data-gentle-genomic-start-0based="101126000" data-gentle-local-end="4963" data-gentle-local-start="4844" data-gentle-primary-region-guide="serpine1_cutrun_support" data-gentle-region-boundary="end" data-gentle-region-purpose="occupancy_region" data-gentle-region-set="serpine1_regions" pointer-events="none" stroke="#b91c1c" stroke-opacity="0.42" stroke-width="0.65" x1="472.88403" x2="472.88403" y1="164" y2="1642"/>
 <line data-gentle-genomic-scale-bar="true" data-gentle-scale-bp="1000" stroke="#334155" stroke-width="2" x1="255" x2="298.90808" y1="108" y2="108"/>
 <line data-gentle-genomic-scale-bar="left-tick" data-gentle-scale-bp="1000" stroke="#334155" stroke-width="2" x1="255" x2="255" y1="103" y2="113"/>
 <line data-gentle-genomic-scale-bar="right-tick" data-gentle-scale-bp="1000" stroke="#334155" stroke-width="2" x1="298.90808" x2="298.90808" y1="103" y2="113"/>
@@ -570,6 +572,9 @@ LUC
 </text>
 <text data-gentle-saved-region-section="true" fill="#1f2937" font-family="sans-serif" font-size="13" font-weight="bold" x="34" y="1280">
 Saved genomic regions of interest
+</text>
+<text data-gentle-primary-region-guide-legend="true" fill="#991b1b" font-family="sans-serif" font-size="8" x="1070" y="1280">
+thin vertical guides: evidence-available occupancy-region boundaries
 </text>
 <text data-gentle-saved-region-label="serpine1_manual_candidate" fill="#374151" font-family="monospace" font-size="9" x="34" y="1305">
 Manual promoter candidate
