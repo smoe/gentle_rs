@@ -9,11 +9,14 @@
   bounded import, and JSON or BED6+manifest export across CLI/shell/MCP and
   adapters. The DNA viewer now offers a resizable Saved genomic regions
   manager, selection/CUT&RUN/Ensembl capture actions, portable copy/export, and
-  locus overlays. A generated offline SERPINE1 tutorial exercises the complete
-  workflow with pinned public annotation plus clearly synthetic regulatory and
-  occupancy evidence. Splicing Expert alternative-boundary details are now
-  sorted before fingerprinting so independently generated locus reports remain
-  byte-stable.
+  locus overlays. Evidence-available saved occupancy regions now also draw
+  very thin boundary guides through every coordinate-bearing locus track,
+  keeping a deliberately selected dominant CUT&RUN window visible without
+  deriving dominance from incomparable lane scores. A generated offline
+  SERPINE1 tutorial exercises the complete workflow with pinned public
+  annotation plus clearly synthetic regulatory and occupancy evidence.
+  Splicing Expert alternative-boundary details are now sorted before
+  fingerprinting so independently generated locus reports remain byte-stable.
 
 - Made gene-locus regulatory score lanes quantitatively readable. Every JASPAR
   or provider-neutral lane now has a labeled zero-based Y axis with midpoint

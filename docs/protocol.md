@@ -4249,7 +4249,12 @@ external coding agent runtime, see:
     imports are bounded by caller-visible byte and row limits
   - `region_set_ids[]` on the additive gene-locus request projects matching,
     current local bindings into `saved_region_overlays[]`. Stale or unavailable
-    bindings stay inspectable and do not become evidence absence
+    bindings stay inspectable and do not become evidence absence. Within the
+    canonical SVG/PNG/PDF renderer, every selected region typed as
+    `occupancy_region` with `available` evidence is also bordered by two thin
+    vertical guides spanning all coordinate-bearing locus tracks. This makes a
+    deliberately selected dominant CUT&RUN window a stable visual anchor
+    without asking the renderer to infer dominance from lane scores
   - the deterministic offline example is
     `docs/examples/workflows/portable_genomic_regions_offline.json`; it combines
     a pinned public Ensembl-116 SERPINE1 locus with explicitly synthetic

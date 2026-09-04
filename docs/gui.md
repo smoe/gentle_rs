@@ -1175,7 +1175,13 @@ Feature tree grouping:
     manager. Their evidence and conservative non-claims remain source-specific
   - `Locus figure` accepts saved region-set IDs and draws their current local
     projections on the shared coordinate axis. Stale projections remain typed
-    in the report and are not silently treated as absent evidence
+    in the report and are not silently treated as absent evidence. Selected,
+    evidence-available occupancy regions additionally receive very thin
+    vertical boundary guides across every coordinate-bearing track, so a saved
+    dominant CUT&RUN support window remains visible beside transcripts,
+    regulatory annotations, occupancy lanes, and motif scores. GENtle does not
+    infer which window is dominant; save the reviewed support window and add
+    its set to the composition
   - stable tutorial semantic IDs cover manager open/save/copy/import/export and
     CUT&RUN/Ensembl capture controls for Linux acceptance automation
 - `Cryptic screen` is a thin background adapter over

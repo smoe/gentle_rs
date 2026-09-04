@@ -6,9 +6,9 @@ use gentle_protocol::{
     GeneLocusEvidenceDisplayReport, GeneLocusLocalAxisDirection, GeneLocusOccupancyLaneRole,
     GeneLocusOccupancyLaneState, GeneLocusOccupancyScaleMode, GeneLocusProbeClass,
     GeneLocusProbeEffectContrast, GeneLocusRegulatoryScoreProviderKind,
-    GeneLocusRegulatoryScoreTrack, GeneLocusScaleBarMode, GenomicRegionPurpose,
-    IsoformArchitectureExpertView, RestrictionSiteExpertView, SplicingExonSummary,
-    SplicingExpertView, SplicingJunctionArc, TfbsExpertView,
+    GeneLocusRegulatoryScoreTrack, GeneLocusScaleBarMode, GenomicRegionEvidenceAvailability,
+    GenomicRegionPurpose, IsoformArchitectureExpertView, RestrictionSiteExpertView,
+    SplicingExonSummary, SplicingExpertView, SplicingJunctionArc, TfbsExpertView,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use svg::Document;
@@ -5014,6 +5014,48 @@ pub fn render_gene_locus_evidence_with_overlay(
         doc = doc.set("data-gentle-overlay-id", overlay.overlay_id.as_str());
     }
 
+    // A saved occupancy region is an explicit, evidence-bound choice of locus
+    // anchor. Keep its boundaries visible across every coordinate-bearing
+    // layer without deriving a "dominant" peak from incomparable lane scores.
+    let primary_region_guides = report
+        .saved_region_overlays
+        .iter()
+        .filter(|row| {
+            row.purpose == GenomicRegionPurpose::OccupancyRegion
+                && row.evidence_availability == GenomicRegionEvidenceAvailability::Available
+        })
+        .collect::<Vec<_>>();
+    let guide_top = assay_top - 10.0;
+    let guide_bottom = (motif_top + motif_height + 12.0).min(doc_height - 1.0);
+    for row in &primary_region_guides {
+        let start_x = x_for(row.local_start_1based);
+        let end_x = x_for(row.local_end_1based);
+        for (boundary, x) in [("start", start_x), ("end", end_x)] {
+            doc = doc.add(
+                Line::new()
+                    .set("x1", x)
+                    .set("x2", x)
+                    .set("y1", guide_top)
+                    .set("y2", guide_bottom)
+                    .set("stroke", "#b91c1c")
+                    .set("stroke-width", 0.65)
+                    .set("stroke-opacity", 0.42)
+                    .set("pointer-events", "none")
+                    .set("data-gentle-primary-region-guide", row.region_id.as_str())
+                    .set("data-gentle-region-set", row.set_id.as_str())
+                    .set("data-gentle-region-purpose", row.purpose.as_str())
+                    .set("data-gentle-region-boundary", boundary)
+                    .set("data-gentle-local-start", row.local_start_1based)
+                    .set("data-gentle-local-end", row.local_end_1based)
+                    .set("data-gentle-genomic-start-0based", row.genomic_start_0based)
+                    .set(
+                        "data-gentle-genomic-end-0based-exclusive",
+                        row.genomic_end_0based_exclusive,
+                    ),
+            );
+        }
+    }
+
     if report.scale_bar.mode != GeneLocusScaleBarMode::Hidden && report.scale_bar.length_bp > 0 {
         let span_bp = report
             .locus_local_end_1based
@@ -5511,6 +5553,17 @@ pub fn render_gene_locus_evidence_with_overlay(
                 .set("fill", "#1f2937")
                 .set("data-gentle-saved-region-section", "true"),
         );
+        if !primary_region_guides.is_empty() {
+            doc = doc.add(
+                Text::new("thin vertical guides: evidence-available occupancy-region boundaries")
+                    .set("x", metrics_left)
+                    .set("y", saved_region_top - 14.0)
+                    .set("font-family", "sans-serif")
+                    .set("font-size", 8)
+                    .set("fill", "#991b1b")
+                    .set("data-gentle-primary-region-guide-legend", "true"),
+            );
+        }
         for (index, row) in report
             .saved_region_overlays
             .iter()
@@ -7706,6 +7759,62 @@ mod tests {
             gentle_protocol::GenomicRegionEvidenceAvailability::Stale;
         let stale_svg = render_gene_locus_evidence_with_overlay(&report, None).svg;
         assert!(stale_svg.contains("data-gentle-region-evidence-availability=\"stale\""));
+    }
+
+    #[test]
+    fn gene_locus_renderer_guides_every_track_with_available_occupancy_region_boundaries() {
+        let report = GeneLocusEvidenceDisplayReport {
+            schema: GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA.to_string(),
+            seq_id: "locus".to_string(),
+            gene_symbol: "DEMO".to_string(),
+            locus_local_start_1based: 1,
+            locus_local_end_1based: 1_000,
+            saved_region_overlays: vec![
+                gentle_protocol::GeneLocusSavedRegionOverlayRow {
+                    set_id: "primary_cutrun_regions".to_string(),
+                    set_content_sha256: "sha256:set".to_string(),
+                    region_id: "dominant_tp73_window".to_string(),
+                    label: Some("dominant TP73 occupancy".to_string()),
+                    purpose: gentle_protocol::GenomicRegionPurpose::OccupancyRegion,
+                    selection_method:
+                        gentle_protocol::GenomicRegionSelectionMethod::CutrunSupportWindow,
+                    evidence_availability:
+                        gentle_protocol::GenomicRegionEvidenceAvailability::Available,
+                    local_start_1based: 201,
+                    local_end_1based: 301,
+                    genomic_start_0based: 1_200,
+                    genomic_end_0based_exclusive: 1_301,
+                    genomic_strand: gentle_protocol::GenomicRegionStrand::Unstranded,
+                    region_content_sha256: "sha256:dominant".to_string(),
+                    evidence_ids: vec!["cutrun:window-1".to_string()],
+                },
+                gentle_protocol::GeneLocusSavedRegionOverlayRow {
+                    set_id: "primary_cutrun_regions".to_string(),
+                    set_content_sha256: "sha256:set".to_string(),
+                    region_id: "manual_note".to_string(),
+                    purpose: gentle_protocol::GenomicRegionPurpose::Other,
+                    evidence_availability:
+                        gentle_protocol::GenomicRegionEvidenceAvailability::Available,
+                    local_start_1based: 401,
+                    local_end_1based: 451,
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let svg = render_gene_locus_evidence_with_overlay(&report, None).svg;
+        assert_eq!(
+            svg.matches("data-gentle-primary-region-guide=\"dominant_tp73_window\"")
+                .count(),
+            2,
+            "one thin guide must mark each occupancy-region boundary"
+        );
+        assert!(svg.contains("data-gentle-region-boundary=\"start\""));
+        assert!(svg.contains("data-gentle-region-boundary=\"end\""));
+        assert!(svg.contains("stroke-width=\"0.65\""));
+        assert!(svg.contains("data-gentle-primary-region-guide-legend=\"true\""));
+        assert!(!svg.contains("data-gentle-primary-region-guide=\"manual_note\""));
     }
 
     #[test]
