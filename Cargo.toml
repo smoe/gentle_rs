@@ -179,7 +179,7 @@ rustyline = { workspace = true, optional = true }
 mlua = { workspace = true, optional = true, features = ["lua54", "vendored", "serde"] }
 # Keep ICU data explicit because deno_core 0.408 no longer enables it by
 # default. The compatible Temporal/ICU versions are selected by V8.
-deno_core = { version = "0.408.0", optional = true, features = ["include_icu_data"] }
+deno_core = { version = "0.411.0", optional = true, features = ["include_icu_data"] }
 deno_error = { version = "=0.7.1", optional = true }
 tokio = { version = "1.53.1", optional = true, features = ["rt-multi-thread", "time"] }
 

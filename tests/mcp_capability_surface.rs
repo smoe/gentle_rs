@@ -187,6 +187,10 @@ fn typed_op_routes_are_advertised_without_exclusion_shortcuts() {
     let covered = tool_command_paths(&tools);
     let excluded = intentionally_mcp_excluded_paths();
     for path in [
+        "features encode-ccre-overlaps",
+        "features materialize-encode-ccres",
+        "features ensembl-regulation-overlaps",
+        "features materialize-ensembl-regulation",
         "splicing cryptic-screen",
         "splicing cryptic-render",
         "splicing cryptic-export",

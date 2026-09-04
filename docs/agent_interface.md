@@ -402,6 +402,10 @@ Key properties:
   generic typed `op` tool, not through duplicate MCP-only implementations.
   Cryptic reports remain typed; JSON/SVG output paths retain their explicit
   external-I/O boundary and write only after `confirm=true`.
+- ENCODE cCRE and Ensembl Regulation overlap/materialization routes are
+  advertised through the generic typed `op` tool. Their host-local resource
+  discovery, installation, and index preparation commands remain CLI/GUI
+  workflows and are explicitly excluded below.
 - UI-intent tools are currently non-mutating query/intent routes
 
 #### Intentionally MCP-excluded shell commands
@@ -693,9 +697,15 @@ an agent has selected a deterministic operation.
 - `resources import-gene-list-cache`
 - `resources import-ontology-assignment-cache`
 - `resources inspect-jaspar`
+- `resources install-encode-ccres`
+- `resources install-ensembl-regulatory-features`
 - `resources install-ucsc-rmsk`
+- `resources list-encode-ccre-sources`
+- `resources list-ensembl-regulation-sources`
 - `resources list-jaspar`
 - `resources list-publication-datasets`
+- `resources prepare-encode-ccre-index`
+- `resources prepare-ensembl-regulation-index`
 - `resources prepare-publication-dataset`
 - `resources prepare-ucsc-rmsk-index`
 - `resources resolve-tf-query`
