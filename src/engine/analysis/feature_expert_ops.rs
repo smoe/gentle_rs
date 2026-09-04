@@ -9609,6 +9609,11 @@ impl GentleEngine {
             .filter(|exon| !exon.constitutive)
             .count();
 
+        // These rows originate from HashMap groups. Keep the report and its
+        // presentation fingerprint stable across independent processes.
+        alt5_details.sort();
+        alt3_details.sort();
+
         let events = vec![
             SplicingEventSummary {
                 event_type: "alternative_exon".to_string(),
@@ -14751,6 +14756,14 @@ impl GentleEngine {
             local_end.saturating_sub(local_start).saturating_add(1),
         )?;
         let assay_overlays = Self::gene_locus_assay_overlays(&isoform_evidence);
+        let (saved_region_overlays, saved_region_warnings) = self
+            .project_genomic_region_sets_for_locus(
+                seq_id,
+                &request.region_set_ids,
+                local_start,
+                local_end,
+            )?;
+        warnings.extend(saved_region_warnings);
         let mut provenance = isoform_evidence.provenance.clone();
         let (probe_effect_contrasts, mut probe_effect_overlays, probe_effect_shared_abs_max) = self
             .gene_locus_probe_effect_overlays(
@@ -14820,6 +14833,15 @@ impl GentleEngine {
                 schema: Some(GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA.to_string()),
                 path: track.source_path.clone(),
                 sha256: track.source_sha256.clone(),
+            });
+        }
+        for row in &saved_region_overlays {
+            provenance.push(GeneIsoformEvidenceProvenanceSource {
+                source_kind: "saved_genomic_region_set".to_string(),
+                source_id: row.set_id.clone(),
+                schema: Some(gentle_protocol::GENOMIC_REGION_SET_SCHEMA.to_string()),
+                path: None,
+                sha256: Some(row.set_content_sha256.clone()),
             });
         }
         provenance.sort_by(|left, right| {
@@ -14909,6 +14931,7 @@ impl GentleEngine {
             scale_bar,
             assay_overlays,
             ensembl_regulation: None,
+            saved_region_overlays,
             provenance,
             warnings,
         })
@@ -15846,6 +15869,7 @@ impl GentleEngine {
             occupancy_layout,
             regulatory_score_tracks: request.regulatory_score_tracks.clone(),
             scale_bar: request.scale_bar.clone(),
+            region_set_ids: request.region_set_ids.clone(),
             include_local_source_paths: request.include_local_source_paths,
             ..Default::default()
         };

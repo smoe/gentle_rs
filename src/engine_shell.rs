@@ -679,6 +679,9 @@ pub enum ShellCommand {
     SplicingCrypticScreen {
         request: CrypticSplicingScreenRequest,
     },
+    GenomicRegions {
+        operation: Operation,
+    },
     SplicingCrypticRender {
         request: CrypticSplicingScreenRequest,
         output: String,
@@ -7233,6 +7236,9 @@ impl ShellCommand {
                 request.end_1based,
                 request.strand.as_str()
             ),
+            Self::GenomicRegions { operation } => {
+                format!("execute shared genomic-region operation {operation:?}")
+            }
             Self::SplicingCrypticRender { request, output } => format!(
                 "render cryptic-splicing screen for '{}':{}..{} ({}) to '{}'",
                 request.seq_id,
@@ -16511,6 +16517,77 @@ where
         .map_err(|e| format!("Invalid {context} JSON payload: {e}"))
 }
 
+fn parse_genomic_regions_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "regions requires: create|capture|list|inspect|update|derive|import|export [REQUEST_JSON_OR_@FILE]"
+                .to_string(),
+        );
+    }
+    let action = tokens[1].as_str();
+    let payload = tokens.get(2..).unwrap_or_default().join(" ");
+    let operation = match action {
+        "create" => Operation::CreateGenomicRegion {
+            request: parse_required_json_payload::<gentle_protocol::GenomicRegionCreateRequest>(
+                &payload,
+                "genomic-region create request",
+            )?,
+        },
+        "capture" => Operation::CaptureGenomicRegion {
+            request: parse_required_json_payload::<gentle_protocol::GenomicRegionCaptureRequest>(
+                &payload,
+                "genomic-region capture request",
+            )?,
+        },
+        "list" => Operation::ListGenomicRegions {
+            request: if payload.trim().is_empty() {
+                gentle_protocol::GenomicRegionListRequest::default()
+            } else {
+                parse_required_json_payload::<gentle_protocol::GenomicRegionListRequest>(
+                    &payload,
+                    "genomic-region list request",
+                )?
+            },
+        },
+        "inspect" => Operation::InspectGenomicRegion {
+            request: parse_required_json_payload::<gentle_protocol::GenomicRegionInspectRequest>(
+                &payload,
+                "genomic-region inspect request",
+            )?,
+        },
+        "update" => Operation::UpdateGenomicRegionPresentation {
+            request: parse_required_json_payload::<gentle_protocol::GenomicRegionUpdateRequest>(
+                &payload,
+                "genomic-region presentation update request",
+            )?,
+        },
+        "derive" => Operation::DeriveGenomicRegion {
+            request: parse_required_json_payload::<gentle_protocol::GenomicRegionDeriveRequest>(
+                &payload,
+                "genomic-region derive request",
+            )?,
+        },
+        "import" => Operation::ImportGenomicRegionSet {
+            request: parse_required_json_payload::<gentle_protocol::GenomicRegionImportRequest>(
+                &payload,
+                "genomic-region import request",
+            )?,
+        },
+        "export" => Operation::ExportGenomicRegionSet {
+            request: parse_required_json_payload::<gentle_protocol::GenomicRegionExportRequest>(
+                &payload,
+                "genomic-region export request",
+            )?,
+        },
+        other => {
+            return Err(format!(
+                "Unknown regions subcommand '{other}'; expected create, capture, list, inspect, update, derive, import, or export"
+            ));
+        }
+    };
+    Ok(ShellCommand::GenomicRegions { operation })
+}
+
 fn parse_splicing_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 3 {
         return Err(
@@ -20372,6 +20449,41 @@ fn workflow_macro_template_import_descriptor(id: &str, description: &str) -> Val
     })
 }
 
+fn genomic_region_capability_descriptor(
+    id: &str,
+    mutating: &str,
+    requires_confirmation: bool,
+    description: &str,
+) -> Value {
+    let effects = match mutating {
+        "true" => vec![json!({
+            "effect_kind": "may_on_success",
+            "description": "The operation may add or update a content-bound genomic region set."
+        })],
+        "external" => vec![json!({
+            "fact": "artifact.written",
+            "effect_kind": "external_handoff",
+            "description": "The operation may write canonical JSON and BED plus its bound manifest."
+        })],
+        _ => vec![],
+    };
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": mutating,
+        "requires_confirmation": requires_confirmation,
+        "args": [
+            {"name": "REQUEST_JSON_OR_@FILE", "required": id != "regions list", "subject_kind": "other", "detail": "typed genomic-region request payload"}
+        ],
+        "reads": [],
+        "effects": effects,
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn workflow_macro_template_run_descriptor(id: &str, description: &str) -> Value {
     json!({
         "id": id,
@@ -20557,6 +20669,102 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("state_summary")
         }),
+        genomic_region_capability_descriptor(
+            "regions create",
+            "true",
+            false,
+            "Create and persist one assembly-bound genomic region of interest.",
+        ),
+        genomic_region_capability_descriptor(
+            "CreateGenomicRegion",
+            "true",
+            true,
+            "Create and persist one assembly-bound genomic region through the shared engine operation.",
+        ),
+        genomic_region_capability_descriptor(
+            "regions capture",
+            "true",
+            false,
+            "Capture a sequence selection, feature, CUT&RUN support window, or Ensembl regulatory feature as a portable region.",
+        ),
+        genomic_region_capability_descriptor(
+            "CaptureGenomicRegion",
+            "true",
+            true,
+            "Capture an existing evidence-bearing interval through the shared engine operation.",
+        ),
+        genomic_region_capability_descriptor(
+            "regions list",
+            "false",
+            false,
+            "List persisted genomic region sets without mutating project state.",
+        ),
+        genomic_region_capability_descriptor(
+            "ListGenomicRegions",
+            "false",
+            false,
+            "List persisted genomic region sets through the shared engine operation.",
+        ),
+        genomic_region_capability_descriptor(
+            "regions inspect",
+            "false",
+            false,
+            "Inspect one saved genomic region and its current local-projection availability.",
+        ),
+        genomic_region_capability_descriptor(
+            "InspectGenomicRegion",
+            "false",
+            false,
+            "Inspect one saved genomic region through the shared engine operation.",
+        ),
+        genomic_region_capability_descriptor(
+            "regions update",
+            "true",
+            false,
+            "Update only the human label, description, and notes of one saved region.",
+        ),
+        genomic_region_capability_descriptor(
+            "UpdateGenomicRegionPresentation",
+            "true",
+            true,
+            "Update presentation-only fields on one saved region through the shared engine operation.",
+        ),
+        genomic_region_capability_descriptor(
+            "regions derive",
+            "true",
+            false,
+            "Create an explicit union, intersection, or hull from saved parent regions.",
+        ),
+        genomic_region_capability_descriptor(
+            "DeriveGenomicRegion",
+            "true",
+            true,
+            "Derive a content-bound genomic region through the shared engine operation.",
+        ),
+        genomic_region_capability_descriptor(
+            "regions import",
+            "true",
+            false,
+            "Import a validated canonical JSON region set or explicitly bound BED input.",
+        ),
+        genomic_region_capability_descriptor(
+            "ImportGenomicRegionSet",
+            "true",
+            true,
+            "Import a validated genomic region set through the shared engine operation.",
+        ),
+        genomic_region_capability_descriptor(
+            "regions export",
+            "external",
+            true,
+            "Export canonical JSON and/or BED6 with a content-bound manifest.",
+        ),
+        genomic_region_capability_descriptor(
+            "ExportGenomicRegionSet",
+            "external",
+            true,
+            "Export a genomic region set through the shared engine operation.",
+        ),
         json!({
             "id": "gene_isoform_assay_publication",
             "kind": "operation",
@@ -30154,6 +30362,22 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "introspect verify-effects"
         | "introspect all" => Some(vec![]),
         "sequence create" => Some(vec![]),
+        "regions create"
+        | "CreateGenomicRegion"
+        | "regions capture"
+        | "CaptureGenomicRegion"
+        | "regions list"
+        | "ListGenomicRegions"
+        | "regions inspect"
+        | "InspectGenomicRegion"
+        | "regions update"
+        | "UpdateGenomicRegionPresentation"
+        | "regions derive"
+        | "DeriveGenomicRegion"
+        | "regions import"
+        | "ImportGenomicRegionSet"
+        | "regions export"
+        | "ExportGenomicRegionSet" => Some(vec![]),
         "DigestContainer" | "LigationContainer" | "FilterContainerByMolecularWeight" => Some(vec![
             json!({"fact": "container.exists", "subject": {"arg": "CONTAINER_ID"}}),
         ]),
@@ -43125,6 +43349,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
             }
         }
         "sequence" | "sequences" => parse_sequence_command(tokens),
+        "regions" | "region-sets" => parse_genomic_regions_command(tokens),
         "splicing" => parse_splicing_command(tokens),
         "mirna" | "mirnas" => parse_mirna_command(tokens),
         "screenshot-window" => {
@@ -60736,6 +60961,35 @@ fn execute_feature_expert_command(
 }
 
 #[inline(never)]
+fn execute_genomic_regions_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    let ShellCommand::GenomicRegions { operation } = command else {
+        return Err("unexpected command routed to genomic-region executor".to_string());
+    };
+    let state_changed = matches!(
+        operation,
+        Operation::CreateGenomicRegion { .. }
+            | Operation::CaptureGenomicRegion { .. }
+            | Operation::UpdateGenomicRegionPresentation { .. }
+            | Operation::DeriveGenomicRegion { .. }
+            | Operation::ImportGenomicRegionSet { .. }
+    );
+    let result = engine
+        .apply(operation.clone())
+        .map_err(|error| error.to_string())?;
+    let report = result
+        .genomic_region_operation
+        .ok_or_else(|| "genomic-region operation returned no typed operation report".to_string())?;
+    Ok(ShellRunResult {
+        state_changed,
+        output: serde_json::to_value(report)
+            .map_err(|error| format!("Could not serialize genomic-region report: {error}"))?,
+    })
+}
+
+#[inline(never)]
 fn execute_external_sequence_fetch_command(
     engine: &mut GentleEngine,
     command: &ShellCommand,
@@ -66065,6 +66319,9 @@ fn execute_shell_command_with_options_dispatch_inner(
     ) {
         return execute_primers_command(engine, command, options);
     }
+    if matches!(command, ShellCommand::GenomicRegions { .. }) {
+        return execute_genomic_regions_command(engine, command);
+    }
     if matches!(
         command,
         ShellCommand::InspectFeatureExpert { .. }
@@ -66413,6 +66670,7 @@ fn execute_shell_command_with_options_inner(
             }
         }
         ShellCommand::InspectFeatureExpert { .. }
+        | ShellCommand::GenomicRegions { .. }
         | ShellCommand::InspectSplicingAttract { .. }
         | ShellCommand::SplicingCrypticScreen { .. }
         | ShellCommand::SplicingCrypticRender { .. }
@@ -66425,7 +66683,11 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PanelsInspectIsoform { .. }
         | ShellCommand::PanelsRenderIsoformSvg { .. }
         | ShellCommand::PanelsValidateIsoform { .. } => {
-            execute_feature_expert_command(engine, command)?
+            if matches!(command, ShellCommand::GenomicRegions { .. }) {
+                execute_genomic_regions_command(engine, command)?
+            } else {
+                execute_feature_expert_command(engine, command)?
+            }
         }
         ShellCommand::FeaturesRestrictionScan { .. } => {
             execute_features_restriction_scan_command(engine, command)?

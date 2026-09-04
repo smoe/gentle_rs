@@ -4695,6 +4695,9 @@ pub struct GeneLocusEvidencePreparationRequest {
     pub occupancy_layout: GeneLocusOccupancyLayout,
     pub regulatory_score_tracks: Vec<GeneLocusRegulatoryScoreTrackRequest>,
     pub scale_bar: GeneLocusScaleBarPolicy,
+    /// Optional saved genomic-region sets to include in the composed report.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub region_set_ids: Vec<String>,
     /// Optional source-bound Ensembl Regulation annotation layer. No resource
     /// is opened when this field is absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -4737,6 +4740,7 @@ impl Default for GeneLocusEvidencePreparationRequest {
             occupancy_layout: GeneLocusOccupancyLayout::default(),
             regulatory_score_tracks: vec![],
             scale_bar: GeneLocusScaleBarPolicy::default(),
+            region_set_ids: vec![],
             ensembl_regulation: None,
             reporter_architecture_request: None,
             svg_path: String::new(),
@@ -5315,6 +5319,8 @@ pub struct OpResult {
     pub ensembl_regulation_overlaps: Option<EnsemblRegulationOverlapReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ensembl_regulation_materialization: Option<EnsemblRegulationMaterializationReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_region_operation: Option<Box<gentle_protocol::GenomicRegionOperationReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repeat_environment_cohort: Option<RepeatEnvironmentCohortReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

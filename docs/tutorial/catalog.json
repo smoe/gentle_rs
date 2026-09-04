@@ -1122,6 +1122,37 @@
           "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
         }
       ]
+    },
+    {
+      "id": "portable_genomic_regions_offline",
+      "title": "Save and Share Genomic Regions (Offline SERPINE1 Example)",
+      "path": "docs/tutorial/generated/chapters/08-10_portable_genomic_regions_offline.md",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 10,
+      "decimal_id": "08.10",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "regulatory_analysis",
+        "contributors"
+      ],
+      "notes": "Machine-checked offline chapter. The locus sequence and transcript geometry are from the pinned public Ensembl-116 fixture; regulatory and CUT&RUN evidence are explicitly synthetic.",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-04",
+      "graphics": [
+        {
+          "kind": "generated",
+          "path": "docs/tutorial/generated/artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.locus.svg",
+          "caption": "A pinned public Ensembl-116 SERPINE1 locus with three saved regions: a manual candidate, a synthetic Ensembl-regulatory annotation, and a synthetic CUT&RUN support window. Their shared position is for inspection and does not establish binding or causal regulation.",
+          "illustrates_step": 7,
+          "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+        }
+      ]
     }
   ]
 }

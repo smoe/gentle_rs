@@ -17,11 +17,11 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 39 | 691 | 0 |
-| gentle_cli | 441 | 313 | 0 |
-| MCP | 117 | 477 | 64 |
-| JS | 78 | 495 | 69 |
-| Lua | 77 | 496 | 69 |
+| GUI | 39 | 707 | 0 |
+| gentle_cli | 449 | 321 | 0 |
+| MCP | 117 | 493 | 64 |
+| JS | 78 | 511 | 69 |
+| Lua | 77 | 512 | 69 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -30,6 +30,14 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 |---|---|---|---|---|---|---|---|---|
 | help | glossary-command | shell-only | prominent | prominent | n/a | n/a | n/a | JS: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>Lua: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | gene-locus prepare | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| regions create | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| regions capture | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| regions list | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| regions inspect | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| regions update | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| regions derive | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| regions import | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| regions export | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | features edit-location | glossary-command | prominent | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | features create | glossary-command | prominent | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | features delete | glossary-command | prominent | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -688,6 +696,14 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | MaterializeEncodeCcreFeatures | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | QueryEnsemblRegulationOverlaps | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | MaterializeEnsemblRegulationFeatures | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| CreateGenomicRegion | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| CaptureGenomicRegion | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| ListGenomicRegions | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| InspectGenomicRegion | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| UpdateGenomicRegionPresentation | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| DeriveGenomicRegion | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| ImportGenomicRegionSet | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| ExportGenomicRegionSet | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | PreviewFeatureLocationEdit | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | EditFeatureLocation | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | PreviewFeatureRecordCuration | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |

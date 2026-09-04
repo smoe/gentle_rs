@@ -9,6 +9,8 @@
 pub const WINDOW_MAIN: &str = "window.main";
 pub const WINDOW_DNA_VIEWER: &str = "window.dna_viewer";
 pub const WINDOW_PCR_DESIGN: &str = "window.pcr_design";
+pub const WINDOW_GENOMIC_REGIONS: &str = "window.genomic_regions";
+pub const WINDOW_SPLICING_EXPERT: &str = "window.splicing_expert";
 pub const MAIN_PROJECT_SEQUENCE_OPEN: &str = "main.project.sequence.open";
 pub const MAIN_PROJECT_SAVE_STATE: &str = "main.project.save_state";
 pub const DNA_SELECTION_FORMULA_INPUT: &str = "dna.selection_formula.input";
@@ -20,6 +22,18 @@ pub const PCR_SIMPLE_STARTER_PANEL: &str = "pcr.simple_starter.panel";
 pub const PCR_SIMPLE_STARTER_SEED_FROM_SELECTION: &str = "pcr.simple_starter.seed_from_selection";
 pub const PCR_DESIGN_REPORT_ID: &str = "pcr.design.report_id";
 pub const PCR_DESIGN_RUN: &str = "pcr.design.run";
+pub const DNA_SELECTION_SAVE_REGION: &str = "dna.selection.save_genomic_region";
+pub const GENOMIC_REGION_REFRESH: &str = "genomic_region.refresh";
+pub const GENOMIC_REGION_SAVE_PENDING: &str = "genomic_region.save_pending";
+pub const GENOMIC_REGION_COPY_HUMAN: &str = "genomic_region.copy_human_1based";
+pub const GENOMIC_REGION_COPY_BED: &str = "genomic_region.copy_bed_0based";
+pub const GENOMIC_REGION_COPY_JSON: &str = "genomic_region.copy_canonical_json";
+pub const GENOMIC_REGION_EXPORT_JSON: &str = "genomic_region.export_set_json";
+pub const GENOMIC_REGION_EXPORT_BED: &str = "genomic_region.export_set_bed_manifest";
+pub const GENOMIC_REGION_IMPORT_JSON: &str = "genomic_region.import_set_json";
+pub const GENOMIC_REGION_IMPORT_BED: &str = "genomic_region.import_set_bed_manifest";
+pub const GENOMIC_REGION_CAPTURE_CUTRUN: &str = "genomic_region.capture_cutrun_window";
+pub const GENOMIC_REGION_CAPTURE_ENSEMBL: &str = "genomic_region.capture_ensembl_feature";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TutorialGuiInteractionKind {
@@ -112,6 +126,20 @@ pub const TUTORIAL_GUI_CONTROLS: &[TutorialGuiControlSpec] = &[
         text_policy: None,
     },
     TutorialGuiControlSpec {
+        semantic_id: WINDOW_GENOMIC_REGIONS,
+        window_id: WINDOW_GENOMIC_REGIONS,
+        authority: TutorialGuiControlAuthority::Observe,
+        allowed_interactions: NO_INTERACTIONS,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: WINDOW_SPLICING_EXPERT,
+        window_id: WINDOW_SPLICING_EXPERT,
+        authority: TutorialGuiControlAuthority::Observe,
+        allowed_interactions: NO_INTERACTIONS,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
         semantic_id: DNA_SELECTION_FORMULA_INPUT,
         window_id: WINDOW_DNA_VIEWER,
         authority: TutorialGuiControlAuthority::ProjectMetadata,
@@ -170,6 +198,90 @@ pub const TUTORIAL_GUI_CONTROLS: &[TutorialGuiControlSpec] = &[
     TutorialGuiControlSpec {
         semantic_id: PCR_DESIGN_RUN,
         window_id: WINDOW_PCR_DESIGN,
+        authority: TutorialGuiControlAuthority::ScientificState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: DNA_SELECTION_SAVE_REGION,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: GENOMIC_REGION_REFRESH,
+        window_id: WINDOW_GENOMIC_REGIONS,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: GENOMIC_REGION_SAVE_PENDING,
+        window_id: WINDOW_GENOMIC_REGIONS,
+        authority: TutorialGuiControlAuthority::ScientificState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: GENOMIC_REGION_COPY_HUMAN,
+        window_id: WINDOW_GENOMIC_REGIONS,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: GENOMIC_REGION_COPY_BED,
+        window_id: WINDOW_GENOMIC_REGIONS,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: GENOMIC_REGION_COPY_JSON,
+        window_id: WINDOW_GENOMIC_REGIONS,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: GENOMIC_REGION_EXPORT_JSON,
+        window_id: WINDOW_GENOMIC_REGIONS,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: GENOMIC_REGION_EXPORT_BED,
+        window_id: WINDOW_GENOMIC_REGIONS,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: GENOMIC_REGION_IMPORT_JSON,
+        window_id: WINDOW_GENOMIC_REGIONS,
+        authority: TutorialGuiControlAuthority::ScientificState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: GENOMIC_REGION_IMPORT_BED,
+        window_id: WINDOW_GENOMIC_REGIONS,
+        authority: TutorialGuiControlAuthority::ScientificState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: GENOMIC_REGION_CAPTURE_CUTRUN,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::ScientificState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: GENOMIC_REGION_CAPTURE_ENSEMBL,
+        window_id: WINDOW_SPLICING_EXPERT,
         authority: TutorialGuiControlAuthority::ScientificState,
         allowed_interactions: CLICK,
         text_policy: None,

@@ -5016,6 +5016,29 @@ Isoform architecture panel workflow:
       the pinned public Ensembl-116 SERPINE1 acceptance test additionally
       verifies that its reporter architectures and clearly synthetic occupancy
       context are rendered in one canonical figure
+  - portable, assembly-bound genomic region sets use one JSON-request command
+    family across direct CLI, shared shell, MCP, and adapters:
+    - `regions create REQUEST_JSON_OR_@FILE`
+    - `regions capture REQUEST_JSON_OR_@FILE`
+    - `regions list [REQUEST_JSON_OR_@FILE]`
+    - `regions inspect REQUEST_JSON_OR_@FILE`
+    - `regions update REQUEST_JSON_OR_@FILE`
+    - `regions derive REQUEST_JSON_OR_@FILE`
+    - `regions import REQUEST_JSON_OR_@FILE`
+    - `regions export REQUEST_JSON_OR_@FILE`
+    - `region-sets` is accepted as an alias. Create/capture/update/derive/import
+      mutate project metadata; list/inspect/export are read-only apart from
+      explicit export files
+    - example manual capture:
+      `regions capture '{"set_id":"candidates","source":{"source_kind":"sequence_selection","seq_id":"locus","local_start_0based":20,"local_end_0based_exclusive":80,"reference_override":{"species_scientific_name":"Homo sapiens","taxon_id":9606,"assembly_name":"GRCh38","assembly_accession":"GCA_000001405.15","contig_name":"7"}},"purpose":"reporter_candidate"}'`
+    - lossless export:
+      `regions export '{"set_id":"candidates","json_path":"candidates.json","bed_path":"candidates.bed"}'`.
+      The BED writes a sibling manifest by default. Manifest-bound import checks
+      both the BED SHA-256 and regenerated canonical rows. Bare BED instead
+      requires `bare_bed_reference` plus `set_id_override`; no assembly is
+      guessed and no liftover is attempted
+    - run the complete offline example with
+      `cargo run --bin gentle_cli -- workflow @docs/examples/workflows/portable_genomic_regions_offline.json`
   - same command family for restriction-site details:
     - `inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED]`
     - JSON output includes `tooltip_lines[]` with the same concise

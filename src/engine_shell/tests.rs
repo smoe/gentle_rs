@@ -80,6 +80,115 @@ fn reporter_catalog_path() -> String {
 }
 
 #[test]
+fn parse_and_execute_genomic_region_shell_routes_share_typed_operations() {
+    let create = parse_shell_line(
+        r#"regions create '{"set_id":"shared","region_id":"roi_1","label":"Promoter candidate","interval":{"reference":{"species_scientific_name":"Homo sapiens","taxon_id":9606,"assembly_name":"GRCh38","assembly_accession":"GCA_000001405.15","contig_name":"chr7"},"start_0based":100,"end_0based_exclusive":101,"strand":"plus","coordinate_convention":"zero_based_half_open"},"purpose":"promoter_region","selection_method":"manual_span"}'"#,
+    )
+    .expect("parse create");
+    let ShellCommand::GenomicRegions { operation } = &create else {
+        panic!("expected genomic-region command");
+    };
+    assert!(matches!(operation, Operation::CreateGenomicRegion { .. }));
+
+    let mut engine = GentleEngine::default();
+    let created = execute_shell_command(&mut engine, &create).expect("execute create");
+    assert!(created.state_changed);
+    assert_eq!(
+        created.output["region"]["interval"]["start_0based"].as_u64(),
+        Some(100)
+    );
+    assert_eq!(
+        created.output["human_copy"].as_str(),
+        Some(
+            "Promoter candidate [roi_1] | GRCh38 (GCA_000001405.15), chr7:101-101, 1-based inclusive | strand + | method manual_span | sources none"
+        )
+    );
+
+    let listed = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("regions list").expect("parse list"),
+    )
+    .expect("execute list");
+    assert!(!listed.state_changed);
+    assert_eq!(listed.output["sets"][0]["set_id"].as_str(), Some("shared"));
+
+    let inspected = execute_shell_command(
+        &mut engine,
+        &parse_shell_line(r#"regions inspect '{"set_id":"shared","region_id":"roi_1"}'"#)
+            .expect("parse inspect"),
+    )
+    .expect("execute inspect");
+    assert!(!inspected.state_changed);
+    assert_eq!(
+        inspected.output["region"]["region_id"].as_str(),
+        Some("roi_1")
+    );
+}
+
+#[test]
+fn genomic_region_capabilities_are_fact_annotated_and_exports_require_confirmation() {
+    let mut engine = GentleEngine::default();
+    let capabilities = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect capabilities").expect("parse introspection"),
+    )
+    .expect("inspect capabilities");
+    let descriptors = capabilities.output["capabilities"]
+        .as_array()
+        .expect("capability rows");
+    for capability_id in [
+        "regions create",
+        "regions capture",
+        "regions list",
+        "regions inspect",
+        "regions update",
+        "regions derive",
+        "regions import",
+        "regions export",
+        "CreateGenomicRegion",
+        "CaptureGenomicRegion",
+        "ListGenomicRegions",
+        "InspectGenomicRegion",
+        "UpdateGenomicRegionPresentation",
+        "DeriveGenomicRegion",
+        "ImportGenomicRegionSet",
+        "ExportGenomicRegionSet",
+    ] {
+        let descriptor = descriptors
+            .iter()
+            .find(|descriptor| descriptor["id"].as_str() == Some(capability_id))
+            .unwrap_or_else(|| panic!("missing descriptor for {capability_id}"));
+        assert_eq!(
+            descriptor["annotation_status"].as_str(),
+            Some("fact_annotated")
+        );
+    }
+    let shell_export = descriptors
+        .iter()
+        .find(|descriptor| descriptor["id"].as_str() == Some("regions export"))
+        .expect("shell export descriptor");
+    let op_export = descriptors
+        .iter()
+        .find(|descriptor| descriptor["id"].as_str() == Some("ExportGenomicRegionSet"))
+        .expect("operation export descriptor");
+    assert_eq!(shell_export["requires_confirmation"].as_bool(), Some(true));
+    assert_eq!(op_export["requires_confirmation"].as_bool(), Some(true));
+    for read_only in [
+        "regions list",
+        "regions inspect",
+        "ListGenomicRegions",
+        "InspectGenomicRegion",
+    ] {
+        let descriptor = descriptors
+            .iter()
+            .find(|descriptor| descriptor["id"].as_str() == Some(read_only))
+            .expect("read-only descriptor");
+        assert_eq!(descriptor["mutating"].as_str(), Some("false"));
+        assert_eq!(descriptor["requires_confirmation"].as_bool(), Some(false));
+    }
+}
+
+#[test]
 fn promoters_panel_routes_parse_typed_request_and_exact_approval() {
     let request = PromoterReporterPanelRequest {
         schema: crate::engine::PROMOTER_REPORTER_PANEL_REQUEST_SCHEMA.to_string(),

@@ -18,6 +18,7 @@ pub mod gene_groups;
 pub mod gene_set_publication;
 pub mod gene_sets;
 pub mod genomic_motif_evidence;
+pub mod genomic_regions;
 pub mod isoform_evidence;
 pub mod orthologs;
 pub mod regulatory_partners;
@@ -172,6 +173,21 @@ pub use genomic_motif_evidence::{
     GenomicMotifEvidenceRequest, GenomicMotifEvidenceResolvedRegion, GenomicMotifEvidenceTarget,
     MAX_GENOMIC_MOTIF_EVIDENCE_QUERY_MOTIFS,
 };
+pub use genomic_regions::{
+    GENOMIC_REGION_BED_MANIFEST_SCHEMA, GENOMIC_REGION_OF_INTEREST_SCHEMA,
+    GENOMIC_REGION_OPERATION_REPORT_SCHEMA, GENOMIC_REGION_SET_SCHEMA, GENOMIC_REGION_STORE_SCHEMA,
+    GenomicRegionBedManifest, GenomicRegionCaptureRequest, GenomicRegionCaptureSource,
+    GenomicRegionCollisionPolicy, GenomicRegionCoordinateConvention, GenomicRegionCreateRequest,
+    GenomicRegionDerivation, GenomicRegionDerivationMethod, GenomicRegionDeriveRequest,
+    GenomicRegionEnsemblIntervalKind, GenomicRegionEvidenceAvailability,
+    GenomicRegionEvidenceReference, GenomicRegionExportRequest, GenomicRegionImportFormat,
+    GenomicRegionImportRequest, GenomicRegionInspectRequest, GenomicRegionInterval,
+    GenomicRegionListRequest, GenomicRegionLocalProjection, GenomicRegionLocalProjectionStatus,
+    GenomicRegionOfInterest, GenomicRegionOperationReport, GenomicRegionParentReference,
+    GenomicRegionPurpose, GenomicRegionReference, GenomicRegionSelectionMethod, GenomicRegionSet,
+    GenomicRegionSetSummary, GenomicRegionStore, GenomicRegionStrand, GenomicRegionUpdateRequest,
+    default_genomic_region_import_max_bytes, default_genomic_region_import_max_rows,
+};
 pub use isoform_evidence::{
     CDNA_EST_EVIDENCE_RESOURCE_SCHEMA, CdnaEstEvidenceKind, CdnaEstEvidenceRecord,
     CdnaEstEvidenceResource, GENE_ISOFORM_EVIDENCE_INSTRUCTION, GENE_ISOFORM_EVIDENCE_SCHEMA,
@@ -198,8 +214,9 @@ pub use isoform_evidence::{
     GeneLocusRegulatoryScoreSite, GeneLocusRegulatoryScoreState,
     GeneLocusRegulatoryScoreStrandPolicy, GeneLocusRegulatoryScoreTrack,
     GeneLocusRegulatoryScoreTrackRequest, GeneLocusRegulatorySourceFactorBinding,
-    GeneLocusScaleBar, GeneLocusScaleBarMode, GeneLocusScaleBarPolicy, GeneLocusTranscriptMetrics,
-    IsoformEvidenceAssessmentStatus, IsoformEvidenceSourceKind,
+    GeneLocusSavedRegionOverlayRow, GeneLocusScaleBar, GeneLocusScaleBarMode,
+    GeneLocusScaleBarPolicy, GeneLocusTranscriptMetrics, IsoformEvidenceAssessmentStatus,
+    IsoformEvidenceSourceKind,
 };
 pub use orthologs::{
     ORTHOLOG_PROMOTER_COHORT_SCHEMA, ORTHOLOG_PROMOTER_COMPARISON_SCHEMA,
@@ -5481,6 +5498,14 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "MaterializeEncodeCcreFeatures",
     "QueryEnsemblRegulationOverlaps",
     "MaterializeEnsemblRegulationFeatures",
+    "CreateGenomicRegion",
+    "CaptureGenomicRegion",
+    "ListGenomicRegions",
+    "InspectGenomicRegion",
+    "UpdateGenomicRegionPresentation",
+    "DeriveGenomicRegion",
+    "ImportGenomicRegionSet",
+    "ExportGenomicRegionSet",
     "PreviewFeatureLocationEdit",
     "EditFeatureLocation",
     "PreviewFeatureRecordCuration",

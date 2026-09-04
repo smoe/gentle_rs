@@ -5,7 +5,10 @@
 //! not evidence of absence, and probe overlap alone is never promoted to an
 //! isoform-validation claim.
 
-use crate::{EnsemblRegulationSourceDescriptor, SplicingExpertView};
+use crate::{
+    EnsemblRegulationSourceDescriptor, GenomicRegionEvidenceAvailability, GenomicRegionPurpose,
+    GenomicRegionSelectionMethod, GenomicRegionStrand, SplicingExpertView,
+};
 use serde::{Deserialize, Serialize};
 
 /// Legacy machine-readable report produced before per-measurement evidence retention.
@@ -537,6 +540,10 @@ pub struct GeneLocusEvidenceDisplayRequest {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub regulatory_score_tracks: Vec<GeneLocusRegulatoryScoreTrackRequest>,
     pub scale_bar: GeneLocusScaleBarPolicy,
+    /// Optional persisted genomic-region sets projected onto this report's
+    /// canonical locus axis.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub region_set_ids: Vec<String>,
     /// Preserve local source paths in the portable report. Disabled by default
     /// so reports can be shared without exposing workstation paths.
     pub include_local_source_paths: bool,
@@ -559,9 +566,32 @@ impl Default for GeneLocusEvidenceDisplayRequest {
             motif_top_hit_count: default_locus_motif_top_hit_count(),
             regulatory_score_tracks: vec![],
             scale_bar: GeneLocusScaleBarPolicy::default(),
+            region_set_ids: vec![],
             include_local_source_paths: false,
         }
     }
+}
+
+/// One saved genomic ROI projected onto the canonical locus display axis.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneLocusSavedRegionOverlayRow {
+    pub set_id: String,
+    pub set_content_sha256: String,
+    pub region_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    pub purpose: GenomicRegionPurpose,
+    pub selection_method: GenomicRegionSelectionMethod,
+    pub evidence_availability: GenomicRegionEvidenceAvailability,
+    pub local_start_1based: usize,
+    pub local_end_1based: usize,
+    pub genomic_start_0based: u64,
+    pub genomic_end_0based_exclusive: u64,
+    pub genomic_strand: GenomicRegionStrand,
+    pub region_content_sha256: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -1394,6 +1424,8 @@ pub struct GeneLocusEvidenceDisplayReport {
     /// Present only when Ensembl Regulation evidence was explicitly requested.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ensembl_regulation: Option<GeneLocusEnsemblRegulationEvidence>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub saved_region_overlays: Vec<GeneLocusSavedRegionOverlayRow>,
     pub provenance: Vec<GeneIsoformEvidenceProvenanceSource>,
     pub warnings: Vec<String>,
 }

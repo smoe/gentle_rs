@@ -399,6 +399,15 @@
       "human_reviewer": null
     },
     {
+      "tutorial_id": "portable_genomic_regions_offline",
+      "tutorial_kind": "generated_chapter",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": "2026-09-04",
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
       "tutorial_id": "reporter_construct_handoff_cli",
       "tutorial_kind": "guided_walkthrough",
       "tutorial_status": "active",

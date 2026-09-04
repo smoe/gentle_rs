@@ -33,6 +33,126 @@
       {
          "aliases": [],
          "engine_operations": [
+            "CreateGenomicRegion"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp-op"
+         ],
+         "path": "regions create",
+         "summary": "Create one explicitly assembly-bound, 0-based half-open genomic region of interest.",
+         "usage": "regions create REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "CaptureGenomicRegion"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp-op"
+         ],
+         "path": "regions capture",
+         "summary": "Capture a sequence selection, feature, CUT&RUN support window, or Ensembl regulatory feature with exact source provenance.",
+         "usage": "regions capture REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ListGenomicRegions"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp-op"
+         ],
+         "path": "regions list",
+         "summary": "List saved genomic region sets without mutating the project.",
+         "usage": "regions list [REQUEST_JSON_OR_@FILE]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "InspectGenomicRegion"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp-op"
+         ],
+         "path": "regions inspect",
+         "summary": "Inspect one saved ROI, its evidence, copy forms, and current local-projection availability.",
+         "usage": "regions inspect REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "UpdateGenomicRegionPresentation"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp-op"
+         ],
+         "path": "regions update",
+         "summary": "Update only the label, description, and notes of a saved ROI without changing its coordinate/evidence identity.",
+         "usage": "regions update REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "DeriveGenomicRegion"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp-op"
+         ],
+         "path": "regions derive",
+         "summary": "Create an explicit union, intersection, or hull from content-bound parent ROIs.",
+         "usage": "regions derive REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ImportGenomicRegionSet"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp-op"
+         ],
+         "path": "regions import",
+         "summary": "Import a digest-validated JSON region set or BED input carrying an explicit reference or bound manifest.",
+         "usage": "regions import REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportGenomicRegionSet"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp-op"
+         ],
+         "path": "regions export",
+         "summary": "Export lossless canonical JSON and/or BED6 plus a content-bound sidecar manifest.",
+         "usage": "regions export REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "PreviewFeatureLocationEdit",
             "EditFeatureLocation"
          ],

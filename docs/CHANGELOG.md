@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+- Added engine-owned, portable genomic regions of interest and region sets.
+  Canonical records bind explicit species/assembly/contig identity, 0-based
+  half-open geometry, strand, optional exact sequence projections, independent
+  evidence references, explicit derivations, and stable identity/content
+  digests. Shared operations and `regions ...` routes cover create, source
+  capture, list, inspect, presentation updates, union/intersection/hull,
+  bounded import, and JSON or BED6+manifest export across CLI/shell/MCP and
+  adapters. The DNA viewer now offers a resizable Saved genomic regions
+  manager, selection/CUT&RUN/Ensembl capture actions, portable copy/export, and
+  locus overlays. A generated offline SERPINE1 tutorial exercises the complete
+  workflow with pinned public annotation plus clearly synthetic regulatory and
+  occupancy evidence. Splicing Expert alternative-boundary details are now
+  sorted before fingerprinting so independently generated locus reports remain
+  byte-stable.
+
 - Made gene-locus regulatory score lanes quantitatively readable. Every JASPAR
   or provider-neutral lane now has a labeled zero-based Y axis with midpoint
   and maximum ticks; background-tail rows identify their displayed value as

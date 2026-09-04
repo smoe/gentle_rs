@@ -1,0 +1,355 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "portable_genomic_regions_offline",
+  "title": "Portable genomic regions on a SERPINE1 locus (offline)",
+  "summary": "Loads a pinned public Ensembl-116 SERPINE1 locus, saves manual, synthetic Ensembl-regulatory, and synthetic CUT&RUN regions through one typed region-set contract, exports lossless JSON and BED+manifest, and renders the regions on the shared locus figure.",
+  "test_mode": "always",
+  "required_files": [
+    "test_files/fixtures/genomic_regions/serpine1_offline/ensembl_116_serpine1_entry.json",
+    "test_files/fixtures/genomic_regions/serpine1_offline/synthetic_serpine1_cutrun.bed"
+  ],
+  "tags": [
+    "genomic-regions",
+    "serpine1",
+    "ensembl-regulation",
+    "cutrun",
+    "bed",
+    "offline",
+    "synthetic-evidence"
+  ],
+  "workflow": {
+    "run_id": "example_portable_genomic_regions_offline",
+    "ops": [
+      {
+        "PrepareGeneLocusEvidence": {
+          "request": {
+            "schema": "gentle.gene_locus_evidence_preparation_request.v1",
+            "gene_query": "ENSG00000106366",
+            "species": "homo_sapiens",
+            "assembly": "GRCh38",
+            "allow_ensembl_network": false,
+            "ensembl_entry_path": "test_files/fixtures/genomic_regions/serpine1_offline/ensembl_116_serpine1_entry.json",
+            "flank_5prime_bp": 1000,
+            "flank_3prime_bp": 0,
+            "output_seq_id": "serpine1_portable_regions",
+            "output_panel_id": "serpine1_portable_regions_panel",
+            "annotation_release": "Ensembl 116 pinned public fixture",
+            "display_upstream_bp": 1000,
+            "display_downstream_bp": 0,
+            "scale_bar": {
+              "mode": "fixed",
+              "length_bp": 1000
+            },
+            "svg_path": "artifacts/portable_genomic_regions.initial.svg"
+          }
+        }
+      },
+      {
+        "CaptureGenomicRegion": {
+          "request": {
+            "set_id": "serpine1_regions",
+            "set_label": "SERPINE1 portable regions",
+            "region_id": "serpine1_manual_candidate",
+            "label": "Manual promoter candidate",
+            "description": "A caller-selected span saved from the pinned locus.",
+            "purpose": "reporter_candidate",
+            "source": {
+              "source_kind": "sequence_selection",
+              "seq_id": "serpine1_portable_regions",
+              "local_start_0based": 500,
+              "local_end_0based_exclusive": 650,
+              "strand": "unstranded",
+              "reference_override": {
+                "species_scientific_name": "Homo sapiens",
+                "taxon_id": 9606,
+                "assembly_name": "GRCh38",
+                "assembly_accession": "GCA_000001405.15",
+                "contig_name": "7",
+                "contig_accession": "NC_000007.14",
+                "contig_aliases": [
+                  "chr7"
+                ]
+              }
+            },
+            "notes": [
+              "User-defined tutorial selection; no regulatory activity is implied."
+            ]
+          }
+        }
+      },
+      {
+        "CaptureGenomicRegion": {
+          "request": {
+            "set_id": "serpine1_regions",
+            "region_id": "serpine1_ensembl_candidate",
+            "label": "Synthetic Ensembl promoter annotation",
+            "purpose": "candidate_cis_regulatory_region",
+            "source": {
+              "source_kind": "ensembl_regulatory_feature",
+              "feature_id": "ENSR_SERPINE1_TUTORIAL",
+              "interval_kind": "core",
+              "report": {
+                "schema": "gentle.ensembl_regulation_overlap.v1",
+                "report_id": "serpine1_synthetic_ensembl_overlap",
+                "seq_id": "serpine1_portable_regions",
+                "index_path": "",
+                "resolved_intervals_path": "",
+                "index_sha256": "sha256:583db7148ace4029960b93cf526f92f878010d084b6473be22a89607acb6c302",
+                "source": {
+                  "source_id": "ensembl_regulation_synthetic_serpine1_v1",
+                  "provider": "Ensembl Regulation",
+                  "annotation_release": "synthetic tutorial v1",
+                  "annotation_api_version": "tutorial",
+                  "pipeline_version": "tutorial",
+                  "gene_annotation_source": "Ensembl",
+                  "gene_annotation_release": "116",
+                  "species_scientific_name": "Homo sapiens",
+                  "taxon_id": 9606,
+                  "assembly_name": "GRCh38",
+                  "assembly_aliases": [
+                    "GRCh38.p14"
+                  ],
+                  "assembly_accession": "GCA_000001405.15",
+                  "feature_types": [
+                    "promoter"
+                  ],
+                  "annotation_api_url": "https://regulation.ensembl.org/data_access",
+                  "data_access_url": "https://regulation.ensembl.org/data_access",
+                  "primary_analysis_url": "https://regulation.ensembl.org/",
+                  "browser_species_slug": "Homo_sapiens",
+                  "feature_page_url_template": "https://regulation.ensembl.org/Homo_sapiens/RegulatoryFeature/Summary?rf={FEATURE_ID}",
+                  "coordinate_system": "0-based half-open synthetic tutorial interval",
+                  "scope_note": "Hand-crafted offline feature for contract testing.",
+                  "activity_note": "No regulatory activity measurement is supplied.",
+                  "primary_signal_note": "No primary signal is supplied."
+                },
+                "intervals_sha256": "sha256:78b95a4da1f7ccb45eebc861015f8d95ac1c29d54393f954b5e6bf680c867b9c",
+                "content_identity_verified": true,
+                "assembly_match_status": "exact",
+                "query_start_0based": 0,
+                "query_end_0based_exclusive": 18106,
+                "query_length_bp": 18106,
+                "requested_feature_types": [
+                  "promoter"
+                ],
+                "max_rows": 10,
+                "matched_feature_count": 1,
+                "returned_feature_count": 1,
+                "rows": [
+                  {
+                    "interval": {
+                      "chromosome": "7",
+                      "start_0based": 101123899,
+                      "end_0based_exclusive": 101124080,
+                      "feature_id": "ENSR_SERPINE1_TUTORIAL",
+                      "feature_type": "promoter",
+                      "extended_start_0based": 101123849,
+                      "extended_end_0based_exclusive": 101124130,
+                      "associated_gene_ids": [
+                        "ENSG00000106366"
+                      ],
+                      "associated_gene_names": [
+                        "SERPINE1"
+                      ],
+                      "source_line_number": 1
+                    },
+                    "local_start_0based": 2742,
+                    "local_end_0based_exclusive": 2923,
+                    "genomic_start_0based": 101123899,
+                    "genomic_end_0based_exclusive": 101124080,
+                    "overlap_bp": 181,
+                    "clipped": false
+                  }
+                ],
+                "evidence_statement": "Synthetic Ensembl-shaped provider annotation overlaps the pinned SERPINE1 locus.",
+                "non_claims": [
+                  "The associated gene is a provider-style annotation, not a causal target assignment.",
+                  "The synthetic feature is not measured regulatory activity."
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "CaptureGenomicRegion": {
+          "request": {
+            "set_id": "serpine1_regions",
+            "region_id": "serpine1_cutrun_support",
+            "label": "Synthetic TP73 CUT&RUN support",
+            "purpose": "occupancy_region",
+            "source": {
+              "source_kind": "cutrun_support_window",
+              "window_id": "serpine1_support_window_1",
+              "reference": {
+                "species_scientific_name": "Homo sapiens",
+                "taxon_id": 9606,
+                "assembly_name": "GRCh38",
+                "assembly_accession": "GCA_000001405.15",
+                "contig_name": "7",
+                "contig_accession": "NC_000007.14",
+                "contig_aliases": [
+                  "chr7"
+                ]
+              },
+              "report": {
+                "schema": "gentle.cutrun_regulatory_support.v1",
+                "seq_id": "serpine1_portable_regions",
+                "evidence_sources": [
+                  {
+                    "source_kind": "dataset",
+                    "source_id": "synthetic_serpine1_cutrun_v1",
+                    "description": "Synthetic TP73 CUT&RUN tutorial interval",
+                    "dataset_id": "synthetic_serpine1_cutrun",
+                    "report_id": "synthetic_serpine1_cutrun_report",
+                    "target_factor": "TP73",
+                    "species": "Homo sapiens"
+                  }
+                ],
+                "support_windows": [
+                  {
+                    "window_id": "serpine1_support_window_1",
+                    "local_start_0based": 4843,
+                    "local_end_0based_exclusive": 4963,
+                    "genomic_start_1based": 101126001,
+                    "genomic_end_1based": 101126120,
+                    "support_strength": "strong",
+                    "overlapping_peak_count": 1,
+                    "max_signal_value": 9.5,
+                    "mean_signal_value": 7.25,
+                    "supporting_fragment_count": 24,
+                    "cut_site_count": 48,
+                    "contributing_dataset_ids": [
+                      "synthetic_serpine1_cutrun"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "ExportGenomicRegionSet": {
+          "request": {
+            "set_id": "serpine1_regions",
+            "json_path": "artifacts/portable_genomic_regions.region_set.json",
+            "bed_path": "artifacts/portable_genomic_regions.bed",
+            "manifest_path": "artifacts/portable_genomic_regions.bed.manifest.json",
+            "include_local_paths": false
+          }
+        }
+      },
+      {
+        "PrepareGeneLocusEvidence": {
+          "request": {
+            "schema": "gentle.gene_locus_evidence_preparation_request.v1",
+            "gene_query": "ENSG00000106366",
+            "species": "homo_sapiens",
+            "assembly": "GRCh38",
+            "allow_ensembl_network": false,
+            "ensembl_entry_path": "test_files/fixtures/genomic_regions/serpine1_offline/ensembl_116_serpine1_entry.json",
+            "flank_5prime_bp": 1000,
+            "flank_3prime_bp": 0,
+            "output_seq_id": "serpine1_portable_regions",
+            "output_panel_id": "serpine1_portable_regions_panel",
+            "annotation_release": "Ensembl 116 pinned public fixture",
+            "display_upstream_bp": 1000,
+            "display_downstream_bp": 0,
+            "local_tracks": [
+              {
+                "source_kind": "bed",
+                "path": "test_files/fixtures/genomic_regions/serpine1_offline/synthetic_serpine1_cutrun.bed",
+                "track_name": "Synthetic TP73 CUT&RUN",
+                "source_id": "synthetic_serpine1_cutrun_v1",
+                "assembly": "GRCh38",
+                "assay": "CUT&RUN",
+                "factor": "TP73",
+                "clear_existing": true
+              }
+            ],
+            "occupancy_layout": {
+              "schema": "gentle.gene_locus_occupancy_layout.v1",
+              "groups": [
+                {
+                  "group_id": "synthetic_tp73_occupancy",
+                  "label": "Synthetic TP73 occupancy evidence",
+                  "scale_mode": "independent",
+                  "lanes": [
+                    {
+                      "track_name": "Synthetic TP73 CUT&RUN",
+                      "source_id": "synthetic_serpine1_cutrun_v1",
+                      "source_assembly": "GRCh38",
+                      "display_label": "Synthetic TP73 CUT&RUN",
+                      "condition_label": "tutorial",
+                      "cell_line_label": "synthetic",
+                      "batch_label": "fixture-v1",
+                      "assay": "CUT&RUN",
+                      "factor": "TP73",
+                      "role": "experimental"
+                    }
+                  ]
+                }
+              ]
+            },
+            "regulatory_score_tracks": [
+              {
+                "track_id": "tp73_jaspar",
+                "label": "TP73 JASPAR PWM",
+                "provider_kind": "jaspar_pwm",
+                "source_ids": [
+                  "TP73"
+                ],
+                "factors": [
+                  {
+                    "factor_id": "TP73",
+                    "factor_label": "p73"
+                  }
+                ],
+                "score_kind": "llr_bits",
+                "strand_policy": "both",
+                "clip_negative": false,
+                "display_threshold": 0,
+                "top_hit_count": 3,
+                "scale_mode": "independent",
+                "color_hint": "#005f73"
+              }
+            ],
+            "scale_bar": {
+              "mode": "fixed",
+              "length_bp": 1000
+            },
+            "region_set_ids": [
+              "serpine1_regions"
+            ],
+            "reporter_architecture_request": {
+              "schema": "gentle.promoter_reporter_architecture_comparison_request.v1",
+              "seq_id": "",
+              "gene_label": "SERPINE1",
+              "transcript_ids": [
+                "ENST00000223095.5",
+                "ENST00000870828.2",
+                "ENST00000950058.1"
+              ],
+              "promoter_upstream_bp": 1000,
+              "tss_proximal_downstream_bp": 200,
+              "tss_cluster_tolerance_bp": 600,
+              "architectures": [
+                "tss_proximal_transcriptional",
+                "spliced_5utr_luc_atg_replacement",
+                "genomic_5utr_luc_atg_replacement"
+              ],
+              "motif_tokens": [
+                "TP73"
+              ]
+            },
+            "svg_path": "artifacts/portable_genomic_regions.locus.svg",
+            "display_report_path": "artifacts/portable_genomic_regions.locus.report.json",
+            "reporter_report_path": "artifacts/portable_genomic_regions.reporter.json",
+            "receipt_path": "artifacts/portable_genomic_regions.receipt.json"
+          }
+        }
+      }
+    ]
+  }
+}

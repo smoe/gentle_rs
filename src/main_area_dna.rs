@@ -66,6 +66,9 @@ mod feature_tree_ui;
 #[path = "main_area_dna/formula_controls.rs"]
 mod formula_controls;
 
+#[path = "main_area_dna/genomic_regions_ui.rs"]
+mod genomic_regions_ui;
+
 #[path = "main_area_dna/primer_design_ui.rs"]
 mod primer_design_ui;
 
@@ -1695,6 +1698,14 @@ pub struct MainAreaDna {
     construct_reasoning_overlay_sync_key: Option<ConstructReasoningOverlaySyncKey>,
     show_dotplot_window: bool,
     show_splicing_expert_window: bool,
+    show_genomic_region_manager: bool,
+    genomic_region_default_set_id: String,
+    genomic_region_default_set_label: String,
+    genomic_region_new_label: String,
+    genomic_region_new_purpose: gentle_protocol::GenomicRegionPurpose,
+    genomic_region_pending_selection: Option<(usize, usize)>,
+    genomic_region_store_cache: Option<gentle_protocol::GenomicRegionStore>,
+    genomic_region_status: String,
     splicing_expert_window_pending_initial_render: bool,
     splicing_expert_window_focus_requested: bool,
     splicing_expert_window_feature_id: Option<usize>,
@@ -1723,6 +1734,7 @@ pub struct MainAreaDna {
     splicing_locus_motif_threshold: String,
     splicing_locus_motif_top_hits: String,
     splicing_locus_regulatory_tracks_path: String,
+    splicing_locus_region_set_ids: String,
     splicing_locus_scale_bar_mode: String,
     splicing_locus_scale_bar_bp: String,
     splicing_locus_svg_path: String,
@@ -2497,6 +2509,15 @@ impl MainAreaDna {
             construct_reasoning_overlay_sync_key: None,
             show_dotplot_window: false,
             show_splicing_expert_window: false,
+            show_genomic_region_manager: false,
+            genomic_region_default_set_id: "saved_regions".to_string(),
+            genomic_region_default_set_label: "Saved genomic regions".to_string(),
+            genomic_region_new_label: String::new(),
+            genomic_region_new_purpose:
+                gentle_protocol::GenomicRegionPurpose::CandidateCisRegulatoryRegion,
+            genomic_region_pending_selection: None,
+            genomic_region_store_cache: None,
+            genomic_region_status: String::new(),
             splicing_expert_window_pending_initial_render: false,
             splicing_expert_window_focus_requested: false,
             splicing_expert_window_feature_id: None,
@@ -2525,6 +2546,7 @@ impl MainAreaDna {
             splicing_locus_motif_threshold: String::new(),
             splicing_locus_motif_top_hits: "5".to_string(),
             splicing_locus_regulatory_tracks_path: String::new(),
+            splicing_locus_region_set_ids: String::new(),
             splicing_locus_scale_bar_mode: "hidden".to_string(),
             splicing_locus_scale_bar_bp: "1000".to_string(),
             splicing_locus_svg_path: "gene-locus-evidence.svg".to_string(),
@@ -4442,6 +4464,7 @@ impl MainAreaDna {
         self.sync_from_engine_display();
         self.render_dotplot_window(ctx);
         self.render_splicing_expert_window(ctx);
+        self.render_genomic_region_manager(ctx);
         self.render_rna_read_mapping_window(ctx);
         self.render_variant_followup_window(ctx);
         self.render_isoform_expert_window(ctx);
@@ -6628,6 +6651,13 @@ impl MainAreaDna {
                     self.show_shell = true;
                     self.save_engine_ops_state();
                 }
+            }
+            if ui
+                .button("Regions...")
+                .on_hover_text("Save, inspect, copy, and export assembly-bound genomic regions")
+                .clicked()
+            {
+                self.open_genomic_region_manager(None);
             }
         });
 
@@ -27504,6 +27534,7 @@ impl MainAreaDna {
                 let mut map_open_dotplot_feature: Option<usize> = None;
                 let mut map_edit_feature_location: Option<usize> = None;
                 let mut map_create_feature_range: Option<(usize, usize)> = None;
+                let mut map_save_region_range: Option<(usize, usize)> = None;
                 let mut map_delete_feature: Option<usize> = None;
                 response.context_menu(|ui| {
                     let mut showed_any = false;
@@ -27554,6 +27585,27 @@ impl MainAreaDna {
                             ui.separator();
                         }
                         showed_any = true;
+                        let save_region_response = ui
+                            .button("Save/share selected genomic region...")
+                            .on_hover_text(
+                                "Open the region manager with this selection; the engine preserves assembly, coordinate convention, strand, and provenance",
+                            );
+                        #[cfg(feature = "gui-test-support")]
+                        crate::gui_test_support::register_response(
+                            &save_region_response,
+                            crate::tutorial_gui_semantics::DNA_SELECTION_SAVE_REGION,
+                            crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER,
+                            Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
+                                self.seq_id.as_deref().unwrap_or("unnamed"),
+                            ])),
+                            crate::gui_test_support::GuiTestWidgetKind::Button,
+                            false,
+                        );
+                        if save_region_response.clicked() {
+                            map_save_region_range = Some(selected_range);
+                            ui.close();
+                            return;
+                        }
                         if ui
                             .button("Create feature from selection...")
                             .on_hover_text(
@@ -27789,6 +27841,9 @@ impl MainAreaDna {
                 if let Some(range) = map_create_feature_range {
                     self.focus_feature_record_create_editor(Some(range));
                 }
+                if let Some(range) = map_save_region_range {
+                    self.open_genomic_region_manager(Some(range));
+                }
                 if let Some(feature_id) = map_delete_feature {
                     self.focus_feature_record_delete_editor(Some(feature_id));
                 }
@@ -27797,6 +27852,7 @@ impl MainAreaDna {
         if render_auxiliary_windows {
             self.render_dotplot_window(ctx);
             self.render_splicing_expert_window(ctx);
+            self.render_genomic_region_manager(ctx);
             self.render_rna_read_mapping_window(ctx);
             self.render_variant_followup_window(ctx);
             self.render_isoform_expert_window(ctx);

@@ -4220,6 +4220,40 @@ external coding agent runtime, see:
     a separate pinned public Ensembl-116 SERPINE1 acceptance case composes
     reporter rows with clearly synthetic locus evidence without claiming
     experimental promoter use
+- portable genomic regions of interest are project-owned, additive records:
+  - `gentle.genomic_region_of_interest.v1` stores one canonical 0-based,
+    half-open interval with explicit species, assembly, contig, strand, and
+    coordinate convention. Human copy renders the same bases as 1-based,
+    inclusive coordinates; BED6 renders the canonical machine coordinates.
+    Neither projection changes the underlying record
+  - `gentle.genomic_region_set.v1` groups only species/assembly-compatible
+    regions. The immutable identity digest binds geometry, purpose, selection
+    method, evidence, derivation, and any exact sequence projection; mutable
+    labels, descriptions, notes, and projection availability affect the
+    content digest without changing that identity
+  - an optional local projection binds a sequence id, exact sequence SHA-256,
+    genome-anchor coordinates/orientation, and local interval. Import rejects
+    a projection whose geometry or strand does not reproduce the canonical
+    genomic interval. GENtle does not infer an assembly or perform liftover
+  - `CaptureGenomicRegion` accepts a manual sequence selection, an existing
+    feature, a CUT&RUN support window, a source-bound Ensembl Regulation row,
+    or an explicit provider annotation. Multiple evidence records remain
+    distinct. CUT&RUN support is occupancy evidence, not affinity or causal
+    regulation; provider-associated genes are annotations, not target verdicts
+  - `DeriveGenomicRegion` performs only an explicit `union`, `intersection`, or
+    `hull`. A disjoint union is rejected rather than silently widened; a hull
+    states that it may include bases absent from every parent
+  - canonical JSON is lossless. BED import/export uses BED6 plus
+    `gentle.genomic_region_bed_manifest.v1`, which binds the exact BED bytes and
+    complete region set. Bare BED requires an explicit reference and set id;
+    imports are bounded by caller-visible byte and row limits
+  - `region_set_ids[]` on the additive gene-locus request projects matching,
+    current local bindings into `saved_region_overlays[]`. Stale or unavailable
+    bindings stay inspectable and do not become evidence absence
+  - the deterministic offline example is
+    `docs/examples/workflows/portable_genomic_regions_offline.json`; it combines
+    a pinned public Ensembl-116 SERPINE1 locus with explicitly synthetic
+    Ensembl-shaped and CUT&RUN evidence
 - shared-shell UniProt routes:
   - `uniprot fetch QUERY [--entry-id ID]`
     - `QUERY` is a UniProtKB/Swiss-Prot accession or entry name, for example

@@ -39870,6 +39870,7 @@ impl GentleEngine {
             encode_ccre_materialization: None,
             ensembl_regulation_overlaps: None,
             ensembl_regulation_materialization: None,
+            genomic_region_operation: None,
             repeat_environment_cohort: None,
             window_cohort_tfbs: None,
             tfbs_hit_scan: None,
@@ -39911,6 +39912,18 @@ impl GentleEngine {
         };
 
         if matches!(
+            &op,
+            Operation::CreateGenomicRegion { .. }
+                | Operation::CaptureGenomicRegion { .. }
+                | Operation::ListGenomicRegions { .. }
+                | Operation::InspectGenomicRegion { .. }
+                | Operation::UpdateGenomicRegionPresentation { .. }
+                | Operation::DeriveGenomicRegion { .. }
+                | Operation::ImportGenomicRegionSet { .. }
+                | Operation::ExportGenomicRegionSet { .. }
+        ) {
+            self.apply_genomic_region_operation(op, &mut result)?;
+        } else if matches!(
             &op,
             Operation::FindRestrictionSites { .. }
                 | Operation::QueryRepeatAnnotations { .. }
@@ -39968,6 +39981,16 @@ impl GentleEngine {
             self.apply_arrangement_rack_and_ladder_operation(op, &mut result)?;
         } else {
             match op {
+                Operation::CreateGenomicRegion { .. }
+                | Operation::CaptureGenomicRegion { .. }
+                | Operation::ListGenomicRegions { .. }
+                | Operation::InspectGenomicRegion { .. }
+                | Operation::UpdateGenomicRegionPresentation { .. }
+                | Operation::DeriveGenomicRegion { .. }
+                | Operation::ImportGenomicRegionSet { .. }
+                | Operation::ExportGenomicRegionSet { .. } => {
+                    unreachable!("genomic-region operations are handled above")
+                }
                 Operation::QueryRepeatAnnotations { .. }
                 | Operation::BuildRepeatEnvironmentCohort { .. }
                 | Operation::SummarizeWindowCohortTfbs { .. }

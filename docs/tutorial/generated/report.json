@@ -2,7 +2,7 @@
   "schema": "gentle.tutorial_generation_report.v1",
   "manifest": "docs/tutorial/manifest.json",
   "source_examples": "docs/examples/workflows",
-  "chapter_count": 25,
+  "chapter_count": 26,
   "online_enabled": false,
   "generated_files": [
     "README.md",
@@ -19,6 +19,10 @@
     "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_sybr_juc_panel.report.json",
     "artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r01.report.json",
     "artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r02.report.json",
+    "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.bed",
+    "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.bed.manifest.json",
+    "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.locus.svg",
+    "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.region_set.json",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.alternative_promoters.json",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.evidence_matrix.json",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.isoform_promoter_comparison.json",
@@ -57,10 +61,11 @@
     "chapters/08-07_promoter_gene_set_ortholog_cohort_offline.md",
     "chapters/08-08_gene_set_ortholog_promoter_cohorts_offline.md",
     "chapters/08-09_promoter_reporter_panel_planning_offline.md",
+    "chapters/08-10_portable_genomic_regions_offline.md",
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "b05f234fddb58b8209e9b12ceaec51e2d76d5d70161f3db2121b7c4d369f8ecc",
+    "README.md": "efdf480ecbc7fdde7324c8c3956658a92f10cf5f41166fcebbd2ca1e25fd8678",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_cohort.json": "a3a9093760934082e5e9ea8c06b2528978908de49e59a6142766d90f8baad5a5",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_comparison.json": "f324456edd43ceb5f6c0f263e085844cddb27da1a454b40b63a68e8d69bc9a0e",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json": "e415893e3a32ed0ed4fc75d5e637bb7f19ac0552d0f671d5a5d0421db17f079d",
@@ -74,6 +79,10 @@
     "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_sybr_juc_panel.report.json": "998afc4d2e28b91d5dc226d37bb2851dab653b65efa80dd6b3017ff55d095d26",
     "artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r01.report.json": "06c24247d8de5e16d1115555881c77461ae115573678380c74ff51926e6d3f20",
     "artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r02.report.json": "813dfb83318f0a2de397d4ddcd80d8020fe72586ec637d97598c3ea5a353dd3a",
+    "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.bed": "a4c0b3b274099f1336ad956e18952008b0a4cefbd5bde255cc24fffcdf76c54c",
+    "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.bed.manifest.json": "bb806ac7ff1c9933ab765a34888cd91b531514cbb7ff477818d6eb439bf4560a",
+    "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.locus.svg": "4d93d607b22f6de35b8afccc64bb074f7fec02ecc28293abaac12b12d9f3dc21",
+    "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.region_set.json": "f99dd295e6b9d8a7d057d71f89bd38d02314ee63c9fc050ef141cca295316d84",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.alternative_promoters.json": "fcdcdcec09c3d595220276e1dd0a542d876634897ef6c270952c6b40d08c6f54",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.evidence_matrix.json": "a29e3031ecde6dd9f945860bda0be48fbced440bb62f464381d42c331e35db25",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.isoform_promoter_comparison.json": "2a23e46ce8c76b8352cb5c2b8dffe3dbd05b8e229dd7da6a50de17de81dc03ef",
@@ -111,7 +120,8 @@
     "chapters/08-03_promoter_design_artifact_slice_offline.md": "76336ac96f1cd0b5f078428676bb203eb0185ef98a6a0b85bada7e27aeea592a",
     "chapters/08-07_promoter_gene_set_ortholog_cohort_offline.md": "1d5c822a6427c7237f839b55642501224e37119aaac21112a9d3800e77feacc8",
     "chapters/08-08_gene_set_ortholog_promoter_cohorts_offline.md": "fb334f0f59d7795cb89f872570f7d3200e7e6ec125349bdee0155fd80e4540f3",
-    "chapters/08-09_promoter_reporter_panel_planning_offline.md": "b5aa8d61d9e7534d99d431c4859853a3f34f7b6a138261d1c42449fce36e5eea"
+    "chapters/08-09_promoter_reporter_panel_planning_offline.md": "b5aa8d61d9e7534d99d431c4859853a3f34f7b6a138261d1c42449fce36e5eea",
+    "chapters/08-10_portable_genomic_regions_offline.md": "460065d64c04468409ae19df2dcf44af1f2d36dfa7d811aad0832374af90992a"
   },
   "warnings": [
     "Tutorial 'load_branch_reverse_complement_pgex_fasta' review is stale because source JSON 'docs/tutorial/sources/02-01_load_branch_reverse_complement_pgex_fasta.json' changed after human review date 2026-05-18",
@@ -786,6 +796,44 @@
       "retained_artifacts": [
         "artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.source.svg",
         "artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.synthetic_vector.svg"
+      ]
+    },
+    {
+      "id": "portable_genomic_regions_offline",
+      "order": 30,
+      "title": "Save and Share Genomic Regions (Offline SERPINE1 Example)",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 10,
+      "decimal_id": "08.10",
+      "tier": "core",
+      "example_id": "portable_genomic_regions_offline",
+      "example_source": "docs/examples/workflows/portable_genomic_regions_offline.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "genome_catalog_targeting",
+        "artifact_exports",
+        "tutorial_drift_checks"
+      ],
+      "executed": true,
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-04",
+      "graphics": [
+        {
+          "kind": "generated",
+          "path": "docs/tutorial/generated/artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.locus.svg",
+          "caption": "A pinned public Ensembl-116 SERPINE1 locus with three saved regions: a manual candidate, a synthetic Ensembl-regulatory annotation, and a synthetic CUT&RUN support window. Their shared position is for inspection and does not establish binding or causal regulation.",
+          "illustrates_step": 7,
+          "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+        }
+      ],
+      "retained_artifacts": [
+        "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.bed",
+        "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.bed.manifest.json",
+        "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.locus.svg",
+        "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.region_set.json"
       ]
     }
   ]

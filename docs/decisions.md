@@ -869,3 +869,23 @@ biosample-activity or causal target-gene claim from annotation overlap alone.
 Future primary-signal display should use bounded region reads, explicit assay,
 biosample, condition, replicate, output-type and unit provenance, and a
 declared derived-activity rule rather than silently reducing signal to peaks.
+
+## DEC-045: Portable Genomic Regions Are Assembly-Bound Evidence Ledgers
+
+Status: active
+
+A saved genomic region of interest has one canonical machine geometry:
+explicit species when known, assembly, contig, genomic strand, and 0-based
+half-open bounds. Human 1-based inclusive text, BED6, sequence-local
+coordinates, and locus-figure overlays are projections of that record rather
+than independent coordinate authorities. Imports never infer assembly from a
+chromosome label or filename, and assembly conversion requires a future
+explicit, provenance-bearing liftover operation.
+
+Region geometry, selection purpose, and supporting evidence remain separate.
+Provider annotations and CUT&RUN enrichment may explain why a span was saved,
+but neither establishes affinity, causal regulation, or a target-gene verdict.
+Combining intervals requires an explicit union, intersection, or hull that
+retains content-bound parent identities. Canonical JSON is lossless; BED
+round-trips require a sidecar binding the complete region set to the exact BED
+bytes and coordinate contract.

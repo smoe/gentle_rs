@@ -1159,6 +1159,25 @@ Feature tree grouping:
   - the offline PATZ1 example is generated from
     `docs/examples/workflows/patz1_gene_locus_evidence_offline.json`; its tiny
     committed tracks are synthetic and are not experimental PATZ1 evidence
+- `Saved genomic regions` keeps reusable interval configuration out of the DNA
+  map itself while remaining one click away from it:
+  - open it with `Regions...` in the DNA toolbar, or select bases and choose
+    `Save/share selected genomic region...` from the map context menu
+  - the resizable manager lists set, label, explicit assembly, 1-based
+    inclusive coordinates, strand, selection method, and evidence availability.
+    Its copy actions provide human coordinates, BED6 (0-based half-open), or
+    the complete canonical ROI JSON
+  - JSON is the lossless interchange. `BED + manifest...` writes BED6 plus a
+    content-bound sidecar; importing bare BED requires an explicit reference in
+    the shared request path rather than guessing from a chromosome label
+  - CUT&RUN support-window and source-bound Ensembl Regulation tables expose
+    capture actions that call the same `CaptureGenomicRegion` operation as the
+    manager. Their evidence and conservative non-claims remain source-specific
+  - `Locus figure` accepts saved region-set IDs and draws their current local
+    projections on the shared coordinate axis. Stale projections remain typed
+    in the report and are not silently treated as absent evidence
+  - stable tutorial semantic IDs cover manager open/save/copy/import/export and
+    CUT&RUN/Ensembl capture controls for Linux acceptance automation
 - `Cryptic screen` is a thin background adapter over
   `gentle.cryptic_splicing_screen.v1`:
   - choose a 1-based inclusive source span and orientation, or copy the current

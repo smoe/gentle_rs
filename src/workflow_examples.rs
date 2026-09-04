@@ -3072,6 +3072,45 @@ fn rewrite_example_paths_for_execution(
             ensure_parent_exists(path)?;
             continue;
         }
+        if let Operation::PrepareGeneLocusEvidence { request } = op {
+            rewrite_optional_input_path(&mut request.ensembl_entry_path, repo_root);
+            for track in &mut request.local_tracks {
+                track.path = resolve_input_path(&track.path, repo_root);
+            }
+            if let Some(regulation) = request.ensembl_regulation.as_mut() {
+                regulation.interval_index_path =
+                    resolve_input_path(&regulation.interval_index_path, repo_root);
+                rewrite_optional_input_path(&mut regulation.intervals_path, repo_root);
+            }
+            request.svg_path = resolve_output_path(&request.svg_path, run_dir);
+            ensure_parent_exists(&request.svg_path)?;
+            for path in [
+                &mut request.png_path,
+                &mut request.pdf_path,
+                &mut request.display_report_path,
+                &mut request.reporter_report_path,
+                &mut request.receipt_path,
+            ] {
+                rewrite_optional_output_path(path, run_dir);
+                if let Some(path) = path.as_deref() {
+                    ensure_parent_exists(path)?;
+                }
+            }
+            continue;
+        }
+        if let Operation::ExportGenomicRegionSet { request } = op {
+            for path in [
+                &mut request.json_path,
+                &mut request.bed_path,
+                &mut request.manifest_path,
+            ] {
+                rewrite_optional_output_path(path, run_dir);
+                if let Some(path) = path.as_deref() {
+                    ensure_parent_exists(path)?;
+                }
+            }
+            continue;
+        }
         if let Operation::RenderRnaStructureSvg { path, .. } = op {
             *path = resolve_output_path(path, run_dir);
             ensure_parent_exists(path)?;
@@ -6349,6 +6388,83 @@ mod tests {
         }
         assert!(svg.contains("31326038") && svg.contains("31325801"));
         assert!(!svg.contains("Probe evidence report targets sequence"));
+    }
+
+    #[test]
+    fn workflow_examples_portable_genomic_regions_round_trip_and_render_offline() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload_builtin_for_test();
+        let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
+        let loaded = examples
+            .iter()
+            .find(|loaded| loaded.example.id == "portable_genomic_regions_offline")
+            .expect("portable genomic-region example should exist");
+        let run_dir = TempDir::new().expect("temp run dir");
+        run_example_workflow_in_dir(&loaded.example, Path::new("."), run_dir.path())
+            .expect("portable genomic-region workflow should execute");
+
+        let artifact_dir = run_dir.path().join("artifacts");
+        let set: gentle_protocol::GenomicRegionSet = serde_json::from_slice(
+            &fs::read(artifact_dir.join("portable_genomic_regions.region_set.json"))
+                .expect("read region-set JSON"),
+        )
+        .expect("parse region-set JSON");
+        assert_eq!(set.schema, gentle_protocol::GENOMIC_REGION_SET_SCHEMA);
+        assert_eq!(set.regions.len(), 3);
+        let methods = set
+            .regions
+            .iter()
+            .map(|region| region.selection_method.as_str())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            methods,
+            BTreeSet::from([
+                "manual_span",
+                "ensembl_regulatory_feature",
+                "cutrun_support_window",
+            ])
+        );
+        assert!(set.regions.iter().all(|region| {
+            region.interval.reference.species_scientific_name.as_deref() == Some("Homo sapiens")
+                && region.interval.reference.assembly_name == "GRCh38"
+                && region.interval.reference.contig_name == "7"
+        }));
+
+        let bed = fs::read(artifact_dir.join("portable_genomic_regions.bed"))
+            .expect("read region-set BED");
+        assert_eq!(
+            std::str::from_utf8(&bed)
+                .expect("BED UTF-8")
+                .lines()
+                .count(),
+            3
+        );
+        let manifest: gentle_protocol::GenomicRegionBedManifest = serde_json::from_slice(
+            &fs::read(artifact_dir.join("portable_genomic_regions.bed.manifest.json"))
+                .expect("read BED manifest"),
+        )
+        .expect("parse BED manifest");
+        assert_eq!(manifest.region_set, set);
+        assert_eq!(
+            manifest.bed_sha256,
+            crate::digest_utils::sha256_prefixed_bytes(&bed)
+        );
+
+        let svg = fs::read_to_string(artifact_dir.join("portable_genomic_regions.locus.svg"))
+            .expect("read locus SVG");
+        for marker in [
+            "data-gentle-saved-region-section=\"true\"",
+            "data-gentle-region-selection-method=\"manual_span\"",
+            "data-gentle-region-selection-method=\"ensembl_regulatory_feature\"",
+            "data-gentle-region-selection-method=\"cutrun_support_window\"",
+            "data-gentle-occupancy-group=\"synthetic_tp73_occupancy\"",
+            "data-gentle-regulatory-score-track=\"tp73_jaspar\"",
+            "data-gentle-transcript=",
+            "data-gentle-cds=",
+            "data-gentle-overlay-row=",
+        ] {
+            assert!(svg.contains(marker), "expected SVG marker {marker}");
+        }
     }
 
     #[test]

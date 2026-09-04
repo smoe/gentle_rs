@@ -208,7 +208,7 @@ impl MainAreaDna {
     }
 
     pub(super) fn render_cutrun_regulatory_support_summary_panel(&mut self, ui: &mut egui::Ui) {
-        let navigate_to = {
+        let (navigate_to, capture_window_id) = {
             let Some(report) = self.cached_cutrun_regulatory_support.as_ref() else {
                 ui.small(
                     egui::RichText::new(
@@ -219,6 +219,7 @@ impl MainAreaDna {
                 return;
             };
             let mut navigate_to: Option<(usize, usize, String)> = None;
+            let mut capture_window_id: Option<String> = None;
             ui.group(|ui| {
                 ui.label(egui::RichText::new("CUT&RUN regulatory support").strong());
                 ui.small(
@@ -292,7 +293,7 @@ impl MainAreaDna {
                     }
                     let shown = report.support_windows.iter().take(20).collect::<Vec<_>>();
                     egui::Grid::new(("cutrun_support_windows", report.seq_id.as_str()))
-                        .num_columns(6)
+                        .num_columns(7)
                         .striped(true)
                         .show(ui, |ui| {
                             ui.small(egui::RichText::new("window").strong());
@@ -301,6 +302,7 @@ impl MainAreaDna {
                             ui.small(egui::RichText::new("peaks").strong());
                             ui.small(egui::RichText::new("frags").strong());
                             ui.small(egui::RichText::new("cuts").strong());
+                            ui.small(egui::RichText::new("save").strong());
                             ui.end_row();
                             for window in &shown {
                                 let response = ui
@@ -323,6 +325,26 @@ impl MainAreaDna {
                                 ui.small(window.overlapping_peak_count.to_string());
                                 ui.small(window.supporting_fragment_count.to_string());
                                 ui.small(window.cut_site_count.to_string());
+                                let save = ui
+                                    .small_button("Save region")
+                                    .on_hover_text(
+                                        "Save this exact support window as a portable, provenance-bound genomic region",
+                                    );
+                                #[cfg(feature = "gui-test-support")]
+                                crate::gui_test_support::register_response(
+                                    &save,
+                                    crate::tutorial_gui_semantics::GENOMIC_REGION_CAPTURE_CUTRUN,
+                                    crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER,
+                                    Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
+                                        &report.seq_id,
+                                        &window.window_id,
+                                    ])),
+                                    crate::gui_test_support::GuiTestWidgetKind::Button,
+                                    false,
+                                );
+                                if save.clicked() {
+                                    capture_window_id = Some(window.window_id.clone());
+                                }
                                 ui.end_row();
                             }
                         });
@@ -485,10 +507,15 @@ impl MainAreaDna {
                     }
                 });
             });
-            navigate_to
+            (navigate_to, capture_window_id)
         };
         if let Some((start, end_exclusive, context_label)) = navigate_to {
             let _ = self.inspect_sequence_span_0based(start, end_exclusive, &context_label);
+        }
+        if let Some(window_id) = capture_window_id
+            && let Some(report) = self.cached_cutrun_regulatory_support.clone()
+        {
+            self.capture_cutrun_support_window_as_region(report, window_id);
         }
     }
 

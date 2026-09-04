@@ -1024,6 +1024,7 @@ pub const UNIPROT_ENSEMBL_PEPTIDE_COMPARE_SCHEMA: &str =
 const PROCESS_RUN_BUNDLE_SCHEMA: &str = "gentle.process_run_bundle.v1";
 const LAB_ASSISTANT_INSTRUCTIONS_SCHEMA: &str = "gentle.lab_assistant_instructions.v2";
 pub const ROUTINE_DECISION_TRACES_METADATA_KEY: &str = "routine_decision_traces";
+pub const GENOMIC_REGION_SETS_METADATA_KEY: &str = "genomic_region_sets";
 pub const ROUTINE_DECISION_TRACE_SCHEMA: &str = "gentle.routine_decision_trace.v1";
 pub const ROUTINE_DECISION_TRACE_STORE_SCHEMA: &str = "gentle.routine_decision_trace_store.v1";
 pub const DOTPLOT_ANALYSIS_METADATA_KEY: &str = "dotplot_analysis";
@@ -1269,6 +1270,8 @@ mod feature_expert_ops;
 mod gene_sets;
 #[path = "engine/io/genome_tracks.rs"]
 mod genome_tracks;
+#[path = "engine/state/genomic_regions.rs"]
+mod genomic_regions;
 #[path = "engine/io/import_anchors.rs"]
 mod import_anchors;
 #[path = "engine/analysis/jaspar.rs"]
@@ -4382,6 +4385,31 @@ pub enum Operation {
         clear_existing: Option<bool>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
+    },
+    CreateGenomicRegion {
+        request: gentle_protocol::GenomicRegionCreateRequest,
+    },
+    CaptureGenomicRegion {
+        request: gentle_protocol::GenomicRegionCaptureRequest,
+    },
+    ListGenomicRegions {
+        #[serde(default)]
+        request: gentle_protocol::GenomicRegionListRequest,
+    },
+    InspectGenomicRegion {
+        request: gentle_protocol::GenomicRegionInspectRequest,
+    },
+    UpdateGenomicRegionPresentation {
+        request: gentle_protocol::GenomicRegionUpdateRequest,
+    },
+    DeriveGenomicRegion {
+        request: gentle_protocol::GenomicRegionDeriveRequest,
+    },
+    ImportGenomicRegionSet {
+        request: gentle_protocol::GenomicRegionImportRequest,
+    },
+    ExportGenomicRegionSet {
+        request: gentle_protocol::GenomicRegionExportRequest,
     },
     BuildRepeatEnvironmentCohort {
         genome_id: String,
@@ -9800,6 +9828,9 @@ impl GentleEngine {
                 | Operation::QueryRepeatOverlaps { .. }
                 | Operation::QueryEncodeCcreOverlaps { .. }
                 | Operation::QueryEnsemblRegulationOverlaps { .. }
+                | Operation::ListGenomicRegions { .. }
+                | Operation::InspectGenomicRegion { .. }
+                | Operation::ExportGenomicRegionSet { .. }
                 | Operation::BuildRepeatEnvironmentCohort { .. }
                 | Operation::SummarizeTfbsRegion { .. }
                 | Operation::SummarizeTfbsScoreTracks { .. }

@@ -8154,6 +8154,9 @@ impl MainAreaDna {
             )?,
             regulatory_score_tracks,
             scale_bar,
+            region_set_ids: Self::isoform_evidence_ordered_list(
+                &self.splicing_locus_region_set_ids,
+            ),
             include_local_source_paths: false,
         })
     }
@@ -9179,6 +9182,109 @@ impl MainAreaDna {
             }
         });
 
+        let mut capture_ensembl_row = None;
+        if let Some(ensembl) = report.ensembl_regulation.as_ref() {
+            egui::CollapsingHeader::new(format!(
+                "Ensembl Regulation ({} region(s))",
+                ensembl.rows.len()
+            ))
+            .default_open(!ensembl.rows.is_empty())
+            .show(ui, |ui| {
+                ui.small(&ensembl.evidence_statement);
+                for non_claim in &ensembl.non_claims {
+                    ui.small(egui::RichText::new(non_claim).italics());
+                }
+                egui::Grid::new("splicing_locus_ensembl_regions")
+                    .num_columns(5)
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.strong("feature");
+                        ui.strong("type");
+                        ui.strong("genomic core");
+                        ui.strong("provider associations");
+                        ui.strong("save");
+                        ui.end_row();
+                        for row in &ensembl.rows {
+                            ui.monospace(&row.feature_id);
+                            ui.label(&row.feature_type);
+                            ui.monospace(format!(
+                                "{}-{} (1-based)",
+                                row.core_genomic_start_1based, row.core_genomic_end_1based
+                            ));
+                            ui.small(if row.associated_gene_names.is_empty() {
+                                "-".to_string()
+                            } else {
+                                row.associated_gene_names.join(", ")
+                            });
+                            let save = ui
+                                .small_button("Save region")
+                                .on_hover_text(
+                                    "Save the provider's exact core interval and source binding without materializing a generic sequence feature",
+                                );
+                            #[cfg(feature = "gui-test-support")]
+                            crate::gui_test_support::register_response(
+                                &save,
+                                crate::tutorial_gui_semantics::GENOMIC_REGION_CAPTURE_ENSEMBL,
+                                crate::tutorial_gui_semantics::WINDOW_SPLICING_EXPERT,
+                                Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
+                                    &report.seq_id,
+                                    &row.feature_id,
+                                ])),
+                                crate::gui_test_support::GuiTestWidgetKind::Button,
+                                false,
+                            );
+                            if save.clicked() {
+                                capture_ensembl_row = Some(row.clone());
+                            }
+                            ui.end_row();
+                        }
+                    });
+            });
+        }
+        if let Some(row) = capture_ensembl_row {
+            self.capture_gene_locus_ensembl_region(report, row);
+        }
+
+        egui::CollapsingHeader::new(format!(
+            "Saved genomic regions ({})",
+            report.saved_region_overlays.len()
+        ))
+        .default_open(!report.saved_region_overlays.is_empty())
+        .show(ui, |ui| {
+            if report.saved_region_overlays.is_empty() {
+                ui.small(
+                    "No saved region set was requested for this composition. Choose sets in the Saved genomic regions window and compose again.",
+                );
+            } else {
+                egui::Grid::new("splicing_locus_saved_regions")
+                    .num_columns(5)
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.strong("set / region");
+                        ui.strong("local");
+                        ui.strong("genomic");
+                        ui.strong("purpose");
+                        ui.strong("evidence");
+                        ui.end_row();
+                        for row in &report.saved_region_overlays {
+                            ui.monospace(format!("{} / {}", row.set_id, row.region_id));
+                            ui.monospace(format!(
+                                "{}-{}",
+                                row.local_start_1based, row.local_end_1based
+                            ));
+                            ui.monospace(format!(
+                                "{}-{}",
+                                row.genomic_start_0based.saturating_add(1),
+                                row.genomic_end_0based_exclusive
+                            ));
+                            ui.label(row.purpose.as_str());
+                            ui.label(row.evidence_availability.as_str());
+                            ui.end_row();
+                        }
+                    });
+            }
+        });
+
         let mut open_report: Option<String> = None;
         let mut order_candidate: Option<GeneIsoformAssayCandidate> = None;
         let mut design_junction: Option<GeneIsoformJunctionRow> = None;
@@ -9392,6 +9498,10 @@ impl MainAreaDna {
                             self.splicing_locus_occupancy_layout_path =
                                 path.to_string_lossy().to_string();
                         }
+                        ui.end_row();
+                        ui.label("Saved region-set ids");
+                        ui.text_edit_singleline(&mut self.splicing_locus_region_set_ids);
+                        ui.small("Comma/newline separated; projected by exact genome anchor");
                         ui.end_row();
                         ui.label("Probe-effect TSV");
                         ui.text_edit_singleline(&mut self.splicing_locus_probe_effect_paths);

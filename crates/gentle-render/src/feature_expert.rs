@@ -6,9 +6,9 @@ use gentle_protocol::{
     GeneLocusEvidenceDisplayReport, GeneLocusLocalAxisDirection, GeneLocusOccupancyLaneRole,
     GeneLocusOccupancyLaneState, GeneLocusOccupancyScaleMode, GeneLocusProbeClass,
     GeneLocusProbeEffectContrast, GeneLocusRegulatoryScoreProviderKind,
-    GeneLocusRegulatoryScoreTrack, GeneLocusScaleBarMode, IsoformArchitectureExpertView,
-    RestrictionSiteExpertView, SplicingExonSummary, SplicingExpertView, SplicingJunctionArc,
-    TfbsExpertView,
+    GeneLocusRegulatoryScoreTrack, GeneLocusScaleBarMode, GenomicRegionPurpose,
+    IsoformArchitectureExpertView, RestrictionSiteExpertView, SplicingExonSummary,
+    SplicingExpertView, SplicingJunctionArc, TfbsExpertView,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use svg::Document;
@@ -4693,6 +4693,7 @@ pub fn render_gene_locus_evidence_with_overlay(
     overlay: Option<&GeneLocusEvidenceOverlay>,
 ) -> GeneLocusEvidenceRenderedSvg {
     const ENSEMBL_DISPLAY_ROW_CAP: usize = 24;
+    const SAVED_REGION_DISPLAY_ROW_CAP: usize = 24;
     let width = 1400.0_f32;
     let plot_left = 255.0_f32;
     let plot_right = 1050.0_f32;
@@ -4723,10 +4724,33 @@ pub fn render_gene_locus_evidence_with_overlay(
         .filter(|overlay| !overlay.rows.is_empty())
         .map(|overlay| 28.0 + overlay_legend_height + overlay.rows.len() as f32 * overlay_pitch)
         .unwrap_or_default();
-    let ensembl_top = if overlay_height > 0.0 {
+    let saved_region_top = if overlay_height > 0.0 {
         overlay_top + overlay_height + 28.0
     } else {
         overlay_top
+    };
+    let saved_region_display_count = report
+        .saved_region_overlays
+        .len()
+        .min(SAVED_REGION_DISPLAY_ROW_CAP);
+    let saved_region_omitted_count = report
+        .saved_region_overlays
+        .len()
+        .saturating_sub(saved_region_display_count);
+    let saved_region_height = if report.saved_region_overlays.is_empty() {
+        0.0
+    } else {
+        34.0 + saved_region_display_count as f32 * 24.0
+            + if saved_region_omitted_count > 0 {
+                18.0
+            } else {
+                0.0
+            }
+    };
+    let ensembl_top = if saved_region_height > 0.0 {
+        saved_region_top + saved_region_height + 28.0
+    } else {
+        saved_region_top
     };
     let ensembl_display_count = report
         .ensembl_regulation
@@ -5473,6 +5497,143 @@ pub fn render_gene_locus_evidence_with_overlay(
                         .set("fill", "#ffffff"),
                     );
             }
+        }
+    }
+
+    if !report.saved_region_overlays.is_empty() {
+        doc = doc.add(
+            Text::new("Saved genomic regions of interest")
+                .set("x", 34)
+                .set("y", saved_region_top - 14.0)
+                .set("font-family", "sans-serif")
+                .set("font-size", 13)
+                .set("font-weight", "bold")
+                .set("fill", "#1f2937")
+                .set("data-gentle-saved-region-section", "true"),
+        );
+        for (index, row) in report
+            .saved_region_overlays
+            .iter()
+            .take(SAVED_REGION_DISPLAY_ROW_CAP)
+            .enumerate()
+        {
+            let y = saved_region_top + 8.0 + index as f32 * 24.0;
+            let x1 = x_for(row.local_start_1based);
+            let x2 = x_for(row.local_end_1based);
+            let color = match row.purpose {
+                GenomicRegionPurpose::CandidateCisRegulatoryRegion => "#7c3aed",
+                GenomicRegionPurpose::OccupancyRegion => "#dc2626",
+                GenomicRegionPurpose::PromoterRegion => "#0f766e",
+                GenomicRegionPurpose::ReporterCandidate => "#c2410c",
+                GenomicRegionPurpose::Other => "#475569",
+            };
+            let label = row
+                .label
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or(row.region_id.as_str());
+            doc = doc
+                .add(
+                    Text::new(isoform_evidence_compact_label(label, 28))
+                        .set("x", 34)
+                        .set("y", y + 3.0)
+                        .set("font-family", "monospace")
+                        .set("font-size", 9)
+                        .set("fill", "#374151")
+                        .set("data-gentle-saved-region-label", row.region_id.as_str()),
+                )
+                .add(
+                    Rectangle::new()
+                        .set("x", x1.min(x2))
+                        .set("y", y - 6.0)
+                        .set("width", (x2 - x1).abs().max(2.5))
+                        .set("height", 12)
+                        .set("rx", 1.5)
+                        .set("fill", color)
+                        .set(
+                            "fill-opacity",
+                            if row.evidence_availability
+                                == gentle_protocol::GenomicRegionEvidenceAvailability::Available
+                            {
+                                0.76
+                            } else {
+                                0.32
+                            },
+                        )
+                        .set("stroke", color)
+                        .set("stroke-width", 1)
+                        .set(
+                            "stroke-dasharray",
+                            if row.evidence_availability
+                                == gentle_protocol::GenomicRegionEvidenceAvailability::Available
+                            {
+                                "none"
+                            } else {
+                                "4,2"
+                            },
+                        )
+                        .set("data-gentle-saved-region", row.region_id.as_str())
+                        .set("data-gentle-region-set", row.set_id.as_str())
+                        .set("data-gentle-region-purpose", row.purpose.as_str())
+                        .set(
+                            "data-gentle-region-selection-method",
+                            row.selection_method.as_str(),
+                        )
+                        .set(
+                            "data-gentle-region-evidence-availability",
+                            row.evidence_availability.as_str(),
+                        )
+                        .set(
+                            "data-gentle-region-content-sha256",
+                            row.region_content_sha256.as_str(),
+                        )
+                        .set("data-gentle-local-start", row.local_start_1based)
+                        .set("data-gentle-local-end", row.local_end_1based)
+                        .set("data-gentle-genomic-start-0based", row.genomic_start_0based)
+                        .set(
+                            "data-gentle-genomic-end-0based-exclusive",
+                            row.genomic_end_0based_exclusive,
+                        ),
+                )
+                .add(
+                    Text::new(isoform_evidence_compact_label(
+                        &format!(
+                            "{} | {}:{}-{} | {} | evidence {}",
+                            row.set_id,
+                            row.genomic_strand.human_value(),
+                            row.genomic_start_0based.saturating_add(1),
+                            row.genomic_end_0based_exclusive,
+                            row.selection_method.as_str(),
+                            row.evidence_availability.as_str()
+                        ),
+                        72,
+                    ))
+                    .set("x", metrics_left)
+                    .set("y", y + 3.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 8)
+                    .set("fill", "#475569"),
+                );
+        }
+        if saved_region_omitted_count > 0 {
+            doc = doc.add(
+                Text::new(format!(
+                    "{} additional saved region(s) omitted from SVG; complete rows remain in JSON.",
+                    saved_region_omitted_count
+                ))
+                .set("x", 34)
+                .set(
+                    "y",
+                    saved_region_top + 12.0 + saved_region_display_count as f32 * 24.0,
+                )
+                .set("font-family", "monospace")
+                .set("font-size", 8)
+                .set("fill", "#64748b")
+                .set(
+                    "data-gentle-saved-region-omitted-rows",
+                    saved_region_omitted_count,
+                ),
+            );
         }
     }
 
@@ -7493,6 +7654,58 @@ mod tests {
                 .svg
                 .contains("data-gentle-ensembl-link-state=\"rejected\"")
         );
+    }
+
+    #[test]
+    fn gene_locus_renderer_projects_saved_regions_on_the_explicit_local_axis() {
+        let mut report = GeneLocusEvidenceDisplayReport {
+            schema: GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA.to_string(),
+            seq_id: "negative_locus".to_string(),
+            gene_symbol: "DEMO".to_string(),
+            gene_strand: "-".to_string(),
+            local_axis_direction: GeneLocusLocalAxisDirection::DecreasingLeftToRight,
+            locus_local_start_1based: 1,
+            locus_local_end_1based: 1_000,
+            axis_left_genomic_1based: 2_000,
+            axis_right_genomic_1based: 1_001,
+            saved_region_overlays: vec![gentle_protocol::GeneLocusSavedRegionOverlayRow {
+                set_id: "shared_regions".to_string(),
+                set_content_sha256: "sha256:set".to_string(),
+                region_id: "roi_promoter".to_string(),
+                label: Some("candidate promoter".to_string()),
+                purpose: gentle_protocol::GenomicRegionPurpose::PromoterRegion,
+                selection_method: gentle_protocol::GenomicRegionSelectionMethod::ManualSpan,
+                evidence_availability:
+                    gentle_protocol::GenomicRegionEvidenceAvailability::Unverified,
+                local_start_1based: 101,
+                local_end_1based: 201,
+                genomic_start_0based: 1_799,
+                genomic_end_0based_exclusive: 1_900,
+                genomic_strand: gentle_protocol::GenomicRegionStrand::Minus,
+                region_content_sha256: "sha256:region".to_string(),
+                evidence_ids: vec!["manual:selection".to_string()],
+            }],
+            ..Default::default()
+        };
+        let left = gene_locus_position_x(&report, 101, 0.0, 100.0);
+        let right = gene_locus_position_x(&report, 201, 0.0, 100.0);
+        assert!(
+            left > right,
+            "negative genomic orientation must be mirrored once"
+        );
+        let svg = render_gene_locus_evidence_with_overlay(&report, None).svg;
+        assert!(svg.contains("data-gentle-saved-region-section=\"true\""));
+        assert!(svg.contains("data-gentle-saved-region=\"roi_promoter\""));
+        assert!(svg.contains("data-gentle-region-set=\"shared_regions\""));
+        assert!(svg.contains("data-gentle-region-purpose=\"promoter_region\""));
+        assert!(svg.contains("data-gentle-region-evidence-availability=\"unverified\""));
+        assert!(svg.contains("data-gentle-local-start=\"101\""));
+        assert!(svg.contains("data-gentle-genomic-start-0based=\"1799\""));
+
+        report.saved_region_overlays[0].evidence_availability =
+            gentle_protocol::GenomicRegionEvidenceAvailability::Stale;
+        let stale_svg = render_gene_locus_evidence_with_overlay(&report, None).svg;
+        assert!(stale_svg.contains("data-gentle-region-evidence-availability=\"stale\""));
     }
 
     #[test]

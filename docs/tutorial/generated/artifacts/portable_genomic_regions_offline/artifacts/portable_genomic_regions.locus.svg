@@ -1,0 +1,692 @@
+<svg data-gentle-local-axis-direction="increasing_left_to_right" data-gentle-overlay-id="promoter_reporter_architecture_comparison" data-gentle-panel-id="serpine1_portable_regions_panel" data-gentle-schema="gentle.gene_locus_evidence_display.v1" height="1917" viewBox="0 0 1400 1917" width="1400" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#ffffff" height="1917" width="1400" x="0" y="0"/>
+<text fill="#111827" font-family="sans-serif" font-size="24" font-weight="bold" x="34" y="36">
+SERPINE1 promoter-reporter architectures
+</text>
+<text fill="#475569" font-family="monospace" font-size="11" x="34" y="59">
+5' -&gt; 3' display, genomic 101121158 -&gt; 101139263 | strand + | assembly GRCh38 | annotation Ensembl 116 pinned public fixture | upstream 1000 bp | downstream 0 bp
+</text>
+<text fill="#64748b" font-family="sans-serif" font-size="10" x="34" y="82">
+Canonical reporter comparison: 2 TSS class(es), 3 transcript(s), 9 explicit architecture row(s); normalized evidence remains observational/predictive context.
+</text>
+<line stroke="#64748b" stroke-width="1" x1="255" x2="1050" y1="108" y2="108"/>
+<text fill="#64748b" font-family="monospace" font-size="9" x="255" y="102">
+101121158
+</text>
+<text fill="#64748b" font-family="monospace" font-size="9" x="982" y="102">
+101139263
+</text>
+<text data-gentle-transcript-legend="title" fill="#334155" font-family="sans-serif" font-size="10" font-weight="bold" x="34" y="128">
+Legend (annotation-derived transcript features)
+</text>
+<line data-gentle-transcript-legend="intron" stroke="#94a3b8" stroke-width="1" x1="48" x2="119" y1="146" y2="146"/>
+<rect data-gentle-transcript-legend="exon" fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="25" x="71" y="139"/>
+<text fill="#475569" font-family="sans-serif" font-size="9" x="126" y="150">
+exon (light blue); intron (line)
+</text>
+<rect data-gentle-transcript-legend="cds" fill="#1d4ed8" height="10" width="27" x="335" y="141"/>
+<text fill="#475569" font-family="sans-serif" font-size="9" x="369" y="150">
+coding sequence (CDS)
+</text>
+<path d="M559,153 L554,141 L564,141 z" data-gentle-transcript-legend="start-codon" fill="#16a34a"/>
+<text fill="#475569" font-family="sans-serif" font-size="9" x="571" y="150">
+annotated start codon
+</text>
+<rect data-gentle-transcript-legend="stop-codon" fill="#dc2626" height="12" width="5" x="748" y="140"/>
+<text fill="#475569" font-family="sans-serif" font-size="9" x="761" y="150">
+annotated stop codon
+</text>
+<line data-gentle-genomic-scale-bar="true" data-gentle-scale-bp="1000" stroke="#334155" stroke-width="2" x1="255" x2="298.90808" y1="108" y2="108"/>
+<line data-gentle-genomic-scale-bar="left-tick" data-gentle-scale-bp="1000" stroke="#334155" stroke-width="2" x1="255" x2="255" y1="103" y2="113"/>
+<line data-gentle-genomic-scale-bar="right-tick" data-gentle-scale-bp="1000" stroke="#334155" stroke-width="2" x1="298.90808" x2="298.90808" y1="103" y2="113"/>
+<text data-gentle-genomic-scale-bar="label" data-gentle-scale-bp="1000" fill="#334155" font-family="monospace" font-size="9" text-anchor="middle" x="276.95404" y="99">
+1000 bp
+</text>
+<text fill="#1f2937" font-family="sans-serif" font-size="13" font-weight="bold" x="34" y="188">
+Transcript models and annotation-derived metrics
+</text>
+<text fill="#374151" font-family="monospace" font-size="10" x="34" y="208">
+ENST00000223095
+</text>
+<line data-gentle-transcript="ENST00000223095" stroke="#94a3b8" stroke-width="1" x1="255" x2="1050" y1="204" y2="204"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="6.147461" x="516.092" y="197"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="11.89978" x="572.6926" y="197"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="10.231201" x="661.74316" y="197"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="8.518555" x="725.5891" y="197"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="8.694275" x="805.5062" y="197"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="4.390991" x="884.5013" y="197"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="3.7763062" x="894.20544" y="197"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="3.6445923" x="950.6744" y="197"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="80.88312" x="968.41425" y="197"/>
+<rect data-gentle-cds="ENST00000223095" fill="#1d4ed8" height="10" width="11.855835" x="572.7366" y="199"/>
+<rect data-gentle-cds="ENST00000223095" fill="#1d4ed8" height="10" width="10.231201" x="661.74316" y="199"/>
+<rect data-gentle-cds="ENST00000223095" fill="#1d4ed8" height="10" width="8.518555" x="725.5891" y="199"/>
+<rect data-gentle-cds="ENST00000223095" fill="#1d4ed8" height="10" width="8.694275" x="805.5062" y="199"/>
+<rect data-gentle-cds="ENST00000223095" fill="#1d4ed8" height="10" width="4.390991" x="884.5013" y="199"/>
+<rect data-gentle-cds="ENST00000223095" fill="#1d4ed8" height="10" width="3.7763062" x="894.20544" y="199"/>
+<rect data-gentle-cds="ENST00000223095" fill="#1d4ed8" height="10" width="3.6445923" x="950.6744" y="199"/>
+<rect data-gentle-cds="ENST00000223095" fill="#1d4ed8" height="10" width="2" x="968.41425" y="199"/>
+<text fill="#475569" font-family="monospace" font-size="8" x="1070" y="208">
+exon 3156 nt | CDS 1209 nt | 402 aa | 45.1 kDa | complete_...
+</text>
+<path d="M572.7366,192 L567.7366,184 L577.7366,184 z" data-gentle-codon="start" data-gentle-display-x="572.7366" data-gentle-genomic-position="101128394" data-gentle-genomic-strand="+" data-gentle-local-position="7237" data-gentle-local-strand="+" fill="#16a34a"/>
+<rect data-gentle-codon="stop" data-gentle-display-x="970.03894" data-gentle-genomic-position="101137442" data-gentle-genomic-strand="+" data-gentle-local-position="16285" data-gentle-local-strand="+" fill="#dc2626" height="10" width="5" x="967.53894" y="183"/>
+<text fill="#374151" font-family="monospace" font-size="10" x="34" y="250">
+ENST00000870828
+</text>
+<line data-gentle-transcript="ENST00000870828" stroke="#94a3b8" stroke-width="1" x1="255" x2="1050" y1="246" y2="246"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="28.234467" x="494.00497" y="239"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="4.6984253" x="559.6951" y="239"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="11.89978" x="572.6926" y="239"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="10.231201" x="661.74316" y="239"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="8.518555" x="725.5891" y="239"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="8.694275" x="805.5062" y="239"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="4.390991" x="884.5013" y="239"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="3.7763062" x="894.20544" y="239"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="3.6445923" x="950.6744" y="239"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="81.585754" x="968.41425" y="239"/>
+<rect data-gentle-cds="ENST00000870828" fill="#1d4ed8" height="10" width="11.855835" x="572.7366" y="241"/>
+<rect data-gentle-cds="ENST00000870828" fill="#1d4ed8" height="10" width="10.231201" x="661.74316" y="241"/>
+<rect data-gentle-cds="ENST00000870828" fill="#1d4ed8" height="10" width="8.518555" x="725.5891" y="241"/>
+<rect data-gentle-cds="ENST00000870828" fill="#1d4ed8" height="10" width="8.694275" x="805.5062" y="241"/>
+<rect data-gentle-cds="ENST00000870828" fill="#1d4ed8" height="10" width="4.390991" x="884.5013" y="241"/>
+<rect data-gentle-cds="ENST00000870828" fill="#1d4ed8" height="10" width="3.7763062" x="894.20544" y="241"/>
+<rect data-gentle-cds="ENST00000870828" fill="#1d4ed8" height="10" width="3.6445923" x="950.6744" y="241"/>
+<rect data-gentle-cds="ENST00000870828" fill="#1d4ed8" height="10" width="2" x="968.41425" y="241"/>
+<text fill="#475569" font-family="monospace" font-size="8" x="1070" y="250">
+exon 3783 nt | CDS 1209 nt | 402 aa | 45.1 kDa | complete_...
+</text>
+<path d="M572.7366,234 L567.7366,226 L577.7366,226 z" data-gentle-codon="start" data-gentle-display-x="572.7366" data-gentle-genomic-position="101128394" data-gentle-genomic-strand="+" data-gentle-local-position="7237" data-gentle-local-strand="+" fill="#16a34a"/>
+<rect data-gentle-codon="stop" data-gentle-display-x="970.03894" data-gentle-genomic-position="101137442" data-gentle-genomic-strand="+" data-gentle-local-position="16285" data-gentle-local-strand="+" fill="#dc2626" height="10" width="5" x="967.53894" y="225"/>
+<text fill="#374151" font-family="monospace" font-size="10" x="34" y="292">
+ENST00000950058
+</text>
+<line data-gentle-transcript="ENST00000950058" stroke="#94a3b8" stroke-width="1" x1="255" x2="1050" y1="288" y2="288"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="31.747314" x="298.91052" y="281"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="4.2154236" x="335.48798" y="281"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="2.766388" x="476.83594" y="281"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="5.269287" x="516.97015" y="281"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="11.89978" x="572.6926" y="281"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="10.231201" x="661.74316" y="281"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="8.518555" x="725.5891" y="281"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="8.694275" x="805.5062" y="281"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="4.390991" x="884.5013" y="281"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="3.7763062" x="894.20544" y="281"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="3.6445923" x="950.6744" y="281"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="81.585754" x="968.41425" y="281"/>
+<rect data-gentle-cds="ENST00000950058" fill="#1d4ed8" height="10" width="11.855835" x="572.7366" y="283"/>
+<rect data-gentle-cds="ENST00000950058" fill="#1d4ed8" height="10" width="10.231201" x="661.74316" y="283"/>
+<rect data-gentle-cds="ENST00000950058" fill="#1d4ed8" height="10" width="8.518555" x="725.5891" y="283"/>
+<rect data-gentle-cds="ENST00000950058" fill="#1d4ed8" height="10" width="8.694275" x="805.5062" y="283"/>
+<rect data-gentle-cds="ENST00000950058" fill="#1d4ed8" height="10" width="4.390991" x="884.5013" y="283"/>
+<rect data-gentle-cds="ENST00000950058" fill="#1d4ed8" height="10" width="3.7763062" x="894.20544" y="283"/>
+<rect data-gentle-cds="ENST00000950058" fill="#1d4ed8" height="10" width="3.6445923" x="950.6744" y="283"/>
+<rect data-gentle-cds="ENST00000950058" fill="#1d4ed8" height="10" width="2" x="968.41425" y="283"/>
+<text fill="#475569" font-family="monospace" font-size="8" x="1070" y="292">
+exon 4037 nt | CDS 1209 nt | 402 aa | 45.1 kDa | complete_...
+</text>
+<path d="M572.7366,276 L567.7366,268 L577.7366,268 z" data-gentle-codon="start" data-gentle-display-x="572.7366" data-gentle-genomic-position="101128394" data-gentle-genomic-strand="+" data-gentle-local-position="7237" data-gentle-local-strand="+" fill="#16a34a"/>
+<rect data-gentle-codon="stop" data-gentle-display-x="970.03894" data-gentle-genomic-position="101137442" data-gentle-genomic-strand="+" data-gentle-local-position="16285" data-gentle-local-strand="+" fill="#dc2626" height="10" width="5" x="967.53894" y="267"/>
+<text fill="#374151" font-family="monospace" font-size="10" x="34" y="334">
+ENST00000950059
+</text>
+<line data-gentle-transcript="ENST00000950059" stroke="#94a3b8" stroke-width="1" x1="255" x2="1050" y1="330" y2="330"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="28.234467" x="494.00497" y="323"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="11.89978" x="572.6926" y="323"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="10.231201" x="661.74316" y="323"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="8.518555" x="725.5891" y="323"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="8.694275" x="805.5062" y="323"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="4.390991" x="884.5013" y="323"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="3.7763062" x="894.20544" y="323"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="3.6445923" x="950.6744" y="323"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="81.234375" x="968.67773" y="323"/>
+<rect data-gentle-cds="ENST00000950059" fill="#1d4ed8" height="10" width="11.855835" x="572.7366" y="325"/>
+<rect data-gentle-cds="ENST00000950059" fill="#1d4ed8" height="10" width="10.231201" x="661.74316" y="325"/>
+<rect data-gentle-cds="ENST00000950059" fill="#1d4ed8" height="10" width="8.518555" x="725.5891" y="325"/>
+<rect data-gentle-cds="ENST00000950059" fill="#1d4ed8" height="10" width="8.694275" x="805.5062" y="325"/>
+<rect data-gentle-cds="ENST00000950059" fill="#1d4ed8" height="10" width="4.390991" x="884.5013" y="325"/>
+<rect data-gentle-cds="ENST00000950059" fill="#1d4ed8" height="10" width="3.7763062" x="894.20544" y="325"/>
+<rect data-gentle-cds="ENST00000950059" fill="#1d4ed8" height="10" width="3.6445923" x="950.6744" y="325"/>
+<rect data-gentle-cds="ENST00000950059" fill="#1d4ed8" height="10" width="2" x="968.67773" y="325"/>
+<text fill="#475569" font-family="monospace" font-size="8" x="1070" y="334">
+exon 3667 nt | CDS 1203 nt | 400 aa | 44.9 kDa | complete_...
+</text>
+<path d="M572.7366,318 L567.7366,310 L577.7366,310 z" data-gentle-codon="start" data-gentle-display-x="572.7366" data-gentle-genomic-position="101128394" data-gentle-genomic-strand="+" data-gentle-local-position="7237" data-gentle-local-strand="+" fill="#16a34a"/>
+<rect data-gentle-codon="stop" data-gentle-display-x="970.03894" data-gentle-genomic-position="101137442" data-gentle-genomic-strand="+" data-gentle-local-position="16285" data-gentle-local-strand="+" fill="#dc2626" height="10" width="5" x="967.53894" y="309"/>
+<text fill="#374151" font-family="monospace" font-size="10" x="34" y="376">
+ENST00000950060
+</text>
+<line data-gentle-transcript="ENST00000950060" stroke="#94a3b8" stroke-width="1" x1="255" x2="1050" y1="372" y2="372"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="28.234467" x="494.00497" y="365"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="12.953613" x="572.6926" y="365"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="10.231201" x="661.74316" y="365"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="8.518555" x="725.5891" y="365"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="8.694275" x="805.5062" y="365"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="4.390991" x="884.5013" y="365"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="3.7763062" x="894.20544" y="365"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="3.6445923" x="950.6744" y="365"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="81.585754" x="968.41425" y="365"/>
+<rect data-gentle-cds="ENST00000950060" fill="#1d4ed8" height="10" width="12.909668" x="572.7366" y="367"/>
+<rect data-gentle-cds="ENST00000950060" fill="#1d4ed8" height="10" width="10.231201" x="661.74316" y="367"/>
+<rect data-gentle-cds="ENST00000950060" fill="#1d4ed8" height="10" width="8.518555" x="725.5891" y="367"/>
+<rect data-gentle-cds="ENST00000950060" fill="#1d4ed8" height="10" width="8.694275" x="805.5062" y="367"/>
+<rect data-gentle-cds="ENST00000950060" fill="#1d4ed8" height="10" width="4.390991" x="884.5013" y="367"/>
+<rect data-gentle-cds="ENST00000950060" fill="#1d4ed8" height="10" width="3.7763062" x="894.20544" y="367"/>
+<rect data-gentle-cds="ENST00000950060" fill="#1d4ed8" height="10" width="3.6445923" x="950.6744" y="367"/>
+<rect data-gentle-cds="ENST00000950060" fill="#1d4ed8" height="10" width="2" x="968.41425" y="367"/>
+<text fill="#475569" font-family="monospace" font-size="8" x="1070" y="376">
+exon 3699 nt | CDS 1233 nt | 410 aa | 45.9 kDa | complete_...
+</text>
+<path d="M572.7366,360 L567.7366,352 L577.7366,352 z" data-gentle-codon="start" data-gentle-display-x="572.7366" data-gentle-genomic-position="101128394" data-gentle-genomic-strand="+" data-gentle-local-position="7237" data-gentle-local-strand="+" fill="#16a34a"/>
+<rect data-gentle-codon="stop" data-gentle-display-x="970.03894" data-gentle-genomic-position="101137442" data-gentle-genomic-strand="+" data-gentle-local-position="16285" data-gentle-local-strand="+" fill="#dc2626" height="10" width="5" x="967.53894" y="351"/>
+<text fill="#374151" font-family="monospace" font-size="10" x="34" y="418">
+ENST00000950061
+</text>
+<line data-gentle-transcript="ENST00000950061" stroke="#94a3b8" stroke-width="1" x1="255" x2="1050" y1="414" y2="414"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="28.234467" x="494.00497" y="407"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="11.89978" x="572.6926" y="407"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="8.518555" x="725.5891" y="407"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="8.694275" x="805.5062" y="407"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="4.390991" x="884.5013" y="407"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="3.7763062" x="894.20544" y="407"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="3.6445923" x="950.6744" y="407"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="81.585754" x="968.41425" y="407"/>
+<rect data-gentle-cds="ENST00000950061" fill="#1d4ed8" height="10" width="11.855835" x="572.7366" y="409"/>
+<rect data-gentle-cds="ENST00000950061" fill="#1d4ed8" height="10" width="8.518555" x="725.5891" y="409"/>
+<rect data-gentle-cds="ENST00000950061" fill="#1d4ed8" height="10" width="8.694275" x="805.5062" y="409"/>
+<rect data-gentle-cds="ENST00000950061" fill="#1d4ed8" height="10" width="4.390991" x="884.5013" y="409"/>
+<rect data-gentle-cds="ENST00000950061" fill="#1d4ed8" height="10" width="3.7763062" x="894.20544" y="409"/>
+<rect data-gentle-cds="ENST00000950061" fill="#1d4ed8" height="10" width="3.6445923" x="950.6744" y="409"/>
+<rect data-gentle-cds="ENST00000950061" fill="#1d4ed8" height="10" width="2" x="968.41425" y="409"/>
+<text fill="#475569" font-family="monospace" font-size="8" x="1070" y="418">
+exon 3441 nt | CDS 975 nt | 324 aa | 35.8 kDa | complete_c...
+</text>
+<path d="M572.7366,402 L567.7366,394 L577.7366,394 z" data-gentle-codon="start" data-gentle-display-x="572.7366" data-gentle-genomic-position="101128394" data-gentle-genomic-strand="+" data-gentle-local-position="7237" data-gentle-local-strand="+" fill="#16a34a"/>
+<rect data-gentle-codon="stop" data-gentle-display-x="970.03894" data-gentle-genomic-position="101137442" data-gentle-genomic-strand="+" data-gentle-local-position="16285" data-gentle-local-strand="+" fill="#dc2626" height="10" width="5" x="967.53894" y="393"/>
+<text fill="#374151" font-family="monospace" font-size="10" x="34" y="460">
+ENST00000950062
+</text>
+<line data-gentle-transcript="ENST00000950062" stroke="#94a3b8" stroke-width="1" x1="255" x2="1050" y1="456" y2="456"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="28.234467" x="494.00497" y="449"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="11.89978" x="572.6926" y="449"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="10.231201" x="661.74316" y="449"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="8.518555" x="725.5891" y="449"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="8.694275" x="805.5062" y="449"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="4.390991" x="884.5013" y="449"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="4.4349976" x="894.20544" y="449"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="3.6445923" x="950.6744" y="449"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="81.585754" x="968.41425" y="449"/>
+<rect data-gentle-cds="ENST00000950062" fill="#1d4ed8" height="10" width="11.855835" x="572.7366" y="451"/>
+<rect data-gentle-cds="ENST00000950062" fill="#1d4ed8" height="10" width="10.231201" x="661.74316" y="451"/>
+<rect data-gentle-cds="ENST00000950062" fill="#1d4ed8" height="10" width="8.518555" x="725.5891" y="451"/>
+<rect data-gentle-cds="ENST00000950062" fill="#1d4ed8" height="10" width="8.694275" x="805.5062" y="451"/>
+<rect data-gentle-cds="ENST00000950062" fill="#1d4ed8" height="10" width="4.390991" x="884.5013" y="451"/>
+<rect data-gentle-cds="ENST00000950062" fill="#1d4ed8" height="10" width="4.4349976" x="894.20544" y="451"/>
+<rect data-gentle-cds="ENST00000950062" fill="#1d4ed8" height="10" width="3.6445923" x="950.6744" y="451"/>
+<rect data-gentle-cds="ENST00000950062" fill="#1d4ed8" height="10" width="2" x="968.41425" y="451"/>
+<text fill="#475569" font-family="monospace" font-size="8" x="1070" y="460">
+exon 3690 nt | CDS 1224 nt | 407 aa | 45.5 kDa | complete_...
+</text>
+<path d="M572.7366,444 L567.7366,436 L577.7366,436 z" data-gentle-codon="start" data-gentle-display-x="572.7366" data-gentle-genomic-position="101128394" data-gentle-genomic-strand="+" data-gentle-local-position="7237" data-gentle-local-strand="+" fill="#16a34a"/>
+<rect data-gentle-codon="stop" data-gentle-display-x="970.03894" data-gentle-genomic-position="101137442" data-gentle-genomic-strand="+" data-gentle-local-position="16285" data-gentle-local-strand="+" fill="#dc2626" height="10" width="5" x="967.53894" y="435"/>
+<text fill="#374151" font-family="monospace" font-size="10" x="34" y="502">
+ENST00000950063
+</text>
+<line data-gentle-transcript="ENST00000950063" stroke="#94a3b8" stroke-width="1" x1="255" x2="1050" y1="498" y2="498"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="67.8418" x="516.7506" y="491"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="10.231201" x="661.74316" y="491"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="8.518555" x="725.5891" y="491"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="8.694275" x="805.5062" y="491"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="4.390991" x="884.5013" y="491"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="3.7763062" x="894.20544" y="491"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="3.6445923" x="950.6744" y="491"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="81.585754" x="968.41425" y="491"/>
+<rect data-gentle-cds="ENST00000950063" fill="#1d4ed8" height="10" width="11.855835" x="572.7366" y="493"/>
+<rect data-gentle-cds="ENST00000950063" fill="#1d4ed8" height="10" width="10.231201" x="661.74316" y="493"/>
+<rect data-gentle-cds="ENST00000950063" fill="#1d4ed8" height="10" width="8.518555" x="725.5891" y="493"/>
+<rect data-gentle-cds="ENST00000950063" fill="#1d4ed8" height="10" width="8.694275" x="805.5062" y="493"/>
+<rect data-gentle-cds="ENST00000950063" fill="#1d4ed8" height="10" width="4.390991" x="884.5013" y="493"/>
+<rect data-gentle-cds="ENST00000950063" fill="#1d4ed8" height="10" width="3.7763062" x="894.20544" y="493"/>
+<rect data-gentle-cds="ENST00000950063" fill="#1d4ed8" height="10" width="3.6445923" x="950.6744" y="493"/>
+<rect data-gentle-cds="ENST00000950063" fill="#1d4ed8" height="10" width="2" x="968.41425" y="493"/>
+<text fill="#475569" font-family="monospace" font-size="8" x="1070" y="502">
+exon 4305 nt | CDS 1209 nt | 402 aa | 45.1 kDa | complete_...
+</text>
+<path d="M572.7366,486 L567.7366,478 L577.7366,478 z" data-gentle-codon="start" data-gentle-display-x="572.7366" data-gentle-genomic-position="101128394" data-gentle-genomic-strand="+" data-gentle-local-position="7237" data-gentle-local-strand="+" fill="#16a34a"/>
+<rect data-gentle-codon="stop" data-gentle-display-x="970.03894" data-gentle-genomic-position="101137442" data-gentle-genomic-strand="+" data-gentle-local-position="16285" data-gentle-local-strand="+" fill="#dc2626" height="10" width="5" x="967.53894" y="477"/>
+<text fill="#374151" font-family="monospace" font-size="10" x="34" y="544">
+ENST00001041162
+</text>
+<line data-gentle-transcript="ENST00001041162" stroke="#94a3b8" stroke-width="1" x1="255" x2="1050" y1="540" y2="540"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="28.234467" x="494.00497" y="533"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="11.89978" x="572.6926" y="533"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="10.231201" x="661.74316" y="533"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="38.246033" x="725.5891" y="533"/>
+<rect data-gentle-cds="ENST00001041162" fill="#1d4ed8" height="10" width="11.855835" x="572.7366" y="535"/>
+<rect data-gentle-cds="ENST00001041162" fill="#1d4ed8" height="10" width="10.231201" x="661.74316" y="535"/>
+<rect data-gentle-cds="ENST00001041162" fill="#1d4ed8" height="10" width="14.666077" x="725.5891" y="535"/>
+<text fill="#475569" font-family="monospace" font-size="8" x="1070" y="544">
+exon 2022 nt | CDS 840 nt | 279 aa | 31.4 kDa | complete_c...
+</text>
+<path d="M572.7366,528 L567.7366,520 L577.7366,520 z" data-gentle-codon="start" data-gentle-display-x="572.7366" data-gentle-genomic-position="101128394" data-gentle-genomic-strand="+" data-gentle-local-position="7237" data-gentle-local-strand="+" fill="#16a34a"/>
+<rect data-gentle-codon="stop" data-gentle-display-x="740.2552" data-gentle-genomic-position="101132209" data-gentle-genomic-strand="+" data-gentle-local-position="11052" data-gentle-local-strand="+" fill="#dc2626" height="10" width="5" x="737.7552" y="519"/>
+<text fill="#374151" font-family="monospace" font-size="10" x="34" y="586">
+ENST00001041163
+</text>
+<line data-gentle-transcript="ENST00001041163" stroke="#94a3b8" stroke-width="1" x1="255" x2="1050" y1="582" y2="582"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="28.234467" x="494.00497" y="575"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="24.897278" x="559.6951" y="575"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="10.231201" x="661.74316" y="575"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="37.28003" x="725.5891" y="575"/>
+<rect data-gentle-cds="ENST00001041163" fill="#1d4ed8" height="10" width="11.855835" x="572.7366" y="577"/>
+<rect data-gentle-cds="ENST00001041163" fill="#1d4ed8" height="10" width="10.231201" x="661.74316" y="577"/>
+<rect data-gentle-cds="ENST00001041163" fill="#1d4ed8" height="10" width="14.666077" x="725.5891" y="577"/>
+<text fill="#475569" font-family="monospace" font-size="8" x="1070" y="586">
+exon 2296 nt | CDS 840 nt | 279 aa | 31.4 kDa | complete_c...
+</text>
+<path d="M572.7366,570 L567.7366,562 L577.7366,562 z" data-gentle-codon="start" data-gentle-display-x="572.7366" data-gentle-genomic-position="101128394" data-gentle-genomic-strand="+" data-gentle-local-position="7237" data-gentle-local-strand="+" fill="#16a34a"/>
+<rect data-gentle-codon="stop" data-gentle-display-x="740.2552" data-gentle-genomic-position="101132209" data-gentle-genomic-strand="+" data-gentle-local-position="11052" data-gentle-local-strand="+" fill="#dc2626" height="10" width="5" x="737.7552" y="561"/>
+<text fill="#374151" font-family="monospace" font-size="10" x="34" y="628">
+ENST00001041164
+</text>
+<line data-gentle-transcript="ENST00001041164" stroke="#94a3b8" stroke-width="1" x1="255" x2="1050" y1="624" y2="624"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="67.8418" x="516.7506" y="617"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="10.231201" x="661.74316" y="617"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="37.28003" x="725.5891" y="617"/>
+<rect data-gentle-cds="ENST00001041164" fill="#1d4ed8" height="10" width="11.855835" x="572.7366" y="619"/>
+<rect data-gentle-cds="ENST00001041164" fill="#1d4ed8" height="10" width="10.231201" x="661.74316" y="619"/>
+<rect data-gentle-cds="ENST00001041164" fill="#1d4ed8" height="10" width="14.666077" x="725.5891" y="619"/>
+<text fill="#475569" font-family="monospace" font-size="8" x="1070" y="628">
+exon 2630 nt | CDS 840 nt | 279 aa | 31.4 kDa | complete_c...
+</text>
+<path d="M572.7366,612 L567.7366,604 L577.7366,604 z" data-gentle-codon="start" data-gentle-display-x="572.7366" data-gentle-genomic-position="101128394" data-gentle-genomic-strand="+" data-gentle-local-position="7237" data-gentle-local-strand="+" fill="#16a34a"/>
+<rect data-gentle-codon="stop" data-gentle-display-x="740.2552" data-gentle-genomic-position="101132209" data-gentle-genomic-strand="+" data-gentle-local-position="11052" data-gentle-local-strand="+" fill="#dc2626" height="10" width="5" x="737.7552" y="603"/>
+<text fill="#374151" font-family="monospace" font-size="10" x="34" y="670">
+ENST00001106562
+</text>
+<line data-gentle-transcript="ENST00001106562" stroke="#94a3b8" stroke-width="1" x1="255" x2="1050" y1="666" y2="666"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="28.234467" x="494.00497" y="659"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="11.89978" x="572.6926" y="659"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="10.231201" x="661.74316" y="659"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="8.518555" x="725.5891" y="659"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="65.426636" x="805.5062" y="659"/>
+<rect data-gentle-cds="ENST00001106562" fill="#1d4ed8" height="10" width="11.855835" x="572.7366" y="661"/>
+<rect data-gentle-cds="ENST00001106562" fill="#1d4ed8" height="10" width="10.231201" x="661.74316" y="661"/>
+<rect data-gentle-cds="ENST00001106562" fill="#1d4ed8" height="10" width="8.518555" x="725.5891" y="661"/>
+<rect data-gentle-cds="ENST00001106562" fill="#1d4ed8" height="10" width="8.869934" x="805.5062" y="661"/>
+<text fill="#475569" font-family="monospace" font-size="8" x="1070" y="670">
+exon 2836 nt | CDS 903 nt | 300 aa | 33.7 kDa | complete_c...
+</text>
+<path d="M572.7366,654 L567.7366,646 L577.7366,646 z" data-gentle-codon="start" data-gentle-display-x="572.7366" data-gentle-genomic-position="101128394" data-gentle-genomic-strand="+" data-gentle-local-position="7237" data-gentle-local-strand="+" fill="#16a34a"/>
+<rect data-gentle-codon="stop" data-gentle-display-x="814.37616" data-gentle-genomic-position="101133897" data-gentle-genomic-strand="+" data-gentle-local-position="12740" data-gentle-local-strand="+" fill="#dc2626" height="10" width="5" x="811.87616" y="645"/>
+<text fill="#374151" font-family="monospace" font-size="10" x="34" y="712">
+ENST00001116474
+</text>
+<line data-gentle-transcript="ENST00001116474" stroke="#94a3b8" stroke-width="1" x1="255" x2="1050" y1="708" y2="708"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="28.234467" x="494.00497" y="701"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="55.371155" x="572.6926" y="701"/>
+<rect data-gentle-cds="ENST00001116474" fill="#1d4ed8" height="10" width="23.667725" x="572.7366" y="703"/>
+<text fill="#475569" font-family="monospace" font-size="8" x="1070" y="712">
+exon 1906 nt | CDS 540 nt | 179 aa | 19.5 kDa | complete_c...
+</text>
+<path d="M572.7366,696 L567.7366,688 L577.7366,688 z" data-gentle-codon="start" data-gentle-display-x="572.7366" data-gentle-genomic-position="101128394" data-gentle-genomic-strand="+" data-gentle-local-position="7237" data-gentle-local-strand="+" fill="#16a34a"/>
+<rect data-gentle-codon="stop" data-gentle-display-x="596.4043" data-gentle-genomic-position="101128933" data-gentle-genomic-strand="+" data-gentle-local-position="7776" data-gentle-local-strand="+" fill="#dc2626" height="10" width="5" x="593.9043" y="687"/>
+<text fill="#374151" font-family="monospace" font-size="10" x="34" y="754">
+ENST00001122286
+</text>
+<line data-gentle-transcript="ENST00001122286" stroke="#94a3b8" stroke-width="1" x1="255" x2="1050" y1="750" y2="750"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="28.234467" x="494.00497" y="743"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="11.89978" x="572.6926" y="743"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="10.231201" x="661.74316" y="743"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="8.518555" x="725.5891" y="743"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="8.694275" x="805.5062" y="743"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="26.12677" x="844.7183" y="743"/>
+<rect data-gentle-cds="ENST00001122286" fill="#1d4ed8" height="10" width="11.855835" x="572.7366" y="745"/>
+<rect data-gentle-cds="ENST00001122286" fill="#1d4ed8" height="10" width="10.231201" x="661.74316" y="745"/>
+<rect data-gentle-cds="ENST00001122286" fill="#1d4ed8" height="10" width="8.518555" x="725.5891" y="745"/>
+<rect data-gentle-cds="ENST00001122286" fill="#1d4ed8" height="10" width="8.694275" x="805.5062" y="745"/>
+<rect data-gentle-cds="ENST00001122286" fill="#1d4ed8" height="10" width="2" x="844.7183" y="745"/>
+<text fill="#475569" font-family="monospace" font-size="8" x="1070" y="754">
+exon 2140 nt | CDS 903 nt | 300 aa | 33.7 kDa | complete_c...
+</text>
+<path d="M572.7366,738 L567.7366,730 L577.7366,730 z" data-gentle-codon="start" data-gentle-display-x="572.7366" data-gentle-genomic-position="101128394" data-gentle-genomic-strand="+" data-gentle-local-position="7237" data-gentle-local-strand="+" fill="#16a34a"/>
+<rect data-gentle-codon="stop" data-gentle-display-x="844.85004" data-gentle-genomic-position="101134591" data-gentle-genomic-strand="+" data-gentle-local-position="13434" data-gentle-local-strand="+" fill="#dc2626" height="10" width="5" x="842.35004" y="729"/>
+<text fill="#374151" font-family="monospace" font-size="10" x="34" y="796">
+ENST00001139435
+</text>
+<line data-gentle-transcript="ENST00001139435" stroke="#94a3b8" stroke-width="1" x1="255" x2="1050" y1="792" y2="792"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="28.234467" x="494.00497" y="785"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="11.89978" x="572.6926" y="785"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="10.231201" x="661.74316" y="785"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="8.518555" x="725.5891" y="785"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="8.694275" x="805.5062" y="785"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="4.390991" x="884.5013" y="785"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="3.7763062" x="894.20544" y="785"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="3.6445923" x="950.6744" y="785"/>
+<rect fill="#dbeafe" height="14" rx="1.5" stroke="#2563eb" stroke-width="1" width="81.585754" x="968.41425" y="785"/>
+<rect data-gentle-cds="ENST00001139435" fill="#1d4ed8" height="10" width="11.855835" x="572.7366" y="787"/>
+<rect data-gentle-cds="ENST00001139435" fill="#1d4ed8" height="10" width="10.231201" x="661.74316" y="787"/>
+<rect data-gentle-cds="ENST00001139435" fill="#1d4ed8" height="10" width="8.518555" x="725.5891" y="787"/>
+<rect data-gentle-cds="ENST00001139435" fill="#1d4ed8" height="10" width="8.694275" x="805.5062" y="787"/>
+<rect data-gentle-cds="ENST00001139435" fill="#1d4ed8" height="10" width="4.390991" x="884.5013" y="787"/>
+<rect data-gentle-cds="ENST00001139435" fill="#1d4ed8" height="10" width="3.7763062" x="894.20544" y="787"/>
+<rect data-gentle-cds="ENST00001139435" fill="#1d4ed8" height="10" width="3.6445923" x="950.6744" y="787"/>
+<rect data-gentle-cds="ENST00001139435" fill="#1d4ed8" height="10" width="2" x="968.41425" y="787"/>
+<text fill="#475569" font-family="monospace" font-size="8" x="1070" y="796">
+exon 3675 nt | CDS 1209 nt | 402 aa | 45.1 kDa | complete_...
+</text>
+<path d="M572.7366,780 L567.7366,772 L577.7366,772 z" data-gentle-codon="start" data-gentle-display-x="572.7366" data-gentle-genomic-position="101128394" data-gentle-genomic-strand="+" data-gentle-local-position="7237" data-gentle-local-strand="+" fill="#16a34a"/>
+<rect data-gentle-codon="stop" data-gentle-display-x="970.03894" data-gentle-genomic-position="101137442" data-gentle-genomic-strand="+" data-gentle-local-position="16285" data-gentle-local-strand="+" fill="#dc2626" height="10" width="5" x="967.53894" y="771"/>
+<text data-gentle-overlay-section="promoter_reporter_architecture_comparison" fill="#1f2937" font-family="sans-serif" font-size="13" font-weight="bold" x="34" y="854">
+Proposed reporter architectures
+</text>
+<text data-gentle-overlay-scale-note="true" fill="#64748b" font-family="monospace" font-size="8" x="1070" y="854">
+source intervals use the shared axis; synthetic tails are schematic
+</text>
+<text data-gentle-overlay-legend="title" fill="#475569" font-family="sans-serif" font-size="9" font-weight="bold" x="34" y="872">
+Reporter materials
+</text>
+<rect data-gentle-overlay-legend="genomic_source" fill="#27847c" height="10" rx="2" width="14" x="255" y="862"/>
+<text data-gentle-overlay-legend-label="genomic_source" fill="#475569" font-family="sans-serif" font-size="8" x="275" y="871">
+genomic source interval
+</text>
+<rect data-gentle-overlay-legend="spliced_cdna" fill="#d58a3a" height="10" rx="2" width="14" x="520" y="862"/>
+<text data-gentle-overlay-legend-label="spliced_cdna" fill="#475569" font-family="sans-serif" font-size="8" x="540" y="871">
+spliced exon / cDNA
+</text>
+<rect data-gentle-overlay-legend="schematic_reporter" fill="#b54b43" height="10" rx="2" width="14" x="785" y="862"/>
+<text data-gentle-overlay-legend-label="schematic_reporter" fill="#475569" font-family="sans-serif" font-size="8" x="805" y="871">
+schematic LUC (not genomic scale)
+</text>
+<text data-gentle-overlay-row="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_genomic_5utr_luc_atg_replacement_67a22c2d0944" fill="#374151" font-family="monospace" font-size="9" x="34" y="899">
+ENST00000950058 · genomic 5' UTR
+</text>
+<text fill="#64748b" font-family="sans-serif" font-size="8" x="34" y="912">
+7239 bp | endogenous_replaced_by_luciferase | TSS cl...
+</text>
+<line data-gentle-overlay-axis-row="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_genomic_5utr_luc_atg_replacement_67a22c2d0944" stroke="#cbd5e1" stroke-width="1" x1="255" x2="1050" y1="896" y2="896"/>
+<rect data-gentle-overlay-material="genomic_dna" data-gentle-overlay-row="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_genomic_5utr_luc_atg_replacement_67a22c2d0944" data-gentle-overlay-segment="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_genomic_5utr_luc_atg_replacement_67a22c2d0944_segment_1" fill="#27847c" height="12" rx="2" width="317.69263" x="255" y="890"/>
+<path d="M572.7366,885 L567.7366,877 L577.7366,877 z" data-gentle-overlay-marker="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_genomic_5utr_luc_atg_replacement_67a22c2d0944" fill="#d29d21"/>
+<text fill="#92400e" font-family="monospace" font-size="7" x="577.7366" y="884">
+ATG boundary
+</text>
+<line data-gentle-overlay-schematic-link="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_genomic_5utr_luc_atg_replacement_67a22c2d0944" stroke="#9f1239" stroke-dasharray="3 2" stroke-width="1.5" x1="572.6926" x2="582.6926" y1="896" y2="896"/>
+<rect data-gentle-overlay-schematic="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_genomic_5utr_luc_atg_replacement_67a22c2d0944_luciferase" data-gentle-overlay-schematic-detail="luciferase_cds_atg; luciferase coding body is schematic and not to genomic scale" fill="#b54b43" height="18" rx="3" width="76" x="582.6926" y="887"/>
+<text fill="#ffffff" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle" x="620.6926" y="899">
+LUC
+</text>
+<text data-gentle-overlay-row="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_spliced_5utr_luc_atg_replacement_3f4f37be5aac" fill="#374151" font-family="monospace" font-size="9" x="34" y="937">
+ENST00000950058 · spliced 5' UTR
+</text>
+<text fill="#64748b" font-family="sans-serif" font-size="8" x="34" y="950">
+2010 bp | endogenous_replaced_by_luciferase | TSS cl...
+</text>
+<line data-gentle-overlay-axis-row="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_spliced_5utr_luc_atg_replacement_3f4f37be5aac" stroke="#cbd5e1" stroke-width="1" x1="255" x2="1050" y1="934" y2="934"/>
+<rect data-gentle-overlay-material="genomic_dna" data-gentle-overlay-row="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_spliced_5utr_luc_atg_replacement_3f4f37be5aac" data-gentle-overlay-segment="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_spliced_5utr_luc_atg_replacement_3f4f37be5aac_segment_1" fill="#27847c" height="12" rx="2" width="43.866608" x="255" y="928"/>
+<rect data-gentle-overlay-material="spliced_cdna" data-gentle-overlay-row="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_spliced_5utr_luc_atg_replacement_3f4f37be5aac" data-gentle-overlay-segment="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_spliced_5utr_luc_atg_replacement_3f4f37be5aac_segment_2" fill="#d58a3a" height="12" rx="2" width="31.747314" x="298.91052" y="928"/>
+<rect data-gentle-overlay-material="spliced_cdna" data-gentle-overlay-row="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_spliced_5utr_luc_atg_replacement_3f4f37be5aac" data-gentle-overlay-segment="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_spliced_5utr_luc_atg_replacement_3f4f37be5aac_segment_3" fill="#d58a3a" height="12" rx="2" width="4.2154236" x="335.48798" y="928"/>
+<rect data-gentle-overlay-material="spliced_cdna" data-gentle-overlay-row="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_spliced_5utr_luc_atg_replacement_3f4f37be5aac" data-gentle-overlay-segment="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_spliced_5utr_luc_atg_replacement_3f4f37be5aac_segment_4" fill="#d58a3a" height="12" rx="2" width="2.766388" x="476.83594" y="928"/>
+<rect data-gentle-overlay-material="spliced_cdna" data-gentle-overlay-row="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_spliced_5utr_luc_atg_replacement_3f4f37be5aac" data-gentle-overlay-segment="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_spliced_5utr_luc_atg_replacement_3f4f37be5aac_segment_5" fill="#d58a3a" height="12" rx="2" width="5.269287" x="516.97015" y="928"/>
+<rect data-gentle-overlay-material="spliced_cdna" data-gentle-overlay-row="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_spliced_5utr_luc_atg_replacement_3f4f37be5aac" data-gentle-overlay-segment="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_spliced_5utr_luc_atg_replacement_3f4f37be5aac_segment_6" fill="#d58a3a" height="12" rx="2" width="2.5" x="572.6926" y="928"/>
+<path d="M330.65784,934 Q333.0729,925,335.48798,934" data-gentle-overlay-link="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_spliced_5utr_luc_atg_replacement_3f4f37be5aac" fill="none" stroke="#ba6b32" stroke-dasharray="4 3" stroke-width="1.3"/>
+<path d="M339.7034,934 Q408.26965,925,476.83594,934" data-gentle-overlay-link="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_spliced_5utr_luc_atg_replacement_3f4f37be5aac" fill="none" stroke="#ba6b32" stroke-dasharray="4 3" stroke-width="1.3"/>
+<path d="M479.60233,934 Q498.28625,925,516.97015,934" data-gentle-overlay-link="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_spliced_5utr_luc_atg_replacement_3f4f37be5aac" fill="none" stroke="#ba6b32" stroke-dasharray="4 3" stroke-width="1.3"/>
+<path d="M522.23944,934 Q547.46606,925,572.6926,934" data-gentle-overlay-link="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_spliced_5utr_luc_atg_replacement_3f4f37be5aac" fill="none" stroke="#ba6b32" stroke-dasharray="4 3" stroke-width="1.3"/>
+<path d="M572.7366,923 L567.7366,915 L577.7366,915 z" data-gentle-overlay-marker="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_spliced_5utr_luc_atg_replacement_3f4f37be5aac" fill="#d29d21"/>
+<text fill="#92400e" font-family="monospace" font-size="7" x="577.7366" y="922">
+ATG boundary
+</text>
+<line data-gentle-overlay-schematic-link="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_spliced_5utr_luc_atg_replacement_3f4f37be5aac" stroke="#9f1239" stroke-dasharray="3 2" stroke-width="1.5" x1="572.6926" x2="582.6926" y1="934" y2="934"/>
+<rect data-gentle-overlay-schematic="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_spliced_5utr_luc_atg_replacement_3f4f37be5aac_luciferase" data-gentle-overlay-schematic-detail="luciferase_cds_atg; luciferase coding body is schematic and not to genomic scale" fill="#b54b43" height="18" rx="3" width="76" x="582.6926" y="925"/>
+<text fill="#ffffff" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle" x="620.6926" y="937">
+LUC
+</text>
+<text data-gentle-overlay-row="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_tss_proximal_transcriptional_a2693a1d9cfa" fill="#374151" font-family="monospace" font-size="9" x="34" y="975">
+ENST00000950058 · TSS-proximal
+</text>
+<text fill="#64748b" font-family="sans-serif" font-size="8" x="34" y="988">
+1201 bp | endogenous_excluded_vector_luciferase_reta...
+</text>
+<line data-gentle-overlay-axis-row="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_tss_proximal_transcriptional_a2693a1d9cfa" stroke="#cbd5e1" stroke-width="1" x1="255" x2="1050" y1="972" y2="972"/>
+<rect data-gentle-overlay-material="genomic_dna" data-gentle-overlay-row="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_tss_proximal_transcriptional_a2693a1d9cfa" data-gentle-overlay-segment="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_tss_proximal_transcriptional_a2693a1d9cfa_segment_1" fill="#27847c" height="12" rx="2" width="52.692627" x="255" y="966"/>
+<path d="M572.7366,961 L567.7366,953 L577.7366,953 z" data-gentle-overlay-marker="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_tss_proximal_transcriptional_a2693a1d9cfa" fill="#d29d21"/>
+<text fill="#92400e" font-family="monospace" font-size="7" x="577.7366" y="960">
+ATG boundary
+</text>
+<line data-gentle-overlay-schematic-link="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_tss_proximal_transcriptional_a2693a1d9cfa" stroke="#9f1239" stroke-dasharray="3 2" stroke-width="1.5" x1="307.69263" x2="317.69263" y1="972" y2="972"/>
+<rect data-gentle-overlay-schematic="arch_ensg00000106366_local_plus_genomic_plus_tss_1001_first_exon_1001_1724_tol_600_enst00000950058_tss_proximal_transcriptional_a2693a1d9cfa_luciferase" data-gentle-overlay-schematic-detail="vector_luciferase_atg; luciferase coding body is schematic and not to genomic scale" fill="#b54b43" height="18" rx="3" width="76" x="317.69263" y="963"/>
+<text fill="#ffffff" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle" x="355.69263" y="975">
+LUC
+</text>
+<text data-gentle-overlay-row="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000223095_genomic_5utr_luc_atg_replacement_6191e99bfc89" fill="#374151" font-family="monospace" font-size="9" x="34" y="1013">
+ENST00000223095 · genomic 5' UTR
+</text>
+<text fill="#64748b" font-family="sans-serif" font-size="8" x="34" y="1026">
+2293 bp | endogenous_replaced_by_luciferase | TSS cl...
+</text>
+<line data-gentle-overlay-axis-row="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000223095_genomic_5utr_luc_atg_replacement_6191e99bfc89" stroke="#cbd5e1" stroke-width="1" x1="255" x2="1050" y1="1010" y2="1010"/>
+<rect data-gentle-overlay-material="genomic_dna" data-gentle-overlay-row="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000223095_genomic_5utr_luc_atg_replacement_6191e99bfc89" data-gentle-overlay-segment="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000223095_genomic_5utr_luc_atg_replacement_6191e99bfc89_segment_1" fill="#27847c" height="12" rx="2" width="100.51117" x="472.18146" y="1004"/>
+<path d="M572.7366,999 L567.7366,991 L577.7366,991 z" data-gentle-overlay-marker="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000223095_genomic_5utr_luc_atg_replacement_6191e99bfc89" fill="#d29d21"/>
+<text fill="#92400e" font-family="monospace" font-size="7" x="577.7366" y="998">
+ATG boundary
+</text>
+<line data-gentle-overlay-schematic-link="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000223095_genomic_5utr_luc_atg_replacement_6191e99bfc89" stroke="#9f1239" stroke-dasharray="3 2" stroke-width="1.5" x1="572.6926" x2="582.6926" y1="1010" y2="1010"/>
+<rect data-gentle-overlay-schematic="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000223095_genomic_5utr_luc_atg_replacement_6191e99bfc89_luciferase" data-gentle-overlay-schematic-detail="luciferase_cds_atg; luciferase coding body is schematic and not to genomic scale" fill="#b54b43" height="18" rx="3" width="76" x="582.6926" y="1001"/>
+<text fill="#ffffff" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle" x="620.6926" y="1013">
+LUC
+</text>
+<text data-gentle-overlay-row="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000223095_spliced_5utr_luc_atg_replacement_388a533e3f79" fill="#374151" font-family="monospace" font-size="9" x="34" y="1051">
+ENST00000223095 · spliced 5' UTR
+</text>
+<text fill="#64748b" font-family="sans-serif" font-size="8" x="34" y="1064">
+1145 bp | endogenous_replaced_by_luciferase | TSS cl...
+</text>
+<line data-gentle-overlay-axis-row="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000223095_spliced_5utr_luc_atg_replacement_388a533e3f79" stroke="#cbd5e1" stroke-width="1" x1="255" x2="1050" y1="1048" y2="1048"/>
+<rect data-gentle-overlay-material="genomic_dna" data-gentle-overlay-row="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000223095_spliced_5utr_luc_atg_replacement_388a533e3f79" data-gentle-overlay-segment="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000223095_spliced_5utr_luc_atg_replacement_388a533e3f79_segment_1" fill="#27847c" height="12" rx="2" width="43.86664" x="472.18146" y="1042"/>
+<rect data-gentle-overlay-material="spliced_cdna" data-gentle-overlay-row="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000223095_spliced_5utr_luc_atg_replacement_388a533e3f79" data-gentle-overlay-segment="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000223095_spliced_5utr_luc_atg_replacement_388a533e3f79_segment_2" fill="#d58a3a" height="12" rx="2" width="6.147461" x="516.092" y="1042"/>
+<rect data-gentle-overlay-material="spliced_cdna" data-gentle-overlay-row="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000223095_spliced_5utr_luc_atg_replacement_388a533e3f79" data-gentle-overlay-segment="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000223095_spliced_5utr_luc_atg_replacement_388a533e3f79_segment_3" fill="#d58a3a" height="12" rx="2" width="2.5" x="572.6926" y="1042"/>
+<path d="M522.23944,1048 Q547.46606,1039,572.6926,1048" data-gentle-overlay-link="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000223095_spliced_5utr_luc_atg_replacement_388a533e3f79" fill="none" stroke="#ba6b32" stroke-dasharray="4 3" stroke-width="1.3"/>
+<path d="M572.7366,1037 L567.7366,1029 L577.7366,1029 z" data-gentle-overlay-marker="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000223095_spliced_5utr_luc_atg_replacement_388a533e3f79" fill="#d29d21"/>
+<text fill="#92400e" font-family="monospace" font-size="7" x="577.7366" y="1036">
+ATG boundary
+</text>
+<line data-gentle-overlay-schematic-link="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000223095_spliced_5utr_luc_atg_replacement_388a533e3f79" stroke="#9f1239" stroke-dasharray="3 2" stroke-width="1.5" x1="572.6926" x2="582.6926" y1="1048" y2="1048"/>
+<rect data-gentle-overlay-schematic="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000223095_spliced_5utr_luc_atg_replacement_388a533e3f79_luciferase" data-gentle-overlay-schematic-detail="luciferase_cds_atg; luciferase coding body is schematic and not to genomic scale" fill="#b54b43" height="18" rx="3" width="76" x="582.6926" y="1039"/>
+<text fill="#ffffff" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle" x="620.6926" y="1051">
+LUC
+</text>
+<text data-gentle-overlay-row="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000223095_tss_proximal_transcriptional_d353d8105070" fill="#374151" font-family="monospace" font-size="9" x="34" y="1089">
+ENST00000223095 · TSS-proximal
+</text>
+<text fill="#64748b" font-family="sans-serif" font-size="8" x="34" y="1102">
+1201 bp | endogenous_excluded_vector_luciferase_reta...
+</text>
+<line data-gentle-overlay-axis-row="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000223095_tss_proximal_transcriptional_d353d8105070" stroke="#cbd5e1" stroke-width="1" x1="255" x2="1050" y1="1086" y2="1086"/>
+<rect data-gentle-overlay-material="genomic_dna" data-gentle-overlay-row="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000223095_tss_proximal_transcriptional_d353d8105070" data-gentle-overlay-segment="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000223095_tss_proximal_transcriptional_d353d8105070_segment_1" fill="#27847c" height="12" rx="2" width="52.692627" x="472.18146" y="1080"/>
+<path d="M572.7366,1075 L567.7366,1067 L577.7366,1067 z" data-gentle-overlay-marker="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000223095_tss_proximal_transcriptional_d353d8105070" fill="#d29d21"/>
+<text fill="#92400e" font-family="monospace" font-size="7" x="577.7366" y="1074">
+ATG boundary
+</text>
+<line data-gentle-overlay-schematic-link="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000223095_tss_proximal_transcriptional_d353d8105070" stroke="#9f1239" stroke-dasharray="3 2" stroke-width="1.5" x1="524.8741" x2="534.8741" y1="1086" y2="1086"/>
+<rect data-gentle-overlay-schematic="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000223095_tss_proximal_transcriptional_d353d8105070_luciferase" data-gentle-overlay-schematic-detail="vector_luciferase_atg; luciferase coding body is schematic and not to genomic scale" fill="#b54b43" height="18" rx="3" width="76" x="534.8741" y="1077"/>
+<text fill="#ffffff" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle" x="572.8741" y="1089">
+LUC
+</text>
+<text data-gentle-overlay-row="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000870828_genomic_5utr_luc_atg_replacement_9214724cc732" fill="#374151" font-family="monospace" font-size="9" x="34" y="1127">
+ENST00000870828 · genomic 5' UTR
+</text>
+<text fill="#64748b" font-family="sans-serif" font-size="8" x="34" y="1140">
+2796 bp | endogenous_replaced_by_luciferase | TSS cl...
+</text>
+<line data-gentle-overlay-axis-row="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000870828_genomic_5utr_luc_atg_replacement_9214724cc732" stroke="#cbd5e1" stroke-width="1" x1="255" x2="1050" y1="1124" y2="1124"/>
+<rect data-gentle-overlay-material="genomic_dna" data-gentle-overlay-row="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000870828_genomic_5utr_luc_atg_replacement_9214724cc732" data-gentle-overlay-segment="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000870828_genomic_5utr_luc_atg_replacement_9214724cc732_segment_1" fill="#27847c" height="12" rx="2" width="122.598175" x="450.09445" y="1118"/>
+<path d="M572.7366,1113 L567.7366,1105 L577.7366,1105 z" data-gentle-overlay-marker="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000870828_genomic_5utr_luc_atg_replacement_9214724cc732" fill="#d29d21"/>
+<text fill="#92400e" font-family="monospace" font-size="7" x="577.7366" y="1112">
+ATG boundary
+</text>
+<line data-gentle-overlay-schematic-link="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000870828_genomic_5utr_luc_atg_replacement_9214724cc732" stroke="#9f1239" stroke-dasharray="3 2" stroke-width="1.5" x1="572.6926" x2="582.6926" y1="1124" y2="1124"/>
+<rect data-gentle-overlay-schematic="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000870828_genomic_5utr_luc_atg_replacement_9214724cc732_luciferase" data-gentle-overlay-schematic-detail="luciferase_cds_atg; luciferase coding body is schematic and not to genomic scale" fill="#b54b43" height="18" rx="3" width="76" x="582.6926" y="1115"/>
+<text fill="#ffffff" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle" x="620.6926" y="1127">
+LUC
+</text>
+<text data-gentle-overlay-row="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000870828_spliced_5utr_luc_atg_replacement_9e6d1cf6db7b" fill="#374151" font-family="monospace" font-size="9" x="34" y="1165">
+ENST00000870828 · spliced 5' UTR
+</text>
+<text fill="#64748b" font-family="sans-serif" font-size="8" x="34" y="1178">
+1756 bp | endogenous_replaced_by_luciferase | TSS cl...
+</text>
+<line data-gentle-overlay-axis-row="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000870828_spliced_5utr_luc_atg_replacement_9e6d1cf6db7b" stroke="#cbd5e1" stroke-width="1" x1="255" x2="1050" y1="1162" y2="1162"/>
+<rect data-gentle-overlay-material="genomic_dna" data-gentle-overlay-row="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000870828_spliced_5utr_luc_atg_replacement_9e6d1cf6db7b" data-gentle-overlay-segment="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000870828_spliced_5utr_luc_atg_replacement_9e6d1cf6db7b_segment_1" fill="#27847c" height="12" rx="2" width="43.866608" x="450.09445" y="1156"/>
+<rect data-gentle-overlay-material="spliced_cdna" data-gentle-overlay-row="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000870828_spliced_5utr_luc_atg_replacement_9e6d1cf6db7b" data-gentle-overlay-segment="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000870828_spliced_5utr_luc_atg_replacement_9e6d1cf6db7b_segment_2" fill="#d58a3a" height="12" rx="2" width="28.234467" x="494.00497" y="1156"/>
+<rect data-gentle-overlay-material="spliced_cdna" data-gentle-overlay-row="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000870828_spliced_5utr_luc_atg_replacement_9e6d1cf6db7b" data-gentle-overlay-segment="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000870828_spliced_5utr_luc_atg_replacement_9e6d1cf6db7b_segment_3" fill="#d58a3a" height="12" rx="2" width="4.6984253" x="559.6951" y="1156"/>
+<rect data-gentle-overlay-material="spliced_cdna" data-gentle-overlay-row="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000870828_spliced_5utr_luc_atg_replacement_9e6d1cf6db7b" data-gentle-overlay-segment="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000870828_spliced_5utr_luc_atg_replacement_9e6d1cf6db7b_segment_4" fill="#d58a3a" height="12" rx="2" width="2.5" x="572.6926" y="1156"/>
+<path d="M522.23944,1162 Q540.9673,1153,559.6951,1162" data-gentle-overlay-link="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000870828_spliced_5utr_luc_atg_replacement_9e6d1cf6db7b" fill="none" stroke="#ba6b32" stroke-dasharray="4 3" stroke-width="1.3"/>
+<path d="M564.39355,1162 Q568.5431,1153,572.6926,1162" data-gentle-overlay-link="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000870828_spliced_5utr_luc_atg_replacement_9e6d1cf6db7b" fill="none" stroke="#ba6b32" stroke-dasharray="4 3" stroke-width="1.3"/>
+<path d="M572.7366,1151 L567.7366,1143 L577.7366,1143 z" data-gentle-overlay-marker="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000870828_spliced_5utr_luc_atg_replacement_9e6d1cf6db7b" fill="#d29d21"/>
+<text fill="#92400e" font-family="monospace" font-size="7" x="577.7366" y="1150">
+ATG boundary
+</text>
+<line data-gentle-overlay-schematic-link="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000870828_spliced_5utr_luc_atg_replacement_9e6d1cf6db7b" stroke="#9f1239" stroke-dasharray="3 2" stroke-width="1.5" x1="572.6926" x2="582.6926" y1="1162" y2="1162"/>
+<rect data-gentle-overlay-schematic="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000870828_spliced_5utr_luc_atg_replacement_9e6d1cf6db7b_luciferase" data-gentle-overlay-schematic-detail="luciferase_cds_atg; luciferase coding body is schematic and not to genomic scale" fill="#b54b43" height="18" rx="3" width="76" x="582.6926" y="1153"/>
+<text fill="#ffffff" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle" x="620.6926" y="1165">
+LUC
+</text>
+<text data-gentle-overlay-row="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000870828_tss_proximal_transcriptional_876ad9863ef9" fill="#374151" font-family="monospace" font-size="9" x="34" y="1203">
+ENST00000870828 · TSS-proximal
+</text>
+<text fill="#64748b" font-family="sans-serif" font-size="8" x="34" y="1216">
+1201 bp | endogenous_excluded_vector_luciferase_reta...
+</text>
+<line data-gentle-overlay-axis-row="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000870828_tss_proximal_transcriptional_876ad9863ef9" stroke="#cbd5e1" stroke-width="1" x1="255" x2="1050" y1="1200" y2="1200"/>
+<rect data-gentle-overlay-material="genomic_dna" data-gentle-overlay-row="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000870828_tss_proximal_transcriptional_876ad9863ef9" data-gentle-overlay-segment="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000870828_tss_proximal_transcriptional_876ad9863ef9_segment_1" fill="#27847c" height="12" rx="2" width="52.692627" x="450.09445" y="1194"/>
+<path d="M572.7366,1189 L567.7366,1181 L577.7366,1181 z" data-gentle-overlay-marker="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000870828_tss_proximal_transcriptional_876ad9863ef9" fill="#d29d21"/>
+<text fill="#92400e" font-family="monospace" font-size="7" x="577.7366" y="1188">
+ATG boundary
+</text>
+<line data-gentle-overlay-schematic-link="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000870828_tss_proximal_transcriptional_876ad9863ef9" stroke="#9f1239" stroke-dasharray="3 2" stroke-width="1.5" x1="502.78708" x2="512.7871" y1="1200" y2="1200"/>
+<rect data-gentle-overlay-schematic="arch_ensg00000106366_local_plus_genomic_plus_tss_5444_first_exon_5444_6087_tol_600_enst00000870828_tss_proximal_transcriptional_876ad9863ef9_luciferase" data-gentle-overlay-schematic-detail="vector_luciferase_atg; luciferase coding body is schematic and not to genomic scale" fill="#b54b43" height="18" rx="3" width="76" x="512.7871" y="1191"/>
+<text fill="#ffffff" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle" x="550.7871" y="1203">
+LUC
+</text>
+<text data-gentle-saved-region-section="true" fill="#1f2937" font-family="sans-serif" font-size="13" font-weight="bold" x="34" y="1280">
+Saved genomic regions of interest
+</text>
+<text data-gentle-saved-region-label="serpine1_manual_candidate" fill="#374151" font-family="monospace" font-size="9" x="34" y="1305">
+Manual promoter candidate
+</text>
+<rect data-gentle-genomic-end-0based-exclusive="101121807" data-gentle-genomic-start-0based="101121657" data-gentle-local-end="650" data-gentle-local-start="501" data-gentle-region-content-sha256="sha256:d06ab2fd32f319b7d6ff40c64be681f9e4fa115107042c3eb6ed168422cceb30" data-gentle-region-evidence-availability="available" data-gentle-region-purpose="reporter_candidate" data-gentle-region-selection-method="manual_span" data-gentle-region-set="serpine1_regions" data-gentle-saved-region="serpine1_manual_candidate" fill="#c2410c" fill-opacity="0.76" height="12" rx="1.5" stroke="#c2410c" stroke-dasharray="none" stroke-width="1" width="6.5426636" x="276.95526" y="1296"/>
+<text fill="#475569" font-family="monospace" font-size="8" x="1070" y="1305">
+serpine1_regions | unstranded:101121658-101121807 | manual_span | eviden...
+</text>
+<text data-gentle-saved-region-label="serpine1_ensembl_candidate" fill="#374151" font-family="monospace" font-size="9" x="34" y="1329">
+Synthetic Ensembl promoter a...
+</text>
+<rect data-gentle-genomic-end-0based-exclusive="101124080" data-gentle-genomic-start-0based="101123899" data-gentle-local-end="2923" data-gentle-local-start="2743" data-gentle-region-content-sha256="sha256:556fd9100d25f7f0a423abfb4edeb38f4bfd017aee7567811077c4bf232c88c9" data-gentle-region-evidence-availability="available" data-gentle-region-purpose="candidate_cis_regulatory_region" data-gentle-region-selection-method="ensembl_regulatory_feature" data-gentle-region-set="serpine1_regions" data-gentle-saved-region="serpine1_ensembl_candidate" fill="#7c3aed" fill-opacity="0.76" height="12" rx="1.5" stroke="#7c3aed" stroke-dasharray="none" stroke-width="1" width="7.9039" x="375.40265" y="1320"/>
+<text fill="#475569" font-family="monospace" font-size="8" x="1070" y="1329">
+serpine1_regions | unstranded:101123900-101124080 | ensembl_regulatory_f...
+</text>
+<text data-gentle-saved-region-label="serpine1_cutrun_support" fill="#374151" font-family="monospace" font-size="9" x="34" y="1353">
+Synthetic TP73 CUT&amp;RUN suppo...
+</text>
+<rect data-gentle-genomic-end-0based-exclusive="101126120" data-gentle-genomic-start-0based="101126000" data-gentle-local-end="4963" data-gentle-local-start="4844" data-gentle-region-content-sha256="sha256:feef39025a209eba114e106121cb5683baf039f53748b72718065f2ca24c794c" data-gentle-region-evidence-availability="available" data-gentle-region-purpose="occupancy_region" data-gentle-region-selection-method="cutrun_support_window" data-gentle-region-set="serpine1_regions" data-gentle-saved-region="serpine1_cutrun_support" fill="#dc2626" fill-opacity="0.76" height="12" rx="1.5" stroke="#dc2626" stroke-dasharray="none" stroke-width="1" width="5.225403" x="467.65863" y="1344"/>
+<text fill="#475569" font-family="monospace" font-size="8" x="1070" y="1353">
+serpine1_regions | unstranded:101126001-101126120 | cutrun_support_windo...
+</text>
+<text fill="#1f2937" font-family="sans-serif" font-size="13" font-weight="bold" x="34" y="1414">
+Projected occupancy grouped by declared biological context
+</text>
+<text data-gentle-occupancy-group="synthetic_tp73_occupancy" fill="#334155" font-family="sans-serif" font-size="11" font-weight="bold" x="34" y="1433">
+Synthetic TP73 occupancy evidence | independent lanes | observed group max 950.000
+</text>
+<text fill="#475569" font-family="monospace" font-size="8" x="52" y="1459">
+Synthetic TP73 CUT&amp;RUN | tutorial | synthetic / fixture-v1 | CUT&amp;RUN / TP73 (experimental)
+</text>
+<line data-gentle-batch="fixture-v1" data-gentle-cell-line="synthetic" data-gentle-occupancy-assay="CUT&amp;RUN" data-gentle-occupancy-factor="TP73" data-gentle-occupancy-lane="OCC:Synthetic_TP73_CUT_RUN:synthetic_serpine1_cutrun.bed:31e9db53b3c1" data-gentle-occupancy-mark="" data-gentle-occupancy-role="experimental" data-gentle-occupancy-source="synthetic_serpine1_cutrun_v1" data-gentle-occupancy-source-sha256="sha256:a65bcaf0048634a723896b0ce5c894634d95ad8671b388f305956301a54d9529" data-gentle-occupancy-state="available" stroke="#cbd5e1" stroke-dasharray="1,0" stroke-width="1" x1="255" x2="1050" y1="1455" y2="1455"/>
+<rect data-gentle-display-x="467.65863" data-gentle-genomic-end="101126120" data-gentle-genomic-start="101126001" data-gentle-local-end="4963" data-gentle-local-start="4844" data-gentle-occupancy-interval="OCC:Synthetic_TP73_CUT_RUN:synthetic_serpine1_cutrun.bed:31e9db53b3c1:101126001-101126120:1" data-gentle-occupancy-role="experimental" fill="#2563eb" fill-opacity="0.84" height="10" width="5.225403" x="467.65863" y="1445"/>
+<text fill="#64748b" font-family="monospace" font-size="8" x="1070" y="1459">
+scale 950.000
+</text>
+<text data-gentle-regulatory-score-section="predicted" fill="#1f2937" font-family="sans-serif" font-size="13" font-weight="bold" x="34" y="1508">
+Predicted TF binding scores
+</text>
+<text data-gentle-regulatory-factor="TP73" data-gentle-regulatory-provider="jaspar_pwm" data-gentle-regulatory-score-track="tp73_jaspar" fill="#374151" font-family="monospace" font-size="8" x="34" y="1526">
+TP73 JASPAR PWM | jaspar_pwm | p73 | MA0861.2 | llr_bits
+</text>
+<rect data-gentle-calibration-id="" data-gentle-calibration-sha256="" data-gentle-calibration-state="matrix_specific" data-gentle-motif-track="MA0861.2" data-gentle-regulatory-provider="jaspar_pwm" data-gentle-regulatory-score-track="tp73_jaspar" data-gentle-score-kind="llr_bits" fill="#f8fafc" height="50" stroke="#cbd5e1" stroke-width="1" width="795" x="255" y="1540"/>
+<text fill="#005f73" font-family="monospace" font-size="7" x="52" y="1553">
+F solid | R dashed
+</text>
+<text fill="#64748b" font-family="monospace" font-size="7" x="1070" y="1553">
+display 0.000..13.893 | bits (matrix-specific sequence score) | matrix_specific
+</text>
+<text data-gentle-regulatory-y-axis-label="tp73_jaspar" fill="#475569" font-family="monospace" font-size="7" text-anchor="end" x="248" y="1536">
+LLR (bits)
+</text>
+<line data-gentle-regulatory-display-floor="0" data-gentle-regulatory-y-axis="tp73_jaspar" data-gentle-regulatory-y-max="13.89331530818588" data-gentle-regulatory-y-min="0" stroke="#64748b" stroke-width="1" x1="255" x2="255" y1="1540" y2="1590"/>
+<line data-gentle-regulatory-y-tick="13.89331530818588" stroke="#64748b" stroke-width="0.8" x1="251" x2="255" y1="1540" y2="1540"/>
+<text data-gentle-regulatory-y-tick-label="13.89331530818588" fill="#475569" font-family="monospace" font-size="6.5" text-anchor="end" x="249" y="1542.5">
+13.9
+</text>
+<line data-gentle-regulatory-y-tick="6.94665765409294" stroke="#64748b" stroke-width="0.8" x1="251" x2="255" y1="1565" y2="1565"/>
+<text data-gentle-regulatory-y-tick-label="6.94665765409294" fill="#475569" font-family="monospace" font-size="6.5" text-anchor="end" x="249" y="1567.5">
+6.95
+</text>
+<line data-gentle-regulatory-y-tick="0" stroke="#64748b" stroke-width="0.8" x1="251" x2="255" y1="1590" y2="1590"/>
+<text data-gentle-regulatory-y-tick-label="0" fill="#475569" font-family="monospace" font-size="6.5" text-anchor="end" x="249" y="1592.5">
+0
+</text>
+<path d="M255,1590 L256.00995,1580.0674 L257.0199,1574.3892 L258.02982,1583.92 L259.03976,1590 L260.0497,1588.1932 L261.05966,1590 L262.06958,1586.6334 L263.07953,1590 L264.08948,1590 L265.09943,1560.7303 L266.10938,1590 L267.1193,1590 L268.12924,1590 L269.1392,1590 L270.14914,1590 L271.15906,1590 L272.169,1590 L273.17896,1590 L274.1889,1590 L275.19885,1590 L276.20877,1590 L277.21872,1577.9069 L278.22867,1567.4454 L279.23862,1588.4176 L280.24854,1568.7198 L281.25848,1590 L282.26843,1586.6344 L283.27838,1590 L284.28833,1590 L285.29825,1590 L286.3082,1581.174 L287.31815,1590 L288.3281,1590 L289.338,1577.7598 L290.34796,1590 L291.3579,1581.5007 L292.36786,1582.0886 L293.3778,1590 L294.38773,1585.4265 L295.39767,1590 L296.40762,1590 L297.41757,1590 L298.4275,1590 L299.43744,1590 L300.4474,1590 L301.45734,1590 L302.4673,1590 L303.4772,1590 L304.48715,1590 L305.4971,1590 L306.50705,1590 L307.51697,1590 L308.52692,1590 L309.53687,1590 L310.5468,1590 L311.55676,1590 L312.56668,1590 L313.57663,1577.9476 L314.58658,1590 L315.59653,1571.0923 L316.60648,1590 L317.6164,1590 L318.62634,1590 L319.6363,1590 L320.64624,1582.2335 L321.6562,1590 L322.6661,1590 L323.67606,1590 L324.686,1582.6016 L325.69592,1590 L326.70587,1590 L327.71582,1590 L328.72577,1585.6471 L329.73572,1580.8835 L330.74567,1580.5673 L331.75558,1590 L332.76553,1574.8657 L333.77548,1590 L334.7854,1590 L335.79535,1590 L336.8053,1590 L337.81525,1590 L338.8252,1571.7246 L339.83514,1585.3276 L340.84506,1590 L341.855,1587.0187 L342.86496,1588.5791 L343.8749,1590 L344.88483,1590 L345.89478,1590 L346.90472,1581.8715 L347.91467,1583.4188 L348.92462,1590 L349.93454,1590 L350.9445,1590 L351.95444,1582.1752 L352.9644,1584.1307 L353.9743,1590 L354.98425,1590 L355.9942,1590 L357.00415,1590 L358.01407,1590 L359.02402,1590 L360.03397,1590 L361.0439,1590 L362.05383,1590 L363.06378,1584.6687 L364.07373,1590 L365.08368,1578.627 L366.09363,1581.813 L367.10358,1590 L368.11353,1590 L369.12344,1590 L370.1334,1590 L371.1433,1590 L372.15326,1585.0128 L373.1632,1580.1306 L374.17316,1590 L375.1831,1589.7484 L376.19305,1578.3221 L377.203,1566.7034 L378.21292,1590 L379.22287,1590 L380.2328,1585.352 L381.24274,1590 L382.2527,1590 L383.26263,1574.4052 L384.27258,1579.0094 L385.28253,1588.9957 L386.29248,1584.6547 L387.3024,1572.9884 L388.31235,1569.1807 L389.3223,1590 L390.3322,1584.2357 L391.34216,1584.6084 L392.3521,1573.89 L393.36206,1579.7595 L394.372,1570.807 L395.38196,1578.7344 L396.39188,1572.6515 L397.40182,1590 L398.41177,1589.1 L399.4217,1581.6732 L400.43164,1588.006 L401.4416,1590 L402.45154,1572.3177 L403.4615,1589.9532 L404.47144,1580.956 L405.48135,1586.5024 L406.4913,1586.1667 L407.50125,1590 L408.51117,1580.1053 L409.52112,1583.079 L410.53107,1590 L411.54102,1590 L412.55096,1590 L413.5609,1590 L414.57083,1578.8231 L415.58078,1590 L416.5907,1584.4471 L417.60065,1590 L418.6106,1590 L419.62054,1590 L420.6305,1588.3951 L421.64044,1590 L422.65036,1590 L423.6603,1586.5592 L424.67026,1590 L425.68018,1590 L426.69012,1590 L427.70007,1590 L428.71002,1580.7228 L429.71997,1590 L430.72992,1576.1285 L431.73987,1581.1243 L432.74982,1590 L433.75974,1579.2714 L434.76965,1584.9977 L435.7796,1588.2781 L436.78955,1590 L437.7995,1582.3617 L438.80945,1590 L439.8194,1590 L440.82935,1590 L441.8393,1590 L442.8492,1588.949 L443.85916,1590 L444.86908,1590 L445.87903,1576.1464 L446.88898,1581.9634 L447.89893,1590 L448.90887,1590 L449.91882,1590 L450.92877,1589.931 L451.9387,1590 L452.94864,1586.0889 L453.95856,1590 L454.9685,1590 L455.97845,1590 L456.9884,1583.839 L457.99835,1590 L459.0083,1590 L460.01825,1586.5791 L461.02814,1587.2776 L462.03812,1581.8456 L463.04803,1587.7126 L464.05798,1576.3474 L465.06793,1590 L466.07788,1590 L467.08783,1589.4192 L468.09778,1590 L469.1077,1590 L470.11768,1590 L471.1276,1590 L472.1375,1590 L473.14746,1590 L474.1574,1564.6246 L475.16736,1590 L476.1773,1590 L477.18726,1572.3975 L478.19717,1590 L479.20715,1590 L480.21707,1590 L481.22702,1590 L482.23694,1590 L483.2469,1585.845 L484.25684,1590 L485.26678,1552.6094 L486.27673,1590 L487.28665,1590 L488.29663,1590 L489.30655,1590 L490.3165,1584.952 L491.32642,1590 L492.33636,1590 L493.3463,1590 L494.35626,1590 L495.3662,1590 L496.37613,1590 L497.3861,1589.7891 L498.396,1590 L499.40598,1590 L500.4159,1579.7006 L501.42584,1590 L502.4358,1565.419 L503.44574,1590 L504.4557,1581.6416 L505.4656,1588.5911 L506.47556,1576.659 L507.48547,1586.0317 L508.49545,1555.295 L509.50537,1590 L510.51532,1589.882 L511.52527,1590 L512.5352,1590 L513.54517,1590 L514.55505,1590 L515.56506,1590 L516.57495,1590 L517.58496,1590 L518.59485,1584.2162 L519.6048,1585.3628 L520.61475,1589.4291 L521.6247,1590 L522.63464,1590 L523.6446,1590 L524.65454,1590 L525.6644,1590 L526.67444,1589.6536 L527.6843,1590 L528.6943,1590 L529.7042,1590 L530.7142,1590 L531.7241,1588.5027 L532.7341,1586.3033 L533.744,1590 L534.7539,1590 L535.7639,1590 L536.7738,1581.1243 L537.78375,1586.7076 L538.7937,1589.7747 L539.80365,1581.138 L540.8136,1590 L541.82355,1588.0253 L542.8335,1587.1515 L543.8434,1590 L544.8534,1590 L545.8633,1590 L546.8732,1589.635 L547.8832,1586.7661 L548.8931,1590 L549.9031,1590 L550.913,1590 L551.923,1590 L552.93286,1590 L553.9429,1590 L554.95276,1583.9164 L555.9627,1590 L556.97266,1590 L557.9826,1581.6882 L558.99255,1590 L560.0025,1590 L561.01245,1588.137 L562.02234,1586.4637 L563.03235,1590 L564.04224,1590 L565.0522,1569.6477 L566.06213,1587.8359 L567.0721,1585.7544 L568.08203,1590 L569.0919,1590 L570.1019,1590 L571.1118,1590 L572.1218,1585.6027 L573.1317,1577.4917 L574.14166,1590 L575.1516,1590 L576.16156,1578.8379 L577.1715,1576.5096 L578.1814,1590 L579.1914,1587.7919 L580.2013,1590 L581.2113,1585.6545 L582.2212,1590 L583.23114,1590 L584.2411,1590 L585.25104,1590 L586.261,1587.1066 L587.2709,1583.4225 L588.2809,1590 L589.2908,1581.2512 L590.3007,1579.9786 L591.31067,1578.664 L592.3206,1590 L593.33057,1588.7615 L594.3405,1581.5013 L595.35046,1590 L596.36035,1590 L597.37036,1590 L598.38025,1590 L599.39026,1588.0029 L600.40015,1590 L601.4101,1590 L602.42004,1586.2203 L603.43,1590 L604.43994,1590 L605.4498,1584.344 L606.45984,1575.3698 L607.4697,1590 L608.47974,1590 L609.4896,1583.1724 L610.49963,1590 L611.5095,1590 L612.5195,1576.6674 L613.5294,1581.8849 L614.5393,1590 L615.5493,1585.2662 L616.5592,1590 L617.5692,1585.6974 L618.5791,1589.2887 L619.5891,1582.8298 L620.599,1590 L621.60895,1590 L622.6189,1590 L623.6288,1578.6295 L624.6388,1586.6124 L625.6487,1590 L626.6587,1590 L627.6686,1590 L628.6786,1590 L629.6885,1582.3574 L630.6984,1589.2491 L631.7084,1590 L632.7183,1590 L633.7283,1581.5802 L634.73816,1589.8319 L635.74817,1584.6934 L636.75806,1564.0094 L637.76807,1590 L638.77795,1590 L639.7879,1590 L640.79785,1590 L641.8078,1590 L642.81775,1586.1378 L643.82764,1590 L644.83765,1590 L645.84753,1590 L646.85754,1590 L647.86743,1590 L648.8774,1590 L649.8873,1590 L650.8973,1590 L651.9072,1590 L652.9171,1586.2399 L653.9271,1590 L654.937,1587.2261 L655.947,1589.6301 L656.9569,1590 L657.9668,1590 L658.9768,1587.0413 L659.98676,1571.3687 L660.9967,1583.6246 L662.0066,1590 L663.0166,1590 L664.0265,1590 L665.0365,1590 L666.0464,1590 L667.0563,1583.4417 L668.0663,1590 L669.07623,1590 L670.0862,1585.7007 L671.09607,1590 L672.1061,1586.8024 L673.11597,1590 L674.1259,1583.9552 L675.13586,1578.027 L676.1459,1590 L677.15576,1590 L678.1657,1589.698 L679.17566,1586.0277 L680.18555,1579.1989 L681.19556,1574.3892 L682.20544,1590 L683.2154,1590 L684.22534,1590 L685.23535,1590 L686.24524,1590 L687.2552,1590 L688.26514,1579.6401 L689.275,1590 L690.28503,1590 L691.2949,1587.5981 L692.3049,1583.0505 L693.3148,1586.0002 L694.3248,1590 L695.3347,1584.9977 L696.34467,1589.0387 L697.3546,1590 L698.3645,1562.6493 L699.3745,1590 L700.3844,1590 L701.39435,1590 L702.4043,1567.3973 L703.4143,1589.635 L704.4242,1590 L705.43414,1588.7183 L706.4441,1589.6204 L707.45404,1590 L708.464,1588.833 L709.4739,1590 L710.4838,1578.7507 L711.4938,1587.4224 L712.5038,1589.1335 L713.5137,1588.2781 L714.5236,1590 L715.53357,1578.2478 L716.5435,1590 L717.55347,1590 L718.56335,1590 L719.5733,1590 L720.58325,1590 L721.59326,1578.9574 L722.60315,1583.2123 L723.6131,1590 L724.62305,1590 L725.633,1585.184 L726.64294,1590 L727.65283,1590 L728.6628,1590 L729.6727,1590 L730.68274,1590 L731.6926,1590 L732.7025,1586.7219 L733.7125,1587.5836 L734.7225,1590 L735.7324,1590 L736.7423,1582.9563 L737.75226,1590 L738.7622,1590 L739.7722,1590 L740.7821,1590 L741.792,1590 L742.802,1590 L743.81195,1588.2743 L744.8219,1576.7278 L745.8318,1590 L746.84174,1590 L747.8517,1585.95 L748.8617,1590 L749.8716,1590 L750.8815,1590 L751.8915,1582.6454 L752.9014,1589.7747 L753.9114,1588.7617 L754.92126,1580.4966 L755.9312,1583.4911 L756.94116,1590 L757.9511,1590 L758.96106,1590 L759.97095,1587.5931 L760.98096,1590 L761.9909,1590 L763.00085,1590 L764.01074,1590 L765.0207,1581.894 L766.03064,1587.1602 L767.0406,1586.3243 L768.05054,1590 L769.0605,1590 L770.07043,1579.3206 L771.0804,1586.3176 L772.09033,1590 L773.1002,1584.0234 L774.11017,1590 L775.1201,1583.0505 L776.13007,1590 L777.14,1586.9832 L778.14996,1579.4357 L779.1599,1583.3123 L780.16986,1581.5313 L781.1798,1576.242 L782.1897,1587.7 L783.1997,1590 L784.2096,1590 L785.21954,1567.3405 L786.2295,1590 L787.23944,1579.8754 L788.2494,1590 L789.25934,1590 L790.2693,1590 L791.2792,1590 L792.2892,1582.5675 L793.2991,1590 L794.309,1580.062 L795.319,1586.5483 L796.3289,1590 L797.33887,1590 L798.3488,1590 L799.3587,1590 L800.36865,1590 L801.37866,1583.8959 L802.38855,1576.4335 L803.3985,1590 L804.40845,1590 L805.4184,1590 L806.42834,1581.2505 L807.4383,1579.6456 L808.4482,1567.982 L809.4581,1587.122 L810.46814,1590 L811.478,1590 L812.488,1576.5326 L813.4979,1589.5714 L814.5079,1590 L815.5178,1590 L816.5278,1589.4474 L817.53766,1577.1866 L818.5476,1590 L819.5576,1590 L820.5675,1581.8984 L821.57745,1590 L822.5874,1589.8132 L823.59735,1590 L824.6073,1590 L825.61725,1590 L826.62714,1588.6332 L827.6371,1590 L828.6471,1585.6178 L829.657,1590 L830.66693,1590 L831.6769,1590 L832.6868,1582.1398 L833.6968,1583.3834 L834.7067,1575.8099 L835.7166,1590 L836.7266,1584.267 L837.7366,1587.2073 L838.74646,1590 L839.7564,1590 L840.76636,1559.3701 L841.7763,1589.7015 L842.78625,1590 L843.7962,1589.063 L844.8061,1590 L845.8161,1590 L846.82605,1590 L847.83594,1590 L848.8459,1572.123 L849.85583,1590 L850.8658,1590 L851.87573,1590 L852.8857,1590 L853.89557,1582.3044 L854.9056,1582.4746 L855.9155,1590 L856.9254,1587.8989 L857.93536,1581.5142 L858.9453,1581.8849 L859.95526,1590 L860.9652,1589.7747 L861.97516,1588.7617 L862.98505,1590 L863.99506,1590 L865.005,1590 L866.0149,1590 L867.02484,1590 L868.0348,1586.4427 L869.04474,1590 L870.0547,1590 L871.06464,1590 L872.0745,1590 L873.08453,1590 L874.0945,1590 L875.1044,1590 L876.1143,1590 L877.12427,1588.7136 L878.1342,1589.6848 L879.14417,1590 L880.1541,1590 L881.16406,1584.0555 L882.174,1590 L883.1839,1588.9011 L884.19385,1590 L885.2038,1590 L886.21375,1555.0797 L887.2237,1588.0902 L888.23364,1582.7733 L889.2436,1579.801 L890.25354,1590 L891.2635,1590 L892.2734,1572.9076 L893.2833,1590 L894.2933,1576.9436 L895.3032,1590 L896.3132,1590 L897.3231,1590 L898.33307,1590 L899.343,1590 L900.35297,1587.142 L901.36285,1590 L902.3728,1589.999 L903.38275,1579.3214 L904.3927,1590 L905.40265,1590 L906.4126,1590 L907.42255,1590 L908.4325,1590 L909.44244,1581.6459 L910.45233,1583.4967 L911.4623,1590 L912.4723,1590 L913.4822,1576.8962 L914.4921,1579.3936 L915.5021,1590 L916.51196,1584.4932 L917.522,1589.5428 L918.5319,1590 L919.5418,1590 L920.55176,1590 L921.56177,1590 L922.57166,1590 L923.5816,1590 L924.59155,1590 L925.60144,1590 L926.61145,1590 L927.6214,1590 L928.6313,1580.078 L929.64124,1590 L930.65125,1590 L931.66113,1573.2561 L932.6711,1580.484 L933.681,1587.7825 L934.691,1587.4023 L935.7009,1590 L936.7109,1590 L937.72076,1581.6732 L938.7307,1590 L939.7407,1590 L940.7506,1590 L941.76056,1590 L942.7705,1590 L943.78046,1589.9532 L944.7904,1578.9661 L945.80035,1590 L946.81024,1590 L947.8202,1569.8145 L948.8302,1590 L949.8401,1576.3717 L950.85004,1590 L951.86,1578.1091 L952.86993,1590 L953.8799,1590 L954.88983,1590 L955.8997,1570.3633 L956.9097,1566.9329 L957.9197,1590 L958.92957,1590 L959.9395,1582.0831 L960.94946,1590 L961.9594,1590 L962.96936,1575.0685 L963.9793,1583.0393 L964.9892,1587.3247 L965.9992,1590 L967.0091,1590 L968.01904,1590 L969.029,1580.4967 L970.03894,1577.7926 L971.0489,1564.1 L972.05884,1590 L973.0688,1590 L974.0787,1585.0474 L975.0887,1590 L976.0986,1590 L977.1085,1590 L978.11847,1583.792 L979.1284,1590 L980.13837,1587.5607 L981.1483,1587.3193 L982.15826,1569.2421 L983.16815,1590 L984.17816,1590 L985.18805,1590 L986.198,1590 L987.20795,1590 L988.2179,1590 L989.22784,1590 L990.2378,1590 L991.24774,1590 L992.2576,1590 L993.26764,1587.8801 L994.2775,1578.2378 L995.2875,1578.2576 L996.2974,1590 L997.3074,1590 L998.3173,1579.4187 L999.3273,1590 L1000.33716,1590 L1001.3471,1586.9438 L1002.3571,1590 L1003.367,1586.6427 L1004.37695,1585.409 L1005.3869,1590 L1006.39685,1576.2677 L1007.4068,1590 L1008.41675,1582.0298 L1009.42664,1571.5867 L1010.43665,1579.4552 L1011.4466,1585.7164 L1012.4565,1590 L1013.46643,1590 L1014.4764,1585.261 L1015.4863,1590 L1016.4963,1590 L1017.5062,1590 L1018.5161,1590 L1019.5261,1577.8131 L1020.5361,1575.293 L1021.54596,1590 L1022.5559,1590 L1023.56586,1587.8616 L1024.5758,1590 L1025.5857,1590 L1026.5957,1590 L1027.6056,1572.4938 L1028.6156,1590 L1029.6255,1590 L1030.6355,1590 L1031.6454,1585.0952 L1032.6553,1573.82 L1033.6653,1586.7341 L1034.6753,1583.7982 L1035.6852,1576.4076 L1036.6951,1590 L1037.7051,1581.9379 L1038.7151,1582.2595 L1039.7249,1586.792 L1040.7349,1590 L1041.7449,1583.1859 L1042.7548,1582.8693 L1043.7646,1588.7307 L1044.7747,1566.9158 L1045.7845,1581.1809 L1046.7946,1568.1602 L1047.8044,1590 L1048.8145,1590" data-gentle-regulatory-provider="jaspar_pwm" data-gentle-regulatory-score-track="tp73_jaspar" data-gentle-regulatory-strand="forward" fill="none" stroke="#005f73" stroke-width="1.7"/>
+<path d="M255,1590 L256.00995,1576.0612 L257.0199,1569.3713 L258.02982,1590 L259.03976,1590 L260.0497,1579.4623 L261.05966,1588.0139 L262.06958,1590 L263.07953,1590 L264.08948,1590 L265.09943,1559.2979 L266.10938,1583.0585 L267.1193,1589.4205 L268.12924,1580.9802 L269.1392,1589.5867 L270.14914,1590 L271.15906,1579.8925 L272.169,1590 L273.17896,1590 L274.1889,1590 L275.19885,1590 L276.20877,1588.3584 L277.21872,1574.3953 L278.22867,1561.2551 L279.23862,1585.6134 L280.24854,1556.9984 L281.25848,1586.0715 L282.26843,1580.2653 L283.27838,1590 L284.28833,1590 L285.29825,1589.3748 L286.3082,1590 L287.31815,1590 L288.3281,1590 L289.338,1583.0514 L290.34796,1590 L291.3579,1588.1948 L292.36786,1580.5713 L293.3778,1590 L294.38773,1578.0304 L295.39767,1590 L296.40762,1590 L297.41757,1590 L298.4275,1590 L299.43744,1590 L300.4474,1590 L301.45734,1589.5771 L302.4673,1584.05 L303.4772,1588.9335 L304.48715,1590 L305.4971,1585.1862 L306.50705,1590 L307.51697,1590 L308.52692,1590 L309.53687,1590 L310.5468,1590 L311.55676,1590 L312.56668,1590 L313.57663,1590 L314.58658,1590 L315.59653,1564.0854 L316.60648,1590 L317.6164,1590 L318.62634,1590 L319.6363,1590 L320.64624,1590 L321.6562,1590 L322.6661,1587.4664 L323.67606,1590 L324.686,1589.4247 L325.69592,1590 L326.70587,1590 L327.71582,1590 L328.72577,1580.9163 L329.73572,1575.9398 L330.74567,1587.6743 L331.75558,1587.7865 L332.76553,1583.1699 L333.77548,1590 L334.7854,1590 L335.79535,1590 L336.8053,1590 L337.81525,1590 L338.8252,1574.0713 L339.83514,1585.1768 L340.84506,1590 L341.855,1580.7318 L342.86496,1589.3376 L343.8749,1590 L344.88483,1575.1438 L345.89478,1589.8455 L346.90472,1587.1831 L347.91467,1572.6143 L348.92462,1590 L349.93454,1590 L350.9445,1590 L351.95444,1579.5762 L352.9644,1578.025 L353.9743,1590 L354.98425,1590 L355.9942,1590 L357.00415,1590 L358.01407,1590 L359.02402,1590 L360.03397,1587.4946 L361.0439,1590 L362.05383,1590 L363.06378,1584.7913 L364.07373,1590 L365.08368,1590 L366.09363,1582.2395 L367.10358,1590 L368.11353,1590 L369.12344,1586.9581 L370.1334,1590 L371.1433,1590 L372.15326,1576.3685 L373.1632,1576.2942 L374.17316,1590 L375.1831,1585.4037 L376.19305,1583.3118 L377.203,1578.331 L378.21292,1583.916 L379.22287,1590 L380.2328,1590 L381.24274,1590 L382.2527,1590 L383.26263,1590 L384.27258,1572.1173 L385.28253,1590 L386.29248,1590 L387.3024,1577.7919 L388.31235,1569.5558 L389.3223,1590 L390.3322,1585.2872 L391.34216,1585.0952 L392.3521,1582.6454 L393.36206,1578.7507 L394.372,1578.3499 L395.38196,1578.9602 L396.39188,1559.1538 L397.40182,1590 L398.41177,1590 L399.4217,1581.854 L400.43164,1576.485 L401.4416,1590 L402.45154,1557.5525 L403.4615,1589.3236 L404.47144,1587.7551 L405.48135,1582.2875 L406.4913,1590 L407.50125,1590 L408.51117,1573.0422 L409.52112,1582.362 L410.53107,1590 L411.54102,1590 L412.55096,1587.3243 L413.5609,1590 L414.57083,1590 L415.58078,1590 L416.5907,1590 L417.60065,1590 L418.6106,1590 L419.62054,1589.8306 L420.6305,1589.3329 L421.64044,1590 L422.65036,1590 L423.6603,1589.4857 L424.67026,1590 L425.68018,1590 L426.69012,1590 L427.70007,1590 L428.71002,1589.6064 L429.71997,1590 L430.72992,1590 L431.73987,1573.8899 L432.74982,1587.637 L433.75974,1590 L434.76965,1584.6653 L435.7796,1580.0426 L436.78955,1590 L437.7995,1571.0985 L438.80945,1584.6547 L439.8194,1586.0759 L440.82935,1590 L441.8393,1590 L442.8492,1579.7505 L443.85916,1590 L444.86908,1590 L445.87903,1579.4248 L446.88898,1590 L447.89893,1590 L448.90887,1581.954 L449.91882,1590 L450.92877,1585.4996 L451.9387,1589.0912 L452.94864,1589.9288 L453.95856,1590 L454.9685,1590 L455.97845,1590 L456.9884,1590 L457.99835,1590 L459.0083,1590 L460.01825,1590 L461.02814,1589.4312 L462.03812,1583.6456 L463.04803,1590 L464.05798,1589.1996 L465.06793,1590 L466.07788,1590 L467.08783,1590 L468.09778,1590 L469.1077,1590 L470.11768,1590 L471.1276,1590 L472.1375,1590 L473.14746,1590 L474.1574,1571.4098 L475.16736,1590 L476.1773,1583.0718 L477.18726,1571.2532 L478.19717,1590 L479.20715,1590 L480.21707,1590 L481.22702,1590 L482.23694,1590 L483.2469,1583.1418 L484.25684,1590 L485.26678,1558.0466 L486.27673,1590 L487.28665,1579.0717 L488.29663,1590 L489.30655,1590 L490.3165,1590 L491.32642,1590 L492.33636,1590 L493.3463,1590 L494.35626,1590 L495.3662,1578.278 L496.37613,1590 L497.3861,1590 L498.396,1589.4862 L499.40598,1590 L500.4159,1590 L501.42584,1571.9359 L502.4358,1567.7985 L503.44574,1590 L504.4557,1573.7195 L505.4656,1584.3475 L506.47556,1578.4097 L507.48547,1589.209 L508.49545,1554.0599 L509.50537,1590 L510.51532,1590 L511.52527,1590 L512.5352,1585.0555 L513.54517,1590 L514.55505,1590 L515.56506,1590 L516.57495,1590 L517.58496,1590 L518.59485,1590 L519.6048,1585.9083 L520.61475,1585.8024 L521.6247,1590 L522.63464,1590 L523.6446,1590 L524.65454,1590 L525.6644,1590 L526.67444,1590 L527.6843,1590 L528.6943,1590 L529.7042,1590 L530.7142,1590 L531.7241,1577.4706 L532.7341,1590 L533.744,1590 L534.7539,1590 L535.7639,1584.5808 L536.7738,1588.445 L537.78375,1582.2491 L538.7937,1587.7057 L539.80365,1576.6597 L540.8136,1590 L541.82355,1590 L542.8335,1588.6315 L543.8434,1590 L544.8534,1590 L545.8633,1583.4604 L546.8732,1574.196 L547.8832,1590 L548.8931,1590 L549.9031,1590 L550.913,1590 L551.923,1590 L552.93286,1589.2623 L553.9429,1590 L554.95276,1579.2806 L555.9627,1590 L556.97266,1590 L557.9826,1584.9475 L558.99255,1590 L560.0025,1588.7107 L561.01245,1590 L562.02234,1583.9498 L563.03235,1590 L564.04224,1590 L565.0522,1568.6119 L566.06213,1590 L567.0721,1590 L568.08203,1590 L569.0919,1590 L570.1019,1590 L571.1118,1590 L572.1218,1590 L573.1317,1588.2336 L574.14166,1590 L575.1516,1590 L576.16156,1570.7416 L577.1715,1568.0593 L578.1814,1590 L579.1914,1590 L580.2013,1590 L581.2113,1583.7683 L582.2212,1579.9581 L583.23114,1590 L584.2411,1590 L585.25104,1590 L586.261,1581.7744 L587.2709,1586.4269 L588.2809,1590 L589.2908,1590 L590.3007,1590 L591.31067,1587.9772 L592.3206,1590 L593.33057,1590 L594.3405,1587.6116 L595.35046,1590 L596.36035,1590 L597.37036,1590 L598.38025,1590 L599.39026,1585.9016 L600.40015,1590 L601.4101,1590 L602.42004,1585.6506 L603.43,1590 L604.43994,1584.6547 L605.4498,1579.3069 L606.45984,1577.5986 L607.4697,1590 L608.47974,1590 L609.4896,1581.858 L610.49963,1590 L611.5095,1590 L612.5195,1585.5552 L613.5294,1584.7716 L614.5393,1590 L615.5493,1581.4474 L616.5592,1590 L617.5692,1587.9595 L618.5791,1590 L619.5891,1584.8773 L620.599,1590 L621.60895,1590 L622.6189,1590 L623.6288,1570.163 L624.6388,1577.131 L625.6487,1590 L626.6587,1590 L627.6686,1590 L628.6786,1588.2916 L629.6885,1590 L630.6984,1584.7318 L631.7084,1585.3073 L632.7183,1590 L633.7283,1576.8754 L634.73816,1590 L635.74817,1588.9939 L636.75806,1570.5258 L637.76807,1590 L638.77795,1590 L639.7879,1590 L640.79785,1590 L641.8078,1590 L642.81775,1590 L643.82764,1589.4576 L644.83765,1590 L645.84753,1589.3356 L646.85754,1590 L647.86743,1587.6702 L648.8774,1590 L649.8873,1590 L650.8973,1590 L651.9072,1586.8722 L652.9171,1583.2721 L653.9271,1590 L654.937,1589.7961 L655.947,1590 L656.9569,1590 L657.9668,1590 L658.9768,1586.5421 L659.98676,1575.7587 L660.9967,1574.7661 L662.0066,1590 L663.0166,1590 L664.0265,1590 L665.0365,1590 L666.0464,1590 L667.0563,1585.5844 L668.0663,1572.3107 L669.07623,1590 L670.0862,1583.1104 L671.09607,1578.6415 L672.1061,1579.7739 L673.11597,1590 L674.1259,1583.9174 L675.13586,1583.0016 L676.1459,1590 L677.15576,1590 L678.1657,1585.5051 L679.17566,1576.183 L680.18555,1585.9487 L681.19556,1569.3713 L682.20544,1590 L683.2154,1590 L684.22534,1590 L685.23535,1590 L686.24524,1579.3126 L687.2552,1584.9889 L688.26514,1581.8727 L689.275,1590 L690.28503,1589.675 L691.2949,1584.226 L692.3049,1580.1353 L693.3148,1589.298 L694.3248,1590 L695.3347,1577.8615 L696.34467,1580.0426 L697.3546,1590 L698.3645,1557.3755 L699.3745,1590 L700.3844,1590 L701.39435,1590 L702.4043,1575.8715 L703.4143,1574.196 L704.4242,1590 L705.43414,1590 L706.4441,1587.7971 L707.45404,1590 L708.464,1589.571 L709.4739,1590 L710.4838,1579.7595 L711.4938,1576.9304 L712.5038,1585.9098 L713.5137,1580.0426 L714.5236,1590 L715.53357,1583.9235 L716.5435,1590 L717.55347,1584.6547 L718.56335,1590 L719.5733,1589.238 L720.58325,1590 L721.59326,1577.8162 L722.60315,1587.341 L723.6131,1590 L724.62305,1588.6704 L725.633,1581.0377 L726.64294,1589.9706 L727.65283,1590 L728.6628,1590 L729.6727,1590 L730.68274,1590 L731.6926,1590 L732.7025,1581.386 L733.7125,1590 L734.7225,1590 L735.7324,1585.476 L736.7423,1581.8256 L737.75226,1590 L738.7622,1590 L739.7722,1590 L740.7821,1590 L741.792,1590 L742.802,1590 L743.81195,1590 L744.8219,1578.5537 L745.8318,1590 L746.84174,1590 L747.8517,1588.8188 L748.8617,1590 L749.8716,1590 L750.8815,1590 L751.8915,1573.89 L752.9014,1587.7057 L753.9114,1580.0426 L754.92126,1585.3613 L755.9312,1577.8541 L756.94116,1590 L757.9511,1584.6547 L758.96106,1590 L759.97095,1590 L760.98096,1590 L761.9909,1590 L763.00085,1588.3212 L764.01074,1588.4093 L765.0207,1580.4856 L766.03064,1590 L767.0406,1577.4052 L768.05054,1590 L769.0605,1585.159 L770.07043,1575.5313 L771.0804,1578.0682 L772.09033,1590 L773.1002,1579.5007 L774.11017,1590 L775.1201,1572.7396 L776.13007,1590 L777.14,1585.542 L778.14996,1576.1342 L779.1599,1580.6517 L780.16986,1590 L781.1798,1574.854 L782.1897,1588.323 L783.1997,1590 L784.2096,1590 L785.21954,1575.969 L786.2295,1581.5833 L787.23944,1586.1205 L788.2494,1590 L789.25934,1590 L790.2693,1590 L791.2792,1590 L792.2892,1590 L793.2991,1587.6952 L794.309,1574.1638 L795.319,1586.0663 L796.3289,1590 L797.33887,1590 L798.3488,1590 L799.3587,1583.3542 L800.36865,1590 L801.37866,1579.596 L802.38855,1590 L803.3985,1590 L804.40845,1590 L805.4184,1590 L806.42834,1575.285 L807.4383,1586.6968 L808.4482,1574.6428 L809.4581,1590 L810.46814,1590 L811.478,1590 L812.488,1565.128 L813.4979,1590 L814.5079,1590 L815.5178,1590 L816.5278,1590 L817.53766,1585.6636 L818.5476,1590 L819.5576,1590 L820.5675,1590 L821.57745,1590 L822.5874,1590 L823.59735,1590 L824.6073,1590 L825.61725,1590 L826.62714,1590 L827.6371,1590 L828.6471,1590 L829.657,1587.0977 L830.66693,1590 L831.6769,1590 L832.6868,1581.5568 L833.6968,1580.7583 L834.7067,1572.3127 L835.7166,1588.4828 L836.7266,1578.784 L837.7366,1590 L838.74646,1588.0835 L839.7564,1590 L840.76636,1549.2648 L841.7763,1587.3633 L842.78625,1590 L843.7962,1587.1633 L844.8061,1590 L845.8161,1585.3838 L846.82605,1590 L847.83594,1590 L848.8459,1578.724 L849.85583,1590 L850.8658,1590 L851.87573,1590 L852.8857,1590 L853.89557,1589.6276 L854.9056,1575.9287 L855.9155,1590 L856.9254,1589.7292 L857.93536,1576.9962 L858.9453,1588.445 L859.95526,1590 L860.9652,1587.7057 L861.97516,1580.0426 L862.98505,1590 L863.99506,1590 L865.005,1590 L866.0149,1590 L867.02484,1590 L868.0348,1587.5109 L869.04474,1586.6857 L870.0547,1590 L871.06464,1590 L872.0745,1590 L873.08453,1590 L874.0945,1590 L875.1044,1590 L876.1143,1590 L877.12427,1590 L878.1342,1590 L879.14417,1590 L880.1541,1587.6519 L881.16406,1582.8223 L882.174,1590 L883.1839,1590 L884.19385,1589.2183 L885.2038,1590 L886.21375,1540 L887.2237,1580.1166 L888.23364,1586.2062 L889.2436,1578.3846 L890.25354,1590 L891.2635,1590 L892.2734,1580.1 L893.2833,1590 L894.2933,1587.56 L895.3032,1590 L896.3132,1590 L897.3231,1590 L898.33307,1590 L899.343,1590 L900.35297,1590 L901.36285,1590 L902.3728,1590 L903.38275,1590 L904.3927,1590 L905.40265,1590 L906.4126,1589.2794 L907.42255,1588.4414 L908.4325,1590 L909.44244,1588.0978 L910.45233,1580.1774 L911.4623,1590 L912.4723,1588.0353 L913.4822,1578.8136 L914.4921,1577.5546 L915.5021,1590 L916.51196,1577.7672 L917.522,1590 L918.5319,1584.6547 L919.5418,1590 L920.55176,1590 L921.56177,1587.2451 L922.57166,1590 L923.5816,1590 L924.59155,1590 L925.60144,1590 L926.61145,1585.244 L927.6214,1587.1327 L928.6313,1581.4999 L929.64124,1590 L930.65125,1590 L931.66113,1575.19 L932.6711,1574.631 L933.681,1577.7369 L934.691,1590 L935.7009,1581.6143 L936.7109,1590 L937.72076,1581.6968 L938.7307,1587.6532 L939.7407,1585.6134 L940.7506,1584.1624 L941.76056,1590 L942.7705,1590 L943.78046,1590 L944.7904,1582.5385 L945.80035,1590 L946.81024,1590 L947.8202,1576.6923 L948.8302,1590 L949.8401,1590 L950.85004,1590 L951.86,1580.4514 L952.86993,1576.8503 L953.8799,1590 L954.88983,1590 L955.8997,1568.4973 L956.9097,1564.7773 L957.9197,1581.7391 L958.92957,1590 L959.9395,1583.5101 L960.94946,1590 L961.9594,1590 L962.96936,1558.3052 L963.9793,1588.0068 L964.9892,1590 L965.9992,1590 L967.0091,1590 L968.01904,1590 L969.029,1590 L970.03894,1590 L971.0489,1561.5707 L972.05884,1590 L973.0688,1590 L974.0787,1578.6213 L975.0887,1588.1185 L976.0986,1590 L977.1085,1589.7109 L978.11847,1590 L979.1284,1590 L980.13837,1582.6447 L981.1483,1590 L982.15826,1581.4725 L983.16815,1582.4598 L984.17816,1590 L985.18805,1589.2872 L986.198,1590 L987.20795,1590 L988.2179,1590 L989.22784,1582.8961 L990.2378,1590 L991.24774,1590 L992.2576,1590 L993.26764,1588.1406 L994.2775,1585.3068 L995.2875,1585.0924 L996.2974,1590 L997.3074,1587.208 L998.3173,1576.4943 L999.3273,1584.0433 L1000.33716,1590 L1001.3471,1583.1796 L1002.3571,1590 L1003.367,1573.8428 L1004.37695,1589.5284 L1005.3869,1590 L1006.39685,1590 L1007.4068,1590 L1008.41675,1583.4324 L1009.42664,1581.7708 L1010.43665,1577.2751 L1011.4466,1581.7357 L1012.4565,1590 L1013.46643,1590 L1014.4764,1585.2147 L1015.4863,1590 L1016.4963,1584.0851 L1017.5062,1585.7118 L1018.5161,1590 L1019.5261,1570.8198 L1020.5361,1567.6589 L1021.54596,1590 L1022.5559,1590 L1023.56586,1588.8375 L1024.5758,1590 L1025.5857,1590 L1026.5957,1590 L1027.6056,1585.0012 L1028.6156,1587.047 L1029.6255,1590 L1030.6355,1590 L1031.6454,1580.766 L1032.6553,1582.4445 L1033.6653,1586.2997 L1034.6753,1586.0142 L1035.6852,1578.6206 L1036.6951,1590 L1037.7051,1587.5765 L1038.7151,1588.7053 L1039.7249,1590 L1040.7349,1590 L1041.7449,1590 L1042.7548,1582.2327 L1043.7646,1573.95 L1044.7747,1578.7913 L1045.7845,1588.0028 L1046.7946,1575.5045 L1047.8044,1590 L1048.8145,1590" data-gentle-regulatory-provider="jaspar_pwm" data-gentle-regulatory-score-track="tp73_jaspar" data-gentle-regulatory-strand="reverse" fill="none" stroke="#005f73" stroke-dasharray="5,3" stroke-width="1.5"/>
+<line data-gentle-regulatory-score-track="tp73_jaspar" data-gentle-regulatory-threshold="0" stroke="#475569" stroke-dasharray="2,3" stroke-width="0.8" x1="255" x2="1050" y1="1590" y2="1590"/>
+<line data-gentle-display-x="887.04803" data-gentle-genomic-start="101135552" data-gentle-genomic-strand="-" data-gentle-local-start="14395" data-gentle-local-strand="-" data-gentle-regulatory-factor="TP73" data-gentle-regulatory-provider="jaspar_pwm" data-gentle-regulatory-score-track="tp73_jaspar" data-gentle-regulatory-site="tp73_jaspar-MA0861.2-site-1" data-gentle-regulatory-strand="-" stroke="#005f73" stroke-dasharray="4,2" stroke-width="1" x1="887.04803" x2="887.04803" y1="1540" y2="1595"/>
+<text fill="#005f73" font-family="monospace" font-size="7" x="889.04803" y="1537">
+-:13.89
+</text>
+<line data-gentle-display-x="841.425" data-gentle-genomic-start="101134513" data-gentle-genomic-strand="-" data-gentle-local-start="13356" data-gentle-local-strand="-" data-gentle-regulatory-factor="TP73" data-gentle-regulatory-provider="jaspar_pwm" data-gentle-regulatory-score-track="tp73_jaspar" data-gentle-regulatory-site="tp73_jaspar-MA0861.2-site-2" data-gentle-regulatory-strand="-" stroke="#005f73" stroke-dasharray="4,2" stroke-width="1" x1="841.425" x2="841.425" y1="1540" y2="1595"/>
+<text fill="#005f73" font-family="monospace" font-size="7" x="843.425" y="1537">
+-:11.32
+</text>
+<line data-gentle-display-x="485.57416" data-gentle-genomic-start="101126409" data-gentle-genomic-strand="+" data-gentle-local-start="5252" data-gentle-local-strand="+" data-gentle-regulatory-factor="TP73" data-gentle-regulatory-provider="jaspar_pwm" data-gentle-regulatory-score-track="tp73_jaspar" data-gentle-regulatory-site="tp73_jaspar-MA0861.2-site-3" data-gentle-regulatory-strand="+" stroke="#005f73" stroke-dasharray="1,0" stroke-width="1" x1="485.57416" x2="485.57416" y1="1540" y2="1595"/>
+<text fill="#005f73" font-family="monospace" font-size="7" x="487.57416" y="1537">
++:10.39
+</text>
+<text fill="#64748b" font-family="monospace" font-size="7" x="1070" y="1569">
+JASPAR PWM sequence-match prediction; not measured affinity and not cross-matr...
+</text>
+<text data-gentle-overlay-non-claims="true" fill="#1f2937" font-family="sans-serif" font-size="13" font-weight="bold" x="34" y="1666">
+Reporter interpretation boundaries
+</text>
+<text fill="#6c4d43" font-family="monospace" font-size="9" x="34" y="1685">
+Transcript annotation alone does not establish which TSS is used in the assayed cells.
+</text>
+<text fill="#6c4d43" font-family="monospace" font-size="9" x="34" y="1700">
+CUT&amp;RUN overlap is occupancy/enrichment evidence, not proof of TSS usage, promoter activity, direct regulation, biochemical affinity, or luciferase output.
+</text>
+<text fill="#6c4d43" font-family="monospace" font-size="9" x="34" y="1715">
+Reporter geometry does not verify the identity of a physical laboratory construct.
+</text>
+<text fill="#1f2937" font-family="sans-serif" font-size="13" font-weight="bold" x="34" y="1747">
+Warnings / interpretation checks
+</text>
+<text fill="#1f2937" font-family="sans-serif" font-size="13" font-weight="bold" x="34" y="1785">
+Evidence provenance
+</text>
+<text data-gentle-provenance-source="isoform_panel" fill="#64748b" font-family="monospace" font-size="8" x="34" y="1804">
+isoform_panel: serpine1_portable_regions_panel
+</text>
+<text data-gentle-provenance-source="occupancy_layout" fill="#64748b" font-family="monospace" font-size="8" x="34" y="1818">
+occupancy_layout: synthetic_tp73_occupancy
+</text>
+<text data-gentle-provenance-source="predicted_tf_score_jaspar_pwm" fill="#64748b" font-family="monospace" font-size="8" x="34" y="1832">
+predicted_tf_score_jaspar_pwm: local_jaspar_registry
+</text>
+<text data-gentle-provenance-source="projected_occupancy_track" fill="#64748b" font-family="monospace" font-size="8" x="34" y="1846">
+projected_occupancy_track: synthetic_serpine1_cutrun_v1
+</text>
+<text data-gentle-provenance-source="saved_genomic_region_set" fill="#64748b" font-family="monospace" font-size="8" x="34" y="1860">
+saved_genomic_region_set: serpine1_regions
+</text>
+<text data-gentle-provenance-source="sequence_annotation" fill="#64748b" font-family="monospace" font-size="8" x="34" y="1874">
+sequence_annotation: serpine1_portable_regions_2
+</text>
+</svg>

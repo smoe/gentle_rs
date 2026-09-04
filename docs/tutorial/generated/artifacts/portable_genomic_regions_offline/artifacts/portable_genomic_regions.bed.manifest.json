@@ -1,0 +1,181 @@
+{
+  "schema": "gentle.genomic_region_bed_manifest.v1",
+  "bed_sha256": "sha256:a4c0b3b274099f1336ad956e18952008b0a4cefbd5bde255cc24fffcdf76c54c",
+  "bed_file_name": "portable_genomic_regions.bed",
+  "coordinate_convention": "BED6; 0-based, half-open",
+  "columns": [
+    "chrom",
+    "chromStart",
+    "chromEnd",
+    "name",
+    "score",
+    "strand"
+  ],
+  "region_set": {
+    "schema": "gentle.genomic_region_set.v1",
+    "set_id": "serpine1_regions",
+    "label": "SERPINE1 portable regions",
+    "regions": [
+      {
+        "schema": "gentle.genomic_region_of_interest.v1",
+        "region_id": "serpine1_cutrun_support",
+        "label": "Synthetic TP73 CUT&RUN support",
+        "interval": {
+          "reference": {
+            "species_scientific_name": "Homo sapiens",
+            "taxon_id": 9606,
+            "assembly_name": "GRCh38",
+            "assembly_accession": "GCA_000001405.15",
+            "contig_name": "7",
+            "contig_accession": "NC_000007.14",
+            "contig_aliases": [
+              "chr7"
+            ]
+          },
+          "start_0based": 101126000,
+          "end_0based_exclusive": 101126120,
+          "strand": "unstranded",
+          "coordinate_convention": "zero_based_half_open"
+        },
+        "local_projection": {
+          "seq_id": "serpine1_portable_regions",
+          "sequence_sha256": "sha256:440d6b10a5affeda66358d2d4c102ebc0b0a8a68a79eedfcb94748a02b6297e0",
+          "source_genome_id": "GRCh38",
+          "anchor_start_1based": 101121158,
+          "anchor_end_1based": 101139263,
+          "anchor_strand": "plus",
+          "local_start_0based": 4843,
+          "local_end_0based_exclusive": 4963,
+          "local_strand": "unstranded",
+          "status": "current"
+        },
+        "purpose": "occupancy_region",
+        "selection_method": "cutrun_support_window",
+        "evidence": [
+          {
+            "evidence_id": "cutrun:serpine1_portable_regions:serpine1_support_window_1:cutrun_dataset:1",
+            "source_kind": "cutrun_dataset",
+            "source_id": "synthetic_serpine1_cutrun_v1",
+            "source_sha256": "sha256:bade0b4c7799f7a2d9ddde21d53772bbabf73dd50d5cde89a60967e4850cd962",
+            "report_id": "synthetic_serpine1_cutrun_report",
+            "feature_or_window_id": "serpine1_support_window_1",
+            "assay": "CUT&RUN",
+            "factor": "TP73",
+            "support_strength": "strong",
+            "max_signal_value": 9.5,
+            "availability": "available",
+            "evidence_statement": "CUT&RUN enrichment/support selected this genomic window as occupancy evidence.",
+            "non_claims": [
+              "CUT&RUN enrichment is not biochemical affinity.",
+              "Occupancy does not by itself establish causal regulatory activity."
+            ]
+          }
+        ],
+        "identity_sha256": "sha256:ea72830502755ab5fdc4c3c6e3644d368e2f84952ebac516e779c5728a33882f",
+        "content_sha256": "sha256:feef39025a209eba114e106121cb5683baf039f53748b72718065f2ca24c794c"
+      },
+      {
+        "schema": "gentle.genomic_region_of_interest.v1",
+        "region_id": "serpine1_ensembl_candidate",
+        "label": "Synthetic Ensembl promoter annotation",
+        "interval": {
+          "reference": {
+            "species_scientific_name": "Homo sapiens",
+            "taxon_id": 9606,
+            "assembly_name": "GRCh38",
+            "assembly_accession": "GCA_000001405.15",
+            "contig_name": "7"
+          },
+          "start_0based": 101123899,
+          "end_0based_exclusive": 101124080,
+          "strand": "unstranded",
+          "coordinate_convention": "zero_based_half_open"
+        },
+        "local_projection": {
+          "seq_id": "serpine1_portable_regions",
+          "sequence_sha256": "sha256:440d6b10a5affeda66358d2d4c102ebc0b0a8a68a79eedfcb94748a02b6297e0",
+          "source_genome_id": "GRCh38",
+          "anchor_start_1based": 101121158,
+          "anchor_end_1based": 101139263,
+          "anchor_strand": "plus",
+          "local_start_0based": 2742,
+          "local_end_0based_exclusive": 2923,
+          "local_strand": "unstranded",
+          "status": "current"
+        },
+        "purpose": "candidate_cis_regulatory_region",
+        "selection_method": "ensembl_regulatory_feature",
+        "evidence": [
+          {
+            "evidence_id": "ensembl_regulation:ENSR_SERPINE1_TUTORIAL:Core",
+            "source_kind": "ensembl_regulatory_feature",
+            "source_id": "ensembl_regulation_synthetic_serpine1_v1",
+            "source_release": "synthetic tutorial v1",
+            "source_sha256": "sha256:4430a8be160bcccea4bb852ce75d772faf552d939c858eb287d8451bee37012f",
+            "report_id": "serpine1_synthetic_ensembl_overlap",
+            "feature_or_window_id": "ENSR_SERPINE1_TUTORIAL",
+            "feature_type": "promoter",
+            "provider_url": "https://regulation.ensembl.org/Homo_sapiens/RegulatoryFeature/Summary?rf=ENSR_SERPINE1_TUTORIAL",
+            "associated_gene_ids": [
+              "ENSG00000106366"
+            ],
+            "associated_gene_names": [
+              "SERPINE1"
+            ],
+            "availability": "available",
+            "evidence_statement": "Synthetic Ensembl-shaped provider annotation overlaps the pinned SERPINE1 locus.",
+            "non_claims": [
+              "The associated gene is a provider-style annotation, not a causal target assignment.",
+              "The synthetic feature is not measured regulatory activity."
+            ]
+          }
+        ],
+        "identity_sha256": "sha256:fbca6c3680343245af70e90786270c2ff458529e343d64aceaf9589e752ee36b",
+        "content_sha256": "sha256:556fd9100d25f7f0a423abfb4edeb38f4bfd017aee7567811077c4bf232c88c9"
+      },
+      {
+        "schema": "gentle.genomic_region_of_interest.v1",
+        "region_id": "serpine1_manual_candidate",
+        "label": "Manual promoter candidate",
+        "description": "A caller-selected span saved from the pinned locus.",
+        "interval": {
+          "reference": {
+            "species_scientific_name": "Homo sapiens",
+            "taxon_id": 9606,
+            "assembly_name": "GRCh38",
+            "assembly_accession": "GCA_000001405.15",
+            "contig_name": "7",
+            "contig_accession": "NC_000007.14",
+            "contig_aliases": [
+              "chr7"
+            ]
+          },
+          "start_0based": 101121657,
+          "end_0based_exclusive": 101121807,
+          "strand": "unstranded",
+          "coordinate_convention": "zero_based_half_open"
+        },
+        "local_projection": {
+          "seq_id": "serpine1_portable_regions",
+          "sequence_sha256": "sha256:440d6b10a5affeda66358d2d4c102ebc0b0a8a68a79eedfcb94748a02b6297e0",
+          "source_genome_id": "GRCh38",
+          "anchor_start_1based": 101121158,
+          "anchor_end_1based": 101139263,
+          "anchor_strand": "plus",
+          "local_start_0based": 500,
+          "local_end_0based_exclusive": 650,
+          "local_strand": "unstranded",
+          "status": "current"
+        },
+        "purpose": "reporter_candidate",
+        "selection_method": "manual_span",
+        "notes": [
+          "User-defined tutorial selection; no regulatory activity is implied."
+        ],
+        "identity_sha256": "sha256:978bc725189838ce560885846db3e8f7d259d702ef23a0a14cc087eaa6fa4fe2",
+        "content_sha256": "sha256:d06ab2fd32f319b7d6ff40c64be681f9e4fa115107042c3eb6ed168422cceb30"
+      }
+    ],
+    "content_sha256": "sha256:61124b8beee3fb554bf245b7b30ae88f232461e4f73474be23e2ce1cc507da9a"
+  }
+}
