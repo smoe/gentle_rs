@@ -46,6 +46,18 @@ fn shell_command_paths() -> BTreeSet<String> {
         .collect()
 }
 
+fn declared_mcp_op_paths() -> BTreeSet<String> {
+    glossary_commands()
+        .into_iter()
+        .filter(|command| {
+            command["interfaces"]
+                .as_array()
+                .is_some_and(|interfaces| interfaces.iter().any(|interface| interface == "mcp-op"))
+        })
+        .filter_map(|command| command["path"].as_str().map(ToString::to_string))
+        .collect()
+}
+
 fn intentionally_mcp_excluded_paths() -> BTreeSet<String> {
     let marker = "#### Intentionally MCP-excluded shell commands";
     let section = AGENT_INTERFACE_MD
@@ -179,6 +191,24 @@ fn every_glossary_shell_command_is_mcp_tool_or_documented_exclusion() {
         stale_exclusions.is_empty(),
         "intentional MCP exclusions must refer to current glossary shell commands: {stale_exclusions:#?}"
     );
+}
+
+#[test]
+fn glossary_mcp_op_routes_are_advertised_without_exclusion_shortcuts() {
+    let tools = mcp_tools();
+    let covered = tool_command_paths(&tools);
+    let excluded = intentionally_mcp_excluded_paths();
+
+    for path in declared_mcp_op_paths() {
+        assert!(
+            covered.contains(&path),
+            "glossary mcp-op route `{path}` must be advertised by MCP op"
+        );
+        assert!(
+            !excluded.contains(&path),
+            "glossary mcp-op route `{path}` must not be documented as MCP-excluded"
+        );
+    }
 }
 
 #[test]

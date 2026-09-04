@@ -6946,7 +6946,10 @@ fn glossary_command_surfacing(
         } else {
             AdapterSurfacing::Gap
         },
-        mcp: if interfaces.contains("mcp") || is_mcp_prominent_glossary_command(&command.path) {
+        mcp: if interfaces.contains("mcp")
+            || interfaces.contains("mcp-op")
+            || is_mcp_prominent_glossary_command(&command.path)
+        {
             AdapterSurfacing::Prominent
         } else if command_is_reachable_via_generic_operation_route(command, CapabilityAdapter::Mcp)
         {
