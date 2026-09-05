@@ -3836,7 +3836,7 @@ Sequencing-trace evidence notes:
     content, mismatched approval, duplicate paths, and overwrites before commit
   - both are sequence-planning evidence only; they do not establish TF
     occupancy, functional motif ablation, expression change, or reporter output
-- `PlanRegulatoryFragmentPanel { request }` is the read-only regulatory-fragment planner
+- `PlanRegulatoryFragmentPanel { request, path? }` is the read-only regulatory-fragment planner
   for exact persisted regulatory ROIs:
   - request schema `gentle.regulatory_fragment_panel_request.v1` binds the
     containing region-set content digest, each ROI identity/content digest and
@@ -3875,6 +3875,9 @@ Sequencing-trace evidence notes:
   - `RenderRegulatoryFragmentPanelSvg { plan, path }` verifies the embedded
     proposal digest before writing a passive SVG projection; it does not
     recompute, upgrade, or reinterpret evidence
+  - shared shell routes `promoters regulatory-panel-plan` and
+    `promoters regulatory-panel-render` parse the same request/plan objects;
+    the optional planning path writes the exact returned JSON plan
   - full invariants and the remaining adapter/tutorial boundary are recorded in
     `regulatory_fragment_panel_slice1_design.md`
 - `ListReporterCatalog { catalog_path?, filter?, limit?, path? }`

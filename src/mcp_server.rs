@@ -1417,6 +1417,8 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
             "splicing cryptic-overlay",
             "splicing cryptic-protein",
             "promoters compare-architectures",
+            "promoters regulatory-panel-plan",
+            "promoters regulatory-panel-render",
             "uniprot build-linked-transcript-inventory",
         ],
         "workflow" => &["workflow"],

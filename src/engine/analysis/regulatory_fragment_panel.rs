@@ -2689,8 +2689,24 @@ impl GentleEngine {
         value: &T,
         label: &str,
     ) -> Result<String, EngineError> {
-        Self::construct_reasoning_canonical_json(value, label)
-            .map(|canonical| sha256_prefixed_str(&canonical))
+        let canonical = Self::construct_reasoning_canonical_json(value, label)?;
+        let portable =
+            serde_json::from_str::<serde_json::Value>(&canonical).map_err(|error| EngineError {
+                code: ErrorCode::Internal,
+                message: format!(
+                    "Could not normalize regulatory-fragment {label} through portable JSON: {error}"
+                ),
+                cause_chain: vec![],
+            })?;
+        serde_json::to_string(&portable)
+            .map(|portable| sha256_prefixed_str(&portable))
+            .map_err(|error| EngineError {
+                code: ErrorCode::Internal,
+                message: format!(
+                    "Could not serialize normalized regulatory-fragment {label}: {error}"
+                ),
+                cause_chain: vec![],
+            })
     }
 
     fn regulatory_fragment_panel_proposal_digest(
@@ -3088,6 +3104,7 @@ mod tests {
             .engine
             .apply(Operation::PlanRegulatoryFragmentPanel {
                 request: Box::new(fixture.request.clone()),
+                path: None,
             })
             .expect("plan through shared engine operation");
         let plan = result
@@ -3114,6 +3131,78 @@ mod tests {
                 .all(|member| !member.inclusion_reasons.is_empty())
         );
         assert!(!plan.materialization_supported);
+    }
+
+    #[test]
+    fn regulatory_fragment_plan_operation_writes_the_exact_json_report() {
+        let mut fixture = planner_fixture(false, gp::GenomicRegionStrand::Plus, false);
+        let path = fixture._temp.path().join("regulatory_panel.json");
+        let result = fixture
+            .engine
+            .apply(Operation::PlanRegulatoryFragmentPanel {
+                request: Box::new(fixture.request.clone()),
+                path: Some(path.to_string_lossy().to_string()),
+            })
+            .expect("plan and export through shared engine operation");
+        let planned = result
+            .regulatory_fragment_panel_plan
+            .expect("regulatory-fragment plan");
+        let exported: RegulatoryFragmentPanelPlan =
+            serde_json::from_slice(&fs::read(&path).expect("exported regulatory-fragment plan"))
+                .expect("parse exported regulatory-fragment plan");
+        assert_eq!(exported.proposal_digest, planned.proposal_digest);
+        assert_eq!(exported.request_sha256, planned.request_sha256);
+    }
+
+    #[test]
+    fn regulatory_fragment_shell_routes_plan_and_render_exact_artifacts() {
+        let mut fixture = planner_fixture(true, gp::GenomicRegionStrand::Plus, false);
+        let request_path = fixture._temp.path().join("request.json");
+        let plan_path = fixture._temp.path().join("plan.json");
+        let svg_path = fixture._temp.path().join("plan.svg");
+        fs::write(
+            &request_path,
+            serde_json::to_vec_pretty(&fixture.request).expect("request JSON"),
+        )
+        .expect("write request JSON");
+        let plan_command = crate::engine_shell::parse_shell_line(&format!(
+            "promoters regulatory-panel-plan @{} --path {}",
+            request_path.display(),
+            plan_path.display()
+        ))
+        .expect("parse regulatory panel shell plan");
+        let out = crate::engine_shell::execute_shell_command(&mut fixture.engine, &plan_command)
+            .expect("execute regulatory panel shell plan");
+        assert!(!out.state_changed);
+        let result_digest = out.output["result"]["proposal_digest"]
+            .as_str()
+            .expect("result proposal digest")
+            .to_string();
+        let plan: RegulatoryFragmentPanelPlan =
+            serde_json::from_slice(&fs::read(&plan_path).expect("shell plan artifact"))
+                .expect("parse shell plan artifact");
+        assert_eq!(plan.proposal_digest, result_digest);
+        GentleEngine::validate_regulatory_fragment_panel_document(&plan)
+            .expect("exported plan retains a valid portable digest basis");
+
+        let render_command = crate::engine_shell::parse_shell_line(&format!(
+            "promoters regulatory-panel-render @{} --path {}",
+            plan_path.display(),
+            svg_path.display()
+        ))
+        .expect("parse regulatory panel shell render");
+        let out = crate::engine_shell::execute_shell_command(&mut fixture.engine, &render_command)
+            .expect("execute regulatory panel shell render");
+        assert!(!out.state_changed);
+        assert_eq!(
+            out.output["result"]["proposal_digest"].as_str(),
+            Some(result_digest.as_str())
+        );
+        assert!(
+            fs::read_to_string(svg_path)
+                .expect("shell SVG artifact")
+                .contains("Independent evidence lanes")
+        );
     }
 
     #[test]

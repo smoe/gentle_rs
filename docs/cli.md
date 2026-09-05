@@ -7602,6 +7602,33 @@ order oligos or execute an experiment, and motif/PWM changes are not occupancy
 or functional-ablation evidence. See the executable offline synthetic tutorial
 `08-09_promoter_reporter_panel_planning_offline`.
 
+Plan an exact multi-fragment regulatory comparison from persisted genomic
+regions through the separate read-only contract:
+
+```bash
+cargo run --quiet --bin gentle_cli -- --state STATE.json \
+  promoters regulatory-panel-plan @regulatory_panel_request.json \
+  --path regulatory_panel_plan.json
+
+cargo run --quiet --bin gentle_cli -- --state STATE.json \
+  promoters regulatory-panel-render @regulatory_panel_plan.json \
+  --path regulatory_panel_plan.svg
+```
+
+The request binds each selected region, its containing set digest, current
+sequence projection, reference release, exact vector identity, declared order,
+orientation, spacer DNA, and requested comparison. Candidate A and a minimal
+promoter are required; partner B and a reference control are optional. Partner,
+order, orientation, and spacing questions require an exact partner binding and
+matching declared geometry. The planner evaluates five local sequence/context
+lanes independently; opaque Ensembl, TFBS, CUT&RUN, or chromatin citations stay
+`not_evaluated` until a typed report resolver is added.
+
+The SVG command accepts only an unchanged plan with a valid embedded digest.
+Both commands are non-mutating. V1 does not materialize ordered multi-fragment
+constructs, and the planning labels describe testable comparisons rather than
+regulatory sufficiency, activity, or causation.
+
 Select one candidate in-silico (explicit provenance step):
 
 ```json

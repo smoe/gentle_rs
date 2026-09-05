@@ -6,7 +6,8 @@
 
 use super::*;
 use crate::engine::{
-    PromoterReporterPanelExtendedBoundaryKind, TfbsScoreTrackCorrelationMetric,
+    PromoterReporterPanelExtendedBoundaryKind, PromoterReporterPanelMutationPolicy,
+    RegulatoryFragmentEvidenceObservation, TfbsScoreTrackCorrelationMetric,
     TfbsScoreTrackCorrelationSignalSource,
 };
 
@@ -311,6 +312,23 @@ impl MainAreaDna {
             ),
             promoter_reporter_panel_request_json: String::new(),
             promoter_reporter_panel_approval_digest: String::new(),
+            regulatory_fragment_plan_id: format!("{token}_regulatory_fragment_panel"),
+            regulatory_fragment_candidate_roi: String::new(),
+            regulatory_fragment_partner_roi: String::new(),
+            regulatory_fragment_minimal_promoter_roi: String::new(),
+            regulatory_fragment_reference_control_roi: String::new(),
+            regulatory_fragment_reference_release: String::new(),
+            regulatory_fragment_vector_seq_id: String::new(),
+            regulatory_fragment_vector_catalog_id: String::new(),
+            regulatory_fragment_helper_catalog_path: String::new(),
+            regulatory_fragment_max_panel_members: "12".to_string(),
+            regulatory_fragment_max_construct_length_bp: "5000".to_string(),
+            regulatory_fragment_partner_dependence: false,
+            regulatory_fragment_order_dependence: false,
+            regulatory_fragment_orientation_dependence: false,
+            regulatory_fragment_spacing_dependence: false,
+            regulatory_fragment_controlled_spacer: "GG".to_string(),
+            regulatory_fragment_approval_digest: String::new(),
             cached_score_tracks: None,
             cached_tfbs_track_similarity: None,
             cached_report: None,
@@ -338,6 +356,7 @@ impl MainAreaDna {
             cached_promoter_reporter_architecture_comparison: None,
             cached_promoter_reporter_panel_proposal: None,
             cached_promoter_reporter_panel_receipt: None,
+            cached_regulatory_fragment_panel_plan: None,
         };
         Ok(())
     }
@@ -2158,6 +2177,420 @@ impl MainAreaDna {
             self.variant_followup_ui
                 .cached_promoter_reporter_panel_receipt = Some(*receipt);
         }
+    }
+
+    fn regulatory_fragment_roi_key(set_id: &str, region_id: &str) -> String {
+        format!("{set_id}::{region_id}")
+    }
+
+    fn variant_followup_regulatory_fragment_roi_options(
+        &self,
+    ) -> Result<Vec<(String, String)>, String> {
+        let engine = self
+            .engine
+            .as_ref()
+            .ok_or_else(|| "No engine attached".to_string())?;
+        let guard = engine
+            .try_read()
+            .map_err(|_| "Engine is busy; try planning again".to_string())?;
+        let store = guard
+            .genomic_region_store_snapshot()
+            .map_err(|error| error.message)?;
+        let mut rows = store
+            .sets
+            .iter()
+            .flat_map(|set| {
+                set.regions.iter().map(|region| {
+                    let projection = region
+                        .local_projection
+                        .as_ref()
+                        .map(|row| format!("{:?}", row.status))
+                        .unwrap_or_else(|| "unprojected".to_string());
+                    let label = region
+                        .label
+                        .as_deref()
+                        .filter(|value| !value.trim().is_empty())
+                        .unwrap_or(&region.region_id);
+                    (
+                        Self::regulatory_fragment_roi_key(&set.set_id, &region.region_id),
+                        format!(
+                            "{label} | {}:{}-{} ({}) | {projection}",
+                            region.interval.reference.contig_name,
+                            region.interval.start_0based,
+                            region.interval.end_0based_exclusive,
+                            region.interval.strand.human_value(),
+                        ),
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+        rows.sort_by(|left, right| left.0.cmp(&right.0));
+        Ok(rows)
+    }
+
+    fn regulatory_fragment_binding_from_selection(
+        store: &gentle_protocol::GenomicRegionStore,
+        selection: &str,
+        fragment_id: &str,
+        declared_order: usize,
+        role: RegulatoryFragmentRole,
+        reference_release: &str,
+    ) -> Result<RegulatoryFragmentBinding, String> {
+        let selection = selection.trim();
+        if selection.is_empty() {
+            return Err(format!("Select the {role:?} genomic region first"));
+        }
+        let (set_id, region_id) = selection.split_once("::").ok_or_else(|| {
+            format!("Saved-region selection '{selection}' is no longer valid; select it again")
+        })?;
+        let set = store
+            .sets
+            .iter()
+            .find(|set| set.set_id == set_id)
+            .ok_or_else(|| format!("Saved genomic-region set '{set_id}' is no longer available"))?;
+        let region = set
+            .regions
+            .iter()
+            .find(|region| region.region_id == region_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!("Saved genomic region '{set_id}::{region_id}' is no longer available")
+            })?;
+        Ok(RegulatoryFragmentBinding {
+            fragment_id: fragment_id.to_string(),
+            declared_order,
+            role,
+            region_set_id: set.set_id.clone(),
+            region_set_content_sha256: set.content_sha256.clone(),
+            reference_release: reference_release.to_string(),
+            region,
+        })
+    }
+
+    fn regulatory_fragment_geometry_instances(
+        fragment_ids: &[&str],
+        reverse_fragment: Option<&str>,
+        spacer_before_fragment: Option<(&str, &str)>,
+    ) -> Vec<RegulatoryFragmentInstanceRequest> {
+        fragment_ids
+            .iter()
+            .map(|fragment_id| RegulatoryFragmentInstanceRequest {
+                fragment_id: (*fragment_id).to_string(),
+                orientation: if reverse_fragment == Some(*fragment_id) {
+                    RegulatoryFragmentOrientation::ReverseComplement
+                } else {
+                    RegulatoryFragmentOrientation::Forward
+                },
+                spacer_before: spacer_before_fragment
+                    .filter(|(target, _)| target == fragment_id)
+                    .map(|(_, spacer)| spacer.to_string())
+                    .unwrap_or_default(),
+            })
+            .collect()
+    }
+
+    pub(super) fn variant_followup_regulatory_fragment_panel_request(
+        &self,
+    ) -> Result<RegulatoryFragmentPanelRequest, String> {
+        let release = self
+            .variant_followup_ui
+            .regulatory_fragment_reference_release
+            .trim();
+        if release.is_empty() {
+            return Err(
+                "Reference/annotation release is required for every selected ROI".to_string(),
+            );
+        }
+        let engine = self
+            .engine
+            .as_ref()
+            .ok_or_else(|| "No engine attached".to_string())?;
+        let guard = engine
+            .try_read()
+            .map_err(|_| "Engine is busy; try planning again".to_string())?;
+        let store = guard
+            .genomic_region_store_snapshot()
+            .map_err(|error| error.message)?;
+
+        let mut fragments = vec![Self::regulatory_fragment_binding_from_selection(
+            &store,
+            &self.variant_followup_ui.regulatory_fragment_candidate_roi,
+            "candidate_a",
+            0,
+            RegulatoryFragmentRole::Candidate,
+            release,
+        )?];
+        let partner_selected = !self
+            .variant_followup_ui
+            .regulatory_fragment_partner_roi
+            .trim()
+            .is_empty();
+        if partner_selected {
+            fragments.push(Self::regulatory_fragment_binding_from_selection(
+                &store,
+                &self.variant_followup_ui.regulatory_fragment_partner_roi,
+                "partner_b",
+                1,
+                RegulatoryFragmentRole::Partner,
+                release,
+            )?);
+        }
+        fragments.push(Self::regulatory_fragment_binding_from_selection(
+            &store,
+            &self
+                .variant_followup_ui
+                .regulatory_fragment_minimal_promoter_roi,
+            "minimal_promoter",
+            2,
+            RegulatoryFragmentRole::MinimalPromoter,
+            release,
+        )?);
+        if !self
+            .variant_followup_ui
+            .regulatory_fragment_reference_control_roi
+            .trim()
+            .is_empty()
+        {
+            fragments.push(Self::regulatory_fragment_binding_from_selection(
+                &store,
+                &self
+                    .variant_followup_ui
+                    .regulatory_fragment_reference_control_roi,
+                "reference_control",
+                3,
+                RegulatoryFragmentRole::ReferenceControl,
+                release,
+            )?);
+        }
+        drop(guard);
+
+        let partner_question_requested = self
+            .variant_followup_ui
+            .regulatory_fragment_partner_dependence
+            || self
+                .variant_followup_ui
+                .regulatory_fragment_order_dependence
+            || self
+                .variant_followup_ui
+                .regulatory_fragment_orientation_dependence
+            || self
+                .variant_followup_ui
+                .regulatory_fragment_spacing_dependence;
+        if partner_question_requested && !partner_selected {
+            return Err(
+                "Partner, order, orientation, and spacing comparisons require a selected partner ROI"
+                    .to_string(),
+            );
+        }
+
+        let mut questions = vec![RegulatoryFragmentQuestion::StandaloneCandidate];
+        let mut requested_variants = vec![];
+        let reference_combination =
+            partner_question_requested.then(|| RegulatoryFragmentGeometryRequest {
+                variant_id: "reference_candidate_partner".to_string(),
+                declared_order: 0,
+                kind: RegulatoryFragmentGeometryKind::ReferenceCombination,
+                instances: Self::regulatory_fragment_geometry_instances(
+                    &["candidate_a", "partner_b", "minimal_promoter"],
+                    None,
+                    None,
+                ),
+                ..RegulatoryFragmentGeometryRequest::default()
+            });
+        if self
+            .variant_followup_ui
+            .regulatory_fragment_partner_dependence
+        {
+            questions.push(RegulatoryFragmentQuestion::PartnerDependence);
+        }
+        if self
+            .variant_followup_ui
+            .regulatory_fragment_order_dependence
+        {
+            questions.push(RegulatoryFragmentQuestion::OrderDependence);
+            requested_variants.push(RegulatoryFragmentGeometryRequest {
+                variant_id: "partner_before_candidate".to_string(),
+                declared_order: 1,
+                kind: RegulatoryFragmentGeometryKind::ReversedOrder,
+                instances: Self::regulatory_fragment_geometry_instances(
+                    &["partner_b", "candidate_a", "minimal_promoter"],
+                    None,
+                    None,
+                ),
+                ..RegulatoryFragmentGeometryRequest::default()
+            });
+        }
+        if self
+            .variant_followup_ui
+            .regulatory_fragment_orientation_dependence
+        {
+            questions.push(RegulatoryFragmentQuestion::OrientationDependence);
+            requested_variants.push(RegulatoryFragmentGeometryRequest {
+                variant_id: "partner_reverse_complement".to_string(),
+                declared_order: 2,
+                kind: RegulatoryFragmentGeometryKind::ReversedOrientation,
+                instances: Self::regulatory_fragment_geometry_instances(
+                    &["candidate_a", "partner_b", "minimal_promoter"],
+                    Some("partner_b"),
+                    None,
+                ),
+                ..RegulatoryFragmentGeometryRequest::default()
+            });
+        }
+        if self
+            .variant_followup_ui
+            .regulatory_fragment_spacing_dependence
+        {
+            let spacer = self
+                .variant_followup_ui
+                .regulatory_fragment_controlled_spacer
+                .trim();
+            if spacer.is_empty() {
+                return Err(
+                    "Spacing comparison requires non-empty controlled spacer DNA".to_string(),
+                );
+            }
+            questions.push(RegulatoryFragmentQuestion::SpacingDependence);
+            requested_variants.push(RegulatoryFragmentGeometryRequest {
+                variant_id: "controlled_partner_spacing".to_string(),
+                declared_order: 3,
+                kind: RegulatoryFragmentGeometryKind::ControlledSpacing,
+                instances: Self::regulatory_fragment_geometry_instances(
+                    &["candidate_a", "partner_b", "minimal_promoter"],
+                    None,
+                    Some(("partner_b", spacer)),
+                ),
+                ..RegulatoryFragmentGeometryRequest::default()
+            });
+        }
+
+        Ok(RegulatoryFragmentPanelRequest {
+            plan_id: self
+                .variant_followup_ui
+                .regulatory_fragment_plan_id
+                .trim()
+                .to_string(),
+            vector_seq_id: self
+                .variant_followup_ui
+                .regulatory_fragment_vector_seq_id
+                .trim()
+                .to_string(),
+            vector_catalog_id: self
+                .variant_followup_ui
+                .regulatory_fragment_vector_catalog_id
+                .trim()
+                .to_string(),
+            helper_catalog_path: Self::variant_followup_optional_text(
+                &self
+                    .variant_followup_ui
+                    .regulatory_fragment_helper_catalog_path,
+            ),
+            fragments,
+            questions,
+            reference_combination,
+            requested_variants,
+            mutation_policy: PromoterReporterPanelMutationPolicy::NativeOnlyV1,
+            max_panel_members: Self::parse_positive_usize_text(
+                &self
+                    .variant_followup_ui
+                    .regulatory_fragment_max_panel_members,
+                "maximum panel members",
+            )?,
+            max_construct_length_bp: Self::parse_positive_usize_text(
+                &self
+                    .variant_followup_ui
+                    .regulatory_fragment_max_construct_length_bp,
+                "maximum construct length",
+            )?,
+            ..RegulatoryFragmentPanelRequest::default()
+        })
+    }
+
+    pub(super) fn variant_followup_regulatory_fragment_panel_plan_operation(
+        &self,
+        path: Option<String>,
+    ) -> Result<Operation, String> {
+        Ok(Operation::PlanRegulatoryFragmentPanel {
+            request: Box::new(self.variant_followup_regulatory_fragment_panel_request()?),
+            path,
+        })
+    }
+
+    pub(super) fn plan_variant_followup_regulatory_fragment_panel(&mut self) {
+        let operation = match self.variant_followup_regulatory_fragment_panel_plan_operation(None) {
+            Ok(operation) => operation,
+            Err(error) => {
+                self.op_status = error;
+                return;
+            }
+        };
+        let result = self.apply_operation_with_feedback_and_result(operation);
+        if let Some(plan) = result.and_then(|row| row.regulatory_fragment_panel_plan) {
+            self.variant_followup_ui
+                .regulatory_fragment_approval_digest
+                .clear();
+            self.variant_followup_ui
+                .cached_regulatory_fragment_panel_plan = Some(*plan);
+        }
+    }
+
+    fn export_variant_followup_regulatory_fragment_panel_json(&mut self) {
+        let default_name = format!(
+            "{}_plan.json",
+            Self::sanitize_export_name_component(
+                &self.variant_followup_ui.regulatory_fragment_plan_id,
+                "regulatory_fragment_panel",
+            )
+        );
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(default_name)
+            .save_file()
+        else {
+            self.op_status = "Regulatory-fragment panel JSON export canceled".to_string();
+            return;
+        };
+        let operation = match self.variant_followup_regulatory_fragment_panel_plan_operation(Some(
+            path.display().to_string(),
+        )) {
+            Ok(operation) => operation,
+            Err(error) => {
+                self.op_status = error;
+                return;
+            }
+        };
+        let result = self.apply_operation_with_feedback_and_result(operation);
+        if let Some(plan) = result.and_then(|row| row.regulatory_fragment_panel_plan) {
+            self.variant_followup_ui
+                .cached_regulatory_fragment_panel_plan = Some(*plan);
+        }
+    }
+
+    fn export_variant_followup_regulatory_fragment_panel_svg(&mut self) {
+        let Some(plan) = self
+            .variant_followup_ui
+            .cached_regulatory_fragment_panel_plan
+            .clone()
+        else {
+            self.op_status = "No exact regulatory-fragment panel plan is cached".to_string();
+            return;
+        };
+        let default_name = format!(
+            "{}_plan.svg",
+            Self::sanitize_export_name_component(&plan.plan_id, "regulatory_fragment_panel")
+        );
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(default_name)
+            .save_file()
+        else {
+            self.op_status = "Regulatory-fragment panel SVG export canceled".to_string();
+            return;
+        };
+        let _ = self.apply_operation_with_feedback_and_result(
+            Operation::RenderRegulatoryFragmentPanelSvg {
+                plan: Box::new(plan),
+                path: path.display().to_string(),
+            },
+        );
     }
 
     fn variant_followup_recommended_candidate(
@@ -5321,6 +5754,533 @@ impl MainAreaDna {
         }
     }
 
+    fn render_regulatory_fragment_roi_selector(
+        ui: &mut egui::Ui,
+        id: &'static str,
+        label: &str,
+        selected: &mut String,
+        options: &[(String, String)],
+        required: bool,
+    ) -> bool {
+        let selected_text = options
+            .iter()
+            .find(|(key, _)| key == selected)
+            .map(|(_, label)| label.clone())
+            .unwrap_or_else(|| {
+                if selected.trim().is_empty() {
+                    if required {
+                        "Select region".to_string()
+                    } else {
+                        "None".to_string()
+                    }
+                } else {
+                    selected.clone()
+                }
+            });
+        let mut changed = false;
+        ui.label(label);
+        egui::ComboBox::from_id_salt(id)
+            .selected_text(selected_text)
+            .width(560.0)
+            .show_ui(ui, |ui| {
+                if !required {
+                    changed |= ui
+                        .selectable_value(selected, String::new(), "None")
+                        .changed();
+                }
+                for (key, option_label) in options {
+                    changed |= ui
+                        .selectable_value(selected, key.clone(), option_label)
+                        .changed();
+                }
+            });
+        ui.end_row();
+        changed
+    }
+
+    fn regulatory_fragment_observation_label(
+        observation: &RegulatoryFragmentEvidenceObservation,
+    ) -> String {
+        match observation {
+            RegulatoryFragmentEvidenceObservation::ReferenceGenomicUniqueness {
+                fragment_id,
+                exact_forward_match_count,
+                exact_reverse_complement_match_count,
+                near_exact_forward_match_count,
+                near_exact_reverse_complement_match_count,
+                detail,
+                ..
+            } => format!(
+                "{fragment_id}: exact F/R {exact_forward_match_count}/{exact_reverse_complement_match_count}; near-exact F/R {}/{}; {detail}",
+                near_exact_forward_match_count
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "not evaluated".to_string()),
+                near_exact_reverse_complement_match_count
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "not evaluated".to_string()),
+            ),
+            RegulatoryFragmentEvidenceObservation::PanelSequenceSimilarity {
+                left_subject_id,
+                right_subject_id,
+                exact_forward_word_match_count,
+                exact_inverted_word_match_count,
+                detail,
+                ..
+            } => format!(
+                "{left_subject_id} vs {right_subject_id}: {exact_forward_word_match_count} forward and {exact_inverted_word_match_count} inverted exact words; {detail}"
+            ),
+            RegulatoryFragmentEvidenceObservation::RepeatOrLowComplexity {
+                subject_id,
+                evidence,
+                ..
+            } => format!(
+                "{subject_id}: {} at {}..{}; {}",
+                evidence.label,
+                evidence.start_0based,
+                evidence.end_0based_exclusive,
+                evidence.rationale
+            ),
+            RegulatoryFragmentEvidenceObservation::PairSpecificJunctionUniqueness {
+                member_id,
+                left_fragment_id,
+                right_fragment_id,
+                exact_unique_in_assessed_context,
+                detail,
+                ..
+            } => format!(
+                "{member_id}: {left_fragment_id} -> {right_fragment_id}; exact context unique={exact_unique_in_assessed_context}; {detail}"
+            ),
+            RegulatoryFragmentEvidenceObservation::RestrictionAndCloningRisk {
+                member_id,
+                cloning_feasibility,
+                blocker_count,
+                selected_strategy,
+                detail,
+                ..
+            } => format!(
+                "{member_id}: {cloning_feasibility:?}, {selected_strategy:?}, {blocker_count} blocker(s); {detail}"
+            ),
+        }
+    }
+
+    fn render_variant_followup_regulatory_fragment_panel(&mut self, ui: &mut egui::Ui) {
+        let region_options = self.variant_followup_regulatory_fragment_roi_options();
+        let mut plan_requested = false;
+        let mut export_json_requested = false;
+        let mut export_svg_requested = false;
+        let mut inputs_changed = false;
+        egui::CollapsingHeader::new("Regulatory-fragment panel (read-only)")
+            .default_open(false)
+            .show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Plan id");
+                    inputs_changed |= ui
+                        .text_edit_singleline(
+                            &mut self.variant_followup_ui.regulatory_fragment_plan_id,
+                        )
+                        .changed();
+                    if ui.button("Saved regions...").clicked() {
+                        self.show_genomic_region_manager = true;
+                    }
+                });
+                match &region_options {
+                    Ok(options) if options.is_empty() => {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(180, 83, 9),
+                            "No saved genomic regions are available.",
+                        );
+                    }
+                    Err(error) => {
+                        ui.colored_label(egui::Color32::from_rgb(180, 83, 9), error);
+                    }
+                    Ok(options) => {
+                        egui::Grid::new("regulatory_fragment_roi_selectors")
+                            .num_columns(2)
+                            .spacing([12.0, 5.0])
+                            .show(ui, |ui| {
+                                inputs_changed |= Self::render_regulatory_fragment_roi_selector(
+                                    ui,
+                                    "regulatory_fragment_candidate_roi",
+                                    "Candidate A",
+                                    &mut self
+                                        .variant_followup_ui
+                                        .regulatory_fragment_candidate_roi,
+                                    options,
+                                    true,
+                                );
+                                inputs_changed |= Self::render_regulatory_fragment_roi_selector(
+                                    ui,
+                                    "regulatory_fragment_partner_roi",
+                                    "Partner B",
+                                    &mut self
+                                        .variant_followup_ui
+                                        .regulatory_fragment_partner_roi,
+                                    options,
+                                    false,
+                                );
+                                inputs_changed |= Self::render_regulatory_fragment_roi_selector(
+                                    ui,
+                                    "regulatory_fragment_minimal_promoter_roi",
+                                    "Minimal promoter",
+                                    &mut self
+                                        .variant_followup_ui
+                                        .regulatory_fragment_minimal_promoter_roi,
+                                    options,
+                                    true,
+                                );
+                                inputs_changed |= Self::render_regulatory_fragment_roi_selector(
+                                    ui,
+                                    "regulatory_fragment_reference_control_roi",
+                                    "Reference control",
+                                    &mut self
+                                        .variant_followup_ui
+                                        .regulatory_fragment_reference_control_roi,
+                                    options,
+                                    false,
+                                );
+                            });
+                    }
+                }
+
+                egui::Grid::new("regulatory_fragment_panel_identity")
+                    .num_columns(2)
+                    .spacing([12.0, 5.0])
+                    .show(ui, |ui| {
+                        ui.label("Reference release");
+                        inputs_changed |= ui
+                            .text_edit_singleline(
+                                &mut self
+                                    .variant_followup_ui
+                                    .regulatory_fragment_reference_release,
+                            )
+                            .changed();
+                        ui.end_row();
+                        ui.label("Loaded vector id");
+                        inputs_changed |= ui
+                            .text_edit_singleline(
+                                &mut self
+                                    .variant_followup_ui
+                                    .regulatory_fragment_vector_seq_id,
+                            )
+                            .changed();
+                        ui.end_row();
+                        ui.label("Vector catalog id");
+                        inputs_changed |= ui
+                            .text_edit_singleline(
+                                &mut self
+                                    .variant_followup_ui
+                                    .regulatory_fragment_vector_catalog_id,
+                            )
+                            .changed();
+                        ui.end_row();
+                        ui.label("Helper catalog path");
+                        inputs_changed |= ui
+                            .text_edit_singleline(
+                                &mut self
+                                    .variant_followup_ui
+                                    .regulatory_fragment_helper_catalog_path,
+                            )
+                            .changed();
+                        ui.end_row();
+                        ui.label("Maximum panel members");
+                        inputs_changed |= ui
+                            .text_edit_singleline(
+                                &mut self
+                                    .variant_followup_ui
+                                    .regulatory_fragment_max_panel_members,
+                            )
+                            .changed();
+                        ui.end_row();
+                        ui.label("Maximum insert length (bp)");
+                        inputs_changed |= ui
+                            .text_edit_singleline(
+                                &mut self
+                                    .variant_followup_ui
+                                    .regulatory_fragment_max_construct_length_bp,
+                            )
+                            .changed();
+                        ui.end_row();
+                    });
+
+                let partner_selected = !self
+                    .variant_followup_ui
+                    .regulatory_fragment_partner_roi
+                    .trim()
+                    .is_empty();
+                ui.horizontal_wrapped(|ui| {
+                    inputs_changed |= ui
+                        .add_enabled(
+                            partner_selected,
+                            egui::Checkbox::new(
+                                &mut self
+                                    .variant_followup_ui
+                                    .regulatory_fragment_partner_dependence,
+                                "Partner dependence",
+                            ),
+                        )
+                        .changed();
+                    inputs_changed |= ui
+                        .add_enabled(
+                            partner_selected,
+                            egui::Checkbox::new(
+                                &mut self
+                                    .variant_followup_ui
+                                    .regulatory_fragment_order_dependence,
+                                "Order",
+                            ),
+                        )
+                        .changed();
+                    inputs_changed |= ui
+                        .add_enabled(
+                            partner_selected,
+                            egui::Checkbox::new(
+                                &mut self
+                                    .variant_followup_ui
+                                    .regulatory_fragment_orientation_dependence,
+                                "Orientation",
+                            ),
+                        )
+                        .changed();
+                    inputs_changed |= ui
+                        .add_enabled(
+                            partner_selected,
+                            egui::Checkbox::new(
+                                &mut self
+                                    .variant_followup_ui
+                                    .regulatory_fragment_spacing_dependence,
+                                "Spacing",
+                            ),
+                        )
+                        .changed();
+                });
+                if self
+                    .variant_followup_ui
+                    .regulatory_fragment_spacing_dependence
+                {
+                    ui.horizontal(|ui| {
+                        ui.label("Controlled spacer DNA");
+                        inputs_changed |= ui
+                            .text_edit_singleline(
+                                &mut self
+                                    .variant_followup_ui
+                                    .regulatory_fragment_controlled_spacer,
+                            )
+                            .changed();
+                    });
+                }
+
+                ui.horizontal_wrapped(|ui| {
+                    if ui
+                        .add_enabled(
+                            self.engine.is_some() && region_options.is_ok(),
+                            egui::Button::new("Plan exact panel"),
+                        )
+                        .clicked()
+                    {
+                        plan_requested = true;
+                    }
+                    if ui
+                        .add_enabled(
+                            self.variant_followup_ui
+                                .cached_regulatory_fragment_panel_plan
+                                .is_some(),
+                            egui::Button::new("Export JSON..."),
+                        )
+                        .clicked()
+                    {
+                        export_json_requested = true;
+                    }
+                    if ui
+                        .add_enabled(
+                            self.variant_followup_ui
+                                .cached_regulatory_fragment_panel_plan
+                                .is_some(),
+                            egui::Button::new("Export SVG..."),
+                        )
+                        .clicked()
+                    {
+                        export_svg_requested = true;
+                    }
+                });
+
+                if let Some(plan) = self
+                    .variant_followup_ui
+                    .cached_regulatory_fragment_panel_plan
+                    .as_ref()
+                {
+                    ui.separator();
+                    egui::Grid::new(("regulatory_fragment_plan_summary", &plan.plan_id))
+                        .num_columns(2)
+                        .spacing([12.0, 4.0])
+                        .show(ui, |ui| {
+                            ui.label("Plan");
+                            ui.monospace(&plan.plan_id);
+                            ui.end_row();
+                            ui.label("Interpretation");
+                            ui.label(format!("{:?}", plan.planning_label));
+                            ui.end_row();
+                            ui.label("Vector");
+                            ui.label(format!(
+                                "{} / {} ({:?})",
+                                plan.vector_context.vector_seq_id,
+                                plan.vector_context.vector_catalog_id,
+                                plan.vector_validation.status
+                            ));
+                            ui.end_row();
+                            ui.label("Panel");
+                            ui.label(format!(
+                                "{} member(s), {} contrast(s), {} omitted",
+                                plan.members.len(),
+                                plan.contrasts.len(),
+                                plan.omitted_variants.len()
+                            ));
+                            ui.end_row();
+                        });
+                    for member in &plan.members {
+                        egui::CollapsingHeader::new(format!(
+                            "{} | {:?} | {} bp",
+                            member.member_id, member.construct_kind, member.insert_length_bp
+                        ))
+                        .id_salt(("regulatory_fragment_member", &member.member_id))
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            for instance in &member.instances {
+                                ui.monospace(format!(
+                                    "{} {:?} | {}:{}-{} {} | insert {}..{}{}",
+                                    instance.fragment_id,
+                                    instance.orientation,
+                                    instance.contig,
+                                    instance.genomic_start_0based,
+                                    instance.genomic_end_0based_exclusive,
+                                    instance.genomic_strand.human_value(),
+                                    instance.assembled_start_0based,
+                                    instance.assembled_end_0based_exclusive,
+                                    if instance.spacer_before.is_empty() {
+                                        String::new()
+                                    } else {
+                                        format!(" | spacer {}", instance.spacer_before)
+                                    }
+                                ));
+                            }
+                            for reason in &member.inclusion_reasons {
+                                ui.small(format!("Included: {:?}: {}", reason.kind, reason.detail));
+                            }
+                        });
+                    }
+                    for contrast in &plan.contrasts {
+                        ui.small(format!(
+                            "{:?}: {} vs {} | {}",
+                            contrast.question,
+                            contrast.left_member_id,
+                            contrast.right_member_id,
+                            contrast.interpretation
+                        ));
+                    }
+                    ui.separator();
+                    ui.strong("Independent evidence lanes");
+                    for dimension in &plan.evidence_dimensions {
+                        egui::CollapsingHeader::new(format!(
+                            "{:?}: {:?} ({} observation(s))",
+                            dimension.kind,
+                            dimension.state,
+                            dimension.observations.len()
+                        ))
+                        .id_salt(("regulatory_fragment_evidence", dimension.assessment_id.as_str()))
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            ui.small(&dimension.detail);
+                            for observation in &dimension.observations {
+                                ui.small(Self::regulatory_fragment_observation_label(observation));
+                            }
+                            for blocker in &dimension.blockers {
+                                ui.colored_label(
+                                    egui::Color32::from_rgb(185, 28, 28),
+                                    format!("{}: {}", blocker.code, blocker.detail),
+                                );
+                            }
+                            for warning in &dimension.warnings {
+                                ui.colored_label(
+                                    egui::Color32::from_rgb(180, 83, 9),
+                                    format!("{}: {}", warning.code, warning.detail),
+                                );
+                            }
+                        });
+                    }
+                    if !plan.omitted_variants.is_empty() {
+                        ui.separator();
+                        ui.strong("Omitted variants");
+                        for omitted in &plan.omitted_variants {
+                            ui.small(format!(
+                                "{} ({:?}): {}",
+                                omitted.member_id, omitted.reason, omitted.detail
+                            ));
+                        }
+                    }
+                    for blocker in &plan.blockers {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(185, 28, 28),
+                            format!("{}: {}", blocker.code, blocker.detail),
+                        );
+                    }
+                    for warning in &plan.warnings {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(180, 83, 9),
+                            format!("{}: {}", warning.code, warning.detail),
+                        );
+                    }
+                    for nonclaim in &plan.nonclaims {
+                        ui.small(
+                            egui::RichText::new(nonclaim)
+                                .color(egui::Color32::from_rgb(100, 116, 139)),
+                        );
+                    }
+                    ui.label("Review digest");
+                    ui.monospace(&plan.proposal_digest);
+                    ui.text_edit_singleline(
+                        &mut self
+                            .variant_followup_ui
+                            .regulatory_fragment_approval_digest,
+                    );
+                    let approval_matches = self
+                        .variant_followup_ui
+                        .regulatory_fragment_approval_digest
+                        .trim()
+                        == plan.proposal_digest;
+                    ui.colored_label(
+                        if approval_matches {
+                            egui::Color32::from_rgb(22, 101, 52)
+                        } else {
+                            egui::Color32::from_rgb(100, 116, 139)
+                        },
+                        if approval_matches {
+                            "Exact digest reviewed"
+                        } else {
+                            "Digest not yet matched"
+                        },
+                    );
+                    ui.small(
+                        "Ordered multi-fragment materialization is unavailable in this version; this review does not create constructs.",
+                    );
+                }
+            });
+        if inputs_changed {
+            self.variant_followup_ui
+                .cached_regulatory_fragment_panel_plan = None;
+            self.variant_followup_ui
+                .regulatory_fragment_approval_digest
+                .clear();
+        }
+        if plan_requested {
+            self.plan_variant_followup_regulatory_fragment_panel();
+        }
+        if export_json_requested {
+            self.export_variant_followup_regulatory_fragment_panel_json();
+        }
+        if export_svg_requested {
+            self.export_variant_followup_regulatory_fragment_panel_svg();
+        }
+    }
+
     fn render_variant_followup_promoter_architecture_comparison(&mut self, ui: &mut egui::Ui) {
         let mut prepare_requested = false;
         let mut compare_requested = false;
@@ -6568,6 +7528,8 @@ impl MainAreaDna {
         self.render_variant_followup_promoter_architecture_comparison(ui);
         ui.add_space(8.0);
         self.render_variant_followup_promoter_reporter_panel(ui);
+        ui.add_space(8.0);
+        self.render_variant_followup_regulatory_fragment_panel(ui);
     }
 
     pub(super) fn render_variant_followup_window(&mut self, ctx: &egui::Context) {

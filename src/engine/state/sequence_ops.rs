@@ -2565,7 +2565,7 @@ impl GentleEngine {
                     Self::push_unique_token(&mut summary.file_paths, path);
                 }
             }
-            Operation::PlanRegulatoryFragmentPanel { request } => {
+            Operation::PlanRegulatoryFragmentPanel { request, path } => {
                 Self::push_unique_token(&mut summary.sequence_ids, &request.vector_seq_id);
                 if let Some(path) = request.helper_catalog_path.as_deref() {
                     Self::push_unique_token(&mut summary.file_paths, path);
@@ -2574,6 +2574,9 @@ impl GentleEngine {
                     if let Some(projection) = fragment.region.local_projection.as_ref() {
                         Self::push_unique_token(&mut summary.sequence_ids, &projection.seq_id);
                     }
+                }
+                if let Some(path) = path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, path);
                 }
             }
             Operation::RenderRegulatoryFragmentPanelSvg { path, .. } => {
@@ -2909,8 +2912,11 @@ impl GentleEngine {
             Operation::PlanPromoterReporterPanel {
                 path: Some(path), ..
             } => push(path),
-            Operation::PlanRegulatoryFragmentPanel { request } => {
+            Operation::PlanRegulatoryFragmentPanel { request, path } => {
                 if let Some(path) = request.helper_catalog_path.as_deref() {
+                    push(path);
+                }
+                if let Some(path) = path {
                     push(path);
                 }
             }

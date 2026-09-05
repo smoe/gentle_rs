@@ -1,5 +1,14 @@
 # GENtle Changelog
 
+- Added thin GUI and shell consumers for exact regulatory-fragment panels. The
+  Promoter design window now binds candidate, partner, minimal-promoter, and
+  reference-control roles from persisted genomic regions, declares exact
+  comparison geometry, runs the shared read-only planner, caches all independent
+  evidence lanes, and exports digest-valid JSON/SVG artifacts. Dedicated
+  `promoters regulatory-panel-plan` and `regulatory-panel-render` routes expose
+  the same engine operations without adding adapter-local biology; ordered
+  multi-fragment materialization remains explicitly unavailable.
+
 - Populated the regulatory-fragment planner's five sequence-computable
   evidence lanes with deterministic typed observations: full-fragment matches
   in ROI-bound reference sequences, global and exact-word panel/vector

@@ -50537,8 +50537,15 @@ impl GentleEngine {
                     result.warnings.extend(proposal.warnings.iter().cloned());
                     result.promoter_reporter_panel_proposal = Some(Box::new(proposal));
                 }
-                Operation::PlanRegulatoryFragmentPanel { request } => {
+                Operation::PlanRegulatoryFragmentPanel { request, path } => {
                     let plan = self.plan_regulatory_fragment_panel(*request)?;
+                    if let Some(path) = path.as_deref() {
+                        self.write_pretty_json_file(&plan, path, "regulatory-fragment panel plan")?;
+                        result.messages.push(format!(
+                            "Wrote regulatory-fragment panel plan '{}' to '{}'",
+                            plan.plan_id, path
+                        ));
+                    }
                     result.messages.push(format!(
                         "Planned {} regulatory-fragment construct(s) and {} contrast(s); approve digest '{}' only after review",
                         plan.members.len(),

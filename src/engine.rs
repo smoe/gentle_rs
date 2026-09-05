@@ -5741,6 +5741,8 @@ pub enum Operation {
     },
     PlanRegulatoryFragmentPanel {
         request: Box<RegulatoryFragmentPanelRequest>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
     },
     RenderRegulatoryFragmentPanelSvg {
         plan: Box<RegulatoryFragmentPanelPlan>,
