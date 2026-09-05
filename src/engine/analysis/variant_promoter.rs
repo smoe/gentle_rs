@@ -2899,6 +2899,11 @@ impl GentleEngine {
                     ],
                 })
             }
+            Some(PromoterReporterAnchorRequest::TranscriptionStartSite) => {
+                Err(EngineError::internal(
+                    "Transcription-start-site anchors require resolved promoter-window context",
+                ))
+            }
             Some(PromoterReporterAnchorRequest::ExplicitInterval {
                 label,
                 start_0based,
@@ -2934,6 +2939,46 @@ impl GentleEngine {
                 })
             }
         }
+    }
+
+    fn resolve_promoter_reporter_tss_anchor(
+        promoter_windows: &[PromoterWindowRecord],
+        sequence_length_bp: usize,
+    ) -> Result<PromoterReporterAnchor, EngineError> {
+        let [record] = promoter_windows else {
+            return Err(EngineError::invalid_input(format!(
+                "A transcription_start_site promoter-reporter anchor requires exactly one resolved promoter window, but {} matched; provide transcript_id or a collapse policy that resolves one TSS class",
+                promoter_windows.len()
+            )));
+        };
+        let start_0based = record.tss_local_0based;
+        let end_0based_exclusive = start_0based.saturating_add(1).min(sequence_length_bp);
+        if end_0based_exclusive <= start_0based {
+            return Err(EngineError::invalid_input(format!(
+                "Resolved TSS {} is outside the {} bp source sequence",
+                start_0based, sequence_length_bp
+            )));
+        }
+        let class_label = record
+            .promoter_class_id
+            .as_deref()
+            .unwrap_or(record.transcript_id.as_str());
+        Ok(PromoterReporterAnchor {
+            kind: PromoterReporterAnchorKind::TranscriptionStartSite,
+            label: format!("TSS:{class_label}"),
+            start_0based,
+            end_0based_exclusive,
+            source_feature_id: record.transcript_feature_id,
+            strand: Some(record.strand.clone()),
+            motif_id: None,
+            evidence_kind: "transcript_tss_annotation".to_string(),
+            interpretation_tags: vec![
+                "transcription_start_site_anchor".to_string(),
+                "annotation_derived".to_string(),
+                "occupancy_not_inferred".to_string(),
+                "functional_effect_not_inferred".to_string(),
+            ],
+        })
     }
 
     fn promoter_reporter_fragment_bounds(
@@ -3034,11 +3079,40 @@ impl GentleEngine {
             cause_chain: vec![],
         })?;
         let legacy_variant_geometry = fragment_policy.is_default();
-        let anchor = Self::resolve_promoter_reporter_anchor(
-            dna,
-            variant_label_or_id,
+        let tss_anchor_requested = matches!(
             fragment_policy.anchor.as_ref(),
-        )?;
+            Some(PromoterReporterAnchorRequest::TranscriptionStartSite)
+        );
+        let mut promoter_windows = if tss_anchor_requested {
+            self.derive_promoter_window_records(
+                dna,
+                gene_label,
+                transcript_id,
+                DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
+                DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
+                fragment_policy.collapse_mode,
+            )
+        } else {
+            Vec::new()
+        };
+        if tss_anchor_requested && promoter_windows.is_empty() {
+            return Err(EngineError::new(
+                ErrorCode::NotFound,
+                format!(
+                    "No transcript-derived promoter windows matched the requested filters on '{}'",
+                    input
+                ),
+            ));
+        }
+        let anchor = if tss_anchor_requested {
+            Self::resolve_promoter_reporter_tss_anchor(&promoter_windows, dna.len())?
+        } else {
+            Self::resolve_promoter_reporter_anchor(
+                dna,
+                variant_label_or_id,
+                fragment_policy.anchor.as_ref(),
+            )?
+        };
         let variant_context = if anchor.kind == PromoterReporterAnchorKind::Variant {
             Some(self.summarize_variant_promoter_context(
                 input,
@@ -3052,31 +3126,33 @@ impl GentleEngine {
         } else {
             None
         };
-        let promoter_windows =
-            if fragment_policy.collapse_mode == PromoterWindowCollapseMode::Transcript {
-                variant_context
-                    .as_ref()
-                    .map(|context| context.promoter_windows_considered.clone())
-                    .unwrap_or_else(|| {
-                        self.derive_promoter_window_records(
-                            dna,
-                            gene_label,
-                            transcript_id,
-                            DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
-                            DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
-                            PromoterWindowCollapseMode::Transcript,
-                        )
-                    })
-            } else {
-                self.derive_promoter_window_records(
-                    dna,
-                    gene_label,
-                    transcript_id,
-                    DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
-                    DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
-                    fragment_policy.collapse_mode,
-                )
-            };
+        if !tss_anchor_requested {
+            promoter_windows =
+                if fragment_policy.collapse_mode == PromoterWindowCollapseMode::Transcript {
+                    variant_context
+                        .as_ref()
+                        .map(|context| context.promoter_windows_considered.clone())
+                        .unwrap_or_else(|| {
+                            self.derive_promoter_window_records(
+                                dna,
+                                gene_label,
+                                transcript_id,
+                                DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
+                                DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
+                                PromoterWindowCollapseMode::Transcript,
+                            )
+                        })
+                } else {
+                    self.derive_promoter_window_records(
+                        dna,
+                        gene_label,
+                        transcript_id,
+                        DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
+                        DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
+                        fragment_policy.collapse_mode,
+                    )
+                };
+        }
         if promoter_windows.is_empty() {
             return Err(EngineError::new(
                 ErrorCode::NotFound,

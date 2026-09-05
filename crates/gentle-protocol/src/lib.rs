@@ -5590,6 +5590,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "ExportReporterCorpus",
     "PlanReporterConstructHandoff",
     "PlanPromoterReporterPanel",
+    "ComposeRegulatoryReporterStudy",
     "InspectPromoterReporterPanelReadiness",
     "MaterializePromoterReporterPanel",
     "ScanTfbsHits",

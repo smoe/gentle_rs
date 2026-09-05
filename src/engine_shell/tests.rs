@@ -274,6 +274,35 @@ fn promoters_panel_routes_parse_typed_request_and_exact_approval() {
 }
 
 #[test]
+fn promoters_compose_study_parses_typed_request_and_output() {
+    let request = crate::engine::RegulatoryReporterStudyRequest {
+        study_id: "tp73_response_panel".to_string(),
+        genome_id: "Human GRCh38 Ensembl 116".to_string(),
+        source: Some(gentle_protocol::GeneSetRequest::ExplicitMembers {
+            members: vec!["TP73".to_string(), "FUS".to_string()],
+        }),
+        vector_seq_id: "pgl4_10_luc2".to_string(),
+        vector_catalog_id: "promega_pgl4_10_luc2".to_string(),
+        output_dir: "/tmp/tp73_response_panel".to_string(),
+        ..crate::engine::RegulatoryReporterStudyRequest::default()
+    };
+    let request_json = serde_json::to_string(&request).expect("study request JSON");
+    let command = parse_shell_line(&format!(
+        "promoters compose-study '{request_json}' --path /tmp/tp73_response_panel.json"
+    ))
+    .expect("parse regulatory-reporter study composer");
+
+    match command {
+        ShellCommand::PromotersComposeStudy { request, output } => {
+            assert_eq!(request.study_id, "tp73_response_panel");
+            assert_eq!(request.genome_id, "Human GRCh38 Ensembl 116");
+            assert_eq!(output.as_deref(), Some("/tmp/tp73_response_panel.json"));
+        }
+        other => panic!("unexpected study composer command: {other:?}"),
+    }
+}
+
+#[test]
 fn promoters_compare_architectures_parses_portable_request_and_both_exports() {
     let request = crate::engine::PromoterReporterArchitectureComparisonRequest {
         seq_id: "serpine1_ensembl116".to_string(),

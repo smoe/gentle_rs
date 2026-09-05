@@ -3280,12 +3280,36 @@ impl GentleEngine {
     pub(crate) fn build_gene_set_promoter_cohort(
         &self,
         genome_id: &str,
+        resolution: GeneSetResolutionReport,
+        relationship: GeneSetCohortRelationship,
+        upstream_bp: usize,
+        downstream_bp: usize,
+        genome_catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+    ) -> Result<GeneSetPromoterCohortReport, EngineError> {
+        self.build_gene_set_promoter_cohort_with_transcript_ids(
+            genome_id,
+            resolution,
+            relationship,
+            upstream_bp,
+            downstream_bp,
+            genome_catalog_path,
+            cache_dir,
+            &BTreeMap::new(),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn build_gene_set_promoter_cohort_with_transcript_ids(
+        &self,
+        genome_id: &str,
         mut resolution: GeneSetResolutionReport,
         relationship: GeneSetCohortRelationship,
         upstream_bp: usize,
         downstream_bp: usize,
         genome_catalog_path: Option<&str>,
         cache_dir: Option<&str>,
+        transcript_ids_by_member: &BTreeMap<String, String>,
     ) -> Result<GeneSetPromoterCohortReport, EngineError> {
         resolution
             .ensure_default_biological_context()
@@ -3339,6 +3363,9 @@ impl GentleEngine {
         let mut unresolved_members = resolution.unresolved_members.clone();
         let mut windows = vec![];
         for member in &resolution.resolved_members {
+            let requested_transcript_id = transcript_ids_by_member
+                .get(&member.dedup_key)
+                .map(String::as_str);
             let gene_query = member
                 .gene_id
                 .as_deref()
@@ -3349,7 +3376,7 @@ impl GentleEngine {
                 genome_id,
                 gene_query,
                 None,
-                None,
+                requested_transcript_id,
                 upstream_bp,
                 downstream_bp,
                 cache_dir,
@@ -3390,7 +3417,7 @@ impl GentleEngine {
                     .or(resolved.selected_gene.gene_id.clone()),
                 gene_query: resolved.query.clone(),
                 occurrence: resolved.occurrence,
-                transcript_id_requested: None,
+                transcript_id_requested: requested_transcript_id.map(str::to_string),
                 transcript_id: resolved.selected_transcript.transcript_id.clone(),
                 display_label,
                 chromosome: resolved.selected_transcript.chromosome.clone(),

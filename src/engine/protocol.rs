@@ -195,7 +195,10 @@ use crate::genomes::BlastExternalBinaryPreflightReport;
 use super::{
     CLONING_MACRO_TEMPLATE_SCHEMA, OpId, Operation, PROMOTER_REPORTER_ARCHITECTURE_REQUEST_SCHEMA,
     PROMOTER_REPORTER_PANEL_READINESS_REQUEST_SCHEMA, PrepareGenomeProgress,
-    ProtocolCartoonTemplateBindings, RunId, SeqId,
+    ProtocolCartoonTemplateBindings, REGULATORY_REPORTER_STUDY_REQUEST_SCHEMA, RunId, SeqId,
+    default_promoter_reporter_max_candidates,
+    default_promoter_reporter_retain_downstream_from_tss_bp, default_promoter_window_downstream_bp,
+    default_promoter_window_upstream_bp,
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -3883,6 +3886,7 @@ pub enum PromoterReporterAnchorKind {
     #[default]
     Variant,
     MotifHit,
+    TranscriptionStartSite,
     ExplicitInterval,
 }
 
@@ -3891,6 +3895,7 @@ impl PromoterReporterAnchorKind {
         match self {
             Self::Variant => "variant",
             Self::MotifHit => "motif_hit",
+            Self::TranscriptionStartSite => "transcription_start_site",
             Self::ExplicitInterval => "explicit_interval",
         }
     }
@@ -3921,6 +3926,7 @@ pub enum PromoterReporterAnchorRequest {
         )]
         occurrence: usize,
     },
+    TranscriptionStartSite,
     ExplicitInterval {
         label: String,
         start_0based: usize,
@@ -4006,7 +4012,8 @@ pub struct PromoterReporterFragmentRejection {
 }
 
 /// One deterministic promoter-reporter fragment candidate derived from one
-/// transcript/TSS class and one variant, motif hit, or explicit interval.
+/// transcript/TSS class and one variant, motif hit, transcription start site,
+/// or explicit interval.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct PromoterReporterFragmentCandidate {
@@ -4086,6 +4093,192 @@ pub struct PromoterReporterCandidateSet {
     pub candidates: Vec<PromoterReporterFragmentCandidate>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rejected_candidates: Vec<PromoterReporterFragmentRejection>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// How a regulatory-reporter study chooses one transcript TSS per gene.
+pub enum RegulatoryReporterTssSelection {
+    #[default]
+    OutermostFivePrime,
+    ExplicitPerMember,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Transcript-selection policy for a regulatory-reporter study.
+///
+/// Map keys may be resolved-member dedup keys, gene symbols, or gene ids. In
+/// `explicit_per_member` mode every resolved member must have one binding.
+pub struct RegulatoryReporterTssPolicy {
+    pub selection: RegulatoryReporterTssSelection,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub transcript_ids_by_member: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Exact evidence-kind gate applied before a study emits a panel request.
+///
+/// Kinds are compared case-insensitively against candidate annotations and
+/// member evidence. Empty means preserve available evidence without requiring
+/// a specific evidence class.
+pub struct RegulatoryReporterEvidencePolicy {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub required_kinds_per_member: Vec<String>,
+}
+
+fn regulatory_reporter_study_request_schema_default() -> String {
+    REGULATORY_REPORTER_STUDY_REQUEST_SCHEMA.to_string()
+}
+
+fn regulatory_reporter_study_default_fragment_policy() -> PromoterReporterFragmentPolicy {
+    PromoterReporterFragmentPolicy {
+        anchor: Some(PromoterReporterAnchorRequest::TranscriptionStartSite),
+        ..PromoterReporterFragmentPolicy::default()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+/// Front-half orchestration request for an evidence-guided reporter study.
+///
+/// Exactly one of `source` and `resolution` must be supplied. The operation
+/// resolves one transcript-derived promoter locus per gene, writes candidate
+/// sets and a panel request, and delegates terminal readiness to the existing
+/// context-bound panel inspector.
+pub struct RegulatoryReporterStudyRequest {
+    #[serde(default = "regulatory_reporter_study_request_schema_default")]
+    pub schema: String,
+    pub study_id: String,
+    pub genome_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<GeneSetRequest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolution: Option<Box<GeneSetResolutionReport>>,
+    #[serde(default)]
+    pub relationship: GeneSetCohortRelationship,
+    #[serde(default)]
+    pub tss_policy: RegulatoryReporterTssPolicy,
+    #[serde(default)]
+    pub evidence_policy: RegulatoryReporterEvidencePolicy,
+    /// Additional evidence keyed by member dedup key, symbol, or gene id.
+    /// Coordinates, when present, are local to the extracted promoter locus.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub evidence_by_member: BTreeMap<String, Vec<PromoterEvidenceItem>>,
+    #[serde(default = "default_promoter_window_upstream_bp")]
+    pub locus_upstream_bp: usize,
+    #[serde(default = "default_promoter_window_downstream_bp")]
+    pub locus_downstream_bp: usize,
+    #[serde(default = "default_promoter_reporter_retain_downstream_from_tss_bp")]
+    pub retain_downstream_from_tss_bp: usize,
+    #[serde(default = "default_promoter_reporter_max_candidates")]
+    pub max_candidates_per_gene: usize,
+    #[serde(default = "regulatory_reporter_study_default_fragment_policy")]
+    pub fragment_policy: PromoterReporterFragmentPolicy,
+    pub vector_seq_id: String,
+    pub vector_catalog_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub helper_catalog_path: Option<String>,
+    #[serde(default = "regulatory_reporter_study_default_mutation_policy")]
+    pub mutation_policy: PromoterReporterPanelMutationPolicy,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scientific_caveats: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_group_catalog_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genome_catalog_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_dir: Option<String>,
+    #[serde(default)]
+    pub allow_draft: bool,
+    #[serde(default)]
+    pub allow_deprecated: bool,
+    #[serde(default)]
+    pub allow_partial_gene_set: bool,
+    #[serde(default)]
+    pub allow_fuzzy_gene_matches: bool,
+    pub output_dir: String,
+}
+
+fn regulatory_reporter_study_default_mutation_policy() -> PromoterReporterPanelMutationPolicy {
+    PromoterReporterPanelMutationPolicy::NativeOnlyV1
+}
+
+impl Default for RegulatoryReporterStudyRequest {
+    fn default() -> Self {
+        Self {
+            schema: regulatory_reporter_study_request_schema_default(),
+            study_id: String::new(),
+            genome_id: String::new(),
+            source: None,
+            resolution: None,
+            relationship: GeneSetCohortRelationship::Unspecified,
+            tss_policy: RegulatoryReporterTssPolicy::default(),
+            evidence_policy: RegulatoryReporterEvidencePolicy::default(),
+            evidence_by_member: BTreeMap::new(),
+            locus_upstream_bp: default_promoter_window_upstream_bp(),
+            locus_downstream_bp: default_promoter_window_downstream_bp(),
+            retain_downstream_from_tss_bp: default_promoter_reporter_retain_downstream_from_tss_bp(
+            ),
+            max_candidates_per_gene: default_promoter_reporter_max_candidates(),
+            fragment_policy: regulatory_reporter_study_default_fragment_policy(),
+            vector_seq_id: String::new(),
+            vector_catalog_id: String::new(),
+            helper_catalog_path: None,
+            mutation_policy: regulatory_reporter_study_default_mutation_policy(),
+            scientific_caveats: Vec::new(),
+            gene_group_catalog_path: None,
+            genome_catalog_path: None,
+            cache_dir: None,
+            allow_draft: false,
+            allow_deprecated: false,
+            allow_partial_gene_set: false,
+            allow_fuzzy_gene_matches: false,
+            output_dir: String::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One content-bound promoter candidate artifact emitted by a study composer.
+pub struct RegulatoryReporterStudyCandidateArtifact {
+    pub member_dedup_key: String,
+    pub gene_symbol: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_id: Option<String>,
+    pub transcript_id: String,
+    pub source_seq_id: String,
+    pub candidate_set_path: String,
+    pub candidate_set_sha256: String,
+    pub recommended_candidate_id: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence_kinds: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Portable result of composing the front half of a regulatory-reporter study.
+pub struct RegulatoryReporterStudyReport {
+    pub schema: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub request: RegulatoryReporterStudyRequest,
+    pub promoter_cohort: GeneSetPromoterCohortReport,
+    #[serde(default)]
+    pub candidate_artifacts: Vec<RegulatoryReporterStudyCandidateArtifact>,
+    pub panel_request_path: String,
+    pub panel_request_sha256: String,
+    pub panel_request: PromoterReporterPanelRequest,
+    pub readiness: PromoterReporterPanelReadinessReport,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    #[serde(default)]
+    pub nonclaims: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -5381,6 +5574,8 @@ pub struct OpResult {
     pub reporter_vector_validation: Option<ReporterVectorValidationReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub promoter_reporter_panel_proposal: Option<Box<PromoterReporterPanelProposal>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub regulatory_reporter_study: Option<Box<RegulatoryReporterStudyReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub promoter_reporter_panel_readiness: Option<Box<PromoterReporterPanelReadinessReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

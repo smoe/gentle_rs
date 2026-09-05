@@ -108,11 +108,12 @@ use crate::{
         RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
         RackOccupant, RackPhysicalTemplateKind, RackProfileKind, ReadAcquisitionAnalysisFormat,
         ReadAcquisitionReadLayout, RegulatoryPartnerAnchorMode, RegulatoryPartnerMotifThreshold,
-        RenderSvgMode, RepeatAnnotationFilter, RepeatEnvironmentCohortReport,
-        RepeatEnvironmentGeometryMode, ReporterConstraints, ReporterCorpusExportFormat,
-        RestrictionCloningPcrHandoffMode, RestrictionSiteScanCollectionMemberBinding,
-        RestrictionSiteScanReport, ReverseTranslationReport, ReverseTranslationReportSummary,
-        RnaReadAlignConfig, RnaReadAlignmentDisplayBatch, RnaReadAlignmentInspectionEffectFilter,
+        RegulatoryReporterStudyRequest, RenderSvgMode, RepeatAnnotationFilter,
+        RepeatEnvironmentCohortReport, RepeatEnvironmentGeometryMode, ReporterConstraints,
+        ReporterCorpusExportFormat, RestrictionCloningPcrHandoffMode,
+        RestrictionSiteScanCollectionMemberBinding, RestrictionSiteScanReport,
+        ReverseTranslationReport, ReverseTranslationReportSummary, RnaReadAlignConfig,
+        RnaReadAlignmentDisplayBatch, RnaReadAlignmentInspectionEffectFilter,
         RnaReadAlignmentInspectionSortKey, RnaReadAlignmentInspectionSubsetSpec,
         RnaReadConcatemerInspectionSettings, RnaReadGeneSupportAuditCohortFilter,
         RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
@@ -1095,6 +1096,10 @@ pub enum ShellCommand {
     },
     PromotersPanelPlan {
         request: PromoterReporterPanelRequest,
+        output: Option<String>,
+    },
+    PromotersComposeStudy {
+        request: RegulatoryReporterStudyRequest,
         output: Option<String>,
     },
     PromotersPanelReadiness {
@@ -8586,6 +8591,12 @@ impl ShellCommand {
                 request.panel_id,
                 request.members.len(),
                 request.vector_seq_id,
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::PromotersComposeStudy { request, output } => format!(
+                "compose regulatory-reporter study '{}' from genome '{}' (output='{}')",
+                request.study_id,
+                request.genome_id,
                 output.as_deref().unwrap_or("-"),
             ),
             Self::PromotersPanelReadiness { request, output } => format!(
@@ -26904,6 +26915,44 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "FORMAT", "required": false, "subject_kind": "other", "detail": "json or jsonl output format carried by format"}),
             ],
         ),
+        json!({
+            "id": "promoters compose-study",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "gentle.regulatory_reporter_study_request.v1 with a gene-set source or resolved cohort, prepared genome id, explicit TSS/evidence policy, vector identity, and output directory"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional portable gentle.regulatory_reporter_study.v1 report supplied by --path"}
+            ],
+            "reads": [],
+            "effects": [
+                {"fact": "sequence.exists", "subject": {"arg": "PROMOTER_LOCUS_SEQ_ID"}, "effect_kind": "must_on_success"},
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_DIR"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Resolve a gene list or evidence-derived cohort against a prepared genome, extract one transcript-bound promoter locus per member, write candidate sets and a panel request, and recompute context-bound panel readiness without materializing constructs.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("promoters compose-study")
+        }),
+        json!({
+            "id": "ComposeRegulatoryReporterStudy",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "gentle.regulatory_reporter_study_request.v1"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional portable study report carried by path"}
+            ],
+            "reads": [],
+            "effects": [
+                {"fact": "sequence.exists", "subject": {"arg": "PROMOTER_LOCUS_SEQ_ID"}, "effect_kind": "must_on_success"},
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_DIR"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Compose the front half of a regulatory-reporter study through the shared engine contract; exact required evidence kinds fail closed and terminal readiness is delegated to the context-bound panel inspector.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ComposeRegulatoryReporterStudy")
+        }),
         optional_artifact_resource_report_descriptor(
             "PlanReporterConstructHandoff",
             "optional external reporter-construct handoff JSON output path carried by path",
@@ -41767,11 +41816,43 @@ fn parse_gene_groups_command(tokens: &[String]) -> Result<ShellCommand, String> 
 fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "promoters requires a subcommand: compare-architectures, panel-readiness, panel-plan, or panel-materialize"
+            "promoters requires a subcommand: compose-study, compare-architectures, panel-readiness, panel-plan, or panel-materialize"
                 .to_string(),
         );
     }
     match tokens[1].as_str() {
+        "compose-study" => {
+            if tokens.len() < 3 || tokens[2].starts_with("--") {
+                return Err(
+                    "promoters compose-study requires REQUEST_JSON_OR_@FILE [--path REPORT.json]"
+                        .to_string(),
+                );
+            }
+            let request = parse_required_json_payload::<RegulatoryReporterStudyRequest>(
+                &tokens[2],
+                "regulatory-reporter study request",
+            )?;
+            let mut output = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--path" | "--output" => {
+                        output = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--path",
+                            "promoters compose-study",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for promoters compose-study"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PromotersComposeStudy { request, output })
+        }
         "compare-architectures" => {
             if tokens.len() < 3 || tokens[2].starts_with("--") {
                 return Err(
@@ -41975,7 +42056,7 @@ fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
             })
         }
         other => Err(format!(
-            "Unknown promoters subcommand '{other}' (expected compare-architectures, panel-readiness, panel-plan, or panel-materialize)"
+            "Unknown promoters subcommand '{other}' (expected compose-study, compare-architectures, panel-readiness, panel-plan, or panel-materialize)"
         )),
     }
 }
@@ -52754,6 +52835,21 @@ fn execute_export_import_and_resource_command(
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({ "result": export }),
+            })
+        }
+        ShellCommand::PromotersComposeStudy { request, output } => {
+            let op_result = engine
+                .apply(Operation::ComposeRegulatoryReporterStudy {
+                    request: Box::new(request.clone()),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result.regulatory_reporter_study.ok_or_else(|| {
+                "Regulatory-reporter study composition returned no report".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": report }),
             })
         }
         ShellCommand::PromotersPanelPlan { request, output } => {
@@ -66150,6 +66246,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::ReportersRecommend { .. }
             | ShellCommand::ReportersExportCorpus { .. }
             | ShellCommand::PromotersCompareArchitectures { .. }
+            | ShellCommand::PromotersComposeStudy { .. }
             | ShellCommand::PromotersPanelPlan { .. }
             | ShellCommand::PromotersPanelReadiness { .. }
             | ShellCommand::PromotersPanelMaterialize { .. }
@@ -66987,6 +67084,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ReportersRecommend { .. }
         | ShellCommand::ReportersExportCorpus { .. }
         | ShellCommand::PromotersCompareArchitectures { .. }
+        | ShellCommand::PromotersComposeStudy { .. }
         | ShellCommand::PromotersPanelPlan { .. }
         | ShellCommand::PromotersPanelReadiness { .. }
         | ShellCommand::PromotersPanelMaterialize { .. }

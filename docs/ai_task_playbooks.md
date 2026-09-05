@@ -323,7 +323,35 @@ Keep these evidence statements separate:
 A motif match without occupancy evidence is a candidate binding site. It is not
 proof of binding, causality, a cofactor relationship, or reporter activity.
 
-Inspect promoter alternatives and their evidence before fragment planning:
+For the ordinary multi-gene, TSS-anchored front half, prepare a
+`gentle.regulatory_reporter_study_request.v1` and let the shared composer resolve
+the genes, select or bind one transcript TSS per member, extract annotated
+promoter loci, generate one candidate-set artifact per gene, assemble the panel
+request, and run the existing context-bound readiness inspector:
+
+```text
+promoters compose-study @study_request.json --path study_report.json
+```
+
+Use `source` for a catalog group or explicit gene list. Use `resolution` instead
+when a prior gene-set producer, including `co-regulated`, already emitted a
+reviewable `gentle.gene_set_resolution.v1`. Supply exactly one. A co-regulated
+resolution contributes a distinct `perturbation_response` evidence row; it does
+not prove direct regulation. `evidence_policy.required_kinds_per_member` is an
+exact fail-closed gate, while `evidence_by_member` carries independent rows such
+as occupancy evidence. `tss_policy=explicit_per_member` requires one transcript
+id for every resolved gene; the default uses the prepared annotation's
+outermost 5' transcript.
+
+The composer stops before panel planning or materialization. Its embedded
+readiness report may be `blocked`; resolve those current vector, candidate, or
+evidence checks before running `panel-plan`. Readiness is recalculated from the
+emitted files and current project state, never persisted as an authorization
+Boolean.
+
+Use the lower-level route when a study needs a motif, explicit interval, or
+variant anchor, or when promoter alternatives need manual inspection. Inspect
+their evidence before fragment planning:
 
 ```text
 features promoter-evidence-matrix SEQ_ID --gene-label GENE --promoter-upstream-bp 1000 --promoter-downstream-bp 200 --path GENE.promoter_evidence.json

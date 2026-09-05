@@ -2169,6 +2169,21 @@
       {
          "aliases": [],
          "engine_operations": [
+            "ComposeRegulatoryReporterStudy"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "promoters compose-study",
+         "summary": "Resolve a gene list or evidence-derived cohort against a prepared genome, extract transcript-bound promoter loci, and emit per-gene candidate sets plus a panel request with context-bound readiness.",
+         "usage": "promoters compose-study REQUEST_JSON_OR_@FILE [--path REPORT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "ComparePromoterReporterArchitectures"
          ],
          "interfaces": [

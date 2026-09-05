@@ -433,6 +433,7 @@ Required distinctions:
 - do not materialize constructs, download external data, or run a mutation without explicit confirmation.
 
 Useful shared GENtle surfaces after their operands are known:
+- `promoters compose-study @STUDY_REQUEST.json --path STUDY_REPORT.json`
 - `features promoter-evidence-matrix SEQ_ID --gene-label GENE ...`
 - `op '{"SuggestPromoterReporterFragments":{...}}'`
 - `promoters panel-readiness request @REQUEST.json --path READINESS.json`
@@ -671,6 +672,10 @@ mod tests {
         assert!(
             agent_prompt_template_text("regulatory_reporter_study")
                 .contains("`op '{\"SuggestPromoterReporterFragments\"")
+        );
+        assert!(
+            agent_prompt_template_text("regulatory_reporter_study")
+                .contains("promoters compose-study")
         );
         assert!(
             agent_prompt_template_text("regulatory_reporter_study")

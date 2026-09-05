@@ -39775,6 +39775,142 @@ impl GentleEngine {
         Ok(())
     }
 
+    fn regulatory_reporter_study_member_index(
+        resolution: &GeneSetResolutionReport,
+        selector: &str,
+    ) -> Result<usize, EngineError> {
+        let selector = selector.trim();
+        if selector.is_empty() {
+            return Err(EngineError::invalid_input(
+                "Regulatory-reporter member selectors must not be empty",
+            ));
+        }
+        let matches = resolution
+            .resolved_members
+            .iter()
+            .enumerate()
+            .filter(|(_, member)| {
+                member.dedup_key.eq_ignore_ascii_case(selector)
+                    || member.symbol.eq_ignore_ascii_case(selector)
+                    || member
+                        .gene_id
+                        .as_deref()
+                        .is_some_and(|gene_id| gene_id.eq_ignore_ascii_case(selector))
+            })
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        match matches.as_slice() {
+            [index] => Ok(*index),
+            [] => Err(EngineError::invalid_input(format!(
+                "Regulatory-reporter member selector '{selector}' did not match any resolved gene-set member"
+            ))),
+            _ => Err(EngineError::invalid_input(format!(
+                "Regulatory-reporter member selector '{selector}' is ambiguous across {} resolved members; use the member dedup key",
+                matches.len()
+            ))),
+        }
+    }
+
+    fn regulatory_reporter_study_response_evidence(
+        study_id: &str,
+        resolution: &GeneSetResolutionReport,
+        member: &GeneSetResolvedMember,
+    ) -> Option<PromoterEvidenceItem> {
+        let producer = resolution.producer.as_ref()?;
+        if producer.producer_kind != GeneSetProducerKind::CoRegulatedCohort {
+            return None;
+        }
+        let metadata = resolution.co_regulated_metadata.as_ref()?;
+        let relationship = match metadata.relationship {
+            GeneSetCohortRelationship::Unspecified => "unspecified",
+            GeneSetCohortRelationship::Manual => "manual",
+            GeneSetCohortRelationship::CoRegulated => "co_regulated",
+            GeneSetCohortRelationship::AntiCoRegulated => "anti_co_regulated",
+        };
+        let mut attributes = BTreeMap::new();
+        attributes.insert("relationship".to_string(), relationship.to_string());
+        attributes.insert(
+            "normalization_method".to_string(),
+            metadata.normalization_method.clone(),
+        );
+        attributes.insert(
+            "scoring_method".to_string(),
+            metadata.scoring_method.clone(),
+        );
+        attributes.insert(
+            "threshold_rule".to_string(),
+            metadata.threshold_rule.clone(),
+        );
+        attributes.insert(
+            "sign_direction_rule".to_string(),
+            metadata.sign_direction_rule.clone(),
+        );
+        if !metadata.dataset_ids.is_empty() {
+            attributes.insert("dataset_ids".to_string(), metadata.dataset_ids.join(","));
+        }
+        if !metadata.contrast_labels.is_empty() {
+            attributes.insert(
+                "contrast_labels".to_string(),
+                metadata.contrast_labels.join(","),
+            );
+        }
+        let mut provenance_refs = member
+            .provenance
+            .iter()
+            .flat_map(|row| {
+                [Some(row.source_id.clone()), row.source_path.clone()]
+                    .into_iter()
+                    .flatten()
+            })
+            .collect::<Vec<_>>();
+        provenance_refs.extend(metadata.dataset_ids.iter().cloned());
+        provenance_refs.sort();
+        provenance_refs.dedup();
+        Some(PromoterEvidenceItem {
+            evidence_id: format!(
+                "{}_{}_perturbation_response",
+                Self::normalize_id_token(study_id),
+                Self::normalize_id_token(&member.dedup_key)
+            ),
+            kind: "perturbation_response".to_string(),
+            source: producer.provider_id.clone(),
+            summary: format!(
+                "Gene '{}' was included in a {} cohort retrieval using scoring method '{}' and threshold '{}'; cohort membership does not prove direct regulation.",
+                member.symbol, relationship, metadata.scoring_method, metadata.threshold_rule
+            ),
+            attributes,
+            provenance_refs,
+            interpretation_tags: vec![
+                "cohort_membership".to_string(),
+                "regulation_not_proven".to_string(),
+            ],
+            ..PromoterEvidenceItem::default()
+        })
+    }
+
+    fn regulatory_reporter_study_output_dir(raw: &str) -> Result<std::path::PathBuf, EngineError> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err(EngineError::invalid_input(
+                "Regulatory-reporter study output_dir must not be empty",
+            ));
+        }
+        let path = std::path::PathBuf::from(trimmed);
+        if path.is_absolute() {
+            Ok(path)
+        } else {
+            std::env::current_dir()
+                .map(|cwd| cwd.join(path))
+                .map_err(|error| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!(
+                        "Could not resolve regulatory-reporter output directory '{trimmed}': {error}"
+                    ),
+                    cause_chain: vec![],
+                })
+        }
+    }
+
     pub(super) fn apply_internal(
         &mut self,
         op: Operation,
@@ -39944,6 +40080,7 @@ impl GentleEngine {
             reporter_construct_handoff: None,
             reporter_vector_validation: None,
             promoter_reporter_panel_proposal: None,
+            regulatory_reporter_study: None,
             promoter_reporter_panel_readiness: None,
             promoter_reporter_panel_receipt: None,
             uniprot_projection_audit: None,
@@ -50578,6 +50715,526 @@ impl GentleEngine {
                     ));
                     result.warnings.extend(proposal.warnings.iter().cloned());
                     result.promoter_reporter_panel_proposal = Some(Box::new(proposal));
+                }
+                Operation::ComposeRegulatoryReporterStudy { request, path } => {
+                    let mut request = *request;
+                    if request.schema.trim().is_empty() {
+                        request.schema = REGULATORY_REPORTER_STUDY_REQUEST_SCHEMA.to_string();
+                    }
+                    if request.schema != REGULATORY_REPORTER_STUDY_REQUEST_SCHEMA {
+                        return Err(EngineError::invalid_input(format!(
+                            "Unsupported regulatory-reporter study request schema '{}'",
+                            request.schema
+                        )));
+                    }
+                    request.study_id = request.study_id.trim().to_string();
+                    request.genome_id = request.genome_id.trim().to_string();
+                    request.vector_seq_id = request.vector_seq_id.trim().to_string();
+                    request.vector_catalog_id = request.vector_catalog_id.trim().to_string();
+                    if request.study_id.is_empty()
+                        || request.genome_id.is_empty()
+                        || request.vector_seq_id.is_empty()
+                        || request.vector_catalog_id.is_empty()
+                    {
+                        return Err(EngineError::invalid_input(
+                            "Regulatory-reporter study_id, genome_id, vector_seq_id, and vector_catalog_id must not be empty",
+                        ));
+                    }
+                    if request.max_candidates_per_gene == 0 {
+                        return Err(EngineError::invalid_input(
+                            "Regulatory-reporter max_candidates_per_gene must be >= 1",
+                        ));
+                    }
+                    if request.mutation_policy == PromoterReporterPanelMutationPolicy::Unspecified {
+                        return Err(EngineError::invalid_input(
+                            "Regulatory-reporter mutation_policy must be explicit",
+                        ));
+                    }
+                    if request.fragment_policy.anchor.is_none() {
+                        request.fragment_policy.anchor =
+                            Some(PromoterReporterAnchorRequest::TranscriptionStartSite);
+                    }
+                    if matches!(
+                        request.fragment_policy.anchor.as_ref(),
+                        Some(PromoterReporterAnchorRequest::TranscriptionStartSite)
+                    ) && (request.locus_upstream_bp
+                        < request.fragment_policy.promoter_upstream_baseline_bp
+                        || request.locus_downstream_bp < request.retain_downstream_from_tss_bp)
+                    {
+                        return Err(EngineError::invalid_input(format!(
+                            "TSS-anchored reporter loci must cover at least {} bp upstream and {} bp downstream, but the request provides {} and {}",
+                            request.fragment_policy.promoter_upstream_baseline_bp,
+                            request.retain_downstream_from_tss_bp,
+                            request.locus_upstream_bp,
+                            request.locus_downstream_bp
+                        )));
+                    }
+
+                    let resolution = match (&request.source, &request.resolution) {
+                        (Some(source), None) => self.resolve_gene_set(
+                            source.clone(),
+                            Some(&request.genome_id),
+                            request.gene_group_catalog_path.as_deref(),
+                            request.genome_catalog_path.as_deref(),
+                            request.cache_dir.as_deref(),
+                            request.allow_draft,
+                            request.allow_deprecated,
+                        )?,
+                        (None, Some(resolution)) => (**resolution).clone(),
+                        (Some(_), Some(_)) => {
+                            return Err(EngineError::invalid_input(
+                                "Regulatory-reporter study accepts source or resolution, not both",
+                            ));
+                        }
+                        (None, None) => {
+                            return Err(EngineError::invalid_input(
+                                "Regulatory-reporter study requires source or resolution",
+                            ));
+                        }
+                    };
+                    if resolution.resolved_members.is_empty() {
+                        return Err(EngineError::invalid_input(
+                            "Regulatory-reporter study resolved no gene-set members",
+                        ));
+                    }
+
+                    let mut transcript_ids_by_member = BTreeMap::new();
+                    for (selector, transcript_id) in &request.tss_policy.transcript_ids_by_member {
+                        let index =
+                            Self::regulatory_reporter_study_member_index(&resolution, selector)?;
+                        let member = &resolution.resolved_members[index];
+                        let transcript_id = transcript_id.trim();
+                        if transcript_id.is_empty() {
+                            return Err(EngineError::invalid_input(format!(
+                                "Regulatory-reporter transcript binding for '{}' must not be empty",
+                                selector
+                            )));
+                        }
+                        if transcript_ids_by_member
+                            .insert(member.dedup_key.clone(), transcript_id.to_string())
+                            .is_some()
+                        {
+                            return Err(EngineError::invalid_input(format!(
+                                "Multiple transcript bindings resolve to gene-set member '{}'",
+                                member.dedup_key
+                            )));
+                        }
+                    }
+                    if request.tss_policy.selection
+                        == RegulatoryReporterTssSelection::ExplicitPerMember
+                    {
+                        let missing = resolution
+                            .resolved_members
+                            .iter()
+                            .filter(|member| {
+                                !transcript_ids_by_member.contains_key(&member.dedup_key)
+                            })
+                            .map(|member| member.symbol.clone())
+                            .collect::<Vec<_>>();
+                        if !missing.is_empty() {
+                            return Err(EngineError::invalid_input(format!(
+                                "explicit_per_member TSS selection is missing transcript ids for: {}",
+                                missing.join(", ")
+                            )));
+                        }
+                    }
+
+                    let mut evidence_by_member = BTreeMap::new();
+                    for (selector, evidence) in &request.evidence_by_member {
+                        let index =
+                            Self::regulatory_reporter_study_member_index(&resolution, selector)?;
+                        let member = &resolution.resolved_members[index];
+                        if evidence_by_member
+                            .insert(member.dedup_key.clone(), evidence.clone())
+                            .is_some()
+                        {
+                            return Err(EngineError::invalid_input(format!(
+                                "Multiple evidence bindings resolve to gene-set member '{}'",
+                                member.dedup_key
+                            )));
+                        }
+                    }
+                    let mut required_evidence_kinds = request
+                        .evidence_policy
+                        .required_kinds_per_member
+                        .iter()
+                        .map(|kind| kind.trim().to_ascii_lowercase())
+                        .filter(|kind| !kind.is_empty())
+                        .collect::<Vec<_>>();
+                    required_evidence_kinds.sort();
+                    required_evidence_kinds.dedup();
+
+                    let mut cohort = self.build_gene_set_promoter_cohort_with_transcript_ids(
+                        &request.genome_id,
+                        resolution,
+                        request.relationship,
+                        request.locus_upstream_bp,
+                        request.locus_downstream_bp,
+                        request.genome_catalog_path.as_deref(),
+                        request.cache_dir.as_deref(),
+                        &transcript_ids_by_member,
+                    )?;
+                    cohort.op_id = Some(result.op_id.clone());
+                    cohort.run_id = Some(run_id.to_string());
+                    if cohort.gene_set_resolution.op_id.is_none()
+                        && cohort.gene_set_resolution.run_id.is_none()
+                    {
+                        cohort.gene_set_resolution.op_id = Some(result.op_id.clone());
+                        cohort.gene_set_resolution.run_id = Some(run_id.to_string());
+                    }
+                    if !request.allow_partial_gene_set
+                        && (cohort.gene_set_resolution.unresolved_member_count > 0
+                            || cohort.windows.len()
+                                != cohort.gene_set_resolution.resolved_members.len())
+                    {
+                        return Err(EngineError::invalid_input(format!(
+                            "Regulatory-reporter study resolved {} promoter loci for {} resolved member(s), with {} unresolved requested member(s); set allow_partial_gene_set=true to emit a partial study",
+                            cohort.windows.len(),
+                            cohort.gene_set_resolution.resolved_members.len(),
+                            cohort.gene_set_resolution.unresolved_member_count
+                        )));
+                    }
+                    if cohort.windows.is_empty() {
+                        return Err(EngineError::invalid_input(
+                            "Regulatory-reporter study produced no promoter loci",
+                        ));
+                    }
+                    if !request.allow_fuzzy_gene_matches {
+                        let fuzzy = cohort
+                            .windows
+                            .iter()
+                            .filter(|window| window.used_fuzzy_gene_match)
+                            .map(|window| window.symbol.clone())
+                            .collect::<Vec<_>>();
+                        if !fuzzy.is_empty() {
+                            return Err(EngineError::invalid_input(format!(
+                                "Regulatory-reporter gene lookup used fuzzy matching for {}; review the symbols or set allow_fuzzy_gene_matches=true",
+                                fuzzy.join(", ")
+                            )));
+                        }
+                    }
+
+                    let output_dir =
+                        Self::regulatory_reporter_study_output_dir(&request.output_dir)?;
+                    let study_slug = {
+                        let slug = Self::normalize_id_token(&request.study_id);
+                        if slug.is_empty() {
+                            "regulatory_reporter_study".to_string()
+                        } else {
+                            slug
+                        }
+                    };
+                    let mut detached = GentleEngine::from_state(self.snapshot().clone());
+                    let mut detached_result = result.clone();
+                    let mut pending_candidate_files = Vec::new();
+                    let mut candidate_artifacts = Vec::new();
+                    let mut panel_members = Vec::new();
+                    for (member_index, window) in cohort.windows.iter().enumerate() {
+                        let member = cohort
+                            .gene_set_resolution
+                            .resolved_members
+                            .iter()
+                            .find(|member| member.dedup_key == window.member_dedup_key)
+                            .ok_or_else(|| {
+                                EngineError::internal(format!(
+                                    "Promoter cohort member '{}' is missing from its source resolution",
+                                    window.member_dedup_key
+                                ))
+                            })?;
+                        let source_base_id = format!(
+                            "{}_{}_{}_promoter_locus",
+                            study_slug,
+                            Self::normalize_id_token(&window.symbol),
+                            Self::normalize_id_token(&window.transcript_id)
+                        );
+                        let source_seq_id = detached.unique_seq_id(&source_base_id);
+                        let strand = window.strand.chars().next();
+                        let source_seq_id = detached.extract_genome_region_into_state(
+                            &mut detached_result,
+                            &request.genome_id,
+                            &window.chromosome,
+                            window.promoter_start_1based,
+                            window.promoter_end_1based,
+                            Some(source_seq_id),
+                            Some(GenomeAnnotationScope::Core),
+                            None,
+                            None,
+                            request.genome_catalog_path.clone(),
+                            request.cache_dir.clone(),
+                            "ComposeRegulatoryReporterStudy",
+                            Some(GenomeExtractionProvenanceOverrides {
+                                gene_query: Some(window.gene_query.clone()),
+                                occurrence: Some(window.occurrence),
+                                transcript_id: Some(window.transcript_id.clone()),
+                                tss_1based: Some(window.tss_1based),
+                                promoter_upstream_bp: Some(request.locus_upstream_bp),
+                                promoter_downstream_bp: Some(request.locus_downstream_bp),
+                                gene_id: window.gene_id.clone(),
+                                gene_name: Some(window.symbol.clone()),
+                                strand,
+                                anchor_strand: Some('+'),
+                                anchor_verified: Some(true),
+                                ..GenomeExtractionProvenanceOverrides::default()
+                            }),
+                        )?;
+                        let mut candidate_set = detached.suggest_promoter_reporter_fragments(
+                            &source_seq_id,
+                            None,
+                            Some(&window.symbol),
+                            Some(&window.transcript_id),
+                            request.retain_downstream_from_tss_bp,
+                            DEFAULT_PROMOTER_REPORTER_RETAIN_UPSTREAM_BEYOND_VARIANT_BP,
+                            request.max_candidates_per_gene,
+                            &request.fragment_policy,
+                        )?;
+                        candidate_set.op_id = Some(result.op_id.clone());
+                        candidate_set.run_id = Some(run_id.to_string());
+
+                        let mut member_evidence = evidence_by_member
+                            .get(&member.dedup_key)
+                            .cloned()
+                            .unwrap_or_default();
+                        if let Some(evidence) = Self::regulatory_reporter_study_response_evidence(
+                            &request.study_id,
+                            &cohort.gene_set_resolution,
+                            member,
+                        ) {
+                            member_evidence.push(evidence);
+                        }
+                        if candidate_set.recommended_candidate_id.is_empty() {
+                            return Err(EngineError::invalid_input(format!(
+                                "Regulatory-reporter member '{}' produced no selectable promoter fragment; {} candidate geometry/geometries were rejected",
+                                window.symbol,
+                                candidate_set.rejected_candidates.len()
+                            )));
+                        }
+                        let selected_candidate = candidate_set
+                            .candidates
+                            .iter()
+                            .find(|candidate| {
+                                candidate.candidate_id == candidate_set.recommended_candidate_id
+                            })
+                            .ok_or_else(|| {
+                                EngineError::internal(format!(
+                                    "Regulatory-reporter recommended candidate '{}' for '{}' is missing from its candidate set",
+                                    candidate_set.recommended_candidate_id, window.symbol
+                                ))
+                            })?;
+                        let mut evidence_kinds = candidate_set
+                            .anchor
+                            .iter()
+                            .map(|anchor| anchor.evidence_kind.as_str())
+                            .chain(
+                                selected_candidate
+                                    .evidence
+                                    .iter()
+                                    .map(|evidence| evidence.kind.as_str()),
+                            )
+                            .chain(
+                                member_evidence
+                                    .iter()
+                                    .map(|evidence| evidence.kind.as_str()),
+                            )
+                            .map(|kind| kind.trim().to_ascii_lowercase())
+                            .filter(|kind| !kind.is_empty())
+                            .collect::<Vec<_>>();
+                        evidence_kinds.sort();
+                        evidence_kinds.dedup();
+                        let missing_kinds = required_evidence_kinds
+                            .iter()
+                            .filter(|required| !evidence_kinds.contains(required))
+                            .cloned()
+                            .collect::<Vec<_>>();
+                        if !missing_kinds.is_empty() {
+                            return Err(EngineError::invalid_input(format!(
+                                "Regulatory-reporter member '{}' lacks required evidence kind(s): {}",
+                                window.symbol,
+                                missing_kinds.join(", ")
+                            )));
+                        }
+                        let candidate_path = output_dir.join(format!(
+                            "{}.{:03}.{}.promoter_candidates.json",
+                            study_slug,
+                            member_index + 1,
+                            Self::normalize_id_token(&member.dedup_key)
+                        ));
+                        let mut candidate_bytes = serde_json::to_vec_pretty(&candidate_set)
+                            .map_err(|error| EngineError::internal(format!(
+                                "Could not serialize regulatory-reporter candidates for '{}': {error}",
+                                window.symbol
+                            )))?;
+                        candidate_bytes.push(b'\n');
+                        let candidate_sha256 = sha256_prefixed_bytes(&candidate_bytes);
+                        pending_candidate_files.push((candidate_path.clone(), candidate_bytes));
+                        panel_members.push(PromoterReporterPanelMemberRequest {
+                            candidate_set_path: candidate_path.to_string_lossy().to_string(),
+                            candidate_id: Some(candidate_set.recommended_candidate_id.clone()),
+                            fragment_role: PromoterReporterPanelFragmentRole::Core,
+                            extended_boundary: None,
+                            label: Some(window.symbol.clone()),
+                            mutation_policy: None,
+                            evidence: member_evidence,
+                        });
+                        candidate_artifacts.push(RegulatoryReporterStudyCandidateArtifact {
+                            member_dedup_key: member.dedup_key.clone(),
+                            gene_symbol: window.symbol.clone(),
+                            gene_id: window.gene_id.clone(),
+                            transcript_id: window.transcript_id.clone(),
+                            source_seq_id,
+                            candidate_set_path: candidate_path.to_string_lossy().to_string(),
+                            candidate_set_sha256: candidate_sha256,
+                            recommended_candidate_id: candidate_set
+                                .recommended_candidate_id
+                                .clone(),
+                            evidence_kinds,
+                        });
+                    }
+
+                    let panel_request_path =
+                        output_dir.join(format!("{study_slug}.panel_request.json"));
+                    for candidate_path in pending_candidate_files
+                        .iter()
+                        .map(|(candidate_path, _)| candidate_path)
+                    {
+                        if candidate_path.exists() {
+                            return Err(EngineError::invalid_input(format!(
+                                "Regulatory-reporter candidate artifact '{}' already exists; choose another study_id or output_dir",
+                                candidate_path.display()
+                            )));
+                        }
+                    }
+                    if panel_request_path.exists() {
+                        return Err(EngineError::invalid_input(format!(
+                            "Regulatory-reporter panel request '{}' already exists; choose another study_id or output_dir",
+                            panel_request_path.display()
+                        )));
+                    }
+                    fs::create_dir_all(&output_dir).map_err(|error| EngineError {
+                        code: ErrorCode::Io,
+                        message: format!(
+                            "Could not create regulatory-reporter output directory '{}': {error}",
+                            output_dir.display()
+                        ),
+                        cause_chain: vec![],
+                    })?;
+                    for (candidate_path, candidate_bytes) in &pending_candidate_files {
+                        fs::write(candidate_path, candidate_bytes).map_err(|error| {
+                            EngineError {
+                                code: ErrorCode::Io,
+                                message: format!(
+                                    "Could not write regulatory-reporter candidates '{}': {error}",
+                                    candidate_path.display()
+                                ),
+                                cause_chain: vec![],
+                            }
+                        })?;
+                    }
+
+                    let mut scientific_caveats = request.scientific_caveats.clone();
+                    scientific_caveats.push(
+                        "Gene-set membership, transcript annotations, motifs, and occupancy evidence support candidate selection but do not by themselves prove regulatory causality or reporter activity."
+                            .to_string(),
+                    );
+                    scientific_caveats.sort();
+                    scientific_caveats.dedup();
+                    let panel_request = PromoterReporterPanelRequest {
+                        schema: PROMOTER_REPORTER_PANEL_REQUEST_SCHEMA.to_string(),
+                        panel_id: request.study_id.clone(),
+                        vector_seq_id: request.vector_seq_id.clone(),
+                        vector_catalog_id: request.vector_catalog_id.clone(),
+                        helper_catalog_path: request.helper_catalog_path.clone(),
+                        mutation_policy: request.mutation_policy,
+                        scientific_caveats,
+                        members: panel_members,
+                        output_dir: output_dir.to_string_lossy().to_string(),
+                    };
+                    let mut panel_request_bytes = serde_json::to_vec_pretty(&panel_request)
+                        .map_err(|error| {
+                            EngineError::internal(format!(
+                                "Could not serialize regulatory-reporter panel request: {error}"
+                            ))
+                        })?;
+                    panel_request_bytes.push(b'\n');
+                    let panel_request_sha256 = sha256_prefixed_bytes(&panel_request_bytes);
+                    fs::write(&panel_request_path, &panel_request_bytes).map_err(|error| {
+                        EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not write regulatory-reporter panel request '{}': {error}",
+                                panel_request_path.display()
+                            ),
+                            cause_chain: vec![],
+                        }
+                    })?;
+
+                    let readiness = detached.inspect_promoter_reporter_panel_readiness(
+                        PromoterReporterPanelReadinessRequest {
+                            panel_request: Some(Box::new(panel_request.clone())),
+                            ..PromoterReporterPanelReadinessRequest::default()
+                        },
+                    )?;
+                    let promoter_cohort_report_id =
+                        Self::gene_set_promoter_cohort_artifact_id(&cohort);
+                    let collection_operation =
+                        Self::build_gene_set_promoter_collection_operation_report(
+                            &cohort,
+                            &promoter_cohort_report_id,
+                            &result.op_id,
+                            run_id,
+                        )?;
+                    cohort.collection_operation = Some(Box::new(collection_operation.clone()));
+                    detached
+                        .upsert_gene_set_resolution_artifact(cohort.gene_set_resolution.clone())?;
+                    detached.upsert_gene_set_promoter_cohort_artifact(cohort.clone())?;
+
+                    let report = RegulatoryReporterStudyReport {
+                        schema: REGULATORY_REPORTER_STUDY_SCHEMA.to_string(),
+                        generated_at_unix_ms: Self::now_unix_ms(),
+                        op_id: Some(result.op_id.clone()),
+                        run_id: Some(run_id.to_string()),
+                        request,
+                        promoter_cohort: cohort.clone(),
+                        candidate_artifacts,
+                        panel_request_path: panel_request_path.to_string_lossy().to_string(),
+                        panel_request_sha256,
+                        panel_request,
+                        readiness: readiness.clone(),
+                        warnings: cohort.warnings.clone(),
+                        nonclaims: vec![
+                            "The composer selects and packages candidate regulatory fragments; it does not materialize reporter constructs."
+                                .to_string(),
+                            "A ready-to-plan result validates current inputs, not promoter sufficiency, occupancy, causality, or reporter performance."
+                                .to_string(),
+                        ],
+                    };
+                    if let Some(path) = path.as_deref() {
+                        self.write_pretty_json_file(
+                            &report,
+                            path,
+                            "regulatory-reporter study report",
+                        )?;
+                        result.messages.push(format!(
+                            "Wrote regulatory-reporter study '{}' to '{}'",
+                            report.request.study_id, path
+                        ));
+                    }
+
+                    self.state = detached.state;
+                    result.created_seq_ids = detached_result.created_seq_ids;
+                    result.changed_seq_ids = detached_result.changed_seq_ids;
+                    result.warnings.extend(detached_result.warnings);
+                    result.warnings.extend(report.warnings.iter().cloned());
+                    result.messages.extend(detached_result.messages);
+                    result.messages.push(format!(
+                        "Composed regulatory-reporter study '{}' for {} gene(s); panel readiness is {:?}",
+                        report.request.study_id,
+                        report.candidate_artifacts.len(),
+                        report.readiness.overall
+                    ));
+                    result.collection_operation = Some(collection_operation);
+                    result.gene_set_promoter_cohort = Some(cohort);
+                    result.promoter_reporter_panel_readiness = Some(Box::new(readiness));
+                    result.regulatory_reporter_study = Some(Box::new(report));
                 }
                 Operation::InspectPromoterReporterPanelReadiness { request, path } => {
                     let readiness = self.inspect_promoter_reporter_panel_readiness(*request)?;

@@ -899,6 +899,9 @@ pub const PROMOTER_REPORTER_PANEL_CLONING_STRATEGY_SCHEMA: &str =
 pub const P53_FAMILY_MOTIF_DISRUPTION_SCHEMA: &str = "gentle.p53_family_motif_disruption.v1";
 pub const PROMOTER_REPORTER_PANEL_REQUEST_SCHEMA: &str =
     "gentle.promoter_reporter_panel_request.v1";
+pub const REGULATORY_REPORTER_STUDY_REQUEST_SCHEMA: &str =
+    "gentle.regulatory_reporter_study_request.v1";
+pub const REGULATORY_REPORTER_STUDY_SCHEMA: &str = "gentle.regulatory_reporter_study.v1";
 pub const PROMOTER_REPORTER_PANEL_READINESS_REQUEST_SCHEMA: &str =
     "gentle.promoter_reporter_panel_readiness_request.v1";
 pub const PROMOTER_REPORTER_PANEL_READINESS_REPORT_SCHEMA: &str =
@@ -5731,6 +5734,11 @@ pub enum Operation {
     },
     PlanPromoterReporterPanel {
         request: Box<PromoterReporterPanelRequest>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    ComposeRegulatoryReporterStudy {
+        request: Box<RegulatoryReporterStudyRequest>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },

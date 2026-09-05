@@ -12153,6 +12153,7 @@ Error: `{err}`"
                 reporter_construct_handoff: None,
                 reporter_vector_validation: None,
                 promoter_reporter_panel_proposal: None,
+                regulatory_reporter_study: None,
                 promoter_reporter_panel_readiness: None,
                 promoter_reporter_panel_receipt: None,
                 uniprot_projection_audit: None,

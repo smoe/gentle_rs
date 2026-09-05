@@ -4309,6 +4309,163 @@ fn prepare_gene_set_test_genome(root: &Path, engine: &mut GentleEngine) -> Strin
     catalog_path
 }
 
+fn regulatory_reporter_study_test_request(
+    root: &Path,
+    genome_catalog_path: &str,
+    members: &[&str],
+) -> RegulatoryReporterStudyRequest {
+    let transcript_ids_by_member = members
+        .iter()
+        .map(|member| {
+            let transcript_id = match *member {
+                "POS1" => "TX_POS",
+                "NEG1" => "TX_NEG",
+                other => panic!("missing test transcript for {other}"),
+            };
+            ((*member).to_string(), transcript_id.to_string())
+        })
+        .collect();
+    let evidence_by_member = members
+        .iter()
+        .map(|member| {
+            (
+                (*member).to_string(),
+                vec![PromoterEvidenceItem {
+                    evidence_id: format!("{}_occupancy", member.to_ascii_lowercase()),
+                    kind: "occupancy".to_string(),
+                    source: "synthetic CUT&RUN test evidence".to_string(),
+                    summary: "Synthetic occupancy row for composer contract coverage".to_string(),
+                    interpretation_tags: vec![
+                        "occupancy_support".to_string(),
+                        "regulatory_function_not_inferred".to_string(),
+                    ],
+                    ..PromoterEvidenceItem::default()
+                }],
+            )
+        })
+        .collect();
+    RegulatoryReporterStudyRequest {
+        study_id: "toy_regulatory_panel".to_string(),
+        genome_id: "ToyGenome".to_string(),
+        source: Some(GeneSetRequest::ExplicitMembers {
+            members: members.iter().map(|member| (*member).to_string()).collect(),
+        }),
+        relationship: GeneSetCohortRelationship::Manual,
+        tss_policy: RegulatoryReporterTssPolicy {
+            selection: RegulatoryReporterTssSelection::ExplicitPerMember,
+            transcript_ids_by_member,
+        },
+        evidence_policy: RegulatoryReporterEvidencePolicy {
+            required_kinds_per_member: vec!["occupancy".to_string()],
+        },
+        evidence_by_member,
+        vector_seq_id: "missing_test_vector".to_string(),
+        vector_catalog_id: "missing_test_vector_catalog_row".to_string(),
+        genome_catalog_path: Some(genome_catalog_path.to_string()),
+        output_dir: root
+            .join("regulatory_reporter_study")
+            .to_string_lossy()
+            .to_string(),
+        ..RegulatoryReporterStudyRequest::default()
+    }
+}
+
+#[test]
+fn compose_regulatory_reporter_study_emits_tss_bound_candidates_and_readiness() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let genome_catalog_path = prepare_gene_set_test_genome(root, &mut engine);
+    let request =
+        regulatory_reporter_study_test_request(root, &genome_catalog_path, &["POS1", "NEG1"]);
+
+    let result = engine
+        .apply(Operation::ComposeRegulatoryReporterStudy {
+            request: Box::new(request),
+            path: None,
+        })
+        .expect("compose regulatory-reporter study");
+    let report = result
+        .regulatory_reporter_study
+        .as_deref()
+        .expect("regulatory-reporter study report");
+
+    assert_eq!(report.schema, REGULATORY_REPORTER_STUDY_SCHEMA);
+    assert_eq!(report.candidate_artifacts.len(), 2);
+    assert_eq!(report.panel_request.members.len(), 2);
+    assert_eq!(result.created_seq_ids.len(), 2);
+    assert_eq!(
+        report.readiness.overall,
+        PromoterReporterPanelReadinessOverall::Blocked,
+        "the composer must expose the existing context-bound vector gate"
+    );
+    assert!(report.readiness.checks.iter().any(|check| {
+        check.kind == PromoterReporterPanelReadinessCheckKind::ReporterVectorValidation
+            && check.state == PromoterReporterPanelReadinessState::Blocked
+    }));
+    assert!(Path::new(&report.panel_request_path).is_file());
+
+    for artifact in &report.candidate_artifacts {
+        assert!(
+            engine
+                .state()
+                .sequences
+                .contains_key(&artifact.source_seq_id)
+        );
+        assert!(artifact.evidence_kinds.contains(&"occupancy".to_string()));
+        assert!(
+            artifact
+                .evidence_kinds
+                .contains(&"transcript_tss_annotation".to_string())
+        );
+        assert!(Path::new(&artifact.candidate_set_path).is_file());
+        let bytes = fs::read(&artifact.candidate_set_path).expect("read candidate artifact");
+        assert_eq!(sha256_prefixed_bytes(&bytes), artifact.candidate_set_sha256);
+        let candidates: PromoterReporterCandidateSet =
+            serde_json::from_slice(&bytes).expect("parse candidate artifact");
+        assert_eq!(
+            candidates.anchor.as_ref().map(|anchor| anchor.kind),
+            Some(PromoterReporterAnchorKind::TranscriptionStartSite)
+        );
+        assert!(!candidates.recommended_candidate_id.is_empty());
+    }
+    assert_eq!(
+        report
+            .candidate_artifacts
+            .iter()
+            .map(|artifact| artifact.transcript_id.as_str())
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["TX_NEG", "TX_POS"])
+    );
+}
+
+#[test]
+fn compose_regulatory_reporter_study_requires_declared_evidence_before_writes() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let genome_catalog_path = prepare_gene_set_test_genome(root, &mut engine);
+    let mut request = regulatory_reporter_study_test_request(root, &genome_catalog_path, &["POS1"]);
+    request.evidence_by_member.clear();
+    let output_dir = PathBuf::from(&request.output_dir);
+    let sequence_count_before = engine.state().sequences.len();
+
+    let error = engine
+        .apply(Operation::ComposeRegulatoryReporterStudy {
+            request: Box::new(request),
+            path: None,
+        })
+        .expect_err("missing required evidence must fail closed");
+
+    assert!(
+        error
+            .message
+            .contains("lacks required evidence kind(s): occupancy")
+    );
+    assert_eq!(engine.state().sequences.len(), sequence_count_before);
+    assert!(!output_dir.exists());
+}
+
 fn write_regulatory_partner_test_reference_catalog(root: &Path) -> String {
     let fasta_gz = root.join("regulatory_partner_toy.fa.gz");
     let ann_gz = root.join("regulatory_partner_toy.gtf.gz");

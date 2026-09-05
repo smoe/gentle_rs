@@ -3730,9 +3730,10 @@ Sequencing-trace evidence notes:
   - an omitted `fragment_policy` preserves the original variant-anchored
     request, geometry, and serialized v1 shape used by the VKORC1 workflow
   - `fragment_policy.anchor` accepts a local annotated `variant`, a local
-    annotated `motif_hit` (with deterministic occurrence selection), or an
-    `explicit_interval`; motif hits are reported as sequence-motif evidence and
-    never imply occupancy or functional regulation
+    annotated `motif_hit` (with deterministic occurrence selection), a
+    transcript-bound `transcription_start_site`, or an `explicit_interval`;
+    motif hits are reported as sequence-motif evidence and never imply
+    occupancy or functional regulation
   - non-legacy geometry unions a strand-aware TSS window with the requested
     flank on both sides of the resolved anchor; the policy defaults are 500 bp
     upstream of the representative TSS, 150 bp per anchor side, and a 5,000 bp
@@ -3749,6 +3750,28 @@ Sequencing-trace evidence notes:
     motif scores and track provenance remain evidence attributes rather than
     being promoted to occupancy or functional claims
 - Promoter-reporter panel support reports remain engine-owned and portable:
+  - `gentle.regulatory_reporter_study_request.v1` is the front-half composer
+    contract. It accepts exactly one gene-set `source` or prior
+    `gentle.gene_set_resolution.v1`, a prepared genome id, explicit transcript
+    TSS and evidence policies, optional per-member evidence, exact vector
+    identity, mutation policy, and an output directory
+  - `ComposeRegulatoryReporterStudy { request, path? }` resolves the set,
+    selects the annotation-defined outermost 5' transcript or requires an
+    explicit transcript id for every member, extracts core-annotated promoter
+    loci, emits one content-hashed candidate set per gene and one panel request,
+    and then delegates terminal validation to
+    `InspectPromoterReporterPanelReadiness`
+  - a prior `co_regulated` producer contributes a separate
+    `perturbation_response` evidence row with its dataset, scoring, threshold,
+    sign, and provenance metadata. It does not become occupancy or causal
+    evidence. `required_kinds_per_member` compares exact normalized evidence
+    kinds and fails before artifacts or project mutations when a required kind
+    is missing
+  - `gentle.regulatory_reporter_study.v1` binds the request, resolved promoter
+    cohort, extracted sequence ids, candidate paths and hashes, panel request
+    path and hash, and the fresh context-bound readiness report. Composition
+    does not plan or materialize constructs, and a successful report may remain
+    `blocked`
   - `gentle.promoter_reporter_panel_cloning_strategy.v1` checks one ordered
     vector-derived directional restriction pair against every insert and
     records an explicit Gibson fallback when no pair is clear panel-wide

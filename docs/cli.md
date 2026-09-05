@@ -7505,6 +7505,35 @@ catalog family):
 
 ```bash
 cargo run --quiet --bin gentle_cli -- --state STATE.json \
+  promoters compose-study @study_request.json \
+  --path study_report.json
+```
+
+`promoters compose-study` is the multi-gene front-half route. Its
+`gentle.regulatory_reporter_study_request.v1` input accepts exactly one of a
+gene-set `source` or an existing `gentle.gene_set_resolution.v1`, a prepared
+genome/build, a TSS policy, an optional exact per-member evidence-kind gate,
+independent evidence rows, exact vector identity, native-versus-engineered
+mutation policy, and an output directory. The default TSS policy selects the
+outermost annotated 5' transcript; `explicit_per_member` requires one transcript
+id for every resolved member. The default fragment anchor is the selected TSS.
+
+The operation extracts one annotated promoter locus per resolved gene into the
+project and writes content-hashed `gentle.promoter_reporter_candidates.v1`
+files plus one `gentle.promoter_reporter_panel_request.v1`. The returned
+`gentle.regulatory_reporter_study.v1` embeds the gene-set/promoter cohort and a
+fresh context-bound panel-readiness report. It does not create constructs or
+infer occupancy, causality, promoter sufficiency, or reporter activity. A
+successful composition can still report `blocked`; correct the named readiness
+checks before proceeding. Supplying a reviewed co-regulated resolution adds
+its retrieval provenance as `perturbation_response`, separate from motif or
+occupancy evidence.
+
+For manually assembled candidate files, or after reviewing the composer's
+panel request, use the existing readiness and planning steps:
+
+```bash
+cargo run --quiet --bin gentle_cli -- --state STATE.json \
   promoters panel-readiness request @panel_request.json \
   --path panel_readiness.json
 

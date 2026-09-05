@@ -1,5 +1,16 @@
 # GENtle Changelog
 
+- Added the engine-owned regulatory-reporter study composer. One typed request
+  now accepts an explicit gene list or prior resolved cohort, prepared genome,
+  outermost-or-explicit transcript TSS policy, exact per-member evidence gates,
+  vector identity, and mutation policy; the shared operation extracts annotated
+  promoter loci, writes content-hashed candidate sets and a panel request, and
+  returns the existing context-bound readiness report without planning or
+  materializing constructs. Co-regulated cohort provenance remains a distinct
+  perturbation-response evidence row rather than an occupancy or causality
+  claim. The shell, MCP generic-operation surface, Agent Assistant template,
+  protocol, CLI reference, and reporter-study playbook expose the same route.
+
 - Hardened optional DuckDB-backed genomic motif evidence with explicit
   per-contig constant scan bounds for Parquet predicate pushdown, regression
   coverage for half-open geometry, truncation, package containment, geometry
