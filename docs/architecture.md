@@ -732,6 +732,17 @@ state only after every artifact is written.
 Adapters may present or transport that contract but must not reconstruct the
 biology or reduce approval to a boolean.
 
+Multi-fragment regulatory-panel planning is a separate, read-only consumer of
+exact persisted genomic regions. It binds both ROI identity and current
+content, rejects stale local projections and mixed assemblies/releases, and
+selects a bounded deterministic cover of explicitly requested pairwise
+contrasts. Each sequence/context evidence family remains an independent typed
+lane; unevaluated evidence cannot become a pass. Ordered fragment instances,
+orientations, and spacers are not forced through the legacy single-fragment
+promoter-panel materializer. Until a compatible mutation contract is reviewed,
+such plans remain approval-bound review artifacts with materialization marked
+unsupported.
+
 Portable locus-evidence composition also fails closed. Every requested
 occupancy/chromatin source remains represented with a typed availability state
 instead of disappearing when unavailable. Predicted regulatory-score rows may

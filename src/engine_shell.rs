@@ -27068,6 +27068,29 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "registry": registry_metadata_for_introspection("PlanPromoterReporterPanel")
         }),
         json!({
+            "id": "PlanRegulatoryFragmentPanel",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "gentle.regulatory_fragment_panel_request.v1 with exact persisted ROI, vector, geometry, policy, and question bindings"},
+                {"name": "VECTOR_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded exact vector id carried inside request.vector_seq_id"},
+                {"name": "SOURCE_SEQ_IDS", "required": true, "subject_kind": "sequence", "detail": "loaded source sequences pinned by every request.fragments[].region.local_projection"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}},
+                {"fact": "sequence.exists", "subject": {"arg": "SOURCE_SEQ_IDS"}}
+            ],
+            "effects": [],
+            "precondition_expr": {"all": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}},
+                {"fact": "sequence.exists", "subject": {"arg": "SOURCE_SEQ_IDS"}}
+            ]},
+            "description": "Build a deterministic, read-only regulatory-fragment contrast plan from exact persisted genomic regions; evidence remains explicitly not evaluated in Slice 1.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("PlanRegulatoryFragmentPanel")
+        }),
+        json!({
             "id": "promoter_reporter_panel_plan",
             "kind": "operation",
             "mutating": "false",

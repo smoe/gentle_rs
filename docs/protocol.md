@@ -3836,6 +3836,36 @@ Sequencing-trace evidence notes:
     content, mismatched approval, duplicate paths, and overwrites before commit
   - both are sequence-planning evidence only; they do not establish TF
     occupancy, functional motif ablation, expression change, or reporter output
+- `PlanRegulatoryFragmentPanel { request }` is the read-only Slice 1 planner
+  for exact persisted regulatory ROIs:
+  - request schema `gentle.regulatory_fragment_panel_request.v1` binds the
+    containing region-set content digest, each ROI identity/content digest and
+    current local projection, one annotation/reference release, exact
+    catalog-owned vector/MCS context, declared roles/questions, opt-in ordered
+    geometries, evidence report/row digests, bounds, and complete effective
+    policy
+  - roles use the new closed `candidate`, `partner`, `minimal_promoter`, and
+    `reference_control` vocabulary; the legacy `core`/`extended`
+    `PromoterReporterPanelFragmentRole` is unchanged
+  - partner, order, orientation, spacing, motif, and boundary questions require
+    exact corresponding bindings or variants; the engine never infers a
+    partner, liftover, neighboring region, or geometry
+  - plan schema `gentle.regulatory_fragment_panel_plan.v1` records exact insert
+    sequences/digests, ordered source instances, vector flanks, selected
+    pairwise contrasts, typed inclusion/omission reasons, bounded uncovered
+    questions, cloning feasibility, blockers, warnings, and non-claims under
+    one proposal digest
+  - selection maximizes requested-question coverage, minimizes member count,
+    and breaks ties by normalized declared order, construct-role rank, then id;
+    it never emits a Cartesian product or exceeds `max_panel_members`
+  - all eight evidence dimensions are separate and explicitly
+    `not_evaluated` in Slice 1; this state is not a pass
+  - approval validation recomputes the exact plan against current state, but
+    `materialization_supported=false`: ordered instances/orientations/spacers
+    cannot be represented by the legacy single-fragment materializer without a
+    separately reviewed contract
+  - full invariants and the Slice 2-4 boundary are recorded in
+    `regulatory_fragment_panel_slice1_design.md`
 - `ListReporterCatalog { catalog_path?, filter?, limit?, path? }`
   - emits `gentle.reporter_catalog_report.v1`
   - validates the local reporter catalog, quarantines rows with missing

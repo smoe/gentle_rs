@@ -383,11 +383,10 @@ wet-lab conclusions or unconfirmed mutations.
   provenance, biological-context compatibility, multiple-testing correction,
   unresolved-member accounting, and no causal-regulation claim inferred from
   enrichment alone.
-- Engine-owned regulatory-reporter study composer that consumes a
-  perturbation-response gene cohort plus explicit TSS/evidence policies and
-  emits per-gene candidate sets and a ready panel request without duplicating
-  the existing terminal panel planner; its output should feed the landed
-  context-bound inspector rather than persistent Boolean readiness state.
+- Engine-owned regulatory-reporter study composer: turn a perturbation-response
+  cohort plus TSS/evidence policies into candidate ROI inputs for the downstream exact-ROI and terminal planners, feeding context-bound inspectors rather than persistent Boolean readiness.
+- After regulatory-fragment panel Slice 1 review, populate its evidence lanes and shared presentation,
+  then add thin GUI/adapters and one offline tutorial; defer materialization until ordered multi-fragment instances have an exact compatible mutation contract.
 - Extend the promoter regulatory-partner screen beyond its exact motif-tuple
   ledger with explicit matched/background cohorts, calibrated enrichment and
   multiple-testing correction, local ontology/hallmark interpretation, and

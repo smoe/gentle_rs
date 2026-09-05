@@ -5382,6 +5382,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub promoter_reporter_panel_proposal: Option<Box<PromoterReporterPanelProposal>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub regulatory_fragment_panel_plan: Option<Box<RegulatoryFragmentPanelPlan>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub promoter_reporter_panel_readiness: Option<Box<PromoterReporterPanelReadinessReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub promoter_reporter_panel_receipt: Option<Box<PromoterReporterPanelReceipt>>,
@@ -10216,6 +10218,492 @@ pub struct PromoterReporterPanelProposal {
     pub artifacts: Vec<PromoterReporterPanelArtifactProposal>,
     pub approval_required: bool,
     pub warnings: Vec<String>,
+    pub nonclaims: Vec<String>,
+}
+
+fn regulatory_fragment_panel_request_schema_default() -> String {
+    crate::engine::REGULATORY_FRAGMENT_PANEL_REQUEST_SCHEMA.to_string()
+}
+
+fn regulatory_fragment_panel_default_max_members() -> usize {
+    8
+}
+
+fn regulatory_fragment_panel_default_max_construct_length_bp() -> usize {
+    5_000
+}
+
+fn regulatory_fragment_panel_default_similarity_identity_fraction() -> f64 {
+    0.95
+}
+
+fn regulatory_fragment_panel_default_similarity_coverage_fraction() -> f64 {
+    0.90
+}
+
+fn regulatory_fragment_panel_default_vector_context_flank_bp() -> usize {
+    24
+}
+
+fn regulatory_fragment_panel_default_max_candidate_constructs() -> usize {
+    20
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+/// Experimental role of one persisted genomic ROI in a regulatory-fragment panel.
+///
+/// This is deliberately distinct from [`PromoterReporterPanelFragmentRole`],
+/// whose legacy `core`/`extended` vocabulary remains unchanged.
+pub enum RegulatoryFragmentRole {
+    #[default]
+    Candidate,
+    Partner,
+    MinimalPromoter,
+    ReferenceControl,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+/// Experimental comparison requested from the bounded panel.
+pub enum RegulatoryFragmentQuestion {
+    #[default]
+    StandaloneCandidate,
+    PartnerDependence,
+    OrderDependence,
+    OrientationDependence,
+    SpacingDependence,
+    MotifDisruption,
+    BoundaryUncertainty,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+/// Orientation of one fragment instance in the synthetic insert.
+pub enum RegulatoryFragmentOrientation {
+    #[default]
+    Forward,
+    ReverseComplement,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+/// Explicitly requested geometry; the planner never expands these into a Cartesian product.
+pub enum RegulatoryFragmentGeometryKind {
+    #[default]
+    ReferenceCombination,
+    ReversedOrder,
+    ReversedOrientation,
+    ControlledSpacing,
+    BoundaryShift,
+    Tiling,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Exact persisted ROI bound to one declared panel role.
+pub struct RegulatoryFragmentBinding {
+    pub fragment_id: String,
+    pub declared_order: usize,
+    pub role: RegulatoryFragmentRole,
+    pub region_set_id: String,
+    pub region_set_content_sha256: String,
+    pub reference_release: String,
+    pub region: gentle_protocol::GenomicRegionOfInterest,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// One ordered fragment in a requested construct geometry.
+///
+/// `spacer_before` is the exact 5'-to-3' DNA inserted immediately before this
+/// instance. The first instance must use an empty spacer.
+pub struct RegulatoryFragmentInstanceRequest {
+    pub fragment_id: String,
+    pub orientation: RegulatoryFragmentOrientation,
+    pub spacer_before: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Exact ordered geometry supplied by the caller.
+pub struct RegulatoryFragmentGeometryRequest {
+    pub variant_id: String,
+    pub declared_order: usize,
+    pub kind: RegulatoryFragmentGeometryKind,
+    pub instances: Vec<RegulatoryFragmentInstanceRequest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extended_boundary: Option<PromoterReporterPanelExtendedBoundaryPolicy>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Exact motif interval to edit under the existing promoter-panel mutation policy.
+pub struct RegulatoryFragmentMotifDisruptionRequest {
+    pub control_id: String,
+    pub fragment_id: String,
+    pub motif_start_in_fragment_0based: usize,
+    pub motif_end_in_fragment_0based_exclusive: usize,
+    pub motif_forward_strand: bool,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+/// Independent sequence/context evidence lane retained by the plan.
+pub enum RegulatoryFragmentEvidenceDimensionKind {
+    #[default]
+    ReferenceGenomicUniqueness,
+    PanelSequenceSimilarity,
+    RepeatsAndLowComplexity,
+    PairSpecificJunctionUniqueness,
+    RestrictionAndCloningRisk,
+    EnsemblRegulatoryOverlap,
+    TfbsModelScoreContext,
+    CutrunAndChromatinContext,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Exact external report row that a later evidence-population slice may evaluate.
+pub struct RegulatoryFragmentEvidenceBinding {
+    pub dimension: RegulatoryFragmentEvidenceDimensionKind,
+    pub report_id: String,
+    pub report_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub row_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Fully serialized deterministic policy used by the v1 planner.
+pub struct RegulatoryFragmentPanelPolicy {
+    pub include_promoterless_control: bool,
+    pub include_minimal_promoter_control: bool,
+    pub include_reference_control_when_bound: bool,
+    #[serde(default = "regulatory_fragment_panel_default_similarity_identity_fraction")]
+    pub high_similarity_identity_fraction: f64,
+    #[serde(default = "regulatory_fragment_panel_default_similarity_coverage_fraction")]
+    pub high_similarity_coverage_fraction: f64,
+    #[serde(default = "regulatory_fragment_panel_default_vector_context_flank_bp")]
+    pub vector_context_flank_bp: usize,
+    #[serde(default = "regulatory_fragment_panel_default_max_candidate_constructs")]
+    pub max_candidate_constructs: usize,
+}
+
+impl Default for RegulatoryFragmentPanelPolicy {
+    fn default() -> Self {
+        Self {
+            include_promoterless_control: true,
+            include_minimal_promoter_control: true,
+            include_reference_control_when_bound: true,
+            high_similarity_identity_fraction:
+                regulatory_fragment_panel_default_similarity_identity_fraction(),
+            high_similarity_coverage_fraction:
+                regulatory_fragment_panel_default_similarity_coverage_fraction(),
+            vector_context_flank_bp: regulatory_fragment_panel_default_vector_context_flank_bp(),
+            max_candidate_constructs: regulatory_fragment_panel_default_max_candidate_constructs(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Read-only request for the smallest bounded regulatory-fragment contrast panel.
+pub struct RegulatoryFragmentPanelRequest {
+    #[serde(default = "regulatory_fragment_panel_request_schema_default")]
+    pub schema: String,
+    pub plan_id: String,
+    pub vector_seq_id: String,
+    pub vector_catalog_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub helper_catalog_path: Option<String>,
+    pub insertion_context_feature_id: String,
+    pub fragments: Vec<RegulatoryFragmentBinding>,
+    pub questions: Vec<RegulatoryFragmentQuestion>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_combination: Option<RegulatoryFragmentGeometryRequest>,
+    #[serde(default)]
+    pub requested_variants: Vec<RegulatoryFragmentGeometryRequest>,
+    #[serde(default)]
+    pub mutation_policy: PromoterReporterPanelMutationPolicy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub motif_disruption: Option<RegulatoryFragmentMotifDisruptionRequest>,
+    #[serde(default)]
+    pub evidence_bindings: Vec<RegulatoryFragmentEvidenceBinding>,
+    #[serde(default = "regulatory_fragment_panel_default_max_members")]
+    pub max_panel_members: usize,
+    #[serde(default = "regulatory_fragment_panel_default_max_construct_length_bp")]
+    pub max_construct_length_bp: usize,
+    #[serde(default)]
+    pub policy: RegulatoryFragmentPanelPolicy,
+    #[serde(default)]
+    pub scientific_caveats: Vec<String>,
+}
+
+impl Default for RegulatoryFragmentPanelRequest {
+    fn default() -> Self {
+        Self {
+            schema: regulatory_fragment_panel_request_schema_default(),
+            plan_id: String::new(),
+            vector_seq_id: String::new(),
+            vector_catalog_id: String::new(),
+            helper_catalog_path: None,
+            insertion_context_feature_id: "multiple_cloning_region".to_string(),
+            fragments: vec![],
+            questions: vec![],
+            reference_combination: None,
+            requested_variants: vec![],
+            mutation_policy: PromoterReporterPanelMutationPolicy::Unspecified,
+            motif_disruption: None,
+            evidence_bindings: vec![],
+            max_panel_members: regulatory_fragment_panel_default_max_members(),
+            max_construct_length_bp: regulatory_fragment_panel_default_max_construct_length_bp(),
+            policy: RegulatoryFragmentPanelPolicy::default(),
+            scientific_caveats: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+/// Stable construct category used by selection and display.
+pub enum RegulatoryFragmentConstructKind {
+    #[default]
+    PromoterlessControl,
+    MinimalPromoterControl,
+    CandidateAlone,
+    PartnerAlone,
+    ReferenceCombination,
+    ReferenceControl,
+    RequestedGeometryVariant,
+    MotifDisruptionControl,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Conservative planning conclusion; none of these labels is a biological verdict.
+pub enum RegulatoryFragmentPlanningLabel {
+    #[default]
+    StandaloneTestableCandidate,
+    PartnerDependenceTestableHypothesis,
+    ContextOrGeometryConfounded,
+    UnresolvedExperimentalComparisonRequired,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RegulatoryFragmentInclusionReasonKind {
+    #[default]
+    RequiredControl,
+    ExperimentalComparisonEndpoint,
+    ExplicitReferenceControl,
+    DeterministicCoverageChoice,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Machine-readable reason one construct survived minimal-panel selection.
+pub struct RegulatoryFragmentInclusionReason {
+    pub kind: RegulatoryFragmentInclusionReasonKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub question: Option<RegulatoryFragmentQuestion>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contrast_id: Option<String>,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RegulatoryFragmentOmissionReasonKind {
+    #[default]
+    NotRequested,
+    RedundantForQuestionCoverage,
+    PanelMemberBound,
+    ConstructLengthBound,
+    DuplicateGeometry,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Candidate construct excluded by the deterministic selection rule.
+pub struct RegulatoryFragmentOmittedVariant {
+    pub member_id: String,
+    pub construct_kind: RegulatoryFragmentConstructKind,
+    pub reason: RegulatoryFragmentOmissionReasonKind,
+    #[serde(default)]
+    pub affected_questions: Vec<RegulatoryFragmentQuestion>,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One named blocker or warning with exact subjects.
+pub struct RegulatoryFragmentFinding {
+    pub code: String,
+    #[serde(default)]
+    pub subject_ids: Vec<String>,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Exact source and placement of one fragment instance in a planned insert.
+pub struct RegulatoryFragmentResolvedInstance {
+    pub fragment_id: String,
+    pub role: RegulatoryFragmentRole,
+    pub region_set_id: String,
+    pub region_id: String,
+    pub region_identity_sha256: String,
+    pub region_content_sha256: String,
+    pub assembly: String,
+    pub reference_release: String,
+    pub contig: String,
+    pub genomic_start_0based: u64,
+    pub genomic_end_0based_exclusive: u64,
+    pub genomic_strand: gentle_protocol::GenomicRegionStrand,
+    pub source_seq_id: String,
+    pub source_sequence_sha256: String,
+    pub source_start_0based: u64,
+    pub source_end_0based_exclusive: u64,
+    pub source_strand: gentle_protocol::GenomicRegionStrand,
+    pub orientation: RegulatoryFragmentOrientation,
+    pub spacer_before: String,
+    pub assembled_start_0based: usize,
+    pub assembled_end_0based_exclusive: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Exact reporter-vector context surrounding the catalog-validated insertion feature.
+pub struct RegulatoryFragmentVectorContext {
+    pub vector_seq_id: String,
+    pub vector_catalog_id: String,
+    pub vector_sequence_sha256: String,
+    pub insertion_context_feature_id: String,
+    pub insertion_start_0based: usize,
+    pub insertion_end_0based_exclusive: usize,
+    pub left_flank_5prime_to_3prime: String,
+    pub right_flank_5prime_to_3prime: String,
+    pub context_sha256: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RegulatoryFragmentCloningFeasibilityState {
+    DirectionalRestrictionCandidate,
+    GibsonFallbackCandidate,
+    NotApplicableEmptyInsert,
+    #[default]
+    NotEvaluated,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RegulatoryFragmentFinalProductAuditState {
+    #[default]
+    NotEvaluated,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// One selected exact insert and the comparisons it enables.
+pub struct RegulatoryFragmentPanelMember {
+    pub member_id: String,
+    pub construct_kind: RegulatoryFragmentConstructKind,
+    pub planning_label: RegulatoryFragmentPlanningLabel,
+    pub instances: Vec<RegulatoryFragmentResolvedInstance>,
+    pub insert_sequence_5prime_to_3prime: String,
+    pub insert_sequence_sha256: String,
+    pub insert_length_bp: usize,
+    pub vector_context: RegulatoryFragmentVectorContext,
+    #[serde(default)]
+    pub contrast_ids: Vec<String>,
+    #[serde(default)]
+    pub inclusion_reasons: Vec<RegulatoryFragmentInclusionReason>,
+    pub cloning_feasibility: RegulatoryFragmentCloningFeasibilityState,
+    pub final_product_audit_state: RegulatoryFragmentFinalProductAuditState,
+    #[serde(default)]
+    pub planned_operations: Vec<Value>,
+    #[serde(default)]
+    pub blockers: Vec<RegulatoryFragmentFinding>,
+    #[serde(default)]
+    pub warnings: Vec<RegulatoryFragmentFinding>,
+    #[serde(default)]
+    pub nonclaims: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Stable pairwise contrast contributing to one requested question.
+pub struct RegulatoryFragmentContrast {
+    pub contrast_id: String,
+    pub question: RegulatoryFragmentQuestion,
+    pub left_member_id: String,
+    pub right_member_id: String,
+    pub interpretation: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RegulatoryFragmentEvidenceState {
+    #[default]
+    NotEvaluated,
+    Evaluated,
+    Unavailable,
+    Stale,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One evidence lane; Slice 1 emits every lane as `not_evaluated`.
+pub struct RegulatoryFragmentEvidenceDimension {
+    pub kind: RegulatoryFragmentEvidenceDimensionKind,
+    pub state: RegulatoryFragmentEvidenceState,
+    #[serde(default)]
+    pub bindings: Vec<RegulatoryFragmentEvidenceBinding>,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Pairwise alignment used only to surface a geometry-confounding risk.
+pub struct RegulatoryFragmentSimilarityAudit {
+    pub left_fragment_id: String,
+    pub right_fragment_id: String,
+    pub highly_similar: bool,
+    pub alignment: SequenceAlignmentReport,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Content-addressed read-only result of deterministic panel selection.
+pub struct RegulatoryFragmentPanelPlan {
+    pub schema: String,
+    pub plan_id: String,
+    pub proposal_digest: String,
+    pub request_sha256: String,
+    pub source_state_sha256: String,
+    pub request: RegulatoryFragmentPanelRequest,
+    pub vector_validation: ReporterVectorValidationReport,
+    pub vector_context: RegulatoryFragmentVectorContext,
+    pub planning_label: RegulatoryFragmentPlanningLabel,
+    pub members: Vec<RegulatoryFragmentPanelMember>,
+    pub contrasts: Vec<RegulatoryFragmentContrast>,
+    pub omitted_variants: Vec<RegulatoryFragmentOmittedVariant>,
+    pub evidence_dimensions: Vec<RegulatoryFragmentEvidenceDimension>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub candidate_partner_similarity: Option<RegulatoryFragmentSimilarityAudit>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cloning_strategy: Option<PromoterReporterPanelCloningStrategyReport>,
+    #[serde(default)]
+    pub uncovered_questions: Vec<RegulatoryFragmentQuestion>,
+    pub approval_required: bool,
+    pub materialization_supported: bool,
+    #[serde(default)]
+    pub blockers: Vec<RegulatoryFragmentFinding>,
+    #[serde(default)]
+    pub warnings: Vec<RegulatoryFragmentFinding>,
+    #[serde(default)]
     pub nonclaims: Vec<String>,
 }
 

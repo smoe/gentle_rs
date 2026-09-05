@@ -1,5 +1,15 @@
 # GENtle Changelog
 
+- Added the read-only first slice of an exact regulatory-fragment contrast
+  planner. Versioned request/plan records bind persisted ROI identity and
+  content, current sequence projections, assembly/release, vector context,
+  explicit A/B geometry, policy, evidence citations, and bounds. A deterministic
+  minimal-cover algorithm emits exact inserts, pairwise contrasts, typed
+  inclusion/omission reasons, cloning feasibility, conservative labels, and
+  eight separate `not_evaluated` evidence lanes under an exact approval digest.
+  Ordered multi-fragment materialization remains explicitly unsupported rather
+  than being forced through the legacy byte-compatible single-fragment panel.
+
 - Made tutorial GUI screenshots updateable evidence rather than anonymous
   bitmaps. The external X11 acceptance runner now preserves one untouched raw
   capture, binds it to the exact source/binary, tutorial contract, semantic

@@ -39901,6 +39901,7 @@ impl GentleEngine {
             reporter_construct_handoff: None,
             reporter_vector_validation: None,
             promoter_reporter_panel_proposal: None,
+            regulatory_fragment_panel_plan: None,
             promoter_reporter_panel_readiness: None,
             promoter_reporter_panel_receipt: None,
             uniprot_projection_audit: None,
@@ -50535,6 +50536,19 @@ impl GentleEngine {
                     ));
                     result.warnings.extend(proposal.warnings.iter().cloned());
                     result.promoter_reporter_panel_proposal = Some(Box::new(proposal));
+                }
+                Operation::PlanRegulatoryFragmentPanel { request } => {
+                    let plan = self.plan_regulatory_fragment_panel(*request)?;
+                    result.messages.push(format!(
+                        "Planned {} regulatory-fragment construct(s) and {} contrast(s); approve digest '{}' only after review",
+                        plan.members.len(),
+                        plan.contrasts.len(),
+                        plan.proposal_digest
+                    ));
+                    result
+                        .warnings
+                        .extend(plan.warnings.iter().map(|warning| warning.detail.clone()));
+                    result.regulatory_fragment_panel_plan = Some(Box::new(plan));
                 }
                 Operation::InspectPromoterReporterPanelReadiness { request, path } => {
                     let readiness = self.inspect_promoter_reporter_panel_readiness(*request)?;
