@@ -1,7 +1,8 @@
 # Regulatory-fragment panel planner: Slice 1 design
 
-Status: implemented for review; later evidence, presentation, GUI, and tutorial
-slices are intentionally not part of this change.
+Status: Slice 1 planning and Slice 2 sequence-context evidence/presentation are
+implemented; GUI/adapters, external-report resolution, and tutorial work remain
+separate review slices.
 
 ## Purpose
 
@@ -122,10 +123,30 @@ Slice 1 preserves these independent lanes:
 7. TFBS/model-score context; and
 8. CUT&RUN/chromatin context.
 
-All are explicitly `not_evaluated` in this slice, including lanes with cited
-upstream report identities. `not_evaluated` is never a pass. Candidate/partner
-global similarity is used only to emit the conservative
+Slice 2 evaluates the five dimensions computable from exact bound sequence and
+the existing cloning machinery. Full-fragment exact and bounded near-exact
+matches are counted in loaded ROI source sequences; global alignments and exact
+forward/inverted words compare fragments and vector; the existing
+construct-reasoning scanner supplies repeat and low-complexity rows; exact
+junction windows are searched in bound sources and other selected inserts; and
+the existing panel-wide cloning strategy supplies restriction-site conflicts.
+Each dimension has a stable assessment id/digest, typed observations, and
+lane-local findings. The effective word length, mismatch allowance, junction
+flank, and output bound are explicit serialized policy.
+
+These source sequences may be local extraction windows rather than an entire
+genome, so their match counts are reference-context evidence, not whole-genome
+uniqueness. Ensembl Regulation, TFBS/model-score, and CUT&RUN/chromatin remain
+`not_evaluated` when the request supplies only an opaque report id/hash. Those
+citations are retained in the proposal digest but are not interpreted without
+typed report content or a typed store resolver. `not_evaluated` is never a
+pass. Candidate/partner global similarity remains only a conservative
 `context_or_geometry_confounded` planning label.
+
+The shared SVG renderer consumes only the authoritative plan. Its engine
+operation verifies the embedded proposal digest before writing. It displays
+genomic anchors, ordered construct geometry, contrasts, lane states/findings,
+omissions, blockers, and non-claims without recomputing evidence.
 
 ## Approval and mutation boundary
 
@@ -161,8 +182,7 @@ compose without duplicating either candidate discovery or panel selection.
 
 ## Follow-on slices
 
-- Slice 2: populate evidence lanes by composing existing engine reports, then
-  add a shared machine-readable presentation/figure.
 - Slice 3: add thin GUI and adapter entry points over the same operation.
 - Slice 4: add the offline tutorial and broader user documentation.
-
+- External evidence: add typed resolution for exact Ensembl, TFBS, CUT&RUN, and
+  chromatin reports before changing those lane states.

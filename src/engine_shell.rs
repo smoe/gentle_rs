@@ -27086,9 +27086,27 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}},
                 {"fact": "sequence.exists", "subject": {"arg": "SOURCE_SEQ_IDS"}}
             ]},
-            "description": "Build a deterministic, read-only regulatory-fragment contrast plan from exact persisted genomic regions; evidence remains explicitly not evaluated in Slice 1.",
+            "description": "Build a deterministic, read-only regulatory-fragment contrast plan from exact persisted genomic regions, including typed sequence-context evidence while unavailable external evidence remains explicitly not evaluated.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("PlanRegulatoryFragmentPanel")
+        }),
+        json!({
+            "id": "RenderRegulatoryFragmentPanelSvg",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "PLAN", "required": true, "subject_kind": "other", "detail": "unchanged gentle.regulatory_fragment_panel_plan.v1 object with a valid embedded proposal digest"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "SVG output path"}
+            ],
+            "reads": [],
+            "effects": [
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Render a deterministic passive SVG projection of an exact regulatory-fragment plan without recomputing or promoting evidence.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("RenderRegulatoryFragmentPanelSvg")
         }),
         json!({
             "id": "promoter_reporter_panel_plan",

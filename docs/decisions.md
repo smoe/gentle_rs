@@ -915,3 +915,10 @@ payloads, but does not validate regulatory activity. The legacy promoter-panel
 materializer remains byte-compatible and single-fragment; ordered
 multi-fragment plans must report materialization as unsupported until an exact
 compatible mutation contract is separately reviewed.
+
+Sequence-derived evidence is computed inside the same read-only operation and
+retained as separate content-addressed lane observations and findings. A bound
+external report id and digest is provenance only: without typed report content
+or a typed engine-owned report resolver, Ensembl Regulation, TFBS, CUT&RUN, and
+chromatin lanes remain `not_evaluated`. Rendering is a passive projection of
+the authoritative plan and may not reinterpret those states.

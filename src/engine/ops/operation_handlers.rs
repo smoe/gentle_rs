@@ -50550,6 +50550,15 @@ impl GentleEngine {
                         .extend(plan.warnings.iter().map(|warning| warning.detail.clone()));
                     result.regulatory_fragment_panel_plan = Some(Box::new(plan));
                 }
+                Operation::RenderRegulatoryFragmentPanelSvg { plan, path } => {
+                    Self::validate_regulatory_fragment_panel_document(&plan)?;
+                    let svg = crate::render_regulatory_fragment_panel::render_regulatory_fragment_panel_svg(&plan);
+                    self.write_text_file(&path, &svg, "regulatory-fragment panel-plan SVG")?;
+                    result.messages.push(format!(
+                        "Wrote regulatory-fragment panel-plan SVG '{}' to '{}'",
+                        plan.plan_id, path
+                    ));
+                }
                 Operation::InspectPromoterReporterPanelReadiness { request, path } => {
                     let readiness = self.inspect_promoter_reporter_panel_readiness(*request)?;
                     if let Some(path) = path.as_deref() {

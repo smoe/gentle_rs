@@ -385,8 +385,8 @@ wet-lab conclusions or unconfirmed mutations.
   enrichment alone.
 - Engine-owned regulatory-reporter study composer: turn a perturbation-response
   cohort plus TSS/evidence policies into candidate ROI inputs for the downstream exact-ROI and terminal planners, feeding context-bound inspectors rather than persistent Boolean readiness.
-- After regulatory-fragment panel Slice 1 review, populate its evidence lanes and shared presentation,
-  then add thin GUI/adapters and one offline tutorial; defer materialization until ordered multi-fragment instances have an exact compatible mutation contract.
+- After regulatory-fragment panel Slice 2 review, add thin GUI/adapters and one offline tutorial;
+  add typed external-report resolution separately, and defer materialization until ordered multi-fragment instances have an exact compatible mutation contract.
 - Extend the promoter regulatory-partner screen beyond its exact motif-tuple
   ledger with explicit matched/background cohorts, calibrated enrichment and
   multiple-testing correction, local ontology/hallmark interpretation, and

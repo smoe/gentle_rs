@@ -5742,6 +5742,10 @@ pub enum Operation {
     PlanRegulatoryFragmentPanel {
         request: Box<RegulatoryFragmentPanelRequest>,
     },
+    RenderRegulatoryFragmentPanelSvg {
+        plan: Box<RegulatoryFragmentPanelPlan>,
+        path: String,
+    },
     InspectPromoterReporterPanelReadiness {
         request: Box<PromoterReporterPanelReadinessRequest>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -9873,6 +9877,7 @@ impl GentleEngine {
                 | Operation::PlanReporterConstructHandoff { .. }
                 | Operation::PlanPromoterReporterPanel { .. }
                 | Operation::PlanRegulatoryFragmentPanel { .. }
+                | Operation::RenderRegulatoryFragmentPanelSvg { .. }
                 | Operation::InspectPromoterReporterPanelReadiness { .. }
                 | Operation::ExportRnaReadReport { .. }
                 | Operation::ExportRnaReadHitsFasta { .. }

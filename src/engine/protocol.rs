@@ -10249,6 +10249,22 @@ fn regulatory_fragment_panel_default_max_candidate_constructs() -> usize {
     20
 }
 
+fn regulatory_fragment_panel_default_sequence_word_size_bp() -> usize {
+    12
+}
+
+fn regulatory_fragment_panel_default_near_exact_max_mismatches() -> usize {
+    1
+}
+
+fn regulatory_fragment_panel_default_junction_flank_bp() -> usize {
+    16
+}
+
+fn regulatory_fragment_panel_default_max_evidence_observations() -> usize {
+    512
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 /// Experimental role of one persisted genomic ROI in a regulatory-fragment panel.
@@ -10388,6 +10404,14 @@ pub struct RegulatoryFragmentPanelPolicy {
     pub vector_context_flank_bp: usize,
     #[serde(default = "regulatory_fragment_panel_default_max_candidate_constructs")]
     pub max_candidate_constructs: usize,
+    #[serde(default = "regulatory_fragment_panel_default_sequence_word_size_bp")]
+    pub sequence_word_size_bp: usize,
+    #[serde(default = "regulatory_fragment_panel_default_near_exact_max_mismatches")]
+    pub near_exact_max_mismatches: usize,
+    #[serde(default = "regulatory_fragment_panel_default_junction_flank_bp")]
+    pub junction_flank_bp: usize,
+    #[serde(default = "regulatory_fragment_panel_default_max_evidence_observations")]
+    pub max_evidence_observations_per_dimension: usize,
 }
 
 impl Default for RegulatoryFragmentPanelPolicy {
@@ -10402,6 +10426,12 @@ impl Default for RegulatoryFragmentPanelPolicy {
                 regulatory_fragment_panel_default_similarity_coverage_fraction(),
             vector_context_flank_bp: regulatory_fragment_panel_default_vector_context_flank_bp(),
             max_candidate_constructs: regulatory_fragment_panel_default_max_candidate_constructs(),
+            sequence_word_size_bp: regulatory_fragment_panel_default_sequence_word_size_bp(),
+            near_exact_max_mismatches: regulatory_fragment_panel_default_near_exact_max_mismatches(
+            ),
+            junction_flank_bp: regulatory_fragment_panel_default_junction_flank_bp(),
+            max_evidence_observations_per_dimension:
+                regulatory_fragment_panel_default_max_evidence_observations(),
         }
     }
 }
@@ -10653,14 +10683,86 @@ pub enum RegulatoryFragmentEvidenceState {
     Stale,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "observation_kind", rename_all = "snake_case")]
+/// Typed, deterministic evidence retained inside one panel evidence lane.
+pub enum RegulatoryFragmentEvidenceObservation {
+    ReferenceGenomicUniqueness {
+        observation_id: String,
+        fragment_id: String,
+        source_seq_id: String,
+        fragment_length_bp: usize,
+        exact_forward_match_count: usize,
+        exact_reverse_complement_match_count: usize,
+        near_exact_max_mismatches: usize,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        near_exact_forward_match_count: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        near_exact_reverse_complement_match_count: Option<usize>,
+        near_exact_state: RegulatoryFragmentEvidenceState,
+        detail: String,
+    },
+    PanelSequenceSimilarity {
+        observation_id: String,
+        left_subject_id: String,
+        right_subject_id: String,
+        comparison_scope: String,
+        word_size_bp: usize,
+        exact_forward_word_match_count: usize,
+        exact_inverted_word_match_count: usize,
+        word_match_counts_truncated: bool,
+        alignment: SequenceAlignmentReport,
+        detail: String,
+    },
+    RepeatOrLowComplexity {
+        observation_id: String,
+        subject_id: String,
+        evidence: DesignEvidence,
+    },
+    PairSpecificJunctionUniqueness {
+        observation_id: String,
+        member_id: String,
+        left_fragment_id: String,
+        right_fragment_id: String,
+        assembled_start_0based: usize,
+        assembled_end_0based_exclusive: usize,
+        junction_sequence_sha256: String,
+        reference_forward_match_count: usize,
+        reference_reverse_complement_match_count: usize,
+        panel_other_member_match_count: usize,
+        exact_unique_in_assessed_context: bool,
+        detail: String,
+    },
+    RestrictionAndCloningRisk {
+        observation_id: String,
+        member_id: String,
+        cloning_feasibility: RegulatoryFragmentCloningFeasibilityState,
+        site_count_by_enzyme: BTreeMap<String, usize>,
+        blocker_count: usize,
+        selected_strategy: PromoterReporterPanelCloningStrategy,
+        detail: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
-/// One evidence lane; Slice 1 emits every lane as `not_evaluated`.
+/// One independently interpreted evidence lane in the panel plan.
 pub struct RegulatoryFragmentEvidenceDimension {
     pub kind: RegulatoryFragmentEvidenceDimensionKind,
     pub state: RegulatoryFragmentEvidenceState,
+    pub assessment_id: String,
+    pub assessment_sha256: String,
+    #[serde(default)]
+    pub method_ids: Vec<String>,
     #[serde(default)]
     pub bindings: Vec<RegulatoryFragmentEvidenceBinding>,
+    #[serde(default)]
+    pub observations: Vec<RegulatoryFragmentEvidenceObservation>,
+    #[serde(default)]
+    pub blockers: Vec<RegulatoryFragmentFinding>,
+    #[serde(default)]
+    pub warnings: Vec<RegulatoryFragmentFinding>,
+    pub truncated: bool,
     pub detail: String,
 }
 

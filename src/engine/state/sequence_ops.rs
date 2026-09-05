@@ -2576,6 +2576,9 @@ impl GentleEngine {
                     }
                 }
             }
+            Operation::RenderRegulatoryFragmentPanelSvg { path, .. } => {
+                Self::push_unique_token(&mut summary.file_paths, path);
+            }
             Operation::MaterializePromoterReporterPanel { proposal, .. } => {
                 Self::push_unique_token(&mut summary.sequence_ids, &proposal.request.vector_seq_id);
                 if let Some(path) = proposal.request.helper_catalog_path.as_deref() {
@@ -2911,6 +2914,7 @@ impl GentleEngine {
                     push(path);
                 }
             }
+            Operation::RenderRegulatoryFragmentPanelSvg { path, .. } => push(path),
             Operation::ComparePromoterReporterArchitectures { path, svg_path, .. } => {
                 if let Some(path) = path {
                     push(path);

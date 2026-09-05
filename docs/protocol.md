@@ -3836,7 +3836,7 @@ Sequencing-trace evidence notes:
     content, mismatched approval, duplicate paths, and overwrites before commit
   - both are sequence-planning evidence only; they do not establish TF
     occupancy, functional motif ablation, expression change, or reporter output
-- `PlanRegulatoryFragmentPanel { request }` is the read-only Slice 1 planner
+- `PlanRegulatoryFragmentPanel { request }` is the read-only regulatory-fragment planner
   for exact persisted regulatory ROIs:
   - request schema `gentle.regulatory_fragment_panel_request.v1` binds the
     containing region-set content digest, each ROI identity/content digest and
@@ -3858,13 +3858,24 @@ Sequencing-trace evidence notes:
   - selection maximizes requested-question coverage, minimizes member count,
     and breaks ties by normalized declared order, construct-role rank, then id;
     it never emits a Cartesian product or exceeds `max_panel_members`
-  - all eight evidence dimensions are separate and explicitly
-    `not_evaluated` in Slice 1; this state is not a pass
+  - the five sequence-computable dimensions contain typed, bounded,
+    content-addressed observations for ROI-bound reference matching,
+    panel/vector similarity, repeat/low-complexity context, exact junction
+    matching, and restriction/cloning risk; their effective word, mismatch,
+    junction-flank, and observation-limit defaults are serialized in policy
+  - Ensembl Regulation, TFBS/model-score, and CUT&RUN/chromatin dimensions
+    remain `not_evaluated` when only an opaque report id/hash citation is
+    supplied; a citation is bound provenance, not evaluated report content
+  - each dimension keeps its own blockers/warnings and assessment digest;
+    absence of a configured sequence pattern is not a general experimental pass
   - approval validation recomputes the exact plan against current state, but
     `materialization_supported=false`: ordered instances/orientations/spacers
     cannot be represented by the legacy single-fragment materializer without a
     separately reviewed contract
-  - full invariants and the Slice 2-4 boundary are recorded in
+  - `RenderRegulatoryFragmentPanelSvg { plan, path }` verifies the embedded
+    proposal digest before writing a passive SVG projection; it does not
+    recompute, upgrade, or reinterpret evidence
+  - full invariants and the remaining adapter/tutorial boundary are recorded in
     `regulatory_fragment_panel_slice1_design.md`
 - `ListReporterCatalog { catalog_path?, filter?, limit?, path? }`
   - emits `gentle.reporter_catalog_report.v1`

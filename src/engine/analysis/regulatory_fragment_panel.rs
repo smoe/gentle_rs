@@ -166,8 +166,12 @@ impl GentleEngine {
 
         let cloning_strategy =
             self.populate_regulatory_fragment_cloning_feasibility(&request, &mut members)?;
-        let evidence_dimensions =
-            Self::regulatory_fragment_not_evaluated_dimensions(&request.evidence_bindings);
+        let evidence_dimensions = self.populate_regulatory_fragment_evidence_dimensions(
+            &request,
+            &resolved,
+            &members,
+            cloning_strategy.as_ref(),
+        )?;
         let mut blockers = vec![];
         if !uncovered_questions.is_empty() {
             blockers.push(RegulatoryFragmentFinding {
@@ -237,6 +241,28 @@ impl GentleEngine {
         plan: &RegulatoryFragmentPanelPlan,
         approval_digest: &str,
     ) -> Result<(), EngineError> {
+        Self::validate_regulatory_fragment_panel_document(plan)?;
+        if approval_digest.trim() != plan.proposal_digest {
+            return Err(Self::regulatory_fragment_error(
+                "approval_digest_mismatch",
+                [&plan.plan_id],
+                "Approval must equal the exact current proposal_digest.",
+            ));
+        }
+        let fresh = self.plan_regulatory_fragment_panel(plan.request.clone())?;
+        if fresh.proposal_digest != plan.proposal_digest {
+            return Err(Self::regulatory_fragment_error(
+                "proposal_source_state_stale",
+                [&plan.plan_id],
+                "Current ROI, source-sequence, vector, evidence, or panel ordering state produces a different proposal digest.",
+            ));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn validate_regulatory_fragment_panel_document(
+        plan: &RegulatoryFragmentPanelPlan,
+    ) -> Result<(), EngineError> {
         if plan.schema != REGULATORY_FRAGMENT_PANEL_PLAN_SCHEMA {
             return Err(Self::regulatory_fragment_error(
                 "unsupported_plan_schema",
@@ -253,21 +279,6 @@ impl GentleEngine {
                 "proposal_content_digest_mismatch",
                 [&plan.plan_id],
                 "The supplied plan content no longer matches its embedded proposal_digest.",
-            ));
-        }
-        if approval_digest.trim() != plan.proposal_digest {
-            return Err(Self::regulatory_fragment_error(
-                "approval_digest_mismatch",
-                [&plan.plan_id],
-                "Approval must equal the exact current proposal_digest.",
-            ));
-        }
-        let fresh = self.plan_regulatory_fragment_panel(plan.request.clone())?;
-        if fresh.proposal_digest != plan.proposal_digest {
-            return Err(Self::regulatory_fragment_error(
-                "proposal_source_state_stale",
-                [&plan.plan_id],
-                "Current ROI, source-sequence, vector, evidence, or panel ordering state produces a different proposal digest.",
             ));
         }
         Ok(())
@@ -341,6 +352,17 @@ impl GentleEngine {
                 "invalid_candidate_search_bound",
                 [&request.plan_id],
                 "policy.max_candidate_constructs must be within 1..=20 for exhaustive deterministic selection.",
+            ));
+        }
+        if !(1..=64).contains(&request.policy.sequence_word_size_bp)
+            || request.policy.near_exact_max_mismatches > 8
+            || !(1..=512).contains(&request.policy.junction_flank_bp)
+            || !(1..=10_000).contains(&request.policy.max_evidence_observations_per_dimension)
+        {
+            return Err(Self::regulatory_fragment_error(
+                "invalid_evidence_policy",
+                [&request.plan_id],
+                "Evidence policy requires sequence_word_size_bp within 1..=64, near_exact_max_mismatches <= 8, junction_flank_bp within 1..=512, and max_evidence_observations_per_dimension within 1..=10000.",
             ));
         }
         for (name, value) in [
@@ -1716,32 +1738,720 @@ impl GentleEngine {
         Ok(Some(strategy))
     }
 
-    fn regulatory_fragment_not_evaluated_dimensions(
-        bindings: &[RegulatoryFragmentEvidenceBinding],
-    ) -> Vec<RegulatoryFragmentEvidenceDimension> {
-        [
-            RegulatoryFragmentEvidenceDimensionKind::ReferenceGenomicUniqueness,
-            RegulatoryFragmentEvidenceDimensionKind::PanelSequenceSimilarity,
-            RegulatoryFragmentEvidenceDimensionKind::RepeatsAndLowComplexity,
-            RegulatoryFragmentEvidenceDimensionKind::PairSpecificJunctionUniqueness,
-            RegulatoryFragmentEvidenceDimensionKind::RestrictionAndCloningRisk,
+    fn populate_regulatory_fragment_evidence_dimensions(
+        &self,
+        request: &RegulatoryFragmentPanelRequest,
+        fragments: &[ResolvedRegulatoryFragment],
+        members: &[RegulatoryFragmentPanelMember],
+        cloning_strategy: Option<&PromoterReporterPanelCloningStrategyReport>,
+    ) -> Result<Vec<RegulatoryFragmentEvidenceDimension>, EngineError> {
+        let max_observations = request.policy.max_evidence_observations_per_dimension;
+        let source_sequences = fragments
+            .iter()
+            .map(|fragment| fragment.projection.seq_id.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .filter_map(|seq_id| {
+                self.state
+                    .sequences
+                    .get(&seq_id)
+                    .map(|sequence| (seq_id, sequence.get_forward_string()))
+            })
+            .collect::<Vec<_>>();
+
+        let (reference_observations, reference_truncated) =
+            Self::regulatory_fragment_reference_uniqueness_observations(
+                request,
+                fragments,
+                &source_sequences,
+                max_observations,
+            );
+        let (similarity_observations, similarity_truncated) = self
+            .regulatory_fragment_panel_similarity_observations(
+                request,
+                fragments,
+                max_observations,
+            )?;
+        let (repeat_observations, repeat_truncated) =
+            Self::regulatory_fragment_repeat_observations(members, max_observations)?;
+        let (junction_observations, junction_truncated) =
+            Self::regulatory_fragment_junction_observations(
+                request,
+                members,
+                &source_sequences,
+                max_observations,
+            );
+        let (cloning_observations, cloning_truncated) =
+            Self::regulatory_fragment_cloning_observations(
+                members,
+                cloning_strategy,
+                max_observations,
+            );
+
+        let mut dimensions = vec![
+            Self::regulatory_fragment_evidence_dimension(
+                request,
+                RegulatoryFragmentEvidenceDimensionKind::ReferenceGenomicUniqueness,
+                RegulatoryFragmentEvidenceState::Evaluated,
+                vec!["compute_dotplot_shared_point_engine".to_string()],
+                reference_observations,
+                reference_truncated,
+                "Exact full-fragment and mismatch-tolerant full-window matches were assessed against the loaded source sequences bound by the ROIs. This is reference-context evidence, not a whole-genome uniqueness claim.",
+            )?,
+            Self::regulatory_fragment_evidence_dimension(
+                request,
+                RegulatoryFragmentEvidenceDimensionKind::PanelSequenceSimilarity,
+                RegulatoryFragmentEvidenceState::Evaluated,
+                vec![
+                    "align_sequences_global".to_string(),
+                    "compute_dotplot_shared_point_engine".to_string(),
+                ],
+                similarity_observations,
+                similarity_truncated,
+                "Global alignment and exact forward/inverted word matches compare each bound fragment with the other fragments and the validated reporter vector. Similarity is a geometry/context warning, not an activity verdict.",
+            )?,
+            Self::regulatory_fragment_evidence_dimension(
+                request,
+                RegulatoryFragmentEvidenceDimensionKind::RepeatsAndLowComplexity,
+                RegulatoryFragmentEvidenceState::Evaluated,
+                vec!["construct_reasoning_sequence_similarity".to_string()],
+                repeat_observations,
+                repeat_truncated,
+                "The existing construct-reasoning repeat and low-complexity scanner was applied to each selected non-empty insert. An empty observation list means no configured pattern was detected; it is not a general experimental pass.",
+            )?,
+            Self::regulatory_fragment_evidence_dimension(
+                request,
+                RegulatoryFragmentEvidenceDimensionKind::PairSpecificJunctionUniqueness,
+                RegulatoryFragmentEvidenceState::Evaluated,
+                vec!["exact_junction_context_scan".to_string()],
+                junction_observations,
+                junction_truncated,
+                "Each selected multi-fragment junction was searched exactly, in both orientations, against bound source sequences and other selected inserts. This bounded context is not whole-genome uniqueness.",
+            )?,
+            Self::regulatory_fragment_evidence_dimension(
+                request,
+                RegulatoryFragmentEvidenceDimensionKind::RestrictionAndCloningRisk,
+                if cloning_strategy.is_some() {
+                    RegulatoryFragmentEvidenceState::Evaluated
+                } else {
+                    RegulatoryFragmentEvidenceState::NotEvaluated
+                },
+                if cloning_strategy.is_some() {
+                    vec!["promoter_reporter_panel_cloning_strategy".to_string()]
+                } else {
+                    vec![]
+                },
+                cloning_observations,
+                cloning_truncated,
+                if cloning_strategy.is_some() {
+                    "Existing shared directional-restriction/Gibson feasibility was retained per insert. Feasibility is an operational planning result, not evidence of regulatory behavior."
+                } else {
+                    "No non-empty selected insert was available for cloning assessment; not_evaluated is never a pass."
+                },
+            )?,
+        ];
+        for kind in [
             RegulatoryFragmentEvidenceDimensionKind::EnsemblRegulatoryOverlap,
             RegulatoryFragmentEvidenceDimensionKind::TfbsModelScoreContext,
             RegulatoryFragmentEvidenceDimensionKind::CutrunAndChromatinContext,
-        ]
-        .into_iter()
-        .map(|kind| RegulatoryFragmentEvidenceDimension {
+        ] {
+            dimensions.push(Self::regulatory_fragment_evidence_dimension(
+                request,
+                kind,
+                RegulatoryFragmentEvidenceState::NotEvaluated,
+                vec![],
+                vec![],
+                false,
+                "Exact report citations are retained, but an id and digest alone do not expose verifiable report content to this operation; not_evaluated is never a pass.",
+            )?);
+        }
+        Ok(dimensions)
+    }
+
+    fn regulatory_fragment_evidence_dimension(
+        request: &RegulatoryFragmentPanelRequest,
+        kind: RegulatoryFragmentEvidenceDimensionKind,
+        state: RegulatoryFragmentEvidenceState,
+        mut method_ids: Vec<String>,
+        observations: Vec<RegulatoryFragmentEvidenceObservation>,
+        truncated: bool,
+        detail: &str,
+    ) -> Result<RegulatoryFragmentEvidenceDimension, EngineError> {
+        method_ids.sort();
+        method_ids.dedup();
+        let bindings = request
+            .evidence_bindings
+            .iter()
+            .filter(|binding| binding.dimension == kind)
+            .cloned()
+            .collect::<Vec<_>>();
+        let assessment_id = format!(
+            "{}:{}",
+            request.plan_id,
+            Self::regulatory_fragment_evidence_dimension_token(kind)
+        );
+        let (blockers, mut warnings) =
+            Self::regulatory_fragment_evidence_findings(kind, &observations);
+        if truncated {
+            warnings.push(RegulatoryFragmentFinding {
+                code: "evidence_observation_limit_reached".to_string(),
+                subject_ids: vec![assessment_id.clone()],
+                detail: format!(
+                    "The deterministic evidence output stopped at max_evidence_observations_per_dimension={}.",
+                    request.policy.max_evidence_observations_per_dimension
+                ),
+            });
+        }
+        let assessment_sha256 = Self::regulatory_fragment_value_sha256(
+            &serde_json::json!({
+                "assessment_id": assessment_id,
+                "kind": kind,
+                "state": state,
+                "method_ids": method_ids,
+                "bindings": bindings,
+                "observations": observations,
+                "blockers": blockers,
+                "warnings": warnings,
+                "truncated": truncated,
+                "detail": detail,
+            }),
+            "regulatory-fragment evidence assessment",
+        )?;
+        Ok(RegulatoryFragmentEvidenceDimension {
             kind,
-            state: RegulatoryFragmentEvidenceState::NotEvaluated,
-            bindings: bindings
-                .iter()
-                .filter(|binding| binding.dimension == kind)
-                .cloned()
-                .collect(),
-            detail: "Slice 1 retains this evidence lane and exact citations but does not evaluate it; not_evaluated is never a pass."
-                .to_string(),
+            state,
+            assessment_id,
+            assessment_sha256,
+            method_ids,
+            bindings,
+            observations,
+            blockers,
+            warnings,
+            truncated,
+            detail: detail.to_string(),
         })
-        .collect()
+    }
+
+    fn regulatory_fragment_evidence_findings(
+        kind: RegulatoryFragmentEvidenceDimensionKind,
+        observations: &[RegulatoryFragmentEvidenceObservation],
+    ) -> (
+        Vec<RegulatoryFragmentFinding>,
+        Vec<RegulatoryFragmentFinding>,
+    ) {
+        let blockers = vec![];
+        let mut warnings = vec![];
+        for observation in observations {
+            match observation {
+                RegulatoryFragmentEvidenceObservation::PanelSequenceSimilarity {
+                    left_subject_id,
+                    right_subject_id,
+                    comparison_scope,
+                    exact_forward_word_match_count,
+                    exact_inverted_word_match_count,
+                    word_match_counts_truncated,
+                    ..
+                } if kind == RegulatoryFragmentEvidenceDimensionKind::PanelSequenceSimilarity => {
+                    if comparison_scope == "fragment_to_reporter_vector"
+                        && (*exact_forward_word_match_count > 0
+                            || *exact_inverted_word_match_count > 0)
+                    {
+                        warnings.push(RegulatoryFragmentFinding {
+                            code: "fragment_reporter_vector_word_similarity".to_string(),
+                            subject_ids: vec![left_subject_id.clone(), right_subject_id.clone()],
+                            detail: "Exact local word reuse with the reporter vector was detected and should be reviewed as construct-context evidence."
+                                .to_string(),
+                        });
+                    }
+                    if *exact_inverted_word_match_count > 0 {
+                        warnings.push(RegulatoryFragmentFinding {
+                            code: "inverted_sequence_similarity_detected".to_string(),
+                            subject_ids: vec![left_subject_id.clone(), right_subject_id.clone()],
+                            detail: "Exact reverse-complement word reuse was detected; this remains separate from direct similarity and repeat evidence."
+                                .to_string(),
+                        });
+                    }
+                    if *word_match_counts_truncated {
+                        warnings.push(RegulatoryFragmentFinding {
+                            code: "sequence_similarity_word_matches_truncated".to_string(),
+                            subject_ids: vec![left_subject_id.clone(), right_subject_id.clone()],
+                            detail: "The shared dotplot point limit was reached, so word-match counts are lower bounds."
+                                .to_string(),
+                        });
+                    }
+                }
+                RegulatoryFragmentEvidenceObservation::RepeatOrLowComplexity {
+                    subject_id,
+                    evidence,
+                    ..
+                } if kind == RegulatoryFragmentEvidenceDimensionKind::RepeatsAndLowComplexity => {
+                    warnings.push(RegulatoryFragmentFinding {
+                        code: "repeat_or_low_complexity_context_detected".to_string(),
+                        subject_ids: vec![subject_id.clone(), evidence.evidence_id.clone()],
+                        detail: format!("{}: {}", evidence.label, evidence.rationale),
+                    });
+                }
+                RegulatoryFragmentEvidenceObservation::PairSpecificJunctionUniqueness {
+                    member_id,
+                    observation_id,
+                    exact_unique_in_assessed_context: false,
+                    ..
+                } if kind
+                    == RegulatoryFragmentEvidenceDimensionKind::PairSpecificJunctionUniqueness =>
+                {
+                    warnings.push(RegulatoryFragmentFinding {
+                        code: "junction_not_unique_in_assessed_context".to_string(),
+                        subject_ids: vec![member_id.clone(), observation_id.clone()],
+                        detail: "The exact junction window also occurs in a bound source sequence or another selected insert."
+                            .to_string(),
+                    });
+                }
+                RegulatoryFragmentEvidenceObservation::RestrictionAndCloningRisk {
+                    member_id,
+                    blocker_count,
+                    ..
+                } if kind == RegulatoryFragmentEvidenceDimensionKind::RestrictionAndCloningRisk
+                    && *blocker_count > 0 =>
+                {
+                    warnings.push(RegulatoryFragmentFinding {
+                        code: "directional_restriction_pair_conflict".to_string(),
+                        subject_ids: vec![member_id.clone()],
+                        detail: format!(
+                            "Existing cloning assessment found {blocker_count} insert/enzyme conflict(s); the panel-wide strategy may use another pair or Gibson fallback."
+                        ),
+                    });
+                }
+                _ => {}
+            }
+        }
+        warnings.sort_by(|left, right| {
+            left.code
+                .cmp(&right.code)
+                .then(left.subject_ids.cmp(&right.subject_ids))
+        });
+        warnings.dedup_by(|left, right| {
+            left.code == right.code && left.subject_ids == right.subject_ids
+        });
+        (blockers, warnings)
+    }
+
+    fn regulatory_fragment_reference_uniqueness_observations(
+        request: &RegulatoryFragmentPanelRequest,
+        fragments: &[ResolvedRegulatoryFragment],
+        source_sequences: &[(String, String)],
+        max_observations: usize,
+    ) -> (Vec<RegulatoryFragmentEvidenceObservation>, bool) {
+        let mut observations = vec![];
+        let mut truncated = false;
+        'fragments: for fragment in fragments {
+            for (source_seq_id, source_sequence) in source_sequences {
+                if observations.len() >= max_observations {
+                    truncated = true;
+                    break 'fragments;
+                }
+                let exact_forward = Self::regulatory_fragment_exact_match_count(
+                    source_sequence,
+                    &fragment.canonical_sequence,
+                );
+                let reverse = Self::reverse_complement(&fragment.canonical_sequence);
+                let exact_reverse =
+                    Self::regulatory_fragment_exact_match_count(source_sequence, &reverse);
+                let near_forward = Self::regulatory_fragment_full_window_match_count(
+                    &fragment.binding.fragment_id,
+                    &fragment.canonical_sequence,
+                    source_seq_id,
+                    source_sequence,
+                    DotplotMode::PairForward,
+                    request.policy.near_exact_max_mismatches,
+                );
+                let near_reverse = Self::regulatory_fragment_full_window_match_count(
+                    &fragment.binding.fragment_id,
+                    &fragment.canonical_sequence,
+                    source_seq_id,
+                    source_sequence,
+                    DotplotMode::PairReverseComplement,
+                    request.policy.near_exact_max_mismatches,
+                );
+                let near_state = if near_forward.is_some() && near_reverse.is_some() {
+                    RegulatoryFragmentEvidenceState::Evaluated
+                } else {
+                    RegulatoryFragmentEvidenceState::Unavailable
+                };
+                observations.push(
+                    RegulatoryFragmentEvidenceObservation::ReferenceGenomicUniqueness {
+                        observation_id: format!(
+                            "reference_uniqueness:{}:{}",
+                            fragment.binding.fragment_id, source_seq_id
+                        ),
+                        fragment_id: fragment.binding.fragment_id.clone(),
+                        source_seq_id: source_seq_id.clone(),
+                        fragment_length_bp: fragment.canonical_sequence.len(),
+                        exact_forward_match_count: exact_forward,
+                        exact_reverse_complement_match_count: exact_reverse,
+                        near_exact_max_mismatches: request.policy.near_exact_max_mismatches,
+                        near_exact_forward_match_count: near_forward,
+                        near_exact_reverse_complement_match_count: near_reverse,
+                        near_exact_state: near_state,
+                        detail: if near_state == RegulatoryFragmentEvidenceState::Evaluated {
+                            "Counts use full-fragment windows over this loaded ROI-bound source sequence."
+                                .to_string()
+                        } else {
+                            "Exact counts were evaluated, but the bounded shared mismatch-aware dotplot engine declined the near-exact scan at this source size."
+                                .to_string()
+                        },
+                    },
+                );
+            }
+        }
+        (observations, truncated)
+    }
+
+    fn regulatory_fragment_panel_similarity_observations(
+        &self,
+        request: &RegulatoryFragmentPanelRequest,
+        fragments: &[ResolvedRegulatoryFragment],
+        max_observations: usize,
+    ) -> Result<(Vec<RegulatoryFragmentEvidenceObservation>, bool), EngineError> {
+        let vector_sequence = self
+            .state
+            .sequences
+            .get(&request.vector_seq_id)
+            .map(DNAsequence::get_forward_string)
+            .ok_or_else(|| {
+                Self::regulatory_fragment_error(
+                    "vector_sequence_missing",
+                    [&request.vector_seq_id],
+                    "The validated reporter vector is no longer loaded during evidence assessment.",
+                )
+            })?;
+        let mut subjects = fragments
+            .iter()
+            .map(|fragment| {
+                (
+                    fragment.binding.fragment_id.clone(),
+                    fragment.canonical_sequence.clone(),
+                    "fragment",
+                )
+            })
+            .collect::<Vec<_>>();
+        subjects.push((
+            request.vector_seq_id.clone(),
+            vector_sequence,
+            "reporter_vector",
+        ));
+        let mut observations = vec![];
+        let mut truncated = false;
+        'outer: for left_index in 0..subjects.len() {
+            for right_index in left_index + 1..subjects.len() {
+                if observations.len() >= max_observations {
+                    truncated = true;
+                    break 'outer;
+                }
+                let (left_id, left_sequence, left_kind) = &subjects[left_index];
+                let (right_id, right_sequence, right_kind) = &subjects[right_index];
+                let alignment = Self::compute_pairwise_alignment_report(
+                    left_id,
+                    left_sequence,
+                    None,
+                    None,
+                    right_id,
+                    right_sequence,
+                    None,
+                    None,
+                    PairwiseAlignmentMode::Global,
+                    2,
+                    -3,
+                    -5,
+                    -1,
+                )?
+                .report;
+                let word_size = request
+                    .policy
+                    .sequence_word_size_bp
+                    .min(left_sequence.len())
+                    .min(right_sequence.len());
+                let (forward_words, inverted_words, word_match_counts_truncated) = if word_size == 0
+                {
+                    (0, 0, false)
+                } else {
+                    let (forward, forward_truncated) =
+                        Self::regulatory_fragment_dotplot_match_count(
+                            left_id,
+                            left_sequence,
+                            right_id,
+                            right_sequence,
+                            DotplotMode::PairForward,
+                            word_size,
+                            0,
+                        )?;
+                    let (inverted, inverted_truncated) =
+                        Self::regulatory_fragment_dotplot_match_count(
+                            left_id,
+                            left_sequence,
+                            right_id,
+                            right_sequence,
+                            DotplotMode::PairReverseComplement,
+                            word_size,
+                            0,
+                        )?;
+                    (forward, inverted, forward_truncated || inverted_truncated)
+                };
+                observations.push(
+                    RegulatoryFragmentEvidenceObservation::PanelSequenceSimilarity {
+                        observation_id: format!("panel_similarity:{left_id}:{right_id}"),
+                        left_subject_id: left_id.clone(),
+                        right_subject_id: right_id.clone(),
+                        comparison_scope: if *left_kind == "reporter_vector"
+                            || *right_kind == "reporter_vector"
+                        {
+                            "fragment_to_reporter_vector".to_string()
+                        } else {
+                            "fragment_to_fragment".to_string()
+                        },
+                        word_size_bp: word_size,
+                        exact_forward_word_match_count: forward_words,
+                        exact_inverted_word_match_count: inverted_words,
+                        word_match_counts_truncated,
+                        alignment,
+                        detail: "Global similarity and local exact-word reuse are reported separately; neither predicts regulatory activity."
+                            .to_string(),
+                    },
+                );
+            }
+        }
+        Ok((observations, truncated))
+    }
+
+    fn regulatory_fragment_repeat_observations(
+        members: &[RegulatoryFragmentPanelMember],
+        max_observations: usize,
+    ) -> Result<(Vec<RegulatoryFragmentEvidenceObservation>, bool), EngineError> {
+        let mut observations = vec![];
+        let mut truncated = false;
+        'members: for member in members {
+            if member.insert_sequence_5prime_to_3prime.is_empty() {
+                continue;
+            }
+            let dna = DNAsequence::from_sequence(&member.insert_sequence_5prime_to_3prime)
+                .map_err(|error| {
+                    Self::regulatory_fragment_error(
+                        "evidence_sequence_invalid",
+                        [&member.member_id],
+                        format!("Could not inspect the planned insert sequence: {error}"),
+                    )
+                })?;
+            let mut rows = Self::build_construct_reasoning_sequence_similarity_evidence(
+                &member.member_id,
+                &dna,
+            );
+            rows.sort_by(|left, right| left.evidence_id.cmp(&right.evidence_id));
+            for evidence in rows {
+                if observations.len() >= max_observations {
+                    truncated = true;
+                    break 'members;
+                }
+                observations.push(
+                    RegulatoryFragmentEvidenceObservation::RepeatOrLowComplexity {
+                        observation_id: format!(
+                            "repeat_context:{}:{}",
+                            member.member_id, evidence.evidence_id
+                        ),
+                        subject_id: member.member_id.clone(),
+                        evidence,
+                    },
+                );
+            }
+        }
+        Ok((observations, truncated))
+    }
+
+    fn regulatory_fragment_junction_observations(
+        request: &RegulatoryFragmentPanelRequest,
+        members: &[RegulatoryFragmentPanelMember],
+        source_sequences: &[(String, String)],
+        max_observations: usize,
+    ) -> (Vec<RegulatoryFragmentEvidenceObservation>, bool) {
+        let mut observations = vec![];
+        let mut truncated = false;
+        'members: for member in members {
+            for (index, pair) in member.instances.windows(2).enumerate() {
+                if observations.len() >= max_observations {
+                    truncated = true;
+                    break 'members;
+                }
+                let left = &pair[0];
+                let right = &pair[1];
+                let start = left
+                    .assembled_end_0based_exclusive
+                    .saturating_sub(request.policy.junction_flank_bp);
+                let end = right
+                    .assembled_start_0based
+                    .saturating_add(request.policy.junction_flank_bp)
+                    .min(member.insert_sequence_5prime_to_3prime.len());
+                let junction = &member.insert_sequence_5prime_to_3prime[start..end];
+                let reverse = Self::reverse_complement(junction);
+                let reference_forward_match_count = source_sequences
+                    .iter()
+                    .map(|(_, sequence)| {
+                        Self::regulatory_fragment_exact_match_count(sequence, junction)
+                    })
+                    .sum();
+                let reference_reverse_complement_match_count = source_sequences
+                    .iter()
+                    .map(|(_, sequence)| {
+                        Self::regulatory_fragment_exact_match_count(sequence, &reverse)
+                    })
+                    .sum();
+                let panel_other_member_match_count = members
+                    .iter()
+                    .filter(|other| other.member_id != member.member_id)
+                    .map(|other| {
+                        Self::regulatory_fragment_exact_match_count(
+                            &other.insert_sequence_5prime_to_3prime,
+                            junction,
+                        ) + Self::regulatory_fragment_exact_match_count(
+                            &other.insert_sequence_5prime_to_3prime,
+                            &reverse,
+                        )
+                    })
+                    .sum();
+                let exact_unique_in_assessed_context = reference_forward_match_count == 0
+                    && reference_reverse_complement_match_count == 0
+                    && panel_other_member_match_count == 0;
+                observations.push(
+                    RegulatoryFragmentEvidenceObservation::PairSpecificJunctionUniqueness {
+                        observation_id: format!("junction:{}:{}", member.member_id, index + 1),
+                        member_id: member.member_id.clone(),
+                        left_fragment_id: left.fragment_id.clone(),
+                        right_fragment_id: right.fragment_id.clone(),
+                        assembled_start_0based: start,
+                        assembled_end_0based_exclusive: end,
+                        junction_sequence_sha256: sha256_prefixed_str(junction),
+                        reference_forward_match_count,
+                        reference_reverse_complement_match_count,
+                        panel_other_member_match_count,
+                        exact_unique_in_assessed_context,
+                        detail: "The assayed window contains both fragment flanks and any declared spacer; the current construct itself is excluded from off-target counts."
+                            .to_string(),
+                    },
+                );
+            }
+        }
+        (observations, truncated)
+    }
+
+    fn regulatory_fragment_cloning_observations(
+        members: &[RegulatoryFragmentPanelMember],
+        cloning_strategy: Option<&PromoterReporterPanelCloningStrategyReport>,
+        max_observations: usize,
+    ) -> (Vec<RegulatoryFragmentEvidenceObservation>, bool) {
+        let Some(strategy) = cloning_strategy else {
+            return (vec![], false);
+        };
+        let summary_by_id = strategy
+            .insert_site_summaries
+            .iter()
+            .map(|summary| (summary.insert_seq_id.as_str(), summary))
+            .collect::<HashMap<_, _>>();
+        let mut observations = vec![];
+        let mut truncated = false;
+        for member in members {
+            if member.insert_sequence_5prime_to_3prime.is_empty() {
+                continue;
+            }
+            if observations.len() >= max_observations {
+                truncated = true;
+                break;
+            }
+            let insert_id = format!("regulatory_insert_{}", member.member_id);
+            let site_count_by_enzyme = summary_by_id
+                .get(insert_id.as_str())
+                .map(|summary| summary.site_count_by_enzyme.clone())
+                .unwrap_or_default();
+            let blocker_count = strategy
+                .pair_evaluations
+                .iter()
+                .flat_map(|evaluation| &evaluation.blockers)
+                .filter(|blocker| blocker.insert_seq_id == insert_id)
+                .count();
+            observations.push(
+                RegulatoryFragmentEvidenceObservation::RestrictionAndCloningRisk {
+                    observation_id: format!("cloning_risk:{}", member.member_id),
+                    member_id: member.member_id.clone(),
+                    cloning_feasibility: member.cloning_feasibility,
+                    site_count_by_enzyme,
+                    blocker_count,
+                    selected_strategy: strategy.strategy,
+                    detail: "Counts and strategy come from the existing panel-wide restriction-cloning feasibility helper."
+                        .to_string(),
+                },
+            );
+        }
+        (observations, truncated)
+    }
+
+    fn regulatory_fragment_full_window_match_count(
+        query_id: &str,
+        query: &str,
+        reference_id: &str,
+        reference: &str,
+        mode: DotplotMode,
+        max_mismatches: usize,
+    ) -> Option<usize> {
+        if query.is_empty() || reference.len() < query.len() {
+            return Some(0);
+        }
+        Self::regulatory_fragment_dotplot_match_count(
+            query_id,
+            query,
+            reference_id,
+            reference,
+            mode,
+            query.len(),
+            max_mismatches,
+        )
+        .ok()
+        .and_then(|(count, truncated)| (!truncated).then_some(count))
+    }
+
+    fn regulatory_fragment_dotplot_match_count(
+        _query_id: &str,
+        query: &str,
+        _reference_id: &str,
+        reference: &str,
+        mode: DotplotMode,
+        word_size: usize,
+        max_mismatches: usize,
+    ) -> Result<(usize, bool), EngineError> {
+        Self::compute_dotplot_points(
+            query.as_bytes(),
+            reference.as_bytes(),
+            0,
+            0,
+            mode,
+            word_size,
+            1,
+            max_mismatches,
+            MAX_DOTPLOT_POINTS,
+        )
+        .map(|(points, truncated)| (points.len(), truncated))
+    }
+
+    fn regulatory_fragment_exact_match_count(haystack: &str, needle: &str) -> usize {
+        if needle.is_empty() || haystack.len() < needle.len() {
+            return 0;
+        }
+        let haystack = haystack.as_bytes();
+        let needle = needle.as_bytes();
+        haystack
+            .windows(needle.len())
+            .filter(|window| {
+                window
+                    .iter()
+                    .zip(needle)
+                    .all(|(left, right)| left.eq_ignore_ascii_case(right))
+            })
+            .count()
     }
 
     fn regulatory_fragment_questions_for_construct(
@@ -1875,6 +2585,37 @@ impl GentleEngine {
             RegulatoryFragmentQuestion::SpacingDependence => "spacing_dependence",
             RegulatoryFragmentQuestion::MotifDisruption => "motif_disruption",
             RegulatoryFragmentQuestion::BoundaryUncertainty => "boundary_uncertainty",
+        }
+    }
+
+    fn regulatory_fragment_evidence_dimension_token(
+        kind: RegulatoryFragmentEvidenceDimensionKind,
+    ) -> &'static str {
+        match kind {
+            RegulatoryFragmentEvidenceDimensionKind::ReferenceGenomicUniqueness => {
+                "reference_genomic_uniqueness"
+            }
+            RegulatoryFragmentEvidenceDimensionKind::PanelSequenceSimilarity => {
+                "panel_sequence_similarity"
+            }
+            RegulatoryFragmentEvidenceDimensionKind::RepeatsAndLowComplexity => {
+                "repeats_and_low_complexity"
+            }
+            RegulatoryFragmentEvidenceDimensionKind::PairSpecificJunctionUniqueness => {
+                "pair_specific_junction_uniqueness"
+            }
+            RegulatoryFragmentEvidenceDimensionKind::RestrictionAndCloningRisk => {
+                "restriction_and_cloning_risk"
+            }
+            RegulatoryFragmentEvidenceDimensionKind::EnsemblRegulatoryOverlap => {
+                "ensembl_regulatory_overlap"
+            }
+            RegulatoryFragmentEvidenceDimensionKind::TfbsModelScoreContext => {
+                "tfbs_model_score_context"
+            }
+            RegulatoryFragmentEvidenceDimensionKind::CutrunAndChromatinContext => {
+                "cutrun_and_chromatin_context"
+            }
         }
     }
 
@@ -2395,6 +3136,39 @@ mod tests {
     }
 
     #[test]
+    fn regulatory_fragment_svg_operation_renders_exact_plan_and_rejects_tampering() {
+        let mut fixture = planner_fixture(true, gp::GenomicRegionStrand::Plus, false);
+        let plan = fixture
+            .engine
+            .plan_regulatory_fragment_panel(fixture.request.clone())
+            .expect("regulatory-fragment plan");
+        let svg_path = fixture._temp.path().join("panel.svg");
+        fixture
+            .engine
+            .apply(Operation::RenderRegulatoryFragmentPanelSvg {
+                plan: Box::new(plan.clone()),
+                path: svg_path.to_string_lossy().to_string(),
+            })
+            .expect("render exact plan");
+        let svg = fs::read_to_string(&svg_path).expect("rendered SVG");
+        assert!(svg.contains("Genome-anchored source fragments"));
+        assert!(svg.contains("Independent evidence lanes"));
+
+        let mut tampered = plan;
+        tampered.members[0].member_id.push_str("_changed");
+        let rejected_path = fixture._temp.path().join("tampered.svg");
+        let error = fixture
+            .engine
+            .apply(Operation::RenderRegulatoryFragmentPanelSvg {
+                plan: Box::new(tampered),
+                path: rejected_path.to_string_lossy().to_string(),
+            })
+            .expect_err("tampered plan must not render");
+        assert!(error.message.contains("proposal_content_digest_mismatch"));
+        assert!(!rejected_path.exists());
+    }
+
+    #[test]
     fn regulatory_fragment_geometry_variants_are_strictly_opt_in() {
         let mut fixture = planner_fixture(true, gp::GenomicRegionStrand::Plus, false);
         fixture
@@ -2481,7 +3255,7 @@ mod tests {
     }
 
     #[test]
-    fn regulatory_fragment_evidence_lanes_remain_separate_and_not_evaluated() {
+    fn regulatory_fragment_evidence_lanes_are_populated_independently() {
         let mut fixture = planner_fixture(false, gp::GenomicRegionStrand::Plus, false);
         let digest = format!("sha256:{}", "0".repeat(64));
         fixture.request.evidence_bindings = vec![
@@ -2509,10 +3283,35 @@ mod tests {
             .plan_regulatory_fragment_panel(fixture.request)
             .expect("plan with evidence citations");
         assert_eq!(plan.evidence_dimensions.len(), 8);
-        assert!(plan.evidence_dimensions.iter().all(|lane| {
-            lane.state == RegulatoryFragmentEvidenceState::NotEvaluated
-                && lane.detail.contains("never a pass")
-        }));
+        for evaluated in [
+            RegulatoryFragmentEvidenceDimensionKind::ReferenceGenomicUniqueness,
+            RegulatoryFragmentEvidenceDimensionKind::PanelSequenceSimilarity,
+            RegulatoryFragmentEvidenceDimensionKind::RepeatsAndLowComplexity,
+            RegulatoryFragmentEvidenceDimensionKind::PairSpecificJunctionUniqueness,
+            RegulatoryFragmentEvidenceDimensionKind::RestrictionAndCloningRisk,
+        ] {
+            let lane = plan
+                .evidence_dimensions
+                .iter()
+                .find(|lane| lane.kind == evaluated)
+                .expect("evaluated evidence lane");
+            assert_eq!(lane.state, RegulatoryFragmentEvidenceState::Evaluated);
+            assert!(lane.assessment_sha256.starts_with("sha256:"));
+        }
+        for unevaluated in [
+            RegulatoryFragmentEvidenceDimensionKind::EnsemblRegulatoryOverlap,
+            RegulatoryFragmentEvidenceDimensionKind::TfbsModelScoreContext,
+            RegulatoryFragmentEvidenceDimensionKind::CutrunAndChromatinContext,
+        ] {
+            let lane = plan
+                .evidence_dimensions
+                .iter()
+                .find(|lane| lane.kind == unevaluated)
+                .expect("unevaluated evidence lane");
+            assert_eq!(lane.state, RegulatoryFragmentEvidenceState::NotEvaluated);
+            assert!(lane.detail.contains("never a pass"));
+            assert!(lane.observations.is_empty());
+        }
         let kinds = plan
             .evidence_dimensions
             .iter()
@@ -2534,6 +3333,102 @@ mod tests {
                 1
             );
         }
+    }
+
+    #[test]
+    fn regulatory_fragment_similarity_repeats_and_junction_risks_stay_separate() {
+        let mut fixture = planner_fixture(true, gp::GenomicRegionStrand::Plus, false);
+        fixture
+            .request
+            .questions
+            .push(RegulatoryFragmentQuestion::SpacingDependence);
+        fixture.request.policy.sequence_word_size_bp = 3;
+        fixture
+            .request
+            .requested_variants
+            .push(RegulatoryFragmentGeometryRequest {
+                variant_id: "long_a_spacer".to_string(),
+                declared_order: 4,
+                kind: RegulatoryFragmentGeometryKind::ControlledSpacing,
+                instances: vec![
+                    RegulatoryFragmentInstanceRequest {
+                        fragment_id: "candidate_a".to_string(),
+                        ..RegulatoryFragmentInstanceRequest::default()
+                    },
+                    RegulatoryFragmentInstanceRequest {
+                        fragment_id: "partner_b".to_string(),
+                        spacer_before: "A".repeat(40),
+                        ..RegulatoryFragmentInstanceRequest::default()
+                    },
+                    RegulatoryFragmentInstanceRequest {
+                        fragment_id: "minimal_promoter".to_string(),
+                        ..RegulatoryFragmentInstanceRequest::default()
+                    },
+                ],
+                ..RegulatoryFragmentGeometryRequest::default()
+            });
+        let plan = fixture
+            .engine
+            .plan_regulatory_fragment_panel(fixture.request)
+            .expect("plan with independent sequence evidence");
+        let lane = |kind| {
+            plan.evidence_dimensions
+                .iter()
+                .find(|lane| lane.kind == kind)
+                .expect("evidence lane")
+        };
+        let similarity = lane(RegulatoryFragmentEvidenceDimensionKind::PanelSequenceSimilarity);
+        let repeats = lane(RegulatoryFragmentEvidenceDimensionKind::RepeatsAndLowComplexity);
+        let junctions =
+            lane(RegulatoryFragmentEvidenceDimensionKind::PairSpecificJunctionUniqueness);
+        let cloning = lane(RegulatoryFragmentEvidenceDimensionKind::RestrictionAndCloningRisk);
+
+        assert!(similarity.observations.iter().any(|row| matches!(
+            row,
+            RegulatoryFragmentEvidenceObservation::PanelSequenceSimilarity {
+                comparison_scope,
+                ..
+            } if comparison_scope == "fragment_to_reporter_vector"
+        )));
+        assert!(
+            similarity
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "fragment_reporter_vector_word_similarity")
+        );
+        assert!(repeats.observations.iter().any(|row| matches!(
+            row,
+            RegulatoryFragmentEvidenceObservation::RepeatOrLowComplexity { evidence, .. }
+                if evidence.context_tags.iter().any(|tag| tag == "low_complexity")
+        )));
+        assert!(
+            repeats
+                .warnings
+                .iter()
+                .all(|warning| warning.code == "repeat_or_low_complexity_context_detected")
+        );
+        assert!(junctions.observations.iter().any(|row| matches!(
+            row,
+            RegulatoryFragmentEvidenceObservation::PairSpecificJunctionUniqueness {
+                panel_other_member_match_count,
+                exact_unique_in_assessed_context: false,
+                ..
+            } if *panel_other_member_match_count > 0
+        )));
+        assert!(
+            junctions
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "junction_not_unique_in_assessed_context")
+        );
+        assert!(cloning.observations.iter().all(|row| matches!(
+            row,
+            RegulatoryFragmentEvidenceObservation::RestrictionAndCloningRisk { .. }
+        )));
+        assert!(!similarity.warnings.iter().any(|warning| {
+            warning.code == "repeat_or_low_complexity_context_detected"
+                || warning.code == "junction_not_unique_in_assessed_context"
+        }));
     }
 
     #[test]
@@ -2798,7 +3693,11 @@ mod tests {
                 "high_similarity_identity_fraction": 0.95,
                 "high_similarity_coverage_fraction": 0.90,
                 "vector_context_flank_bp": 24,
-                "max_candidate_constructs": 20
+                "max_candidate_constructs": 20,
+                "sequence_word_size_bp": 12,
+                "near_exact_max_mismatches": 1,
+                "junction_flank_bp": 16,
+                "max_evidence_observations_per_dimension": 512
             }
         }))
         .expect("explicit defaults");

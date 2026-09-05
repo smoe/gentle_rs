@@ -743,6 +743,13 @@ promoter-panel materializer. Until a compatible mutation contract is reviewed,
 such plans remain approval-bound review artifacts with materialization marked
 unsupported.
 
+Sequence-computable regulatory-fragment evidence is populated in the same
+read-only engine operation and stored as typed, content-addressed observations.
+The shared renderer is a passive projection of that plan. It never recomputes
+evidence or promotes an opaque report citation to evaluated status. External
+Ensembl, TFBS, CUT&RUN, or chromatin content must arrive through a typed report
+resolver before its lane can leave `not_evaluated`.
+
 Portable locus-evidence composition also fails closed. Every requested
 occupancy/chromatin source remains represented with a typed availability state
 instead of disappearing when unavailable. Predicted regulatory-score rows may
