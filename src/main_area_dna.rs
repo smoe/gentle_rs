@@ -1704,6 +1704,7 @@ pub struct MainAreaDna {
     genomic_region_new_label: String,
     genomic_region_new_purpose: gentle_protocol::GenomicRegionPurpose,
     genomic_region_new_color_hex: String,
+    genomic_region_pending_color: Option<genomic_regions_ui::StagedGenomicRegionColor>,
     genomic_region_pending_selection: Option<(usize, usize)>,
     genomic_region_store_cache: Option<gentle_protocol::GenomicRegionStore>,
     genomic_region_status: String,
@@ -2525,6 +2526,7 @@ impl MainAreaDna {
             genomic_region_new_purpose:
                 gentle_protocol::GenomicRegionPurpose::CandidateCisRegulatoryRegion,
             genomic_region_new_color_hex: "#C2410C".to_string(),
+            genomic_region_pending_color: None,
             genomic_region_pending_selection: None,
             genomic_region_store_cache: None,
             genomic_region_status: String::new(),

@@ -72,15 +72,22 @@ fn validate_interval(interval: &gp::GenomicRegionInterval) -> Result<(), EngineE
     Ok(())
 }
 
+/// Accept only `#` followed by six ASCII hex digits.
+///
+/// Every consumer slices this value by byte range, so the ASCII restriction is
+/// a safety invariant rather than a cosmetic one.
+fn display_color_is_canonical(value: &str) -> bool {
+    value.len() == 7
+        && value.starts_with('#')
+        && value[1..].bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
 fn normalize_display_color(value: Option<String>) -> Result<Option<String>, EngineError> {
     let Some(value) = value else {
         return Ok(None);
     };
     let value = value.trim();
-    if value.len() != 7
-        || !value.starts_with('#')
-        || !value[1..].bytes().all(|byte| byte.is_ascii_hexdigit())
-    {
+    if !display_color_is_canonical(value) {
         return Err(region_error(
             ErrorCode::InvalidInput,
             "display_color_hex must be '#RRGGBB'",
@@ -296,6 +303,17 @@ fn validate_region_digest(region: &gp::GenomicRegionOfInterest) -> Result<(), En
                 "unsupported genomic ROI schema '{}'; expected '{}'",
                 region.schema,
                 gp::GENOMIC_REGION_OF_INTEREST_SCHEMA
+            ),
+        ));
+    }
+    if let Some(color) = region.display_color_hex.as_deref()
+        && !display_color_is_canonical(color)
+    {
+        return Err(region_error(
+            ErrorCode::InvalidInput,
+            format!(
+                "display_color_hex on genomic region '{}' must be '#RRGGBB'",
+                region.region_id
             ),
         ));
     }
@@ -2935,6 +2953,79 @@ mod tests {
         assert_eq!(
             inspected.evidence[0].availability,
             gp::GenomicRegionEvidenceAvailability::Stale
+        );
+    }
+
+    #[test]
+    fn genomic_region_import_rejects_display_colours_that_are_not_ascii_rrggbb() {
+        let mut engine = GentleEngine::default();
+        let saved = engine
+            .apply(Operation::CaptureGenomicRegion {
+                request: gp::GenomicRegionCaptureRequest {
+                    set_id: "colour_set".to_string(),
+                    display_color_hex: Some("#1a2b3c".to_string()),
+                    source: gp::GenomicRegionCaptureSource::ProviderAnnotation {
+                        interval: gp::GenomicRegionInterval {
+                            reference: reference(),
+                            start_0based: 10,
+                            end_0based_exclusive: 40,
+                            ..Default::default()
+                        },
+                        evidence: gp::GenomicRegionEvidenceReference {
+                            evidence_id: "provider:colour".to_string(),
+                            source_kind: "provider_annotation".to_string(),
+                            source_id: "provider_snapshot".to_string(),
+                            availability: gp::GenomicRegionEvidenceAvailability::Unverified,
+                            evidence_statement: "Provider annotation supplied the geometry."
+                                .to_string(),
+                            ..Default::default()
+                        },
+                    },
+                    ..Default::default()
+                },
+            })
+            .expect("capture region")
+            .genomic_region_operation
+            .expect("report")
+            .set
+            .expect("set");
+        assert_eq!(
+            saved.regions[0].display_color_hex.as_deref(),
+            Some("#1A2B3C"),
+            "capture normalizes the colour"
+        );
+
+        // A hand-authored set can carry any colour string and still bind
+        // correct digests, so the import path must reject the value itself
+        // rather than trusting the digest.
+        let mut tampered = saved.clone();
+        tampered.set_id = "imported_colour_set".to_string();
+        tampered.regions[0].display_color_hex = Some("#\u{20AC}123".to_string());
+        recompute_region_digests(&mut tampered.regions[0]).expect("region digests");
+        recompute_set_digest(&mut tampered).expect("set digest");
+
+        let directory = tempfile::tempdir().expect("temp dir");
+        let path = directory.path().join("tampered.json");
+        std::fs::write(
+            &path,
+            serde_json::to_string_pretty(&tampered).expect("serialize"),
+        )
+        .expect("write");
+
+        let error = engine
+            .apply(Operation::ImportGenomicRegionSet {
+                request: gp::GenomicRegionImportRequest {
+                    path: path.display().to_string(),
+                    format: gp::GenomicRegionImportFormat::Json,
+                    ..Default::default()
+                },
+            })
+            .expect_err("import must reject a non-ASCII display colour");
+        assert_eq!(error.code, ErrorCode::InvalidInput);
+        assert!(
+            error.message.contains("display_color_hex"),
+            "unexpected message: {}",
+            error.message
         );
     }
 }

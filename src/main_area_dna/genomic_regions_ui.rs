@@ -17,11 +17,17 @@ enum GenomicRegionManagerAction {
     ImportBed,
     ExportJson(String),
     ExportBed(String),
-    UpdateColor {
-        set_id: String,
-        region: gentle_protocol::GenomicRegionOfInterest,
-        color_hex: String,
-    },
+}
+
+/// A colour edit that is still being dragged.
+///
+/// Committing on every reported change would apply one engine operation, and
+/// therefore one full project checkpoint, per rendered frame.
+#[derive(Debug, Clone)]
+pub(super) struct StagedGenomicRegionColor {
+    pub(super) set_id: String,
+    pub(super) region_id: String,
+    pub(super) color_hex: String,
 }
 
 impl MainAreaDna {
@@ -312,8 +318,52 @@ impl MainAreaDna {
         let _ = self.apply_genomic_region_operation(Operation::ExportGenomicRegionSet { request });
     }
 
+    /// Apply a staged colour once the pointer is released.
+    ///
+    /// Presentation updates are ordinary engine operations, so one per dragged
+    /// frame would clone the whole project per frame and evict real undo
+    /// history. Keyboard-driven edits commit immediately, since no pointer is
+    /// held during them.
+    fn commit_staged_genomic_region_color(&mut self, ctx: &egui::Context) {
+        if ctx.input(|input| input.pointer.any_down()) {
+            return;
+        }
+        let Some(staged) = self.genomic_region_pending_color.take() else {
+            return;
+        };
+        let Some(region) = self
+            .genomic_region_store_cache
+            .as_ref()
+            .and_then(|store| store.sets.iter().find(|set| set.set_id == staged.set_id))
+            .and_then(|set| {
+                set.regions
+                    .iter()
+                    .find(|region| region.region_id == staged.region_id)
+            })
+            .cloned()
+        else {
+            self.genomic_region_status =
+                "The recoloured genomic region is no longer in the loaded store".to_string();
+            return;
+        };
+        if region.display_color_hex.as_deref() == Some(staged.color_hex.as_str()) {
+            return;
+        }
+        let request = gentle_protocol::GenomicRegionUpdateRequest {
+            set_id: staged.set_id,
+            region_id: region.region_id,
+            label: region.label,
+            description: region.description,
+            display_color_hex: Some(staged.color_hex),
+            notes: region.notes,
+        };
+        let _ = self
+            .apply_genomic_region_operation(Operation::UpdateGenomicRegionPresentation { request });
+    }
+
     pub(super) fn render_genomic_region_manager(&mut self, ctx: &egui::Context) {
         if !self.show_genomic_region_manager {
+            self.commit_staged_genomic_region_color(ctx);
             return;
         }
         let store = self.genomic_region_store_cache.clone().unwrap_or_default();
@@ -326,6 +376,7 @@ impl MainAreaDna {
             .as_deref()
             .unwrap_or("unnamed")]);
         let mut action: Option<GenomicRegionManagerAction> = None;
+        let mut staged_color: Option<StagedGenomicRegionColor> = None;
         let mut overlay_change: Option<(String, bool)> = None;
         let mut open = self.show_genomic_region_manager;
         let spec = crate::egui_compat::HostedWindowSpec::new(
@@ -558,8 +609,23 @@ impl MainAreaDna {
                                         availability.as_str(),
                                         region.evidence.len()
                                     ));
+                                    // The picker reports a change every frame
+                                    // it is dragged, and each engine operation
+                                    // captures a full project checkpoint, so
+                                    // stage the value here and commit it once
+                                    // the pointer is released.
+                                    let staged_hex = self
+                                        .genomic_region_pending_color
+                                        .as_ref()
+                                        .filter(|staged| {
+                                            staged.set_id == set.set_id
+                                                && staged.region_id == region.region_id
+                                        })
+                                        .map(|staged| staged.color_hex.clone());
                                     let mut color = MainAreaDna::locus_inspector_color(
-                                        region.display_color_hex.as_deref(),
+                                        staged_hex
+                                            .as_deref()
+                                            .or(region.display_color_hex.as_deref()),
                                         egui::Color32::from_rgb(194, 65, 12),
                                     );
                                     if egui::color_picker::color_edit_button_srgba(
@@ -569,9 +635,9 @@ impl MainAreaDna {
                                     )
                                     .changed()
                                     {
-                                        action = Some(GenomicRegionManagerAction::UpdateColor {
+                                        staged_color = Some(StagedGenomicRegionColor {
                                             set_id: set.set_id.clone(),
-                                            region: region.clone(),
+                                            region_id: region.region_id.clone(),
                                             color_hex: format!(
                                                 "#{:02X}{:02X}{:02X}",
                                                 color.r(),
@@ -656,6 +722,10 @@ impl MainAreaDna {
                 });
         });
         self.show_genomic_region_manager = open;
+        if let Some(staged) = staged_color {
+            self.genomic_region_pending_color = Some(staged);
+        }
+        self.commit_staged_genomic_region_color(ctx);
         if let Some((set_id, enabled)) = overlay_change {
             self.set_region_overlay_enabled(&set_id, enabled);
         }
@@ -689,23 +759,6 @@ impl MainAreaDna {
             }
             Some(GenomicRegionManagerAction::ExportBed(set_id)) => {
                 self.export_genomic_region_set_bed(&set_id)
-            }
-            Some(GenomicRegionManagerAction::UpdateColor {
-                set_id,
-                region,
-                color_hex,
-            }) => {
-                let request = gentle_protocol::GenomicRegionUpdateRequest {
-                    set_id,
-                    region_id: region.region_id,
-                    label: region.label,
-                    description: region.description,
-                    display_color_hex: Some(color_hex),
-                    notes: region.notes,
-                };
-                let _ = self.apply_genomic_region_operation(
-                    Operation::UpdateGenomicRegionPresentation { request },
-                );
             }
             None => {}
         }

@@ -9089,7 +9089,10 @@ impl MainAreaDna {
         let Some(value) = value.and_then(|value| value.strip_prefix('#')) else {
             return fallback;
         };
-        if value.len() != 6 {
+        // Reports and region sets can be loaded from caller-supplied files, so
+        // treat the colour as untrusted: require exactly six ASCII hex digits
+        // before slicing, because byte ranges over multi-byte characters panic.
+        if value.len() != 6 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
             return fallback;
         }
         let parse = |range| u8::from_str_radix(&value[range], 16).ok();
