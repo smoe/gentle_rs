@@ -100,13 +100,47 @@ fn declared_content_fingerprint(paths: &PackagePaths, inventory_rows: &[Inventor
     sha256_prefixed_bytes(identity.as_bytes())
 }
 
-fn report_id(request: &GenomicMotifEvidenceRequest, manifest_sha256: Option<&str>) -> String {
+fn report_id(
+    request: &GenomicMotifEvidenceRequest,
+    regions: &[GenomicMotifQueryRegion],
+    manifest_sha256: Option<&str>,
+) -> String {
     let request_json = serde_json::to_string(request).unwrap_or_default();
-    let identity = match manifest_sha256 {
-        Some(manifest_sha256) => format!("{request_json}\n{manifest_sha256}"),
-        None => request_json,
-    };
+    let mut identity = request_json;
+    for region in regions {
+        identity.push_str(&format!(
+            "\n{}\t{}\t{}\t{}",
+            region.interval_id, region.chromosome, region.start_0based, region.end_0based_exclusive
+        ));
+    }
+    if let Some(manifest_sha256) = manifest_sha256 {
+        identity.push('\n');
+        identity.push_str(manifest_sha256);
+    }
     short_sha256_id("genomic_motif_evidence", &identity)
+}
+
+fn coarse_region_scan_filter(regions: &[(GenomicMotifQueryRegion, String)]) -> String {
+    let mut bounds = BTreeMap::<&str, (u64, u64)>::new();
+    for (region, chromosome) in regions {
+        bounds
+            .entry(chromosome.as_str())
+            .and_modify(|(start, end)| {
+                *start = (*start).min(region.start_0based);
+                *end = (*end).max(region.end_0based_exclusive);
+            })
+            .or_insert((region.start_0based, region.end_0based_exclusive));
+    }
+    bounds
+        .into_iter()
+        .map(|(chromosome, (start, end))| {
+            format!(
+                "(h.chrom = {} AND h.\"end\" > {start}::UBIGINT AND h.start < {end}::UBIGINT)",
+                sql_string(chromosome)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" OR ")
 }
 
 fn unavailable_report(
@@ -117,7 +151,7 @@ fn unavailable_report(
 ) -> GenomicMotifEvidenceReport {
     GenomicMotifEvidenceReport {
         schema: GENOMIC_MOTIF_EVIDENCE_SCHEMA.to_string(),
-        report_id: report_id(request, None),
+        report_id: report_id(request, regions, None),
         availability,
         request: request.clone(),
         regions: regions
@@ -1001,7 +1035,7 @@ pub(crate) fn query_genomic_motif_evidence(
         );
         return Ok(GenomicMotifEvidenceReport {
             schema: GENOMIC_MOTIF_EVIDENCE_SCHEMA.to_string(),
-            report_id: report_id(request, Some(&content_fingerprint)),
+            report_id: report_id(request, regions, Some(&content_fingerprint)),
             availability: GenomicMotifEvidenceAvailability::Available,
             request: request.clone(),
             provider: Some(provider_provenance(
@@ -1036,6 +1070,7 @@ pub(crate) fn query_genomic_motif_evidence(
         .collect::<Vec<_>>()
         .join(",");
     let mut filters = vec!["TRUE".to_string()];
+    filters.push(format!("({})", coarse_region_scan_filter(&query_regions)));
     if let Some(minimum) = request.minimum_score {
         filters.push(format!("h.score >= {minimum:.17}"));
     }
@@ -1127,7 +1162,7 @@ pub(crate) fn query_genomic_motif_evidence(
     let content_fingerprint = declared_content_fingerprint(&paths, &inventory_rows);
     Ok(GenomicMotifEvidenceReport {
         schema: GENOMIC_MOTIF_EVIDENCE_SCHEMA.to_string(),
-        report_id: report_id(request, Some(&content_fingerprint)),
+        report_id: report_id(request, regions, Some(&content_fingerprint)),
         availability: GenomicMotifEvidenceAvailability::Available,
         request: request.clone(),
         provider: Some(provider_provenance(
@@ -1204,6 +1239,42 @@ fn provider_provenance(
 mod tests {
     use super::*;
 
+    fn test_region(id: &str, chromosome: &str, start: u64, end: u64) -> GenomicMotifQueryRegion {
+        GenomicMotifQueryRegion {
+            interval_id: id.to_string(),
+            label: None,
+            chromosome: chromosome.to_string(),
+            start_0based: start,
+            end_0based_exclusive: end,
+            source_seq_id: None,
+            source_start_0based: None,
+            source_end_0based_exclusive: None,
+            source_sequence_length_bp: None,
+            source_anchor_start_1based: None,
+            source_anchor_end_1based: None,
+            source_anchor_reverse: false,
+        }
+    }
+
+    #[test]
+    fn coarse_scan_filter_is_per_contig_and_preserves_half_open_bounds() {
+        let regions = vec![
+            (test_region("a", "1", 100, 116), "1".to_string()),
+            (test_region("b", "1", 200, 240), "1".to_string()),
+            (test_region("c", "2", 10, 20), "2".to_string()),
+        ];
+        let filter = coarse_region_scan_filter(&regions);
+        assert!(
+            filter
+                .contains("h.chrom = '1' AND h.\"end\" > 100::UBIGINT AND h.start < 240::UBIGINT")
+        );
+        assert!(
+            filter.contains("h.chrom = '2' AND h.\"end\" > 10::UBIGINT AND h.start < 20::UBIGINT")
+        );
+        assert!(!filter.contains("h.\"end\" >="));
+        assert!(!filter.contains("h.start <="));
+    }
+
     #[cfg(unix)]
     fn synthetic_package_with_fake_duckdb() -> (tempfile::TempDir, PathBuf) {
         use std::os::unix::fs::PermissionsExt;
@@ -1250,7 +1321,7 @@ case "$5" in
     printf '%s\n' '[{"task_id":"task-1","output_relative_path":"hits.parquet","sha256":"sha256:synthetic-payload","emitted_hits":2}]'
     ;;
   *"motif_hit_files"*)
-    printf '%s\n' '[{"interval_id":"region-1","chrom":"1","start":12,"end":20,"motif_id":"MA0525.2","motif_name":"TP63","strand":"+","score":3.25,"pwm_relative_score":0.91,"score_mode":"log2_relative_risk","minimum_score":0.0,"matched_seq":"ACGTACGT"}]'
+    printf '%s\n' '[{"interval_id":"region-1","chrom":"1","start":12,"end":20,"motif_id":"MA0525.2","motif_name":"TP63","strand":"+","score":3.25,"pwm_relative_score":0.91,"score_mode":"log2_relative_risk","minimum_score":0.0,"matched_seq":"ACGTACGT"},{"interval_id":"region-1","chrom":"1","start":20,"end":28,"motif_id":"MA0525.2","motif_name":"TP63","strand":"-","score":3.0,"pwm_relative_score":0.89,"score_mode":"log2_relative_risk","minimum_score":0.0,"matched_seq":"TGCATGCA"}]'
     ;;
   *)
     printf '%s\n' '[]'
@@ -1447,7 +1518,7 @@ esac
             GenomicMotifEvidenceAvailability::Available
         );
         assert_eq!(first.selected_payload_file_count, 1);
-        assert_eq!(first.returned_hit_count, 1);
+        assert_eq!(first.returned_hit_count, 2);
         assert_eq!(first.motif_coverage.len(), 1);
         assert_eq!(
             first.motif_coverage[0].status,
@@ -1456,7 +1527,7 @@ esac
         assert_eq!(first.motif_coverage[0].source_minimum_score, Some(-1.0));
         assert_eq!(first.hits[0].start_0based, 12);
         assert_eq!(first.hits[0].motif_id, "MA0525.2");
-        let provider = first.provider.expect("provider provenance");
+        let provider = first.provider.as_ref().expect("provider provenance");
         assert_eq!(provider.selected_payloads.len(), 1);
         assert_eq!(
             provider.selected_payloads[0].declared_sha256,
@@ -1467,6 +1538,91 @@ esac
                 .declared_content_fingerprint_sha256
                 .starts_with("sha256:")
         );
+
+        fs::write(
+            package.path().join("manifest.json"),
+            r#"{"schema_version":2,"state":"complete","database":"jaspar_genome_scan.duckdb","revision":"changed"}"#,
+        )
+        .expect("changed manifest");
+        let changed = query_genomic_motif_evidence(&request, &regions).expect("changed query");
+        assert_ne!(first.report_id, changed.report_id);
+        assert_ne!(
+            first
+                .provider
+                .as_ref()
+                .unwrap()
+                .declared_content_fingerprint_sha256,
+            changed
+                .provider
+                .unwrap()
+                .declared_content_fingerprint_sha256
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn max_rows_boundary_marks_coverage_incomplete() {
+        let (package, executable) = synthetic_package_with_fake_duckdb();
+        let request = GenomicMotifEvidenceRequest {
+            package_root: Some(package.path().display().to_string()),
+            duckdb_executable: Some(executable.display().to_string()),
+            motif_ids: vec!["MA0525.2".to_string()],
+            max_rows: 1,
+            ..GenomicMotifEvidenceRequest::default()
+        };
+        let report =
+            query_genomic_motif_evidence(&request, &[test_region("region-1", "1", 10, 30)])
+                .expect("bounded query");
+        assert_eq!(report.returned_hit_count, 1);
+        assert!(!report.query_complete);
+        assert_eq!(
+            report.motif_coverage[0].status,
+            GenomicMotifEvidenceCoverageStatus::TruncatedAtMaxRows
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn incompatible_contig_geometry_is_reported_without_querying_hits() {
+        let (package, executable) = synthetic_package_with_fake_duckdb();
+        let request = GenomicMotifEvidenceRequest {
+            package_root: Some(package.path().display().to_string()),
+            duckdb_executable: Some(executable.display().to_string()),
+            motif_ids: vec!["MA0525.2".to_string()],
+            ..GenomicMotifEvidenceRequest::default()
+        };
+        let report =
+            query_genomic_motif_evidence(&request, &[test_region("outside", "1", 990, 1_010)])
+                .expect("typed incompatibility");
+        assert_eq!(
+            report.availability,
+            GenomicMotifEvidenceAvailability::IncompatiblePackage
+        );
+        assert_eq!(
+            report.regions[0].compatibility_status,
+            GenomicMotifEvidenceCompatibilityStatus::ContigGeometryMismatch
+        );
+        assert!(report.hits.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn inventory_symlink_outside_package_root_is_rejected() {
+        use std::os::unix::fs::symlink;
+
+        let package = tempfile::tempdir().expect("package");
+        let outside = tempfile::NamedTempFile::new().expect("outside payload");
+        let payload_dir = package.path().join("task_data/task_id=task-1");
+        fs::create_dir_all(&payload_dir).expect("payload directory");
+        symlink(outside.path(), payload_dir.join("hits.parquet")).expect("payload symlink");
+        let row = InventoryRow {
+            task_id: "task-1".to_string(),
+            output_relative_path: "hits.parquet".to_string(),
+            sha256: "sha256:outside".to_string(),
+            emitted_hits: 1,
+        };
+        let error = resolve_payload_path(package.path(), &row).expect_err("outside path fails");
+        assert!(error.contains("outside package root"));
     }
 
     #[cfg(unix)]

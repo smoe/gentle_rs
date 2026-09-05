@@ -4810,11 +4810,12 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
         "genomic-motif-evidence" => {
             if tokens.len() < 3 {
                 return Err(
-                    "features genomic-motif-evidence requires SEQ_ID or one or more --region [ID=]CHR:START..END, plus --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END] [--package DIR] [--database FILE] [--duckdb FILE] [--genome-id ID] [--min-score VALUE] [--min-pwm-relative-score VALUE] [--max-rows N] [--max-payload-files N] [--timeout-seconds N] [--path FILE.json]"
+                    "features genomic-motif-evidence requires SEQ_ID, --region-set ID, or one or more --region [ID=]CHR:START..END, plus --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END] [--package DIR] [--database FILE] [--duckdb FILE] [--genome-id ID] [--min-score VALUE] [--min-pwm-relative-score VALUE] [--max-rows N] [--max-payload-files N] [--timeout-seconds N] [--path FILE.json]"
                         .to_string(),
                 );
             }
             let mut seq_id: Option<String> = None;
+            let mut region_set_id: Option<String> = None;
             let mut span_start_0based: Option<usize> = None;
             let mut span_end_0based_exclusive: Option<usize> = None;
             let mut intervals = vec![];
@@ -4842,6 +4843,14 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
             }
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
+                    "--region-set" => {
+                        region_set_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--region-set",
+                            "features genomic-motif-evidence",
+                        )?);
+                    }
                     "--region" => {
                         let raw = parse_option_path(
                             tokens,
@@ -5009,33 +5018,34 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                         .to_string(),
                 );
             }
-            let target = match (seq_id, intervals.is_empty()) {
-                (Some(seq_id), true) => GenomicMotifEvidenceTarget::AnchoredSequence {
+            let target_count = usize::from(seq_id.is_some())
+                + usize::from(!intervals.is_empty())
+                + usize::from(region_set_id.is_some());
+            if target_count != 1 {
+                return Err(
+                    "features genomic-motif-evidence requires exactly one target: SEQ_ID, --region values, or --region-set ID"
+                        .to_string(),
+                );
+            }
+            let target = match (seq_id, intervals.is_empty(), region_set_id) {
+                (Some(seq_id), true, None) => GenomicMotifEvidenceTarget::AnchoredSequence {
                     seq_id,
                     span_start_0based,
                     span_end_0based_exclusive,
                 },
-                (None, false) if span_start_0based.is_none() => {
+                (None, false, None) if span_start_0based.is_none() => {
                     GenomicMotifEvidenceTarget::GenomicIntervals { intervals }
                 }
-                (Some(_), false) => {
-                    return Err(
-                        "features genomic-motif-evidence accepts either SEQ_ID or --region values, not both"
-                            .to_string(),
-                    );
+                (None, true, Some(region_set_id)) if span_start_0based.is_none() => {
+                    GenomicMotifEvidenceTarget::StoredRegionSet { region_set_id }
                 }
-                (None, false) => {
+                (_, _, _) if span_start_0based.is_some() => {
                     return Err(
                         "features genomic-motif-evidence --range is valid only with SEQ_ID"
                             .to_string(),
                     );
                 }
-                (None, true) => {
-                    return Err(
-                        "features genomic-motif-evidence requires SEQ_ID or at least one --region"
-                            .to_string(),
-                    );
-                }
+                _ => unreachable!("target count validated above"),
             };
             Ok(ShellCommand::FeaturesGenomicMotifEvidence {
                 request: GenomicMotifEvidenceRequest {

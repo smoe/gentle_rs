@@ -11329,6 +11329,9 @@ impl ShellCommand {
                     GenomicMotifEvidenceTarget::GenomicIntervals { intervals } => {
                         format!("{} explicit genomic interval(s)", intervals.len())
                     }
+                    GenomicMotifEvidenceTarget::StoredRegionSet { region_set_id } => {
+                        format!("stored genomic region set '{region_set_id}'")
+                    }
                 };
                 format!(
                     "query precomputed genomic motif evidence for {} (motifs={}, max_rows={}, max_payload_files={}, timeout_seconds={}, path={})",

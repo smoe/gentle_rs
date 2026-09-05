@@ -121,6 +121,9 @@ pub enum GenomicMotifEvidenceTarget {
     GenomicIntervals {
         intervals: Vec<GenomicMotifEvidenceInterval>,
     },
+    StoredRegionSet {
+        region_set_id: String,
+    },
 }
 
 impl Default for GenomicMotifEvidenceTarget {
@@ -317,4 +320,25 @@ pub struct GenomicMotifEvidenceReport {
     pub query_complete: bool,
     pub hits: Vec<GenomicMotifEvidenceHit>,
     pub warnings: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stored_region_set_target_round_trips() {
+        let request = GenomicMotifEvidenceRequest {
+            target: GenomicMotifEvidenceTarget::StoredRegionSet {
+                region_set_id: "conserved_promoters".to_string(),
+            },
+            motif_ids: vec!["MA0525.2".to_string()],
+            ..Default::default()
+        };
+        let encoded = serde_json::to_string(&request).expect("serialize request");
+        assert!(encoded.contains(r#""target_kind":"stored_region_set""#));
+        let decoded: GenomicMotifEvidenceRequest =
+            serde_json::from_str(&encoded).expect("deserialize request");
+        assert_eq!(decoded, request);
+    }
 }

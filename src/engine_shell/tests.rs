@@ -10368,6 +10368,28 @@ fn parse_features_genomic_motif_evidence_for_sequence_and_intervals() {
         },
         other => panic!("unexpected command: {other:?}"),
     }
+
+    let command = parse_shell_line(
+        "features genomic-motif-evidence --region-set conserved_promoters --motif MA0525.2",
+    )
+    .expect("parse stored genomic region set");
+    match command {
+        ShellCommand::FeaturesGenomicMotifEvidence { request, .. } => {
+            assert_eq!(
+                request.target,
+                GenomicMotifEvidenceTarget::StoredRegionSet {
+                    region_set_id: "conserved_promoters".to_string(),
+                }
+            );
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let error = parse_shell_line(
+        "features genomic-motif-evidence seq_a --region-set conserved_promoters --motif MA0525.2",
+    )
+    .expect_err("mixed target forms fail");
+    assert!(error.contains("exactly one target"));
 }
 
 #[test]
@@ -20283,6 +20305,41 @@ fn execute_genomic_motif_evidence_keeps_missing_provider_optional_and_read_only(
             .as_str()
             .is_some_and(|warning| warning.contains("local GENtle TFBS scoring remains available"))
     );
+
+    execute_shell_command(
+        &mut engine,
+        &parse_shell_line(
+            r#"regions create '{"set_id":"motif_targets","region_id":"promoter","interval":{"reference":{"assembly_name":"GRCh38","contig_name":"1"},"start_0based":100,"end_0based_exclusive":200,"strand":"unstranded","coordinate_convention":"zero_based_half_open"},"purpose":"promoter_region","selection_method":"manual_span"}'"#,
+        )
+        .expect("parse saved region"),
+    )
+    .expect("create saved region");
+    let stored = execute_shell_command(
+        &mut engine,
+        &parse_shell_line(&format!(
+            "features genomic-motif-evidence --region-set motif_targets --motif MA0525.2 --package {}",
+            missing_package.display()
+        ))
+        .expect("parse stored-region query"),
+    )
+    .expect("stored region set resolves through optional provider");
+    assert!(!stored.state_changed);
+    assert_eq!(
+        stored.output["report"]["regions"][0]["interval_id"].as_str(),
+        Some("promoter")
+    );
+    assert_eq!(
+        stored.output["report"]["regions"][0]["start_0based"].as_u64(),
+        Some(100)
+    );
+
+    let missing_set = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("features genomic-motif-evidence --region-set absent --motif MA0525.2")
+            .expect("parse missing set query"),
+    )
+    .expect_err("unknown saved region set fails");
+    assert!(missing_set.contains("Genomic region set 'absent' not found"));
 }
 
 #[test]

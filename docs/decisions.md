@@ -821,12 +821,18 @@ cost and cannot disable local JASPAR scoring or any unrelated workflow.
 
 Package hits remain on the package-declared score and retention policy. They
 must not share a numerical axis with GENtle's local scorer unless a future
-contract proves cross-source calibration. Every report states per-motif
+contract proves cross-source calibration. In the current providers this is a
+material estimator difference, not merely a naming concern: sparse JASPAR
+packages declare additive per-base pseudocounts while GENtle's local smoother
+uses its own finite-sample estimator, so zero-count cells can diverge sharply.
+Every report states per-motif
 retention-floor completeness, density limiting, row truncation, and genome
 compatibility. Contig aliases and geometry alone may support a
 `contig_geometry_matched_only` result; they do not establish per-contig
 sequence identity. Row queries require an explicit bounded motif set because
-the sparse package is not an all-motif density index.
+the sparse package is not an all-motif density index. Saved genomic region sets
+are resolved to their canonical intervals before entering this same bounded
+query contract; they do not define a parallel DuckDB route.
 
 ## DEC-043: SCREEN cCRE Evidence Is Optional, Assembly-Bound, And Non-Causal
 
