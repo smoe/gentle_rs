@@ -2849,6 +2849,10 @@ Current draft operations:
   - package scores remain in package-native units and must not be merged onto
     a GENtle-local score axis: the underlying pseudocount estimators differ
     even where score-family names sound similar
+  - `target_kind=stored_region_set` resolves a saved
+    `gentle.genomic_region_set.v1` by id and queries its canonical intervals;
+    the resolved intervals pass through the same package compatibility,
+    containment, completeness, and provenance checks as explicit intervals
   - package `ensembl_release` is sequence-source provenance; the sparse package
     contains no gene annotation. Until GENtle and the package share per-contig
     sequence hashes, compatibility is explicitly

@@ -1,5 +1,11 @@
 # GENtle Changelog
 
+- Hardened optional DuckDB-backed genomic motif evidence with explicit
+  per-contig constant scan bounds for Parquet predicate pushdown, regression
+  coverage for half-open geometry, truncation, package containment, geometry
+  mismatch, and package-fingerprint changes, and direct queries over saved
+  genomic region sets through the existing shared operation.
+
 - Made tutorial GUI screenshots updateable evidence rather than anonymous
   bitmaps. The external X11 acceptance runner now preserves one untouched raw
   capture, binds it to the exact source/binary, tutorial contract, semantic

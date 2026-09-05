@@ -3051,7 +3051,7 @@ Shared shell command:
     - `features query SEQ_ID [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--nearest-to POSITION] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
     - `features export-bed SEQ_ID OUTPUT.bed [--coordinate-mode auto|local|genomic] [--include-restriction-sites] [--restriction-enzyme NAME] [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--nearest-to POSITION] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
     - `features tfbs-summary SEQ_ID --focus START..END [--context START..END] [--min-focus-count N] [--min-context-count N] [--limit N]`
-    - `features genomic-motif-evidence [SEQ_ID] --motif JASPAR_ID [--motif JASPAR_ID ...|--motifs CSV] [--range START..END] [--region [ID=]CHR:START..END ...] [--package DIR] [--database FILE] [--duckdb FILE] [--genome-id ID] [--min-score VALUE] [--min-pwm-relative-score VALUE] [--max-rows N] [--max-payload-files N] [--timeout-seconds N] [--path FILE.json]`
+    - `features genomic-motif-evidence [SEQ_ID|--region-set ID] --motif JASPAR_ID [--motif JASPAR_ID ...|--motifs CSV] [--range START..END] [--region [ID=]CHR:START..END ...] [--package DIR] [--database FILE] [--duckdb FILE] [--genome-id ID] [--min-score VALUE] [--min-pwm-relative-score VALUE] [--max-rows N] [--max-payload-files N] [--timeout-seconds N] [--path FILE.json]`
     - `features repeat-query GENOME_ID --rmsk PATH [--rep-class CLASS] [--rep-family FAMILY] [--rep-name NAME] [--alias ALIAS] [--chromosome CHR] [--range START..END] [--limit N] [--path FILE.json]`
     - `features repeat-overlaps SEQ_ID --index RMSK_INTERVAL_INDEX.json [--range START..END] [--limit N] [--path FILE.json]`
     - `features materialize-repeats SEQ_ID --index RMSK_INTERVAL_INDEX.json [--max-features N] [--append] [--path FILE.json]`
@@ -4752,9 +4752,10 @@ Shared shell command:
       (`features genomic-motif-evidence`):
       - returns `gentle.genomic_motif_evidence.v1` without mutating project
         state
-      - accepts either one genome-anchored `SEQ_ID` (optionally narrowed by
-        local 0-based half-open `--range`) or one or more explicit BED-style
-        genomic `--region` values; the two target forms are mutually exclusive
+      - accepts one genome-anchored `SEQ_ID` (optionally narrowed by local
+        0-based half-open `--range`), one saved genomic `--region-set ID`, or
+        one or more explicit BED-style genomic `--region` values; the target
+        forms are mutually exclusive
       - explicit intervals may be labelled, for example
         `--region TP73=1:3652515..3653715 --region PATZ1=22:31320000..31322000`
       - requires 1-64 explicit JASPAR matrix IDs; `ALL` and `*` are refused
@@ -4785,6 +4786,7 @@ Shared shell command:
       - examples:
         - `gentle_cli shell 'features genomic-motif-evidence tp73_context --motif MA0861.2 --range 15564..16764 --path /tmp/tp73_precomputed_tfbs.json'`
         - `gentle_cli shell 'features genomic-motif-evidence --motif MA0861.2 --motif MA0525.2 --region TP73=1:3652515..3653715 --region PATZ1=22:31320000..31322000 --path /tmp/tp73_patz1_precomputed_tfbs.json'`
+        - `gentle_cli shell 'features genomic-motif-evidence --region-set conserved_promoters --motif MA0861.2 --path /tmp/conserved_promoter_tfbs.json'`
     - `panels import-isoform SEQ_ID PANEL_PATH [--panel-id ID] [--strict]`
     - `panels inspect-isoform SEQ_ID PANEL_ID`
     - `panels render-isoform-svg SEQ_ID PANEL_ID OUTPUT.svg`

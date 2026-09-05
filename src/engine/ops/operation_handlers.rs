@@ -38798,6 +38798,49 @@ impl GentleEngine {
                             source_anchor_reverse: false,
                         })
                         .collect(),
+                    GenomicMotifEvidenceTarget::StoredRegionSet { region_set_id } => {
+                        let store = self.genomic_region_store_snapshot()?;
+                        let region_set = store
+                            .sets
+                            .iter()
+                            .find(|set| set.set_id == *region_set_id)
+                            .ok_or_else(|| EngineError {
+                                code: ErrorCode::NotFound,
+                                message: format!(
+                                    "Genomic region set '{}' not found",
+                                    region_set_id
+                                ),
+                                cause_chain: vec![],
+                            })?;
+                        if region_set.regions.is_empty() {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "Genomic region set '{}' contains no regions",
+                                    region_set_id
+                                ),
+                                cause_chain: vec![],
+                            });
+                        }
+                        region_set
+                            .regions
+                            .iter()
+                            .map(|region| GenomicMotifQueryRegion {
+                                interval_id: region.region_id.clone(),
+                                label: region.label.clone(),
+                                chromosome: region.interval.reference.contig_name.clone(),
+                                start_0based: region.interval.start_0based,
+                                end_0based_exclusive: region.interval.end_0based_exclusive,
+                                source_seq_id: None,
+                                source_start_0based: None,
+                                source_end_0based_exclusive: None,
+                                source_sequence_length_bp: None,
+                                source_anchor_start_1based: None,
+                                source_anchor_end_1based: None,
+                                source_anchor_reverse: false,
+                            })
+                            .collect()
+                    }
                 };
                 let mut report =
                     query_genomic_motif_evidence(&request, &regions).map_err(|message| {
