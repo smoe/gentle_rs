@@ -96,7 +96,7 @@ mod tests {
         let ctx = egui::Context::default();
         let mut stats = (0, None);
         for _ in 0..2 {
-            let _ = ctx.run_ui(
+            let mut output = ctx.run_ui(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(
                         egui::Pos2::ZERO,
@@ -108,6 +108,7 @@ mod tests {
                     stats = render_alignment(ui, &report, Some(90_000));
                 },
             );
+            output.textures_delta.clear();
         }
         assert!(stats.0 > 0 && stats.0 < 50, "{stats:?}");
         assert!(
