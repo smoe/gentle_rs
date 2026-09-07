@@ -248,11 +248,11 @@ pub use region_homology::{
     GenomicRegionHomologyTargetRole, GenomicRegionHomologyTargetStatus,
     PROMOTER_MODULE_ASSESSMENT_SCHEMA, PromoterModuleAlternativeFragment,
     PromoterModuleAssessmentReport, PromoterModuleAssessmentRequest, PromoterModuleDecisionRule,
-    PromoterModuleEvidenceSpan, PromoterModuleHypothesisKind, default_homology_max_chain_gap_bp,
-    default_homology_max_evalue, default_homology_max_hsps_per_target,
-    default_homology_max_loci_per_target, default_homology_min_alignment_length_bp,
-    default_homology_min_conserved_block_bp, default_homology_min_identity_percent,
-    default_promoter_module_max_partner_gap_bp,
+    PromoterModuleEvidenceSpan, PromoterModuleHypothesisKind, PromoterModulePartnerContext,
+    PromoterModuleTargetBlock, default_homology_max_chain_gap_bp, default_homology_max_evalue,
+    default_homology_max_hsps_per_target, default_homology_max_loci_per_target,
+    default_homology_min_alignment_length_bp, default_homology_min_conserved_block_bp,
+    default_homology_min_identity_percent, default_promoter_module_max_partner_gap_bp,
     default_promoter_module_max_same_genome_coverage_percent,
 };
 pub use regulatory_partners::{

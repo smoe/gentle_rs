@@ -956,3 +956,8 @@ annotation, or reporter spans produce inspectable experimental hypotheses.
 They may motivate testing a block alone, a partner alone, their ordered
 combination, and motif-disrupted controls, but they never prove that a fragment
 is autonomously functional.
+
+Paired-context conservation requires an actual shared ortholog locus with
+strand-consistent block order and measured query/target gaps within the stated
+bounds and gap-difference tolerance. Reuse the alignment's winning-HSP
+projection for those coordinates; query proximity alone is insufficient.

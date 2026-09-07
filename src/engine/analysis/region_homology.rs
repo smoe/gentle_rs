@@ -475,10 +475,24 @@ fn project_locus_row(
     gp::GenomicRegionHomologyAlignmentRow,
     Vec<gp::GenomicRegionHomologyOmittedInsertion>,
 ) {
+    let (row, insertions, _) = project_locus_row_geometry(query_sequence, locus, hsps);
+    (row, insertions)
+}
+
+fn project_locus_row_geometry(
+    query_sequence: &str,
+    locus: &gp::GenomicRegionHomologyLocus,
+    hsps: &BTreeMap<String, gp::GenomicRegionHomologyHsp>,
+) -> (
+    gp::GenomicRegionHomologyAlignmentRow,
+    Vec<gp::GenomicRegionHomologyOmittedInsertion>,
+    Vec<Option<u64>>,
+) {
     #[derive(Clone)]
     struct ProjectedBase {
         symbol: u8,
         hsp_id: String,
+        target_position: Option<u64>,
     }
     let mut projection: Vec<Option<ProjectedBase>> = vec![None; query_sequence.len()];
     let mut conflicts = vec![];
@@ -561,6 +575,13 @@ fn project_locus_row(
             let projected = ProjectedBase {
                 symbol,
                 hsp_id: hsp.hsp_id.clone(),
+                target_position: if subject_base == b'-' {
+                    None
+                } else if hsp.strand == gp::GenomicRegionStrand::Minus {
+                    subject_position.checked_sub(1)
+                } else {
+                    Some(subject_position)
+                },
             };
             if let Some(retained) = &projection[query_position] {
                 if retained.symbol != symbol {
@@ -624,7 +645,76 @@ fn project_locus_row(
             conflicts,
         },
         insertions,
+        projection
+            .iter()
+            .map(|base| base.as_ref().and_then(|base| base.target_position))
+            .collect(),
     )
+}
+
+fn module_partner_contexts(
+    report: &gp::GenomicRegionHomologyScreenReport,
+    block_ids: &[String],
+    max_gap: usize,
+    max_gap_difference: usize,
+) -> Vec<gp::PromoterModulePartnerContext> {
+    let blocks = block_ids
+        .iter()
+        .filter_map(|id| report.conserved_blocks.iter().find(|b| &b.block_id == id))
+        .collect::<Vec<_>>();
+    if blocks.len() < 2 {
+        return vec![];
+    }
+    let hsps = report
+        .hsps
+        .iter()
+        .map(|hsp| (hsp.hsp_id.clone(), hsp.clone()))
+        .collect();
+    report.alignment_rows.iter().filter(|row| {
+        row.locus_class == gp::GenomicRegionHomologyLocusClass::ExpectedOrtholog
+            && blocks.iter().all(|block| block.supporting_row_ids.contains(&row.row_id))
+    }).filter_map(|row| {
+        let locus = report.loci.iter().find(|locus| locus.locus_id == row.locus_id)?;
+        let (_, _, positions) = project_locus_row_geometry(&report.query.sequence, locus, &hsps);
+        let mut context = gp::PromoterModulePartnerContext {
+            row_id: row.row_id.clone(), locus_id: row.locus_id.clone(),
+            genome_id: row.target_genome_id.clone(), subject_id: row.subject_id.clone(),
+            strand: row.strand, source_hsp_ids: row.source_hsp_ids.clone(),
+            passed: matches!(row.strand, gp::GenomicRegionStrand::Plus | gp::GenomicRegionStrand::Minus),
+            ..Default::default()
+        };
+        for block in &blocks {
+            let mapped = positions.get(block.query_start_0based..block.query_end_0based_exclusive)
+                .and_then(|slice| slice.iter().copied().collect::<Option<Vec<_>>>());
+            let Some(mapped) = mapped.filter(|mapped| !mapped.is_empty()) else {
+                context.passed = false;
+                continue;
+            };
+            context.passed &= mapped.windows(2).all(|p| if row.strand == gp::GenomicRegionStrand::Minus { p[0] > p[1] } else { p[0] < p[1] });
+            context.blocks.push(gp::PromoterModuleTargetBlock {
+                block_id: block.block_id.clone(), query_start_0based: block.query_start_0based,
+                query_end_0based_exclusive: block.query_end_0based_exclusive,
+                target_start_0based: mapped.iter().copied().min()?,
+                target_end_0based_exclusive: mapped.iter().copied().max()?.checked_add(1)?,
+            });
+        }
+        context.passed &= context.blocks.len() == blocks.len();
+        for pair in context.blocks.windows(2) {
+            let query_gap = pair[1].query_start_0based.saturating_sub(pair[0].query_end_0based_exclusive);
+            let target_gap = if row.strand == gp::GenomicRegionStrand::Minus {
+                pair[0].target_start_0based.checked_sub(pair[1].target_end_0based_exclusive)
+            } else {
+                pair[1].target_start_0based.checked_sub(pair[0].target_end_0based_exclusive)
+            };
+            context.passed &= query_gap <= max_gap && target_gap.is_some_and(|gap|
+                gap <= max_gap as u64 && gap.abs_diff(query_gap as u64) <= max_gap_difference as u64);
+            context.query_gaps_bp.push(query_gap);
+            context.target_gaps_bp.push(target_gap);
+        }
+        context.reason = if context.passed { "common ortholog locus; orientation, order, query/target gaps and gap difference satisfy policy" }
+            else { "incomplete/noncollinear target mapping or query/target gap exceeds policy" }.to_string();
+        Some(context)
+    }).collect()
 }
 
 fn block_genomic_interval(
@@ -1591,17 +1681,13 @@ impl GentleEngine {
                 .find(|block| &block.block_id == id)
                 .map_or(usize::MAX, |block| block.query_start_0based)
         });
-        let spacing_retained = selected_blocks.windows(2).all(|pair| {
-            let left = homology
-                .conserved_blocks
-                .iter()
-                .find(|block| block.block_id == pair[0]);
-            let right = homology
-                .conserved_blocks
-                .iter()
-                .find(|block| block.block_id == pair[1]);
-            matches!((left, right), (Some(left), Some(right)) if right.query_start_0based.saturating_sub(left.query_end_0based_exclusive) <= request.max_partner_gap_bp)
-        });
+        let partner_contexts = module_partner_contexts(
+            homology,
+            &selected_blocks,
+            request.max_partner_gap_bp,
+            request.max_partner_gap_difference_bp,
+        );
+        let spacing_retained = partner_contexts.iter().any(|context| context.passed);
         let ortholog_targets_available = homology.targets.iter().any(|target| {
             target.target.role == gp::GenomicRegionHomologyTargetRole::ExpectedOrtholog
                 && matches!(
@@ -1677,11 +1763,13 @@ impl GentleEngine {
             },
             gp::PromoterModuleDecisionRule {
                 rule_id: "paired_blocks_preserve_context".to_string(),
-                description: "Multiple expected-ortholog blocks jointly cover the evidence while retaining order and allowed spacing."
+                description: "Multiple blocks jointly cover the evidence in a common expected-ortholog locus with compatible orientation, order, and query/target spacing."
                     .to_string(),
                 satisfied: all_required_covered && selected_blocks.len() > 1 && spacing_retained,
                 block_ids: selected_blocks.clone(),
-                detail: format!("maximum allowed partner gap {} bp", request.max_partner_gap_bp),
+                detail: format!("{} of {} common ortholog contexts passed; maximum query/target gap {} bp; maximum gap difference {} bp",
+                    partner_contexts.iter().filter(|context| context.passed).count(),
+                    partner_contexts.len(), request.max_partner_gap_bp, request.max_partner_gap_difference_bp),
                 ..Default::default()
             },
             gp::PromoterModuleDecisionRule {
@@ -1743,6 +1831,7 @@ impl GentleEngine {
             selected_evidence_spans: evidence,
             selected_block_ids: selected_blocks,
             decision_trace,
+            partner_contexts,
             alternative_fragments,
             suggested_validation: vec![
                 "Compare each candidate block alone with its partner block alone and the combined ordered fragment."
@@ -2412,7 +2501,7 @@ mod tests {
             .assess_promoter_conserved_modules(
                 gp::PromoterModuleAssessmentRequest {
                     homology_report: Box::new(report.clone()),
-                    selected_evidence_spans: spans,
+                    selected_evidence_spans: spans.clone(),
                     max_partner_gap_bp: 8,
                     ..Default::default()
                 },
@@ -2424,6 +2513,130 @@ mod tests {
             paired.hypothesis,
             gp::PromoterModuleHypothesisKind::PairedContextCandidate
         );
+        assert_eq!(paired.partner_contexts[0].query_gaps_bp, vec![4]);
+        assert_eq!(paired.partner_contexts[0].target_gaps_bp, vec![Some(4)]);
+        assert_eq!(
+            paired.partner_contexts[0].blocks[0].target_start_0based,
+            205
+        );
+
+        // Synthetic aligned HSPs exercise target geometry, not hand-built verdicts.
+        for (label, left_start, right_start, strand, other_contig, tolerance, passes) in [
+            (
+                "reverse conserved",
+                225,
+                217,
+                gp::GenomicRegionStrand::Minus,
+                false,
+                0,
+                true,
+            ),
+            (
+                "changed gap",
+                205,
+                215,
+                gp::GenomicRegionStrand::Plus,
+                false,
+                0,
+                false,
+            ),
+            (
+                "explicit gap tolerance",
+                205,
+                215,
+                gp::GenomicRegionStrand::Plus,
+                false,
+                2,
+                true,
+            ),
+            (
+                "too wide",
+                205,
+                220,
+                gp::GenomicRegionStrand::Plus,
+                false,
+                20,
+                false,
+            ),
+            (
+                "opposite order",
+                213,
+                205,
+                gp::GenomicRegionStrand::Plus,
+                false,
+                0,
+                false,
+            ),
+            (
+                "different loci",
+                205,
+                213,
+                gp::GenomicRegionStrand::Plus,
+                true,
+                0,
+                false,
+            ),
+        ] {
+            let mut effective = report.effective_request.clone();
+            let mut other_locus = effective.targets[0].expected_loci[0].clone();
+            other_locus.reference.contig_name = "chrOther".to_string();
+            effective.targets[0].expected_loci.push(other_locus);
+            let mut targets = report.targets.clone();
+            targets[0].target = effective.targets[0].clone();
+            let altered = finalize_projection(
+                report.query.clone(),
+                effective,
+                targets,
+                vec![
+                    hsp(
+                        &expected.genome_id,
+                        "chrO",
+                        "AACC",
+                        "AACC",
+                        0,
+                        left_start,
+                        strand,
+                    ),
+                    hsp(
+                        &expected.genome_id,
+                        if other_contig { "chrOther" } else { "chrO" },
+                        "AACC",
+                        "AACC",
+                        8,
+                        right_start,
+                        strand,
+                    ),
+                ],
+                "sha256:synthetic".into(),
+            )
+            .expect(label);
+            let assessed = engine
+                .assess_promoter_conserved_modules(
+                    gp::PromoterModuleAssessmentRequest {
+                        homology_report: Box::new(altered),
+                        selected_evidence_spans: spans.clone(),
+                        max_partner_gap_bp: 8,
+                        max_partner_gap_difference_bp: tolerance,
+                        ..Default::default()
+                    },
+                    "op",
+                    "run",
+                )
+                .expect(label);
+            assert_eq!(
+                assessed.hypothesis == gp::PromoterModuleHypothesisKind::PairedContextCandidate,
+                passes,
+                "{label}"
+            );
+            assert_eq!(
+                assessed
+                    .partner_contexts
+                    .iter()
+                    .any(|context| context.passed),
+                passes,
+                "{label}"
+            );
+        }
 
         let insufficient = engine
             .assess_promoter_conserved_modules(

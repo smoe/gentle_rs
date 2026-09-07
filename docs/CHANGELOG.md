@@ -1,5 +1,12 @@
 # GENtle Changelog
 
+- Paired conserved-module hypotheses now verify target-locus geometry instead
+  of query spacing alone. Typed partner contexts retain block coordinates,
+  strand, HSP sources, query/target gaps, and pass/failure reasons. Exact gap
+  preservation is the default; an explicit gap-difference tolerance is
+  available. Synthetic regressions cover reverse orientation, changed spacing,
+  tolerance, reordered blocks, and separate loci.
+
 - Promoter-module assessment now distinguishes an unassessed same-genome
   search from observed zero repetition. Missing, unrequested, and
   budget-exceeded targets cannot pass the uniqueness rule or justify a

@@ -415,6 +415,8 @@ pub struct PromoterModuleAssessmentRequest {
     pub homology_report: Box<GenomicRegionHomologyScreenReport>,
     pub selected_evidence_spans: Vec<PromoterModuleEvidenceSpan>,
     pub max_partner_gap_bp: usize,
+    /// Allowed absolute difference between query and ortholog gaps; zero is exact.
+    pub max_partner_gap_difference_bp: usize,
     pub max_same_genome_query_coverage_percent: f64,
 }
 
@@ -424,6 +426,7 @@ impl Default for PromoterModuleAssessmentRequest {
             homology_report: Box::default(),
             selected_evidence_spans: vec![],
             max_partner_gap_bp: default_promoter_module_max_partner_gap_bp(),
+            max_partner_gap_difference_bp: 0,
             max_same_genome_query_coverage_percent:
                 default_promoter_module_max_same_genome_coverage_percent(),
         }
@@ -473,6 +476,34 @@ pub struct PromoterModuleAlternativeFragment {
     pub rationale: String,
 }
 
+/// One conserved block mapped through the winning HSPs onto a target locus.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct PromoterModuleTargetBlock {
+    pub block_id: String,
+    pub query_start_0based: usize,
+    pub query_end_0based_exclusive: usize,
+    pub target_start_0based: u64,
+    pub target_end_0based_exclusive: u64,
+}
+
+/// Evidence for (or against) ordered, spacing-compatible blocks in one ortholog.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct PromoterModulePartnerContext {
+    pub row_id: String,
+    pub locus_id: String,
+    pub genome_id: String,
+    pub subject_id: String,
+    pub strand: GenomicRegionStrand,
+    pub source_hsp_ids: Vec<String>,
+    pub blocks: Vec<PromoterModuleTargetBlock>,
+    pub query_gaps_bp: Vec<usize>,
+    pub target_gaps_bp: Vec<Option<u64>>,
+    pub passed: bool,
+    pub reason: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default)]
 pub struct PromoterModuleAssessmentReport {
@@ -484,6 +515,8 @@ pub struct PromoterModuleAssessmentReport {
     pub selected_evidence_spans: Vec<PromoterModuleEvidenceSpan>,
     pub selected_block_ids: Vec<String>,
     pub decision_trace: Vec<PromoterModuleDecisionRule>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub partner_contexts: Vec<PromoterModulePartnerContext>,
     pub alternative_fragments: Vec<PromoterModuleAlternativeFragment>,
     pub suggested_validation: Vec<String>,
     pub warnings: Vec<String>,
