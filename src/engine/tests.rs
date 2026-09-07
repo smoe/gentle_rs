@@ -28148,6 +28148,17 @@ fn gene_isoform_evidence_inspector_composes_gene_locus_evidence_for_patz1_minus_
     };
     assert_eq!(locus_report.schema, GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA);
     assert_eq!(locus_report.gene_strand, "-");
+    let binding = locus_report
+        .sequence_binding
+        .as_ref()
+        .expect("new reports bind their source DNA");
+    let source_dna = &engine.state().sequences["patz1_isoform_evidence"];
+    assert_eq!(binding.sequence_length_bp, source_dna.len());
+    assert_eq!(
+        binding.sequence_sha256,
+        crate::digest_utils::sha256_prefixed_str(&source_dna.get_forward_string())
+    );
+    assert_eq!(binding.genome_anchor.as_ref().unwrap().chromosome, "22");
     assert_eq!(
         locus_report.local_axis_direction,
         GeneLocusLocalAxisDirection::DecreasingLeftToRight,

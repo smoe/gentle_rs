@@ -4178,6 +4178,15 @@ external coding agent runtime, see:
     `legacy_gene_strand_fallback`. Codon markers, motif hits, and normalized
     regulatory sites expose separate `local_strand` and `genomic_strand`
     values; their legacy `strand` field remains readable for compatibility
+  - additive `sequence_binding` binds newly composed locus reports to exact
+    loaded DNA (`sequence_sha256`, `sequence_length_bp`) and an optional
+    `genome_anchor` (genome id, chromosome, inclusive bounds, strand). It does
+    not replace per-evidence provenance. Legacy reports omit this field and
+    remain renderable, but cannot authorize live GUI DNA selection or capture.
+    Report imports dispatch by explicit schema; reporter-comparison envelopes
+    retain their architectures and must agree with their nested locus binding.
+    Preview/export of imported reports uses the saved document, not current GUI
+    composition inputs. Neither binding nor import is a new biological analysis
   - additive `regulatory_score_tracks[]` normalizes local JASPAR matrices and
     offline `gentle.gene_locus_external_regulatory_scores.v1` payloads into one
     renderer-owned shape. Every row binds provider/model, factor/source IDs,

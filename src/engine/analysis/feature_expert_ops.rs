@@ -14896,6 +14896,7 @@ impl GentleEngine {
         Ok(GeneLocusEvidenceDisplayReport {
             schema: GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA.to_string(),
             seq_id: seq_id.to_string(),
+            sequence_binding: Some(crate::locus_report::sequence_binding(dna, anchor.as_ref())),
             gene_symbol: isoform_evidence.gene_symbol.clone(),
             panel_id: isoform_evidence.panel_id.clone(),
             instruction: GENE_LOCUS_EVIDENCE_DISPLAY_INSTRUCTION.to_string(),

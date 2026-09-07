@@ -9061,6 +9061,10 @@ fn splicing_locus_interactive_inspector_renders_score_sequence_and_saved_region(
     let mut area = MainAreaDna::new(dna, Some("interactive_locus".to_string()), None);
     let report = GeneLocusEvidenceDisplayReport {
         seq_id: "interactive_locus".to_string(),
+        sequence_binding: Some(crate::locus_report::sequence_binding(
+            &area.dna.read().unwrap(),
+            None,
+        )),
         gene_symbol: "DEMO".to_string(),
         locus_local_start_1based: 1,
         locus_local_end_1based: 160,
@@ -9099,6 +9103,7 @@ fn splicing_locus_interactive_inspector_renders_score_sequence_and_saved_region(
     crate::egui_compat::discard_test_pass_output(&ctx);
     assert_eq!(area.splicing_locus_inspector_start_1based, 1);
     assert_eq!(area.splicing_locus_inspector_end_1based, 40);
+    assert!(area.verify_splicing_locus_binding(&report).is_ok());
     assert_eq!(
         MainAreaDna::locus_inspector_color(Some("#336699"), egui::Color32::BLACK),
         egui::Color32::from_rgb(0x33, 0x66, 0x99)

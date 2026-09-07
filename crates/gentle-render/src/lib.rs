@@ -15,7 +15,8 @@ pub use feature_expert::{
     GeneLocusEvidenceOverlaySchematicTail, GeneLocusEvidenceOverlaySegment,
     GeneLocusEvidenceRenderedSvg, SplicingExonTransition, SplicingExonTransitionMatrix,
     SvgUriLinkRectangle, compute_splicing_exon_transition_matrix,
-    compute_supported_splicing_exon_transitions, render_cryptic_splicing_screen,
+    compute_supported_splicing_exon_transitions, gene_locus_local_axis_decreases,
+    locus_regulatory_axis_label, locus_regulatory_display_bounds, render_cryptic_splicing_screen,
     render_feature_expert_svg, render_gene_locus_evidence_with_overlay,
     render_gene_locus_evidence_with_overlay_svg,
 };

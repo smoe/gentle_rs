@@ -108,6 +108,8 @@ pub mod js_interface;
 pub mod lineage_export;
 /// Adaptive routing decisions for linear DNA base-letter rendering.
 pub mod linear_base_routing;
+/// Portable locus report loading and sequence/anchor verification for adapters.
+pub mod locus_report;
 /// Lua adapter wrappers over shared engine contracts.
 #[cfg(feature = "lua-interface")]
 pub mod lua_interface;

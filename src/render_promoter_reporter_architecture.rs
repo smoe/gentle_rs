@@ -182,7 +182,8 @@ fn render_section_title(svg: &mut String, title: &str, y: f64) {
     );
 }
 
-fn normalized_locus_overlay(
+/// Reuse the canonical architecture/material geometry in interactive inspection.
+pub fn normalized_locus_overlay(
     report: &PromoterReporterArchitectureComparisonReport,
 ) -> GeneLocusEvidenceOverlay {
     let rows = report

@@ -34,6 +34,7 @@ impl MainAreaDna {
     pub(super) fn open_genomic_region_manager(&mut self, selection: Option<(usize, usize)>) {
         self.show_genomic_region_manager = true;
         if let Some((start, end)) = selection {
+            self.genomic_region_pending_locus_report = None;
             self.genomic_region_pending_selection = Some((start.min(end), start.max(end)));
             if self.genomic_region_new_label.trim().is_empty() {
                 self.genomic_region_new_label = format!(
@@ -95,7 +96,13 @@ impl MainAreaDna {
         true
     }
 
-    fn save_pending_genomic_region_selection(&mut self) {
+    pub(super) fn save_pending_genomic_region_selection(&mut self) {
+        if let Some(report) = &self.genomic_region_pending_locus_report
+            && let Err(error) = self.verify_splicing_locus_binding(report)
+        {
+            self.genomic_region_status = error;
+            return;
+        }
         let Some((start, end)) = self.genomic_region_pending_selection else {
             self.genomic_region_status = "No non-empty sequence selection is staged".to_string();
             return;
@@ -128,6 +135,7 @@ impl MainAreaDna {
         };
         if self.apply_genomic_region_operation(Operation::CaptureGenomicRegion { request }) {
             self.genomic_region_pending_selection = None;
+            self.genomic_region_pending_locus_report = None;
             self.genomic_region_new_label.clear();
         }
     }

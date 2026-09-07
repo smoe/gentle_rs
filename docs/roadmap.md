@@ -84,8 +84,8 @@ Pre-release finishing scope:
 
 1. Keep the TP73 evidence-viewer and PATZ1 locus-composer proof workflows green
    and offline-safe through the `v0.1.0-internal.10` tag.
-2. Run the manual GUI smoke from both runbooks, including file relocation,
-   graphical preview, JSON/SVG/PDF export, and evidence-to-assay continuation.
+2. Run manual GUI smoke from both runbooks: relocation, preview/exports, assay continuation,
+   bound/historical imports, reporter preservation, and both-strand selection/save/reopen/export.
 3. Review the ClawBio shell-normalizer deprecations before deciding whether any
    compatibility modes should be removed in `v0.1.0-internal.11`.
 4. Preserve headless/GUI parity for repeat, array, CUT&RUN V1-V3, TFBS, and

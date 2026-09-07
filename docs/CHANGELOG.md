@@ -56,6 +56,18 @@
   transforms and hashes; typed reports and saved state remain the scientific
   oracle.
 
+- Bound newly composed locus reports to exact DNA and genome-anchor identity.
+  The inspector rejects mismatched imports, treats unbound legacy reports as
+  historical evidence, and rechecks staged reporter regions before saving.
+  Schema-directed loading now preserves reporter-comparison envelopes through
+  preview, copy, JSON, SVG, and PDF export instead of accidentally parsing them
+  as plain locus reports. Interactive inspection adds individual transcript/CDS,
+  translation-boundary, occupancy/chromatin, retained-site and canonical
+  reporter rows, material legends, and shared numeric TF-score axes. Headless
+  pointer-driven regression coverage follows negative-anchor selection through
+  region save, project reopen, and BED/JSON export; external desktop acceptance
+  remains a separate release gate.
+
 - Added engine-owned, portable genomic regions of interest and region sets.
   Canonical records bind explicit species/assembly/contig identity, 0-based
   half-open geometry, strand, optional exact sequence projections, independent

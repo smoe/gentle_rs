@@ -4345,7 +4345,8 @@ fn locus_regulatory_palette(index: usize) -> &'static str {
     COLORS[index % COLORS.len()]
 }
 
-fn locus_regulatory_display_bounds(track: &GeneLocusRegulatoryScoreTrack) -> (f64, f64) {
+/// Nonnegative display scale shared by publication and interactive views.
+pub fn locus_regulatory_display_bounds(track: &GeneLocusRegulatoryScoreTrack) -> (f64, f64) {
     let observed_max = track
         .forward_scores
         .iter()
@@ -4363,7 +4364,8 @@ fn locus_regulatory_display_bounds(track: &GeneLocusRegulatoryScoreTrack) -> (f6
     (0.0, if display_max > 0.0 { display_max } else { 1.0 })
 }
 
-fn locus_regulatory_axis_label(score_kind: &str, score_units: &str) -> String {
+/// Human score units, including the distinction between bits and tail scores.
+pub fn locus_regulatory_axis_label(score_kind: &str, score_units: &str) -> String {
     match score_kind {
         "llr_background_tail_log10" | "true_log_odds_background_tail_log10" => {
             "-log10 Ptail".to_string()
@@ -4595,7 +4597,8 @@ pub struct GeneLocusEvidenceOverlay {
     pub non_claims: Vec<String>,
 }
 
-fn gene_locus_local_axis_decreases(report: &GeneLocusEvidenceDisplayReport) -> bool {
+/// Resolve explicit orientation, with historical fallback for older reports.
+pub fn gene_locus_local_axis_decreases(report: &GeneLocusEvidenceDisplayReport) -> bool {
     match report.local_axis_direction {
         GeneLocusLocalAxisDirection::IncreasingLeftToRight => false,
         GeneLocusLocalAxisDirection::DecreasingLeftToRight => true,

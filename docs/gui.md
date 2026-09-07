@@ -1123,10 +1123,13 @@ Feature tree grouping:
     renders its SVG through the shared renderer into the live GUI preview;
     transcript metrics, PSR/JUC effects, occupancy/motif summaries, warnings,
     and provenance remain inspectable beside the figure
-  - the interactive inspector below the publication preview keeps transcript,
-    Ensembl Regulation, predicted TF-score, saved-region, and nucleotide
-    geometry on one local axis. It supports fit/zoom, per-lane visibility,
-    nucleotide letters at <=120 bp, and opening the same span in the full DNA
+  - the interactive inspector below the publication preview keeps separate
+    transcript exon/CDS models, translation boundaries, occupancy/chromatin
+    lanes (including unavailable states), retained motif/site calls, Ensembl
+    Regulation, predicted TF-score, saved-region, and nucleotide geometry on
+    one local axis. Hover a lane for its full label, source, units, and state.
+    It supports fit/zoom, per-lane visibility, nucleotide letters when the
+    current viewport gives each base enough horizontal space, and opening the same span in the full DNA
     map. Visibility changes affect inspection only; changing scientific inputs
     still requires explicit recomposition
   - dragging across the inspector stages an exact local interval as a
@@ -1134,7 +1137,16 @@ Feature tree grouping:
     assembly-bound region manager, where its colour is persistent and remains
     presentation metadata rather than biological evidence. A portable locus
     report JSON can be loaded to inspect the exact evidence behind an existing
-    document, but only when its sequence id matches the active sequence
+    document. Newly composed reports bind the exact DNA digest, length, and
+    genome anchor; a mismatch is rejected even if the sequence id matches.
+    Legacy reports without this binding remain historical evidence: live DNA
+    letters, selection, staging, and DNA-map navigation are disabled until
+    recomposition. Staged reporter intervals are checked again when saved
+  - importing a reporter-architecture comparison retains its complete envelope,
+    proposed architecture rows and material legend. JSON/copy, SVG, preview,
+    and PDF preserve that imported comparison, rather than silently exporting
+    only its nested locus report. The interactive rows reuse the canonical
+    reporter geometry; LUC attachment markers are schematic, not genomic DNA
   - regulatory-score JSON may define several JASPAR matrices/TFs and offline
     external-model outputs with independent score semantics and scales. The GUI
     does not numerically compare unlike providers and never labels an
@@ -1148,6 +1160,9 @@ Feature tree grouping:
     score. Negative source samples remain auditable in report JSON but are
     floored at zero in the figure, and negative site/threshold labels are not
     drawn
+    The interactive inspector uses the same bounds and score-family labels;
+    negative and missing samples interrupt traces rather than connecting
+    across unevaluated positions. It does not change stored scores or thresholds
   - H3K4me3 and related marks use the explicit `chromatin_context` lane role,
     visually separate from TF occupancy. Cell line, condition, batch, and
     scaling remain caller-declared rather than inferred from filenames

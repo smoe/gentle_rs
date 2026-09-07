@@ -68,6 +68,7 @@ mod formula_controls;
 
 #[path = "main_area_dna/genomic_regions_ui.rs"]
 mod genomic_regions_ui;
+mod locus_inspector;
 
 #[path = "main_area_dna/primer_design_ui.rs"]
 mod primer_design_ui;
@@ -1710,6 +1711,7 @@ pub struct MainAreaDna {
     genomic_region_new_color_hex: String,
     genomic_region_pending_color: Option<genomic_regions_ui::StagedGenomicRegionColor>,
     genomic_region_pending_selection: Option<(usize, usize)>,
+    genomic_region_pending_locus_report: Option<Arc<GeneLocusEvidenceDisplayReport>>,
     genomic_region_store_cache: Option<gentle_protocol::GenomicRegionStore>,
     genomic_region_status: String,
     splicing_expert_window_pending_initial_render: bool,
@@ -1746,6 +1748,9 @@ pub struct MainAreaDna {
     splicing_locus_scale_bar_bp: String,
     splicing_locus_svg_path: String,
     splicing_locus_report: Option<Arc<GeneLocusEvidenceDisplayReport>>,
+    splicing_locus_imported_document: Option<Arc<crate::locus_report::LocusDocument>>,
+    splicing_locus_binding_cache: Option<locus_inspector::LocusBindingCache>,
+    splicing_locus_presentation: Arc<locus_inspector::LocusPresentation>,
     splicing_locus_preview_png: Option<Arc<[u8]>>,
     splicing_locus_preview_generation: u64,
     splicing_locus_inspector_start_1based: usize,
@@ -2568,6 +2573,7 @@ impl MainAreaDna {
             genomic_region_new_color_hex: "#C2410C".to_string(),
             genomic_region_pending_color: None,
             genomic_region_pending_selection: None,
+            genomic_region_pending_locus_report: None,
             genomic_region_store_cache: None,
             genomic_region_status: String::new(),
             splicing_expert_window_pending_initial_render: false,
@@ -2604,6 +2610,9 @@ impl MainAreaDna {
             splicing_locus_scale_bar_bp: "1000".to_string(),
             splicing_locus_svg_path: "gene-locus-evidence.svg".to_string(),
             splicing_locus_report: None,
+            splicing_locus_imported_document: None,
+            splicing_locus_binding_cache: None,
+            splicing_locus_presentation: Arc::default(),
             splicing_locus_preview_png: None,
             splicing_locus_preview_generation: 0,
             splicing_locus_inspector_start_1based: 1,

@@ -1386,12 +1386,33 @@ pub struct GeneIsoformEvidenceReport {
     pub warnings: Vec<String>,
 }
 
+/// Exact loaded-sequence and optional genomic-frame identity for live inspection.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GeneLocusSequenceBinding {
+    pub sequence_sha256: String,
+    pub sequence_length_bp: usize,
+    pub genome_anchor: Option<GeneLocusGenomeAnchorBinding>,
+}
+
+/// Coordinate authority, excluding mutable verification/presentation metadata.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GeneLocusGenomeAnchorBinding {
+    pub genome_id: String,
+    pub chromosome: String,
+    pub start_1based: usize,
+    pub end_1based: usize,
+    pub strand: Option<char>,
+}
+
 /// Deterministic publication composition for one gene locus.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct GeneLocusEvidenceDisplayReport {
     pub schema: String,
     pub seq_id: String,
+    /// Absent in legacy reports, which remain viewable as historical evidence.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sequence_binding: Option<GeneLocusSequenceBinding>,
     pub gene_symbol: String,
     pub panel_id: String,
     pub instruction: String,
