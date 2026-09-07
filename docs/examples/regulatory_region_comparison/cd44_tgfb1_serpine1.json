@@ -1,0 +1,25 @@
+{
+  "schema": "gentle.regulatory_region_index_preparation.v1",
+  "dataset_id": "cd44_tgfb1_serpine1_tss_regions_ensembl116_v1",
+  "genome": {
+    "genome_id": "Human GRCh38 Ensembl 116",
+    "catalog_path": "assets/genomes.json",
+    "cache_dir": "assets/data/genomes"
+  },
+  "regions": [
+    {"region_id": "CD44_ENST00000428726_8", "gene_query": "CD44", "transcript_id": "ENST00000428726", "upstream_bp": 5000, "downstream_bp": 1000},
+    {"region_id": "CD44_ENST00000263398_12", "gene_query": "CD44", "transcript_id": "ENST00000263398", "upstream_bp": 5000, "downstream_bp": 1000},
+    {"region_id": "CD44_ENST00000278386_11", "gene_query": "CD44", "transcript_id": "ENST00000278386", "upstream_bp": 5000, "downstream_bp": 1000},
+    {"region_id": "TGFB1_ENST00000221930_6", "gene_query": "TGFB1", "transcript_id": "ENST00000221930", "upstream_bp": 5000, "downstream_bp": 1000},
+    {"region_id": "TGFB1_ENST00001090430_1", "gene_query": "TGFB1", "transcript_id": "ENST00001090430", "upstream_bp": 5000, "downstream_bp": 1000},
+    {"region_id": "TGFB1_ENST00001114525_1", "gene_query": "TGFB1", "transcript_id": "ENST00001114525", "upstream_bp": 5000, "downstream_bp": 1000},
+    {"region_id": "SERPINE1_ENST00000223095_5", "gene_query": "SERPINE1", "transcript_id": "ENST00000223095", "upstream_bp": 5000, "downstream_bp": 1000},
+    {"region_id": "SERPINE1_ENST00000870828_2", "gene_query": "SERPINE1", "transcript_id": "ENST00000870828", "upstream_bp": 5000, "downstream_bp": 1000},
+    {"region_id": "SERPINE1_ENST00000950058_1", "gene_query": "SERPINE1", "transcript_id": "ENST00000950058", "upstream_bp": 5000, "downstream_bp": 1000}
+  ],
+  "indexing": {
+    "blast": true,
+    "blast_tasks": ["megablast", "blastn"],
+    "canonical_kmer_lengths": [7, 11, 15, 21]
+  }
+}

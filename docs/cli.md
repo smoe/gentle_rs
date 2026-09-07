@@ -5074,6 +5074,13 @@ Isoform architecture panel workflow:
         JSONs, SVG, four GENtle module assessments, command outputs, and a
         hash-bound acceptance receipt. The companion only forwards requests
         and checks facts; it never computes or rewrites scientific verdicts
+    - `scripts/prepare_regulatory_region_indexes.py` prepares a manifest-declared
+      multi-gene promoter/upstream comparison bundle through GENtle's existing
+      `genomes extract-promoter` and `SaveFile` paths. It collapses exact-identical
+      windows into explicit sequence-equivalence classes before building a
+      candidate-pool BLAST database and lower-stringency canonical-k-mer
+      signatures. The candidate database is not presented as a whole-genome
+      uniqueness screen; see `docs/regulatory_region_comparison_preparation.md`
   - same command family for restriction-site details:
     - `inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED]`
     - JSON output includes `tooltip_lines[]` with the same concise

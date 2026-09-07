@@ -1,5 +1,13 @@
 # GENtle Changelog
 
+- Added a manifest-driven companion for reproducibly extracting transcript-TSS
+  promoter windows through GENtle across catalogued genomes/releases, exporting
+  exact sequence/provenance rows, collapsing identical windows, and preparing
+  separate candidate-pool BLAST and permissive canonical-k-mer comparison
+  resources with command, tool, artifact, and checksum receipts. The companion
+  keeps whole-genome uniqueness, orthology, TF binding, and regulatory function
+  outside the claims of candidate-pool similarity.
+
 - Added the missing Genomic Region Conservation command-palette action, which
   opens saved-region selection and preserves that request during deferred
   sequence loading. Corrected glossary smoke inputs for JSON report/plan
