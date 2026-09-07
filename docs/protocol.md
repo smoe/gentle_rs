@@ -4369,6 +4369,11 @@ external coding agent runtime, see:
     `repetitive_or_ambiguous`, and `insufficient_evidence`. The decision trace
     records every passed/failed rule and threshold; conservation never proves
     autonomous regulatory function
+    - `same_genome_evidence_available` requires an explicit same-genome target
+      and completed results for every requested same-genome target. Missing,
+      unrequested, or HSP-budget-exceeded searches leave the uniqueness rule
+      `unassessed`, even when the retained numeric repetition coverage is zero.
+      Such evidence cannot justify standalone or paired candidates
   - `GeneLocusEvidenceDisplayRequest.homology_report_paths[]` optionally
     projects digest-valid exact-support blocks onto the shared locus coordinate
     system. Incompatible or out-of-span reports become warnings rather than

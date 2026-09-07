@@ -940,6 +940,10 @@ place, and binds cache/report identity to database content rather than only a
 path or genome label. An unavailable optional genome is unassessed evidence,
 not biological absence.
 
+Module uniqueness requires a completed, explicitly requested same-genome
+comparison. A zero retained repetition percentage without that comparison is
+unassessed, not a passed uniqueness check.
+
 The query is the only display coordinate authority. Target insertions are
 retained as structured evidence but never add alignment columns. Sequence
 similarity does not establish orthology: only an explicit, provenance-bearing

@@ -1612,10 +1612,29 @@ impl GentleEngine {
         });
         let repetitive = homology.same_genome_nonself_query_coverage_percent
             >= request.max_same_genome_query_coverage_percent;
+        let same_genome_targets = homology
+            .effective_request
+            .targets
+            .iter()
+            .filter(|target| target.role == gp::GenomicRegionHomologyTargetRole::SameGenome)
+            .collect::<Vec<_>>();
+        let same_genome_assessed = !same_genome_targets.is_empty()
+            && same_genome_targets.iter().all(|requested| {
+                homology.targets.iter().any(|result| {
+                    result.target == **requested
+                        && matches!(
+                            result.status,
+                            gp::GenomicRegionHomologyTargetStatus::Available
+                                | gp::GenomicRegionHomologyTargetStatus::NoAcceptedSimilarity
+                        )
+                })
+            });
         let hypothesis = if !ortholog_targets_available || required.is_empty() {
             gp::PromoterModuleHypothesisKind::InsufficientEvidence
         } else if repetitive {
             gp::PromoterModuleHypothesisKind::RepetitiveOrAmbiguous
+        } else if !same_genome_assessed {
+            gp::PromoterModuleHypothesisKind::InsufficientEvidence
         } else if fully_containing.is_some() {
             gp::PromoterModuleHypothesisKind::StandaloneReporterCandidate
         } else if all_required_covered && selected_blocks.len() > 1 && spacing_retained {
@@ -1666,15 +1685,27 @@ impl GentleEngine {
                 ..Default::default()
             },
             gp::PromoterModuleDecisionRule {
+                rule_id: "same_genome_evidence_available".to_string(),
+                description: "Every requested same-genome search completed within its HSP budget."
+                    .to_string(),
+                satisfied: same_genome_assessed,
+                detail: if same_genome_assessed {
+                    "assessed under the declared similarity filters".to_string()
+                } else {
+                    "unassessed: request and complete a same-genome search before interpreting absence of repetition".to_string()
+                },
+                ..Default::default()
+            },
+            gp::PromoterModuleDecisionRule {
                 rule_id: "same_genome_interpretation_unique".to_string(),
                 description: "Same-genome non-self similarity stays below the ambiguity threshold."
                     .to_string(),
-                satisfied: !repetitive,
-                detail: format!(
+                satisfied: same_genome_assessed && !repetitive,
+                detail: if same_genome_assessed { format!(
                     "observed {:.3}% versus threshold {:.3}%",
                     homology.same_genome_nonself_query_coverage_percent,
                     request.max_same_genome_query_coverage_percent
-                ),
+                ) } else { "unassessed; a numeric zero is not evidence of uniqueness".to_string() },
                 ..Default::default()
             },
         ];
@@ -1933,6 +1964,32 @@ mod tests {
         assert!(report.loci[0].orthology_evidence_id.is_none());
     }
 
+    fn with_assessed_same_genome(
+        mut report: gp::GenomicRegionHomologyScreenReport,
+    ) -> gp::GenomicRegionHomologyScreenReport {
+        let same = gp::GenomicRegionHomologyTargetRequest {
+            genome_id: "query_genome".to_string(),
+            role: gp::GenomicRegionHomologyTargetRole::SameGenome,
+            ..Default::default()
+        };
+        report.effective_request.targets.push(same.clone());
+        report.targets.push(gp::GenomicRegionHomologyTargetResult {
+            target: same,
+            status: gp::GenomicRegionHomologyTargetStatus::NoAcceptedSimilarity,
+            ..Default::default()
+        });
+        resign_test_report(&mut report);
+        report
+    }
+
+    fn resign_test_report(report: &mut gp::GenomicRegionHomologyScreenReport) {
+        let mut content = report.clone();
+        content.content_sha256.clear();
+        content.op_id = None;
+        content.run_id = None;
+        report.content_sha256 = canonical_digest(&content, "synthetic report").expect("digest");
+    }
+
     #[test]
     fn module_assessment_emits_traceable_standalone_and_repetitive_states() {
         let query = query();
@@ -1969,6 +2026,7 @@ mod tests {
             "sha256:request".to_string(),
         )
         .expect("projection");
+        let report = with_assessed_same_genome(report);
         let engine = GentleEngine::default();
         let request = gp::PromoterModuleAssessmentRequest {
             homology_report: Box::new(report.clone()),
@@ -1992,6 +2050,46 @@ mod tests {
             gp::PromoterModuleHypothesisKind::StandaloneReporterCandidate
         );
         assert!(!assessed.decision_trace.is_empty());
+
+        for status in [
+            None,
+            Some(gp::GenomicRegionHomologyTargetStatus::Unavailable),
+            Some(gp::GenomicRegionHomologyTargetStatus::SearchOutputTooBroad),
+        ] {
+            let mut missing = report.clone();
+            if let Some(status) = status {
+                missing
+                    .targets
+                    .last_mut()
+                    .expect("same-genome result")
+                    .status = status;
+            } else {
+                missing.targets.pop();
+                missing.effective_request.targets.pop();
+            }
+            resign_test_report(&mut missing);
+            let missing = engine
+                .assess_promoter_conserved_modules(
+                    gp::PromoterModuleAssessmentRequest {
+                        homology_report: Box::new(missing),
+                        ..request.clone()
+                    },
+                    "op",
+                    "run",
+                )
+                .expect("unassessed report");
+            assert_eq!(
+                missing.hypothesis,
+                gp::PromoterModuleHypothesisKind::InsufficientEvidence
+            );
+            let rule = missing
+                .decision_trace
+                .iter()
+                .find(|rule| rule.rule_id == "same_genome_interpretation_unique")
+                .expect("uniqueness rule");
+            assert!(!rule.satisfied);
+            assert!(rule.detail.contains("unassessed"));
+        }
 
         let mut repetitive_report = report;
         repetitive_report.same_genome_nonself_query_coverage_percent = 100.0;
@@ -2292,6 +2390,7 @@ mod tests {
             "sha256:request".to_string(),
         )
         .expect("projection");
+        let report = with_assessed_same_genome(report);
         let engine = GentleEngine::default();
         let spans = vec![
             gp::PromoterModuleEvidenceSpan {

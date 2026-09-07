@@ -1,5 +1,11 @@
 # GENtle Changelog
 
+- Promoter-module assessment now distinguishes an unassessed same-genome
+  search from observed zero repetition. Missing, unrequested, and
+  budget-exceeded targets cannot pass the uniqueness rule or justify a
+  standalone/paired candidate; completed zero-hit searches remain evaluable.
+  Synthetic regressions cover these states without changing operation inputs.
+
 - Corrected regulatory-fragment plan SVG source-bar placement and base-pair
   tooltips. Stable construct aliases and bounded labels keep long plan/member
   ids from obscuring contrast explanations; full ids remain in SVG tooltips.
