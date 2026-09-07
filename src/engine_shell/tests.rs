@@ -671,6 +671,8 @@ fn sample_value_for_usage_token(flag: &str, token: &str) -> String {
             | "JSON_OR_@FILE"
             | "PROPOSAL_JSON_OR_@FILE"
             | "REQUEST_JSON_OR_@FILE"
+            | "REPORT_JSON_OR_@FILE"
+            | "PLAN_JSON_OR_@FILE"
             | "SCRIPT_OR_@FILE"
             | "WORKFLOW.json"
             | "<workflow-json-or-@file>"
@@ -939,7 +941,10 @@ fn skip_glossary_flag_parse(path: &str, flag: &str) -> bool {
                     "--preferred-min-amplicon-bp" | "--preferred-max-amplicon-bp"
                 )
                 | ("promoters panel-readiness", "--approve")
-                | ("features genomic-motif-evidence", "--region")
+                | (
+                    "features genomic-motif-evidence",
+                    "--region" | "--region-set"
+                )
                 | ("ui selection", "--start" | "--end")
         )
 }

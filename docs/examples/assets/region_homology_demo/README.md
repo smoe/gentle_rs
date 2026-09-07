@@ -24,5 +24,10 @@ by eye. They are used by
 generated conservation tutorial. Building their BLAST indexes requires the
 ordinary local BLAST+ tools; no network access is used.
 
+The regression test
+`workflow_examples_region_homology_uses_real_isolated_blast_indexes` executes
+the same committed workflow with scoped native BLAST tools and checks its
+query-width alignment rows and explicitly declared orthology evidence.
+
 The expected-locus declaration is synthetic evidence for contract testing. It
 does not establish evolutionary orthology or regulatory function.

@@ -2529,6 +2529,7 @@ enum CommandPaletteAction {
     OpenMirnaTargetScan,
     OpenCrypticSplicingScreen,
     OpenPrecomputedGenomicMotifEvidence,
+    OpenGenomicRegionConservation,
     OpenEvidencePreparation,
     OpenPlanning,
     OpenRoutineAssistant,
@@ -5599,6 +5600,14 @@ Error: `{err}`"
                 action: CommandPaletteAction::OpenPrecomputedGenomicMotifEvidence,
             },
             CommandPaletteEntry {
+                title: "Genomic Region Conservation".to_string(),
+                detail: "Choose a saved genomic region for local homology screening and conserved-module assessment"
+                    .to_string(),
+                keywords: "conservation homology blast promoter modules genomic regions"
+                    .to_string(),
+                action: CommandPaletteAction::OpenGenomicRegionConservation,
+            },
+            CommandPaletteEntry {
                 title: "Evidence Preparation".to_string(),
                 detail: "Prepare the TP73 evidence-viewer proof material through shared GENtle operations and copyable handoff commands".to_string(),
                 keywords: "tp73 evidence preparation array clariom repeat rmsk cutrun bed tfbs proof".to_string(),
@@ -5723,6 +5732,9 @@ Error: `{err}`"
             CommandPaletteAction::OpenCrypticSplicingScreen => self.open_cryptic_splicing_screen(),
             CommandPaletteAction::OpenPrecomputedGenomicMotifEvidence => {
                 self.open_precomputed_genomic_motif_evidence()
+            }
+            CommandPaletteAction::OpenGenomicRegionConservation => {
+                self.open_genomic_region_conservation()
             }
             CommandPaletteAction::OpenEvidencePreparation => {
                 self.open_evidence_preparation_dialog()
@@ -8335,6 +8347,32 @@ Error: `{err}`"
             self.app_status = "Precomputed genomic motif evidence requires a genome-anchored sequence; retrieve one first"
                 .to_string();
         }
+    }
+
+    fn open_genomic_region_conservation(&mut self) {
+        let seq_id = self
+            .active_dna_window_context()
+            .map(|(seq_id, _)| seq_id)
+            .or_else(|| self.project_sequence_ids_for_blast().first().cloned());
+        let Some(seq_id) = seq_id else {
+            self.open_reference_genome_retrieve_dialog();
+            self.app_status = "Genomic Region Conservation requires a project sequence; retrieve one, then save or import a genomic region"
+                .to_string();
+            return;
+        };
+        self.open_sequence_window(&seq_id);
+        if let Some(viewport_id) = self.find_open_sequence_viewport_id(&seq_id) {
+            if let Some(window) = self.windows.get(&viewport_id)
+                && let Ok(mut window) = window.write()
+            {
+                window.focus_genomic_region_manager();
+            }
+        } else if let Some(window) = self.find_pending_sequence_window_mut(&seq_id) {
+            window.focus_genomic_region_manager();
+        }
+        self.app_status = format!(
+            "Choose a saved genomic region in '{seq_id}', then select Conservation... to inspect local homology evidence"
+        );
     }
 
     fn open_reference_genome_blast_dialog(&mut self) {

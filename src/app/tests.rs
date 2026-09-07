@@ -6641,6 +6641,21 @@ fn command_palette_precomputed_motif_evidence_opens_missing_anchor_prerequisite(
 }
 
 #[test]
+fn command_palette_conservation_opens_missing_sequence_prerequisite() {
+    let mut app = GENtleApp::default();
+    let action = app
+        .collect_command_palette_entries()
+        .iter()
+        .find(|entry| entry.title == "Genomic Region Conservation")
+        .map(|entry| entry.action)
+        .expect("conservation command palette entry");
+    app.execute_command_palette_action(&egui::Context::default(), action);
+    assert!(app.show_reference_genome_retrieve_dialog);
+    assert_eq!(app.genome_dialog_scope, GenomeDialogScope::Reference);
+    assert!(app.app_status.contains("requires a project sequence"));
+}
+
+#[test]
 fn command_palette_project_overview_focuses_container_actions() {
     let mut app = GENtleApp::default();
     let action = app
@@ -6670,6 +6685,24 @@ fn command_palette_test_app_with_sequence() -> GENtleApp {
     let mut app = GENtleApp::default();
     app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
     app
+}
+
+#[test]
+fn command_palette_conservation_reuses_pending_sequence_window() {
+    let mut app = command_palette_test_app_with_sequence();
+    let ctx = egui::Context::default();
+    for _ in 0..2 {
+        app.execute_command_palette_action(
+            &ctx,
+            CommandPaletteAction::OpenGenomicRegionConservation,
+        );
+    }
+    assert_eq!(app.new_windows.len(), 1);
+    assert_eq!(app.new_windows[0].sequence_id().as_deref(), Some("seq1"));
+    assert!(
+        app.app_status
+            .contains("Choose a saved genomic region in 'seq1'")
+    );
 }
 
 fn assert_command_palette_ui_intent_side_effect(app: &GENtleApp, target: UiIntentTarget) {

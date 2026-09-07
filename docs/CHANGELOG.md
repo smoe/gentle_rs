@@ -1,5 +1,12 @@
 # GENtle Changelog
 
+- Added the missing Genomic Region Conservation command-palette action, which
+  opens saved-region selection and preserves that request during deferred
+  sequence loading. Corrected glossary smoke inputs for JSON report/plan
+  payloads and mutually exclusive motif-evidence targets. Tutorial generation
+  tests now scope their native BLAST tools so concurrent test stubs cannot
+  invalidate the synthetic homology indexes.
+
 - Corrected regulatory-fragment plan SVG source-bar placement and base-pair
   tooltips. Stable construct aliases and bounded labels keep long plan/member
   ids from obscuring contrast explanations; full ids remain in SVG tooltips.

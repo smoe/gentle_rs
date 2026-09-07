@@ -1212,6 +1212,9 @@ Feature tree grouping:
   - stable tutorial semantic IDs cover manager open/save/copy/import/export and
     CUT&RUN/Ensembl capture controls for Linux acceptance automation
 - `Conservation...` on a saved region opens a separate, resizable workspace:
+  - the `Genomic Region Conservation` command-palette entry opens the saved-region
+    manager for the active or first project sequence, where you choose the region
+    and select `Conservation...`. An empty project opens sequence retrieval first
   - `Run local screen` snapshots the engine and performs preflight, local BLAST,
     projection, exact-support block calling, and composition away from the UI
     thread. The status line reports phase, target ordinal, elapsed time, and a

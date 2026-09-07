@@ -89,7 +89,8 @@ impl MainAreaDna {
         self.show_genomic_region_conservation = true;
     }
 
-    pub(super) fn open_genomic_region_manager(&mut self, selection: Option<(usize, usize)>) {
+    /// Open saved regions, optionally staging a sequence selection for capture.
+    pub(crate) fn open_genomic_region_manager(&mut self, selection: Option<(usize, usize)>) {
         self.show_genomic_region_manager = true;
         if let Some((start, end)) = selection {
             self.genomic_region_pending_locus_report = None;

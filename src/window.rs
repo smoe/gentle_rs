@@ -78,6 +78,12 @@ impl Window {
         }
     }
 
+    pub fn focus_genomic_region_manager(&mut self) {
+        match self {
+            Self::Dna(window) => window.focus_genomic_region_manager(),
+        }
+    }
+
     pub fn focus_primer_design_report(&mut self, report_id: &str) {
         match self {
             Self::Dna(window) => window.focus_primer_design_report(report_id),

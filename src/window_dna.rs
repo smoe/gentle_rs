@@ -36,6 +36,7 @@ enum DeferredAnalysisFocus {
     Dotplot(String),
     FlexibilityTrack(String),
     CrypticSplicing,
+    GenomicRegionManager,
     RnaReadReport(String),
     PrimerDesign(String),
     PrimerSpecificity(String),
@@ -150,6 +151,9 @@ impl WindowDna {
             }
             DeferredAnalysisFocus::CrypticSplicing => {
                 self.main_area.focus_cryptic_splicing_screen();
+            }
+            DeferredAnalysisFocus::GenomicRegionManager => {
+                self.main_area.open_genomic_region_manager(None);
             }
             DeferredAnalysisFocus::RnaReadReport(report_id) => {
                 self.main_area.focus_rna_read_report(&report_id);
@@ -650,6 +654,14 @@ impl WindowDna {
             return;
         }
         self.main_area.focus_cryptic_splicing_screen();
+    }
+
+    pub fn focus_genomic_region_manager(&mut self) {
+        if self.pending_dna_load.is_some() {
+            self.deferred_analysis_focus = Some(DeferredAnalysisFocus::GenomicRegionManager);
+            return;
+        }
+        self.main_area.open_genomic_region_manager(None);
     }
 
     pub fn focus_primer_design_report(&mut self, report_id: &str) {

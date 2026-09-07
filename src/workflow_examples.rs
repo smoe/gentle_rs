@@ -6227,6 +6227,30 @@ mod tests {
         PathBuf::from(DEFAULT_TUTORIAL_OUTPUT_DIR)
     }
 
+    fn tutorial_blast_tools() -> Vec<crate::tool_overrides::ScopedToolOverrideGuard> {
+        // These tutorials build real local indexes. Concurrent unit-test stubs
+        // must not replace makeblastdb, blastdbcmd, or blastn midway through a run.
+        [
+            (
+                crate::genomes::MAKEBLASTDB_ENV_BIN,
+                crate::genomes::DEFAULT_MAKEBLASTDB_BIN,
+            ),
+            (
+                crate::genomes::BLASTDBCMD_ENV_BIN,
+                crate::genomes::DEFAULT_BLASTDBCMD_BIN,
+            ),
+            (
+                crate::genomes::BLASTN_ENV_BIN,
+                crate::genomes::DEFAULT_BLASTN_BIN,
+            ),
+        ]
+        .into_iter()
+        .map(|(key, executable)| {
+            crate::tool_overrides::ScopedToolOverrideGuard::set(key, executable)
+        })
+        .collect()
+    }
+
     fn minimal_tutorial_chapter(id: &str) -> TutorialChapter {
         TutorialChapter {
             id: id.to_string(),
@@ -6326,6 +6350,43 @@ mod tests {
             }
         }
         assert!(always_count > 0, "Expected at least one always example");
+    }
+
+    #[test]
+    fn workflow_examples_region_homology_uses_real_isolated_blast_indexes() {
+        let _outer_stub = crate::tool_overrides::ScopedToolOverrideGuard::set(
+            crate::genomes::BLASTDBCMD_ENV_BIN,
+            "__gentle_blastdbcmd_unavailable_test_stub__",
+        );
+        let _blast_tools = tutorial_blast_tools();
+        let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
+        let loaded = examples
+            .iter()
+            .find(|loaded| loaded.example.id == "region_homology_promoter_modules_offline")
+            .expect("synthetic region homology example");
+        let run_dir = TempDir::new().expect("temp run dir");
+        run_example_workflow_in_dir(&loaded.example, Path::new("."), run_dir.path())
+            .expect("synthetic region homology workflow should execute");
+        let report: gentle_protocol::GenomicRegionHomologyScreenReport = serde_json::from_slice(
+            &fs::read(
+                run_dir
+                    .path()
+                    .join("artifacts/region_homology_demo/homology_report.json"),
+            )
+            .expect("read homology report"),
+        )
+        .expect("typed homology report");
+        assert_eq!(report.targets.len(), 3);
+        assert!(!report.alignment_rows.is_empty());
+        assert!(
+            report
+                .alignment_rows
+                .iter()
+                .all(|row| { row.query_projection.len() == report.query.sequence.len() })
+        );
+        assert!(report.loci.iter().any(|locus| {
+            locus.orthology_evidence_id.as_deref() == Some("synthetic_declared_orthology")
+        }));
     }
 
     #[test]
@@ -8298,6 +8359,7 @@ mod tests {
 
     #[test]
     fn tutorial_generate_is_deterministic() {
+        let _blast_tools = tutorial_blast_tools();
         let _serial = lock_jaspar_registry_for_test();
         crate::tf_motifs::reload_builtin_for_test();
         let source = example_dir();
@@ -8321,6 +8383,7 @@ mod tests {
 
     #[test]
     fn tutorial_generated_chapter_includes_narrative_concepts_and_objectives() {
+        let _blast_tools = tutorial_blast_tools();
         let _serial = lock_jaspar_registry_for_test();
         crate::tf_motifs::reload_builtin_for_test();
         let source = example_dir();
@@ -8978,6 +9041,7 @@ mod tests {
 
     #[test]
     fn tutorial_check_passes_on_committed_tree() {
+        let _blast_tools = tutorial_blast_tools();
         let _serial = lock_jaspar_registry_for_test();
         crate::tf_motifs::reload_builtin_for_test();
         check_tutorial_generated(
