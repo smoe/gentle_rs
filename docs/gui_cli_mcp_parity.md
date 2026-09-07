@@ -17,11 +17,11 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 39 | 711 | 0 |
-| gentle_cli | 451 | 323 | 0 |
-| MCP | 127 | 487 | 64 |
-| JS | 78 | 515 | 69 |
-| Lua | 77 | 516 | 69 |
+| GUI | 39 | 713 | 0 |
+| gentle_cli | 452 | 324 | 0 |
+| MCP | 128 | 488 | 64 |
+| JS | 78 | 517 | 69 |
+| Lua | 77 | 518 | 69 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands

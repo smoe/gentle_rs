@@ -303,6 +303,7 @@ fn promoters_compose_study_parses_typed_request_and_output() {
     }
 }
 
+#[test]
 fn promoters_regulatory_panel_routes_parse_typed_request_and_plan() {
     let request = RegulatoryFragmentPanelRequest {
         schema: crate::engine::REGULATORY_FRAGMENT_PANEL_REQUEST_SCHEMA.to_string(),
