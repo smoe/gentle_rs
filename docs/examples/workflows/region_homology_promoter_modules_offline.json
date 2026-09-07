@@ -1,0 +1,171 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "region_homology_promoter_modules_offline",
+  "title": "Query-referenced genomic-region conservation (offline synthetic)",
+  "summary": "Prepares three tiny synthetic genomic BLAST indexes, saves a portable query plus one selected evidence span, and emits a content-bound query-referenced homology report with an explicitly designated ortholog locus, unassigned cross-species similarity, same-genome repetition, and omitted target-insertion provenance.",
+  "test_mode": "skip",
+  "required_files": [
+    "docs/examples/assets/region_homology_demo/README.md",
+    "docs/examples/assets/region_homology_demo/genomes.json",
+    "docs/examples/assets/region_homology_demo/query_toy.fa",
+    "docs/examples/assets/region_homology_demo/query_toy.gtf",
+    "docs/examples/assets/region_homology_demo/ortholog_toy.fa",
+    "docs/examples/assets/region_homology_demo/ortholog_toy.gtf",
+    "docs/examples/assets/region_homology_demo/other_toy.fa",
+    "docs/examples/assets/region_homology_demo/other_toy.gtf"
+  ],
+  "tags": [
+    "tutorial",
+    "offline",
+    "genomic-region",
+    "conservation",
+    "blast",
+    "promoter-module",
+    "synthetic"
+  ],
+  "workflow": {
+    "run_id": "example_region_homology_promoter_modules_offline",
+    "ops": [
+      {
+        "PrepareGenome": {
+          "genome_id": "QueryRegionToy",
+          "catalog_path": "docs/examples/assets/region_homology_demo/genomes.json",
+          "cache_dir": "artifacts/region_homology_demo/genome_cache"
+        }
+      },
+      {
+        "ExtractGenomeRegion": {
+          "genome_id": "QueryRegionToy",
+          "chromosome": "chrQ",
+          "start_1based": 1,
+          "end_1based": 188,
+          "output_id": "region_homology_query",
+          "annotation_scope": "none",
+          "catalog_path": "docs/examples/assets/region_homology_demo/genomes.json",
+          "cache_dir": "artifacts/region_homology_demo/genome_cache"
+        }
+      },
+      {
+        "PrepareGenome": {
+          "genome_id": "ExpectedOrthologToy",
+          "catalog_path": "docs/examples/assets/region_homology_demo/genomes.json",
+          "cache_dir": "artifacts/region_homology_demo/genome_cache"
+        }
+      },
+      {
+        "PrepareGenome": {
+          "genome_id": "UnassignedSimilarityToy",
+          "catalog_path": "docs/examples/assets/region_homology_demo/genomes.json",
+          "cache_dir": "artifacts/region_homology_demo/genome_cache"
+        }
+      },
+      {
+        "CaptureGenomicRegion": {
+          "request": {
+            "set_id": "synthetic_conservation_regions",
+            "set_label": "Synthetic conservation regions",
+            "region_id": "synthetic_promoter_query",
+            "label": "Synthetic promoter query",
+            "purpose": "reporter_candidate",
+            "source": {
+              "source_kind": "sequence_selection",
+              "seq_id": "region_homology_query",
+              "local_start_0based": 20,
+              "local_end_0based_exclusive": 100,
+              "strand": "plus",
+              "reference_override": {
+                "species_scientific_name": "Synthetic query organism",
+                "taxon_id": 9000001,
+                "assembly_name": "QueryRegionToy",
+                "contig_name": "chrQ"
+              }
+            },
+            "notes": [
+              "Synthetic tutorial query; no regulatory activity is implied."
+            ]
+          }
+        }
+      },
+      {
+        "CaptureGenomicRegion": {
+          "request": {
+            "set_id": "synthetic_conservation_regions",
+            "region_id": "synthetic_occupancy_anchor",
+            "label": "Synthetic selected occupancy span",
+            "purpose": "occupancy_region",
+            "source": {
+              "source_kind": "sequence_selection",
+              "seq_id": "region_homology_query",
+              "local_start_0based": 50,
+              "local_end_0based_exclusive": 70,
+              "strand": "plus",
+              "reference_override": {
+                "species_scientific_name": "Synthetic query organism",
+                "taxon_id": 9000001,
+                "assembly_name": "QueryRegionToy",
+                "contig_name": "chrQ"
+              }
+            },
+            "notes": [
+              "Synthetic selected evidence span for the module-assessment tutorial; no occupancy measurement is implied."
+            ]
+          }
+        }
+      },
+      {
+        "ScreenGenomicRegionHomology": {
+          "request": {
+            "set_id": "synthetic_conservation_regions",
+            "region_id": "synthetic_promoter_query",
+            "query_genome_id": "QueryRegionToy",
+            "catalog_path": "docs/examples/assets/region_homology_demo/genomes.json",
+            "cache_dir": "artifacts/region_homology_demo/genome_cache",
+            "targets": [
+              {
+                "genome_id": "QueryRegionToy",
+                "required": true,
+                "role": "same_genome"
+              },
+              {
+                "genome_id": "ExpectedOrthologToy",
+                "required": true,
+                "role": "expected_ortholog",
+                "expected_loci": [
+                  {
+                    "expected_locus_id": "synthetic_expected_ortholog_locus",
+                    "reference": {
+                      "species_scientific_name": "Synthetic ortholog organism",
+                      "taxon_id": 9000002,
+                      "assembly_name": "ExpectedOrthologToy",
+                      "contig_name": "chrO"
+                    },
+                    "start_0based": 30,
+                    "end_0based_exclusive": 111,
+                    "strand": "plus",
+                    "evidence_id": "synthetic_declared_orthology",
+                    "source_id": "region_homology_demo_v1"
+                  }
+                ]
+              },
+              {
+                "genome_id": "UnassignedSimilarityToy",
+                "required": false,
+                "role": "cross_species_unassigned"
+              }
+            ],
+            "policy": {
+              "min_identity_percent": 70.0,
+              "min_alignment_length_bp": 12,
+              "max_evalue": 0.001,
+              "max_chain_gap_bp": 40,
+              "max_loci_per_target": 20,
+              "max_hsps_per_target": 1000,
+              "min_conserved_block_bp": 12
+            }
+          },
+          "path": "artifacts/region_homology_demo/homology_report.json"
+        }
+      }
+    ]
+  }
+}

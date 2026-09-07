@@ -15524,7 +15524,7 @@ fn parse_feature_expert_target_tokens(
 ) -> Result<FeatureExpertTarget, String> {
     if tokens.is_empty() {
         return Err(format!(
-            "{context} requires target syntax: tfbs FEATURE_ID | restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | splicing FEATURE_ID | isoform PANEL_ID | isoform-evidence PANEL_ID [evidence options] | gene-locus-evidence PANEL_ID [evidence options] [--probe-effect-table PATH]... [--probe-effect-contrast TOKEN]... [--probe-effect-coordinate-system ID] [--upstream-bp N] [--downstream-bp N] [--occupancy-layout JSON_OR_@FILE] [--motif TOKEN]... [--score-kind KIND] [--motif-threshold N] | protein-comparison [--transcript ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]... | uniprot-projection PROJECTION_ID"
+            "{context} requires target syntax: tfbs FEATURE_ID | restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | splicing FEATURE_ID | isoform PANEL_ID | isoform-evidence PANEL_ID [evidence options] | gene-locus-evidence PANEL_ID [evidence options] [--probe-effect-table PATH]... [--probe-effect-contrast TOKEN]... [--probe-effect-coordinate-system ID] [--homology-report PATH]... [--upstream-bp N] [--downstream-bp N] [--occupancy-layout JSON_OR_@FILE] [--motif TOKEN]... [--score-kind KIND] [--motif-threshold N] | protein-comparison [--transcript ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]... | uniprot-projection PROJECTION_ID"
         ));
     }
     match tokens[0].trim().to_ascii_lowercase().as_str() {
@@ -15829,6 +15829,14 @@ fn parse_feature_expert_target_tokens(
                             context,
                         )?);
                     }
+                    "--homology-report" => {
+                        request.homology_report_paths.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--homology-report",
+                            context,
+                        )?);
+                    }
                     "--occupancy-track" => {
                         request
                             .isoform_evidence
@@ -15982,6 +15990,8 @@ fn parse_feature_expert_target_tokens(
             request.isoform_evidence.cdna_est_resource_paths.dedup();
             request.probe_effect_table_paths.sort();
             request.probe_effect_table_paths.dedup();
+            request.homology_report_paths.sort();
+            request.homology_report_paths.dedup();
             let mut unique_probe_effect_contrasts = Vec::new();
             for contrast in request.probe_effect_contrasts.drain(..) {
                 if !unique_probe_effect_contrasts
@@ -16554,7 +16564,7 @@ where
 fn parse_genomic_regions_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "regions requires: create|capture|list|inspect|update|derive|import|export [REQUEST_JSON_OR_@FILE]"
+            "regions requires: create|capture|list|inspect|update|derive|import|export|homology-screen|render-homology-svg [REQUEST_JSON_OR_@FILE]"
                 .to_string(),
         );
     }
@@ -16613,9 +16623,36 @@ fn parse_genomic_regions_command(tokens: &[String]) -> Result<ShellCommand, Stri
                 "genomic-region export request",
             )?,
         },
+        "homology-screen" => Operation::ScreenGenomicRegionHomology {
+            request: parse_required_json_payload::<
+                gentle_protocol::GenomicRegionHomologyScreenRequest,
+            >(&payload, "genomic-region homology request")?,
+            path: None,
+        },
+        "render-homology-svg" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "regions render-homology-svg requires REPORT_JSON_OR_@FILE OUTPUT.svg"
+                        .to_string(),
+                );
+            }
+            let path = tokens
+                .last()
+                .cloned()
+                .ok_or_else(|| "regions render-homology-svg requires OUTPUT.svg".to_string())?;
+            let report_payload = tokens[2..tokens.len() - 1].join(" ");
+            Operation::RenderGenomicRegionHomologySvg {
+                report: Box::new(parse_required_json_payload::<
+                    gentle_protocol::GenomicRegionHomologyScreenReport,
+                >(
+                    &report_payload, "genomic-region homology report"
+                )?),
+                path,
+            }
+        }
         other => {
             return Err(format!(
-                "Unknown regions subcommand '{other}'; expected create, capture, list, inspect, update, derive, import, or export"
+                "Unknown regions subcommand '{other}'; expected create, capture, list, inspect, update, derive, import, export, homology-screen, or render-homology-svg"
             ));
         }
     };
@@ -20798,6 +20835,42 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "external",
             true,
             "Export a genomic region set through the shared engine operation.",
+        ),
+        genomic_region_capability_descriptor(
+            "regions homology-screen",
+            "false",
+            false,
+            "Search validated local genomic-DNA BLAST indexes for query-referenced similarity to one saved portable region.",
+        ),
+        genomic_region_capability_descriptor(
+            "ScreenGenomicRegionHomology",
+            "false",
+            false,
+            "Build a content-bound genomic-region homology report through the shared read-only engine operation.",
+        ),
+        genomic_region_capability_descriptor(
+            "regions render-homology-svg",
+            "external",
+            true,
+            "Render a content-bound query-referenced homology report as deterministic SVG without rerunning BLAST.",
+        ),
+        genomic_region_capability_descriptor(
+            "RenderGenomicRegionHomologySvg",
+            "external",
+            true,
+            "Render a genomic-region homology report through the shared engine operation.",
+        ),
+        genomic_region_capability_descriptor(
+            "promoters assess-conserved-modules",
+            "false",
+            false,
+            "Classify traceable reporter-module hypotheses from a content-bound homology report and explicitly selected evidence spans.",
+        ),
+        genomic_region_capability_descriptor(
+            "AssessPromoterConservedModules",
+            "false",
+            false,
+            "Assess conserved promoter-module hypotheses through the shared read-only engine operation.",
         ),
         json!({
             "id": "gene_isoform_assay_publication",
@@ -30537,7 +30610,13 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "regions import"
         | "ImportGenomicRegionSet"
         | "regions export"
-        | "ExportGenomicRegionSet" => Some(vec![]),
+        | "ExportGenomicRegionSet"
+        | "regions homology-screen"
+        | "ScreenGenomicRegionHomology"
+        | "regions render-homology-svg"
+        | "RenderGenomicRegionHomologySvg"
+        | "promoters assess-conserved-modules"
+        | "AssessPromoterConservedModules" => Some(vec![]),
         "DigestContainer" | "LigationContainer" | "FilterContainerByMolecularWeight" => Some(vec![
             json!({"fact": "container.exists", "subject": {"arg": "CONTAINER_ID"}}),
         ]),
@@ -41924,7 +42003,7 @@ fn parse_gene_groups_command(tokens: &[String]) -> Result<ShellCommand, String> 
 fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "promoters requires a subcommand: compare-architectures, panel-readiness, panel-plan, panel-materialize, regulatory-panel-plan, or regulatory-panel-render"
+            "promoters requires a subcommand: assess-conserved-modules, compose-study, compare-architectures, panel-readiness, panel-plan, panel-materialize, regulatory-panel-plan, or regulatory-panel-render"
                 .to_string(),
         );
     }
@@ -41960,6 +42039,24 @@ fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 }
             }
             Ok(ShellCommand::PromotersComposeStudy { request, output })
+        }
+        "assess-conserved-modules" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "promoters assess-conserved-modules requires REQUEST_JSON_OR_@FILE".to_string(),
+                );
+            }
+            let payload = tokens[2..].join(" ");
+            Ok(ShellCommand::GenomicRegions {
+                operation: Operation::AssessPromoterConservedModules {
+                    request: parse_required_json_payload::<
+                        gentle_protocol::PromoterModuleAssessmentRequest,
+                    >(
+                        &payload, "promoter conserved-module assessment request"
+                    )?,
+                    path: None,
+                },
+            })
         }
         "compare-architectures" => {
             if tokens.len() < 3 || tokens[2].starts_with("--") {
@@ -42231,7 +42328,7 @@ fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
             })
         }
         other => Err(format!(
-            "Unknown promoters subcommand '{other}' (expected compose-study, compare-architectures, panel-readiness, panel-plan, panel-materialize, regulatory-panel-plan, or regulatory-panel-render)"
+            "Unknown promoters subcommand '{other}' (expected assess-conserved-modules, compose-study, compare-architectures, panel-readiness, panel-plan, panel-materialize, regulatory-panel-plan, or regulatory-panel-render)"
         )),
     }
 }
@@ -61286,13 +61383,23 @@ fn execute_genomic_regions_command(
     let result = engine
         .apply(operation.clone())
         .map_err(|error| error.to_string())?;
-    let report = result
-        .genomic_region_operation
-        .ok_or_else(|| "genomic-region operation returned no typed operation report".to_string())?;
+    let output = if let Some(report) = result.genomic_region_operation.as_ref() {
+        serde_json::to_value(report)
+            .map_err(|error| format!("Could not serialize genomic-region report: {error}"))?
+    } else if let Some(report) = result.genomic_region_homology.as_ref() {
+        serde_json::to_value(report)
+            .map_err(|error| format!("Could not serialize genomic-region homology: {error}"))?
+    } else if let Some(report) = result.promoter_module_assessment.as_ref() {
+        serde_json::to_value(report)
+            .map_err(|error| format!("Could not serialize promoter-module assessment: {error}"))?
+    } else if matches!(operation, Operation::RenderGenomicRegionHomologySvg { .. }) {
+        json!({"result": result})
+    } else {
+        return Err("genomic-region operation returned no typed report".to_string());
+    };
     Ok(ShellRunResult {
         state_changed,
-        output: serde_json::to_value(report)
-            .map_err(|error| format!("Could not serialize genomic-region report: {error}"))?,
+        output,
     })
 }
 

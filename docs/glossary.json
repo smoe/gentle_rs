@@ -153,6 +153,54 @@
       {
          "aliases": [],
          "engine_operations": [
+            "ScreenGenomicRegionHomology"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "cli-direct",
+            "mcp-op"
+         ],
+         "path": "regions homology-screen",
+         "summary": "Compare one saved genomic region with validated local genomic-DNA indexes and emit a query-referenced, content-bound homology report.",
+         "usage": "regions homology-screen REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "RenderGenomicRegionHomologySvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "cli-direct",
+            "mcp-op"
+         ],
+         "path": "regions render-homology-svg",
+         "summary": "Render a validated genomic-region homology report as a deterministic query-referenced SVG.",
+         "usage": "regions render-homology-svg REPORT_JSON_OR_@FILE OUTPUT.svg"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "AssessPromoterConservedModules"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "cli-direct",
+            "mcp-op"
+         ],
+         "path": "promoters assess-conserved-modules",
+         "summary": "Combine a content-bound region-homology report with independently selected evidence spans and emit a traceable reporter-module hypothesis.",
+         "usage": "promoters assess-conserved-modules REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "PreviewFeatureLocationEdit",
             "EditFeatureLocation"
          ],

@@ -220,6 +220,24 @@ const GUI_PROMINENT_GLOSSARY_ENTRIES: &[GuiProminentGlossaryEntry] = &[
         ui_intent_target: None,
     },
     GuiProminentGlossaryEntry {
+        glossary_path: "regions homology-screen",
+        menu_path: "DNA Sequence Viewer > Saved genomic regions > Conservation...",
+        palette_title: "Genomic Region Conservation",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "regions render-homology-svg",
+        menu_path: "Conservation > Export SVG...",
+        palette_title: "Genomic Region Conservation",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "promoters assess-conserved-modules",
+        menu_path: "Conservation > Assess selected evidence",
+        palette_title: "Genomic Region Conservation",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
         glossary_path: "collections run digest",
         menu_path: "Genome > Gene Set Inspector...",
         palette_title: "Gene Set Inspector",

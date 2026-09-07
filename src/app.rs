@@ -7636,6 +7636,22 @@ Error: `{err}`"
                     percent,
                 )
             }
+            OperationProgress::GenomicRegionHomology(p) => {
+                let percent = if p.target_count > 0 {
+                    Some(p.target_ordinal as f32 / p.target_count as f32)
+                } else if p.done {
+                    Some(1.0)
+                } else {
+                    None
+                };
+                Self::tutorial_project_progress_message(
+                    chapter_id,
+                    chapter_title,
+                    "execute_workflow",
+                    &format!("Region homology {}: {}", p.phase, p.detail),
+                    percent,
+                )
+            }
         };
         if message.phase == "execute_workflow" {
             message.percent = Self::tutorial_project_scale_workflow_percent(message.percent);
@@ -12162,6 +12178,8 @@ Error: `{err}`"
                 uniprot_projection_audit_parity: None,
                 lab_assistant_instructions: None,
                 genomic_region_operation: None,
+                genomic_region_homology: None,
+                promoter_module_assessment: None,
                 feature_location_edit_report: None,
                 feature_record_curation_report: None,
             });

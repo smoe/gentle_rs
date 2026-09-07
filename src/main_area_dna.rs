@@ -1356,6 +1356,18 @@ struct CrypticSplicingTask {
 }
 
 #[derive(Clone, Debug)]
+enum GenomicRegionHomologyTaskMessage {
+    Progress(crate::engine::GenomicRegionHomologyProgress),
+    Done(Result<gentle_protocol::GenomicRegionHomologyScreenReport, EngineError>),
+}
+
+#[derive(Clone, Debug)]
+struct GenomicRegionHomologyTask {
+    started: Instant,
+    receiver: Arc<Mutex<Receiver<GenomicRegionHomologyTaskMessage>>>,
+}
+
+#[derive(Clone, Debug)]
 enum CrypticSplicingTaskCompletion {
     Screen(CrypticSplicingScreenView),
     EvidenceOverlay(CrypticSplicingEvidenceOverlayReport),
@@ -1714,6 +1726,20 @@ pub struct MainAreaDna {
     genomic_region_pending_locus_report: Option<Arc<GeneLocusEvidenceDisplayReport>>,
     genomic_region_store_cache: Option<gentle_protocol::GenomicRegionStore>,
     genomic_region_status: String,
+    show_genomic_region_conservation: bool,
+    genomic_region_conservation_set_id: String,
+    genomic_region_conservation_region_id: String,
+    genomic_region_conservation_expected_sha256: Option<String>,
+    genomic_region_conservation_query_genome_id: String,
+    genomic_region_conservation_report:
+        Option<Arc<gentle_protocol::GenomicRegionHomologyScreenReport>>,
+    genomic_region_conservation_selected_block_id: Option<String>,
+    genomic_region_conservation_evidence_region_ids: BTreeSet<String>,
+    genomic_region_conservation_module_assessment:
+        Option<Arc<gentle_protocol::PromoterModuleAssessmentReport>>,
+    genomic_region_conservation_status: String,
+    genomic_region_conservation_progress: Option<crate::engine::GenomicRegionHomologyProgress>,
+    genomic_region_conservation_task: Option<GenomicRegionHomologyTask>,
     splicing_expert_window_pending_initial_render: bool,
     splicing_expert_window_focus_requested: bool,
     splicing_expert_window_feature_id: Option<usize>,
@@ -1744,6 +1770,7 @@ pub struct MainAreaDna {
     splicing_locus_motif_top_hits: String,
     splicing_locus_regulatory_tracks_path: String,
     splicing_locus_region_set_ids: String,
+    splicing_locus_homology_report_paths: String,
     splicing_locus_scale_bar_mode: String,
     splicing_locus_scale_bar_bp: String,
     splicing_locus_svg_path: String,
@@ -2576,6 +2603,18 @@ impl MainAreaDna {
             genomic_region_pending_locus_report: None,
             genomic_region_store_cache: None,
             genomic_region_status: String::new(),
+            show_genomic_region_conservation: false,
+            genomic_region_conservation_set_id: String::new(),
+            genomic_region_conservation_region_id: String::new(),
+            genomic_region_conservation_expected_sha256: None,
+            genomic_region_conservation_query_genome_id: String::new(),
+            genomic_region_conservation_report: None,
+            genomic_region_conservation_selected_block_id: None,
+            genomic_region_conservation_evidence_region_ids: BTreeSet::new(),
+            genomic_region_conservation_module_assessment: None,
+            genomic_region_conservation_status: String::new(),
+            genomic_region_conservation_progress: None,
+            genomic_region_conservation_task: None,
             splicing_expert_window_pending_initial_render: false,
             splicing_expert_window_focus_requested: false,
             splicing_expert_window_feature_id: None,
@@ -2606,6 +2645,7 @@ impl MainAreaDna {
             splicing_locus_motif_top_hits: "5".to_string(),
             splicing_locus_regulatory_tracks_path: String::new(),
             splicing_locus_region_set_ids: String::new(),
+            splicing_locus_homology_report_paths: String::new(),
             splicing_locus_scale_bar_mode: "hidden".to_string(),
             splicing_locus_scale_bar_bp: "1000".to_string(),
             splicing_locus_svg_path: "gene-locus-evidence.svg".to_string(),
@@ -4358,6 +4398,7 @@ impl MainAreaDna {
         self.poll_primer_design_task(ctx);
         self.poll_rna_read_task(ctx);
         self.poll_cryptic_splicing_task(ctx);
+        self.poll_genomic_region_homology_task(ctx);
         self.sync_from_engine_display();
         let backdrop_kind = if self.opened_from_pool_context {
             WindowBackdropKind::Pool
@@ -4530,10 +4571,12 @@ impl MainAreaDna {
         self.poll_primer_design_task(ctx);
         self.poll_rna_read_task(ctx);
         self.poll_cryptic_splicing_task(ctx);
+        self.poll_genomic_region_homology_task(ctx);
         self.sync_from_engine_display();
         self.render_dotplot_window(ctx);
         self.render_splicing_expert_window(ctx);
         self.render_genomic_region_manager(ctx);
+        self.render_genomic_region_conservation_workspace(ctx);
         self.render_rna_read_mapping_window(ctx);
         self.render_variant_followup_window(ctx);
         self.render_isoform_expert_window(ctx);
@@ -27922,6 +27965,7 @@ impl MainAreaDna {
             self.render_dotplot_window(ctx);
             self.render_splicing_expert_window(ctx);
             self.render_genomic_region_manager(ctx);
+            self.render_genomic_region_conservation_workspace(ctx);
             self.render_rna_read_mapping_window(ctx);
             self.render_variant_followup_window(ctx);
             self.render_isoform_expert_window(ctx);

@@ -130,6 +130,31 @@
       "id": "promoter_motif_controls",
       "name": "Promoter Motif Controls",
       "description": "Foreground promoter motif signals should be compared with matched controls before being treated as candidate enrichment, depletion, or co-occurrence evidence."
+    },
+    {
+      "id": "portable_genomic_regions",
+      "name": "Portable Genomic Regions",
+      "description": "Assembly-bound regions retain one canonical coordinate and evidence identity across project, CLI, GUI, and exported representations."
+    },
+    {
+      "id": "local_blast_indexes",
+      "name": "Local BLAST Indexes",
+      "description": "Validated local indexes are content-bound optional resources; their absence remains explicit without disabling unrelated work."
+    },
+    {
+      "id": "query_referenced_alignment",
+      "name": "Query-Referenced Alignment",
+      "description": "The query defines every display column while target insertions remain separate structured provenance."
+    },
+    {
+      "id": "explicit_orthology",
+      "name": "Explicit Orthology Evidence",
+      "description": "An ortholog label requires a declared, provenance-bearing expected locus and is never inferred from similarity rank alone."
+    },
+    {
+      "id": "reporter_module_hypotheses",
+      "name": "Reporter-Module Hypotheses",
+      "description": "Conservation and independently selected evidence produce traceable fragment-testing hypotheses, never proof of autonomous regulatory function."
     }
   ]
 }

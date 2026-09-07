@@ -1185,6 +1185,28 @@
           "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
         }
       ]
+    },
+    {
+      "id": "region_homology_promoter_modules_offline",
+      "title": "Conserved Blocks and Testable Promoter-Module Hypotheses",
+      "path": "docs/tutorial/generated/chapters/08-12_region_homology_promoter_modules_offline.md",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 12,
+      "decimal_id": "08.12",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "regulatory_analysis",
+        "contributors"
+      ],
+      "notes": "Offline synthetic tutorial for query-referenced local-BLAST similarity, explicit orthology evidence, conserved blocks, and reporter-module decision traces.",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-07"
     }
   ]
 }

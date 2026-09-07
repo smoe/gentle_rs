@@ -6,8 +6,9 @@
 //! isoform-validation claim.
 
 use crate::{
-    EnsemblRegulationSourceDescriptor, GenomicRegionEvidenceAvailability, GenomicRegionPurpose,
-    GenomicRegionSelectionMethod, GenomicRegionStrand, SplicingExpertView,
+    EnsemblRegulationSourceDescriptor, GenomicRegionEvidenceAvailability,
+    GenomicRegionHomologySupportClass, GenomicRegionPurpose, GenomicRegionSelectionMethod,
+    GenomicRegionStrand, SplicingExpertView,
 };
 use serde::{Deserialize, Serialize};
 
@@ -544,6 +545,10 @@ pub struct GeneLocusEvidenceDisplayRequest {
     /// canonical locus axis.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub region_set_ids: Vec<String>,
+    /// Optional content-bound homology reports whose exact-support blocks are
+    /// projected onto the shared locus axis.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub homology_report_paths: Vec<String>,
     /// Preserve local source paths in the portable report. Disabled by default
     /// so reports can be shared without exposing workstation paths.
     pub include_local_source_paths: bool,
@@ -567,6 +572,7 @@ impl Default for GeneLocusEvidenceDisplayRequest {
             regulatory_score_tracks: vec![],
             scale_bar: GeneLocusScaleBarPolicy::default(),
             region_set_ids: vec![],
+            homology_report_paths: vec![],
             include_local_source_paths: false,
         }
     }
@@ -594,6 +600,23 @@ pub struct GeneLocusSavedRegionOverlayRow {
     pub region_content_sha256: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub evidence_ids: Vec<String>,
+}
+
+/// One exact-support homology block projected onto a gene-locus display.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct GeneLocusConservationBlockOverlay {
+    pub report_content_sha256: String,
+    pub block_id: String,
+    pub support_class: GenomicRegionHomologySupportClass,
+    pub local_start_1based: usize,
+    pub local_end_1based: usize,
+    pub genomic_start_0based: u64,
+    pub genomic_end_0based_exclusive: u64,
+    pub support_fraction: f64,
+    pub supporting_genome_ids: Vec<String>,
+    pub available_genome_ids: Vec<String>,
+    pub unavailable_genome_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -1449,6 +1472,8 @@ pub struct GeneLocusEvidenceDisplayReport {
     pub ensembl_regulation: Option<GeneLocusEnsemblRegulationEvidence>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub saved_region_overlays: Vec<GeneLocusSavedRegionOverlayRow>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub conservation_blocks: Vec<GeneLocusConservationBlockOverlay>,
     pub provenance: Vec<GeneIsoformEvidenceProvenanceSource>,
     pub warnings: Vec<String>,
 }
@@ -1491,6 +1516,7 @@ mod tests {
         assert!(request.probe_effect_contrasts.is_empty());
         assert_eq!(request.probe_effect_coordinate_system, None);
         assert!(request.regulatory_score_tracks.is_empty());
+        assert!(request.homology_report_paths.is_empty());
         assert_eq!(request.scale_bar.mode, GeneLocusScaleBarMode::Hidden);
         assert_eq!(request.scale_bar.length_bp, None);
         assert!(!request.include_local_source_paths);
@@ -1505,6 +1531,7 @@ mod tests {
         assert!(report.probe_effect_overlays.is_empty());
         assert_eq!(report.probe_effect_shared_abs_max, None);
         assert!(report.regulatory_score_tracks.is_empty());
+        assert!(report.conservation_blocks.is_empty());
         assert_eq!(report.scale_bar.mode, GeneLocusScaleBarMode::Hidden);
         assert_eq!(report.scale_bar.length_bp, 0);
         assert_eq!(

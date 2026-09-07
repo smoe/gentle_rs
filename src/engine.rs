@@ -126,15 +126,18 @@ pub use gentle_protocol::{
     EnsemblRegulationGenomeAnchor, EnsemblRegulationInterval,
     EnsemblRegulationMaterializationReport, EnsemblRegulationOverlapReport,
     EnsemblRegulationOverlapRow, EnsemblRegulationTypeSummary, EvidenceClass, EvidenceScope,
-    ExonSkipReturnKind, ExonSkipReturnPayload, ExonSkipSelectionCriterion, GelBandLabelLayout,
-    GelBufferModel, GelIsoformMarkerMode, GelLaneLabelLayout, GelRunConditions, GelTopologyForm,
+    ExonSkipReturnKind, ExonSkipReturnPayload, ExonSkipSelectionCriterion,
+    GENOMIC_REGION_HOMOLOGY_SCREEN_SCHEMA, GelBandLabelLayout, GelBufferModel,
+    GelIsoformMarkerMode, GelLaneLabelLayout, GelRunConditions, GelTopologyForm,
     GenomicMotifEvidenceCoverageStatus, GenomicMotifEvidenceInterval,
     GenomicMotifEvidenceMotifCoverage, GenomicMotifEvidenceReport, GenomicMotifEvidenceRequest,
-    GenomicMotifEvidenceTarget, HostLifecycleRole, LineageEdge, LineageGraph, LineageMacroInstance,
-    LineageMacroPortBinding, LineageNode, MAX_GENOMIC_MOTIF_EVIDENCE_QUERY_MOTIFS,
-    MacroInstanceStatus, NodeId, OpId, OrthologAmbiguityPolicy, OrthologCutRunNormalizationInput,
-    OrthologPromoterCohortReport, OrthologPromoterComparisonReport, PoolGelRenderOptions,
-    PrimerSpecificityAmpliconCeilingSource, PrimerSpecificityReportDetailMode,
+    GenomicMotifEvidenceTarget, GenomicRegionHomologyScreenReport,
+    GenomicRegionHomologyScreenRequest, HostLifecycleRole, LineageEdge, LineageGraph,
+    LineageMacroInstance, LineageMacroPortBinding, LineageNode,
+    MAX_GENOMIC_MOTIF_EVIDENCE_QUERY_MOTIFS, MacroInstanceStatus, NodeId, OpId,
+    OrthologAmbiguityPolicy, OrthologCutRunNormalizationInput, OrthologPromoterCohortReport,
+    OrthologPromoterComparisonReport, PoolGelRenderOptions, PrimerSpecificityAmpliconCeilingSource,
+    PrimerSpecificityReportDetailMode, PromoterModuleAssessmentRequest,
     ProteinExternalOpinionSource, ProteinFeatureFilter, Rack, RackAuthoringTemplate,
     RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
     RackPhysicalTemplateFamily, RackPhysicalTemplateKind, RackPhysicalTemplateSpec,
@@ -801,13 +804,14 @@ pub use crate::feature_expert::{
     GeneIsoformExonFamilyRow, GeneIsoformFamilyRow, GeneIsoformJunctionRow,
     GeneIsoformOccupancyInterval, GeneIsoformOccupancyLane, GeneIsoformRecommendation,
     GeneIsoformRecommendationTier, GeneIsoformTranscriptRow, GeneLocusAssayOverlay,
-    GeneLocusCodonKind, GeneLocusCodonMarker, GeneLocusEvidenceDisplayReport,
-    GeneLocusEvidenceDisplayRequest, GeneLocusExternalRegulatoryScoreResource, GeneLocusMotifHit,
-    GeneLocusMotifTrack, GeneLocusOccupancyGroup, GeneLocusOccupancyGroupRequest,
-    GeneLocusOccupancyLane, GeneLocusOccupancyLaneRequest, GeneLocusOccupancyLaneRole,
-    GeneLocusOccupancyLaneState, GeneLocusOccupancyLayout, GeneLocusOccupancyScaleMode,
-    GeneLocusProbeClass, GeneLocusProbeEffectContrast, GeneLocusProbeEffectOverlay,
-    GeneLocusProbeEffectValue, GeneLocusRegulatoryCalibrationState, GeneLocusRegulatoryFactor,
+    GeneLocusCodonKind, GeneLocusCodonMarker, GeneLocusConservationBlockOverlay,
+    GeneLocusEvidenceDisplayReport, GeneLocusEvidenceDisplayRequest,
+    GeneLocusExternalRegulatoryScoreResource, GeneLocusMotifHit, GeneLocusMotifTrack,
+    GeneLocusOccupancyGroup, GeneLocusOccupancyGroupRequest, GeneLocusOccupancyLane,
+    GeneLocusOccupancyLaneRequest, GeneLocusOccupancyLaneRole, GeneLocusOccupancyLaneState,
+    GeneLocusOccupancyLayout, GeneLocusOccupancyScaleMode, GeneLocusProbeClass,
+    GeneLocusProbeEffectContrast, GeneLocusProbeEffectOverlay, GeneLocusProbeEffectValue,
+    GeneLocusRegulatoryCalibrationState, GeneLocusRegulatoryFactor,
     GeneLocusRegulatoryScoreProviderKind, GeneLocusRegulatoryScoreScaleMode,
     GeneLocusRegulatoryScoreSite, GeneLocusRegulatoryScoreState,
     GeneLocusRegulatoryScoreStrandPolicy, GeneLocusRegulatoryScoreTrack,
@@ -1309,8 +1313,11 @@ mod promoter_reporter_architecture;
 mod protein_handoff;
 #[path = "engine/io/read_acquisition.rs"]
 mod read_acquisition;
+#[path = "engine/analysis/region_homology.rs"]
+mod region_homology;
 #[path = "engine/analysis/regulatory_fragment_panel.rs"]
 mod regulatory_fragment_panel;
+pub(crate) use region_homology::validate_genomic_region_homology_report;
 #[path = "engine/analysis/regulatory_partners.rs"]
 mod regulatory_partners;
 #[path = "engine/analysis/repeat_cohort.rs"]
@@ -4418,6 +4425,20 @@ pub enum Operation {
     },
     ExportGenomicRegionSet {
         request: gentle_protocol::GenomicRegionExportRequest,
+    },
+    ScreenGenomicRegionHomology {
+        request: gentle_protocol::GenomicRegionHomologyScreenRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    RenderGenomicRegionHomologySvg {
+        report: Box<gentle_protocol::GenomicRegionHomologyScreenReport>,
+        path: String,
+    },
+    AssessPromoterConservedModules {
+        request: gentle_protocol::PromoterModuleAssessmentRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
     },
     BuildRepeatEnvironmentCohort {
         genome_id: String,
@@ -9853,6 +9874,9 @@ impl GentleEngine {
                 | Operation::ListGenomicRegions { .. }
                 | Operation::InspectGenomicRegion { .. }
                 | Operation::ExportGenomicRegionSet { .. }
+                | Operation::ScreenGenomicRegionHomology { .. }
+                | Operation::RenderGenomicRegionHomologySvg { .. }
+                | Operation::AssessPromoterConservedModules { .. }
                 | Operation::BuildRepeatEnvironmentCohort { .. }
                 | Operation::SummarizeTfbsRegion { .. }
                 | Operation::SummarizeTfbsScoreTracks { .. }

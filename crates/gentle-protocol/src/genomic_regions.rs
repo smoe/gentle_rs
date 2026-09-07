@@ -132,6 +132,7 @@ pub enum GenomicRegionSelectionMethod {
     CutrunSupportWindow,
     EnsemblRegulatoryFeature,
     ProviderAnnotation,
+    HomologyConservedBlock,
     Imported,
     Derived,
 }
@@ -144,6 +145,7 @@ impl GenomicRegionSelectionMethod {
             Self::CutrunSupportWindow => "cutrun_support_window",
             Self::EnsemblRegulatoryFeature => "ensembl_regulatory_feature",
             Self::ProviderAnnotation => "provider_annotation",
+            Self::HomologyConservedBlock => "homology_conserved_block",
             Self::Imported => "imported",
             Self::Derived => "derived",
         }

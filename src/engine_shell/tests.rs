@@ -127,6 +127,60 @@ fn parse_and_execute_genomic_region_shell_routes_share_typed_operations() {
 }
 
 #[test]
+fn genomic_region_homology_routes_parse_typed_read_only_operations() {
+    let request = crate::engine::GenomicRegionHomologyScreenRequest {
+        set_id: "shared".to_string(),
+        region_id: "roi_1".to_string(),
+        ..Default::default()
+    };
+    let request_json = serde_json::to_string(&request).expect("request JSON");
+    let screen = parse_shell_line(&format!("regions homology-screen '{request_json}'"))
+        .expect("parse homology screen");
+    let ShellCommand::GenomicRegions { operation } = screen else {
+        panic!("expected genomic-region command");
+    };
+    assert!(matches!(
+        operation,
+        Operation::ScreenGenomicRegionHomology { path: None, .. }
+    ));
+
+    let report = crate::engine::GenomicRegionHomologyScreenReport {
+        schema: crate::engine::GENOMIC_REGION_HOMOLOGY_SCREEN_SCHEMA.to_string(),
+        ..Default::default()
+    };
+    let report_json = serde_json::to_string(&report).expect("report JSON");
+    let render = parse_shell_line(&format!(
+        "regions render-homology-svg '{report_json}' /tmp/homology.svg"
+    ))
+    .expect("parse homology renderer");
+    let ShellCommand::GenomicRegions { operation } = render else {
+        panic!("expected genomic-region command");
+    };
+    assert!(matches!(
+        operation,
+        Operation::RenderGenomicRegionHomologySvg { path, .. }
+            if path == "/tmp/homology.svg"
+    ));
+
+    let assessment = crate::engine::PromoterModuleAssessmentRequest {
+        homology_report: Box::new(report),
+        ..Default::default()
+    };
+    let assessment_json = serde_json::to_string(&assessment).expect("assessment JSON");
+    let assess = parse_shell_line(&format!(
+        "promoters assess-conserved-modules '{assessment_json}'"
+    ))
+    .expect("parse module assessment");
+    let ShellCommand::GenomicRegions { operation } = assess else {
+        panic!("expected genomic-region command");
+    };
+    assert!(matches!(
+        operation,
+        Operation::AssessPromoterConservedModules { path: None, .. }
+    ));
+}
+
+#[test]
 fn genomic_region_capabilities_are_fact_annotated_and_exports_require_confirmation() {
     let mut engine = GentleEngine::default();
     let capabilities = execute_shell_command(
@@ -39593,7 +39647,7 @@ fn parse_feature_expert_commands() {
     }
 
     let locus_evidence = parse_shell_line(
-        "inspect-feature-expert s gene-locus-evidence patz1_v1 --annotation-release Ensembl116 --probe-effect-table effects.tsv --probe-effect-contrast TAp73alpha-GFP --probe-effect-contrast DNp73beta-GFP --probe-effect-coordinate-system GRCh38.p14 --occupancy-layout '{\"schema\":\"gentle.gene_locus_occupancy_layout.v1\",\"groups\":[{\"group_id\":\"saos2\",\"label\":\"Saos-2\",\"scale_mode\":\"shared_group\",\"lanes\":[{\"track_name\":\"SAOS-2 TA\",\"condition_label\":\"TA\",\"role\":\"experimental\"}]}]}' --upstream-bp 5000 --downstream-bp 1200 --motif TP73 --motif SP1 --score-kind llr_bits --motif-threshold 2.5 --motif-top-hits 4 --allow-negative --regulatory-score-tracks '[{\"track_id\":\"tp73_pwm\",\"label\":\"TP73 PWM\",\"provider_kind\":\"jaspar_pwm\",\"source_ids\":[\"MA0861.1\"],\"score_kind\":\"llr_bits\",\"display_threshold\":1.5,\"top_hit_count\":2,\"scale_mode\":\"independent\"}]' --scale-bar fixed --scale-bar-bp 1000 --include-local-source-paths",
+        "inspect-feature-expert s gene-locus-evidence patz1_v1 --annotation-release Ensembl116 --probe-effect-table effects.tsv --probe-effect-contrast TAp73alpha-GFP --probe-effect-contrast DNp73beta-GFP --probe-effect-coordinate-system GRCh38.p14 --homology-report conservation-b.json --homology-report conservation-a.json --occupancy-layout '{\"schema\":\"gentle.gene_locus_occupancy_layout.v1\",\"groups\":[{\"group_id\":\"saos2\",\"label\":\"Saos-2\",\"scale_mode\":\"shared_group\",\"lanes\":[{\"track_name\":\"SAOS-2 TA\",\"condition_label\":\"TA\",\"role\":\"experimental\"}]}]}' --upstream-bp 5000 --downstream-bp 1200 --motif TP73 --motif SP1 --score-kind llr_bits --motif-threshold 2.5 --motif-top-hits 4 --allow-negative --regulatory-score-tracks '[{\"track_id\":\"tp73_pwm\",\"label\":\"TP73 PWM\",\"provider_kind\":\"jaspar_pwm\",\"source_ids\":[\"MA0861.1\"],\"score_kind\":\"llr_bits\",\"display_threshold\":1.5,\"top_hit_count\":2,\"scale_mode\":\"independent\"}]' --scale-bar fixed --scale-bar-bp 1000 --include-local-source-paths",
     )
     .expect("parse gene locus evidence target");
     match locus_evidence {
@@ -39617,6 +39671,10 @@ fn parse_feature_expert_commands() {
             assert_eq!(
                 request.probe_effect_coordinate_system.as_deref(),
                 Some("GRCh38.p14")
+            );
+            assert_eq!(
+                request.homology_report_paths,
+                vec!["conservation-a.json", "conservation-b.json"]
             );
             assert_eq!(request.motifs, vec!["TP73".to_string(), "SP1".to_string()]);
             assert_eq!(request.motif_score_kind, "llr_bits");

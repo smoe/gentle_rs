@@ -5515,6 +5515,10 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub genomic_region_operation: Option<Box<gentle_protocol::GenomicRegionOperationReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_region_homology: Option<Box<gentle_protocol::GenomicRegionHomologyScreenReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_module_assessment: Option<Box<gentle_protocol::PromoterModuleAssessmentReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repeat_environment_cohort: Option<RepeatEnvironmentCohortReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub window_cohort_tfbs: Option<WindowCohortTfbsReport>,
@@ -6423,6 +6427,21 @@ pub struct PrimerDesignProgress {
     pub done: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Progress snapshot for a local genomic-region homology screen.
+pub struct GenomicRegionHomologyProgress {
+    pub set_id: String,
+    pub region_id: String,
+    pub phase: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_genome_id: Option<String>,
+    pub target_ordinal: usize,
+    pub target_count: usize,
+    pub detail: String,
+    pub done: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Union of long-running operation progress events.
 pub enum OperationProgress {
@@ -6433,6 +6452,7 @@ pub enum OperationProgress {
     DbSnpFetch(DbSnpFetchProgress),
     ReadAcquisition(SharedAssetActivityStatus),
     RnaReadInterpret(RnaReadInterpretProgress),
+    GenomicRegionHomology(GenomicRegionHomologyProgress),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

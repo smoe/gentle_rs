@@ -91,6 +91,7 @@ const HTTP_CONNECT_TIMEOUT_SECS: u64 = 20;
 const HTTP_READ_TIMEOUT_SECS: u64 = 120;
 pub(crate) const BLASTN_OUTFMT_FIELDS: &str =
     "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs";
+pub(crate) const BLASTN_ALIGNED_OUTFMT_FIELDS: &str = "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs qlen qseq sseq";
 const PREPARE_CANCELLED_BY_CALLER: &str = "Genome preparation cancelled by caller";
 const BLAST_CANCELLED_BY_CALLER: &str = "BLAST search cancelled by caller";
 const ANNOTATION_PARSE_ISSUE_LIMIT: usize = 12;
@@ -7110,6 +7111,7 @@ FASTA index='{}'.{}{}",
             task,
             cache_dir_override,
             true,
+            false,
             should_cancel,
         )
     }
@@ -7135,6 +7137,32 @@ FASTA index='{}'.{}{}",
             task,
             cache_dir_override,
             false,
+            false,
+            &mut never_cancel,
+        )
+    }
+
+    /// Run an exhaustive BLAST search and retain aligned query/subject strings.
+    ///
+    /// This is intended for query-coordinate projections. Existing summary and
+    /// primer-specificity callers keep the legacy 13-field command contract.
+    pub fn blast_sequence_complete_aligned_with_cache(
+        &self,
+        genome_id: &str,
+        query_sequence: &str,
+        hit_warning_threshold: usize,
+        task: Option<&str>,
+        cache_dir_override: Option<&str>,
+    ) -> Result<GenomeBlastReport, String> {
+        let mut never_cancel = || false;
+        self.blast_sequence_with_cache_and_cancel_mode(
+            genome_id,
+            query_sequence,
+            hit_warning_threshold,
+            task,
+            cache_dir_override,
+            false,
+            true,
             &mut never_cancel,
         )
     }
@@ -7148,6 +7176,7 @@ FASTA index='{}'.{}{}",
         task: Option<&str>,
         cache_dir_override: Option<&str>,
         limit_subjects: bool,
+        include_alignment_strings: bool,
         should_cancel: &mut dyn FnMut() -> bool,
     ) -> Result<GenomeBlastReport, String> {
         if should_cancel() {
@@ -7308,7 +7337,11 @@ FASTA index='{}'.{}{}",
             "-task".to_string(),
             task.clone(),
             "-outfmt".to_string(),
-            BLASTN_OUTFMT_FIELDS.to_string(),
+            if include_alignment_strings {
+                BLASTN_ALIGNED_OUTFMT_FIELDS.to_string()
+            } else {
+                BLASTN_OUTFMT_FIELDS.to_string()
+            },
         ];
         if limit_subjects {
             args.extend(["-max_target_seqs".to_string(), max_hits.to_string()]);
@@ -14356,6 +14389,27 @@ mod tests {
                 .command
                 .windows(2)
                 .any(|row| row == ["-max_target_seqs", "4"])
+        );
+        assert!(
+            report
+                .command
+                .windows(2)
+                .any(|row| row == ["-outfmt", BLASTN_OUTFMT_FIELDS])
+        );
+        let aligned = catalog
+            .blast_sequence_complete_aligned_with_cache(
+                "ToyGenome",
+                "ACGTACGTACGTACGTACGT",
+                20,
+                Some("blastn-short"),
+                None,
+            )
+            .expect("complete aligned BLAST search");
+        assert!(
+            aligned
+                .command
+                .windows(2)
+                .any(|row| row == ["-outfmt", BLASTN_ALIGNED_OUTFMT_FIELDS])
         );
     }
 

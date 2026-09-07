@@ -8157,6 +8157,9 @@ impl MainAreaDna {
             region_set_ids: Self::isoform_evidence_ordered_list(
                 &self.splicing_locus_region_set_ids,
             ),
+            homology_report_paths: Self::isoform_evidence_list(
+                &self.splicing_locus_homology_report_paths,
+            ),
             include_local_source_paths: false,
         })
     }
@@ -8274,6 +8277,11 @@ impl MainAreaDna {
             &mut rows,
             "probe-effect table",
             Self::isoform_evidence_list(&self.splicing_locus_probe_effect_paths),
+        );
+        Self::locus_file_resource_rows(
+            &mut rows,
+            "homology report",
+            Self::isoform_evidence_list(&self.splicing_locus_homology_report_paths),
         );
         if !self.splicing_locus_occupancy_layout_path.trim().is_empty() {
             Self::locus_file_resource_rows(
@@ -9282,6 +9290,7 @@ impl MainAreaDna {
             self.capture_gene_locus_ensembl_region(report, row);
         }
 
+        let mut open_saved_region_conservation = None;
         egui::CollapsingHeader::new(format!(
             "Saved genomic regions ({})",
             report.saved_region_overlays.len()
@@ -9294,7 +9303,7 @@ impl MainAreaDna {
                 );
             } else {
                 egui::Grid::new("splicing_locus_saved_regions")
-                    .num_columns(5)
+                    .num_columns(6)
                     .striped(true)
                     .show(ui, |ui| {
                         ui.strong("set / region");
@@ -9302,6 +9311,7 @@ impl MainAreaDna {
                         ui.strong("genomic");
                         ui.strong("purpose");
                         ui.strong("evidence");
+                        ui.strong("analyse");
                         ui.end_row();
                         for row in &report.saved_region_overlays {
                             ui.monospace(format!("{} / {}", row.set_id, row.region_id));
@@ -9316,6 +9326,56 @@ impl MainAreaDna {
                             ));
                             ui.label(row.purpose.as_str());
                             ui.label(row.evidence_availability.as_str());
+                            if ui
+                                .small_button("Conservation...")
+                                .on_hover_text(
+                                    "Open the local genomic homology workspace for this saved region",
+                                )
+                                .clicked()
+                            {
+                                open_saved_region_conservation =
+                                    Some((row.set_id.clone(), row.region_id.clone()));
+                            }
+                            ui.end_row();
+                        }
+                    });
+            }
+        });
+        if let Some((set_id, region_id)) = open_saved_region_conservation {
+            self.open_genomic_region_conservation_by_id(&set_id, &region_id);
+        }
+
+        egui::CollapsingHeader::new(format!(
+            "Conservation support ({} block(s))",
+            report.conservation_blocks.len()
+        ))
+        .default_open(!report.conservation_blocks.is_empty())
+        .show(ui, |ui| {
+            if report.conservation_blocks.is_empty() {
+                ui.small("No content-bound homology report was composed into this locus figure.");
+            } else {
+                egui::Grid::new("splicing_locus_conservation_blocks")
+                    .num_columns(4)
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.strong("class");
+                        ui.strong("local span");
+                        ui.strong("support");
+                        ui.strong("report");
+                        ui.end_row();
+                        for block in &report.conservation_blocks {
+                            ui.label(block.support_class.as_str());
+                            ui.monospace(format!(
+                                "{}-{}",
+                                block.local_start_1based, block.local_end_1based
+                            ));
+                            ui.label(format!(
+                                "{}/{} ({:.1}%)",
+                                block.supporting_genome_ids.len(),
+                                block.available_genome_ids.len(),
+                                block.support_fraction * 100.0
+                            ));
+                            ui.monospace(&block.report_content_sha256);
                             ui.end_row();
                         }
                     });
@@ -9539,6 +9599,20 @@ impl MainAreaDna {
                         ui.label("Saved region-set ids");
                         ui.text_edit_singleline(&mut self.splicing_locus_region_set_ids);
                         ui.small("Comma/newline separated; projected by exact genome anchor");
+                        ui.end_row();
+                        ui.label("Homology report JSON");
+                        ui.text_edit_singleline(&mut self.splicing_locus_homology_report_paths);
+                        if ui.button("Browse / relocate...").clicked()
+                            && let Some(path) = Self::pick_locus_resource_file(
+                                "Genomic-region homology report",
+                                &["json"],
+                            )
+                        {
+                            Self::append_locus_resource_path(
+                                &mut self.splicing_locus_homology_report_paths,
+                                &path,
+                            );
+                        }
                         ui.end_row();
                         ui.label("Probe-effect TSV");
                         ui.text_edit_singleline(&mut self.splicing_locus_probe_effect_paths);

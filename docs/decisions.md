@@ -928,3 +928,27 @@ external report id and digest is provenance only: without typed report content
 or a typed engine-owned report resolver, Ensembl Regulation, TFBS, CUT&RUN, and
 chromatin lanes remain `not_evaluated`. Rendering is a passive projection of
 the authoritative plan and may not reinterpret those states.
+
+## DEC-047: Region Homology Uses Query Coordinates And Explicit Orthology
+
+Status: active
+
+Genomic-region homology is an optional, read-only analysis over already
+validated local genomic-DNA indexes. GENtle does not download or prepare an
+index as a side effect of inspection, does not accept a cDNA database in its
+place, and binds cache/report identity to database content rather than only a
+path or genome label. An unavailable optional genome is unassessed evidence,
+not biological absence.
+
+The query is the only display coordinate authority. Target insertions are
+retained as structured evidence but never add alignment columns. Sequence
+similarity does not establish orthology: only an explicit, provenance-bearing
+expected locus licenses the `expected_ortholog` class. Same-genome non-self
+similarity remains a repetition/ambiguity observation rather than a functional
+off-target verdict.
+
+Conserved blocks and their composition with selected CUT&RUN, motif,
+annotation, or reporter spans produce inspectable experimental hypotheses.
+They may motivate testing a block alone, a partner alone, their ordered
+combination, and motif-disrupted controls, but they never prove that a fragment
+is autonomously functional.

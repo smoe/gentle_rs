@@ -14666,6 +14666,113 @@ impl GentleEngine {
         Ok(tracks)
     }
 
+    fn gene_locus_conservation_blocks(
+        &self,
+        seq_id: &str,
+        local_start_1based: usize,
+        local_end_1based: usize,
+        request: &GeneLocusEvidenceDisplayRequest,
+        warnings: &mut Vec<String>,
+    ) -> Result<
+        (
+            Vec<GeneLocusConservationBlockOverlay>,
+            Vec<GeneIsoformEvidenceProvenanceSource>,
+        ),
+        EngineError,
+    > {
+        let mut rows = vec![];
+        let mut sources = vec![];
+        let mut seen_paths = BTreeSet::new();
+        for raw_path in &request.homology_report_paths {
+            let path = raw_path.trim();
+            if path.is_empty() || !seen_paths.insert(path.to_string()) {
+                continue;
+            }
+            let payload = std::fs::read(path).map_err(|error| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not read homology report '{path}': {error}"),
+                cause_chain: vec![],
+            })?;
+            let report: GenomicRegionHomologyScreenReport = serde_json::from_slice(&payload)
+                .map_err(|error| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("Could not parse homology report '{path}': {error}"),
+                    cause_chain: vec![],
+                })?;
+            super::region_homology::validate_genomic_region_homology_report(&report)?;
+            sources.push(GeneIsoformEvidenceProvenanceSource {
+                source_kind: "genomic_region_homology_report".to_string(),
+                source_id: format!("{}/{}", report.query.set_id, report.query.region.region_id),
+                schema: Some(report.schema.clone()),
+                path: request.include_local_source_paths.then(|| path.to_string()),
+                sha256: Some(report.content_sha256.clone()),
+            });
+            let mut incompatible = false;
+            let mut outside = 0usize;
+            for block in &report.conserved_blocks {
+                let interval = gentle_protocol::GenomicRegionInterval {
+                    reference: report.query.region.interval.reference.clone(),
+                    start_0based: block.genomic_start_0based,
+                    end_0based_exclusive: block.genomic_end_0based_exclusive,
+                    strand: block.genomic_strand,
+                    coordinate_convention:
+                        gentle_protocol::GenomicRegionCoordinateConvention::ZeroBasedHalfOpen,
+                };
+                let projection = match self.local_projection_for_interval(seq_id, &interval) {
+                    Ok(projection) => projection,
+                    Err(_) => {
+                        incompatible = true;
+                        continue;
+                    }
+                };
+                let block_local_start = projection.local_start_0based.saturating_add(1) as usize;
+                let block_local_end = projection.local_end_0based_exclusive as usize;
+                if block_local_end < local_start_1based || block_local_start > local_end_1based {
+                    outside += 1;
+                    continue;
+                }
+                rows.push(GeneLocusConservationBlockOverlay {
+                    report_content_sha256: report.content_sha256.clone(),
+                    block_id: block.block_id.clone(),
+                    support_class: block.support_class,
+                    local_start_1based: block_local_start.max(local_start_1based),
+                    local_end_1based: block_local_end.min(local_end_1based),
+                    genomic_start_0based: block.genomic_start_0based,
+                    genomic_end_0based_exclusive: block.genomic_end_0based_exclusive,
+                    support_fraction: block.support_fraction,
+                    supporting_genome_ids: block.supporting_genome_ids.clone(),
+                    available_genome_ids: block.available_genome_ids.clone(),
+                    unavailable_genome_ids: block.unavailable_genome_ids.clone(),
+                });
+            }
+            if incompatible {
+                warnings.push(format!(
+                    "Homology report '{path}' contains blocks whose assembly or contig is incompatible with locus sequence '{seq_id}'."
+                ));
+            }
+            if outside > 0 {
+                warnings.push(format!(
+                    "Homology report '{path}' has {outside} block(s) outside the displayed locus."
+                ));
+            }
+        }
+        rows.sort_by(|left, right| {
+            (
+                left.local_start_1based,
+                left.local_end_1based,
+                left.support_class,
+                left.block_id.as_str(),
+            )
+                .cmp(&(
+                    right.local_start_1based,
+                    right.local_end_1based,
+                    right.support_class,
+                    right.block_id.as_str(),
+                ))
+        });
+        Ok((rows, sources))
+    }
+
     pub fn build_gene_locus_evidence_display_report(
         &self,
         seq_id: &str,
@@ -14764,7 +14871,15 @@ impl GentleEngine {
                 local_end,
             )?;
         warnings.extend(saved_region_warnings);
+        let (conservation_blocks, conservation_sources) = self.gene_locus_conservation_blocks(
+            seq_id,
+            local_start,
+            local_end,
+            request,
+            &mut warnings,
+        )?;
         let mut provenance = isoform_evidence.provenance.clone();
+        provenance.extend(conservation_sources);
         let (probe_effect_contrasts, mut probe_effect_overlays, probe_effect_shared_abs_max) = self
             .gene_locus_probe_effect_overlays(
                 &isoform_evidence.gene_symbol,
@@ -14933,6 +15048,7 @@ impl GentleEngine {
             assay_overlays,
             ensembl_regulation: None,
             saved_region_overlays,
+            conservation_blocks,
             provenance,
             warnings,
         })

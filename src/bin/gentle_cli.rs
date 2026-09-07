@@ -1002,6 +1002,17 @@ impl ProgressPrinter {
             OperationProgress::PrimerDesign(p) => self.on_primer_design_progress(p),
             OperationProgress::ReadAcquisition(p) => self.on_read_acquisition_progress(p),
             OperationProgress::RnaReadInterpret(p) => self.on_rna_read_interpret_progress(p),
+            OperationProgress::GenomicRegionHomology(p) => {
+                let target = p
+                    .target_genome_id
+                    .as_deref()
+                    .map(|value| format!(" target={value}"))
+                    .unwrap_or_default();
+                self.print_line(&format!(
+                    "progress region-homology phase={} target_ordinal={}/{}{} done={} detail={}",
+                    p.phase, p.target_ordinal, p.target_count, target, p.done, p.detail
+                ));
+            }
         }
     }
 }

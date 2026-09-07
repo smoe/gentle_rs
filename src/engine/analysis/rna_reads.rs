@@ -14629,6 +14629,8 @@ impl GentleEngine {
             uniprot_projection_audit_parity: None,
             lab_assistant_instructions: None,
             genomic_region_operation: None,
+            genomic_region_homology: None,
+            promoter_module_assessment: None,
             feature_location_edit_report: None,
             feature_record_curation_report: None,
         };
@@ -14781,6 +14783,8 @@ impl GentleEngine {
             uniprot_projection_audit_parity: None,
             lab_assistant_instructions: None,
             genomic_region_operation: None,
+            genomic_region_homology: None,
+            promoter_module_assessment: None,
             feature_location_edit_report: None,
             feature_record_curation_report: None,
         };

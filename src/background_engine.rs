@@ -5,7 +5,7 @@
 //! swap. Inherited undo/redo snapshots stay in the live engine. A concurrent
 //! edit makes the result stale and leaves the live project untouched.
 
-use crate::engine::{Engine, EngineError, ErrorCode, GentleEngine, OpResult, Operation};
+use crate::engine::{EngineError, ErrorCode, GentleEngine, OpResult, Operation};
 use std::sync::{Arc, RwLock};
 
 pub(crate) fn execute_on_engine_snapshot<T>(
@@ -40,6 +40,19 @@ pub(crate) fn execute_read_only_operation_on_engine_snapshot(
     shared: &Arc<RwLock<GentleEngine>>,
     operation: Operation,
 ) -> Result<OpResult, EngineError> {
+    execute_read_only_operation_on_engine_snapshot_with_progress(shared, operation, |_| true)
+}
+
+/// Apply a read-only operation to a detached snapshot while forwarding its
+/// typed progress stream. The detached journal is discarded with the worker.
+pub(crate) fn execute_read_only_operation_on_engine_snapshot_with_progress<F>(
+    shared: &Arc<RwLock<GentleEngine>>,
+    operation: Operation,
+    on_progress: F,
+) -> Result<OpResult, EngineError>
+where
+    F: FnMut(crate::engine::OperationProgress) -> bool,
+{
     let mut detached = {
         let guard = shared.read().map_err(|_| EngineError {
             code: ErrorCode::Internal,
@@ -48,7 +61,9 @@ pub(crate) fn execute_read_only_operation_on_engine_snapshot(
         })?;
         guard.fork_detached_execution()
     };
-    detached.engine_mut().apply(operation)
+    detached
+        .engine_mut()
+        .apply_with_progress(operation, on_progress)
 }
 
 #[cfg(test)]

@@ -882,7 +882,7 @@ impl GentleEngine {
         ))
     }
 
-    fn local_projection_for_interval(
+    pub(crate) fn local_projection_for_interval(
         &self,
         seq_id: &str,
         interval: &gp::GenomicRegionInterval,

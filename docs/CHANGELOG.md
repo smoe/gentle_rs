@@ -12,6 +12,23 @@
   lane review, and CLI/GUI instructions preserve `not_evaluated` semantics and
   stop before unsupported ordered multi-fragment materialization.
 
+- Added read-only genomic-region homology and promoter-module assessment.
+  `regions homology-screen` searches only validated local genomic-DNA BLAST
+  indexes, binds every database content fingerprint, retains the exact
+  same-genome locus as a control, and keeps expected orthologs, unassigned
+  cross-species similarity, and same-genome non-self similarity distinct.
+  Query-referenced rows use fixed query columns (`.`, substitution, deletion,
+  or blank); target insertions remain structured provenance and never widen
+  the display. Exact-support blocks can be projected onto the shared gene-locus
+  figure or assessed with `promoters assess-conserved-modules`, whose
+  standalone, paired-context, repetitive, and insufficient outcomes retain
+  their thresholds, evidence IDs, decision trace, alternatives, and explicit
+  non-claims. The separate Conservation workspace runs on an immutable project
+  snapshot with target/phase progress, deterministic JSON/SVG export, semantic
+  GUI controls, and an explicit action for saving a selected block. Missing
+  optional indexes remain typed unavailable and do not affect ordinary GENtle
+  use. A synthetic offline tutorial documents the complete evidence boundary.
+
 - Added the engine-owned regulatory-reporter study composer. One typed request
   now accepts an explicit gene list or prior resolved cohort, prepared genome,
   outermost-or-explicit transcript TSS policy, exact per-member evidence gates,

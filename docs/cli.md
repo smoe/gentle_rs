@@ -5008,6 +5008,9 @@ Isoform architecture panel workflow:
       deterministic 1/2/5 x 10^n length and `fixed` requires a positive
       `--scale-bar-bp`. Local source paths are omitted from portable reports by
       default; `--include-local-source-paths` is an explicit opt-in
+    - repeat `--homology-report PATH` to project digest-valid exact-support
+      blocks from `gentle.genomic_region_homology_screen.v1` reports onto the
+      same locus coordinate axis
     - see `docs/gene_isoform_occupancy_figure_runbook.md` and
       `docs/examples/gene_locus_evidence/patz1_cutrun_layout.json`
     - the fully offline structural/visual proof is:
@@ -5028,6 +5031,9 @@ Isoform architecture panel workflow:
     - `regions derive REQUEST_JSON_OR_@FILE`
     - `regions import REQUEST_JSON_OR_@FILE`
     - `regions export REQUEST_JSON_OR_@FILE`
+    - `regions homology-screen REQUEST_JSON_OR_@FILE`
+    - `regions render-homology-svg REPORT_JSON_OR_@FILE OUTPUT.svg`
+    - `promoters assess-conserved-modules REQUEST_JSON_OR_@FILE`
     - `region-sets` is accepted as an alias. Create/capture/update/derive/import
       mutate project metadata; list/inspect/export are read-only apart from
       explicit export files
@@ -5041,6 +5047,27 @@ Isoform architecture panel workflow:
       guessed and no liftover is attempted
     - run the complete offline example with
       `cargo run --bin gentle_cli -- workflow @docs/examples/workflows/portable_genomic_regions_offline.json`
+    - homology screening is read-only and uses only already validated local
+      genomic-DNA BLAST indexes. Empty `targets[]` resolves all currently
+      available indexes into the effective request; explicit optional targets
+      remain `unavailable`, while an unavailable required target fails before
+      BLAST. Transcriptome/cDNA indexes are rejected, and GENtle never downloads
+      or prepares a target implicitly
+    - `regions homology-screen` applies the HSP processing budget after the
+      complete BLAST search rather than using `-max_target_seqs` as a
+      completeness filter. Expected-ortholog labels require explicit expected
+      loci with evidence IDs; similarity rank alone remains
+      `cross_species_unassigned`
+    - query-referenced alignment rows always have the exact query length.
+      Target insertions are omitted from display columns but retained under
+      `omitted_insertions[]`; substitutions and target deletions remain visible
+    - `promoters assess-conserved-modules` consumes a content-valid homology
+      report plus independently sourced query-local evidence spans. Its result
+      is a reporter-fragment hypothesis and does not claim autonomous promoter
+      or enhancer function
+    - the synthetic local-BLAST walkthrough is
+      `docs/examples/workflows/region_homology_promoter_modules_offline.json`;
+      it requires installed BLAST+ tools but no network access
   - same command family for restriction-site details:
     - `inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED]`
     - JSON output includes `tooltip_lines[]` with the same concise

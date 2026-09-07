@@ -10,6 +10,7 @@ pub const WINDOW_MAIN: &str = "window.main";
 pub const WINDOW_DNA_VIEWER: &str = "window.dna_viewer";
 pub const WINDOW_PCR_DESIGN: &str = "window.pcr_design";
 pub const WINDOW_GENOMIC_REGIONS: &str = "window.genomic_regions";
+pub const WINDOW_REGION_CONSERVATION: &str = "window.region_conservation";
 pub const WINDOW_SPLICING_EXPERT: &str = "window.splicing_expert";
 pub const MAIN_PROJECT_SEQUENCE_OPEN: &str = "main.project.sequence.open";
 pub const MAIN_PROJECT_SAVE_STATE: &str = "main.project.save_state";
@@ -34,6 +35,13 @@ pub const GENOMIC_REGION_IMPORT_JSON: &str = "genomic_region.import_set_json";
 pub const GENOMIC_REGION_IMPORT_BED: &str = "genomic_region.import_set_bed_manifest";
 pub const GENOMIC_REGION_CAPTURE_CUTRUN: &str = "genomic_region.capture_cutrun_window";
 pub const GENOMIC_REGION_CAPTURE_ENSEMBL: &str = "genomic_region.capture_ensembl_feature";
+pub const REGION_CONSERVATION_RUN: &str = "region_conservation.run";
+pub const REGION_CONSERVATION_OPEN_REPORT: &str = "region_conservation.open_report";
+pub const REGION_CONSERVATION_STATUS: &str = "region_conservation.status";
+pub const REGION_CONSERVATION_EXPORT_JSON: &str = "region_conservation.export_json";
+pub const REGION_CONSERVATION_EXPORT_SVG: &str = "region_conservation.export_svg";
+pub const REGION_CONSERVATION_SAVE_BLOCK: &str = "region_conservation.save_selected_block";
+pub const REGION_CONSERVATION_ASSESS_MODULES: &str = "region_conservation.assess_modules";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TutorialGuiInteractionKind {
@@ -135,6 +143,13 @@ pub const TUTORIAL_GUI_CONTROLS: &[TutorialGuiControlSpec] = &[
     TutorialGuiControlSpec {
         semantic_id: WINDOW_SPLICING_EXPERT,
         window_id: WINDOW_SPLICING_EXPERT,
+        authority: TutorialGuiControlAuthority::Observe,
+        allowed_interactions: NO_INTERACTIONS,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: WINDOW_REGION_CONSERVATION,
+        window_id: WINDOW_REGION_CONSERVATION,
         authority: TutorialGuiControlAuthority::Observe,
         allowed_interactions: NO_INTERACTIONS,
         text_policy: None,
@@ -283,6 +298,55 @@ pub const TUTORIAL_GUI_CONTROLS: &[TutorialGuiControlSpec] = &[
         semantic_id: GENOMIC_REGION_CAPTURE_ENSEMBL,
         window_id: WINDOW_SPLICING_EXPERT,
         authority: TutorialGuiControlAuthority::ScientificState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: REGION_CONSERVATION_RUN,
+        window_id: WINDOW_REGION_CONSERVATION,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: REGION_CONSERVATION_OPEN_REPORT,
+        window_id: WINDOW_REGION_CONSERVATION,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: REGION_CONSERVATION_STATUS,
+        window_id: WINDOW_REGION_CONSERVATION,
+        authority: TutorialGuiControlAuthority::Observe,
+        allowed_interactions: NO_INTERACTIONS,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: REGION_CONSERVATION_EXPORT_JSON,
+        window_id: WINDOW_REGION_CONSERVATION,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: REGION_CONSERVATION_EXPORT_SVG,
+        window_id: WINDOW_REGION_CONSERVATION,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: REGION_CONSERVATION_SAVE_BLOCK,
+        window_id: WINDOW_REGION_CONSERVATION,
+        authority: TutorialGuiControlAuthority::ScientificState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: REGION_CONSERVATION_ASSESS_MODULES,
+        window_id: WINDOW_REGION_CONSERVATION,
+        authority: TutorialGuiControlAuthority::ViewState,
         allowed_interactions: CLICK,
         text_policy: None,
     },

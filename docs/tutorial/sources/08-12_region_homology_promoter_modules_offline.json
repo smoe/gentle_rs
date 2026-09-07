@@ -1,0 +1,115 @@
+{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "region_homology_promoter_modules_offline",
+  "title": "Conserved Blocks and Testable Promoter-Module Hypotheses",
+  "catalog": {
+    "order": 54,
+    "path": "docs/tutorial/generated/chapters/08-12_region_homology_promoter_modules_offline.md",
+    "type": "executable_chapter",
+    "status": "generated+checked/human-pending",
+    "source": "generated_from_tutorial_sources",
+    "audiences": [
+      "gui_first",
+      "cli_first",
+      "regulatory_analysis",
+      "contributors"
+    ],
+    "notes": "Offline synthetic tutorial for query-referenced local-BLAST similarity, explicit orthology evidence, conserved blocks, and reporter-module decision traces.",
+    "group": "08",
+    "group_position": 12
+  },
+  "generated_chapter": {
+    "order": 32,
+    "example_id": "region_homology_promoter_modules_offline",
+    "tier": "advanced",
+    "summary": "Compare one saved genomic region with validated local genomic indexes, inspect a query-referenced alignment without insertion columns, and turn explicitly selected evidence spans into conservative reporter-module hypotheses.",
+    "narrative": "A conserved promoter segment can be a useful fragment candidate, but sequence similarity does not prove that the segment works alone. This chapter keeps three questions separate: whether an explicitly expected ortholog locus supports each query base, whether other species contain merely unassigned similarity, and whether the same genome contains competing copies. The synthetic target includes an inserted base; GENtle records it in provenance but does not add a display column, so every row remains aligned to the query. The Conservation workspace can then evaluate saved CUT&RUN, motif, provider-annotation, or reporter-candidate spans against the exact-support blocks. Its standalone, paired-context, repetitive, and insufficient outcomes are traceable design hypotheses, not regulatory verdicts.",
+    "use_cases": [
+      "You want to inspect whether a saved promoter candidate contains cross-species exact-support blocks.",
+      "You want same-genome repetition reported separately from cross-species conservation.",
+      "You want a multiple-alignment-like display whose columns always remain query coordinates.",
+      "You want an inspectable reason for testing one reporter block alone or together with a partner block.",
+      "You need ordinary GENtle use to remain unaffected when optional genomic BLAST indexes are absent."
+    ],
+    "gui_steps": [
+      "Run the workflow once to prepare the tiny local indexes and save the synthetic query plus its selected evidence span, then open the resulting project in GENtle.",
+      "Open the DNA viewer, choose `Regions...`, and use `Conservation...` on `synthetic_promoter_query`.",
+      "Choose `Open report...` and load `artifacts/region_homology_demo/homology_report.json`; GENtle validates its content digest and exact saved-region binding before display.",
+      "For an ordinary catalog-backed region, `Run local screen` instead searches every currently validated local genomic-DNA index while reporting preflight, target ordinal, BLAST, projection, and block-calling progress without blocking the DNA viewer.",
+      "Inspect target readiness and confirm that expected-ortholog, unassigned cross-species, and same-genome evidence remain separate.",
+      "Inspect the query-referenced alignment: dots are exact bases, letters are substitutions, dashes are target deletions, and omitted insertions remain in JSON rather than adding columns.",
+      "Select `synthetic_occupancy_anchor`, choose `Assess selected evidence`, and inspect each PASS/NO decision rule.",
+      "Optionally save a selected conserved block as a new portable region. This explicit mutation preserves the report digest and non-claims."
+    ],
+    "cli_steps": [
+      "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/region_homology_promoter_modules_offline.json",
+      "cargo run --bin gentle_cli -- shell 'regions homology-screen @request.json'",
+      "cargo run --bin gentle_cli -- shell 'regions render-homology-svg @artifacts/region_homology_demo/homology_report.json artifacts/region_homology_demo/homology_report.svg'",
+      "cargo run --bin gentle_cli -- shell 'promoters assess-conserved-modules @assessment_request.json'"
+    ],
+    "step_expectations": [
+      "The workflow uses only hand-crafted local FASTA files and requires no network access; it never downloads or indexes an undeclared genome.",
+      "Every projected alignment row has exactly the query length even though one target contains an insertion.",
+      "The inserted target base is retained under `omitted_insertions` with query anchor, target coordinates, strand, and HSP identity.",
+      "Only the locus backed by `synthetic_declared_orthology` is labelled `expected_ortholog`; BLAST rank alone never establishes orthology.",
+      "Same-genome non-self similarity has its own loci, support blocks, coverage percentage, and ambiguity rule.",
+      "Module outcomes retain all thresholds, evidence IDs, passed and failed rules, alternatives, and explicit non-claims."
+    ],
+    "prerequisites": [
+      "portable_genomic_regions_offline"
+    ],
+    "learning_objectives": [
+      "Distinguish explicit orthology evidence from BLAST similarity.",
+      "Read a query-referenced projection that suppresses target insertion columns without losing insertion provenance.",
+      "Interpret exact-support blocks separately by evidence class and available-genome denominator.",
+      "Use same-genome repetition as an ambiguity signal rather than a functional off-target claim.",
+      "Explain why a reporter-module assessment proposes experiments but cannot establish autonomous regulatory function."
+    ],
+    "concepts": [
+      "portable_genomic_regions",
+      "local_blast_indexes",
+      "query_referenced_alignment",
+      "explicit_orthology",
+      "reporter_module_hypotheses",
+      "deterministic_workflows"
+    ],
+    "parameter_notes": [
+      {
+        "parameter": "targets[].role and expected_loci[]",
+        "where_used": "ScreenGenomicRegionHomology",
+        "why_it_matters": "An expected ortholog label is accepted only when an accepted locus overlaps a caller-supplied, evidence-identified expected locus.",
+        "how_to_derive": "Use reviewed orthology resources or an explicit expected locus; leave unrelated cross-species searches unassigned."
+      },
+      {
+        "parameter": "min_identity_percent=70, min_alignment_length_bp=12",
+        "where_used": "Synthetic homology screen",
+        "why_it_matters": "The tiny teaching sequences use short exact blocks. Real promoter work should retain the defaults or record a justified alternative.",
+        "how_to_derive": "Choose thresholds before search and preserve them in the effective request; do not tune them after seeing a preferred locus."
+      },
+      {
+        "parameter": "max_hsps_per_target=1000",
+        "where_used": "Synthetic homology screen",
+        "why_it_matters": "The cap is a post-BLAST processing budget and never a `-max_target_seqs` completeness shortcut.",
+        "how_to_derive": "Use a bounded value suitable for the query and fail explicitly when highly repetitive output exceeds it."
+      },
+      {
+        "parameter": "selected_evidence_spans[]",
+        "where_used": "AssessPromoterConservedModules",
+        "why_it_matters": "These are caller-selected CUT&RUN, motif, annotation, or reporter spans that the proposed fragment should retain; they are not inferred from conservation.",
+        "how_to_derive": "Save reviewed evidence as portable regions or supply content-bound query-local spans with independent provenance."
+      }
+    ],
+    "follow_up_commands": [
+      "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/region_homology_promoter_modules_offline.json",
+      "cargo run --bin gentle_cli -- shell 'regions render-homology-svg @artifacts/region_homology_demo/homology_report.json artifacts/region_homology_demo/homology_report.svg'"
+    ],
+    "retain_outputs": [],
+    "checkpoints": [
+      "The homology report binds query region identity, query sequence SHA-256, effective request, tool version, and every genomic database content fingerprint.",
+      "All target rows are query-length projections; insertions are omitted from display columns and retained structurally.",
+      "Unavailable optional indexes remain typed unavailable and do not impair unrelated GENtle use.",
+      "The module decision trace distinguishes standalone, paired-context, repetitive-or-ambiguous, and insufficient-evidence hypotheses.",
+      "Every presentation repeats that conservation does not prove autonomous promoter function."
+    ]
+  }
+}

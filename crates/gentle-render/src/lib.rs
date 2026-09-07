@@ -9,6 +9,7 @@ mod gene_set_publication;
 pub mod pool_gel;
 pub mod protein_gel;
 pub mod protocol_cartoon;
+mod region_homology;
 
 pub use feature_expert::{
     GeneLocusEvidenceOverlay, GeneLocusEvidenceOverlayLegendItem, GeneLocusEvidenceOverlayRow,
@@ -25,3 +26,4 @@ pub use gene_set_publication::{
     render_gene_isoform_assay_publication_print, render_gene_set_publication_html,
     render_gene_set_publication_markdown,
 };
+pub use region_homology::render_genomic_region_homology_svg;

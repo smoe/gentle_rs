@@ -7,8 +7,9 @@ use gentle_protocol::{
     GeneLocusOccupancyLaneState, GeneLocusOccupancyScaleMode, GeneLocusProbeClass,
     GeneLocusProbeEffectContrast, GeneLocusRegulatoryScoreProviderKind,
     GeneLocusRegulatoryScoreTrack, GeneLocusScaleBarMode, GenomicRegionEvidenceAvailability,
-    GenomicRegionPurpose, IsoformArchitectureExpertView, RestrictionSiteExpertView,
-    SplicingExonSummary, SplicingExpertView, SplicingJunctionArc, TfbsExpertView,
+    GenomicRegionHomologySupportClass, GenomicRegionPurpose, IsoformArchitectureExpertView,
+    RestrictionSiteExpertView, SplicingExonSummary, SplicingExpertView, SplicingJunctionArc,
+    TfbsExpertView,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use svg::Document;
@@ -4697,6 +4698,7 @@ pub fn render_gene_locus_evidence_with_overlay(
 ) -> GeneLocusEvidenceRenderedSvg {
     const ENSEMBL_DISPLAY_ROW_CAP: usize = 24;
     const SAVED_REGION_DISPLAY_ROW_CAP: usize = 24;
+    const CONSERVATION_DISPLAY_ROW_CAP: usize = 24;
     let width = 1400.0_f32;
     let plot_left = 255.0_f32;
     let plot_right = 1050.0_f32;
@@ -4750,10 +4752,33 @@ pub fn render_gene_locus_evidence_with_overlay(
                 0.0
             }
     };
-    let ensembl_top = if saved_region_height > 0.0 {
+    let conservation_top = if saved_region_height > 0.0 {
         saved_region_top + saved_region_height + 28.0
     } else {
         saved_region_top
+    };
+    let conservation_display_count = report
+        .conservation_blocks
+        .len()
+        .min(CONSERVATION_DISPLAY_ROW_CAP);
+    let conservation_omitted_count = report
+        .conservation_blocks
+        .len()
+        .saturating_sub(conservation_display_count);
+    let conservation_height = if report.conservation_blocks.is_empty() {
+        0.0
+    } else {
+        34.0 + conservation_display_count as f32 * 22.0
+            + if conservation_omitted_count > 0 {
+                18.0
+            } else {
+                0.0
+            }
+    };
+    let ensembl_top = if conservation_height > 0.0 {
+        conservation_top + conservation_height + 28.0
+    } else {
+        conservation_top
     };
     let ensembl_display_count = report
         .ensembl_regulation
@@ -5689,6 +5714,102 @@ pub fn render_gene_locus_evidence_with_overlay(
                 .set(
                     "data-gentle-saved-region-omitted-rows",
                     saved_region_omitted_count,
+                ),
+            );
+        }
+    }
+
+    if !report.conservation_blocks.is_empty() {
+        doc = doc.add(
+            Text::new("Genomic conservation support")
+                .set("x", 34)
+                .set("y", conservation_top - 14.0)
+                .set("font-family", "sans-serif")
+                .set("font-size", 13)
+                .set("font-weight", "bold")
+                .set("fill", "#1f2937")
+                .set("data-gentle-conservation-section", "true"),
+        );
+        for (index, block) in report
+            .conservation_blocks
+            .iter()
+            .take(CONSERVATION_DISPLAY_ROW_CAP)
+            .enumerate()
+        {
+            let y = conservation_top + 8.0 + index as f32 * 22.0;
+            let x1 = x_for(block.local_start_1based);
+            let x2 = x_for(block.local_end_1based);
+            let color = match block.support_class {
+                GenomicRegionHomologySupportClass::ExpectedOrtholog => "#15803d",
+                GenomicRegionHomologySupportClass::CrossSpeciesUnassigned => "#0e7490",
+                GenomicRegionHomologySupportClass::SameGenomeNonself => "#b45309",
+            };
+            doc = doc
+                .add(
+                    Text::new(isoform_evidence_compact_label(
+                        block.support_class.as_str(),
+                        28,
+                    ))
+                    .set("x", 34)
+                    .set("y", y + 3.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 9)
+                    .set("fill", color),
+                )
+                .add(
+                    Rectangle::new()
+                        .set("x", x1.min(x2))
+                        .set("y", y - 6.0)
+                        .set("width", (x2 - x1).abs().max(2.0))
+                        .set("height", 12)
+                        .set("fill", color)
+                        .set("fill-opacity", 0.74)
+                        .set("stroke", color)
+                        .set("data-gentle-conservation-block", block.block_id.as_str())
+                        .set(
+                            "data-gentle-conservation-class",
+                            block.support_class.as_str(),
+                        )
+                        .set(
+                            "data-gentle-homology-report-sha256",
+                            block.report_content_sha256.as_str(),
+                        )
+                        .set("data-gentle-local-start", block.local_start_1based)
+                        .set("data-gentle-local-end", block.local_end_1based),
+                )
+                .add(
+                    Text::new(format!(
+                        "{}/{} available genome(s) | support {:.1}%",
+                        block.supporting_genome_ids.len(),
+                        block.available_genome_ids.len(),
+                        block.support_fraction * 100.0
+                    ))
+                    .set("x", metrics_left)
+                    .set("y", y + 3.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 8)
+                    .set("fill", "#475569"),
+                );
+        }
+        if conservation_omitted_count > 0 {
+            doc = doc.add(
+                Text::new(format!(
+                    "{} additional conservation block(s) omitted from SVG; complete rows remain in JSON.",
+                    conservation_omitted_count
+                ))
+                .set("x", 34)
+                .set(
+                    "y",
+                    conservation_top
+                        + 12.0
+                        + conservation_display_count as f32 * 22.0,
+                )
+                .set("font-family", "monospace")
+                .set("font-size", 8)
+                .set("fill", "#64748b")
+                .set(
+                    "data-gentle-conservation-omitted-rows",
+                    conservation_omitted_count,
                 ),
             );
         }
@@ -7775,6 +7896,17 @@ mod tests {
             gene_symbol: "DEMO".to_string(),
             locus_local_start_1based: 1,
             locus_local_end_1based: 1_000,
+            conservation_blocks: vec![gentle_protocol::GeneLocusConservationBlockOverlay {
+                report_content_sha256: "sha256:homology".to_string(),
+                block_id: "conserved_block_demo".to_string(),
+                support_class: gentle_protocol::GenomicRegionHomologySupportClass::ExpectedOrtholog,
+                local_start_1based: 250,
+                local_end_1based: 280,
+                support_fraction: 1.0,
+                supporting_genome_ids: vec!["ortholog".to_string()],
+                available_genome_ids: vec!["ortholog".to_string()],
+                ..Default::default()
+            }],
             saved_region_overlays: vec![
                 gentle_protocol::GeneLocusSavedRegionOverlayRow {
                     set_id: "primary_cutrun_regions".to_string(),
@@ -7793,6 +7925,7 @@ mod tests {
                     genomic_strand: gentle_protocol::GenomicRegionStrand::Unstranded,
                     region_content_sha256: "sha256:dominant".to_string(),
                     evidence_ids: vec!["cutrun:window-1".to_string()],
+                    display_color_hex: Some("#DC2626".to_string()),
                 },
                 gentle_protocol::GeneLocusSavedRegionOverlayRow {
                     set_id: "primary_cutrun_regions".to_string(),
@@ -7821,6 +7954,9 @@ mod tests {
         assert!(svg.contains("stroke-width=\"0.65\""));
         assert!(svg.contains("data-gentle-primary-region-guide-legend=\"true\""));
         assert!(!svg.contains("data-gentle-primary-region-guide=\"manual_note\""));
+        assert!(svg.contains("data-gentle-conservation-section=\"true\""));
+        assert!(svg.contains("data-gentle-conservation-block=\"conserved_block_demo\""));
+        assert!(svg.contains("data-gentle-homology-report-sha256=\"sha256:homology\""));
     }
 
     #[test]

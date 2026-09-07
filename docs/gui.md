@@ -1211,6 +1211,30 @@ Feature tree grouping:
     its set to the composition
   - stable tutorial semantic IDs cover manager open/save/copy/import/export and
     CUT&RUN/Ensembl capture controls for Linux acceptance automation
+- `Conservation...` on a saved region opens a separate, resizable workspace:
+  - `Run local screen` snapshots the engine and performs preflight, local BLAST,
+    projection, exact-support block calling, and composition away from the UI
+    thread. The status line reports phase, target ordinal, elapsed time, and a
+    final target/locus/block count
+  - `Open report...` validates and displays an existing content-bound homology
+    report only when it still matches the exact saved query region. This allows
+    a CLI/workflow result with explicit orthology declarations to be inspected
+    without rerunning BLAST
+  - no genome is downloaded or indexed from this window. Missing optional
+    indexes are shown as unavailable and unrelated DNA-viewer work remains
+    available
+  - target readiness, conserved blocks, same-genome alternatives, and the
+    query-referenced alignment are inspectable together. Target insertion bases
+    stay in exported JSON and never create extra alignment columns
+  - other saved evidence regions fully contained in the query can be selected
+    for the shared promoter-module assessment. Each PASS/NO rule is displayed;
+    the result remains a reporter-design hypothesis rather than a functional
+    conclusion
+  - JSON and SVG export consume the shared report. Saving a selected block as a
+    portable region is a separate explicit project mutation that retains the
+    homology report digest and non-claims
+  - semantic IDs cover the window, run/open/status, JSON/SVG export, module
+    assessment, and block-save controls for Linux/Xvfb acceptance testing
 - `Cryptic screen` is a thin background adapter over
   `gentle.cryptic_splicing_screen.v1`:
   - choose a 1-based inclusive source span and orientation, or copy the current

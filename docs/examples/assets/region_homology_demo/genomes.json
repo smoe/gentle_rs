@@ -1,0 +1,20 @@
+{
+  "QueryRegionToy": {
+    "description": "Synthetic query genome for portable-region homology",
+    "sequence_local": "query_toy.fa",
+    "annotations_local": "query_toy.gtf",
+    "cache_dir": "cache"
+  },
+  "ExpectedOrthologToy": {
+    "description": "Synthetic explicitly designated ortholog target",
+    "sequence_local": "ortholog_toy.fa",
+    "annotations_local": "ortholog_toy.gtf",
+    "cache_dir": "cache"
+  },
+  "UnassignedSimilarityToy": {
+    "description": "Synthetic cross-species similarity without orthology evidence",
+    "sequence_local": "other_toy.fa",
+    "annotations_local": "other_toy.gtf",
+    "cache_dir": "cache"
+  }
+}

@@ -21,6 +21,7 @@ pub mod genomic_motif_evidence;
 pub mod genomic_regions;
 pub mod isoform_evidence;
 pub mod orthologs;
+pub mod region_homology;
 pub mod regulatory_partners;
 pub mod reporter;
 
@@ -200,18 +201,19 @@ pub use isoform_evidence::{
     GeneIsoformFamilyRow, GeneIsoformJunctionRow, GeneIsoformOccupancyInterval,
     GeneIsoformOccupancyLane, GeneIsoformRecommendation, GeneIsoformRecommendationTier,
     GeneIsoformTranscriptRow, GeneLocusAssayOverlay, GeneLocusCodonKind, GeneLocusCodonMarker,
-    GeneLocusEnsemblRegulationAvailability, GeneLocusEnsemblRegulationAvailabilityPolicy,
-    GeneLocusEnsemblRegulationEvidence, GeneLocusEnsemblRegulationFeatureRow,
-    GeneLocusEnsemblRegulationRequest, GeneLocusEnsemblRegulationSourceBinding,
-    GeneLocusEvidenceDisplayReport, GeneLocusEvidenceDisplayRequest,
-    GeneLocusExternalRegulatoryScoreResource, GeneLocusGenomeAnchorBinding,
-    GeneLocusLocalAxisDirection, GeneLocusMotifHit, GeneLocusMotifTrack, GeneLocusOccupancyGroup,
-    GeneLocusOccupancyGroupRequest, GeneLocusOccupancyLane, GeneLocusOccupancyLaneRequest,
-    GeneLocusOccupancyLaneRole, GeneLocusOccupancyLaneState, GeneLocusOccupancyLayout,
-    GeneLocusOccupancyScaleMode, GeneLocusProbeClass, GeneLocusProbeEffectContrast,
-    GeneLocusProbeEffectOverlay, GeneLocusProbeEffectValue, GeneLocusRegulatoryCalibrationState,
-    GeneLocusRegulatoryFactor, GeneLocusRegulatoryScoreProviderKind,
-    GeneLocusRegulatoryScoreScaleMode, GeneLocusRegulatoryScoreSite, GeneLocusRegulatoryScoreState,
+    GeneLocusConservationBlockOverlay, GeneLocusEnsemblRegulationAvailability,
+    GeneLocusEnsemblRegulationAvailabilityPolicy, GeneLocusEnsemblRegulationEvidence,
+    GeneLocusEnsemblRegulationFeatureRow, GeneLocusEnsemblRegulationRequest,
+    GeneLocusEnsemblRegulationSourceBinding, GeneLocusEvidenceDisplayReport,
+    GeneLocusEvidenceDisplayRequest, GeneLocusExternalRegulatoryScoreResource,
+    GeneLocusGenomeAnchorBinding, GeneLocusLocalAxisDirection, GeneLocusMotifHit,
+    GeneLocusMotifTrack, GeneLocusOccupancyGroup, GeneLocusOccupancyGroupRequest,
+    GeneLocusOccupancyLane, GeneLocusOccupancyLaneRequest, GeneLocusOccupancyLaneRole,
+    GeneLocusOccupancyLaneState, GeneLocusOccupancyLayout, GeneLocusOccupancyScaleMode,
+    GeneLocusProbeClass, GeneLocusProbeEffectContrast, GeneLocusProbeEffectOverlay,
+    GeneLocusProbeEffectValue, GeneLocusRegulatoryCalibrationState, GeneLocusRegulatoryFactor,
+    GeneLocusRegulatoryScoreProviderKind, GeneLocusRegulatoryScoreScaleMode,
+    GeneLocusRegulatoryScoreSite, GeneLocusRegulatoryScoreState,
     GeneLocusRegulatoryScoreStrandPolicy, GeneLocusRegulatoryScoreTrack,
     GeneLocusRegulatoryScoreTrackRequest, GeneLocusRegulatorySourceFactorBinding,
     GeneLocusSavedRegionOverlayRow, GeneLocusScaleBar, GeneLocusScaleBarMode,
@@ -232,6 +234,26 @@ pub use orthologs::{
     OrthologPromoterConservationReport, OrthologPromoterRole, OrthologPromoterRow,
     OrthologResource, OrthologSequenceSimilarityRow, OrthologSpeciesAlias, OrthologTfbsPeakSummary,
     OrthologTfbsSummaryRow, OrthologUnresolvedRow, OrthologyCardinality, OrthologyType,
+};
+pub use region_homology::{
+    GENOMIC_REGION_HOMOLOGY_PROJECTION_VERSION, GENOMIC_REGION_HOMOLOGY_SCREEN_SCHEMA,
+    GenomicRegionHomologyAlignmentConflict, GenomicRegionHomologyAlignmentRow,
+    GenomicRegionHomologyConservedBlock, GenomicRegionHomologyDatabaseBinding,
+    GenomicRegionHomologyEffectiveRequest, GenomicRegionHomologyExpectedLocus,
+    GenomicRegionHomologyHsp, GenomicRegionHomologyLocus, GenomicRegionHomologyLocusClass,
+    GenomicRegionHomologyOmittedInsertion, GenomicRegionHomologyQueryBinding,
+    GenomicRegionHomologyScreenReport, GenomicRegionHomologyScreenRequest,
+    GenomicRegionHomologySearchPolicy, GenomicRegionHomologySupportClass,
+    GenomicRegionHomologyTargetRequest, GenomicRegionHomologyTargetResult,
+    GenomicRegionHomologyTargetRole, GenomicRegionHomologyTargetStatus,
+    PROMOTER_MODULE_ASSESSMENT_SCHEMA, PromoterModuleAlternativeFragment,
+    PromoterModuleAssessmentReport, PromoterModuleAssessmentRequest, PromoterModuleDecisionRule,
+    PromoterModuleEvidenceSpan, PromoterModuleHypothesisKind, default_homology_max_chain_gap_bp,
+    default_homology_max_evalue, default_homology_max_hsps_per_target,
+    default_homology_max_loci_per_target, default_homology_min_alignment_length_bp,
+    default_homology_min_conserved_block_bp, default_homology_min_identity_percent,
+    default_promoter_module_max_partner_gap_bp,
+    default_promoter_module_max_same_genome_coverage_percent,
 };
 pub use regulatory_partners::{
     REGULATORY_PARTNER_DECISION_TREE_SCHEMA, REGULATORY_PARTNER_SCREEN_SCHEMA,
@@ -5506,6 +5528,9 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "DeriveGenomicRegion",
     "ImportGenomicRegionSet",
     "ExportGenomicRegionSet",
+    "ScreenGenomicRegionHomology",
+    "RenderGenomicRegionHomologySvg",
+    "AssessPromoterConservedModules",
     "PreviewFeatureLocationEdit",
     "EditFeatureLocation",
     "PreviewFeatureRecordCuration",

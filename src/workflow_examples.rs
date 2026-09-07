@@ -3445,6 +3445,30 @@ fn rewrite_example_paths_for_execution(
             }
             continue;
         }
+        if let Operation::ScreenGenomicRegionHomology { request, path } = op {
+            rewrite_optional_input_path(&mut request.catalog_path, repo_root);
+            rewrite_optional_output_path(&mut request.cache_dir, run_dir);
+            if let Some(dir) = request.cache_dir.as_deref() {
+                ensure_directory_exists(dir)?;
+            }
+            rewrite_optional_output_path(path, run_dir);
+            if let Some(path) = path.as_deref() {
+                ensure_parent_exists(path)?;
+            }
+            continue;
+        }
+        if let Operation::RenderGenomicRegionHomologySvg { path, .. } = op {
+            *path = resolve_output_path(path, run_dir);
+            ensure_parent_exists(path)?;
+            continue;
+        }
+        if let Operation::AssessPromoterConservedModules { path, .. } = op {
+            rewrite_optional_output_path(path, run_dir);
+            if let Some(path) = path.as_deref() {
+                ensure_parent_exists(path)?;
+            }
+            continue;
+        }
         if let Operation::BuildGeneSetPromoterCohort {
             gene_group_catalog_path,
             genome_catalog_path,
@@ -8637,6 +8661,75 @@ mod tests {
                     .is_some_and(|path| path.starts_with(&display_path(run_dir.path())))
             ),
             other => panic!("unexpected operation: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rewrite_example_paths_handles_region_homology_io() {
+        let example = WorkflowExample {
+            schema: WORKFLOW_EXAMPLE_SCHEMA.to_string(),
+            id: "region_homology_path_rewrite_test".to_string(),
+            title: "region homology path rewrite test".to_string(),
+            summary: String::new(),
+            test_mode: ExampleTestMode::Skip,
+            required_files: vec!["assets/genomes.json".to_string()],
+            tags: vec![],
+            workflow: Workflow {
+                run_id: "region_homology_path_rewrite_test".to_string(),
+                ops: vec![
+                    Operation::ScreenGenomicRegionHomology {
+                        request: gentle_protocol::GenomicRegionHomologyScreenRequest {
+                            catalog_path: Some("assets/genomes.json".to_string()),
+                            cache_dir: Some("artifacts/genome_cache".to_string()),
+                            ..Default::default()
+                        },
+                        path: Some("artifacts/homology.json".to_string()),
+                    },
+                    Operation::RenderGenomicRegionHomologySvg {
+                        report: Box::default(),
+                        path: "artifacts/homology.svg".to_string(),
+                    },
+                    Operation::AssessPromoterConservedModules {
+                        request: Default::default(),
+                        path: Some("artifacts/modules.json".to_string()),
+                    },
+                ],
+            },
+        };
+        let repo_root = std::env::current_dir().expect("cwd");
+        let run_dir = TempDir::new().expect("temp run dir");
+        let rewritten =
+            rewrite_example_paths_for_execution(&example, repo_root.as_path(), run_dir.path())
+                .expect("rewrite should succeed");
+
+        match &rewritten.workflow.ops[0] {
+            Operation::ScreenGenomicRegionHomology { request, path } => {
+                assert!(
+                    request
+                        .catalog_path
+                        .as_deref()
+                        .is_some_and(|value| Path::new(value).is_absolute())
+                );
+                assert!(
+                    request
+                        .cache_dir
+                        .as_deref()
+                        .is_some_and(|value| value.starts_with(&display_path(run_dir.path())))
+                );
+                assert!(
+                    path.as_deref()
+                        .is_some_and(|value| value.starts_with(&display_path(run_dir.path())))
+                );
+            }
+            other => panic!("unexpected operation: {other:?}"),
+        }
+        for op in &rewritten.workflow.ops[1..] {
+            let path = match op {
+                Operation::RenderGenomicRegionHomologySvg { path, .. } => Some(path.as_str()),
+                Operation::AssessPromoterConservedModules { path, .. } => path.as_deref(),
+                other => panic!("unexpected operation: {other:?}"),
+            };
+            assert!(path.is_some_and(|value| value.starts_with(&display_path(run_dir.path()))));
         }
     }
 

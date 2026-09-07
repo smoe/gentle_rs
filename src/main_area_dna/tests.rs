@@ -1302,6 +1302,8 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
         uniprot_linked_transcript_inventory: None,
         uniprot_projection_audit_parity: None,
         lab_assistant_instructions: None,
+        genomic_region_homology: None,
+        promoter_module_assessment: None,
         feature_location_edit_report: None,
         feature_record_curation_report: None,
     });
@@ -5368,6 +5370,8 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
             uniprot_linked_transcript_inventory: None,
             uniprot_projection_audit_parity: None,
             lab_assistant_instructions: None,
+            genomic_region_homology: None,
+            promoter_module_assessment: None,
             feature_location_edit_report: None,
             feature_record_curation_report: None,
         },

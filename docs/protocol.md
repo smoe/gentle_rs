@@ -4340,6 +4340,43 @@ external coding agent runtime, see:
     `docs/examples/workflows/portable_genomic_regions_offline.json`; it combines
     a pinned public Ensembl-116 SERPINE1 locus with explicitly synthetic
     Ensembl-shaped and CUT&RUN evidence
+- portable-region homology is a separate read-only evidence layer:
+  - `gentle.genomic_region_homology_screen.v1` binds the saved region identity
+    and content, exact query sequence SHA-256, effective sorted target request,
+    BLAST tool version, projection version, and each genomic database content
+    fingerprint. Replacing an index at the same prefix therefore changes cache
+    identity
+  - only validated `genomic_dna` indexes are eligible. Missing optional targets
+    are represented as `unavailable`; missing required targets fail preflight;
+    no resource is fetched or indexed implicitly. cDNA/transcriptome indexes
+    are not accepted by this operation
+  - expected orthology requires a caller-supplied expected locus and evidence
+    identity. Other cross-species hits remain
+    `cross_species_unassigned`; same-genome self and non-self loci remain
+    separate
+  - every `alignment_rows[].query_projection` contains exactly one byte per
+    query base: `.` for identity, the target base for a substitution, `-` for a
+    target deletion, and space outside accepted HSPs. A target insertion adds no
+    display column and is retained in `omitted_insertions[]` with query anchor,
+    target coordinates, strand, HSP, and sequence
+  - `conserved_blocks[]` are contiguous exact-support blocks with explicit
+    support class, available and unavailable genome denominators, supporting
+    rows/genomes, source HSPs, coordinates, and support fraction. Unavailable
+    genomes are never interpreted as biological absence
+  - `gentle.promoter_module_assessment.v1` composes a valid homology report with
+    caller-selected, provenance-bearing evidence spans. The four typed outcomes
+    are `standalone_reporter_candidate`, `paired_context_candidate`,
+    `repetitive_or_ambiguous`, and `insufficient_evidence`. The decision trace
+    records every passed/failed rule and threshold; conservation never proves
+    autonomous regulatory function
+  - `GeneLocusEvidenceDisplayRequest.homology_report_paths[]` optionally
+    projects digest-valid exact-support blocks onto the shared locus coordinate
+    system. Incompatible or out-of-span reports become warnings rather than
+    silently shifted tracks
+  - operations are `ScreenGenomicRegionHomology`,
+    `RenderGenomicRegionHomologySvg`, and `AssessPromoterConservedModules`; all
+    are read-only apart from explicitly requested output files. Saving a block
+    uses the separate `CreateGenomicRegion` mutation
 - shared-shell UniProt routes:
   - `uniprot fetch QUERY [--entry-id ID]`
     - `QUERY` is a UniProtKB/Swiss-Prot accession or entry name, for example

@@ -40050,6 +40050,8 @@ impl GentleEngine {
             ensembl_regulation_overlaps: None,
             ensembl_regulation_materialization: None,
             genomic_region_operation: None,
+            genomic_region_homology: None,
+            promoter_module_assessment: None,
             repeat_environment_cohort: None,
             window_cohort_tfbs: None,
             tfbs_hit_scan: None,
@@ -40171,6 +40173,124 @@ impl GentleEngine {
                 | Operation::ImportGenomicRegionSet { .. }
                 | Operation::ExportGenomicRegionSet { .. } => {
                     unreachable!("genomic-region operations are handled above")
+                }
+                Operation::ScreenGenomicRegionHomology { request, path } => {
+                    let report = self.screen_genomic_region_homology(
+                        request,
+                        &result.op_id,
+                        run_id,
+                        on_progress,
+                    )?;
+                    if let Some(path) = path.as_deref() {
+                        let json = serde_json::to_string_pretty(&report).map_err(|error| {
+                            EngineError::new(
+                                ErrorCode::Internal,
+                                format!(
+                                    "could not serialize genomic-region homology report: {error}"
+                                ),
+                            )
+                        })?;
+                        std::fs::write(path, json).map_err(|error| {
+                            EngineError::new(
+                                ErrorCode::Io,
+                                format!("could not write genomic-region homology report '{path}': {error}"),
+                            )
+                        })?;
+                        result
+                            .messages
+                            .push(format!("Wrote genomic-region homology report to '{path}'"));
+                    }
+                    result.genomic_region_homology = Some(Box::new(report));
+                }
+                Operation::RenderGenomicRegionHomologySvg { report, path } => {
+                    if !on_progress(OperationProgress::GenomicRegionHomology(
+                        GenomicRegionHomologyProgress {
+                            set_id: report.query.set_id.clone(),
+                            region_id: report.query.region.region_id.clone(),
+                            phase: "rendering".to_string(),
+                            detail: "rendering the deterministic query-referenced SVG".to_string(),
+                            ..Default::default()
+                        },
+                    )) {
+                        return Err(EngineError::new(
+                            ErrorCode::Internal,
+                            "genomic-region homology rendering cancelled during progress reporting",
+                        ));
+                    }
+                    super::region_homology::validate_genomic_region_homology_report(&report)?;
+                    let svg = gentle_render::render_genomic_region_homology_svg(&report);
+                    std::fs::write(&path, svg).map_err(|error| {
+                        EngineError::new(
+                            ErrorCode::Io,
+                            format!(
+                                "could not write genomic-region homology SVG '{path}': {error}"
+                            ),
+                        )
+                    })?;
+                    result
+                        .messages
+                        .push(format!("Wrote genomic-region homology SVG to '{path}'"));
+                    let _ = on_progress(OperationProgress::GenomicRegionHomology(
+                        GenomicRegionHomologyProgress {
+                            set_id: report.query.set_id.clone(),
+                            region_id: report.query.region.region_id.clone(),
+                            phase: "rendering".to_string(),
+                            detail: "completed deterministic SVG rendering".to_string(),
+                            done: true,
+                            ..Default::default()
+                        },
+                    ));
+                }
+                Operation::AssessPromoterConservedModules { request, path } => {
+                    let progress_set_id = request.homology_report.query.set_id.clone();
+                    let progress_region_id = request.homology_report.query.region.region_id.clone();
+                    if !on_progress(OperationProgress::GenomicRegionHomology(
+                        GenomicRegionHomologyProgress {
+                            set_id: progress_set_id.clone(),
+                            region_id: progress_region_id.clone(),
+                            phase: "composition".to_string(),
+                            detail: "composing conserved blocks with selected regulatory evidence"
+                                .to_string(),
+                            ..Default::default()
+                        },
+                    )) {
+                        return Err(EngineError::new(
+                            ErrorCode::Internal,
+                            "promoter-module assessment cancelled during progress reporting",
+                        ));
+                    }
+                    let report =
+                        self.assess_promoter_conserved_modules(request, &result.op_id, run_id)?;
+                    if let Some(path) = path.as_deref() {
+                        let json = serde_json::to_string_pretty(&report).map_err(|error| {
+                            EngineError::new(
+                                ErrorCode::Internal,
+                                format!("could not serialize promoter-module assessment: {error}"),
+                            )
+                        })?;
+                        std::fs::write(path, json).map_err(|error| {
+                            EngineError::new(
+                                ErrorCode::Io,
+                                format!(
+                                    "could not write promoter-module assessment '{path}': {error}"
+                                ),
+                            )
+                        })?;
+                        result
+                            .messages
+                            .push(format!("Wrote promoter-module assessment to '{path}'"));
+                    }
+                    result.promoter_module_assessment = Some(Box::new(report));
+                    let _ = on_progress(OperationProgress::GenomicRegionHomology(
+                        GenomicRegionHomologyProgress {
+                            set_id: progress_set_id,
+                            region_id: progress_region_id,
+                            phase: "composition".to_string(),
+                            detail: "completed promoter-module assessment".to_string(),
+                            done: true,
+                            ..Default::default()
+                        },
+                    ));
                 }
                 Operation::QueryRepeatAnnotations { .. }
                 | Operation::BuildRepeatEnvironmentCohort { .. }
