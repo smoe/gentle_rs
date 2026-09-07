@@ -28,11 +28,12 @@ use crate::engine::{
     GeneSetCohortRelationship, GeneSetResolutionReviewStatus, InlineSequenceTopology,
     OrthologAmbiguityPolicy, PrimerDesignProgress, PrimerSpecificityAmpliconCeilingSource,
     PrimerSpecificityFullAlignmentMode, PrimerSpecificityReportDetailMode, PromoterCohortKind,
-    PromoterTfbsGeneQuery, ProteinExternalOpinionSource, ProteinFeatureFilter,
-    QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargetingMode, Rack, RackAuthoringTemplate,
-    RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
-    RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
-    ReadAcquisitionAnalysisFormat, ReadAcquisitionReadLayout, RepeatEnvironmentGeometryMode,
+    PromoterReporterPanelMutationPolicy, PromoterTfbsGeneQuery, ProteinExternalOpinionSource,
+    ProteinFeatureFilter, QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargetingMode, Rack,
+    RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
+    RackOccupant, RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind,
+    RackProfileSnapshot, ReadAcquisitionAnalysisFormat, ReadAcquisitionReadLayout,
+    RegulatoryFragmentPanelPlan, RegulatoryFragmentPanelRequest, RepeatEnvironmentGeometryMode,
     RestrictionCloningPcrHandoffMode, RnaReadAlignConfig, RnaReadInterpretationHit,
     RnaReadInterpretationReport, RnaReadMappingHit, RnaReadOriginClass, SequenceOrigin,
     SequenceScanTarget, TERMINAL_EXON_RT_PRIMER_POOL_REPORT_SCHEMA, TerminalExonRtPrimerTarget,
@@ -300,6 +301,52 @@ fn promoters_compose_study_parses_typed_request_and_output() {
         }
         other => panic!("unexpected study composer command: {other:?}"),
     }
+}
+
+fn promoters_regulatory_panel_routes_parse_typed_request_and_plan() {
+    let request = RegulatoryFragmentPanelRequest {
+        schema: crate::engine::REGULATORY_FRAGMENT_PANEL_REQUEST_SCHEMA.to_string(),
+        plan_id: "tp73_partner_panel".to_string(),
+        vector_seq_id: "pgl4".to_string(),
+        vector_catalog_id: "promega_pgl4_10_luc2".to_string(),
+        mutation_policy: PromoterReporterPanelMutationPolicy::NativeOnlyV1,
+        ..RegulatoryFragmentPanelRequest::default()
+    };
+    let request_json = serde_json::to_string(&request).expect("request JSON");
+    let command = parse_shell_line(&format!(
+        "promoters regulatory-panel-plan '{request_json}' --path /tmp/tp73_regulatory_plan.json"
+    ))
+    .expect("parse exact regulatory panel plan");
+    match command {
+        ShellCommand::PromotersRegulatoryPanelPlan { request, output } => {
+            assert_eq!(request.plan_id, "tp73_partner_panel");
+            assert_eq!(output.as_deref(), Some("/tmp/tp73_regulatory_plan.json"));
+        }
+        other => panic!("unexpected regulatory panel command: {other:?}"),
+    }
+
+    let plan = RegulatoryFragmentPanelPlan {
+        schema: crate::engine::REGULATORY_FRAGMENT_PANEL_PLAN_SCHEMA.to_string(),
+        plan_id: "tp73_partner_panel".to_string(),
+        proposal_digest: "sha256:reviewed".to_string(),
+        ..RegulatoryFragmentPanelPlan::default()
+    };
+    let plan_json = serde_json::to_string(&plan).expect("plan JSON");
+    let command = parse_shell_line(&format!(
+        "promoters regulatory-panel-render '{plan_json}' --path /tmp/tp73_regulatory_plan.svg"
+    ))
+    .expect("parse exact regulatory panel render");
+    match command {
+        ShellCommand::PromotersRegulatoryPanelRender { plan, output } => {
+            assert_eq!(plan.plan_id, "tp73_partner_panel");
+            assert_eq!(output, "/tmp/tp73_regulatory_plan.svg");
+        }
+        other => panic!("unexpected regulatory panel render command: {other:?}"),
+    }
+
+    let error = parse_shell_line(&format!("promoters regulatory-panel-render '{plan_json}'"))
+        .expect_err("render path is required");
+    assert!(error.contains("requires --path FIGURE.svg"));
 }
 
 #[test]

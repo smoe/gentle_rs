@@ -914,6 +914,9 @@ pub const PROMOTER_REPORTER_PANEL_PROPOSAL_SCHEMA: &str =
     "gentle.promoter_reporter_panel_proposal.v1";
 pub const PROMOTER_REPORTER_PANEL_RECEIPT_SCHEMA: &str =
     "gentle.promoter_reporter_panel_receipt.v1";
+pub const REGULATORY_FRAGMENT_PANEL_REQUEST_SCHEMA: &str =
+    "gentle.regulatory_fragment_panel_request.v1";
+pub const REGULATORY_FRAGMENT_PANEL_PLAN_SCHEMA: &str = "gentle.regulatory_fragment_panel_plan.v1";
 pub const PROTEIN_DERIVATION_REPORTS_METADATA_KEY: &str = "protein_derivation_reports";
 const PROTEIN_DERIVATION_REPORTS_SCHEMA: &str = "gentle.protein_derivation_reports.v1";
 pub const PROTEIN_DERIVATION_REPORT_SCHEMA: &str = "gentle.protein_derivation_report.v1";
@@ -1306,6 +1309,8 @@ mod promoter_reporter_architecture;
 mod protein_handoff;
 #[path = "engine/io/read_acquisition.rs"]
 mod read_acquisition;
+#[path = "engine/analysis/regulatory_fragment_panel.rs"]
+mod regulatory_fragment_panel;
 #[path = "engine/analysis/regulatory_partners.rs"]
 mod regulatory_partners;
 #[path = "engine/analysis/repeat_cohort.rs"]
@@ -5742,6 +5747,15 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    PlanRegulatoryFragmentPanel {
+        request: Box<RegulatoryFragmentPanelRequest>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    RenderRegulatoryFragmentPanelSvg {
+        plan: Box<RegulatoryFragmentPanelPlan>,
+        path: String,
+    },
     InspectPromoterReporterPanelReadiness {
         request: Box<PromoterReporterPanelReadinessRequest>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -9872,6 +9886,8 @@ impl GentleEngine {
                 | Operation::ExportReporterCorpus { .. }
                 | Operation::PlanReporterConstructHandoff { .. }
                 | Operation::PlanPromoterReporterPanel { .. }
+                | Operation::PlanRegulatoryFragmentPanel { .. }
+                | Operation::RenderRegulatoryFragmentPanelSvg { .. }
                 | Operation::InspectPromoterReporterPanelReadiness { .. }
                 | Operation::ExportRnaReadReport { .. }
                 | Operation::ExportRnaReadHitsFasta { .. }

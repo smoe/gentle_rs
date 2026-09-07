@@ -233,7 +233,9 @@ fn sort_region_evidence(evidence: &mut [gp::GenomicRegionEvidenceReference]) {
     });
 }
 
-fn recompute_region_digests(region: &mut gp::GenomicRegionOfInterest) -> Result<(), EngineError> {
+pub(crate) fn recompute_region_digests(
+    region: &mut gp::GenomicRegionOfInterest,
+) -> Result<(), EngineError> {
     sort_region_evidence(&mut region.evidence);
     if let Some(derivation) = region.derivation.as_mut() {
         derivation.parents.sort_by(|left, right| {
@@ -283,7 +285,7 @@ fn recompute_region_digests(region: &mut gp::GenomicRegionOfInterest) -> Result<
     Ok(())
 }
 
-fn recompute_set_digest(set: &mut gp::GenomicRegionSet) -> Result<(), EngineError> {
+pub(crate) fn recompute_set_digest(set: &mut gp::GenomicRegionSet) -> Result<(), EngineError> {
     set.regions
         .sort_by(|left, right| left.region_id.cmp(&right.region_id));
     let mut content = set.clone();
@@ -938,7 +940,7 @@ impl GentleEngine {
         })
     }
 
-    fn refresh_projection_status(
+    pub(crate) fn refresh_projection_status(
         &self,
         region: &mut gp::GenomicRegionOfInterest,
     ) -> Result<(), EngineError> {

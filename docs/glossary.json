@@ -2244,6 +2244,36 @@
       {
          "aliases": [],
          "engine_operations": [
+            "PlanRegulatoryFragmentPanel"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "promoters regulatory-panel-plan",
+         "summary": "Build a deterministic read-only reporter contrast plan from exact persisted genomic regions, declared multi-fragment geometry, vector identity, and separate evidence lanes.",
+         "usage": "promoters regulatory-panel-plan REQUEST_JSON_OR_@FILE [--path PLAN.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "RenderRegulatoryFragmentPanelSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "promoters regulatory-panel-render",
+         "summary": "Render a passive review SVG from an unchanged, digest-valid regulatory-fragment panel plan.",
+         "usage": "promoters regulatory-panel-render PLAN_JSON_OR_@FILE --path FIGURE.svg"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "ListReporterCatalog"
          ],
          "interfaces": [

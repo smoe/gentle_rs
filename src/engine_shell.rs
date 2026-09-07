@@ -107,10 +107,11 @@ use crate::{
         QpcrTranscriptTargetingMode, RNA_READ_ALIGNMENT_DISPLAY_BATCH_SCHEMA,
         RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
         RackOccupant, RackPhysicalTemplateKind, RackProfileKind, ReadAcquisitionAnalysisFormat,
-        ReadAcquisitionReadLayout, RegulatoryPartnerAnchorMode, RegulatoryPartnerMotifThreshold,
-        RegulatoryReporterStudyRequest, RenderSvgMode, RepeatAnnotationFilter,
-        RepeatEnvironmentCohortReport, RepeatEnvironmentGeometryMode, ReporterConstraints,
-        ReporterCorpusExportFormat, RestrictionCloningPcrHandoffMode,
+        ReadAcquisitionReadLayout, RegulatoryFragmentPanelPlan, RegulatoryFragmentPanelRequest,
+        RegulatoryPartnerAnchorMode, RegulatoryPartnerMotifThreshold, RegulatoryReporterStudyRequest,
+        RenderSvgMode, RepeatAnnotationFilter,
+        RepeatEnvironmentCohortReport, RepeatEnvironmentGeometryMode,
+        ReporterConstraints, ReporterCorpusExportFormat, RestrictionCloningPcrHandoffMode,
         RestrictionSiteScanCollectionMemberBinding, RestrictionSiteScanReport,
         ReverseTranslationReport, ReverseTranslationReportSummary, RnaReadAlignConfig,
         RnaReadAlignmentDisplayBatch, RnaReadAlignmentInspectionEffectFilter,
@@ -1101,6 +1102,14 @@ pub enum ShellCommand {
     PromotersComposeStudy {
         request: RegulatoryReporterStudyRequest,
         output: Option<String>,
+    },
+    PromotersRegulatoryPanelPlan {
+        request: RegulatoryFragmentPanelRequest,
+        output: Option<String>,
+    },
+    PromotersRegulatoryPanelRender {
+        plan: RegulatoryFragmentPanelPlan,
+        output: String,
     },
     PromotersPanelReadiness {
         request: PromoterReporterPanelReadinessRequest,
@@ -8598,6 +8607,17 @@ impl ShellCommand {
                 request.study_id,
                 request.genome_id,
                 output.as_deref().unwrap_or("-"),
+            ),
+            Self::PromotersRegulatoryPanelPlan { request, output } => format!(
+                "plan exact regulatory-fragment panel '{}' from {} persisted ROI binding(s) into vector '{}' (output='{}')",
+                request.plan_id,
+                request.fragments.len(),
+                request.vector_seq_id,
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::PromotersRegulatoryPanelRender { plan, output } => format!(
+                "render exact regulatory-fragment panel plan '{}' to '{}'",
+                plan.plan_id, output
             ),
             Self::PromotersPanelReadiness { request, output } => format!(
                 "inspect promoter-reporter panel readiness from {} (output='{}')",
@@ -27120,6 +27140,94 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "registry": registry_metadata_for_introspection("PlanPromoterReporterPanel")
         }),
         json!({
+            "id": "promoters regulatory-panel-plan",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "gentle.regulatory_fragment_panel_request.v1 with exact persisted ROI, vector, geometry, policy, and question bindings"},
+                {"name": "VECTOR_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded exact vector id carried inside request.vector_seq_id"},
+                {"name": "SOURCE_SEQ_IDS", "required": true, "subject_kind": "sequence", "detail": "loaded source sequences pinned by every request.fragments[].region.local_projection"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional plan JSON output path supplied by --path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}},
+                {"fact": "sequence.exists", "subject": {"arg": "SOURCE_SEQ_IDS"}}
+            ],
+            "effects": [
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}},
+                {"fact": "sequence.exists", "subject": {"arg": "SOURCE_SEQ_IDS"}}
+            ]},
+            "description": "Build the exact read-only regulatory-fragment panel plan through the shared shell route.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("promoters regulatory-panel-plan")
+        }),
+        json!({
+            "id": "promoters regulatory-panel-render",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "PLAN_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "unchanged gentle.regulatory_fragment_panel_plan.v1 with a valid embedded proposal digest"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "SVG output path supplied by --path"}
+            ],
+            "reads": [],
+            "effects": [
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Render a passive review figure from an unchanged exact regulatory-fragment panel plan.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("promoters regulatory-panel-render")
+        }),
+        json!({
+            "id": "PlanRegulatoryFragmentPanel",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "gentle.regulatory_fragment_panel_request.v1 with exact persisted ROI, vector, geometry, policy, and question bindings"},
+                {"name": "VECTOR_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded exact vector id carried inside request.vector_seq_id"},
+                {"name": "SOURCE_SEQ_IDS", "required": true, "subject_kind": "sequence", "detail": "loaded source sequences pinned by every request.fragments[].region.local_projection"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional plan JSON output path carried by path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}},
+                {"fact": "sequence.exists", "subject": {"arg": "SOURCE_SEQ_IDS"}}
+            ],
+            "effects": [
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}},
+                {"fact": "sequence.exists", "subject": {"arg": "SOURCE_SEQ_IDS"}}
+            ]},
+            "description": "Build a deterministic, read-only regulatory-fragment contrast plan from exact persisted genomic regions, including typed sequence-context evidence while unavailable external evidence remains explicitly not evaluated.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("PlanRegulatoryFragmentPanel")
+        }),
+        json!({
+            "id": "RenderRegulatoryFragmentPanelSvg",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "PLAN", "required": true, "subject_kind": "other", "detail": "unchanged gentle.regulatory_fragment_panel_plan.v1 object with a valid embedded proposal digest"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "SVG output path"}
+            ],
+            "reads": [],
+            "effects": [
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Render a deterministic passive SVG projection of an exact regulatory-fragment plan without recomputing or promoting evidence.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("RenderRegulatoryFragmentPanelSvg")
+        }),
+        json!({
             "id": "promoter_reporter_panel_plan",
             "kind": "operation",
             "mutating": "false",
@@ -41816,7 +41924,7 @@ fn parse_gene_groups_command(tokens: &[String]) -> Result<ShellCommand, String> 
 fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "promoters requires a subcommand: compose-study, compare-architectures, panel-readiness, panel-plan, or panel-materialize"
+            "promoters requires a subcommand: compare-architectures, panel-readiness, panel-plan, panel-materialize, regulatory-panel-plan, or regulatory-panel-render"
                 .to_string(),
         );
     }
@@ -41928,6 +42036,73 @@ fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 }
             }
             Ok(ShellCommand::PromotersPanelPlan { request, output })
+        }
+        "regulatory-panel-plan" => {
+            if tokens.len() < 3 || tokens[2].starts_with("--") {
+                return Err(
+                    "promoters regulatory-panel-plan requires REQUEST_JSON_OR_@FILE [--path PLAN.json]"
+                        .to_string(),
+                );
+            }
+            let request = parse_required_json_payload::<RegulatoryFragmentPanelRequest>(
+                &tokens[2],
+                "regulatory-fragment panel request",
+            )?;
+            let mut output = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--path" | "--output" => {
+                        output = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--path",
+                            "promoters regulatory-panel-plan",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for promoters regulatory-panel-plan"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PromotersRegulatoryPanelPlan { request, output })
+        }
+        "regulatory-panel-render" => {
+            if tokens.len() < 3 || tokens[2].starts_with("--") {
+                return Err(
+                    "promoters regulatory-panel-render requires PLAN_JSON_OR_@FILE --path FIGURE.svg"
+                        .to_string(),
+                );
+            }
+            let plan = parse_required_json_payload::<RegulatoryFragmentPanelPlan>(
+                &tokens[2],
+                "regulatory-fragment panel plan",
+            )?;
+            let mut output = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--path" | "--output" => {
+                        output = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--path",
+                            "promoters regulatory-panel-render",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for promoters regulatory-panel-render"
+                        ));
+                    }
+                }
+            }
+            let output = output.ok_or_else(|| {
+                "promoters regulatory-panel-render requires --path FIGURE.svg".to_string()
+            })?;
+            Ok(ShellCommand::PromotersRegulatoryPanelRender { plan, output })
         }
         "panel-readiness" => {
             if tokens.len() < 3 || tokens[2].starts_with("--") {
@@ -42056,7 +42231,7 @@ fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
             })
         }
         other => Err(format!(
-            "Unknown promoters subcommand '{other}' (expected compose-study, compare-architectures, panel-readiness, panel-plan, or panel-materialize)"
+            "Unknown promoters subcommand '{other}' (expected compose-study, compare-architectures, panel-readiness, panel-plan, panel-materialize, regulatory-panel-plan, or regulatory-panel-render)"
         )),
     }
 }
@@ -52865,6 +53040,39 @@ fn execute_export_import_and_resource_command(
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({ "result": proposal }),
+            })
+        }
+        ShellCommand::PromotersRegulatoryPanelPlan { request, output } => {
+            let op_result = engine
+                .apply(Operation::PlanRegulatoryFragmentPanel {
+                    request: Box::new(request.clone()),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let plan = op_result
+                .regulatory_fragment_panel_plan
+                .ok_or_else(|| "Regulatory-fragment panel planning returned no plan".to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": plan }),
+            })
+        }
+        ShellCommand::PromotersRegulatoryPanelRender { plan, output } => {
+            engine
+                .apply(Operation::RenderRegulatoryFragmentPanelSvg {
+                    plan: Box::new(plan.clone()),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "result": {
+                        "plan_id": plan.plan_id,
+                        "proposal_digest": plan.proposal_digest,
+                        "path": output,
+                    }
+                }),
             })
         }
         ShellCommand::PromotersPanelReadiness { request, output } => {
@@ -66248,6 +66456,8 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::PromotersCompareArchitectures { .. }
             | ShellCommand::PromotersComposeStudy { .. }
             | ShellCommand::PromotersPanelPlan { .. }
+            | ShellCommand::PromotersRegulatoryPanelPlan { .. }
+            | ShellCommand::PromotersRegulatoryPanelRender { .. }
             | ShellCommand::PromotersPanelReadiness { .. }
             | ShellCommand::PromotersPanelMaterialize { .. }
             | ShellCommand::ResourcesListPublicationDatasets { .. }
@@ -67086,6 +67296,8 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PromotersCompareArchitectures { .. }
         | ShellCommand::PromotersComposeStudy { .. }
         | ShellCommand::PromotersPanelPlan { .. }
+        | ShellCommand::PromotersRegulatoryPanelPlan { .. }
+        | ShellCommand::PromotersRegulatoryPanelRender { .. }
         | ShellCommand::PromotersPanelReadiness { .. }
         | ShellCommand::PromotersPanelMaterialize { .. }
         | ShellCommand::ResourcesListPublicationDatasets { .. }

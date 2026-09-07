@@ -161,6 +161,8 @@ pub mod render_feature_expert;
 pub mod render_multi_gene_promoter_tfbs;
 /// Shared transcript-aware promoter-reporter architecture SVG renderer.
 pub mod render_promoter_reporter_architecture;
+/// Shared regulatory-fragment panel-plan SVG renderer.
+pub mod render_regulatory_fragment_panel;
 /// Sequence export helpers and render-side formatting.
 #[cfg(feature = "desktop-gui")]
 pub mod render_sequence;

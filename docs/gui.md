@@ -5807,6 +5807,27 @@ Tutorial projects:
     - approved materialization still recomputes the proposal through the engine
       and displays the resulting sequence IDs, artifact paths, and manifest;
       drift or an existing output path is reported rather than bypassed
+  - `Regulatory-fragment panel (read-only)` in the same window is a thin client
+    of `PlanRegulatoryFragmentPanel` and
+    `RenderRegulatoryFragmentPanelSvg`:
+    - selectors bind candidate A, optional partner B, required minimal promoter,
+      and optional reference control from the persisted genomic-region store;
+      the GUI carries each exact region-set content digest into the request
+    - reference release, loaded vector/catalog identity, helper catalog, member
+      and insert-length bounds remain explicit inputs
+    - partner, order, orientation, and spacing comparisons are opt-in; spacing
+      carries exact spacer DNA and no geometry is inferred by the GUI
+    - the cached report shows ordered source instances, genomic intervals,
+      pairwise contrasts, inclusion and omission reasons, and every evidence
+      lane with its independent state, observations, warnings, and blockers
+    - JSON export reruns the same read-only planning operation; SVG export sends
+      the unchanged cached plan through the shared digest-validating renderer
+    - typing the exact plan digest records review locally, but no materialize
+      action is offered because ordered multi-fragment materialization is not
+      supported by the v1 contract
+    - labels remain hypotheses or unresolved comparisons; the panel does not
+      claim sufficiency, enhancer/silencer activity, partner dependence, or
+      causal regulation
   - the same window now also exposes `Export TF score tracks SVG...`, which
     goes through the shared `RenderTfbsScoreTracksSvg` engine route instead of a
     GUI-only painter and can therefore reproduce the same stacked figure style

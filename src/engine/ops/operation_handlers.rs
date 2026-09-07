@@ -40081,6 +40081,7 @@ impl GentleEngine {
             reporter_vector_validation: None,
             promoter_reporter_panel_proposal: None,
             regulatory_reporter_study: None,
+            regulatory_fragment_panel_plan: None,
             promoter_reporter_panel_readiness: None,
             promoter_reporter_panel_receipt: None,
             uniprot_projection_audit: None,
@@ -51235,6 +51236,35 @@ impl GentleEngine {
                     result.gene_set_promoter_cohort = Some(cohort);
                     result.promoter_reporter_panel_readiness = Some(Box::new(readiness));
                     result.regulatory_reporter_study = Some(Box::new(report));
+                }
+                Operation::PlanRegulatoryFragmentPanel { request, path } => {
+                    let plan = self.plan_regulatory_fragment_panel(*request)?;
+                    if let Some(path) = path.as_deref() {
+                        self.write_pretty_json_file(&plan, path, "regulatory-fragment panel plan")?;
+                        result.messages.push(format!(
+                            "Wrote regulatory-fragment panel plan '{}' to '{}'",
+                            plan.plan_id, path
+                        ));
+                    }
+                    result.messages.push(format!(
+                        "Planned {} regulatory-fragment construct(s) and {} contrast(s); approve digest '{}' only after review",
+                        plan.members.len(),
+                        plan.contrasts.len(),
+                        plan.proposal_digest
+                    ));
+                    result
+                        .warnings
+                        .extend(plan.warnings.iter().map(|warning| warning.detail.clone()));
+                    result.regulatory_fragment_panel_plan = Some(Box::new(plan));
+                }
+                Operation::RenderRegulatoryFragmentPanelSvg { plan, path } => {
+                    Self::validate_regulatory_fragment_panel_document(&plan)?;
+                    let svg = crate::render_regulatory_fragment_panel::render_regulatory_fragment_panel_svg(&plan);
+                    self.write_text_file(&path, &svg, "regulatory-fragment panel-plan SVG")?;
+                    result.messages.push(format!(
+                        "Wrote regulatory-fragment panel-plan SVG '{}' to '{}'",
+                        plan.plan_id, path
+                    ));
                 }
                 Operation::InspectPromoterReporterPanelReadiness { request, path } => {
                     let readiness = self.inspect_promoter_reporter_panel_readiness(*request)?;

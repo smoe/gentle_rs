@@ -2886,7 +2886,7 @@ impl GentleEngine {
         })
     }
 
-    fn design_promoter_reporter_panel_mutation(
+    pub(super) fn design_promoter_reporter_panel_mutation(
         &self,
         policy: PromoterReporterPanelMutationPolicy,
         source_sequence: &str,

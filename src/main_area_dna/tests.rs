@@ -1295,6 +1295,7 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
         reporter_vector_validation: None,
         promoter_reporter_panel_proposal: None,
         regulatory_reporter_study: None,
+        regulatory_fragment_panel_plan: None,
         promoter_reporter_panel_readiness: None,
         promoter_reporter_panel_receipt: None,
         uniprot_projection_audit: None,
@@ -5360,6 +5361,7 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
             reporter_vector_validation: None,
             promoter_reporter_panel_proposal: None,
             regulatory_reporter_study: None,
+            regulatory_fragment_panel_plan: None,
             promoter_reporter_panel_readiness: None,
             promoter_reporter_panel_receipt: None,
             uniprot_projection_audit: None,
@@ -11312,6 +11314,17 @@ fn variant_followup_promoter_reporter_panel_runs_shared_plan_and_caches_proposal
 }
 
 #[test]
+fn variant_followup_regulatory_fragment_panel_runs_shared_plan_and_caches_report() {
+    std::thread::Builder::new()
+        .name("regulatory-fragment-panel-gui-test".to_string())
+        .stack_size(16 * 1024 * 1024)
+        .spawn(variant_followup_regulatory_fragment_panel_runs_on_expanded_stack)
+        .expect("spawn regulatory panel GUI test")
+        .join()
+        .expect("regulatory panel GUI test thread");
+}
+
+#[test]
 fn variant_followup_promoter_architecture_builder_preserves_shared_request_and_exports() {
     let dna = DNAsequence::from_sequence(&"A".repeat(120)).expect("sequence");
     let mut area = MainAreaDna::new(dna, Some("serpine1_gui".to_string()), None);
@@ -11484,6 +11497,222 @@ fn variant_followup_promoter_reporter_panel_runs_on_expanded_stack() {
         "read-only planning must not materialize simulated panel sequences"
     );
     assert!(!Path::new(&proposal.request.output_dir).exists());
+}
+
+fn variant_followup_regulatory_fragment_panel_runs_on_expanded_stack() {
+    fn add_anchored_sequence(
+        engine: &mut GentleEngine,
+        seq_id: &str,
+        sequence: &str,
+        start_1based: u64,
+    ) {
+        engine.state_mut().sequences.insert(
+            seq_id.to_string(),
+            DNAsequence::from_sequence(sequence).expect("synthetic regulatory DNA"),
+        );
+        let provenance = engine
+            .state_mut()
+            .metadata
+            .entry("provenance".to_string())
+            .or_insert_with(|| serde_json::json!({"genome_extractions": []}));
+        provenance["genome_extractions"]
+            .as_array_mut()
+            .expect("genome extraction array")
+            .push(serde_json::json!({
+                "seq_id": seq_id,
+                "genome_id": "GRCh38",
+                "chromosome": "chr7",
+                "start_1based": start_1based,
+                "end_1based": start_1based + sequence.len() as u64 - 1,
+                "anchor_strand": "+",
+                "anchor_verified": true,
+                "recorded_at_unix_ms": 1_706_000_000_000_u128
+            }));
+    }
+
+    fn capture_region(
+        engine: &mut GentleEngine,
+        set_id: &str,
+        seq_id: &str,
+        region_id: &str,
+        purpose: gentle_protocol::GenomicRegionPurpose,
+    ) {
+        let length = engine
+            .state()
+            .sequences
+            .get(seq_id)
+            .expect("source sequence")
+            .len();
+        engine
+            .apply(Operation::CaptureGenomicRegion {
+                request: gentle_protocol::GenomicRegionCaptureRequest {
+                    set_id: set_id.to_string(),
+                    region_id: Some(region_id.to_string()),
+                    label: Some(region_id.to_string()),
+                    purpose,
+                    source: gentle_protocol::GenomicRegionCaptureSource::SequenceSelection {
+                        seq_id: seq_id.to_string(),
+                        local_start_0based: 0,
+                        local_end_0based_exclusive: length as u64,
+                        strand: gentle_protocol::GenomicRegionStrand::Plus,
+                        reference_override: Some(gentle_protocol::GenomicRegionReference {
+                            assembly_name: "GRCh38".to_string(),
+                            contig_name: "chr7".to_string(),
+                            ..gentle_protocol::GenomicRegionReference::default()
+                        }),
+                    },
+                    created_at_unix_ms: Some(1_706_000_000_000),
+                    collision_policy: gentle_protocol::GenomicRegionCollisionPolicy::Reject,
+                    ..gentle_protocol::GenomicRegionCaptureRequest::default()
+                },
+            })
+            .expect("capture regulatory panel ROI");
+    }
+
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let vector_path = repo_root
+        .join("test_files/fixtures/reporter_vectors/synthetic_mcs_backbone.gb")
+        .to_string_lossy()
+        .to_string();
+    let helper_catalog_path = repo_root
+        .join("docs/examples/assets/promoter_reporter_panel_demo_helper_vectors.json")
+        .to_string_lossy()
+        .to_string();
+    let mut panel_engine = GentleEngine::default();
+    panel_engine
+        .apply(Operation::LoadFile {
+            path: vector_path,
+            as_id: Some("synthetic_panel_vector".to_string()),
+        })
+        .expect("load exact regulatory panel vector");
+    add_anchored_sequence(
+        &mut panel_engine,
+        "candidate_source",
+        "ACGTTGCAAGTCCTGATCGATGCTAGCATCGTACGATTCGGAATCCGTCAGTACGA",
+        1_001,
+    );
+    add_anchored_sequence(
+        &mut panel_engine,
+        "partner_source",
+        "TTGACCGTATGGCATTCGACTAGGCTAACGTTCGATGACCTAGGTCATCGTACCTGA",
+        2_001,
+    );
+    add_anchored_sequence(
+        &mut panel_engine,
+        "minimal_source",
+        "GGGCGGCGCTATAAAAGGCCGCCAGCTGCTGACCATGATTACGCCAAGCTCGAAATTA",
+        3_001,
+    );
+    capture_region(
+        &mut panel_engine,
+        "candidate_regions",
+        "candidate_source",
+        "candidate_roi",
+        gentle_protocol::GenomicRegionPurpose::ReporterCandidate,
+    );
+    capture_region(
+        &mut panel_engine,
+        "partner_regions",
+        "partner_source",
+        "partner_roi",
+        gentle_protocol::GenomicRegionPurpose::CandidateCisRegulatoryRegion,
+    );
+    capture_region(
+        &mut panel_engine,
+        "minimal_regions",
+        "minimal_source",
+        "minimal_roi",
+        gentle_protocol::GenomicRegionPurpose::PromoterRegion,
+    );
+
+    let source = panel_engine
+        .state()
+        .sequences
+        .get("candidate_source")
+        .expect("candidate sequence")
+        .clone();
+    let engine = Arc::new(RwLock::new(panel_engine));
+    let mut area = MainAreaDna::new(
+        source,
+        Some("candidate_source".to_string()),
+        Some(engine.clone()),
+    );
+    area.variant_followup_ui.regulatory_fragment_plan_id = "gui_regulatory_panel".to_string();
+    area.variant_followup_ui.regulatory_fragment_candidate_roi =
+        "candidate_regions::candidate_roi".to_string();
+    area.variant_followup_ui.regulatory_fragment_partner_roi =
+        "partner_regions::partner_roi".to_string();
+    area.variant_followup_ui
+        .regulatory_fragment_minimal_promoter_roi = "minimal_regions::minimal_roi".to_string();
+    area.variant_followup_ui
+        .regulatory_fragment_reference_release = "Ensembl 116".to_string();
+    area.variant_followup_ui.regulatory_fragment_vector_seq_id =
+        "synthetic_panel_vector".to_string();
+    area.variant_followup_ui
+        .regulatory_fragment_vector_catalog_id = "Synthetic panel vector".to_string();
+    area.variant_followup_ui
+        .regulatory_fragment_helper_catalog_path = helper_catalog_path;
+    area.variant_followup_ui
+        .regulatory_fragment_partner_dependence = true;
+    area.variant_followup_ui.regulatory_fragment_approval_digest = "stale prior digest".to_string();
+
+    let operation = area
+        .variant_followup_regulatory_fragment_panel_plan_operation(Some(
+            "/tmp/gui_regulatory_panel.json".to_string(),
+        ))
+        .expect("build shared regulatory panel operation");
+    match operation {
+        Operation::PlanRegulatoryFragmentPanel { request, path } => {
+            assert_eq!(request.plan_id, "gui_regulatory_panel");
+            assert_eq!(request.fragments.len(), 3);
+            assert_eq!(
+                request.fragments[0].region_set_content_sha256,
+                engine
+                    .read()
+                    .expect("engine read")
+                    .genomic_region_store_snapshot()
+                    .expect("region store")
+                    .sets
+                    .iter()
+                    .find(|set| set.set_id == "candidate_regions")
+                    .expect("candidate region set")
+                    .content_sha256
+            );
+            assert_eq!(path.as_deref(), Some("/tmp/gui_regulatory_panel.json"));
+        }
+        other => panic!("unexpected regulatory panel operation: {other:?}"),
+    }
+
+    let initial_sequence_count = engine.read().expect("engine read").state().sequences.len();
+    area.plan_variant_followup_regulatory_fragment_panel();
+
+    let plan = area
+        .variant_followup_ui
+        .cached_regulatory_fragment_panel_plan
+        .as_ref()
+        .expect("cached exact regulatory-fragment panel plan");
+    assert_eq!(
+        plan.schema,
+        crate::engine::REGULATORY_FRAGMENT_PANEL_PLAN_SCHEMA
+    );
+    assert_eq!(plan.plan_id, "gui_regulatory_panel");
+    assert!(plan.proposal_digest.starts_with("sha256:"));
+    assert!(!plan.materialization_supported);
+    assert!(
+        plan.evidence_dimensions
+            .iter()
+            .any(|dimension| !dimension.observations.is_empty())
+    );
+    assert!(
+        area.variant_followup_ui
+            .regulatory_fragment_approval_digest
+            .is_empty()
+    );
+    assert_eq!(
+        engine.read().expect("engine read").state().sequences.len(),
+        initial_sequence_count,
+        "GUI planning must remain read-only"
+    );
 }
 
 #[test]

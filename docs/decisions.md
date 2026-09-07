@@ -895,3 +895,36 @@ Combining intervals requires an explicit union, intersection, or hull that
 retains content-bound parent identities. Canonical JSON is lossless; BED
 round-trips require a sidecar binding the complete region set to the exact BED
 bytes and coordinate contract.
+
+## DEC-046: Regulatory-Fragment Panels Are Exact Contrast Plans
+
+Status: active
+
+A regulatory-fragment panel consumes exact persisted genomic regions rather
+than rediscovering or substituting candidate biology. Requests bind region-set
+content, ROI identity and content, current sequence projection, assembly,
+release, and catalog-validated vector context. Any stale projection, changed
+content, missing source, or mixed assembly/release fails before candidate
+generation; liftover and partner inference are separate future operations.
+
+"Smallest panel" means a deterministic bounded cover of exact member pairs for
+the requested questions, not a qualitative preference and not a Cartesian
+product of geometries. Every retained member and every generated omission has
+a typed reason. Sequence uniqueness, repeats, regulatory annotations, TFBS,
+occupancy/chromatin, junction evidence, and cloning risk remain independent
+evidence lanes. Missing or deferred evaluation is `not_evaluated`, never a
+pass or a biological conclusion.
+
+Planning is read-only and content-addressed. Approval binds the normalized
+request, source/evidence/vector state, exact member order and operation
+payloads, but does not validate regulatory activity. The legacy promoter-panel
+materializer remains byte-compatible and single-fragment; ordered
+multi-fragment plans must report materialization as unsupported until an exact
+compatible mutation contract is separately reviewed.
+
+Sequence-derived evidence is computed inside the same read-only operation and
+retained as separate content-addressed lane observations and findings. A bound
+external report id and digest is provenance only: without typed report content
+or a typed engine-owned report resolver, Ensembl Regulation, TFBS, CUT&RUN, and
+chromatin lanes remain `not_evaluated`. Rendering is a passive projection of
+the authoritative plan and may not reinterpret those states.

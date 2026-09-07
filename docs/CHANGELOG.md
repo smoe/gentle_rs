@@ -17,6 +17,36 @@
   mismatch, and package-fingerprint changes, and direct queries over saved
   genomic region sets through the existing shared operation.
 
+- Added thin GUI and shell consumers for exact regulatory-fragment panels. The
+  Promoter design window now binds candidate, partner, minimal-promoter, and
+  reference-control roles from persisted genomic regions, declares exact
+  comparison geometry, runs the shared read-only planner, caches all independent
+  evidence lanes, and exports digest-valid JSON/SVG artifacts. Dedicated
+  `promoters regulatory-panel-plan` and `regulatory-panel-render` routes expose
+  the same engine operations without adding adapter-local biology; ordered
+  multi-fragment materialization remains explicitly unavailable.
+
+- Populated the regulatory-fragment planner's five sequence-computable
+  evidence lanes with deterministic typed observations: full-fragment matches
+  in ROI-bound reference sequences, global and exact-word panel/vector
+  similarity, existing construct-reasoning repeat/low-complexity findings,
+  pair-specific junction matches, and existing panel-wide cloning risk.
+  Evidence lanes carry stable assessment ids/digests and lane-local findings;
+  Ensembl, TFBS, and CUT&RUN citations remain explicitly `not_evaluated` until
+  their typed report content is available. Added a passive shared SVG renderer
+  for genomic anchors, ordered construct geometry, contrasts, evidence states,
+  omissions, blockers, and scientific non-claims.
+
+- Added the read-only first slice of an exact regulatory-fragment contrast
+  planner. Versioned request/plan records bind persisted ROI identity and
+  content, current sequence projections, assembly/release, vector context,
+  explicit A/B geometry, policy, evidence citations, and bounds. A deterministic
+  minimal-cover algorithm emits exact inserts, pairwise contrasts, typed
+  inclusion/omission reasons, cloning feasibility, conservative labels, and
+  eight separate evidence lanes under an exact approval digest.
+  Ordered multi-fragment materialization remains explicitly unsupported rather
+  than being forced through the legacy byte-compatible single-fragment panel.
+
 - Made tutorial GUI screenshots updateable evidence rather than anonymous
   bitmaps. The external X11 acceptance runner now preserves one untouched raw
   capture, binds it to the exact source/binary, tutorial contract, semantic
