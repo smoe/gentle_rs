@@ -4,7 +4,47 @@
 //! projection, coordinate conversion, provenance, digesting, and persistence
 //! remain in `GentleEngine` so the same behavior is available headlessly.
 
+use super::conservation_request_ui::{
+    parse_bound_conservation_request, render_conservation_request,
+};
 use super::*;
+
+fn conservation_report_matches_request(
+    report: &gentle_protocol::GenomicRegionHomologyScreenReport,
+    request: &gentle_protocol::GenomicRegionHomologyScreenRequest,
+) -> bool {
+    report.query.set_id == request.set_id
+        && report.query.region.region_id == request.region_id
+        && request
+            .expected_region_content_sha256
+            .as_ref()
+            .is_some_and(|digest| *digest == report.query.region.content_sha256)
+}
+
+#[cfg(test)]
+mod conservation_completion_tests {
+    use super::*;
+
+    #[test]
+    fn conservation_completion_rejects_changed_region_or_binding() {
+        let mut report = gentle_protocol::GenomicRegionHomologyScreenReport::default();
+        report.query.set_id = "set".into();
+        report.query.region.region_id = "roi".into();
+        report.query.region.content_sha256 = "digest".into();
+        let mut request = gentle_protocol::GenomicRegionHomologyScreenRequest {
+            set_id: "set".into(),
+            region_id: "roi".into(),
+            expected_region_content_sha256: Some("digest".into()),
+            ..Default::default()
+        };
+        assert!(conservation_report_matches_request(&report, &request));
+        request.region_id = "another".into();
+        assert!(!conservation_report_matches_request(&report, &request));
+        request.region_id = "roi".into();
+        request.expected_region_content_sha256 = Some("changed".into());
+        assert!(!conservation_report_matches_request(&report, &request));
+    }
+}
 
 #[derive(Debug, Clone)]
 enum GenomicRegionManagerAction {
@@ -71,15 +111,26 @@ impl MainAreaDna {
         self.genomic_region_conservation_set_id = set_id.to_string();
         self.genomic_region_conservation_region_id = region.region_id.clone();
         self.genomic_region_conservation_expected_sha256 = Some(region.content_sha256.clone());
-        self.genomic_region_conservation_query_genome_id = region
-            .local_projection
-            .as_ref()
-            .map(|projection| projection.source_genome_id.clone())
-            .filter(|value| !value.trim().is_empty())
-            .unwrap_or_else(|| region.interval.reference.assembly_name.clone());
         if changed {
+            if let Some(task) = &self.genomic_region_conservation_task {
+                task.cancel
+                    .store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+            self.genomic_region_conservation_request =
+                gentle_protocol::GenomicRegionHomologyScreenRequest {
+                    set_id: set_id.to_string(),
+                    region_id: region.region_id.clone(),
+                    expected_region_content_sha256: Some(region.content_sha256.clone()),
+                    query_genome_id: region
+                        .local_projection
+                        .as_ref()
+                        .map(|projection| projection.source_genome_id.clone())
+                        .filter(|value| !value.trim().is_empty()),
+                    ..Default::default()
+                };
             self.genomic_region_conservation_report = None;
             self.genomic_region_conservation_selected_block_id = None;
+            self.genomic_region_conservation_alignment_jump = None;
             self.genomic_region_conservation_evidence_region_ids.clear();
             self.genomic_region_conservation_module_assessment = None;
             self.genomic_region_conservation_progress = None;
@@ -858,26 +909,12 @@ impl MainAreaDna {
             self.genomic_region_conservation_status = "No engine is attached".to_string();
             return;
         };
-        let request = gentle_protocol::GenomicRegionHomologyScreenRequest {
-            set_id: self.genomic_region_conservation_set_id.clone(),
-            region_id: self.genomic_region_conservation_region_id.clone(),
-            expected_region_content_sha256: self
-                .genomic_region_conservation_expected_sha256
-                .clone(),
-            query_genome_id: (!self
-                .genomic_region_conservation_query_genome_id
-                .trim()
-                .is_empty())
-            .then(|| {
-                self.genomic_region_conservation_query_genome_id
-                    .trim()
-                    .to_string()
-            }),
-            ..Default::default()
-        };
+        let request = self.genomic_region_conservation_request.clone();
         let (sender, receiver) = mpsc::channel::<GenomicRegionHomologyTaskMessage>();
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
         self.genomic_region_conservation_task = Some(GenomicRegionHomologyTask {
             started: Instant::now(),
+            cancel: cancel.clone(),
             receiver: Arc::new(Mutex::new(receiver)),
         });
         self.genomic_region_conservation_progress = None;
@@ -891,7 +928,7 @@ impl MainAreaDna {
                     request,
                     path: None,
                 },
-                move |progress| match progress {
+                move |progress| !cancel.load(std::sync::atomic::Ordering::Relaxed) && match progress {
                     OperationProgress::GenomicRegionHomology(progress) => progress_sender
                         .send(GenomicRegionHomologyTaskMessage::Progress(progress))
                         .is_ok(),
@@ -919,6 +956,7 @@ impl MainAreaDna {
             return;
         };
         let started = task.started;
+        let cancelled = task.cancel.load(std::sync::atomic::Ordering::Relaxed);
         let receiver = Arc::clone(&task.receiver);
         let mut done = None;
         let mut disconnected = false;
@@ -974,8 +1012,23 @@ impl MainAreaDna {
             return;
         };
         self.genomic_region_conservation_task = None;
+        if cancelled {
+            self.genomic_region_conservation_status =
+                "Conservation screen cancelled; no new report published".to_string();
+            self.genomic_region_conservation_progress = None;
+            ctx.request_repaint();
+            return;
+        }
         match result {
             Ok(report) => {
+                if !conservation_report_matches_request(
+                    &report,
+                    &self.genomic_region_conservation_request,
+                ) {
+                    self.genomic_region_conservation_status =
+                        "Discarded result for a different or changed saved region".to_string();
+                    return;
+                }
                 self.genomic_region_conservation_status = format!(
                     "Completed in {:.1}s: {} target(s), {} locus/loci, {} conserved block(s)",
                     started.elapsed().as_secs_f32(),
@@ -1056,6 +1109,45 @@ impl MainAreaDna {
                 self.genomic_region_conservation_status = error;
             }
         }
+    }
+
+    fn import_conservation_request(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Homology request", &["json"])
+            .pick_file()
+        else {
+            return;
+        };
+        let loaded = std::fs::read(&path)
+            .map_err(|e| e.to_string())
+            .and_then(|bytes| {
+                parse_bound_conservation_request(&bytes, &self.genomic_region_conservation_request)
+            });
+        match loaded {
+            Ok(request) => {
+                self.genomic_region_conservation_request = request;
+                self.genomic_region_conservation_status =
+                    format!("Imported request {} (not executed)", path.display());
+            }
+            Err(error) => self.genomic_region_conservation_status = error,
+        }
+    }
+
+    fn export_conservation_request(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Homology request", &["json"])
+            .set_file_name("homology_request.json")
+            .save_file()
+        else {
+            return;
+        };
+        let result = serde_json::to_vec_pretty(&self.genomic_region_conservation_request)
+            .map_err(|e| e.to_string())
+            .and_then(|bytes| std::fs::write(&path, bytes).map_err(|e| e.to_string()));
+        self.genomic_region_conservation_status = match result {
+            Ok(()) => format!("Wrote request {}", path.display()),
+            Err(error) => error,
+        };
     }
 
     fn export_genomic_region_homology_json(&mut self) {
@@ -1356,6 +1448,8 @@ impl MainAreaDna {
         let mut export_svg = false;
         let mut save_block = false;
         let mut assess_modules = false;
+        let mut import_request = false;
+        let mut export_request = false;
         let _subject_scope = crate::tutorial_gui_semantics::pseudonymous_subject_scope(&[
             self.seq_id.as_deref().unwrap_or("unnamed"),
             self.genomic_region_conservation_set_id.as_str(),
@@ -1393,13 +1487,31 @@ impl MainAreaDna {
                 "Only validated local genomic BLAST indexes are searched. Similarity is shown separately for expected orthologs, unassigned cross-species loci, and same-genome alternatives.",
             );
             ui.horizontal_wrapped(|ui| {
-                ui.label("Query genome");
-                ui.add(
-                    egui::TextEdit::singleline(
-                        &mut self.genomic_region_conservation_query_genome_id,
-                    )
-                    .desired_width(180.0),
-                );
+                let import_response =
+                    ui.add_enabled(!running, egui::Button::new("Import request..."));
+                let export_response = ui.button("Export request...");
+                import_request = import_response.clicked();
+                export_request = export_response.clicked();
+                #[cfg(feature = "gui-test-support")]
+                for (response, id) in [
+                    (
+                        &import_response,
+                        crate::tutorial_gui_semantics::REGION_CONSERVATION_IMPORT_REQUEST,
+                    ),
+                    (
+                        &export_response,
+                        crate::tutorial_gui_semantics::REGION_CONSERVATION_EXPORT_REQUEST,
+                    ),
+                ] {
+                    crate::gui_test_support::register_response(
+                        response,
+                        id,
+                        crate::tutorial_gui_semantics::WINDOW_REGION_CONSERVATION,
+                        Some(&_subject_scope),
+                        crate::gui_test_support::GuiTestWidgetKind::Button,
+                        false,
+                    );
+                }
                 let run_response = ui.add_enabled(!running, egui::Button::new("Run local screen"));
                 #[cfg(feature = "gui-test-support")]
                 crate::gui_test_support::register_response(
@@ -1413,7 +1525,26 @@ impl MainAreaDna {
                 if run_response.clicked() {
                     run = true;
                 }
-                let open_report_response = ui.button("Open report...");
+                let cancel_response = ui.add_enabled(running, egui::Button::new("Cancel"));
+                #[cfg(feature = "gui-test-support")]
+                crate::gui_test_support::register_response(
+                    &cancel_response,
+                    crate::tutorial_gui_semantics::REGION_CONSERVATION_CANCEL,
+                    crate::tutorial_gui_semantics::WINDOW_REGION_CONSERVATION,
+                    Some(&_subject_scope),
+                    crate::gui_test_support::GuiTestWidgetKind::Button,
+                    false,
+                );
+                if cancel_response.clicked()
+                    && let Some(task) = &self.genomic_region_conservation_task
+                {
+                    task.cancel
+                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                    self.genomic_region_conservation_status =
+                        "Cancelling conservation screen...".to_string();
+                }
+                let open_report_response =
+                    ui.add_enabled(!running, egui::Button::new("Open report..."));
                 #[cfg(feature = "gui-test-support")]
                 crate::gui_test_support::register_response(
                     &open_report_response,
@@ -1455,9 +1586,21 @@ impl MainAreaDna {
                     export_svg = true;
                 }
             });
-            if running {
-                ui.spinner();
-            }
+            ui.add_enabled_ui(!running, |ui| {
+                egui::CollapsingHeader::new("Search request")
+                    .id_salt("conservation_request")
+                    .show(ui, |ui| {
+                        egui::ScrollArea::vertical()
+                            .id_salt("conservation_request_fields")
+                            .max_height(300.0)
+                            .show(ui, |ui| {
+                                render_conservation_request(
+                                    ui,
+                                    &mut self.genomic_region_conservation_request,
+                                );
+                            });
+                    });
+            });
             if !self.genomic_region_conservation_status.trim().is_empty() {
                 let _status = ui.small(&self.genomic_region_conservation_status);
                 #[cfg(feature = "gui-test-support")]
@@ -1469,6 +1612,16 @@ impl MainAreaDna {
                     crate::gui_test_support::GuiTestWidgetKind::Status,
                     false,
                 );
+            }
+            if let Some(task) = &self.genomic_region_conservation_task {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label(format!(
+                        "Elapsed {:.1}s",
+                        task.started.elapsed().as_secs_f32()
+                    ));
+                });
+                ctx.request_repaint_after(Duration::from_millis(150));
             }
             ui.separator();
             let Some(report) = report.as_ref() else {
@@ -1521,7 +1674,11 @@ impl MainAreaDna {
                     if report.conserved_blocks.is_empty() {
                         ui.label("No exact-support block met the configured minimum length.");
                     }
-                    for block in &report.conserved_blocks {
+                    let row_height = ui.text_style_height(&egui::TextStyle::Body).max(20.0);
+                    egui::ScrollArea::vertical().id_salt("conservation_blocks")
+                        .max_height(180.0).show_rows(ui, row_height, report.conserved_blocks.len(), |ui, rows| {
+                    for index in rows {
+                        let block = &report.conserved_blocks[index];
                         let selected = self
                             .genomic_region_conservation_selected_block_id
                             .as_deref()
@@ -1545,8 +1702,10 @@ impl MainAreaDna {
                         {
                             self.genomic_region_conservation_selected_block_id =
                                 Some(block.block_id.clone());
+                            self.genomic_region_conservation_alignment_jump = Some(block.query_start_0based);
                         }
                     }
+                    });
                     if let Some(block_id) = self
                         .genomic_region_conservation_selected_block_id
                         .as_deref()
@@ -1652,47 +1811,26 @@ impl MainAreaDna {
                     ui.small(
                         ". exact match; letters are substitutions; - is a target deletion; blanks have no accepted HSP. Target insertions never add columns and remain in JSON provenance.",
                     );
-                    let query_len = report.query.sequence.len();
-                    for start in (0..query_len).step_by(100) {
-                        let end = (start + 100).min(query_len);
-                        ui.monospace(format!("query {}..{}", start + 1, end));
-                        ui.horizontal(|ui| {
-                            ui.monospace(format!("{:<28}", "QUERY"));
-                            ui.monospace(&report.query.sequence[start..end]);
-                        });
-                        for row in report
-                            .alignment_rows
-                            .iter()
-                            .filter(|row| {
-                                row.locus_class
-                                    != gentle_protocol::GenomicRegionHomologyLocusClass::Query
-                            })
-                            .take(50)
-                        {
-                            ui.horizontal(|ui| {
-                                ui.monospace(format!(
-                                    "{:<28}",
-                                    format!("{}:{}", row.target_genome_id, row.subject_id)
-                                ));
-                                ui.monospace(&row.query_projection[start..end]);
-                            });
-                        }
-                        ui.add_space(5.0);
-                    }
-                    if report.alignment_rows.len() > 51 {
-                        ui.small(format!(
-                            "{} additional retained rows are available in JSON/SVG.",
-                            report.alignment_rows.len() - 51
-                        ));
-                    }
+                    super::conservation_alignment_ui::render_alignment(ui, report,
+                        self.genomic_region_conservation_alignment_jump.take());
                     for non_claim in &report.non_claims {
                         ui.small(egui::RichText::new(non_claim).italics());
                     }
                 });
         });
         self.show_genomic_region_conservation = open;
+        if !open && let Some(task) = &self.genomic_region_conservation_task {
+            task.cancel
+                .store(true, std::sync::atomic::Ordering::Relaxed);
+        }
         if run {
             self.start_genomic_region_homology_screen();
+        }
+        if import_request {
+            self.import_conservation_request();
+        }
+        if export_request {
+            self.export_conservation_request();
         }
         if open_report {
             self.open_genomic_region_homology_json();

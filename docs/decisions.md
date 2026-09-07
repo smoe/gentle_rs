@@ -940,6 +940,10 @@ place, and binds cache/report identity to database content rather than only a
 path or genome label. An unavailable optional genome is unassessed evidence,
 not biological absence.
 
+Module uniqueness requires a completed, explicitly requested same-genome
+comparison. A zero retained repetition percentage without that comparison is
+unassessed, not a passed uniqueness check.
+
 The query is the only display coordinate authority. Target insertions are
 retained as structured evidence but never add alignment columns. Sequence
 similarity does not establish orthology: only an explicit, provenance-bearing
@@ -952,3 +956,8 @@ annotation, or reporter spans produce inspectable experimental hypotheses.
 They may motivate testing a block alone, a partner alone, their ordered
 combination, and motif-disrupted controls, but they never prove that a fragment
 is autonomously functional.
+
+Paired-context conservation requires an actual shared ortholog locus with
+strand-consistent block order and measured query/target gaps within the stated
+bounds and gap-difference tolerance. Reuse the alignment's winning-HSP
+projection for those coordinates; query proximity alone is insufficient.

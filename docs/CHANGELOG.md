@@ -7,6 +7,33 @@
   tests now scope their native BLAST tools so concurrent test stubs cannot
   invalidate the synthetic homology indexes.
 
+- Conservation alignment and block lists now use visible-row layout. All
+  retained loci remain reachable and block selection jumps to the matching
+  query tile. Active BLAST searches emit bounded heartbeats and support Cancel
+  through the existing child supervisor; switching/closing the workspace
+  cancels work and late results are query-binding checked. Offscreen egui tests
+  cover a 100-kb/80-row view and a real spawned synthetic child tests cancellation.
+
+- The Conservation workspace now edits and imports/exports the shared homology
+  request rather than always running defaults. Target IDs, required/optional
+  choices, orthology loci/provenance, catalog/cache paths, and all search
+  thresholds remain intact across GUI/CLI exchange. Region/digest mismatches
+  fail before import; execution uses an immutable request copy. New semantic
+  controls and deterministic import-binding tests cover the workflow.
+
+- Paired conserved-module hypotheses now verify target-locus geometry instead
+  of query spacing alone. Typed partner contexts retain block coordinates,
+  strand, HSP sources, query/target gaps, and pass/failure reasons. Exact gap
+  preservation is the default; an explicit gap-difference tolerance is
+  available. Synthetic regressions cover reverse orientation, changed spacing,
+  tolerance, reordered blocks, and separate loci.
+
+- Promoter-module assessment now distinguishes an unassessed same-genome
+  search from observed zero repetition. Missing, unrequested, and
+  budget-exceeded targets cannot pass the uniqueness rule or justify a
+  standalone/paired candidate; completed zero-hit searches remain evaluable.
+  Synthetic regressions cover these states without changing operation inputs.
+
 - Corrected regulatory-fragment plan SVG source-bar placement and base-pair
   tooltips. Stable construct aliases and bounded labels keep long plan/member
   ids from obscuring contrast explanations; full ids remain in SVG tooltips.

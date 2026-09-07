@@ -66,6 +66,8 @@ mod feature_tree_ui;
 #[path = "main_area_dna/formula_controls.rs"]
 mod formula_controls;
 
+mod conservation_alignment_ui;
+mod conservation_request_ui;
 #[path = "main_area_dna/genomic_regions_ui.rs"]
 mod genomic_regions_ui;
 mod locus_inspector;
@@ -1364,6 +1366,7 @@ enum GenomicRegionHomologyTaskMessage {
 #[derive(Clone, Debug)]
 struct GenomicRegionHomologyTask {
     started: Instant,
+    cancel: Arc<std::sync::atomic::AtomicBool>,
     receiver: Arc<Mutex<Receiver<GenomicRegionHomologyTaskMessage>>>,
 }
 
@@ -1730,10 +1733,11 @@ pub struct MainAreaDna {
     genomic_region_conservation_set_id: String,
     genomic_region_conservation_region_id: String,
     genomic_region_conservation_expected_sha256: Option<String>,
-    genomic_region_conservation_query_genome_id: String,
+    genomic_region_conservation_request: gentle_protocol::GenomicRegionHomologyScreenRequest,
     genomic_region_conservation_report:
         Option<Arc<gentle_protocol::GenomicRegionHomologyScreenReport>>,
     genomic_region_conservation_selected_block_id: Option<String>,
+    genomic_region_conservation_alignment_jump: Option<usize>,
     genomic_region_conservation_evidence_region_ids: BTreeSet<String>,
     genomic_region_conservation_module_assessment:
         Option<Arc<gentle_protocol::PromoterModuleAssessmentReport>>,
@@ -2607,9 +2611,10 @@ impl MainAreaDna {
             genomic_region_conservation_set_id: String::new(),
             genomic_region_conservation_region_id: String::new(),
             genomic_region_conservation_expected_sha256: None,
-            genomic_region_conservation_query_genome_id: String::new(),
+            genomic_region_conservation_request: Default::default(),
             genomic_region_conservation_report: None,
             genomic_region_conservation_selected_block_id: None,
+            genomic_region_conservation_alignment_jump: None,
             genomic_region_conservation_evidence_region_ids: BTreeSet::new(),
             genomic_region_conservation_module_assessment: None,
             genomic_region_conservation_status: String::new(),

@@ -4369,6 +4369,19 @@ external coding agent runtime, see:
     `repetitive_or_ambiguous`, and `insufficient_evidence`. The decision trace
     records every passed/failed rule and threshold; conservation never proves
     autonomous regulatory function
+    - `same_genome_evidence_available` requires an explicit same-genome target
+      and completed results for every requested same-genome target. Missing,
+      unrequested, or HSP-budget-exceeded searches leave the uniqueness rule
+      `unassessed`, even when the retained numeric repetition coverage is zero.
+      Such evidence cannot justify standalone or paired candidates
+    - paired contexts require the selected blocks to share an expected-ortholog
+      alignment locus. `partner_contexts[]` records the strand, winning-HSP
+      provenance, query/target block coordinates, both gap series, and the
+      pass/failure reason. Order must agree in strand-oriented target space;
+      both gap series must satisfy `max_partner_gap_bp`. Their absolute
+      difference must also satisfy `max_partner_gap_difference_bp` (default 0,
+      exact spacing; callers may explicitly allow a tolerance). Query proximity
+      alone and matches in different ortholog loci do not pass
   - `GeneLocusEvidenceDisplayRequest.homology_report_paths[]` optionally
     projects digest-valid exact-support blocks onto the shared locus coordinate
     system. Incompatible or out-of-span reports become warnings rather than
