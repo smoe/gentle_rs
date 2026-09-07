@@ -1,5 +1,12 @@
 # GENtle Changelog
 
+- The Conservation workspace now edits and imports/exports the shared homology
+  request rather than always running defaults. Target IDs, required/optional
+  choices, orthology loci/provenance, catalog/cache paths, and all search
+  thresholds remain intact across GUI/CLI exchange. Region/digest mismatches
+  fail before import; execution uses an immutable request copy. New semantic
+  controls and deterministic import-binding tests cover the workflow.
+
 - Paired conserved-module hypotheses now verify target-locus geometry instead
   of query spacing alone. Typed partner contexts retain block coordinates,
   strand, HSP sources, query/target gaps, and pass/failure reasons. Exact gap

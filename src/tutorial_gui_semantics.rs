@@ -37,6 +37,8 @@ pub const GENOMIC_REGION_CAPTURE_CUTRUN: &str = "genomic_region.capture_cutrun_w
 pub const GENOMIC_REGION_CAPTURE_ENSEMBL: &str = "genomic_region.capture_ensembl_feature";
 pub const REGION_CONSERVATION_RUN: &str = "region_conservation.run";
 pub const REGION_CONSERVATION_OPEN_REPORT: &str = "region_conservation.open_report";
+pub const REGION_CONSERVATION_IMPORT_REQUEST: &str = "region_conservation.import_request";
+pub const REGION_CONSERVATION_EXPORT_REQUEST: &str = "region_conservation.export_request";
 pub const REGION_CONSERVATION_STATUS: &str = "region_conservation.status";
 pub const REGION_CONSERVATION_EXPORT_JSON: &str = "region_conservation.export_json";
 pub const REGION_CONSERVATION_EXPORT_SVG: &str = "region_conservation.export_svg";
@@ -303,6 +305,20 @@ pub const TUTORIAL_GUI_CONTROLS: &[TutorialGuiControlSpec] = &[
     },
     TutorialGuiControlSpec {
         semantic_id: REGION_CONSERVATION_RUN,
+        window_id: WINDOW_REGION_CONSERVATION,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: REGION_CONSERVATION_IMPORT_REQUEST,
+        window_id: WINDOW_REGION_CONSERVATION,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: REGION_CONSERVATION_EXPORT_REQUEST,
         window_id: WINDOW_REGION_CONSERVATION,
         authority: TutorialGuiControlAuthority::ViewState,
         allowed_interactions: CLICK,

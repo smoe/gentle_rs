@@ -1212,6 +1212,15 @@ Feature tree grouping:
   - stable tutorial semantic IDs cover manager open/save/copy/import/export and
     CUT&RUN/Ensembl capture controls for Linux acceptance automation
 - `Conservation...` on a saved region opens a separate, resizable workspace:
+  - `Search request` edits the shared request: query resource, catalog/cache,
+    explicit target genome IDs, required/optional status, expected ortholog
+    loci and evidence sources, and every search-policy threshold. Empty targets
+    still mean all validated local indexes. No species or orthology is guessed
+  - `Import request...` and `Export request...` exchange the same JSON used by
+    CLI/workflows. Imports must refer to the selected saved region; stale digest
+    bindings are rejected and omitted bindings are pinned to its current digest.
+    Editing/importing does not run BLAST or change an existing report. Request
+    controls are disabled during a run; the worker uses the exact submitted copy
   - `Run local screen` snapshots the engine and performs preflight, local BLAST,
     projection, exact-support block calling, and composition away from the UI
     thread. The status line reports phase, target ordinal, elapsed time, and a
