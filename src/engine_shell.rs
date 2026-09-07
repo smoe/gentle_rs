@@ -20792,7 +20792,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "regions update",
             "true",
             false,
-            "Update only the human label, description, and notes of one saved region.",
+            "Update only the human label, description, notes, and display colour of one saved region.",
         ),
         genomic_region_capability_descriptor(
             "UpdateGenomicRegionPresentation",

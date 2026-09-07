@@ -102,7 +102,7 @@
             "mcp-op"
          ],
          "path": "regions update",
-         "summary": "Update only the label, description, and notes of a saved ROI without changing its coordinate/evidence identity.",
+         "summary": "Update only the label, description, notes, and display colour of a saved ROI without changing its coordinate/evidence identity.",
          "usage": "regions update REQUEST_JSON_OR_@FILE"
       },
       {
