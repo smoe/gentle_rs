@@ -1,5 +1,9 @@
 # GENtle Changelog
 
+- Corrected regulatory-fragment plan SVG source-bar placement and base-pair
+  tooltips. Stable construct aliases and bounded labels keep long plan/member
+  ids from obscuring contrast explanations; full ids remain in SVG tooltips.
+
 - Added a deterministic offline regulatory-fragment panel tutorial. It binds
   three exact ROIs on the pinned Ensembl-116 SERPINE1 locus to caller-declared
   candidate, partner, and promoter-context roles, then plans the bounded

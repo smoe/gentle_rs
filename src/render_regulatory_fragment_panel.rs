@@ -111,6 +111,18 @@ fn clipped(raw: &str, max_chars: usize) -> String {
     out
 }
 
+fn row_label(svg: &mut String, baseline: f32, label: &str, full_label: &str) {
+    let top = baseline - 11.0;
+    let width = LEFT - 36.0;
+    let _ = write!(
+        svg,
+        "<svg x=\"24\" y=\"{top:.1}\" width=\"{width:.1}\" height=\"16\" overflow=\"hidden\"><title>{}</title>",
+        escape(full_label)
+    );
+    text(svg, 0.0, 11.0, 11.0, "#334155", &clipped(label, 25));
+    svg.push_str("</svg>");
+}
+
 /// Render one plan as a compact, deterministic inspection figure.
 pub fn render_regulatory_fragment_panel_svg(plan: &RegulatoryFragmentPanelPlan) -> String {
     let genomic_rows = plan.request.fragments.len().max(1);
@@ -181,22 +193,16 @@ pub fn render_regulatory_fragment_panel_svg(plan: &RegulatoryFragmentPanelPlan) 
         let x0 = LEFT + (interval.start_0based.saturating_sub(min) as f32 / span) * TRACK_WIDTH;
         let x1 =
             LEFT + (interval.end_0based_exclusive.saturating_sub(min) as f32 / span) * TRACK_WIDTH;
-        text(
-            &mut svg,
-            24.0,
-            y + 16.0,
-            11.0,
-            "#334155",
-            &format!("{} ({})", fragment.fragment_id, role_token(fragment.role)),
-        );
+        let label = format!("{} ({})", fragment.fragment_id, role_token(fragment.role));
+        row_label(&mut svg, y + 16.0, &label, &label);
+        let rect_y = y + 6.0;
+        let rect_width = (x1 - x0).max(3.0);
         let _ = write!(
             svg,
-            "<line x1=\"{LEFT:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#cbd5e1\"/><rect data-gentle-role=\"source-fragment\" x=\"{x0:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"12\" fill=\"{}\" rx=\"2\"><title>{}</title></rect>",
+            "<line x1=\"{LEFT:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#cbd5e1\"/><rect data-gentle-role=\"source-fragment\" x=\"{x0:.1}\" y=\"{rect_y:.1}\" width=\"{rect_width:.1}\" height=\"12\" fill=\"{}\" rx=\"2\"><title>{}</title></rect>",
             y + 12.0,
             LEFT + TRACK_WIDTH,
             y + 12.0,
-            (x1 - x0).max(3.0),
-            y + 6.0,
             role_color(fragment.role),
             escape(&format!(
                 "{}:{}..{} {:?}",
@@ -238,14 +244,24 @@ pub fn render_regulatory_fragment_panel_svg(plan: &RegulatoryFragmentPanelPlan) 
         .max()
         .unwrap_or(1)
         .max(1) as f32;
+    let member_aliases: BTreeMap<_, _> = plan
+        .members
+        .iter()
+        .enumerate()
+        .map(|(index, member)| (member.member_id.as_str(), format!("C{}", index + 1)))
+        .collect();
+    let member_prefix = format!("{}_", plan.plan_id);
     for member in &plan.members {
-        text(
+        let alias = &member_aliases[member.member_id.as_str()];
+        let suffix = member
+            .member_id
+            .strip_prefix(&member_prefix)
+            .unwrap_or(&member.member_id);
+        row_label(
             &mut svg,
-            24.0,
             y + 17.0,
-            11.0,
-            "#334155",
-            &clipped(&member.member_id, 25),
+            &format!("{alias}: {suffix}"),
+            &member.member_id,
         );
         let _ = write!(
             svg,
@@ -256,12 +272,10 @@ pub fn render_regulatory_fragment_panel_svg(plan: &RegulatoryFragmentPanelPlan) 
         );
         for instance in &member.instances {
             let x = LEFT + instance.assembled_start_0based as f32 / max_insert * TRACK_WIDTH;
-            let width = (instance
+            let length_bp = instance
                 .assembled_end_0based_exclusive
-                .saturating_sub(instance.assembled_start_0based) as f32
-                / max_insert
-                * TRACK_WIDTH)
-                .max(3.0);
+                .saturating_sub(instance.assembled_start_0based);
+            let width = (length_bp as f32 / max_insert * TRACK_WIDTH).max(3.0);
             let arrow = match instance.orientation {
                 RegulatoryFragmentOrientation::Forward => ">",
                 RegulatoryFragmentOrientation::ReverseComplement => "<",
@@ -271,16 +285,25 @@ pub fn render_regulatory_fragment_panel_svg(plan: &RegulatoryFragmentPanelPlan) 
                 "<rect data-gentle-role=\"construct-fragment\" x=\"{x:.1}\" y=\"{:.1}\" width=\"{width:.1}\" height=\"16\" fill=\"{}\" rx=\"2\"><title>{}</title></rect>",
                 y + 5.0,
                 role_color(instance.role),
-                escape(&format!("{} {} {} bp", instance.fragment_id, arrow, width))
+                escape(&format!(
+                    "{} {} {} bp",
+                    instance.fragment_id, arrow, length_bp
+                ))
             );
-            text(
-                &mut svg,
-                x + 3.0,
-                y + 17.0,
-                9.0,
-                "#ffffff",
-                &format!("{} {arrow}", clipped(&instance.fragment_id, 14)),
-            );
+            let label_chars = ((width - 6.0) / 9.0).floor() as usize;
+            if label_chars >= 5 {
+                text(
+                    &mut svg,
+                    x + 3.0,
+                    y + 17.0,
+                    9.0,
+                    "#ffffff",
+                    &format!(
+                        "{} {arrow}",
+                        clipped(&instance.fragment_id, label_chars.saturating_sub(2).min(14))
+                    ),
+                );
+            }
         }
         text(
             &mut svg,
@@ -308,6 +331,20 @@ pub fn render_regulatory_fragment_panel_svg(plan: &RegulatoryFragmentPanelPlan) 
     section_title(&mut svg, y, "Contrast matrix");
     y += 20.0;
     for contrast in &plan.contrasts {
+        let alias = |id: &str| {
+            member_aliases
+                .get(id)
+                .map(String::as_str)
+                .unwrap_or("unlisted")
+        };
+        let _ = write!(
+            svg,
+            "<g data-gentle-role=\"contrast\"><title>{}</title>",
+            escape(&format!(
+                "{} vs {}: {}",
+                contrast.left_member_id, contrast.right_member_id, contrast.interpretation
+            ))
+        );
         text(
             &mut svg,
             24.0,
@@ -316,7 +353,9 @@ pub fn render_regulatory_fragment_panel_svg(plan: &RegulatoryFragmentPanelPlan) 
             "#334155",
             &format!(
                 "{:?}: {} vs {}",
-                contrast.question, contrast.left_member_id, contrast.right_member_id
+                contrast.question,
+                alias(&contrast.left_member_id),
+                alias(&contrast.right_member_id)
             ),
         );
         text(
@@ -327,6 +366,7 @@ pub fn render_regulatory_fragment_panel_svg(plan: &RegulatoryFragmentPanelPlan) 
             "#64748b",
             &clipped(&contrast.interpretation, 86),
         );
+        svg.push_str("</g>");
         y += ROW_HEIGHT;
     }
     if plan.contrasts.is_empty() {
@@ -510,10 +550,48 @@ mod tests {
         assert!(svg.contains("data-gentle-schema=\"gentle.regulatory_fragment_panel_plan.v1\""));
         assert!(svg.contains("Selected construct geometry"));
         assert!(svg.contains("data-gentle-role=\"source-fragment\""));
+        assert!(svg.contains(
+            "data-gentle-role=\"source-fragment\" x=\"190.0\" y=\"120.0\" width=\"978.0\""
+        ));
         assert!(svg.contains("data-gentle-role=\"construct-fragment\""));
+        assert!(svg.contains("<title>candidate_a &gt; 120 bp</title>"));
         assert!(svg.contains("StandaloneCandidate"));
         assert!(svg.contains("Panel / vector similarity"));
         assert!(svg.contains("does not establish sufficiency"));
+    }
+
+    #[test]
+    fn regulatory_fragment_panel_svg_uses_traceable_short_labels_for_long_member_ids() {
+        let prefix = "a_long_tutorial_panel_name_with_shared_member_prefix";
+        let left = format!("{prefix}_candidate_alone");
+        let right = format!("{prefix}_reference_combination");
+        let plan = RegulatoryFragmentPanelPlan {
+            plan_id: prefix.to_string(),
+            members: vec![
+                RegulatoryFragmentPanelMember {
+                    member_id: left.clone(),
+                    ..Default::default()
+                },
+                RegulatoryFragmentPanelMember {
+                    member_id: right.clone(),
+                    ..Default::default()
+                },
+            ],
+            contrasts: vec![RegulatoryFragmentContrast {
+                question: RegulatoryFragmentQuestion::PartnerDependence,
+                left_member_id: left.clone(),
+                right_member_id: right.clone(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let svg = render_regulatory_fragment_panel_svg(&plan);
+        assert!(svg.contains("PartnerDependence: C1 vs C2</text>"));
+        assert!(svg.contains("C1: candidate_alone</text>"));
+        assert!(svg.contains("C2: reference_combination</text>"));
+        assert!(svg.contains(&format!("<title>{left}</title>")));
+        assert!(svg.contains(&format!("<title>{left} vs {right}: </title>")));
+        assert!(svg.contains("width=\"154.0\" height=\"16\" overflow=\"hidden\""));
     }
 
     #[test]
