@@ -88,8 +88,8 @@ Pre-release finishing scope:
    bound/historical imports, reporter preservation, and both-strand selection/save/reopen/export.
 3. Review the ClawBio shell-normalizer deprecations before deciding whether any
    compatibility modes should be removed in `v0.1.0-internal.11`.
-4. Preserve headless/GUI parity for repeat, array, CUT&RUN V1-V3, TFBS, and
-   feature-detail views without promoting evidence overlap into conclusions.
+4. Preserve headless/GUI parity for repeat, array, CUT&RUN V1-V3, TFBS, feature-detail and Conservation views without promoting evidence overlap into conclusions.
+   Retain live Linux/Xvfb proof of Conservation request exchange, block navigation, cancellation and shared-locus partner evidence; headless/offscreen checks are not live GUI acceptance.
 
 Current non-goals:
 

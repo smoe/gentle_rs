@@ -6,6 +6,8 @@
   "test_mode": "skip",
   "required_files": [
     "docs/examples/assets/region_homology_demo/README.md",
+    "docs/examples/assets/region_homology_demo/module_cases.json",
+    "docs/examples/run_region_homology_tutorial.py",
     "docs/examples/assets/region_homology_demo/genomes.json",
     "docs/examples/assets/region_homology_demo/query_toy.fa",
     "docs/examples/assets/region_homology_demo/query_toy.gtf",
@@ -96,8 +98,8 @@
             "source": {
               "source_kind": "sequence_selection",
               "seq_id": "region_homology_query",
-              "local_start_0based": 50,
-              "local_end_0based_exclusive": 70,
+              "local_start_0based": 68,
+              "local_end_0based_exclusive": 84,
               "strand": "plus",
               "reference_override": {
                 "species_scientific_name": "Synthetic query organism",
@@ -109,6 +111,30 @@
             "notes": [
               "Synthetic selected evidence span for the module-assessment tutorial; no occupancy measurement is implied."
             ]
+          }
+        }
+      },
+      {
+        "CaptureGenomicRegion": {
+          "request": {
+            "set_id": "synthetic_conservation_regions",
+            "region_id": "synthetic_left_motif",
+            "label": "Synthetic left-block motif span",
+            "purpose": "reporter_candidate",
+            "source": {
+              "source_kind": "sequence_selection",
+              "seq_id": "region_homology_query",
+              "local_start_0based": 24,
+              "local_end_0based_exclusive": 36,
+              "strand": "plus",
+              "reference_override": {
+                "species_scientific_name": "Synthetic query organism",
+                "taxon_id": 9000001,
+                "assembly_name": "QueryRegionToy",
+                "contig_name": "chrQ"
+              }
+            },
+            "notes": ["Synthetic selected motif span; not a measured biological signal."]
           }
         }
       },
@@ -139,8 +165,8 @@
                       "assembly_name": "ExpectedOrthologToy",
                       "contig_name": "chrO"
                     },
-                    "start_0based": 30,
-                    "end_0based_exclusive": 111,
+                    "start_0based": 31,
+                    "end_0based_exclusive": 112,
                     "strand": "plus",
                     "evidence_id": "synthetic_declared_orthology",
                     "source_id": "region_homology_demo_v1"
@@ -155,7 +181,7 @@
             ],
             "policy": {
               "min_identity_percent": 70.0,
-              "min_alignment_length_bp": 12,
+              "min_alignment_length_bp": 24,
               "max_evalue": 0.001,
               "max_chain_gap_bp": 40,
               "max_loci_per_target": 20,

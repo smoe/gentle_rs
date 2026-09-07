@@ -7,6 +7,17 @@
   tests now scope their native BLAST tools so concurrent test stubs cannot
   invalidate the synthetic homology indexes.
 
+- Completed the offline conservation tutorial beyond the initial screen. A
+  small orchestration-only companion now invokes GENtle for the SVG and four
+  module scenarios, retains exact workflows/requests and output hashes, and
+  verifies insertion provenance, decisions, and read-only project preservation.
+  Synthetic evidence cases make standalone, shared-locus paired, gap, and
+  strict-repetition outcomes explicit. GUI instructions cover request exchange,
+  virtualized block navigation, and cancellation without claiming live Xvfb
+  acceptance; the remaining GUI acceptance check is tracked in the roadmap.
+  Visual verification also separated the SVG support heading from its first
+  lane label, with a structural spacing regression assertion.
+
 - Conservation alignment and block lists now use visible-row layout. All
   retained loci remain reachable and block selection jumps to the matching
   query tile. Active BLAST searches emit bounded heartbeats and support Cancel

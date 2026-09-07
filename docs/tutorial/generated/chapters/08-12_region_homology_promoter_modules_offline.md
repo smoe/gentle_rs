@@ -31,8 +31,8 @@ A conserved promoter segment can be a useful fragment candidate, but sequence si
 - `targets[].role and expected_loci[]` (where used: ScreenGenomicRegionHomology)
   - Why it matters: An expected ortholog label is accepted only when an accepted locus overlaps a caller-supplied, evidence-identified expected locus.
   - How to derive it: Use reviewed orthology resources or an explicit expected locus; leave unrelated cross-species searches unassigned.
-- `min_identity_percent=70, min_alignment_length_bp=12` (where used: Synthetic homology screen)
-  - Why it matters: The tiny teaching sequences use short exact blocks. Real promoter work should retain the defaults or record a justified alternative.
+- `min_identity_percent=70, min_alignment_length_bp=24` (where used: Synthetic homology screen)
+  - Why it matters: These default thresholds retain the intended ortholog and 24 bp same-genome copy while excluding incidental 12 bp matches in the hand-crafted teaching sequences.
   - How to derive it: Choose thresholds before search and preserve them in the effective request; do not tune them after seeing a preferred locus.
 - `max_hsps_per_target=1000` (where used: Synthetic homology screen)
   - Why it matters: The cap is a post-BLAST processing budget and never a `-max_target_seqs` completeness shortcut.
@@ -68,27 +68,27 @@ A conserved promoter segment can be a useful fragment candidate, but sequence si
 
 ## At a Glance
 
-1. Run the workflow once to prepare the tiny local indexes and save the syntheti...
+1. Run the complete companion command shown below into an empty directory. It pr...
 2. Open the DNA viewer, choose Regions..., and use Conservation... on synthetic_...
-3. Choose Open report... and load artifacts/region_homology_demo/homology_report...
-4. For an ordinary catalog-backed region, Run local screen instead searches ever...
+3. Choose Open report... and load homology_report.json from the companion output...
+4. Expand Search request to inspect target IDs, required flags, orthology eviden...
 5. Inspect target readiness and confirm that expected-ortholog, unassigned cross...
 6. Inspect the query-referenced alignment: dots are exact bases, letters are sub...
-7. Select synthetic_occupancy_anchor, choose Assess selected evidence, and inspe...
+7. Select only synthetic_occupancy_anchor, choose Assess selected evidence, and ...
 8. Optionally save a selected conserved block as a new portable region. This exp...
 
 ## GUI First
 
 CLI snippets use GENtle's default `.gentle_state.json` state unless they say otherwise. Add `--state PATH` or `--project PATH` when you want an explicit sandboxed state file for copied commands.
 
-### Step 1: Run the workflow once to prepare the tiny local indexes and save the syntheti...
+### Step 1: Run the complete companion command shown below into an empty directory. It pr...
 
-GUI: Run the workflow once to prepare the tiny local indexes and save the synthetic query plus its selected evidence span, then open the resulting project in GENtle.
+GUI: Run the complete companion command shown below into an empty directory. It prepares tiny local indexes, saves the query and two independent evidence spans, then generates the homology SVG and four assessed module reports. Open its `tutorial.project.json` in GENtle.
 
 CLI:
 
 ```bash
-cargo run --bin gentle_cli -- workflow @docs/examples/workflows/region_homology_promoter_modules_offline.json
+cargo build --locked --bin gentle_cli
 ```
 
 > Expected: The workflow uses only hand-crafted local FASTA files and requires no network access; it never downloads or indexes an undeclared genome.
@@ -100,31 +100,31 @@ GUI: Open the DNA viewer, choose `Regions...`, and use `Conservation...` on `syn
 CLI:
 
 ```bash
-cargo run --bin gentle_cli -- shell 'regions homology-screen @request.json'
+python3 docs/examples/run_region_homology_tutorial.py --gentle target/debug/gentle_cli --output /tmp/gentle-conservation-tutorial
 ```
 
 > Expected: Every projected alignment row has exactly the query length even though one target contains an insertion.
 
-### Step 3: Choose Open report... and load artifacts/region_homology_demo/homology_report...
+### Step 3: Choose Open report... and load homology_report.json from the companion output...
 
-GUI: Choose `Open report...` and load `artifacts/region_homology_demo/homology_report.json`; GENtle validates its content digest and exact saved-region binding before display.
+GUI: Choose `Open report...` and load `homology_report.json` from the companion output directory; GENtle validates its digest and exact saved-region binding. `Import request...` loads that directory's `homology_request.json` without executing it.
 
 CLI:
 
 ```bash
-cargo run --bin gentle_cli -- shell 'regions render-homology-svg @artifacts/region_homology_demo/homology_report.json artifacts/region_homology_demo/homology_report.svg'
+target/debug/gentle_cli --state /tmp/gentle-conservation-tutorial/report_only.project.json shell 'regions render-homology-svg @/tmp/gentle-conservation-tutorial/homology_report.json /tmp/gentle-conservation-tutorial/replayed.svg'
 ```
 
 > Expected: The inserted target base is retained under `omitted_insertions` with query anchor, target coordinates, strand, and HSP identity.
 
-### Step 4: For an ordinary catalog-backed region, Run local screen instead searches ever...
+### Step 4: Expand Search request to inspect target IDs, required flags, orthology eviden...
 
-GUI: For an ordinary catalog-backed region, `Run local screen` instead searches every currently validated local genomic-DNA index while reporting preflight, target ordinal, BLAST, projection, and block-calling progress without blocking the DNA viewer.
+GUI: Expand `Search request` to inspect target IDs, required flags, orthology evidence and search thresholds. `Run local screen` submits these exact settings; empty targets instead select all validated local indexes. During BLAST, elapsed time and heartbeats remain visible, and `Cancel` stops the active search without publishing an incomplete report.
 
 CLI:
 
 ```bash
-cargo run --bin gentle_cli -- shell 'promoters assess-conserved-modules @assessment_request.json'
+target/debug/gentle_cli --state /tmp/gentle-conservation-tutorial/report_only.project.json shell 'promoters assess-conserved-modules @/tmp/gentle-conservation-tutorial/paired.request.json'
 ```
 
 > Expected: Only the locus backed by `synthetic_declared_orthology` is labelled `expected_ortholog`; BLAST rank alone never establishes orthology.
@@ -141,8 +141,18 @@ GUI: Inspect the query-referenced alignment: dots are exact bases, letters are s
 
 > Expected: Module outcomes retain all thresholds, evidence IDs, passed and failed rules, alternatives, and explicit non-claims.
 
-7. Select `synthetic_occupancy_anchor`, choose `Assess selected evidence`, and inspect each PASS/NO decision rule.
-8. Optionally save a selected conserved block as a new portable region. This explicit mutation preserves the report digest and non-claims.
+### Step 7: Select only synthetic_occupancy_anchor, choose Assess selected evidence, and ...
+
+GUI: Select only `synthetic_occupancy_anchor`, choose `Assess selected evidence`, and compare the standalone decision with `standalone.json`. Add `synthetic_left_motif` and reassess: the paired decision must cite a shared ortholog locus and compatible target-coordinate gaps, not merely proximity in the query. Select a block to jump to its virtualized alignment tile.
+
+> Expected: The companion asserts standalone and paired results, an insufficient result for evidence in the deliberately substituted gap, and a repetitive result under an explicitly strict 1% policy. Its receipt records the exact commands, binary and artifact hashes. GENtle alone computes these outcomes. Report-only steps use an empty scratch project because their inputs are self-contained; the original tutorial project is not reopened or rewritten.
+
+### Step 8: Optionally save a selected conserved block as a new portable region. This exp...
+
+GUI: Optionally save a selected conserved block as a new portable region. This explicit mutation preserves the report digest and non-claims.
+
+> Expected: Missing or unrequested same-genome evidence cannot pass uniqueness. Query and target gaps must both satisfy the declared bounds; exact spacing is the default unless a gap-difference tolerance is supplied.
+
 
 ## Command Equivalent (After GUI)
 
@@ -156,8 +166,7 @@ cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/region_ho
 ## Follow-up Commands
 
 ```bash
-cargo run --bin gentle_cli -- workflow @docs/examples/workflows/region_homology_promoter_modules_offline.json
-cargo run --bin gentle_cli -- shell 'regions render-homology-svg @artifacts/region_homology_demo/homology_report.json artifacts/region_homology_demo/homology_report.svg'
+python3 docs/examples/run_region_homology_tutorial.py --gentle target/debug/gentle_cli --output /tmp/gentle-conservation-tutorial-repeat
 ```
 
 ## Checkpoints

@@ -121,8 +121,9 @@ pub fn render_genomic_region_homology_svg(report: &GenomicRegionHomologyScreenRe
     document = document
         .add(
             Text::new("Whole-region exact support")
+                .set("data-role", "support-heading")
                 .set("x", 36)
-                .set("y", overview_top + 13.0)
+                .set("y", overview_top - 10.0)
                 .set("font-family", "sans-serif")
                 .set("font-size", 12)
                 .set("font-weight", 600)
@@ -148,6 +149,7 @@ pub fn render_genomic_region_homology_svg(report: &GenomicRegionHomologyScreenRe
         let y = overview_top + 8.0 + lane_index as f32 * 16.0;
         document = document.add(
             Text::new(class.as_str())
+                .set("data-role", "support-label")
                 .set("x", 36)
                 .set("y", y + 9.0)
                 .set("font-family", "monospace")
@@ -354,5 +356,23 @@ mod tests {
         assert!(svg.contains("data-row-id=\"ortholog\""));
         assert!(svg.contains("data-row-class=\"expected_ortholog\""));
         assert!(svg.contains("data-omitted-insertions=\"1\""));
+        let text_y = |role: &str| {
+            svg::read(&svg)
+                .expect("valid SVG")
+                .find_map(|event| match event {
+                    svg::parser::Event::Tag("text", _, attributes)
+                        if attributes
+                            .get("data-role")
+                            .is_some_and(|value| value.to_string() == role) =>
+                    {
+                        attributes
+                            .get("y")
+                            .and_then(|value| value.to_string().parse::<f32>().ok())
+                    }
+                    _ => None,
+                })
+                .expect("label position")
+        };
+        assert!(text_y("support-heading") + 16.0 <= text_y("support-label"));
     }
 }

@@ -2936,11 +2936,11 @@ mod tests {
                                     contig_name: "chrO".to_string(),
                                     ..Default::default()
                                 },
-                                start_0based: 30,
-                                end_0based_exclusive: 111,
+                                start_0based: 31,
+                                end_0based_exclusive: 112,
                                 strand: gp::GenomicRegionStrand::Plus,
                                 evidence_id: "synthetic_expected_locus".to_string(),
-                                source_id: "region_homology_demo_v1".to_string(),
+                                source_id: "region_homology_demo_v2".to_string(),
                                 ..Default::default()
                             }],
                         },
@@ -2951,7 +2951,7 @@ mod tests {
                         },
                     ],
                     policy: gp::GenomicRegionHomologySearchPolicy {
-                        min_alignment_length_bp: 12,
+                        min_alignment_length_bp: 24,
                         min_conserved_block_bp: 12,
                         max_hsps_per_target: 1_000,
                         ..Default::default()

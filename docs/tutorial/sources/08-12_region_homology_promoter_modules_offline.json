@@ -32,20 +32,20 @@
       "You need ordinary GENtle use to remain unaffected when optional genomic BLAST indexes are absent."
     ],
     "gui_steps": [
-      "Run the workflow once to prepare the tiny local indexes and save the synthetic query plus its selected evidence span, then open the resulting project in GENtle.",
+      "Run the complete companion command shown below into an empty directory. It prepares tiny local indexes, saves the query and two independent evidence spans, then generates the homology SVG and four assessed module reports. Open its `tutorial.project.json` in GENtle.",
       "Open the DNA viewer, choose `Regions...`, and use `Conservation...` on `synthetic_promoter_query`.",
-      "Choose `Open report...` and load `artifacts/region_homology_demo/homology_report.json`; GENtle validates its content digest and exact saved-region binding before display.",
-      "For an ordinary catalog-backed region, `Run local screen` instead searches every currently validated local genomic-DNA index while reporting preflight, target ordinal, BLAST, projection, and block-calling progress without blocking the DNA viewer.",
+      "Choose `Open report...` and load `homology_report.json` from the companion output directory; GENtle validates its digest and exact saved-region binding. `Import request...` loads that directory's `homology_request.json` without executing it.",
+      "Expand `Search request` to inspect target IDs, required flags, orthology evidence and search thresholds. `Run local screen` submits these exact settings; empty targets instead select all validated local indexes. During BLAST, elapsed time and heartbeats remain visible, and `Cancel` stops the active search without publishing an incomplete report.",
       "Inspect target readiness and confirm that expected-ortholog, unassigned cross-species, and same-genome evidence remain separate.",
       "Inspect the query-referenced alignment: dots are exact bases, letters are substitutions, dashes are target deletions, and omitted insertions remain in JSON rather than adding columns.",
-      "Select `synthetic_occupancy_anchor`, choose `Assess selected evidence`, and inspect each PASS/NO decision rule.",
+      "Select only `synthetic_occupancy_anchor`, choose `Assess selected evidence`, and compare the standalone decision with `standalone.json`. Add `synthetic_left_motif` and reassess: the paired decision must cite a shared ortholog locus and compatible target-coordinate gaps, not merely proximity in the query. Select a block to jump to its virtualized alignment tile.",
       "Optionally save a selected conserved block as a new portable region. This explicit mutation preserves the report digest and non-claims."
     ],
     "cli_steps": [
-      "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/region_homology_promoter_modules_offline.json",
-      "cargo run --bin gentle_cli -- shell 'regions homology-screen @request.json'",
-      "cargo run --bin gentle_cli -- shell 'regions render-homology-svg @artifacts/region_homology_demo/homology_report.json artifacts/region_homology_demo/homology_report.svg'",
-      "cargo run --bin gentle_cli -- shell 'promoters assess-conserved-modules @assessment_request.json'"
+      "cargo build --locked --bin gentle_cli",
+      "python3 docs/examples/run_region_homology_tutorial.py --gentle target/debug/gentle_cli --output /tmp/gentle-conservation-tutorial",
+      "target/debug/gentle_cli --state /tmp/gentle-conservation-tutorial/report_only.project.json shell 'regions render-homology-svg @/tmp/gentle-conservation-tutorial/homology_report.json /tmp/gentle-conservation-tutorial/replayed.svg'",
+      "target/debug/gentle_cli --state /tmp/gentle-conservation-tutorial/report_only.project.json shell 'promoters assess-conserved-modules @/tmp/gentle-conservation-tutorial/paired.request.json'"
     ],
     "step_expectations": [
       "The workflow uses only hand-crafted local FASTA files and requires no network access; it never downloads or indexes an undeclared genome.",
@@ -53,7 +53,9 @@
       "The inserted target base is retained under `omitted_insertions` with query anchor, target coordinates, strand, and HSP identity.",
       "Only the locus backed by `synthetic_declared_orthology` is labelled `expected_ortholog`; BLAST rank alone never establishes orthology.",
       "Same-genome non-self similarity has its own loci, support blocks, coverage percentage, and ambiguity rule.",
-      "Module outcomes retain all thresholds, evidence IDs, passed and failed rules, alternatives, and explicit non-claims."
+      "Module outcomes retain all thresholds, evidence IDs, passed and failed rules, alternatives, and explicit non-claims.",
+      "The companion asserts standalone and paired results, an insufficient result for evidence in the deliberately substituted gap, and a repetitive result under an explicitly strict 1% policy. Its receipt records the exact commands, binary and artifact hashes. GENtle alone computes these outcomes. Report-only steps use an empty scratch project because their inputs are self-contained; the original tutorial project is not reopened or rewritten.",
+      "Missing or unrequested same-genome evidence cannot pass uniqueness. Query and target gaps must both satisfy the declared bounds; exact spacing is the default unless a gap-difference tolerance is supplied."
     ],
     "prerequisites": [
       "portable_genomic_regions_offline"
@@ -81,9 +83,9 @@
         "how_to_derive": "Use reviewed orthology resources or an explicit expected locus; leave unrelated cross-species searches unassigned."
       },
       {
-        "parameter": "min_identity_percent=70, min_alignment_length_bp=12",
+        "parameter": "min_identity_percent=70, min_alignment_length_bp=24",
         "where_used": "Synthetic homology screen",
-        "why_it_matters": "The tiny teaching sequences use short exact blocks. Real promoter work should retain the defaults or record a justified alternative.",
+        "why_it_matters": "These default thresholds retain the intended ortholog and 24 bp same-genome copy while excluding incidental 12 bp matches in the hand-crafted teaching sequences.",
         "how_to_derive": "Choose thresholds before search and preserve them in the effective request; do not tune them after seeing a preferred locus."
       },
       {
@@ -100,8 +102,7 @@
       }
     ],
     "follow_up_commands": [
-      "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/region_homology_promoter_modules_offline.json",
-      "cargo run --bin gentle_cli -- shell 'regions render-homology-svg @artifacts/region_homology_demo/homology_report.json artifacts/region_homology_demo/homology_report.svg'"
+      "python3 docs/examples/run_region_homology_tutorial.py --gentle target/debug/gentle_cli --output /tmp/gentle-conservation-tutorial-repeat"
     ],
     "retain_outputs": [],
     "checkpoints": [

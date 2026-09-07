@@ -5068,6 +5068,12 @@ Isoform architecture panel workflow:
     - the synthetic local-BLAST walkthrough is
       `docs/examples/workflows/region_homology_promoter_modules_offline.json`;
       it requires installed BLAST+ tools but no network access
+      - complete it with
+        `python3 docs/examples/run_region_homology_tutorial.py --gentle target/debug/gentle_cli --output /tmp/gentle-conservation-tutorial`
+      - the empty output directory receives the project, exact request/workflow
+        JSONs, SVG, four GENtle module assessments, command outputs, and a
+        hash-bound acceptance receipt. The companion only forwards requests
+        and checks facts; it never computes or rewrites scientific verdicts
   - same command family for restriction-site details:
     - `inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED]`
     - JSON output includes `tooltip_lines[]` with the same concise
