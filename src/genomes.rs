@@ -7155,6 +7155,26 @@ FASTA index='{}'.{}{}",
         cache_dir_override: Option<&str>,
     ) -> Result<GenomeBlastReport, String> {
         let mut never_cancel = || false;
+        self.blast_sequence_complete_aligned_with_cache_and_cancel(
+            genome_id,
+            query_sequence,
+            hit_warning_threshold,
+            task,
+            cache_dir_override,
+            &mut never_cancel,
+        )
+    }
+
+    /// Complete aligned search with cooperative cancellation while BLAST runs.
+    pub fn blast_sequence_complete_aligned_with_cache_and_cancel(
+        &self,
+        genome_id: &str,
+        query_sequence: &str,
+        hit_warning_threshold: usize,
+        task: Option<&str>,
+        cache_dir_override: Option<&str>,
+        should_cancel: &mut dyn FnMut() -> bool,
+    ) -> Result<GenomeBlastReport, String> {
         self.blast_sequence_with_cache_and_cancel_mode(
             genome_id,
             query_sequence,
@@ -7163,7 +7183,7 @@ FASTA index='{}'.{}{}",
             cache_dir_override,
             false,
             true,
-            &mut never_cancel,
+            should_cancel,
         )
     }
 
@@ -14411,6 +14431,28 @@ mod tests {
                 .windows(2)
                 .any(|row| row == ["-outfmt", BLASTN_ALIGNED_OUTFMT_FIELDS])
         );
+        let launched = td.path().join("launched");
+        write_executable_script(
+            &blastn,
+            &format!(
+                "#!/bin/sh\nif [ \"$1\" = '-version' ]; then echo 'blastn: fake 1.0'; exit 0; fi\ntouch '{}'\nexec sleep 30\n",
+                launched.display()
+            ),
+        );
+        let started = std::time::Instant::now();
+        let cancelled = catalog
+            .blast_sequence_complete_aligned_with_cache_and_cancel(
+                "ToyGenome",
+                "ACGTACGTACGTACGTACGT",
+                20,
+                Some("blastn"),
+                None,
+                &mut || launched.exists(),
+            )
+            .expect_err("cancel the running aligned search");
+        assert!(launched.exists());
+        assert!(is_blast_cancelled_error(&cancelled), "{cancelled}");
+        assert!(started.elapsed() < std::time::Duration::from_secs(10));
     }
 
     #[cfg(unix)]

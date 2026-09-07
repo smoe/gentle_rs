@@ -1225,6 +1225,11 @@ Feature tree grouping:
     projection, exact-support block calling, and composition away from the UI
     thread. The status line reports phase, target ordinal, elapsed time, and a
     final target/locus/block count
+  - `Cancel` cooperatively stops the active BLAST child via the shared process
+    supervisor. Closing the workspace or switching to another region also
+    requests cancellation; cancelled or mismatched late results cannot replace
+    the displayed report. Elapsed time continues updating during BLAST, which
+    reports a heartbeat rather than inventing an intra-target percentage/ETA
   - `Open report...` validates and displays an existing content-bound homology
     report only when it still matches the exact saved query region. This allows
     a CLI/workflow result with explicit orthology declarations to be inspected
@@ -1235,6 +1240,9 @@ Feature tree grouping:
   - target readiness, conserved blocks, same-genome alternatives, and the
     query-referenced alignment are inspectable together. Target insertion bases
     stay in exported JSON and never create extra alignment columns
+  - conserved-block and alignment lists instantiate only visible rows. The
+    alignment has no former 50-locus display cap; selecting a block scrolls to
+    its query tile without laying out the complete sequence on every repaint
   - other saved evidence regions fully contained in the query can be selected
     for the shared promoter-module assessment. Each PASS/NO rule is displayed;
     the result remains a reporter-design hypothesis rather than a functional

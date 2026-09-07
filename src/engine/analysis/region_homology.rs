@@ -1499,15 +1499,40 @@ impl GentleEngine {
                 false,
             )?;
             let aliases = subject_alias_map(&catalog, &target.genome_id, cache_dir);
+            let mut last_heartbeat = std::time::Instant::now();
+            let mut cancel_blast = || {
+                if last_heartbeat.elapsed() < std::time::Duration::from_millis(500) {
+                    return false;
+                }
+                last_heartbeat = std::time::Instant::now();
+                emit_region_homology_progress(
+                    on_progress,
+                    &request,
+                    "blast",
+                    Some(&target.genome_id),
+                    target_index + 1,
+                    target_count,
+                    "local BLAST is running; within-target percentage and ETA are unknown",
+                    false,
+                )
+                .is_err()
+            };
             let blast = catalog
-                .blast_sequence_complete_aligned_with_cache(
+                .blast_sequence_complete_aligned_with_cache_and_cancel(
                     &target.genome_id,
                     &query.sequence,
                     effective.policy.max_hsps_per_target.saturating_add(1),
                     Some("blastn"),
                     cache_dir,
+                    &mut cancel_blast,
                 )
                 .map_err(|error| {
+                    if crate::genomes::is_blast_cancelled_error(&error) {
+                        return homology_error(
+                            ErrorCode::Internal,
+                            "genomic-region homology screen cancelled; no new report published",
+                        );
+                    }
                     homology_error(
                         ErrorCode::InvalidInput,
                         format!("BLAST failed for target '{}': {error}", target.genome_id),

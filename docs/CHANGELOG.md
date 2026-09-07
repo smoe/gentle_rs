@@ -1,5 +1,12 @@
 # GENtle Changelog
 
+- Conservation alignment and block lists now use visible-row layout. All
+  retained loci remain reachable and block selection jumps to the matching
+  query tile. Active BLAST searches emit bounded heartbeats and support Cancel
+  through the existing child supervisor; switching/closing the workspace
+  cancels work and late results are query-binding checked. Offscreen egui tests
+  cover a 100-kb/80-row view and a real spawned synthetic child tests cancellation.
+
 - The Conservation workspace now edits and imports/exports the shared homology
   request rather than always running defaults. Target IDs, required/optional
   choices, orthology loci/provenance, catalog/cache paths, and all search
