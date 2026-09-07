@@ -1153,6 +1153,38 @@
           "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
         }
       ]
+    },
+    {
+      "id": "regulatory_fragment_panel_planning_offline",
+      "title": "Plan Exact A/B Regulatory-Fragment Contrasts (Offline)",
+      "path": "docs/tutorial/generated/chapters/08-11_regulatory_fragment_panel_planning_offline.md",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 11,
+      "decimal_id": "08.11",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "cloning_planning",
+        "regulatory_analysis",
+        "contributors"
+      ],
+      "notes": "Machine-checked offline planning chapter. The locus is a pinned public sequence fixture; all A/B roles and comparison geometries are tutorial declarations rather than biological findings.",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-07",
+      "graphics": [
+        {
+          "kind": "generated",
+          "path": "docs/tutorial/generated/artifacts/regulatory_fragment_panel_planning_offline/artifacts/regulatory_fragment_panel.locus.svg",
+          "caption": "The pinned Ensembl-116 SERPINE1 locus used as a coordinate substrate, with candidate A, caller-declared partner B, and the promoter-context control retained as exact genomic regions. The tutorial roles define comparisons; they do not establish regulatory activity or partnership.",
+          "illustrates_step": 2,
+          "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+        }
+      ]
     }
   ]
 }

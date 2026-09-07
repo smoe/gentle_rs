@@ -1,5 +1,13 @@
 # GENtle Changelog
 
+- Added a deterministic offline regulatory-fragment panel tutorial. It binds
+  three exact ROIs on the pinned Ensembl-116 SERPINE1 locus to caller-declared
+  candidate, partner, and promoter-context roles, then plans the bounded
+  eight-member contrast set with only the requested order, orientation, and
+  spacing variants. The generated locus figure, workflow assertions, evidence
+  lane review, and CLI/GUI instructions preserve `not_evaluated` semantics and
+  stop before unsupported ordered multi-fragment materialization.
+
 - Added the engine-owned regulatory-reporter study composer. One typed request
   now accepts an explicit gene list or prior resolved cohort, prepared genome,
   outermost-or-explicit transcript TSS policy, exact per-member evidence gates,

@@ -3288,6 +3288,14 @@ fn rewrite_example_paths_for_execution(
             }
             continue;
         }
+        if let Operation::PlanRegulatoryFragmentPanel { request, path } = op {
+            rewrite_optional_input_path(&mut request.helper_catalog_path, repo_root);
+            rewrite_optional_output_path(path, run_dir);
+            if let Some(path) = path.as_deref() {
+                ensure_parent_exists(path)?;
+            }
+            continue;
+        }
         if let Operation::PlanPromoterReporterPanel { request, path } = op {
             rewrite_optional_input_path(&mut request.helper_catalog_path, repo_root);
             for member in &mut request.members {
@@ -6464,6 +6472,149 @@ mod tests {
             "data-gentle-overlay-row=",
         ] {
             assert!(svg.contains(marker), "expected SVG marker {marker}");
+        }
+    }
+
+    #[test]
+    fn workflow_examples_regulatory_fragment_panel_is_bounded_read_only_and_replayable() {
+        use crate::engine::{
+            RegulatoryFragmentEvidenceDimensionKind as Dimension,
+            RegulatoryFragmentEvidenceState as State, RegulatoryFragmentPanelPlan,
+        };
+
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload_builtin_for_test();
+        let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let examples = load_workflow_examples(&example_dir()).expect("load examples");
+        let loaded = examples
+            .iter()
+            .find(|loaded| loaded.example.id == "regulatory_fragment_panel_planning_offline")
+            .expect("regulatory panel tutorial exists");
+        let run_dir = TempDir::new().expect("isolated tutorial run");
+        let mut rewritten =
+            rewrite_example_paths_for_execution(&loaded.example, repo_root, run_dir.path())
+                .expect("rewrite tutorial input/output paths");
+        let planning_op = rewritten
+            .workflow
+            .ops
+            .pop()
+            .expect("final planning operation");
+        let Operation::PlanRegulatoryFragmentPanel { request, path } = &planning_op else {
+            panic!("tutorial must end with the shared read-only planner");
+        };
+        assert_eq!(
+            request.helper_catalog_path.as_deref(),
+            Some(
+                resolve_input_path(
+                    "docs/examples/assets/promoter_reporter_panel_demo_helper_vectors.json",
+                    repo_root,
+                )
+                .as_str()
+            )
+        );
+        let artifact_dir = run_dir.path().join("artifacts");
+        let plan_path = artifact_dir.join("regulatory_fragment_panel.plan.json");
+        assert_eq!(path.as_deref(), plan_path.to_str());
+
+        let mut engine = GentleEngine::from_state(ProjectState::default());
+        engine
+            .apply_workflow(rewritten.workflow)
+            .expect("prepare offline tutorial");
+        let before = serde_json::to_vec(engine.state()).expect("prepared state");
+        engine
+            .apply(planning_op.clone())
+            .expect("plan tutorial panel");
+        let bytes = fs::read(&plan_path).expect("plan stays inside tutorial run directory");
+        let plan: RegulatoryFragmentPanelPlan = serde_json::from_slice(&bytes).expect("plan JSON");
+        assert_eq!(plan.members.len(), 8);
+        assert_eq!(plan.contrasts.len(), 6);
+        assert!(plan.uncovered_questions.is_empty());
+        assert_eq!(
+            plan.contrasts
+                .iter()
+                .map(|row| row.question)
+                .collect::<BTreeSet<_>>(),
+            plan.request
+                .questions
+                .iter()
+                .copied()
+                .collect::<BTreeSet<_>>()
+        );
+        assert!(plan.approval_required);
+        assert!(!plan.materialization_supported);
+
+        // Every declared geometry occurs exactly once, with no implicit spacer or orientation.
+        for geometry in plan
+            .request
+            .reference_combination
+            .iter()
+            .chain(&plan.request.requested_variants)
+        {
+            let matches = plan
+                .members
+                .iter()
+                .filter(|member| {
+                    member.instances.len() == geometry.instances.len()
+                        && member.instances.iter().zip(&geometry.instances).all(
+                            |(actual, expected)| {
+                                actual.fragment_id == expected.fragment_id
+                                    && actual.orientation == expected.orientation
+                                    && actual.spacer_before == expected.spacer_before
+                            },
+                        )
+                })
+                .count();
+            assert_eq!(matches, 1, "geometry {}", geometry.variant_id);
+        }
+        let spacers = plan
+            .members
+            .iter()
+            .flat_map(|member| &member.instances)
+            .filter(|instance| !instance.spacer_before.is_empty())
+            .collect::<Vec<_>>();
+        assert_eq!(spacers.len(), 1);
+        assert_eq!(spacers[0].fragment_id, "partner_b");
+        assert_eq!(spacers[0].spacer_before, "GCGCGC");
+        assert_eq!(plan.evidence_dimensions.len(), 8);
+        for (kind, expected) in [
+            (Dimension::ReferenceGenomicUniqueness, State::Evaluated),
+            (Dimension::PanelSequenceSimilarity, State::Evaluated),
+            (Dimension::RepeatsAndLowComplexity, State::Evaluated),
+            (Dimension::PairSpecificJunctionUniqueness, State::Evaluated),
+            (Dimension::RestrictionAndCloningRisk, State::Evaluated),
+            (Dimension::EnsemblRegulatoryOverlap, State::NotEvaluated),
+            (Dimension::TfbsModelScoreContext, State::NotEvaluated),
+            (Dimension::CutrunAndChromatinContext, State::NotEvaluated),
+        ] {
+            let lane = plan
+                .evidence_dimensions
+                .iter()
+                .find(|lane| lane.kind == kind)
+                .expect("all eight evidence lanes retained");
+            assert_eq!(lane.state, expected, "{kind:?}");
+        }
+        let svg_path = artifact_dir.join("regulatory_fragment_panel.plan.svg");
+        engine
+            .apply(Operation::RenderRegulatoryFragmentPanelSvg {
+                plan: Box::new(plan.clone()),
+                path: display_path(&svg_path),
+            })
+            .expect("render the JSON-round-tripped plan with its original digest");
+        let svg = fs::read_to_string(&svg_path).expect("read plan figure");
+        assert!(svg.contains("gentle.regulatory_fragment_panel_plan.v1"));
+        assert!(svg.contains("Independent evidence lanes"));
+        engine
+            .apply(planning_op)
+            .expect("repeat identical planning");
+        assert_eq!(fs::read(plan_path).expect("replayed artifact"), bytes);
+        assert_eq!(
+            serde_json::to_vec(engine.state()).expect("final state"),
+            before
+        );
+        let locus = fs::read_to_string(artifact_dir.join("regulatory_fragment_panel.locus.svg"))
+            .expect("retained locus figure");
+        for id in ["candidate_a_roi", "partner_b_roi", "minimal_promoter_roi"] {
+            assert!(locus.contains(id), "saved region {id} is displayed");
         }
     }
 

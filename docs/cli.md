@@ -7658,7 +7658,9 @@ lanes independently; opaque Ensembl, TFBS, CUT&RUN, or chromatin citations stay
 The SVG command accepts only an unchanged plan with a valid embedded digest.
 Both commands are non-mutating. V1 does not materialize ordered multi-fragment
 constructs, and the planning labels describe testable comparisons rather than
-regulatory sufficiency, activity, or causation.
+regulatory sufficiency, activity, or causation. See the executable offline
+walkthrough `08-11_regulatory_fragment_panel_planning_offline` for a bounded
+A/B panel with explicit order, orientation, and spacing variants.
 
 Select one candidate in-silico (explicit provenance step):
 

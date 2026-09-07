@@ -5843,6 +5843,10 @@ Tutorial projects:
     - labels remain hypotheses or unresolved comparisons; the panel does not
       claim sufficiency, enhancer/silencer activity, partner dependence, or
       causal regulation
+    - the executable offline tutorial
+      `08-11_regulatory_fragment_panel_planning_offline` walks through the
+      region selectors, exact A/B geometry, independent evidence states, and
+      digest-valid JSON/SVG review without materialization
   - the same window now also exposes `Export TF score tracks SVG...`, which
     goes through the shared `RenderTfbsScoreTracksSvg` engine route instead of a
     GUI-only painter and can therefore reproduce the same stacked figure style
