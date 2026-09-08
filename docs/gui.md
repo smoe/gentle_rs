@@ -1188,8 +1188,15 @@ Feature tree grouping:
     committed tracks are synthetic and are not experimental PATZ1 evidence
 - `Saved genomic regions` keeps reusable interval configuration out of the DNA
   map itself while remaining one click away from it:
-  - open it with `Regions...` in the DNA toolbar, or select bases and choose
-    `Save/share selected genomic region...` from the map context menu
+  - open it with `Regions...` in the DNA toolbar, `Genome > Saved Genomic
+    Regions...`, the command palette entry of the same name, or by selecting
+    bases and choosing `Save/share selected genomic region...` from the map
+    context menu
+  - the same destination is reachable headlessly as the shared UI intent
+    `ui open saved-genomic-regions` (aliases `genomic-regions`, `regions`),
+    with `ui close saved-genomic-regions` reporting whether a manager was
+    actually open. While a sequence is still loading the focus is queued and
+    applies once the load completes
   - the resizable manager lists set, label, explicit assembly, 1-based
     inclusive coordinates, strand, selection method, and evidence availability.
     Its copy actions provide human coordinates, BED6 (0-based half-open), or

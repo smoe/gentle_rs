@@ -1,5 +1,14 @@
 # GENtle Changelog
 
+- Surfaced the saved-genomic-regions manager as a first-class destination
+  instead of a viewer-only control. A shared `saved-genomic-regions` UI intent
+  now backs a `Genome > Saved Genomic Regions...` menu item, a command-palette
+  entry, and headless `ui open|focus|close saved-genomic-regions`, so agents
+  reach the same window as people. The `regions create/capture/list/update/
+  import/export` routes now project as GUI-prominent in the parity matrix,
+  matching the controls that actually drive them; `regions inspect` and
+  `regions derive` stay shell-only because no GUI control exists for them yet.
+
 - Added a manifest-driven companion for reproducibly extracting transcript-TSS
   promoter windows through GENtle across catalogued genomes/releases, exporting
   exact sequence/provenance rows, collapsing identical windows, and preparing
