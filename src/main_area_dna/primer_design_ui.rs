@@ -7343,6 +7343,10 @@ impl MainAreaDna {
     }
 
     pub fn render_pcr_designer_specialist(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        // The PCR designer is rendered in its own viewport. Poll the task from
+        // that viewport as well as from the parent DNA viewer so completion is
+        // published even when the parent viewport is idle or occluded.
+        self.poll_primer_design_task(ctx);
         if self.pcr_designer_mode == PcrDesignerMode::TerminalExonRtPool {
             self.render_terminal_exon_rt_primer_pool_designer(ui);
             return;

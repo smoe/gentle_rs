@@ -68,7 +68,7 @@
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "130ca7b9fc03586dac31c66af4ec733efd5be1c038820fa9d2157fa7d294a673",
+    "README.md": "cf0efc1717e89415548733c793e468eca1ad618fd938109b465f273e3f153c2c",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_cohort.json": "a3a9093760934082e5e9ea8c06b2528978908de49e59a6142766d90f8baad5a5",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_comparison.json": "f324456edd43ceb5f6c0f263e085844cddb27da1a454b40b63a68e8d69bc9a0e",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json": "e415893e3a32ed0ed4fc75d5e637bb7f19ac0552d0f671d5a5d0421db17f079d",
@@ -76,23 +76,23 @@
     "artifacts/gibson_arrangements_baseline/artifacts/gibson_lab_assistant_handoff.md": "e4b7e229f41b122dbbb6e4d8d1fe8feca090e1fed779a4ca5cb403a3b7c69512",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv": "49e60ce8db8fee3b193398ef6831f280017bbcfe34ea4732c2d19aea97e7adeb",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt": "beecd9e82a0336053bf82d63fd54fed530f3357f94f0ff29a7c46ac33d74a092",
-    "artifacts/patz1_gene_locus_evidence_offline/patz1_gene_locus_evidence.svg": "ec1a6d470c3ec4f8e14573b3a01e9935f18725c7a3c758b33aff9c15b46da5ea",
-    "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_endpoint_end_matrix.report.json": "38525a97891ecda14ac707089751696ac9fcd6b1d860b7dab3123e504ed7c082",
-    "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_routine_common_region_screen.report.json": "055e4b52e8789baa1e14857406ac9be79d942612ed2d01f6f288b42bda66c87d",
-    "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_sybr_juc_panel.report.json": "998afc4d2e28b91d5dc226d37bb2851dab653b65efa80dd6b3017ff55d095d26",
+    "artifacts/patz1_gene_locus_evidence_offline/patz1_gene_locus_evidence.svg": "e8b072dfe45a55b8d28ff55fe9c2c3654ad03a03e46673b1e4dc1f8ee54e56e1",
+    "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_endpoint_end_matrix.report.json": "443e06b85009474ec34b8c4082249fbbce253fceb9431329f000b7500ec8d277",
+    "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_routine_common_region_screen.report.json": "542efe9764489b84a30c06422df40d5a49d5b1522ee00ffc05edf252a100805c",
+    "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_sybr_juc_panel.report.json": "352daba60be138d64b78ab10e319f2b43f3a48caceb9aa649aec139bbdee84d7",
     "artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r01.report.json": "06c24247d8de5e16d1115555881c77461ae115573678380c74ff51926e6d3f20",
     "artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r02.report.json": "813dfb83318f0a2de397d4ddcd80d8020fe72586ec637d97598c3ea5a353dd3a",
     "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.bed": "a4c0b3b274099f1336ad956e18952008b0a4cefbd5bde255cc24fffcdf76c54c",
     "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.bed.manifest.json": "bb806ac7ff1c9933ab765a34888cd91b531514cbb7ff477818d6eb439bf4560a",
-    "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.locus.svg": "7885f9a74db07a9d0a5275f6cda2aded88cf8ef52e47aec44f306164b41adef4",
+    "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.locus.svg": "495c3deff8c84b31ebfce5f13e15a853f1d06f1e3f41b9eaa49f19be8490fb1e",
     "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.region_set.json": "f99dd295e6b9d8a7d057d71f89bd38d02314ee63c9fc050ef141cca295316d84",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.alternative_promoters.json": "fcdcdcec09c3d595220276e1dd0a542d876634897ef6c270952c6b40d08c6f54",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.evidence_matrix.json": "a29e3031ecde6dd9f945860bda0be48fbced440bb62f464381d42c331e35db25",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.isoform_promoter_comparison.json": "2a23e46ce8c76b8352cb5c2b8dffe3dbd05b8e229dd7da6a50de17de81dc03ef",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.promoter_artifact_manifest.json": "a71be6650a7c870daef5c97404476b922854f9d7c9cd868eb8b97a2099898673",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.promoter_expression_evidence.json": "156c17628fc41a44a1ac79f26b4c5a543926fc75f2dcd96c45ef5b70f1927534",
-    "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg": "07c5d73fb9ba597570fd9af6e9774326679ba6fabcadc0dddba218c619965d3b",
-    "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json": "f617e02aa17848b0a9771aa0ed97df6d9a21442e655515ff1063302d4ca2e57d",
+    "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg": "3fb8488439781d6f3fbd0228d4560b8fc71d3764969cd759ddb896dcdca8b78e",
+    "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json": "ad343d92e3e819f84bc7a2714dec800567108ffc4fc7fcb11d80fdc5a86efd39",
     "artifacts/promoter_gene_set_ortholog_cohort_offline/artifacts/promoter_cohort_ortholog_demo/gene_set_promoter_cohort.json": "f3b94bad1daab3494305bdf5cc4ace737c381acbf7c877343d1b27417f2022e8",
     "artifacts/promoter_gene_set_ortholog_cohort_offline/artifacts/promoter_cohort_ortholog_demo/gene_set_promoter_cohort_comparison.json": "82ab37feab9f0902b75744da4d7647e97a75d627befd297146c13a60b83a82f5",
     "artifacts/promoter_gene_set_ortholog_cohort_offline/artifacts/promoter_cohort_ortholog_demo/ortholog_promoter_cohort.json": "00a42a06ba81c4a2992c7f8726b6401084e168e40805e3ebcb513b367428b142",
@@ -121,7 +121,7 @@
     "chapters/06-05_tp73_uniprot_projection_audit_cli.md": "bfbbeb700eea96654ff2b446128f7dc774429fc0106b2b3a64a71c987f9ac605",
     "chapters/06-06_patz1_gene_locus_evidence_offline.md": "ac745b5fe2fda33f02392aa06a12451990984d20e67d79701ae5ef51b1468bf1",
     "chapters/07-02_tp53_multi_gene_sparse_mapping_online.md": "9def3fb7d79ccf23e05f994bd738cf248e379c185f4eb8ce4cca15672bacdb5c",
-    "chapters/08-03_promoter_design_artifact_slice_offline.md": "76336ac96f1cd0b5f078428676bb203eb0185ef98a6a0b85bada7e27aeea592a",
+    "chapters/08-03_promoter_design_artifact_slice_offline.md": "bbcb97db36c693c6e88ceda487d70d132a7e9cb46861d6a4ee3dccf4fcee7bb8",
     "chapters/08-07_promoter_gene_set_ortholog_cohort_offline.md": "1d5c822a6427c7237f839b55642501224e37119aaac21112a9d3800e77feacc8",
     "chapters/08-08_gene_set_ortholog_promoter_cohorts_offline.md": "fb334f0f59d7795cb89f872570f7d3200e7e6ec125349bdee0155fd80e4540f3",
     "chapters/08-09_promoter_reporter_panel_planning_offline.md": "b5aa8d61d9e7534d99d431c4859853a3f34f7b6a138261d1c42449fce36e5eea",
@@ -131,7 +131,7 @@
   },
   "warnings": [
     "Tutorial 'load_branch_reverse_complement_pgex_fasta' review is stale because source JSON 'docs/tutorial/sources/02-01_load_branch_reverse_complement_pgex_fasta.json' changed after human review date 2026-05-18",
-    "Tutorial 'promoter_design_artifact_slice_offline' review is stale because source JSON 'docs/tutorial/sources/08-03_promoter_design_artifact_slice_offline.json' changed after human review date 2026-05-18"
+    "Tutorial 'promoter_design_artifact_slice_offline' review is stale because declared graphic for tutorial 'promoter_design_artifact_slice_offline' 'docs/tutorial/generated/artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg' changed after human review date 2026-05-18"
   ],
   "chapters": [
     {
@@ -618,9 +618,9 @@
       "human_reviewed_at": "2026-05-18",
       "human_reviewer": "smoe",
       "review_stale": true,
-      "review_stale_reason": "source JSON 'docs/tutorial/sources/08-03_promoter_design_artifact_slice_offline.json' changed after human review date 2026-05-18",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "review_stale_reason": "declared graphic for tutorial 'promoter_design_artifact_slice_offline' 'docs/tutorial/generated/artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg' changed after human review date 2026-05-18",
+      "review_issue_template": "Tutorial artifact/figure problem",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-artifact-figure.md",
       "graphics": [
         {
           "kind": "generated",
