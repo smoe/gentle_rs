@@ -32,7 +32,7 @@ Designed products are not validated assays; similarity does not prove sufficienc
 
 Smoke status: headless proofs do not replace graphical acceptance. All three
 Linux chapters (branch/reverse complement, digest, compact Simple PCR) must pass,
-without waiving the ten-minute compute budget. PCR timing remains unmeasured.
+without waiving the ten-minute budget. Glen reports green at `3de4803a`; merged-candidate acceptance is pending.
 Glen validates Linux and BLAST (missing-tool skips are not acceptance); CI owns Windows/macOS and containers.
 
 Proof path:
@@ -81,7 +81,7 @@ Pre-release finishing scope:
 
 ## Next Session Priorities
 
-1. Have Glen measure compact Simple PCR and complete all three GUI chapters plus
+1. Have Glen recheck compact Simple PCR and all three GUI chapters at the merged SHA plus
    TATA evidence review/materialization, retaining exact-candidate outcomes/screenshots.
 2. Run the `.10` ledger: locked tests, script build/entrypoints, tutorial/parity, IRF9/Q00978,
    benchmarks and TP73/PATZ1 TFBS/reporter/CUT&RUN/locus proofs with exact JASPAR 2026 PFMs.

@@ -2,6 +2,16 @@
 
 ## 2026-09-08 - `v0.1.0-internal.10` candidate preparation
 
+- Integrated Glen's `f93f795c` screenshot contribution after the hardening merge:
+  three introductory tutorials now link ten teaching views from eight captured
+  checkpoints. All 40 raw/derived/sidecar/snapshot files remain byte-identical to
+  upstream, with publication hashes bound to `3de4803a` and its GUI binary.
+  Included the repeatable publisher and screenshot-caption regression; human
+  review dates and both stale-review warnings remain unchanged. Local publication
+  integrity, tutorial hashes, Python syntax and Rust formatting checks pass;
+  no live GUI, full tutorial regeneration or runtime tests were repeated here.
+  GitHub inline rendering of the SVGs' relative PNG references remains unchecked.
+
 - Integrated Glen's `3de4803a` tutorial hardening: PCR designer viewports poll
   completed workers even when the parent DNA viewer is idle, lineage nodes use
   ranks within their own layer, and the CUT&RUN GUI test serializes motif-catalog
