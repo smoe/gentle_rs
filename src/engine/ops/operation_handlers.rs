@@ -40068,6 +40068,7 @@ impl GentleEngine {
             jaspar_entry_presentation: None,
             sequence_context_view: None,
             cryptic_splicing_screen: None,
+            tata_box_screen: None,
             cryptic_splicing_evidence_overlay: None,
             cryptic_splicing_protein_projection: None,
             sequence_context_bundle: None,
@@ -40772,6 +40773,42 @@ impl GentleEngine {
                     }
                     parent_seq_ids.push(request.seq_id.clone());
                     result.cryptic_splicing_screen = Some(Box::new(report));
+                }
+                Operation::ScreenTataBoxes { request, path } => {
+                    let report = self.screen_tata_boxes(&request)?;
+                    if let Some(path) = path {
+                        let payload = serde_json::to_vec_pretty(&report)
+                            .map_err(|e| EngineError::new(ErrorCode::Internal, e.to_string()))?;
+                        std::fs::write(&path, payload).map_err(|e| {
+                            EngineError::new(
+                                ErrorCode::Io,
+                                format!("Cannot write TATA report '{path}': {e}"),
+                            )
+                        })?;
+                    }
+                    result.tata_box_screen = Some(Box::new(report));
+                }
+                Operation::MaterializeTataBoxFeatures { request } => {
+                    let before = self
+                        .state
+                        .sequences
+                        .get(&request.screen.seq_id)
+                        .map(|dna| dna.features().len());
+                    let report = self.materialize_tata_boxes(&request)?;
+                    parent_seq_ids.push(request.screen.seq_id.clone());
+                    if before
+                        != self
+                            .state
+                            .sequences
+                            .get(&request.screen.seq_id)
+                            .map(|dna| dna.features().len())
+                    {
+                        result.changed_seq_ids.push(request.screen.seq_id.clone());
+                    }
+                    result
+                        .messages
+                        .push("Added reviewed TATA evidence to the DNA map".into());
+                    result.tata_box_screen = Some(Box::new(report));
                 }
                 Operation::RenderCrypticSplicingScreenSvg { request, path } => {
                     let mut report = self.inspect_cryptic_splicing_screen(&request)?;

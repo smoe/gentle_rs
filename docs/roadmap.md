@@ -81,12 +81,12 @@ Pre-release finishing scope:
 
 ## Next Session Priorities
 
-1. Have Glen measure compact Simple PCR and complete all three GUI chapters,
-   retaining typed outcomes and screenshot receipts on the exact candidate.
-2. Run the `.11` ledger: locked tests, script-enabled build/entrypoints, tutorial/parity,
-   TP73/PATZ1 and CUT&RUN/locus proofs, copied-state IRF9/Q00978, and benchmarks.
+1. Have Glen measure compact Simple PCR and complete all three GUI chapters plus
+   TATA evidence review/materialization, retaining exact-candidate outcomes/screenshots.
+2. Run the `.11` ledger: locked tests, script build/entrypoints, tutorial/parity, IRF9/Q00978,
+   benchmarks and TP73/PATZ1 TFBS/reporter/CUT&RUN/locus proofs with exact JASPAR 2026 PFMs.
 3. Have CI prove desktop/container packaging and verify clean-tree/version/artifact identity.
-4. Retain live Conservation navigation/cancellation and partner-evidence proof;
+4. Retain historical reports, offline-safe regeneration and live Conservation navigation/cancellation/partner-evidence proof;
    keep ClawBio compatibility modes pending separate removal review.
 5. Validate DuckDB real-Parquet boundaries/limits and scan filters; address GUI
    staleness when the selected package changes.

@@ -6688,6 +6688,40 @@ fn command_palette_test_app_with_sequence() -> GENtleApp {
 }
 
 #[test]
+fn tata_palette_handles_missing_pending_and_existing_sequence_windows() {
+    let ctx = egui::Context::default();
+    let mut missing = GENtleApp::default();
+    let action = missing
+        .collect_command_palette_entries()
+        .into_iter()
+        .find(|entry| entry.title == "TATA-box Evidence")
+        .unwrap()
+        .action;
+    missing.execute_command_palette_action(&ctx, action);
+    assert!(missing.app_status.contains("no project sequence"));
+    let mut pending = command_palette_test_app_with_sequence();
+    for _ in 0..2 {
+        pending.execute_command_palette_action(&ctx, action);
+    }
+    assert_eq!(pending.new_windows.len(), 1);
+    assert!(pending.new_windows[0].tata_workspace_open_or_pending());
+
+    let mut existing = command_palette_test_app_with_sequence();
+    let viewport = existing.register_window(Window::new_dna(
+        DNAsequence::from_sequence("ACGTACGT").unwrap(),
+        "seq1".into(),
+        existing.engine.clone(),
+    ));
+    existing.execute_command_palette_action(&ctx, action);
+    assert!(
+        existing.windows[&viewport]
+            .read()
+            .unwrap()
+            .tata_workspace_open_or_pending()
+    );
+}
+
+#[test]
 fn command_palette_conservation_reuses_pending_sequence_window() {
     let mut app = command_palette_test_app_with_sequence();
     let ctx = egui::Context::default();
@@ -13427,6 +13461,7 @@ fn poll_prepare_success_after_cancel_request_reports_completion_prefix() {
         result: Ok(OpResult {
             primer_group_target_design: None,
             cryptic_splicing_screen: None,
+            tata_box_screen: None,
             cryptic_splicing_evidence_overlay: None,
             cryptic_splicing_protein_projection: None,
             gene_locus_evidence_preparation: None,
@@ -13692,6 +13727,7 @@ fn poll_track_import_refreshes_only_changed_sequence_windows() {
         result: Ok(GenomeTrackTaskResult::Operation(OpResult {
             primer_group_target_design: None,
             cryptic_splicing_screen: None,
+            tata_box_screen: None,
             cryptic_splicing_evidence_overlay: None,
             cryptic_splicing_protein_projection: None,
             gene_locus_evidence_preparation: None,
@@ -13847,6 +13883,7 @@ fn poll_track_import_refreshes_all_open_windows_when_changed_ids_missing() {
         result: Ok(GenomeTrackTaskResult::Operation(OpResult {
             primer_group_target_design: None,
             cryptic_splicing_screen: None,
+            tata_box_screen: None,
             cryptic_splicing_evidence_overlay: None,
             cryptic_splicing_protein_projection: None,
             gene_locus_evidence_preparation: None,
@@ -14224,6 +14261,7 @@ fn format_extract_region_status_includes_annotation_fallback_reason() {
     let status = GENtleApp::format_extract_region_status(&OpResult {
         primer_group_target_design: None,
         cryptic_splicing_screen: None,
+        tata_box_screen: None,
         cryptic_splicing_evidence_overlay: None,
         cryptic_splicing_protein_projection: None,
         gene_locus_evidence_preparation: None,

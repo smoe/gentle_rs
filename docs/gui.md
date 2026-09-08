@@ -79,6 +79,27 @@ this as a confidence map for the current GUI surface.
 
 ## Start the GUI
 
+### TATA-Box Evidence In The DNA Viewer
+
+Open **TFBS scan > TATA-box evidence**, or the matching button in
+**Sequence Tools**. This separate, resizable workspace leaves the DNA map
+available. Use the whole sequence or the current selection, inspect, then click
+a result's coordinates to locate it on the map. The table is virtualized and
+scrollable. **Add selected to DNA map** is a separate, undoable mutation; a
+changed sequence, annotation, matrix, or EPD file requires a fresh inspection.
+
+Source annotations, EPD promoter classifications and TBP model predictions have
+separate labels. EPD markers locate the TSS, not an invented exact TATA site.
+Source feature qualifiers and TSS associations are available in row hover
+details and the copied JSON. EPD source configuration is optional; a human
+GRCh38 template is provided but is never used automatically for mouse data.
+The default model is the exact JASPAR TBP `MA0108.3` PFM. By default only
+transcript-oriented motif starts at -40..-15 bp from known TSS candidates are
+scanned. **Scan without TSS restriction** explicitly scans both strands.
+Transcript 5-prime annotation boundaries are candidate TSSs, not experimental
+proof of initiation. See [the worked guide](tata_box_evidence.md) for EPD setup,
+threshold interpretation and reproducible shared commands.
+
 ```bash
 cargo run --bin gentle
 cargo run --bin gentle -- path/to/project.gentle.json

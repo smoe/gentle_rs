@@ -748,7 +748,7 @@ impl GentleEngine {
         selected_enzymes: &[String],
     ) -> Result<P53FamilyMotifDisruptionReport, EngineError> {
         const STATED_RULE: &str = "For each oriented 10-bp p53-family half-site, replace position 4 C with A and position 7 G with T (1-based within the half-site)";
-        const P53_FAMILY_MOTIFS: [&str; 3] = ["MA0861.1", "MA0106.3", "MA0525.2"];
+        const P53_FAMILY_MOTIFS: [&str; 3] = ["MA0861.2", "MA0106.3", "MA0525.2"];
 
         let normalized_sequence = sequence_text
             .chars()
@@ -4136,6 +4136,13 @@ mod tests {
         assert_eq!(report.changes.len(), 4);
         assert!(report.length_preserved);
         assert_eq!(report.pwm_audits.len(), 3);
+        let tp73_audit = report
+            .pwm_audits
+            .iter()
+            .find(|audit| audit.tf_id == "MA0861.2")
+            .expect("explicit current TP73 matrix audit");
+        assert!(tp73_audit.windows_compared > 0);
+        assert!(tp73_audit.wild_type_max_llr_bits.is_some());
         assert!(report.no_stronger_p53_family_hit_near_edit);
         assert!(
             report

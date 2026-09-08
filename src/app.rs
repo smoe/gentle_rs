@@ -2528,6 +2528,7 @@ enum CommandPaletteAction {
     OpenGibson,
     OpenMirnaTargetScan,
     OpenCrypticSplicingScreen,
+    OpenTataBoxes,
     OpenPrecomputedGenomicMotifEvidence,
     OpenGenomicRegionConservation,
     OpenEvidencePreparation,
@@ -5591,6 +5592,12 @@ Error: `{err}`"
                 action: CommandPaletteAction::OpenCrypticSplicingScreen,
             },
             CommandPaletteEntry {
+                title: "TATA-box Evidence".to_string(),
+                detail: "Inspect source annotations, EPD promoter classifications and TBP matrix predictions".into(),
+                keywords: "tata tbp promoter epd tss annotation motif".into(),
+                action: CommandPaletteAction::OpenTataBoxes,
+            },
+            CommandPaletteEntry {
                 title: "Precomputed Genomic Motif Evidence".to_string(),
                 detail: "Open an anchored DNA sequence for optional precomputed JASPAR genome-scan queries"
                     .to_string(),
@@ -5730,6 +5737,7 @@ Error: `{err}`"
             CommandPaletteAction::OpenGibson => self.open_gibson_dialog(),
             CommandPaletteAction::OpenMirnaTargetScan => self.open_mirna_target_scan_dialog(),
             CommandPaletteAction::OpenCrypticSplicingScreen => self.open_cryptic_splicing_screen(),
+            CommandPaletteAction::OpenTataBoxes => self.open_tata_box_workspace(),
             CommandPaletteAction::OpenPrecomputedGenomicMotifEvidence => {
                 self.open_precomputed_genomic_motif_evidence()
             }
@@ -8711,6 +8719,43 @@ Error: `{err}`"
         }
         self.app_status =
             format!("Opening sequence '{seq_id}' for the cryptic-splicing structural screen");
+    }
+
+    fn open_tata_box_workspace(&mut self) {
+        let seq_id = self
+            .active_dna_window_context()
+            .map(|(id, _)| id)
+            .or_else(|| self.project_sequence_ids_for_blast().first().cloned());
+        let Some(seq_id) = seq_id else {
+            self.app_status =
+                "Cannot open TATA-box evidence: no project sequence is available".into();
+            return;
+        };
+        if let Some(viewport_id) = self.find_open_sequence_viewport_id(&seq_id) {
+            let opened = self
+                .windows
+                .get(&viewport_id)
+                .cloned()
+                .and_then(|window| {
+                    window.write().ok()?.focus_tata_boxes();
+                    Some(())
+                })
+                .is_some();
+            if opened {
+                self.queue_focus_viewport(viewport_id);
+                self.app_status = format!("Opened TATA-box evidence for '{seq_id}'");
+                return;
+            }
+        }
+        if let Some(window) = self.find_pending_sequence_window_mut(&seq_id) {
+            window.focus_tata_boxes();
+        } else {
+            self.open_sequence_window(&seq_id);
+            if let Some(window) = self.find_pending_sequence_window_mut(&seq_id) {
+                window.focus_tata_boxes();
+            }
+        }
+        self.app_status = format!("Opening sequence '{seq_id}' for TATA-box evidence");
     }
 
     fn open_feature_location_editor(&mut self) {
@@ -12142,6 +12187,7 @@ Error: `{err}`"
             .map(|report| OpResult {
                 primer_group_target_design: None,
                 cryptic_splicing_screen: None,
+                tata_box_screen: None,
                 cryptic_splicing_evidence_overlay: None,
                 cryptic_splicing_protein_projection: None,
                 gene_locus_evidence_preparation: None,

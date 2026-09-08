@@ -1170,6 +1170,7 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
     area.handle_imported_sequencing_trace_result(&OpResult {
         primer_group_target_design: None,
         cryptic_splicing_screen: None,
+        tata_box_screen: None,
         cryptic_splicing_evidence_overlay: None,
         cryptic_splicing_protein_projection: None,
         gene_locus_evidence_preparation: None,
@@ -5255,6 +5256,7 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
         super::OpResult {
             primer_group_target_design: None,
             cryptic_splicing_screen: None,
+            tata_box_screen: None,
             cryptic_splicing_evidence_overlay: None,
             cryptic_splicing_protein_projection: None,
             gene_locus_evidence_preparation: None,

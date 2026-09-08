@@ -20555,6 +20555,18 @@ fn genomic_region_capability_descriptor(
     })
 }
 
+fn tata_capability_descriptor(id: &str, mutating: bool) -> Value {
+    json!({
+        "id": id, "kind": "operation", "mutating": if mutating { "true" } else { "false" },
+        "requires_confirmation": mutating,
+        "args": [{"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": if mutating { "TataBoxMaterializeRequest: screen request, reviewed report hash, selected row IDs" } else { "TataBoxScreenRequest: sequence, TSS/window policy and optional assembly-bound EPD files" }}],
+        "reads": [], "effects": if mutating { vec![json!({"effect_kind":"may_on_success", "description":"Adds only selected, hash-reviewed TATA/EPD evidence features to the loaded sequence."})] } else { vec![] },
+        "precondition_expr": {"all": []}, "annotation_status": "fact_annotated",
+        "description": if mutating { "Explicit, undoable TATA feature materialization; EPD classes mark TSSs, not invented sites." } else { "Read-only source annotations, EPD classifications and TSS-aware exact-version TBP predictions. Optional --output writes report JSON." },
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn workflow_macro_template_run_descriptor(id: &str, description: &str) -> Value {
     json!({
         "id": id,
@@ -20872,6 +20884,10 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             false,
             "Assess conserved promoter-module hypotheses through the shared read-only engine operation.",
         ),
+        tata_capability_descriptor("promoters tata-screen", false),
+        tata_capability_descriptor("ScreenTataBoxes", false),
+        tata_capability_descriptor("promoters tata-materialize", true),
+        tata_capability_descriptor("MaterializeTataBoxFeatures", true),
         json!({
             "id": "gene_isoform_assay_publication",
             "kind": "operation",
@@ -30648,7 +30664,11 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "regions render-homology-svg"
         | "RenderGenomicRegionHomologySvg"
         | "promoters assess-conserved-modules"
-        | "AssessPromoterConservedModules" => Some(vec![]),
+        | "AssessPromoterConservedModules"
+        | "promoters tata-screen"
+        | "ScreenTataBoxes"
+        | "promoters tata-materialize"
+        | "MaterializeTataBoxFeatures" => Some(vec![]),
         "DigestContainer" | "LigationContainer" | "FilterContainerByMolecularWeight" => Some(vec![
             json!({"fact": "container.exists", "subject": {"arg": "CONTAINER_ID"}}),
         ]),
@@ -34813,7 +34833,7 @@ fn expand_batch_workflows(
         .collect()
 }
 
-fn shell_quote(value: &str) -> String {
+pub(crate) fn shell_quote(value: &str) -> String {
     if value.is_empty() {
         return "''".to_string();
     }
@@ -42035,11 +42055,34 @@ fn parse_gene_groups_command(tokens: &[String]) -> Result<ShellCommand, String> 
 fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "promoters requires a subcommand: assess-conserved-modules, compose-study, compare-architectures, panel-readiness, panel-plan, panel-materialize, regulatory-panel-plan, regulatory-panel-render, regulatory-products-plan, or regulatory-products-materialize"
+            "promoters requires a subcommand: tata-screen, tata-materialize, assess-conserved-modules, compose-study, compare-architectures, panel-readiness, panel-plan, panel-materialize, regulatory-panel-plan, regulatory-panel-render, regulatory-products-plan, or regulatory-products-materialize"
                 .to_string(),
         );
     }
     match tokens[1].as_str() {
+        "tata-screen" | "tata-materialize" => {
+            if tokens.len() != 3
+                && !(tokens[1] == "tata-screen" && tokens.len() == 5 && tokens[3] == "--output")
+            {
+                return Err("promoters tata-screen REQUEST_JSON_OR_@FILE [--output REPORT.json] | promoters tata-materialize REQUEST_JSON_OR_@FILE".into());
+            }
+            let operation = if tokens[1] == "tata-screen" {
+                Operation::ScreenTataBoxes {
+                    request: parse_required_json_payload(&tokens[2], "TATA screen request")?,
+                    path: tokens.get(4).cloned(),
+                }
+            } else {
+                Operation::MaterializeTataBoxFeatures {
+                    request: parse_required_json_payload(
+                        &tokens[2],
+                        "TATA materialization request",
+                    )?,
+                }
+            };
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&operation).map_err(|e| e.to_string())?,
+            })
+        }
         "compose-study" => {
             if tokens.len() < 3 || tokens[2].starts_with("--") {
                 return Err(

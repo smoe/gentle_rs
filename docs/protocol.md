@@ -1,5 +1,51 @@
 # GENtle Engine Protocol (Draft v1)
 
+## TATA-Box Evidence
+
+`ScreenTataBoxes { request, path? }` produces the non-persisted
+`gentle.tata_box_screen.v1` report. It shares the existing LLR scorer and
+transcript-TSS derivation; it does not introduce a TATA-specific scoring formula.
+`MaterializeTataBoxFeatures { request: { screen, expected_report_sha256,
+row_ids } }` is a separate undoable mutation. It recomputes the screen, rejects
+changed evidence, and adds only the reviewed rows. Source annotations already
+exist and are not duplicated. Each new feature retains request/row JSON,
+report digest, matrix hash and EPD file hashes. EPD classifications become
+one-base promoter/TSS markers, never `TATA_box` intervals.
+
+All local coordinates are 0-based, end-exclusive. TSS positions name the first
+transcribed base; signed offsets refer to the motif's transcript-oriented first
+base (its high-coordinate base on the reverse strand), with upstream negative.
+Prediction defaults: exact TBP `MA0108.3`, minimum 6 LLR bits, motif-start offsets
+-40..-15 inclusive. The threshold is configurable and is not a significance
+test. `scan_without_tss=true` explicitly enables both-strand scanning throughout
+the requested range; no origin-spanning windows are implied on circular DNA.
+Ambiguous-base windows are counted as unscorable, not negative sites. Without
+TSS context the default prediction is not evaluated, not declared absent.
+
+Rows distinguish `source_annotation`, `epd_classification`, and
+`motif_prediction`. Existing exact INSDC `regulatory` / `TATA_box` and historical
+`TATA_signal` annotations retain all qualifiers. Compound/fuzzy site locations
+are warned about rather than assigned invented exact coordinates. Transcript
+5-prime boundaries are annotation-derived TSS candidates, not experimental TSS
+measurements; explicit TSSs retain the caller's source label.
+
+The optional EPD adapter joins published promoter BED8 and `promoter_motifs.txt`
+by exact promoter ID. Official 60-bp/11-bp display geometry is checked: TSS is
+`thickStart` on `+`, `thickEnd-1` on `-`. This is not a generic BED importer.
+EPD `TATA-box=0` is an explicit negative *classification*; missing rows stay null.
+Release, source URL, assembly, taxonomy and both file hashes are retained.
+Human hg19/GRCh37, hg38/GRCh38 and mouse mm10/GRCm38, mm39/GRCm39 resources must
+match the anchored sequence; unknown/mismatching assemblies are rejected.
+Missing optional files do not disable local annotations or predictions; a
+required source fails closed. No download occurs during inspection.
+
+`content_sha256` hashes the complete deterministic report with that field empty.
+Sequence, annotation, anchor and exact PFM hashes are separately available.
+The screen accepts at most 2 Mb and 50,000 result rows (5,000 by default); an
+overflow returns an error without silently publishing a truncated result.
+Default search evaluates merged TSS windows rather than the entire sequence.
+All interfaces use the same operations: [worked examples](tata_box_evidence.md).
+
 ## Gene-set publication report
 
 `gentle.gene_set_publication_request.v1` is the portable multi-gene publication
@@ -339,10 +385,14 @@ Behavior notes:
   - aliases such as `OCT4`
   - catalog-backed functional groups such as `Yamanaka factors` / `stemness`
   - family-like queries such as `KLF family`
-- compact motif entries without PFM rows are supplemented from the bundled
-  full-PFM table when the match is unambiguous. Consensus-derived matrices are
-  therefore a last-resort fallback, not the normal source for TFBS scoring or
-  sequence-logo display.
+- the built-in JASPAR 2026 CORE catalog carries full PFM rows for every motif.
+  Explicit runtime PFM rows take precedence. Compact entries without PFM rows
+  may use a bundled matrix only for the exact versioned ID, never a shared TF
+  name. The 2022 archive remains an exact-ID compatibility source for historical
+  compact inputs, not a source for newer model IDs. Old IDs are not aliases for
+  current versions; load the corresponding historical resource to replay them.
+  Consensus-derived matrices remain the last-resort fallback for compact
+  entries without an exact bundled match. This is not a full-PFM JASPAR score.
 - when the shell command omits an explicit range, the full selected
   `SequenceScanTarget` span is used.
 - when the target is a stored `seq_id`, the same shared report can also carry
