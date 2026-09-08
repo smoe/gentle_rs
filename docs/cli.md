@@ -7724,6 +7724,11 @@ restriction/Gibson simulation or biological validation. Source or annotation
 changes require a fresh proposal and review. Use normal sequence export for
 GenBank/FASTA files after inspecting the products.
 
+The Promoter design GUI's `Regulatory-fragment panel > Exact design products`
+controls consume these same two operations. Product approval is separate from
+panel review, and the copied GUI proposal JSON can be inspected through these
+shell routes without changing its digest.
+
 Select one candidate in-silico (explicit provenance step):
 
 ```json

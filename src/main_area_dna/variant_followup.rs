@@ -329,6 +329,8 @@ impl MainAreaDna {
             regulatory_fragment_spacing_dependence: false,
             regulatory_fragment_controlled_spacer: "GG".to_string(),
             regulatory_fragment_approval_digest: String::new(),
+            regulatory_fragment_product_prefix: format!("{token}_regulatory_design"),
+            regulatory_fragment_product_approval_digest: String::new(),
             cached_score_tracks: None,
             cached_tfbs_track_similarity: None,
             cached_report: None,
@@ -357,6 +359,8 @@ impl MainAreaDna {
             cached_promoter_reporter_panel_proposal: None,
             cached_promoter_reporter_panel_receipt: None,
             cached_regulatory_fragment_panel_plan: None,
+            cached_regulatory_fragment_products: None,
+            cached_regulatory_fragment_receipt: None,
         };
         Ok(())
     }
@@ -2517,6 +2521,7 @@ impl MainAreaDna {
     }
 
     pub(super) fn plan_variant_followup_regulatory_fragment_panel(&mut self) {
+        self.invalidate_variant_followup_regulatory_fragment_panel();
         let operation = match self.variant_followup_regulatory_fragment_panel_plan_operation(None) {
             Ok(operation) => operation,
             Err(error) => {
@@ -2549,6 +2554,7 @@ impl MainAreaDna {
             self.op_status = "Regulatory-fragment panel JSON export canceled".to_string();
             return;
         };
+        self.invalidate_variant_followup_regulatory_fragment_panel();
         let operation = match self.variant_followup_regulatory_fragment_panel_plan_operation(Some(
             path.display().to_string(),
         )) {
@@ -2562,6 +2568,132 @@ impl MainAreaDna {
         if let Some(plan) = result.and_then(|row| row.regulatory_fragment_panel_plan) {
             self.variant_followup_ui
                 .cached_regulatory_fragment_panel_plan = Some(*plan);
+        }
+    }
+
+    pub(super) fn invalidate_variant_followup_regulatory_products(&mut self) {
+        self.variant_followup_ui.cached_regulatory_fragment_products = None;
+        self.variant_followup_ui.cached_regulatory_fragment_receipt = None;
+        self.variant_followup_ui
+            .regulatory_fragment_product_approval_digest
+            .clear();
+    }
+
+    pub(super) fn invalidate_variant_followup_regulatory_fragment_panel(&mut self) {
+        self.variant_followup_ui
+            .cached_regulatory_fragment_panel_plan = None;
+        self.variant_followup_ui
+            .regulatory_fragment_approval_digest
+            .clear();
+        self.invalidate_variant_followup_regulatory_products();
+    }
+
+    pub(super) fn plan_variant_followup_regulatory_products(&mut self) {
+        self.invalidate_variant_followup_regulatory_products();
+        let Some(plan) = self
+            .variant_followup_ui
+            .cached_regulatory_fragment_panel_plan
+            .clone()
+        else {
+            self.op_status = "Plan an exact regulatory-fragment panel first".to_string();
+            return;
+        };
+        let result = self.apply_operation_with_feedback_and_result(
+            Operation::PlanRegulatoryFragmentMaterialization {
+                plan: Box::new(plan),
+                output_prefix: self
+                    .variant_followup_ui
+                    .regulatory_fragment_product_prefix
+                    .trim()
+                    .to_string(),
+            },
+        );
+        if let Some(proposal) =
+            result.and_then(|row| row.regulatory_fragment_materialization_proposal)
+        {
+            self.variant_followup_ui.cached_regulatory_fragment_products = Some(*proposal);
+        }
+    }
+
+    fn variant_followup_regulatory_product_approval(
+        &self,
+    ) -> Result<&RegulatoryFragmentMaterializationProposal, String> {
+        let proposal = self
+            .variant_followup_ui
+            .cached_regulatory_fragment_products
+            .as_ref()
+            .ok_or("Prepare exact regulatory products first")?;
+        let current_plan = self
+            .variant_followup_ui
+            .cached_regulatory_fragment_panel_plan
+            .as_ref()
+            .ok_or("Plan an exact regulatory-fragment panel first")?;
+        if proposal.plan.proposal_digest != current_plan.proposal_digest
+            || proposal.output_prefix
+                != self
+                    .variant_followup_ui
+                    .regulatory_fragment_product_prefix
+                    .trim()
+        {
+            return Err(
+                "Panel or output prefix changed; prepare and review new products".to_string(),
+            );
+        }
+        if self
+            .variant_followup_ui
+            .cached_regulatory_fragment_receipt
+            .is_some()
+        {
+            return Err(
+                "These products were already created; prepare a new proposal for another batch"
+                    .to_string(),
+            );
+        }
+        let approval_digest = self
+            .variant_followup_ui
+            .regulatory_fragment_product_approval_digest
+            .trim();
+        if approval_digest != proposal.proposal_digest {
+            return Err(
+                "Typed approval digest does not exactly match the product proposal".to_string(),
+            );
+        }
+        Ok(proposal)
+    }
+
+    pub(super) fn variant_followup_regulatory_product_materialization_operation(
+        &self,
+    ) -> Result<Operation, String> {
+        let proposal = self.variant_followup_regulatory_product_approval()?;
+        Ok(Operation::MaterializeRegulatoryFragmentPanel {
+            proposal: Box::new(proposal.clone()),
+            approval_digest: self
+                .variant_followup_ui
+                .regulatory_fragment_product_approval_digest
+                .trim()
+                .to_string(),
+        })
+    }
+
+    pub(super) fn materialize_variant_followup_regulatory_products(&mut self) {
+        let operation = match self.variant_followup_regulatory_product_materialization_operation() {
+            Ok(operation) => operation,
+            Err(error) => {
+                self.op_status = error;
+                return;
+            }
+        };
+        // Approval is single-use in the GUI, including an engine rejection of stale inputs.
+        self.variant_followup_ui
+            .regulatory_fragment_product_approval_digest
+            .clear();
+        let result = self.apply_operation_with_feedback_and_result(operation);
+        if let Some(receipt) =
+            result.and_then(|row| row.regulatory_fragment_materialization_receipt)
+        {
+            self.variant_followup_ui.cached_regulatory_fragment_receipt = Some(*receipt);
+        } else {
+            self.invalidate_variant_followup_regulatory_products();
         }
     }
 
@@ -5879,7 +6011,7 @@ impl MainAreaDna {
         let mut export_json_requested = false;
         let mut export_svg_requested = false;
         let mut inputs_changed = false;
-        egui::CollapsingHeader::new("Regulatory-fragment panel (read-only)")
+        egui::CollapsingHeader::new("Regulatory-fragment panel")
             .default_open(false)
             .show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
@@ -6272,13 +6404,12 @@ impl MainAreaDna {
                         "Panel review does not create constructs. Exact designed products require a separate materialization proposal and digest approval.",
                     );
                 }
+                if !inputs_changed && !plan_requested && !export_json_requested {
+                    self.render_variant_followup_regulatory_products(ui);
+                }
             });
         if inputs_changed {
-            self.variant_followup_ui
-                .cached_regulatory_fragment_panel_plan = None;
-            self.variant_followup_ui
-                .regulatory_fragment_approval_digest
-                .clear();
+            self.invalidate_variant_followup_regulatory_fragment_panel();
         }
         if plan_requested {
             self.plan_variant_followup_regulatory_fragment_panel();
@@ -6288,6 +6419,123 @@ impl MainAreaDna {
         }
         if export_svg_requested {
             self.export_variant_followup_regulatory_fragment_panel_svg();
+        }
+    }
+
+    pub(super) fn render_variant_followup_regulatory_products(&mut self, ui: &mut egui::Ui) {
+        ui.separator();
+        ui.strong("Exact design products");
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Output ID prefix");
+            if ui
+                .text_edit_singleline(
+                    &mut self.variant_followup_ui.regulatory_fragment_product_prefix,
+                )
+                .changed()
+            {
+                self.invalidate_variant_followup_regulatory_products();
+            }
+        });
+        let can_plan = self.engine.is_some()
+            && self
+                .variant_followup_ui
+                .cached_regulatory_fragment_panel_plan
+                .as_ref()
+                .is_some_and(|plan| plan.materialization_supported && plan.blockers.is_empty());
+        if ui
+            .add_enabled(can_plan, egui::Button::new("Prepare exact products"))
+            .clicked()
+        {
+            self.plan_variant_followup_regulatory_products();
+        }
+        if let Some(proposal) = self
+            .variant_followup_ui
+            .cached_regulatory_fragment_products
+            .as_ref()
+        {
+            ui.label(format!(
+                "{} designed products | {}",
+                proposal.products.len(),
+                proposal.method
+            ));
+            for product in &proposal.products {
+                egui::CollapsingHeader::new(format!("{} | {} bp | {}", product.output_seq_id,
+                    product.sequence_5prime_to_3prime.len(), if product.circular { "circular" } else { "linear" }))
+                    .id_salt(("regulatory_product_review", &product.output_seq_id))
+                    .show(ui, |ui| {
+                        ui.label(format!("Member: {}", product.member_id));
+                        ui.monospace(&product.sequence_sha256);
+                        ui.label(format!("{} annotations | omitted vector annotation indices: {:?}",
+                            product.features.len(), product.omitted_vector_feature_indices));
+                        ui.collapsing("Sequence (5' to 3')", |ui| {
+                            // Fixed-length lines keep full product DNA inspectable in narrow viewers.
+                            for line in product.sequence_5prime_to_3prime.as_bytes().chunks(60) {
+                                ui.add(egui::Label::new(egui::RichText::new(String::from_utf8_lossy(line)).monospace()).wrap());
+                            }
+                        });
+                        ui.collapsing("Annotations and source instances", |ui| {
+                            match serde_json::to_string_pretty(&serde_json::json!({
+                                "features": &product.features, "instances": &product.instances,
+                                "omitted_vector_feature_indices": &product.omitted_vector_feature_indices,
+                            })) {
+                                Ok(json) => { ui.add(egui::Label::new(egui::RichText::new(json).monospace()).wrap()); }
+                                Err(error) => { ui.label(format!("Could not display annotations: {error}")); }
+                            }
+                        });
+                    });
+            }
+            for nonclaim in &proposal.nonclaims {
+                ui.small(nonclaim);
+            }
+            ui.label("Product approval digest");
+            ui.add(
+                egui::Label::new(egui::RichText::new(&proposal.proposal_digest).monospace()).wrap(),
+            );
+            if ui.button("Copy product proposal JSON").clicked() {
+                match serde_json::to_string_pretty(proposal) {
+                    Ok(json) => ui.ctx().copy_text(json),
+                    Err(error) => {
+                        self.op_status = format!("Could not serialize product proposal: {error}")
+                    }
+                }
+            }
+            ui.label("Approve exact products (digest)");
+            ui.text_edit_singleline(
+                &mut self
+                    .variant_followup_ui
+                    .regulatory_fragment_product_approval_digest,
+            );
+            let can_create = self.variant_followup_regulatory_product_approval().is_ok();
+            if ui
+                .add_enabled(
+                    can_create,
+                    egui::Button::new("Create approved design products"),
+                )
+                .clicked()
+            {
+                self.materialize_variant_followup_regulatory_products();
+            }
+        }
+        if let Some(receipt) = self
+            .variant_followup_ui
+            .cached_regulatory_fragment_receipt
+            .as_ref()
+        {
+            ui.separator();
+            ui.label(format!(
+                "Created {} exact design products",
+                receipt.created_seq_ids.len()
+            ));
+            for id in &receipt.created_seq_ids {
+                ui.add(egui::Label::new(egui::RichText::new(id).monospace()).wrap());
+            }
+            ui.label(format!(
+                "Final-product audit: {:?}",
+                receipt.final_product_audit_state
+            ));
+            for nonclaim in &receipt.nonclaims {
+                ui.small(nonclaim);
+            }
         }
     }
 

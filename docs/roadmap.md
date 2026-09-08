@@ -386,8 +386,8 @@ wet-lab conclusions or unconfirmed mutations.
 - Engine-owned regulatory-reporter study composer: turn a perturbation-response
   cohort plus TSS/evidence policies into candidate ROI inputs for the downstream exact-ROI and terminal planners, feeding context-bound inspectors rather than persistent Boolean readiness.
 - Extend regulatory-fragment exact design products with explicit cloning-reaction
-  simulation and final-product QA; add dedicated GUI approval controls after
-  the shared-shell exact-product workflow receives live acceptance.
+  simulation and final-product QA; retain live GUI acceptance of exact-product
+  review, digest approval, receipt inspection and one-step undo before release.
 - Extend the promoter regulatory-partner screen beyond its exact motif-tuple
   ledger with explicit matched/background cohorts, calibrated enrichment and
   multiple-testing correction, local ontology/hallmark interpretation, and

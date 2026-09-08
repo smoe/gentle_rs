@@ -5875,7 +5875,7 @@ Tutorial projects:
     - approved materialization still recomputes the proposal through the engine
       and displays the resulting sequence IDs, artifact paths, and manifest;
       drift or an existing output path is reported rather than bypassed
-  - `Regulatory-fragment panel (read-only)` in the same window is a thin client
+  - `Regulatory-fragment panel` in the same window is a thin client
     of `PlanRegulatoryFragmentPanel` and
     `RenderRegulatoryFragmentPanelSvg`:
     - selectors bind candidate A, optional partner B, required minimal promoter,
@@ -5890,12 +5890,24 @@ Tutorial projects:
       lane with its independent state, observations, warnings, and blockers
     - JSON export reruns the same read-only planning operation; SVG export sends
       the unchanged cached plan through the shared digest-validating renderer
-    - typing the exact plan digest records review locally; exact-product
-      materialization requires a separate proposal and digest through the
-      shared Shell routes `promoters regulatory-products-plan` and
-      `promoters regulatory-products-materialize`. Dedicated approval widgets
-      are not yet offered. Source-bound external locus observations retain their
-      original typed payload in JSON and independent availability in the view.
+    - typing the exact panel digest records review locally but does not authorize
+      product creation. In `Exact design products`, enter an explicit output-ID
+      prefix and choose `Prepare exact products`; this read-only action uses
+      `PlanRegulatoryFragmentMaterialization`, also reachable through
+      `promoters regulatory-products-plan`
+    - each proposed product exposes its full DNA, topology, sequence hash,
+      annotations, source instances, and omitted vector-annotation indices;
+      `Copy product proposal JSON` copies the unchanged portable proposal
+    - `Create approved design products` requires the separate, complete product
+      digest. The shared `MaterializeRegulatoryFragmentPanel` operation rechecks
+      sources and collisions and creates all products atomically, with one undo.
+      The receipt lists output IDs and keeps final-product audit `not_evaluated`:
+      these are designed sequences, not verified cloning reactions
+    - input edits, replanning (including JSON re-export), and failed preparation
+      clear product review. A creation attempt consumes GUI approval; engine
+      rejection clears the stale proposal rather than silently rebuilding it
+    - source-bound external locus observations retain their original typed
+      payload in JSON and independent availability in the view
     - labels remain hypotheses or unresolved comparisons; the panel does not
       claim sufficiency, enhancer/silencer activity, partner dependence, or
       causal regulation

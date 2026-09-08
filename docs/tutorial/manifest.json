@@ -3191,16 +3191,16 @@
         "You need order, orientation, and spacer DNA recorded per construct rather than implied in prose.",
         "You want a bounded panel that names uncovered questions instead of silently dropping them or generating a Cartesian product.",
         "You want sequence similarity, repeats, junction uniqueness, cloning risk, and unavailable biological evidence kept in separate lanes.",
-        "You need the same content-addressed plan in GUI and CLI while ordered multi-fragment materialization remains unavailable."
+        "You need the same content-addressed plan in GUI and CLI, with exact-product creation kept behind a separate proposal and approval."
       ],
       "gui_steps": [
         "Run the offline workflow once using a new state-file path and open that saved project. It contains both the pinned locus and the synthetic vector. Reusing an already imported region-set id is deliberately rejected; use a different state file for a fresh run.",
-        "Open `regulatory_panel_locus`, choose `Promoter design`, and expand `Regulatory-fragment panel (read-only)`. Select `Candidate A tutorial span`, `Partner B tutorial span`, and `Minimal promoter-context tutorial span` for their respective roles; leave reference control empty. The selectors show coordinates and `Current` projection status; exact region-set and ROI digests are available in exported JSON.",
+        "Open `regulatory_panel_locus`, choose `Promoter design`, and expand `Regulatory-fragment panel`. Select `Candidate A tutorial span`, `Partner B tutorial span`, and `Minimal promoter-context tutorial span` for their respective roles; leave reference control empty. The selectors show coordinates and `Current` projection status; exact region-set and ROI digests are available in exported JSON.",
         "Enter loaded vector id `regulatory_panel_vector`, vector catalog id `Synthetic panel vector`, helper catalog path `docs/examples/assets/promoter_reporter_panel_demo_helper_vectors.json`, and reference release `Ensembl 116 pinned public fixture`. Enable partner, order, orientation, and spacing comparisons, enter spacer `GCGCGC`, set the member bound to eight and insert-length bound to 1,000 bp, then click `Plan exact panel`. Confirm eight members and no uncovered questions.",
         "Inspect A, B, A+B, the three explicitly requested geometry variants, and both controls. Only the controlled-spacing member should have `GCGCGC` before B; the other geometries have no spacer. GUI-generated member names and request digests may differ from the workflow's names, but these comparison geometries should agree.",
         "Expand the five sequence-computable evidence lanes. Treat `evaluated` as an assessment state, not a pass. Reference uniqueness here concerns the loaded, ROI-bound locus only, not the complete genome.",
         "Inspect Ensembl Regulation, TFBS/model-score, and CUT&RUN/chromatin lanes. All three remain `not_evaluated`; the imported coordinates are not a substitute for typed biological evidence reports.",
-        "Review the proposal digest, blockers, and non-claims. No materialize button is offered: the ordered inserts are reviewable, but the legacy single-fragment materialization contract cannot represent them.",
+        "Review the panel digest, blockers, and non-claims. This walkthrough stops at review. The separate `Exact design products` section can prepare full product sequences for another review, but creation requires that product proposal's own digest, not the panel digest. A designed molecule is not a validated cloning reaction.",
         "Export JSON and SVG. The SVG is a view of the same digest-valid plan; changing a bound region, sequence, vector, geometry, or member order requires replanning. Keep each plan with its own figure rather than substituting the CLI workflow's digest for a GUI-authored request."
       ],
       "cli_steps": [
