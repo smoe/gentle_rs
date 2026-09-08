@@ -34,6 +34,11 @@ fn release_metadata_matches_cargo_package_version() {
     );
 
     if version.contains("-internal.") {
+        let roadmap = read(root, "docs/roadmap.md");
+        assert!(
+            roadmap.contains(&format!("Current candidate: `{tag}`")),
+            "roadmap release gate must identify the current candidate {tag}"
+        );
         let release_note_relative = format!("docs/release_notes/release_notes_v{version}.md");
         let release_note = read(root, &release_note_relative);
         assert!(

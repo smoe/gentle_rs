@@ -11,14 +11,10 @@ on:
         required: true
         type: string
       linux_distribution:
-        description: 'Planned Linux distribution channel recorded as release metadata'
+        description: 'Linux artifact built and published by this workflow'
         required: false
         type: choice
         options:
-          - deferred
-          - deb
-          - appimage
-          - rpm
           - tarball
         default: tarball
 
@@ -47,10 +43,16 @@ jobs:
             bundle_format: zip
             extension: zip
             artifact_name: gentle-windows-zip
+          - os: ubuntu-24.04
+            platform: linux
+            bundle_format: tarball
+            extension: tar.gz
+            artifact_name: gentle-linux-tarball
 
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.event_name == 'release' && github.event.release.tag_name || github.ref_name }}
       CARGO_TARGET_DIR: target
+      RUST_MIN_STACK: 67108864
 
     steps:
       - name: Checkout code
@@ -62,6 +64,39 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
+
+      - name: Set up Python for release receipts
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Verify tag and package identity
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, subprocess, tomllib
+          tag = os.environ["RELEASE_TAG"].removeprefix("refs/tags/")
+          manifest = tomllib.loads(pathlib.Path("Cargo.toml").read_text())
+          version = manifest["workspace"]["package"]["version"]
+          if tag != f"v{version}":
+              raise SystemExit(f"Tag {tag} does not match package version {version}")
+          revision = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          tagged = subprocess.check_output(["git", "rev-parse", f"refs/tags/{tag}^{{commit}}"], text=True).strip()
+          if revision != tagged:
+              raise SystemExit("Checkout does not match the requested tag commit")
+          PY
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang cmake pkg-config perl \
+            libegl1-mesa-dev libfontconfig1-dev libfreetype6-dev libgbm-dev \
+            libglib2.0-dev libgl1-mesa-dev libgtk-3-dev libnss3-dev libssl-dev \
+            libwayland-dev libx11-dev libx11-xcb-dev libxcb1-dev \
+            libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libxcursor-dev libxinerama-dev libxkbcommon-dev libxi-dev libxrandr-dev
 
       - name: Cache Cargo registry
         uses: actions/cache@v4
@@ -91,6 +126,24 @@ jobs:
         if: runner.os == 'macOS'
         run: cargo install cargo-bundle --locked
 
+      - name: Build locked release binaries
+        run: cargo build --locked --release --features script-interfaces --bins
+
+      - name: Smoke published entrypoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          suffix=""
+          if [[ "${{ runner.os }}" == "Windows" ]]; then suffix=".exe"; fi
+          "${CARGO_TARGET_DIR}/release/gentle${suffix}" --version
+          "${CARGO_TARGET_DIR}/release/gentle_cli${suffix}" --help
+          "${CARGO_TARGET_DIR}/release/gentle_mcp${suffix}" --help
+          "${CARGO_TARGET_DIR}/release/gentle_js${suffix}" --version
+          "${CARGO_TARGET_DIR}/release/gentle_lua${suffix}" --version
+          "${CARGO_TARGET_DIR}/release/gentle_examples_docs${suffix}" --help
+          "${CARGO_TARGET_DIR}/release/gentle_publication_report${suffix}" --help
+          git diff --exit-code -- Cargo.lock Cargo.toml
+
       - name: Build macOS bundle
         if: runner.os == 'macOS'
         run: cargo bundle --release --features script-interfaces --bin gentle --format ${{ matrix.bundle_format }}
@@ -109,10 +162,6 @@ jobs:
             echo "Expected bundle directory ${CARGO_TARGET_DIR}/release/bundle/osx after cargo bundle"
             exit 1
           fi
-
-      - name: Build Windows binary
-        if: runner.os == 'Windows'
-        run: cargo build --release --features script-interfaces --bin gentle
 
       - name: Inspect Windows build outputs
         if: runner.os == 'Windows'
@@ -171,6 +220,36 @@ jobs:
               "$installer"
             echo "created installer:"
             ls -la "$installer"
+          elif [[ "${{ runner.os }}" == "Linux" ]]; then
+            tag="${RELEASE_TAG#refs/tags/}"
+            package="gentle-${tag}-linux-x64"
+            stage_parent="$(mktemp -d "$RUNNER_TEMP/gentle-linux.XXXXXX")"
+            stage="$stage_parent/$package"
+            mkdir -p "$stage/bin" dist
+            for binary in gentle gentle_cli gentle_mcp gentle_js gentle_lua gentle_examples_docs gentle_publication_report; do
+              install -m755 "${CARGO_TARGET_DIR}/release/$binary" "$stage/bin/$binary"
+              ldd "$stage/bin/$binary" >> "$stage/runtime-libraries.txt"
+            done
+            if grep -q 'not found' "$stage/runtime-libraries.txt"; then
+              echo "Unresolved runtime library in Linux package"
+              exit 1
+            fi
+            # Include only tracked resources, never a developer's downloaded caches.
+            git ls-files -z -- assets icons docs test_files integrations/python \
+              data/resources/affymetrix/platform_registry.json README.md CONTRIBUTING.md copyright \
+              | tar --null -T - -cf - | tar -xf - -C "$stage"
+            cp docs/linux_tarball.md "$stage/START-HERE.md"
+            git rev-parse HEAD > "$stage/REVISION"
+            printf '%s\n' "$tag" > "$stage/VERSION"
+            (
+              cd "$stage"
+              find . -type f ! -name SHA256SUMS -print0 | sort -z \
+                | xargs -0 sha256sum > SHA256SUMS
+            )
+            out_dir="${CARGO_TARGET_DIR}/release/bundle/tar"
+            mkdir -p "$out_dir"
+            installer="$out_dir/${package}.tar.gz"
+            tar -czf "$installer" -C "$stage_parent" "$package"
           else
             exe_path="${CARGO_TARGET_DIR}/release/gentle.exe"
             echo "runner.os=${{ runner.os }}"
@@ -241,9 +320,33 @@ jobs:
           Write-Host "zip_extracted_exe=$($exe.FullName)"
           Write-Host "zip_extracted_exe_size_bytes=$($exe.Length)"
 
+      - name: Smoke test Linux package
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          extract="$(mktemp -d "$RUNNER_TEMP/gentle-linux-smoke.XXXXXX")"
+          tar -xzf "${{ steps.collect.outputs.installer_path }}" -C "$extract"
+          package="$extract/gentle-${RELEASE_TAG#refs/tags/}-linux-x64"
+          test "$(cat "$package/REVISION")" = "$(git rev-parse HEAD)"
+          cd "$package"
+          sha256sum -c SHA256SUMS
+          ./bin/gentle --version
+          ./bin/gentle_cli capabilities
+          ./bin/gentle_mcp --help
+          ./bin/gentle_js --version
+          ./bin/gentle_lua --version
+          ./bin/gentle_examples_docs --help
+          ./bin/gentle_publication_report --help
+          test -s assets/genomes.json
+          test -s docs/tutorial/manifest.json
+
       - name: Normalize installer filename
         id: normalize
         shell: bash
+        env:
+          PACKAGE_PLATFORM: ${{ matrix.platform }}
+          PACKAGE_ARCH: ${{ runner.arch }}
         run: |
           set -euo pipefail
           tag="${RELEASE_TAG#refs/tags/}"
@@ -253,12 +356,29 @@ jobs:
           out_path="$out_dir/gentle-${tag}-${{ matrix.platform }}-${arch}.${{ matrix.extension }}"
           cp "${{ steps.collect.outputs.installer_path }}" "$out_path"
           echo "output_path=$out_path" >> "$GITHUB_OUTPUT"
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, subprocess
+          tag = os.environ["RELEASE_TAG"].removeprefix("refs/tags/")
+          platform = os.environ["PACKAGE_PLATFORM"]
+          arch = os.environ["PACKAGE_ARCH"].lower()
+          record = {
+              "schema": "gentle.release_build.v1", "tag": tag,
+              "revision": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+              "platform": platform, "arch": arch, "features": ["script-interfaces"],
+              "profile": "release",
+              "rustc": subprocess.check_output(["rustc", "--version"], text=True).strip(),
+              "cargo_lock_sha256": hashlib.sha256(pathlib.Path("Cargo.lock").read_bytes()).hexdigest(),
+          }
+          pathlib.Path(f"dist/gentle-{tag}-{platform}-{arch}.build.json").write_text(json.dumps(record, indent=2) + "\n")
+          PY
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: ${{ steps.normalize.outputs.output_path }}
+          path: |
+            ${{ steps.normalize.outputs.output_path }}
+            dist/*.build.json
           if-no-files-found: error
 
   publish-release:
@@ -267,8 +387,12 @@ jobs:
     needs: build-installers
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.event_name == 'release' && github.event.release.tag_name || github.ref_name }}
-      LINUX_DISTRIBUTION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.linux_distribution || 'tarball' }}
     steps:
+      - name: Set up Python for release receipts
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Download installer artifacts
         uses: actions/download-artifact@v4
         with:
@@ -286,15 +410,34 @@ jobs:
           out_dir="dist/release-meta"
           mkdir -p "$out_dir"
           out_file="$out_dir/gentle-${tag}-release-attributes.json"
-          generated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          cat > "$out_file" <<EOF
-          {
-            "schema": "gentle.release_attributes.v1",
-            "tag": "$tag",
-            "linux_distribution": "$LINUX_DISTRIBUTION",
-            "generated_at_utc": "$generated_at"
+          python3 - <<'PY'
+          import datetime, hashlib, json, os, pathlib
+          tag = os.environ["RELEASE_TAG"].removeprefix("refs/tags/")
+          receipts = [json.loads(path.read_text()) for path in pathlib.Path("dist").rglob("*.build.json")]
+          if len(receipts) != 3 or {r["platform"] for r in receipts} != {"linux", "macos", "windows"}:
+              raise SystemExit("Expected Linux, macOS and Windows build receipts")
+          revisions = {r["revision"] for r in receipts}
+          lock_hashes = {r["cargo_lock_sha256"] for r in receipts}
+          if len(revisions) != 1 or len(lock_hashes) != 1 or any(r["tag"] != tag for r in receipts):
+              raise SystemExit("Platform packages are not bound to one tag/revision")
+          artifacts = []
+          for pattern in ("*.dmg", "*.zip", "*.tar.gz"):
+              paths = list(pathlib.Path("dist").rglob(pattern))
+              if len(paths) != 1:
+                  raise SystemExit(f"Expected one release artifact for {pattern}")
+              path = paths[0]
+              with path.open("rb") as stream:
+                  digest = hashlib.file_digest(stream, "sha256").hexdigest()
+              artifacts.append({"name": path.name, "sha256": digest, "bytes": path.stat().st_size})
+          record = {
+              "schema": "gentle.release_attributes.v1", "tag": tag,
+              "revision": revisions.pop(), "linux_distribution": "tarball",
+              "cargo_lock_sha256": lock_hashes.pop(),
+              "generated_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              "artifacts": artifacts,
           }
-          EOF
+          pathlib.Path(f"dist/release-meta/gentle-{tag}-release-attributes.json").write_text(json.dumps(record, indent=2) + "\n")
+          PY
           echo "release_attributes=$out_file"
 
       - name: Publish release
@@ -304,6 +447,8 @@ jobs:
           files: |
             dist/**/*.dmg
             dist/**/*.zip
+            dist/**/*.tar.gz
+            dist/**/*.build.json
             dist/release-meta/*.json
           fail_on_unmatched_files: true
           generate_release_notes: true

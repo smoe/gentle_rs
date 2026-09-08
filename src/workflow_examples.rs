@@ -7500,6 +7500,30 @@ mod tests {
             starter_dir.path(),
         )
         .expect("run starter workflow");
+        let compact_template = starter.sequences.get("tp73_locus").expect("compact TP73");
+        assert_eq!(
+            compact_template.len(),
+            800,
+            "GUI smoke must not design on the full locus"
+        );
+        let compact_bases = compact_template.forward_bytes().to_vec();
+        let full_source = starter
+            .sequences
+            .get("simple_pcr_source_locus")
+            .expect("TP73 source");
+        assert_eq!(compact_bases, full_source.forward_bytes()[61520..62320]);
+        assert_eq!(
+            acceptance
+                .oracle
+                .seq_id_map
+                .get("tp73_locus")
+                .map(String::as_str),
+            Some("simple_pcr_template"),
+        );
+        assert!(acceptance.steps.iter().any(|step| matches!(
+            &step.interaction,
+            TutorialGuiInteraction::ReplaceText { text } if text == "=201 .. 600"
+        )));
         let starter_sequence_ids = starter.sequences.keys().cloned().collect::<HashSet<_>>();
         let starter_engine = GentleEngine::from_state(starter);
         assert_eq!(
@@ -7544,6 +7568,15 @@ mod tests {
             oracle_dir.path(),
         )
         .expect("run oracle workflow");
+        assert_eq!(
+            compact_bases,
+            oracle
+                .sequences
+                .get("simple_pcr_template")
+                .expect("oracle template")
+                .forward_bytes(),
+            "GUI and oracle must design on identical compact TP73 sequence content",
+        );
         let oracle_sequence_ids = oracle.sequences.keys().cloned().collect::<HashSet<_>>();
         for (starter_seq_id, oracle_seq_id) in &acceptance.oracle.seq_id_map {
             assert!(

@@ -36,14 +36,22 @@ Use one local committed sequence so the tutorial works offline:
 
 - [`test_files/tp73.ncbi.gb`](../../test_files/tp73.ncbi.gb)
 
-Any local sequence works, but `tp73.ncbi.gb` is a stable bundled example with
-enough annotated context to make the selection easy.
+The tutorial workflow extracts bases [61520, 62320) (0-based, end-exclusive)
+from that file into the 800-base sequence `tp73_locus`. It retains the full
+sequence as `simple_pcr_source_locus` for provenance. Open the compact extract
+for this walkthrough, not the full source. The scripted PCR oracle uses the
+same bases under the name `simple_pcr_template`.
+
+The fixed smoke selection is `=201 .. 600` in the selection formula field
+(1-based inclusive), which becomes engine ROI [200, 600). This leaves 200 bases
+on each side for primer search. It is a real TP73 interval used for teaching,
+not a validated assay or evidence of whole-genome specificity.
 
 ## Fastest Path
 
 1. open `File -> Open Tutorial Project... -> Core -> 18. Simple PCR From a Selected Core Region`
-2. keep the loaded TP73 map in linear mode
-3. drag-select one short core region of interest
+2. open the 800-base `tp73_locus` extract and keep its map in linear mode
+3. enter `=201 .. 600` in the selection formula field and apply it, or drag-select that core
 4. right-click that selection
 5. choose `Simple PCR from selection`
 6. in `PCR Designer`, adjust:
@@ -51,9 +59,9 @@ enough annotated context to make the selection easy.
    - `max amplicon`
 7. click `Design Primer Pairs`
 
-If you prefer to start without the tutorial menu, you can instead open
-[`test_files/tp73.ncbi.gb`](../../test_files/tp73.ncbi.gb) directly and follow
-the same steps.
+For the scripted starter, run the workflow linked by the executable reference
+chapter. Opening the full GenBank locus directly is a separate, larger-input
+exercise; its runtime is not covered by the bounded beginner smoke.
 
 ## Step-by-Step
 
@@ -61,15 +69,15 @@ the same steps.
 
 GUI:
 
-1. `File -> Open Sequence...`
-2. choose [`test_files/tp73.ncbi.gb`](../../test_files/tp73.ncbi.gb)
+1. open the tutorial project through the menu above
+2. open the compact `tp73_locus` sequence (800 bases)
 
 ### Step 2: Select the Core Region
 
 GUI:
 
 1. switch the DNA view to `Linear` if needed
-2. drag over the exact region that must be present in the PCR product
+2. apply `=201 .. 600` in the selection formula field, or drag over those bases
 
 This selection is your **core ROI**.
 
@@ -124,8 +132,13 @@ the existing forward/reverse side-window fields for you.
 GUI:
 
 1. keep or adjust `max amplicon`
-2. optionally reduce `max pairs` if you want a shorter result list
+2. set `max pairs` to `5` for this walkthrough
 3. click `Design Primer Pairs`
+
+`max pairs` limits the returned report, not the search effort. The 800-base
+template and its 200-base flanks bound the search here. The Linux acceptance
+runner still requires a non-empty primer report within its ten-minute compute
+budget; a timeout is a failure, not a skipped or successful tutorial.
 
 ### Step 6: Review the Result
 

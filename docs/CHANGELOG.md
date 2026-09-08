@@ -1,5 +1,22 @@
 # GENtle Changelog
 
+## 2026-09-08 - `v0.1.0-internal.11` candidate preparation
+
+- Integrated Glen's live X11 acceptance corrections from `c7f3f005` while
+  preserving native-window, focus, screenshot-provenance and typed-outcome
+  boundaries. The Simple-PCR GUI starter now uses the same 800-base TP73
+  extract as its oracle, retaining the source and explicit coordinate mapping
+  instead of designing on the full locus. Its ten-minute live gate is unchanged.
+- Aligned package metadata, roadmap and release notes on the unreleased `.11`
+  candidate. Exact-revision scientific, GUI, benchmark and packaging gates
+  remain pending; no earlier green result is promoted to candidate acceptance.
+- Added actual Ubuntu 24.04 x64 tarball construction and extracted-package
+  smoke to release CI, with tracked resources, integrity inventory and
+  revision/lockfile-bound platform receipts. Linux download availability still
+  requires a successful tagged packaging run; Debian/RPM/AppImage remain deferred.
+  `gentle_publication_report --help` now exits successfully without reading
+  inputs, supporting the non-executing release entrypoint smoke.
+
 - Corrected MCP discovery for both regulatory-product operations: their shared
   typed `op` routes are now explicitly advertised instead of missing from the
   capability surface. Regression tests retain tool confirmation, digest approval,

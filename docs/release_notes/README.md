@@ -7,7 +7,8 @@ Keep one Markdown file per internal tag in this directory.
 
 | Version | Tag date | Primary focus |
 | --- | --- | --- |
-| [`v0.1.0-internal.10`](release_notes_v0.1.0-internal.10.md) | Pending (target 2026-07-13) | TP73 genome evidence, agent introspection, probe/RNA evidence, and GUI responsiveness |
+| [`v0.1.0-internal.11`](release_notes_v0.1.0-internal.11.md) | Unreleased; exact-candidate gates pending | Saved-region Conservation, evidence-bound reporter designs, live tutorial acceptance and Linux download |
+| [`v0.1.0-internal.10`](release_notes_v0.1.0-internal.10.md) | Historical tag at `052cf125` | TP73 genome evidence, agent introspection, probe/RNA evidence, and GUI responsiveness |
 | [`v0.1.0-internal.9`](release_notes_v0.1.0-internal.9.md) | 2026-06-05 | macOS child windows, GUI profiling, ClawBio envelopes, and rack/plate exports |
 | [`v0.1.0-internal.8`](release_notes_v0.1.0-internal.8.md) | 2026-05-28 | agent-surface formalization, workspace extraction, and interim stabilization |
 | [`v0.1.0-internal.7`](release_notes_v0.1.0-internal.7.md) | 2026-05-11 | pre-refactor stability and adapter consolidation |

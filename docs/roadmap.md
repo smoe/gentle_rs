@@ -1,14 +1,7 @@
 # GENtle Roadmap
 
-Last session: 2026-09-03 - closed the reported negative-strand and MCP parity
-defects, restored the PATZ1 tutorial artifact, repaired the dedicated GUI
-benchmark target, and added a typed Simple-PCR tutorial GUI runner with
-isolated starter/oracle state and checkpoint evidence. Agent Assistant turns
-now also receive prompt-matched helper/vector catalog records, while Pi Local
-has opt-in, public-only, provenance-recorded web research without shell,
-project-file, credential, or private-network access. Final exact-revision
-PATZ1/TGFB1 GUI, Criterion, and copied-state acceptance remain before the
-unreleased `v0.1.0-internal.10` tag
+Last session: 2026-09-08 - `.11` awaits exact-candidate GUI timing, scientific
+acceptance, benchmarks and packaging. The existing `.10` tag is historical.
 
 Purpose: fast session orientation. This file answers "what next?" and should be
 readable in under two minutes. Completed work belongs in
@@ -27,17 +20,20 @@ Maintenance invariant:
 
 ## Release Gate
 
-Active next-release aim: TP73 genome-anchored evidence viewer.
+Current candidate: `v0.1.0-internal.11` (unreleased; no green-light claim).
 
-Release story: GENtle can open the public GRCh38.p14 TP73 locus and let a user
-inspect exons, introns, repeats, array/evidence tracks, prepared CUT&RUN
-intervals, paired-read ROI support, regulatory/motif-context reasoning,
-TFBS annotations, and coordinate-build provenance in the DNA viewer.
+Active aim: genome-anchored evidence, regulatory-region comparison and approved reporter designs.
 
-Smoke status: deterministic headless proofs and automated release checks are
-green-path requirements for `v0.1.0-internal.10`. Before tagging, run the
-manual DNA-viewer and Gene Locus Evidence composer smoke so the graphical
-release story is inspected as well as regenerated.
+Release story: inspect TP73 GRCh38.p14 exon, repeat, array, CUT&RUN, paired-read,
+motif and coordinate-provenance tracks, plus PATZ1 negative-strand transcript/assay
+evidence. Conservation adds saved-region request exchange, alignment navigation
+and cancellation. Reporter plans bind evidence before approved atomic materialization.
+Designed products are not validated assays; similarity does not prove sufficiency.
+
+Smoke status: headless proofs do not replace graphical acceptance. All three
+Linux chapters (branch/reverse complement, digest, compact Simple PCR) must pass,
+without waiving the ten-minute compute budget. PCR timing remains unmeasured.
+Glen validates Linux; CI owns Windows/macOS and containers.
 
 Proof path:
 
@@ -51,7 +47,7 @@ Proof path:
   occupancy, TP73 motif scoring, provenance, and assay continuation on one
   negative-strand axis.
 - [Fixture provenance and regeneration notes](../test_files/fixtures/evidence_viewer/README.md).
-- Draft [`v0.1.0-internal.10` release notes](release_notes/release_notes_v0.1.0-internal.10.md).
+- Draft [`.11` release notes and exact-candidate gate ledger](release_notes/release_notes_v0.1.0-internal.11.md).
 
 Release acceptance:
 
@@ -64,11 +60,14 @@ Release acceptance:
 - Full UCSC `rmsk`, raw CEL, full SRA, and genome downloads remain optional
   external resources; CI uses tiny local fixtures without restricting the
   engine or GUI contracts to those fixture sizes.
+- Bind all verdicts to one SHA, lockfile, toolchain/profile and input hashes;
+  rerun gates on candidate changes, never combine nearby revisions' passes.
+- CI must prove the Linux tarball, Windows ZIP, macOS DMG and both container targets.
 
 Release cut line:
 
-- `v0.1.0-internal.10` may be tagged after the automated pre-tag matrix and the
-  manual DNA-viewer/Splicing Expert locus-composer smoke are recorded.
+- Tag `.11` only after the exact-revision matrix and manual viewer/composer smoke;
+  public distribution awaits CI proof of all advertised artifacts.
 
 Pre-release finishing scope:
 
@@ -82,14 +81,13 @@ Pre-release finishing scope:
 
 ## Next Session Priorities
 
-1. Keep the TP73 evidence-viewer and PATZ1 locus-composer proof workflows green
-   and offline-safe through the `v0.1.0-internal.10` tag.
-2. Run manual GUI smoke from both runbooks: relocation, preview/exports, assay continuation,
-   bound/historical imports, reporter preservation, and both-strand selection/save/reopen/export.
-3. Review the ClawBio shell-normalizer deprecations before deciding whether any
-   compatibility modes should be removed in `v0.1.0-internal.11`.
-4. Preserve typed MCP discovery and headless/GUI parity for repeat, array, CUT&RUN V1-V3, TFBS, feature-detail and Conservation views without promoting evidence overlap into conclusions.
-   Retain live Linux/Xvfb proof of Conservation request exchange, block navigation, cancellation and shared-locus partner evidence; headless/offscreen checks are not live GUI acceptance.
+1. Have Glen measure compact Simple PCR and complete all three GUI chapters,
+   retaining typed outcomes and screenshot receipts on the exact candidate.
+2. Run the `.11` ledger: locked tests, script-enabled build/entrypoints, tutorial/parity,
+   TP73/PATZ1 and CUT&RUN/locus proofs, copied-state IRF9/Q00978, and benchmarks.
+3. Have CI prove desktop/container packaging and verify clean-tree/version/artifact identity.
+4. Retain live Conservation navigation/cancellation and partner-evidence proof;
+   keep ClawBio compatibility modes pending separate removal review.
 
 Current non-goals:
 

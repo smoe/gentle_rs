@@ -1,21 +1,25 @@
-# Release Notes / Changelog: `v0.1.0-internal.10` (draft)
+# Release Notes / Changelog: `v0.1.0-internal.10` (historical)
+
+The tag exists at `052cf125`. Validation notes below are historical records,
+not evidence for the current [`.11` candidate](release_notes_v0.1.0-internal.11.md).
+Unrecorded historical checks have not been retroactively marked passed.
 
 | Release field | Value |
 | --- | --- |
-| Status | Draft through 2026-08-29, pending automated and independent pre-tag validation |
+| Status | Tagged at `052cf125`; historical validation records retained below |
 | Target date | August 2026 |
 | Previous tag | `v0.1.0-internal.9` (2026-06-05) |
 | Primary story | Genome-anchored TP73 evidence viewer and transcript-aware primer workflows |
 | Manual GUI smoke | Required before tagging; exact candidate revision pending |
 
 This internal release covers the work after `v0.1.0-internal.9`, tagged on
-2026-06-05. Once the new tag is cut, the auditable Git comparison is:
+2026-06-05. The auditable Git comparison is:
 
 ```text
 v0.1.0-internal.9..v0.1.0-internal.10
 ```
 
-[Open the GitHub comparison after the tag is published.](https://github.com/smoe/gentle_rs/compare/v0.1.0-internal.9...v0.1.0-internal.10)
+[Open the GitHub comparison.](https://github.com/smoe/gentle_rs/compare/v0.1.0-internal.9...v0.1.0-internal.10)
 
 The main release story is a genome-anchored TP73 evidence viewer. GENtle can
 open the GRCh38.p14 TP73 locus and inspect exon and transcript structure,

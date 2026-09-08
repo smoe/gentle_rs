@@ -20,9 +20,9 @@ generated_artifact_dir: "docs/tutorial/generated/artifacts/simple_pcr_selection_
 
 # Simple PCR From a Selected Core Region
 
-Open a ready local TP73 sequence and walk through the smallest useful PCR story: select the core ROI, limit primer distance from the core, and cap the amplicon length.
+Open an 800-base local TP73 extract and walk through the smallest useful PCR story: select the core ROI, limit primer distance from the core, and cap the amplicon length.
 
-This chapter is intentionally minimal. The tutorial project opens one stable local TP73 locus so you can stay in the GUI, paint or select one region of interest, launch `Simple PCR from selection`, and reason about primer placement in beginner terms before moving on to the richer batch-PCR chapter.
+This chapter uses the 800-base interval [61520, 62320) of the committed TP73 locus, shared with the scripted PCR oracle. Open `tp73_locus`, the compact extract; `simple_pcr_source_locus` retains the full input for provenance. The fixed smoke core is extract bases 201..600 (1-based inclusive), or [200, 600) in engine coordinates. This bounds template and flank search sizes without relaxing primer rules or precomputing a GUI result.
 
 See also: guided walkthrough [docs/tutorial/04-01_simple_pcr_selection_gui.md](../../04-01_simple_pcr_selection_gui.md). Use that page first when you want a human-led path; this chapter is the executable reference.
 
@@ -60,7 +60,7 @@ See also: guided walkthrough [docs/tutorial/04-01_simple_pcr_selection_gui.md](.
 ## At a Glance
 
 1. Open File -> Open Tutorial Project... -> Core -> 18. Simple PCR From a Select...
-2. In the opened TP73 project, keep the DNA map in linear mode and drag over one...
+2. Open tp73_locus (800 bases) and select =201 .. 600 in linear mode.
 3. Right-click the selection and choose Simple PCR from selection.
 4. In PCR Designer, adjust max primer distance from core and max amplicon, then ...
 5. Run Design Primer Pairs and inspect the in-panel primer report preview for le...
@@ -79,11 +79,11 @@ CLI:
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/simple_pcr_selection_gui.json
 ```
 
-> Expected: The starter project loads local TP73 context as `tp73_locus` and pins the primer backend to the deterministic internal implementation.
+> Expected: The starter project contains the 800-base TP73 extract `tp73_locus` and its full source locus; open the extract. The primer backend is pinned to the deterministic internal implementation.
 
-### Step 2: In the opened TP73 project, keep the DNA map in linear mode and drag over one...
+### Step 2: Open tp73_locus (800 bases) and select =201 .. 600 in linear mode
 
-GUI: In the opened TP73 project, keep the DNA map in linear mode and drag over one short core region that must be included in the amplicon.
+GUI: Open `tp73_locus` (800 bases) and select `=201 .. 600` in linear mode.
 
 CLI:
 
@@ -140,7 +140,7 @@ cargo run --bin gentle_cli -- shell 'primers list-reports'
 
 ## Checkpoints
 
-- The tutorial project opens with local TP73 sequence `tp73_locus` already loaded.
+- The tutorial project contains the 800-base TP73 extract `tp73_locus`; the full source remains available for provenance.
 - A non-empty selection exposes `Simple PCR from selection` in the DNA-window context menu.
 - The PCR Designer shows the `Simple PCR starter` block.
 - After primer design, the report preview shows left/right distance from the core ROI and whether the pair cleanly flanks the core.

@@ -12,6 +12,13 @@ live under `test_files/fixtures/`.
     benchmarks used in deterministic seed-filter tests.
 - `pGEX-3X.gb`, `pGEX_3X.fa`, `tp73.ncbi.gb`:
   - historical sequence fixtures still referenced by existing tests/examples.
+  - Simple-PCR GUI acceptance uses `ExtractRegion` on the committed
+    `tp73.ncbi.gb` interval [61520, 62320) (0-based, end-exclusive), retaining
+    the original locus and its projected annotations. Recreate it with
+    `docs/examples/workflows/simple_pcr_selection_gui.json`; the scripted
+    `simple_pcr_primer_design_offline.json` oracle extracts identical bases.
+    The fixed ROI is [200, 600) of that 800-base template. This teaching
+    fixture is not a validated assay or a whole-genome specificity proof.
 - `pGEX-3X.embl`:
   - EMBL export of ENA accession `U13852` (`pGEX-3X cloning vector, complete
     sequence`) from [https://www.ebi.ac.uk/ena/browser/view/U13852](https://www.ebi.ac.uk/ena/browser/view/U13852).

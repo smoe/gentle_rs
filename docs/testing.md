@@ -413,6 +413,14 @@ selection context action, and proves creation of the closed-world
 `simple_pcr_primer_design_offline` oracle. The first main-window action is part
 of the typed contract; a harness must not rely on an unrecorded setup click.
 
+The Simple-PCR GUI starter now designs on the same 800-base TP73 extract as
+the oracle, not the full locus. Its fixed formula `=201 .. 600` creates a
+400-base core with 200-base flanks. The full locus remains only as provenance.
+`max pairs = 5` bounds report size, not search effort. The ten-minute compute
+budget is unchanged: all three smoke chapters (branch/reverse complement,
+digest, Simple PCR) must complete, and a timeout remains a failure. Rerun live
+Linux acceptance on the exact `.11` candidate before calling this smoke green.
+
 `scripts/tutorial_gui_acceptance.py` is the external Linux/X11 runner. It uses
 ordinary `xdotool` events and the read-only semantic rectangles; GENtle does
 not inject input or certify its own GUI. Before launching the GUI, the runner

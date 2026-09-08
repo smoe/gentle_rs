@@ -6,6 +6,30 @@
 use std::{fs, process::Command};
 
 #[test]
+fn publication_help_succeeds_without_inputs_or_outputs() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let binary = env!("CARGO_BIN_EXE_gentle_publication_report");
+    for flag in ["--help", "-h"] {
+        let output = Command::new(binary)
+            .arg(flag)
+            .current_dir(temp.path())
+            .output()
+            .expect("publication help");
+        assert!(output.status.success(), "{output:?}");
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains("Usage: gentle_publication_report")
+        );
+        assert!(output.stderr.is_empty());
+    }
+    let missing_inputs = Command::new(binary)
+        .current_dir(temp.path())
+        .output()
+        .expect("publication without inputs");
+    assert_eq!(missing_inputs.status.code(), Some(2));
+    assert_eq!(fs::read_dir(temp.path()).expect("read tempdir").count(), 0);
+}
+
+#[test]
 fn legacy_publication_requests_reject_isoform_projection_options() {
     let temp = tempfile::tempdir().expect("tempdir");
     let request_path = temp.path().join("legacy-request.json");

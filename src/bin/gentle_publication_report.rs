@@ -1,3 +1,5 @@
+//! Generate publication artifacts from typed requests, or show usage without loading data.
+
 use std::{env, path::Path};
 
 use gentle::gene_set_publication::{
@@ -5,12 +7,16 @@ use gentle::gene_set_publication::{
 };
 use gentle_protocol::GENE_ISOFORM_ASSAY_PUBLICATION_REQUEST_SCHEMA;
 
+const USAGE: &str = "Usage: gentle_publication_report REQUEST.json OUTPUT_DIR [--profile ID] [--blocks ID,ID] [--pdf]";
+
 fn main() {
     let args = env::args().skip(1).collect::<Vec<_>>();
+    if matches!(args.as_slice(), [flag] if flag == "--help" || flag == "-h") {
+        println!("{USAGE}");
+        return;
+    }
     if args.len() < 2 {
-        eprintln!(
-            "Usage: gentle_publication_report REQUEST.json OUTPUT_DIR [--profile ID] [--blocks ID,ID] [--pdf]"
-        );
+        eprintln!("{USAGE}");
         std::process::exit(2);
     }
     let mut generate_pdf = false;
