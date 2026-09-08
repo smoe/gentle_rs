@@ -38767,6 +38767,7 @@ impl GentleEngine {
                             )
                         };
                         vec![GenomicMotifQueryRegion {
+                            source_reference: None,
                             interval_id: format!("{}:{}..{}", seq_id, start, end),
                             label: Some(seq_id.clone()),
                             chromosome: anchor.chromosome.clone(),
@@ -38784,6 +38785,7 @@ impl GentleEngine {
                     GenomicMotifEvidenceTarget::GenomicIntervals { intervals } => intervals
                         .iter()
                         .map(|interval| GenomicMotifQueryRegion {
+                            source_reference: None,
                             interval_id: interval.interval_id.clone(),
                             label: interval.label.clone(),
                             chromosome: interval.chromosome.clone(),
@@ -38826,6 +38828,7 @@ impl GentleEngine {
                             .regions
                             .iter()
                             .map(|region| GenomicMotifQueryRegion {
+                                source_reference: Some(region.interval.reference.clone()),
                                 interval_id: region.region_id.clone(),
                                 label: region.label.clone(),
                                 chromosome: region.interval.reference.contig_name.clone(),

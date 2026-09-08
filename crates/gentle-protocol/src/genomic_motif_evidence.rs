@@ -4,6 +4,7 @@
 //! unavailable report when no package or DuckDB executable is configured;
 //! existing local motif scoring and every other GENtle workflow remain usable.
 
+use crate::GenomicRegionReference;
 use serde::{Deserialize, Serialize};
 
 pub const GENOMIC_MOTIF_EVIDENCE_SCHEMA: &str = "gentle.genomic_motif_evidence.v1";
@@ -58,6 +59,10 @@ pub enum GenomicMotifEvidenceCompatibilityStatus {
     NotAssessed,
     ContigGeometryMatchedOnly,
     ContigGeometryMismatch,
+    /// Declared assembly identity and geometry agree, not verified sequence bytes.
+    AssemblyAndContigGeometryMatched,
+    AssemblyMismatch,
+    AssemblyNotVerified,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -93,6 +98,9 @@ impl GenomicMotifEvidenceCompatibilityStatus {
             Self::NotAssessed => "not_assessed",
             Self::ContigGeometryMatchedOnly => "contig_geometry_matched_only",
             Self::ContigGeometryMismatch => "contig_geometry_mismatch",
+            Self::AssemblyAndContigGeometryMatched => "assembly_and_contig_geometry_matched",
+            Self::AssemblyMismatch => "assembly_mismatch",
+            Self::AssemblyNotVerified => "assembly_not_verified",
         }
     }
 }
@@ -250,6 +258,9 @@ pub struct GenomicMotifEvidenceMotifCoverage {
 #[serde(default)]
 pub struct GenomicMotifEvidenceResolvedRegion {
     pub interval_id: String,
+    /// Canonical saved-region reference, retained even when the provider is unavailable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_reference: Option<GenomicRegionReference>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
     pub requested_chromosome: String,
@@ -325,6 +336,45 @@ pub struct GenomicMotifEvidenceReport {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resolved_region_reference_is_additive_and_round_trips() {
+        let legacy = serde_json::json!({
+            "interval_id": "promoter",
+            "requested_chromosome": "1",
+            "start_0based": 100,
+            "end_0based_exclusive": 200,
+            "compatibility_status": "contig_geometry_matched_only"
+        });
+        let mut region: GenomicMotifEvidenceResolvedRegion =
+            serde_json::from_value(legacy).expect("legacy region without reference");
+        assert_eq!(region.source_reference, None);
+        assert!(
+            serde_json::to_value(&region)
+                .unwrap()
+                .get("source_reference")
+                .is_none()
+        );
+        region.source_reference = Some(GenomicRegionReference {
+            assembly_name: "GRCh38".to_string(),
+            assembly_accession: Some("GCA_000001405.15".to_string()),
+            contig_name: "1".to_string(),
+            ..Default::default()
+        });
+        for status in [
+            GenomicMotifEvidenceCompatibilityStatus::AssemblyAndContigGeometryMatched,
+            GenomicMotifEvidenceCompatibilityStatus::AssemblyMismatch,
+            GenomicMotifEvidenceCompatibilityStatus::AssemblyNotVerified,
+        ] {
+            region.compatibility_status = status;
+            let encoded = serde_json::to_value(&region).expect("serialize reference and status");
+            assert_eq!(encoded["compatibility_status"], status.as_str());
+            assert_eq!(
+                serde_json::from_value::<GenomicMotifEvidenceResolvedRegion>(encoded).unwrap(),
+                region
+            );
+        }
+    }
 
     #[test]
     fn stored_region_set_target_round_trips() {

@@ -12,7 +12,7 @@ use gentle_protocol::{
     GenomicMotifEvidenceHit, GenomicMotifEvidenceMotifCoverage,
     GenomicMotifEvidencePayloadProvenance, GenomicMotifEvidenceProviderProvenance,
     GenomicMotifEvidenceReport, GenomicMotifEvidenceRequest, GenomicMotifEvidenceResolvedRegion,
-    MAX_GENOMIC_MOTIF_EVIDENCE_QUERY_MOTIFS,
+    GenomicRegionReference, MAX_GENOMIC_MOTIF_EVIDENCE_QUERY_MOTIFS,
 };
 use serde_json::Value;
 use std::{
@@ -38,6 +38,7 @@ const MAX_DUCKDB_OUTPUT_BYTES: usize = 64 * 1024 * 1024;
 #[derive(Debug, Clone)]
 pub(crate) struct GenomicMotifQueryRegion {
     pub interval_id: String,
+    pub source_reference: Option<GenomicRegionReference>,
     pub label: Option<String>,
     pub chromosome: String,
     pub start_0based: u64,
@@ -112,6 +113,10 @@ fn report_id(
             "\n{}\t{}\t{}\t{}",
             region.interval_id, region.chromosome, region.start_0based, region.end_0based_exclusive
         ));
+        if let Some(reference) = &region.source_reference {
+            identity.push('\t');
+            identity.push_str(&serde_json::to_string(reference).expect("serializable reference"));
+        }
     }
     if let Some(manifest_sha256) = manifest_sha256 {
         identity.push('\n');
@@ -158,6 +163,7 @@ fn unavailable_report(
             .iter()
             .map(|region| GenomicMotifEvidenceResolvedRegion {
                 interval_id: region.interval_id.clone(),
+                source_reference: region.source_reference.clone(),
                 label: region.label.clone(),
                 requested_chromosome: region.chromosome.clone(),
                 resolved_chromosome: None,
@@ -172,6 +178,36 @@ fn unavailable_report(
             .collect(),
         warnings: vec![warning.into()],
         ..GenomicMotifEvidenceReport::default()
+    }
+}
+
+fn check_assembly_reference(
+    reference: &GenomicRegionReference,
+    package_name: Option<&str>,
+    package_accession: Option<&str>,
+) -> Result<(), GenomicMotifEvidenceCompatibilityStatus> {
+    use GenomicMotifEvidenceCompatibilityStatus::{AssemblyMismatch, AssemblyNotVerified};
+    let package_name = package_name.filter(|value| !value.trim().is_empty());
+    let package_accession = package_accession.filter(|value| !value.trim().is_empty());
+    if let Some(expected) = reference.assembly_accession.as_deref() {
+        // Exact accessions take precedence over display names; no alias or liftover inference.
+        return match package_accession {
+            Some(actual) if actual == expected && !expected.trim().is_empty() => Ok(()),
+            Some(_) => Err(AssemblyMismatch),
+            None => Err(AssemblyNotVerified),
+        };
+    }
+    if reference.assembly_name.trim().is_empty() {
+        return Err(AssemblyNotVerified);
+    }
+    if package_name == Some(reference.assembly_name.as_str())
+        || package_accession == Some(reference.assembly_name.as_str())
+    {
+        Ok(())
+    } else if package_name.is_none() && package_accession.is_none() {
+        Err(AssemblyNotVerified)
+    } else {
+        Err(AssemblyMismatch)
     }
 }
 
@@ -821,6 +857,52 @@ pub(crate) fn query_genomic_motif_evidence(
         }
     };
     let metadata = &metadata_rows[0];
+    let package_assembly_name = optional_string(metadata, "assembly_name");
+    let package_assembly_accession = optional_string(metadata, "assembly_accession");
+    let mut assembly_rejection = None;
+    for (index, region) in regions.iter().enumerate() {
+        let Some(reference) = &region.source_reference else {
+            continue;
+        };
+        if let Err(status) = check_assembly_reference(
+            reference,
+            package_assembly_name.as_deref(),
+            package_assembly_accession.as_deref(),
+        ) {
+            let report = assembly_rejection.get_or_insert_with(|| {
+                unavailable_report(
+                    request,
+                    regions,
+                    GenomicMotifEvidenceAvailability::IncompatiblePackage,
+                    "Saved-region assembly validation failed; no motif payloads were read and local GENtle TFBS scoring remains available",
+                )
+            });
+            report.regions[index].compatibility_status = status;
+            report.warnings.push(format!(
+                "Interval '{}': {}: saved assembly '{}' accession {:?}; package assembly {:?} accession {:?}",
+                region.interval_id, status.as_str(), reference.assembly_name,
+                reference.assembly_accession, package_assembly_name, package_assembly_accession,
+            ));
+        }
+    }
+    if let Some(mut report) = assembly_rejection {
+        report.provider = Some(provider_provenance(
+            &paths,
+            &executable,
+            version_output,
+            metadata,
+            &[],
+        )?);
+        report.report_id = report_id(
+            request,
+            regions,
+            report
+                .provider
+                .as_ref()
+                .map(|provider| provider.declared_content_fingerprint_sha256.as_str()),
+        );
+        return Ok(report);
+    }
     let package_genome_id = required_string(metadata, "genome_id")?;
     if let Some(expected) = request
         .expected_genome_id
@@ -919,7 +1001,9 @@ pub(crate) fn query_genomic_motif_evidence(
                 (
                     Some(chromosome),
                     Some(length),
-                    if anchor_geometry_ok {
+                    if anchor_geometry_ok && region.source_reference.is_some() {
+                        GenomicMotifEvidenceCompatibilityStatus::AssemblyAndContigGeometryMatched
+                    } else if anchor_geometry_ok {
                         GenomicMotifEvidenceCompatibilityStatus::ContigGeometryMatchedOnly
                     } else {
                         GenomicMotifEvidenceCompatibilityStatus::ContigGeometryMismatch
@@ -942,6 +1026,7 @@ pub(crate) fn query_genomic_motif_evidence(
         }
         resolved_regions.push(GenomicMotifEvidenceResolvedRegion {
             interval_id: region.interval_id.clone(),
+            source_reference: region.source_reference.clone(),
             label: region.label.clone(),
             requested_chromosome: region.chromosome.clone(),
             resolved_chromosome,
@@ -966,8 +1051,11 @@ pub(crate) fn query_genomic_motif_evidence(
         return Ok(report);
     }
     let regions_complete = resolved_regions.iter().all(|region| {
-        region.compatibility_status
-            == GenomicMotifEvidenceCompatibilityStatus::ContigGeometryMatchedOnly
+        matches!(
+            region.compatibility_status,
+            GenomicMotifEvidenceCompatibilityStatus::ContigGeometryMatchedOnly
+                | GenomicMotifEvidenceCompatibilityStatus::AssemblyAndContigGeometryMatched
+        )
     });
 
     let selected_chromosomes = query_regions
@@ -1159,6 +1247,15 @@ pub(crate) fn query_genomic_motif_evidence(
                 .to_string(),
         );
     }
+    if resolved_regions
+        .iter()
+        .any(|region| region.source_reference.is_some())
+    {
+        warnings.push(
+            "Saved-region compatibility checks declared assembly identity and contig geometry, not per-contig sequence SHA-256 or gene-annotation release"
+                .to_string(),
+        );
+    }
     let content_fingerprint = declared_content_fingerprint(&paths, &inventory_rows);
     Ok(GenomicMotifEvidenceReport {
         schema: GENOMIC_MOTIF_EVIDENCE_SCHEMA.to_string(),
@@ -1242,6 +1339,7 @@ mod tests {
     fn test_region(id: &str, chromosome: &str, start: u64, end: u64) -> GenomicMotifQueryRegion {
         GenomicMotifQueryRegion {
             interval_id: id.to_string(),
+            source_reference: None,
             label: None,
             chromosome: chromosome.to_string(),
             start_0based: start,
@@ -1254,6 +1352,225 @@ mod tests {
             source_anchor_end_1based: None,
             source_anchor_reverse: false,
         }
+    }
+
+    #[test]
+    fn assembly_reference_requires_exact_declared_identity() {
+        use GenomicMotifEvidenceCompatibilityStatus::{AssemblyMismatch, AssemblyNotVerified};
+        for (name, accession, package_name, package_accession, expected) in [
+            ("GRCh38", None, Some("GRCh38"), None, Ok(())),
+            (
+                "hg38",
+                Some("GCA_000001405.15"),
+                Some("GRCh38"),
+                Some("GCA_000001405.15"),
+                Ok(()),
+            ),
+            (
+                "GRCh38",
+                Some("GCA_000001405.14"),
+                Some("GRCh38"),
+                Some("GCA_000001405.15"),
+                Err(AssemblyMismatch),
+            ),
+            (
+                "GRCh38",
+                Some("GCA_000001405.15"),
+                Some("GRCh38"),
+                None,
+                Err(AssemblyNotVerified),
+            ),
+            ("GRCh38", None, None, None, Err(AssemblyNotVerified)),
+            (
+                "GRCh38",
+                None,
+                Some(" "),
+                Some(""),
+                Err(AssemblyNotVerified),
+            ),
+            ("", None, Some("GRCh38"), None, Err(AssemblyNotVerified)),
+            ("GRCm39", None, Some("GRCh38"), None, Err(AssemblyMismatch)),
+            ("hg38", None, Some("GRCh38"), None, Err(AssemblyMismatch)),
+            (
+                "GCA_000001405.15",
+                None,
+                Some("GRCh38"),
+                Some("GCA_000001405.15"),
+                Ok(()),
+            ),
+        ] {
+            let reference = GenomicRegionReference {
+                assembly_name: name.to_string(),
+                assembly_accession: accession.map(str::to_string),
+                ..Default::default()
+            };
+            assert_eq!(
+                check_assembly_reference(&reference, package_name, package_accession),
+                expected,
+                "{reference:?} against {package_name:?} / {package_accession:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn report_identity_binds_saved_reference_even_without_a_package() {
+        let request = GenomicMotifEvidenceRequest::default();
+        let mut region = test_region("region-1", "1", 10, 30);
+        region.source_reference = Some(GenomicRegionReference {
+            assembly_name: "GRCh38".to_string(),
+            contig_name: "1".to_string(),
+            ..Default::default()
+        });
+        let first = report_id(&request, &[region.clone()], None);
+        region.source_reference.as_mut().unwrap().assembly_name = "GRCm39".to_string();
+        assert_ne!(first, report_id(&request, &[region], None));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn stored_region_shell_query_checks_assembly_before_payload_reads() {
+        use crate::engine::GentleEngine;
+        use crate::engine_shell::{ShellCommand, execute_shell_command, parse_shell_line};
+        use gentle_protocol::GenomicMotifEvidenceTarget;
+
+        for (assembly_name, accession, compatible) in [
+            ("GRCh38", None, true),
+            ("hg38", Some("GCA_000001405.15"), true),
+            ("GRCh38", Some("GCA_000001405.14"), false),
+            ("GRCm39", None, false),
+        ] {
+            let (package, executable) = synthetic_package_with_fake_duckdb();
+            let reference = GenomicRegionReference {
+                assembly_name: assembly_name.to_string(),
+                assembly_accession: accession.map(str::to_string),
+                contig_name: "1".to_string(),
+                ..Default::default()
+            };
+            let create = serde_json::json!({
+                "set_id": "targets", "region_id": "region-1",
+                "interval": {"reference": reference, "start_0based": 10, "end_0based_exclusive": 30}
+            });
+            let mut engine = GentleEngine::default();
+            execute_shell_command(
+                &mut engine,
+                &parse_shell_line(&format!("regions create '{create}'")).expect("parse create"),
+            )
+            .expect("save synthetic region");
+            let before = serde_json::to_value(engine.state()).unwrap();
+            let result = execute_shell_command(
+                &mut engine,
+                &ShellCommand::FeaturesGenomicMotifEvidence {
+                    request: GenomicMotifEvidenceRequest {
+                        package_root: Some(package.path().display().to_string()),
+                        duckdb_executable: Some(executable.display().to_string()),
+                        // A matching explicit genome id must not override a saved assembly mismatch.
+                        expected_genome_id: Some("synthetic_grch38".to_string()),
+                        target: GenomicMotifEvidenceTarget::StoredRegionSet {
+                            region_set_id: "targets".to_string(),
+                        },
+                        motif_ids: vec!["MA0525.2".to_string()],
+                        ..Default::default()
+                    },
+                    path: None,
+                },
+            )
+            .expect("typed provider report");
+            assert!(!result.state_changed);
+            assert_eq!(before, serde_json::to_value(engine.state()).unwrap());
+            let report: GenomicMotifEvidenceReport =
+                serde_json::from_value(result.output["report"].clone()).expect("portable report");
+            assert_eq!(
+                report.regions[0].source_reference.as_ref(),
+                Some(&reference)
+            );
+            let queries = fs::read_to_string(package.path().join("queries.log")).unwrap();
+            if compatible {
+                assert_eq!(
+                    report.availability,
+                    GenomicMotifEvidenceAvailability::Available
+                );
+                assert_eq!(
+                    report.regions[0].compatibility_status,
+                    GenomicMotifEvidenceCompatibilityStatus::AssemblyAndContigGeometryMatched
+                );
+                assert!(report.query_complete);
+                assert_eq!(report.hits.len(), 2);
+                assert!(queries.contains("motif_hit_files"));
+            } else {
+                assert_eq!(
+                    report.availability,
+                    GenomicMotifEvidenceAvailability::IncompatiblePackage
+                );
+                assert_eq!(
+                    report.regions[0].compatibility_status,
+                    GenomicMotifEvidenceCompatibilityStatus::AssemblyMismatch
+                );
+                assert!(report.hits.is_empty());
+                assert!(!report.query_complete);
+                assert_eq!(report.selected_payload_file_count, 0);
+                assert_eq!(
+                    queries.lines().count(),
+                    1,
+                    "only package metadata may be queried"
+                );
+                assert!(
+                    report
+                        .provider
+                        .as_ref()
+                        .unwrap()
+                        .selected_payloads
+                        .is_empty()
+                );
+                assert!(
+                    report
+                        .warnings
+                        .iter()
+                        .any(|warning| warning.contains("region-1")
+                            && warning.contains(assembly_name))
+                );
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn missing_package_assembly_accession_does_not_fall_back_to_geometry() {
+        let (package, executable) = synthetic_package_with_fake_duckdb();
+        let script = fs::read_to_string(&executable).unwrap().replace(
+            r#""assembly_accession":"GCA_000001405.15""#,
+            r#""assembly_accession":null"#,
+        );
+        fs::write(&executable, script).unwrap();
+        let request = GenomicMotifEvidenceRequest {
+            package_root: Some(package.path().display().to_string()),
+            duckdb_executable: Some(executable.display().to_string()),
+            motif_ids: vec!["MA0525.2".to_string()],
+            ..Default::default()
+        };
+        let mut region = test_region("region-1", "1", 10, 30);
+        region.source_reference = Some(GenomicRegionReference {
+            assembly_name: "GRCh38".to_string(),
+            assembly_accession: Some("GCA_000001405.15".to_string()),
+            contig_name: "1".to_string(),
+            ..Default::default()
+        });
+        let report = query_genomic_motif_evidence(&request, &[region]).unwrap();
+        assert_eq!(
+            report.availability,
+            GenomicMotifEvidenceAvailability::IncompatiblePackage
+        );
+        assert_eq!(
+            report.regions[0].compatibility_status,
+            GenomicMotifEvidenceCompatibilityStatus::AssemblyNotVerified
+        );
+        assert!(report.hits.is_empty());
+        assert_eq!(
+            fs::read_to_string(package.path().join("queries.log"))
+                .unwrap()
+                .lines()
+                .count(),
+            1
+        );
     }
 
     #[test]
@@ -1307,6 +1624,7 @@ if [ "$1" = "--version" ]; then
   printf '%s\n' 'DuckDB synthetic 1.0'
   exit 0
 fi
+printf '%s\n' "$5" >> "${0%/*}/queries.log"
 case "$5" in
   *"FROM scan_run r"*)
     printf '%s\n' '[{"run_id":"synthetic_run","genome_id":"synthetic_grch38","motif_set_id":"synthetic_jaspar","score_mode":"log2_relative_risk","pseudocount":1.0,"pseudocount_scheme":"additive_per_base","background_model_id":"uniform_acgt_v1","minimum_pwm_relative_score":null,"maximum_pwm_relative_score":null,"coordinate_mode":"bed_0based_half_open","n_policy":"skip","matched_sequence_policy":"forward_reference","assembly_name":"GRCh38","assembly_accession":"GCA_000001405.15","ensembl_release":"116","jaspar_version":"2026"}]'
@@ -1346,6 +1664,7 @@ esac
         };
         let regions = vec![GenomicMotifQueryRegion {
             interval_id: "region-1".to_string(),
+            source_reference: None,
             label: None,
             chromosome: "1".to_string(),
             start_0based: 10,
@@ -1366,6 +1685,7 @@ esac
     fn reverse_anchor_maps_forward_reference_hit_to_local_coordinates() {
         let region = GenomicMotifQueryRegion {
             interval_id: "reverse".to_string(),
+            source_reference: None,
             label: None,
             chromosome: "22".to_string(),
             start_0based: 1_000,
@@ -1463,6 +1783,7 @@ esac
         let regions = vec![GenomicMotifQueryRegion {
             interval_id: "region-1".to_string(),
             label: None,
+            source_reference: None,
             chromosome: "1".to_string(),
             start_0based: 10,
             end_0based_exclusive: 20,
@@ -1497,6 +1818,7 @@ esac
         let regions = vec![GenomicMotifQueryRegion {
             interval_id: "region-1".to_string(),
             label: Some("synthetic target".to_string()),
+            source_reference: None,
             chromosome: "chr1".to_string(),
             start_0based: 10,
             end_0based_exclusive: 30,
@@ -1644,6 +1966,7 @@ esac
         let regions = vec![GenomicMotifQueryRegion {
             interval_id: "region-1".to_string(),
             label: None,
+            source_reference: None,
             chromosome: "1".to_string(),
             start_0based: 10,
             end_0based_exclusive: 20,

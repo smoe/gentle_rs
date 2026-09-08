@@ -20503,6 +20503,7 @@ fn execute_genomic_motif_evidence_keeps_missing_provider_optional_and_read_only(
         .expect("parse saved region"),
     )
     .expect("create saved region");
+    let before_stored_query = serde_json::to_value(engine.state()).unwrap();
     let stored = execute_shell_command(
         &mut engine,
         &parse_shell_line(&format!(
@@ -20513,6 +20514,14 @@ fn execute_genomic_motif_evidence_keeps_missing_provider_optional_and_read_only(
     )
     .expect("stored region set resolves through optional provider");
     assert!(!stored.state_changed);
+    assert_eq!(
+        before_stored_query,
+        serde_json::to_value(engine.state()).unwrap()
+    );
+    assert_eq!(
+        stored.output["report"]["regions"][0]["source_reference"]["assembly_name"],
+        "GRCh38"
+    );
     assert_eq!(
         stored.output["report"]["regions"][0]["interval_id"].as_str(),
         Some("promoter")

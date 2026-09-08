@@ -4758,6 +4758,12 @@ Shared shell command:
         forms are mutually exclusive
       - explicit intervals may be labelled, for example
         `--region TP73=1:3652515..3653715 --region PATZ1=22:31320000..31322000`
+      - saved region sets retain their assembly reference in every report row.
+        Before any hit query, a saved assembly accession must exactly match the
+        package accession; without one, the saved assembly name must match the
+        package name or accession. Missing identity or a mismatch returns
+        `incompatible_package` with no hits. `--genome-id` cannot override this
+        check, and mixed-assembly saved sets are rejected by the region store
       - requires 1-64 explicit JASPAR matrix IDs; `ALL` and `*` are refused
         because a sparse all-motif viewport query would open thousands of
         Parquet partitions
@@ -4780,9 +4786,9 @@ Shared shell command:
         policy and are not numerically interchangeable with GENtle's local
         score tracks; the two sources remain separate evidence lanes
       - the package's Ensembl release describes source FASTA provenance, not a
-        gene-annotation model. Version 1 compatibility is therefore limited to
-        contig aliases, interval containment, and anchor geometry unless a
-        future resource contract supplies matching per-contig sequence hashes
+        gene-annotation model. Saved sets additionally verify declared assembly
+        identity, but neither that check nor contig aliases, containment, and
+        anchor geometry establish matching per-contig sequence hashes
       - examples:
         - `gentle_cli shell 'features genomic-motif-evidence tp73_context --motif MA0861.2 --range 15564..16764 --path /tmp/tp73_precomputed_tfbs.json'`
         - `gentle_cli shell 'features genomic-motif-evidence --motif MA0861.2 --motif MA0525.2 --region TP73=1:3652515..3653715 --region PATZ1=22:31320000..31322000 --path /tmp/tp73_patz1_precomputed_tfbs.json'`

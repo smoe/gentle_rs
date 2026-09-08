@@ -88,6 +88,8 @@ Pre-release finishing scope:
 3. Have CI prove desktop/container packaging and verify clean-tree/version/artifact identity.
 4. Retain live Conservation navigation/cancellation and partner-evidence proof;
    keep ClawBio compatibility modes pending separate removal review.
+5. Validate DuckDB real-Parquet boundaries/limits and scan filters; address GUI
+   staleness when the selected package changes.
 
 Current non-goals:
 

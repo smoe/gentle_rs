@@ -17,6 +17,13 @@
   `gentle_publication_report --help` now exits successfully without reading
   inputs, supporting the non-executing release entrypoint smoke.
 
+- Saved-region genomic motif queries now preserve assembly references in their
+  reports and report identities, validate them against the optional DuckDB
+  package before reading hits, and return explicit incompatible/unverified
+  assembly states without partial evidence. Matching genome ids cannot bypass
+  the reference check. Focused protocol, provider and shared-shell regressions
+  cover compatibility, missing identity, mixed-set rejection and read-only state.
+
 - Corrected MCP discovery for both regulatory-product operations: their shared
   typed `op` routes are now explicitly advertised instead of missing from the
   capability surface. Regression tests retain tool confirmation, digest approval,
