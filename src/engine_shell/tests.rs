@@ -442,6 +442,10 @@ fn promoters_regulatory_panel_routes_parse_typed_request_and_plan() {
         ))
         .is_err()
     );
+    let error =
+        parse_shell_line("promoters regulatory-products-materialize '{}' --approve sha256:exact")
+            .expect_err("materialization requires a typed proposal, not an empty object");
+    assert!(error.contains("missing field `schema`"));
 }
 
 #[test]
@@ -845,6 +849,15 @@ fn smoke_command_override(path: &str) -> Option<&'static str> {
         "primers import-external-pairs" => {
             Some("primers import-external-pairs out.json demo 1 --specificity-target-genome demo")
         }
+        // Parser-only synthetic proposal; execution still requires a reviewed design.
+        "promoters regulatory-products-materialize" => Some(concat!(
+            "promoters regulatory-products-materialize '",
+            r#"{"schema":"gentle.regulatory_fragment_materialization_proposal.v1","#,
+            r#""proposal_digest":"sha256:smoke","plan":{},"output_prefix":"smoke","#,
+            r#""method":"exact_insertion_context_replacement_v1","#,
+            r#""vector_features_sha256":"sha256:annotations","products":[],"nonclaims":[]}"#,
+            "' --approve sha256:smoke",
+        )),
         "arrays probe-regions" => Some("arrays probe-regions --cel demo --gene demo"),
         "cutrun inspect-regulatory-support" => {
             Some("cutrun inspect-regulatory-support seq --dataset dataset")
