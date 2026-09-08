@@ -5583,6 +5583,12 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub regulatory_fragment_panel_plan: Option<Box<RegulatoryFragmentPanelPlan>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub regulatory_fragment_materialization_proposal:
+        Option<Box<RegulatoryFragmentMaterializationProposal>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub regulatory_fragment_materialization_receipt:
+        Option<Box<RegulatoryFragmentMaterializationReceipt>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub promoter_reporter_panel_readiness: Option<Box<PromoterReporterPanelReadinessReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub promoter_reporter_panel_receipt: Option<Box<PromoterReporterPanelReceipt>>,
@@ -10595,11 +10601,14 @@ pub enum RegulatoryFragmentEvidenceDimensionKind {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
-/// Exact external report row that a later evidence-population slice may evaluate.
+/// Exact external report citation, optionally resolved from a bound locus document.
 pub struct RegulatoryFragmentEvidenceBinding {
     pub dimension: RegulatoryFragmentEvidenceDimensionKind,
     pub report_id: String,
     pub report_sha256: String,
+    /// Exact file bytes are hash-checked before parsing. Omission retains a citation only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub row_id: Option<String>,
 }
@@ -10902,6 +10911,14 @@ pub enum RegulatoryFragmentEvidenceState {
 #[serde(tag = "observation_kind", rename_all = "snake_case")]
 /// Typed, deterministic evidence retained inside one panel evidence lane.
 pub enum RegulatoryFragmentEvidenceObservation {
+    ExternalLocusContext {
+        report_id: String,
+        report_sha256: String,
+        row_id: String,
+        fragment_ids: Vec<String>,
+        state: RegulatoryFragmentEvidenceState,
+        evidence: Box<RegulatoryFragmentExternalEvidence>,
+    },
     ReferenceGenomicUniqueness {
         observation_id: String,
         fragment_id: String,
@@ -10957,6 +10974,15 @@ pub enum RegulatoryFragmentEvidenceObservation {
         selected_strategy: PromoterReporterPanelCloningStrategy,
         detail: String,
     },
+}
+
+/// Original typed source context, without converting overlap or score into activity.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "source_kind", content = "content", rename_all = "snake_case")]
+pub enum RegulatoryFragmentExternalEvidence {
+    EnsemblRegulation(gentle_protocol::GeneLocusEnsemblRegulationEvidence),
+    RegulatoryScore(gentle_protocol::GeneLocusRegulatoryScoreTrack),
+    Occupancy(gentle_protocol::GeneLocusOccupancyLane),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -11021,6 +11047,49 @@ pub struct RegulatoryFragmentPanelPlan {
     #[serde(default)]
     pub warnings: Vec<RegulatoryFragmentFinding>,
     #[serde(default)]
+    pub nonclaims: Vec<String>,
+}
+
+/// Exact designed product. Vector features outside the replaced context are retained;
+/// ordered instance/spacer features carry source provenance, not inferred function.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RegulatoryFragmentDesignedProduct {
+    pub member_id: String,
+    pub output_seq_id: String,
+    pub sequence_5prime_to_3prime: String,
+    pub sequence_sha256: String,
+    pub circular: bool,
+    pub features: Vec<gb_io::seq::Feature>,
+    pub omitted_vector_feature_indices: Vec<usize>,
+    pub instances: Vec<RegulatoryFragmentResolvedInstance>,
+}
+
+/// Separately approved exact design materialization; no PCR, digest or ligation implied.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RegulatoryFragmentMaterializationProposal {
+    pub schema: String,
+    pub proposal_digest: String,
+    pub plan: Box<RegulatoryFragmentPanelPlan>,
+    pub output_prefix: String,
+    pub method: String,
+    /// All source vector annotations, including those omitted from a product.
+    pub vector_features_sha256: String,
+    pub products: Vec<RegulatoryFragmentDesignedProduct>,
+    pub nonclaims: Vec<String>,
+}
+
+/// Receipt retained in project metadata and returned identically through all adapters.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RegulatoryFragmentMaterializationReceipt {
+    pub schema: String,
+    pub approved_proposal_digest: String,
+    pub plan_digest: String,
+    pub created_seq_ids: Vec<String>,
+    pub product_sequence_sha256: BTreeMap<String, String>,
+    pub final_product_audit_state: RegulatoryFragmentFinalProductAuditState,
     pub nonclaims: Vec<String>,
 }
 

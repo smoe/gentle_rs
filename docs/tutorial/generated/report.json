@@ -101,9 +101,9 @@
     "artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.synthetic_vector.svg": "c6425417640b6cedbea7f885a6662f908103717aecbc9af293879c7d2428fb07",
     "artifacts/regulatory_fragment_panel_planning_offline/artifacts/regulatory_fragment_panel.locus.svg": "649dd807040d56a4b2e366c94d4b25edf1a3e2e3ac65a1c50b2f69408b20bd40",
     "chapters/01-02_contribute_to_gentle_development.md": "af1a3a79267e801651bd639af531acee1fd23ae6c14c80c295324a57df3bf3f6",
-    "chapters/02-01_load_branch_reverse_complement_pgex_fasta.md": "e7eee4c3644965810d4d6d90388ae4952a07256be01f6e9abc9c47eb77bf1429",
+    "chapters/02-01_load_branch_reverse_complement_pgex_fasta.md": "30e7027c5f89dc2e7a7d1fd9fa2f6fbcd193f5dcbf990dfebe0e8872ee35aa0c",
     "chapters/02-04_tp73_cdna_genomic_dotplot_online.md": "432ba5870f9fff57f983e2df06445248c4bb3be45f9b9c8e7e8d46809e548b7c",
-    "chapters/03-01_load_and_digest_pgex.md": "1fd372e80c00c3a03af9ad6deeba3214ca43c98c405192157742b7c107687d2a",
+    "chapters/03-01_load_and_digest_pgex.md": "3fee1c17785d92bcc7c610add78fbbc6dcfff4397f6e0aa2eca63ada396ee653",
     "chapters/03-02_digest_ligation_extract_region_minimal.md": "c9050de9bd2081050fa2f6017fc1c25d3aac5144cf76a1fc54b9af2e0078dd68",
     "chapters/03-03_gibson_two_fragment_overlap_preview.md": "a05f71df0cc551e64fdcc8a3a486a9f543d377e5fd50d5979e56aa61c94f3058",
     "chapters/03-04_gibson_specialist_testing_baseline.md": "812504833cae0b52a43bceb26d448059f323e5beca8a8ac1f4d7b13b646da456",
@@ -126,7 +126,7 @@
     "chapters/08-08_gene_set_ortholog_promoter_cohorts_offline.md": "fb334f0f59d7795cb89f872570f7d3200e7e6ec125349bdee0155fd80e4540f3",
     "chapters/08-09_promoter_reporter_panel_planning_offline.md": "b5aa8d61d9e7534d99d431c4859853a3f34f7b6a138261d1c42449fce36e5eea",
     "chapters/08-10_portable_genomic_regions_offline.md": "460065d64c04468409ae19df2dcf44af1f2d36dfa7d811aad0832374af90992a",
-    "chapters/08-11_regulatory_fragment_panel_planning_offline.md": "778cbed807b1706decd8b58291479d11fd73e29f530f19c5f1fe4fb554f86a3f",
+    "chapters/08-11_regulatory_fragment_panel_planning_offline.md": "fabe605806586caa5ea8831f86f0ad2d03e88ba92943353a5d2abacb3540fa21",
     "chapters/08-12_region_homology_promoter_modules_offline.md": "b9b478b4179b78129a2a24158b9a39804a7d3c660f0e7b612c45ed1793857e24"
   },
   "warnings": [

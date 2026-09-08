@@ -1296,6 +1296,8 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
         promoter_reporter_panel_proposal: None,
         regulatory_reporter_study: None,
         regulatory_fragment_panel_plan: None,
+        regulatory_fragment_materialization_proposal: None,
+        regulatory_fragment_materialization_receipt: None,
         promoter_reporter_panel_readiness: None,
         promoter_reporter_panel_receipt: None,
         uniprot_projection_audit: None,
@@ -5364,6 +5366,8 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
             promoter_reporter_panel_proposal: None,
             regulatory_reporter_study: None,
             regulatory_fragment_panel_plan: None,
+            regulatory_fragment_materialization_proposal: None,
+            regulatory_fragment_materialization_receipt: None,
             promoter_reporter_panel_readiness: None,
             promoter_reporter_panel_receipt: None,
             uniprot_projection_audit: None,
@@ -11706,7 +11710,7 @@ fn variant_followup_regulatory_fragment_panel_runs_on_expanded_stack() {
     );
     assert_eq!(plan.plan_id, "gui_regulatory_panel");
     assert!(plan.proposal_digest.starts_with("sha256:"));
-    assert!(!plan.materialization_supported);
+    assert!(plan.materialization_supported);
     assert!(
         plan.evidence_dimensions
             .iter()

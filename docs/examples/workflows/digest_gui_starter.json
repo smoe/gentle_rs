@@ -1,0 +1,12 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "digest_gui_starter",
+  "title": "Digest tutorial starter, before restriction digestion",
+  "summary": "Loads only the existing annotated pGEX fixture, without any digest products.",
+  "test_mode": "always",
+  "required_files": ["test_files/pGEX-3X.gb"],
+  "tags": ["offline", "gui-acceptance", "starter"],
+  "workflow": {"run_id": "digest_gui_starter", "ops": [
+    {"LoadFile": {"path": "test_files/pGEX-3X.gb", "as_id": "pgex"}}
+  ]}
+}

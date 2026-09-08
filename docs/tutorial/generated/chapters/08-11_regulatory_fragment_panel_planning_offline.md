@@ -68,7 +68,7 @@ This offline example uses a pinned public Ensembl-116 SERPINE1 locus only as a r
 - Recognize deterministic minimal coverage as different from a full Cartesian construct library.
 - Keep sequence, cloning, provider annotation, motif-model, and occupancy evidence in separate states and never turn `not_evaluated` into a pass.
 - Use the same read-only operation through the Promoter design GUI and `promoters regulatory-panel-*` shell routes.
-- Understand why digest review does not authorize biology and why v1 deliberately stops before ordered multi-fragment materialization.
+- Understand why panel review does not authorize biology or mutation: creating ordered multi-fragment products requires a separate exact-product proposal and approval, while cloning and functional validation remain separate.
 
 ## Applied Concepts
 
@@ -181,7 +181,7 @@ CLI:
 jq '{proposal_digest,approval_required,materialization_supported,blockers,warnings,nonclaims}' artifacts/regulatory_fragment_panel.plan.json
 ```
 
-> Expected: The plan requires review under its exact digest but reports `materialization_supported=false`; no construct or primer is added to project state.
+> Expected: The plan requires review under its exact digest and advertises a separate exact-product proposal via `materialization_supported=true`; planning alone adds no construct or primer to project state.
 
 ### Step 8: Export JSON and SVG. The SVG is a view of the same digest-valid plan; changin...
 

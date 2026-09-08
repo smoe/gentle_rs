@@ -7692,15 +7692,37 @@ orientation, spacer DNA, and requested comparison. Candidate A and a minimal
 promoter are required; partner B and a reference control are optional. Partner,
 order, orientation, and spacing questions require an exact partner binding and
 matching declared geometry. The planner evaluates five local sequence/context
-lanes independently; opaque Ensembl, TFBS, CUT&RUN, or chromatin citations stay
-`not_evaluated` until a typed report resolver is added.
+lanes independently. An evidence binding can supply `report_path` to an exact
+typed locus/reporter JSON, `report_sha256` over its bytes, `report_id` equal to
+the nested locus panel ID, and an optional feature/track/lane `row_id`.
+Current sequence, anchor, assembly and gene-annotation release are checked.
+Opaque citations and unavailable content still cannot become an evaluated lane.
 
 The SVG command accepts only an unchanged plan with a valid embedded digest.
-Both commands are non-mutating. V1 does not materialize ordered multi-fragment
-constructs, and the planning labels describe testable comparisons rather than
+Both commands are non-mutating. Planning labels describe testable comparisons rather than
 regulatory sufficiency, activity, or causation. See the executable offline
 walkthrough `08-11_regulatory_fragment_panel_planning_offline` for a bounded
 A/B panel with explicit order, orientation, and spacing variants.
+
+Prepare exact designed products, inspect the proposal, and only then approve
+that exact object. These aliases return the shared operation-result envelope:
+
+```bash
+gentle_cli --state STATE.json promoters regulatory-products-plan \
+  @regulatory_panel_plan.json --output-prefix design > product_result.json
+jq '.result.regulatory_fragment_materialization_proposal' product_result.json > products.json
+# Review all product sequences, instances, spacers and omitted annotations first.
+DIGEST=$(jq -r .proposal_digest products.json)
+gentle_cli --state STATE.json promoters regulatory-products-materialize \
+  @products.json --approve "$DIGEST"
+```
+
+The second command is an explicit mutation. It creates all exact products or
+none, never overwrites IDs, and records a receipt with final-product audit
+`not_evaluated`. This is sequence design by vector-context replacement, not
+restriction/Gibson simulation or biological validation. Source or annotation
+changes require a fresh proposal and review. Use normal sequence export for
+GenBank/FASTA files after inspecting the products.
 
 Select one candidate in-silico (explicit provenance step):
 

@@ -918,15 +918,23 @@ pass or a biological conclusion.
 Planning is read-only and content-addressed. Approval binds the normalized
 request, source/evidence/vector state, exact member order and operation
 payloads, but does not validate regulatory activity. The legacy promoter-panel
-materializer remains byte-compatible and single-fragment; ordered
-multi-fragment plans must report materialization as unsupported until an exact
-compatible mutation contract is separately reviewed.
+materializer remains byte-compatible and single-fragment. Ordered multi-fragment
+designs use a separate exact-product proposal and explicit digest approval.
+The proposal binds full product sequences, annotations, output IDs and ordered
+instances. Approval never authorizes silently regenerating different products.
+Current inputs are rechecked; every product is committed atomically or none is.
+Designed insertion-context replacement is not restriction/Gibson simulation:
+final-product audits remain `not_evaluated`.
 
 Sequence-derived evidence is computed inside the same read-only operation and
 retained as separate content-addressed lane observations and findings. A bound
 external report id and digest is provenance only: without typed report content
 or a typed engine-owned report resolver, Ensembl Regulation, TFBS, CUT&RUN, and
-chromatin lanes remain `not_evaluated`. Rendering is a passive projection of
+chromatin lanes remain `not_evaluated`. The typed locus-document resolver hashes
+and parses the same bounded bytes, verifies current sequence/anchor and
+assembly/release, and retains separate annotation/model/occupancy payloads.
+Unavailable payloads never become evaluated merely by being cited.
+Rendering is a passive projection of
 the authoritative plan and may not reinterpret those states.
 
 ## DEC-047: Region Homology Uses Query Coordinates And Explicit Orthology

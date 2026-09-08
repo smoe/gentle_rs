@@ -2328,6 +2328,34 @@
       {
          "aliases": [],
          "engine_operations": [
+            "PlanRegulatoryFragmentMaterialization"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "promoters regulatory-products-plan",
+         "summary": "Prepare a separately approved exact multi-fragment design, including vector-context replacement, source instances, spacers and preserved annotations. No cloning success is implied.",
+         "usage": "promoters regulatory-products-plan PLAN_JSON_OR_@FILE --output-prefix PREFIX"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "MaterializeRegulatoryFragmentPanel"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "promoters regulatory-products-materialize",
+         "summary": "Atomically materialize exact design products after digest approval, refusing stale sources and output collisions; retains a receipt without declaring experimental QA passed.",
+         "usage": "promoters regulatory-products-materialize PROPOSAL_JSON_OR_@FILE --approve DIGEST"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "ListReporterCatalog"
          ],
          "interfaces": [

@@ -8,6 +8,26 @@
   keeps whole-genome uniqueness, orthology, TF binding, and regulatory function
   outside the claims of candidate-pool similarity.
 
+- Regulatory-fragment plans now resolve explicitly supplied, byte-hashed typed
+  locus/reporter content for Ensembl annotation, regulatory-model scores and
+  CUT&RUN/chromatin lanes. Current sequence/anchor, assembly, gene-annotation
+  release, selected row identities and coordinates are checked. Original
+  source payloads and unavailable states are retained; citations alone remain
+  unevaluated and no overlap is promoted to regulatory activity.
+
+- Added separate exact-product planning and digest-approved atomic
+  materialization for ordered regulatory-fragment instances and spacers.
+  Proposals bind uppercase DNA, topology, output IDs, projected annotations and
+  explicit annotation omissions. Changed sources, tampering and output collisions
+  fail without partial products. The legacy single-fragment materializer is
+  unchanged; these are designed molecules, not validated cloning reactions.
+
+- Added typed Linux GUI acceptance contracts for branch/reverse-complement and
+  restriction digest alongside Simple PCR, with semantic controls reached by
+  ordinary X11 input. Starter projects remain distinct from completed oracles;
+  sequence verification compares bases, topology, annotations and end geometry,
+  not just product IDs. Live Xvfb replay remains required before release sign-off.
+
 - Added the missing Genomic Region Conservation command-palette action, which
   opens saved-region selection and preserves that request during deferred
   sequence loading. Corrected glossary smoke inputs for JSON report/plan

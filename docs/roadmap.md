@@ -309,9 +309,9 @@ wet-lab conclusions or unconfirmed mutations.
 - Extend the feature-gated semantic GUI test identifier registry beyond the
   bounded TP73/PATZ1 DNA-viewer, Splicing Expert, and Agent Assistant release
   controls as additional native acceptance stories require it.
-- Extend typed tutorial GUI acceptance from Simple PCR to three representative
-  offline tutorials as each gains a validated subject/report contract; promote
-  `offline-core` only after stable clean-profile replay through external X11.
+- Retain live Linux/Xvfb replay for the PCR, branch/reverse-complement and digest
+  acceptance contracts; add a fourth representative chapter before promoting
+  broader `offline-core` coverage. Headless oracle tests are not live GUI proof.
 - Then extend context-labelled GUI/CLI/agent tutorial actions; defer skill
   activation and inverse discovery until readiness is safeguarded.
 - Optional OS credential-store persistence for Agent Assistant API keys.
@@ -385,9 +385,9 @@ wet-lab conclusions or unconfirmed mutations.
   enrichment alone.
 - Engine-owned regulatory-reporter study composer: turn a perturbation-response
   cohort plus TSS/evidence policies into candidate ROI inputs for the downstream exact-ROI and terminal planners, feeding context-bound inspectors rather than persistent Boolean readiness.
-- Add typed external-report resolution to the regulatory-fragment panel
-  separately, and defer materialization until ordered multi-fragment instances
-  have an exact compatible mutation contract.
+- Extend regulatory-fragment exact design products with explicit cloning-reaction
+  simulation and final-product QA; add dedicated GUI approval controls after
+  the shared-shell exact-product workflow receives live acceptance.
 - Extend the promoter regulatory-partner screen beyond its exact motif-tuple
   ledger with explicit matched/background cohorts, calibrated enrichment and
   multiple-testing correction, local ontology/hallmark interpretation, and
