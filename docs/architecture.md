@@ -2300,6 +2300,10 @@ TFBS expert semantics:
   base segment in each column.
 - Instruction text is part of the shared model so GUI and exported SVG can show
   consistent explanatory wording.
+- A versioned motif ID identifies one matrix, not a factor-name alias for a
+  different release. Compact resource supplementation must match the exact ID;
+  explicit runtime PFMs take precedence over bundled values. Historical matrix
+  versions must not be silently substituted for current IDs or vice versa.
 
 Motif-layering rule:
 

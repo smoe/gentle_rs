@@ -9,7 +9,7 @@ use std::{
 
 const RUNTIME_TF_MOTIF_PATH: &str = "data/resources/jaspar.motifs.json";
 const BUILTIN_TF_MOTIFS_JSON: &str = include_str!("../assets/jaspar.motifs.json");
-const BUNDLED_JASPAR_PFM_SUPPLEMENT_JSON: &str = include_str!("../assets/jaspar_2022.json");
+const LEGACY_JASPAR_PFM_JSON: &str = include_str!("../assets/jaspar_2022.json");
 const TF_QUERY_STOP_WORDS: &[&str] = &[
     "tf",
     "tfs",
@@ -103,22 +103,13 @@ struct BundledJasparPfmRows {
 #[derive(Debug, Clone, Deserialize)]
 struct BundledJasparPfmRecord {
     matrix_id: String,
-    name: Option<String>,
     pfm: BundledJasparPfmRows,
 }
 
 #[derive(Debug, Clone)]
 struct TfPfmSupplement {
-    id: String,
-    name: Option<String>,
     consensus_iupac: String,
     matrix_counts: Vec<[f64; 4]>,
-}
-
-#[derive(Debug, Clone, Default)]
-struct TfPfmSupplements {
-    by_id: HashMap<String, TfPfmSupplement>,
-    by_unique_name: HashMap<String, TfPfmSupplement>,
 }
 
 #[derive(Debug, Clone)]
@@ -127,6 +118,8 @@ pub struct TfMotif {
     pub name: Option<String>,
     pub consensus_iupac: String,
     pub matrix_counts: Vec<[f64; 4]>,
+    /// False when counts were synthesized from an IUPAC consensus alone.
+    pub has_full_pfm: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -257,12 +250,10 @@ impl TfMotifDb {
         Some(matrix)
     }
 
-    fn bundled_jaspar_pfm_supplements() -> TfPfmSupplements {
-        let records =
-            serde_json::from_str::<Vec<BundledJasparPfmRecord>>(BUNDLED_JASPAR_PFM_SUPPLEMENT_JSON)
-                .unwrap_or_default();
+    fn bundled_jaspar_pfm_supplements() -> HashMap<String, TfPfmSupplement> {
+        let records = serde_json::from_str::<Vec<BundledJasparPfmRecord>>(LEGACY_JASPAR_PFM_JSON)
+            .unwrap_or_default();
         let mut by_id = HashMap::new();
-        let mut name_candidates: HashMap<String, Option<TfPfmSupplement>> = HashMap::new();
         for record in records {
             let matrix_counts = match Self::bundled_jaspar_pfm_matrix(&record.pfm) {
                 Some(matrix_counts) => matrix_counts,
@@ -273,32 +264,28 @@ impl TfMotifDb {
                 continue;
             }
             let supplement = TfPfmSupplement {
-                id: id.clone(),
-                name: record.name.as_ref().map(|name| name.trim().to_string()),
                 consensus_iupac: consensus_from_matrix_counts(&matrix_counts),
                 matrix_counts,
             };
-            by_id
-                .entry(normalize_lookup_key(&id))
-                .or_insert_with(|| supplement.clone());
-            if let Some(name) = supplement.name.as_deref() {
-                let name_key = normalize_lookup_key(name);
-                if !name_key.is_empty() {
-                    name_candidates
-                        .entry(name_key)
-                        .and_modify(|slot| *slot = None)
-                        .or_insert_with(|| Some(supplement));
+            by_id.entry(normalize_lookup_key(&id)).or_insert(supplement);
+        }
+
+        // Compact snapshots may omit matrices, but only an exact versioned ID
+        // can supply them. A shared factor name is not matrix identity.
+        if let Ok(snapshot) = serde_json::from_str::<TfMotifSnapshot>(BUILTIN_TF_MOTIFS_JSON) {
+            for record in snapshot.motifs {
+                if let Some(matrix_counts) = record.pfm.as_ref().and_then(Self::matrix_from_pfm) {
+                    by_id.insert(
+                        normalize_lookup_key(&record.id),
+                        TfPfmSupplement {
+                            consensus_iupac: record.consensus_iupac,
+                            matrix_counts,
+                        },
+                    );
                 }
             }
         }
-        let by_unique_name = name_candidates
-            .into_iter()
-            .filter_map(|(name, supplement)| supplement.map(|supplement| (name, supplement)))
-            .collect();
-        TfPfmSupplements {
-            by_id,
-            by_unique_name,
-        }
+        by_id
     }
 
     fn matrix_from_pfm(pfm: &TfPfmRows) -> Option<Vec<[f64; 4]>> {
@@ -323,7 +310,7 @@ impl TfMotifDb {
             return None;
         }
 
-        static PFM_SUPPLEMENTS: LazyLock<TfPfmSupplements> =
+        static PFM_SUPPLEMENTS: LazyLock<HashMap<String, TfPfmSupplement>> =
             LazyLock::new(TfMotifDb::bundled_jaspar_pfm_supplements);
         let mut motifs = Vec::new();
         let mut by_key = HashMap::new();
@@ -338,25 +325,20 @@ impl TfMotifDb {
             let name_key = m.name.as_ref().map(|name| normalize_lookup_key(name));
             let pfm_matrix = m.pfm.as_ref().and_then(Self::matrix_from_pfm);
             let supplement = if pfm_matrix.is_none() {
-                PFM_SUPPLEMENTS.by_id.get(&original_id_key).or_else(|| {
-                    name_key
-                        .as_ref()
-                        .and_then(|name_key| PFM_SUPPLEMENTS.by_unique_name.get(name_key))
-                })
+                PFM_SUPPLEMENTS.get(&original_id_key)
             } else {
                 None
             };
-            let (consensus, matrix_counts, supplement_id_key) = match (pfm_matrix, supplement) {
-                (Some(matrix), _) => (compact_consensus, matrix, None),
+            let has_full_pfm = pfm_matrix.is_some() || supplement.is_some();
+            let (consensus, matrix_counts) = match (pfm_matrix, supplement) {
+                (Some(matrix), _) => (compact_consensus, matrix),
                 (None, Some(supplement)) => (
                     supplement.consensus_iupac.clone(),
                     supplement.matrix_counts.clone(),
-                    Some(normalize_lookup_key(&supplement.id)),
                 ),
                 (None, None) => (
                     compact_consensus.clone(),
                     Self::matrix_from_consensus(&compact_consensus),
-                    None,
                 ),
             };
             if matrix_counts.is_empty() {
@@ -369,16 +351,11 @@ impl TfMotifDb {
                 name: m.name.as_ref().map(|n| n.trim().to_string()),
                 consensus_iupac: consensus,
                 matrix_counts,
+                has_full_pfm,
             };
             motifs.push(motif);
             if !id_key.is_empty() {
                 by_key.insert(id_key.clone(), idx);
-            }
-            if let Some(supplement_id_key) = supplement_id_key
-                && supplement_id_key != id_key
-                && !supplement_id_key.is_empty()
-            {
-                by_key.entry(supplement_id_key).or_insert(idx);
             }
             if let Some(name_key) = name_key
                 && !name_key.is_empty()
@@ -721,12 +698,13 @@ mod tests {
     }
 
     #[test]
-    fn builtin_tp73_uses_bundled_pfm_not_consensus_fallback() {
+    fn builtin_tp73_uses_exact_2026_pfm() {
         let db = TfMotifDb::from_json(BUILTIN_TF_MOTIFS_JSON).expect("motif db");
         let resolved = db.resolve("TP73").expect("resolve TP73");
         assert_eq!(resolved.id, "MA0861.2");
-        assert_eq!(resolved.matrix_counts.len(), 18);
-        assert_eq!(resolved.consensus_iupac, "GACATGTCTGGACATGTC");
+        assert_eq!(resolved.matrix_counts.len(), 16);
+        assert_eq!(resolved.consensus_iupac, "ACATGTCTGGACATGT");
+        assert_eq!(resolved.matrix_counts[0], [6206.0, 429.0, 3304.0, 208.0]);
 
         let ambiguous_column = resolved.matrix_counts[8];
         let total = ambiguous_column.iter().sum::<f64>();
@@ -742,19 +720,15 @@ mod tests {
 
         let compact_id_alias = db.resolve("MA0861.2").expect("resolve compact alias");
         assert_eq!(compact_id_alias.id, "MA0861.2");
-        let supplement_id_alias = db.resolve("MA0861.1").expect("resolve supplement alias");
-        assert_eq!(supplement_id_alias.id, "MA0861.2");
+        assert!(db.resolve("MA0861.1").is_none());
     }
 
     #[test]
-    fn bundled_pfm_supplement_does_not_replace_canonical_catalog_ids() {
+    fn builtin_catalog_does_not_alias_old_matrix_versions_to_new_ones() {
         let db = TfMotifDb::from_json(BUILTIN_TF_MOTIFS_JSON).expect("motif db");
         let myc = db.resolve("MYC").expect("resolve MYC");
         assert_eq!(myc.id, "MA0147.4");
-        assert_eq!(
-            db.resolve("MA0147.3").map(|motif| motif.id.as_str()),
-            Some("MA0147.4")
-        );
+        assert!(db.resolve("MA0147.3").is_none());
         let sp1_ids = db
             .motif_summaries()
             .into_iter()
@@ -762,6 +736,94 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(sp1_ids.len(), 1);
         assert_eq!(sp1_ids[0].name.as_deref(), Some("SP1"));
+    }
+
+    #[test]
+    fn builtin_jaspar_2026_every_entry_has_exact_full_matrix() {
+        let snapshot: TfMotifSnapshot =
+            serde_json::from_str(BUILTIN_TF_MOTIFS_JSON).expect("bundled snapshot");
+        assert_eq!(snapshot.schema, "gentle.tf_motifs.v2");
+        assert_eq!(snapshot.motifs.len(), 2633);
+        let db = TfMotifDb::from_json(BUILTIN_TF_MOTIFS_JSON).expect("motif db");
+        let mut ids = BTreeSet::new();
+        for record in snapshot.motifs {
+            assert!(ids.insert(record.id.clone()), "duplicate {}", record.id);
+            let pfm = record.pfm.expect("all 2026 entries must retain full PFMs");
+            let matrix = TfMotifDb::matrix_from_pfm(&pfm).expect("valid matrix");
+            assert_eq!(matrix.len(), record.consensus_iupac.len(), "{}", record.id);
+            assert!(matrix.iter().all(|column| {
+                column
+                    .iter()
+                    .all(|value| value.is_finite() && *value >= 0.0)
+                    && column.iter().sum::<f64>() > 0.0
+            }));
+            let resolved = db.resolve(&record.id).expect("exact ID resolves");
+            assert_eq!(resolved.id, record.id);
+            assert_eq!(resolved.matrix_counts, matrix);
+        }
+    }
+
+    #[test]
+    fn builtin_tbp_uses_seven_base_2026_matrix() {
+        let db = TfMotifDb::from_json(BUILTIN_TF_MOTIFS_JSON).expect("motif db");
+        let tbp = db.resolve("TBP").expect("TBP");
+        assert_eq!(tbp.id, "MA0108.3");
+        assert_eq!(tbp.consensus_iupac, "TATAAAA");
+        assert_eq!(
+            tbp.matrix_counts,
+            vec![
+                [16.0, 46.0, 18.0, 309.0],
+                [352.0, 0.0, 2.0, 35.0],
+                [3.0, 10.0, 2.0, 374.0],
+                [354.0, 0.0, 5.0, 30.0],
+                [268.0, 0.0, 0.0, 121.0],
+                [360.0, 3.0, 20.0, 6.0],
+                [222.0, 2.0, 44.0, 121.0],
+            ]
+        );
+        assert!(db.resolve("MA0108.2").is_none());
+    }
+
+    #[test]
+    fn compact_snapshots_supplement_only_exact_matrix_versions() {
+        let db = TfMotifDb::from_json(
+            r#"{"schema":"gentle.tf_motifs.v1","motifs":[
+                {"id":"MA0108.3","name":"TBP","consensus_iupac":"TATAAAA"},
+                {"id":"MA0108.2","name":"TBP","consensus_iupac":"TATAAAA"},
+                {"id":"MA0108.999","name":"TBP","consensus_iupac":"ACGT"}
+            ]}"#,
+        )
+        .expect("compact snapshot");
+        let current = db.resolve("MA0108.3").expect("current TBP");
+        assert!(current.has_full_pfm);
+        assert_eq!(current.matrix_counts.len(), 7);
+        assert_eq!(current.matrix_counts[0], [16.0, 46.0, 18.0, 309.0]);
+        let historical = db.resolve("MA0108.2").expect("explicit historical TBP");
+        assert!(historical.has_full_pfm);
+        assert_eq!(historical.id, "MA0108.2");
+        assert_eq!(historical.matrix_counts.len(), 15);
+        assert_eq!(historical.matrix_counts[0], [61.0, 145.0, 152.0, 31.0]);
+        let unknown = db.resolve("MA0108.999").expect("consensus fallback");
+        assert!(!unknown.has_full_pfm);
+        assert_eq!(
+            unknown.matrix_counts,
+            TfMotifDb::matrix_from_consensus("ACGT")
+        );
+    }
+
+    #[test]
+    fn explicit_runtime_matrix_takes_precedence_over_bundled_data() {
+        let db = TfMotifDb::from_json(
+            r#"{"schema":"gentle.tf_motifs.v2","motifs":[
+                {"id":"MA0108.3","name":"TBP","consensus_iupac":"A",
+                 "pfm":{"a":[9],"c":[1],"g":[2],"t":[3]}}
+            ]}"#,
+        )
+        .expect("synthetic runtime override");
+        assert_eq!(
+            db.resolve("TBP").expect("TBP").matrix_counts,
+            vec![[9.0, 1.0, 2.0, 3.0]]
+        );
     }
 
     #[test]

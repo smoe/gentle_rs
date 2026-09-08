@@ -1,5 +1,15 @@
 # GENtle Changelog
 
+- Refreshed the built-in JASPAR 2026 catalog with all 2,633 exact full PFMs and
+  pinned upstream provenance. Compact snapshots now supplement by exact
+  versioned ID only; older matrices can no longer masquerade as newer IDs via
+  a factor-name match. Explicit runtime matrices retain priority and the 2022
+  archive remains available for explicitly identified historical inputs. TBP
+  now uses its 7 bp MA0108.3 matrix, TP73 its 16 bp MA0861.2 matrix; the reporter
+  disruption audit explicitly requests the latter. Existing saved reports and
+  external scan databases are not rewritten; local scores using the old fallback
+  can change on recomputation and must not be mixed as identical model evidence.
+
 - Corrected MCP discovery for both regulatory-product operations: their shared
   typed `op` routes are now explicitly advertised instead of missing from the
   capability surface. Regression tests retain tool confirmation, digest approval,

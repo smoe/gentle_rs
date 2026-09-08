@@ -82,8 +82,8 @@ Pre-release finishing scope:
 
 ## Next Session Priorities
 
-1. Keep the TP73 evidence-viewer and PATZ1 locus-composer proof workflows green
-   and offline-safe through the `v0.1.0-internal.10` tag.
+1. Recheck the TP73/PATZ1 TFBS, locus and reporter proofs with exact JASPAR 2026 PFMs;
+   retain historical reports and keep selected regenerations offline-safe through the `v0.1.0-internal.10` tag.
 2. Run manual GUI smoke from both runbooks: relocation, preview/exports, assay continuation,
    bound/historical imports, reporter preservation, and both-strand selection/save/reopen/export.
 3. Review the ClawBio shell-normalizer deprecations before deciding whether any

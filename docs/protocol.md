@@ -339,10 +339,14 @@ Behavior notes:
   - aliases such as `OCT4`
   - catalog-backed functional groups such as `Yamanaka factors` / `stemness`
   - family-like queries such as `KLF family`
-- compact motif entries without PFM rows are supplemented from the bundled
-  full-PFM table when the match is unambiguous. Consensus-derived matrices are
-  therefore a last-resort fallback, not the normal source for TFBS scoring or
-  sequence-logo display.
+- the built-in JASPAR 2026 CORE catalog carries full PFM rows for every motif.
+  Explicit runtime PFM rows take precedence. Compact entries without PFM rows
+  may use a bundled matrix only for the exact versioned ID, never a shared TF
+  name. The 2022 archive remains an exact-ID compatibility source for historical
+  compact inputs, not a source for newer model IDs. Old IDs are not aliases for
+  current versions; load the corresponding historical resource to replay them.
+  Consensus-derived matrices remain the last-resort fallback for compact
+  entries without an exact bundled match. This is not a full-PFM JASPAR score.
 - when the shell command omits an explicit range, the full selected
   `SequenceScanTarget` span is used.
 - when the target is a stored `seq_id`, the same shared report can also carry
