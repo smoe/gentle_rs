@@ -11512,7 +11512,7 @@ fn variant_followup_promoter_reporter_panel_runs_on_expanded_stack() {
     assert!(!Path::new(&proposal.request.output_dir).exists());
 }
 
-fn variant_followup_regulatory_fragment_panel_runs_on_expanded_stack() {
+fn regulatory_fragment_gui_fixture() -> MainAreaDna {
     fn add_anchored_sequence(
         engine: &mut GentleEngine,
         seq_id: &str,
@@ -11669,6 +11669,13 @@ fn variant_followup_regulatory_fragment_panel_runs_on_expanded_stack() {
         .regulatory_fragment_partner_dependence = true;
     area.variant_followup_ui.regulatory_fragment_approval_digest = "stale prior digest".to_string();
 
+    area
+}
+
+fn variant_followup_regulatory_fragment_panel_runs_on_expanded_stack() {
+    let mut area = regulatory_fragment_gui_fixture();
+    let engine = area.engine.clone().expect("engine");
+
     let operation = area
         .variant_followup_regulatory_fragment_panel_plan_operation(Some(
             "/tmp/gui_regulatory_panel.json".to_string(),
@@ -11726,6 +11733,406 @@ fn variant_followup_regulatory_fragment_panel_runs_on_expanded_stack() {
         initial_sequence_count,
         "GUI planning must remain read-only"
     );
+}
+
+fn with_regulatory_product_gui(test: impl FnOnce(&mut MainAreaDna) + Send + 'static) {
+    std::thread::Builder::new()
+        .name("regulatory-product-gui-test".to_string())
+        .stack_size(16 * 1024 * 1024)
+        .spawn(move || {
+            let mut area = regulatory_fragment_gui_fixture();
+            area.plan_variant_followup_regulatory_fragment_panel();
+            assert!(
+                area.variant_followup_ui
+                    .cached_regulatory_fragment_panel_plan
+                    .is_some(),
+                "{}",
+                area.op_status
+            );
+            area.variant_followup_ui.regulatory_fragment_product_prefix =
+                "gui_products".to_string();
+            test(&mut area);
+        })
+        .expect("spawn product GUI test")
+        .join()
+        .expect("product GUI test");
+}
+
+#[test]
+fn variant_followup_regulatory_products_use_shared_ops_and_create_exact_undoable_products() {
+    with_regulatory_product_gui(|area| {
+        let engine = area.engine.clone().expect("engine");
+        let before = serde_json::to_value(engine.read().unwrap().snapshot()).unwrap();
+        area.plan_variant_followup_regulatory_products();
+        let proposal = area
+            .variant_followup_ui
+            .cached_regulatory_fragment_products
+            .clone()
+            .expect("products");
+        assert!(!proposal.products.is_empty());
+        assert_eq!(
+            serde_json::to_value(engine.read().unwrap().snapshot()).unwrap(),
+            before
+        );
+        assert!(
+            area.variant_followup_ui
+                .regulatory_fragment_product_approval_digest
+                .is_empty()
+        );
+        area.variant_followup_ui
+            .regulatory_fragment_product_approval_digest = proposal.proposal_digest.clone();
+        match area
+            .variant_followup_regulatory_product_materialization_operation()
+            .expect("shared operation")
+        {
+            Operation::MaterializeRegulatoryFragmentPanel {
+                proposal: bound,
+                approval_digest,
+            } => {
+                assert_eq!(
+                    serde_json::to_value(bound).unwrap(),
+                    serde_json::to_value(&proposal).unwrap()
+                );
+                assert_eq!(approval_digest, proposal.proposal_digest);
+            }
+            other => panic!("unexpected operation: {other:?}"),
+        }
+        area.materialize_variant_followup_regulatory_products();
+        let receipt = area
+            .variant_followup_ui
+            .cached_regulatory_fragment_receipt
+            .as_ref()
+            .expect("receipt");
+        assert_eq!(receipt.created_seq_ids.len(), proposal.products.len());
+        assert_eq!(
+            receipt.final_product_audit_state,
+            crate::engine::RegulatoryFragmentFinalProductAuditState::NotEvaluated
+        );
+        assert_eq!(area.last_created_seq_ids, receipt.created_seq_ids);
+        for product in &proposal.products {
+            let guard = engine.read().unwrap();
+            let actual = &guard.state().sequences[&product.output_seq_id];
+            assert_eq!(
+                actual.get_forward_string(),
+                product.sequence_5prime_to_3prime
+            );
+            assert_eq!(actual.is_circular(), product.circular);
+            assert_eq!(actual.features(), &product.features);
+        }
+        assert!(
+            area.variant_followup_ui
+                .regulatory_fragment_product_approval_digest
+                .is_empty()
+        );
+        assert!(
+            area.variant_followup_regulatory_product_materialization_operation()
+                .is_err()
+        );
+        engine
+            .write()
+            .unwrap()
+            .undo_last_operation()
+            .expect("one undo");
+        assert_eq!(
+            serde_json::to_value(engine.read().unwrap().snapshot()).unwrap(),
+            before
+        );
+    });
+}
+
+#[test]
+fn variant_followup_regulatory_products_buttons_dispatch_only_after_product_approval() {
+    fn frame(
+        area: &mut MainAreaDna,
+        ctx: &egui::Context,
+        events: Vec<egui::Event>,
+    ) -> Vec<(String, egui::Rect)> {
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(900.0, 1800.0),
+            )),
+            events,
+            ..Default::default()
+        });
+        crate::egui_compat::show_central_panel_for_test_context(
+            ctx,
+            egui::CentralPanel::default(),
+            |ui| {
+                area.render_variant_followup_regulatory_products(ui);
+            },
+        );
+        let output = crate::egui_compat::end_test_pass(ctx);
+        let mut rects = vec![];
+        for clipped in output.shapes {
+            collect_rendered_text_rects_from_shape(&clipped.shape, &mut rects);
+        }
+        rects
+    }
+    fn click(
+        area: &mut MainAreaDna,
+        ctx: &egui::Context,
+        rects: &[(String, egui::Rect)],
+        label: &str,
+    ) {
+        let pos = rects
+            .iter()
+            .find(|(text, _)| text == label)
+            .expect("button label")
+            .1
+            .center();
+        for pressed in [true, false] {
+            frame(
+                area,
+                ctx,
+                vec![
+                    egui::Event::PointerMoved(pos),
+                    egui::Event::PointerButton {
+                        pos,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: Default::default(),
+                    },
+                ],
+            );
+        }
+    }
+    with_regulatory_product_gui(|area| {
+        let engine = area.engine.clone().unwrap();
+        let before = engine.read().unwrap().state().sequences.len();
+        let ctx = egui::Context::default();
+        let rects = frame(area, &ctx, vec![]);
+        click(area, &ctx, &rects, "Prepare exact products");
+        let proposal = area
+            .variant_followup_ui
+            .cached_regulatory_fragment_products
+            .clone()
+            .expect("button prepared products");
+        assert_eq!(engine.read().unwrap().state().sequences.len(), before);
+        let rects = frame(area, &ctx, vec![]);
+        click(area, &ctx, &rects, "Create approved design products");
+        assert!(
+            area.variant_followup_ui
+                .cached_regulatory_fragment_receipt
+                .is_none()
+        );
+        assert_eq!(engine.read().unwrap().state().sequences.len(), before);
+        area.variant_followup_ui
+            .regulatory_fragment_product_approval_digest = proposal.proposal_digest;
+        let rects = frame(area, &ctx, vec![]);
+        click(area, &ctx, &rects, "Create approved design products");
+        let receipt = area
+            .variant_followup_ui
+            .cached_regulatory_fragment_receipt
+            .as_ref()
+            .expect("button created products");
+        assert_eq!(receipt.created_seq_ids.len(), proposal.products.len());
+        assert_eq!(
+            engine.read().unwrap().state().sequences.len(),
+            before + proposal.products.len()
+        );
+        let rects = frame(area, &ctx, vec![]);
+        assert!(
+            rects
+                .iter()
+                .any(|(text, _)| text == "Final-product audit: NotEvaluated")
+        );
+    });
+}
+
+#[test]
+fn variant_followup_regulatory_products_require_the_product_digest_and_current_prefix() {
+    with_regulatory_product_gui(|area| {
+        let engine = area.engine.clone().unwrap();
+        area.plan_variant_followup_regulatory_products();
+        let proposal = area
+            .variant_followup_ui
+            .cached_regulatory_fragment_products
+            .clone()
+            .unwrap();
+        let before = serde_json::to_value(engine.read().unwrap().snapshot()).unwrap();
+        for wrong in [
+            String::new(),
+            "wrong".to_string(),
+            proposal.plan.proposal_digest.clone(),
+        ] {
+            area.variant_followup_ui
+                .regulatory_fragment_product_approval_digest = wrong;
+            area.materialize_variant_followup_regulatory_products();
+            assert!(area.op_status.contains("does not exactly match"));
+            assert_eq!(
+                serde_json::to_value(engine.read().unwrap().snapshot()).unwrap(),
+                before
+            );
+        }
+        area.variant_followup_ui
+            .regulatory_fragment_product_approval_digest = proposal.proposal_digest;
+        area.variant_followup_ui.regulatory_fragment_product_prefix = "changed_prefix".into();
+        area.materialize_variant_followup_regulatory_products();
+        assert!(area.op_status.contains("prefix changed"));
+        assert_eq!(
+            serde_json::to_value(engine.read().unwrap().snapshot()).unwrap(),
+            before
+        );
+        assert!(
+            area.variant_followup_ui
+                .cached_regulatory_fragment_receipt
+                .is_none()
+        );
+    });
+}
+
+#[test]
+fn variant_followup_regulatory_products_clear_review_on_input_change_and_failed_replanning() {
+    with_regulatory_product_gui(|area| {
+        area.plan_variant_followup_regulatory_products();
+        let digest = area
+            .variant_followup_ui
+            .cached_regulatory_fragment_products
+            .as_ref()
+            .unwrap()
+            .proposal_digest
+            .clone();
+        area.variant_followup_ui
+            .regulatory_fragment_product_approval_digest = digest.clone();
+        area.invalidate_variant_followup_regulatory_products();
+        assert!(
+            area.variant_followup_ui
+                .cached_regulatory_fragment_products
+                .is_none()
+        );
+        assert!(
+            area.variant_followup_ui
+                .regulatory_fragment_product_approval_digest
+                .is_empty()
+        );
+        assert!(
+            area.variant_followup_ui
+                .cached_regulatory_fragment_panel_plan
+                .is_some()
+        );
+        area.plan_variant_followup_regulatory_products();
+        area.variant_followup_ui
+            .regulatory_fragment_product_approval_digest = digest.clone();
+        area.plan_variant_followup_regulatory_products();
+        assert!(
+            area.variant_followup_ui
+                .regulatory_fragment_product_approval_digest
+                .is_empty()
+        );
+        area.variant_followup_ui
+            .regulatory_fragment_product_approval_digest = digest;
+        area.variant_followup_ui
+            .regulatory_fragment_max_panel_members = "invalid".into();
+        area.plan_variant_followup_regulatory_fragment_panel();
+        assert!(
+            area.variant_followup_ui
+                .cached_regulatory_fragment_panel_plan
+                .is_none()
+        );
+        assert!(
+            area.variant_followup_ui
+                .cached_regulatory_fragment_products
+                .is_none()
+        );
+        assert!(
+            area.variant_followup_ui
+                .regulatory_fragment_product_approval_digest
+                .is_empty()
+        );
+        assert!(
+            area.variant_followup_ui
+                .regulatory_fragment_approval_digest
+                .is_empty()
+        );
+    });
+}
+
+#[test]
+fn variant_followup_regulatory_products_reject_source_drift_without_partial_creation() {
+    with_regulatory_product_gui(|area| {
+        area.plan_variant_followup_regulatory_products();
+        let proposal = area
+            .variant_followup_ui
+            .cached_regulatory_fragment_products
+            .clone()
+            .unwrap();
+        area.variant_followup_ui
+            .regulatory_fragment_product_approval_digest = proposal.proposal_digest;
+        let engine = area.engine.clone().unwrap();
+        engine.write().unwrap().state_mut().sequences.insert(
+            "candidate_source".into(),
+            DNAsequence::from_sequence(&"A".repeat(55)).unwrap(),
+        );
+        let before = serde_json::to_value(engine.read().unwrap().snapshot()).unwrap();
+        area.materialize_variant_followup_regulatory_products();
+        assert_eq!(
+            serde_json::to_value(engine.read().unwrap().snapshot()).unwrap(),
+            before
+        );
+        assert!(
+            area.variant_followup_ui
+                .cached_regulatory_fragment_products
+                .is_none()
+        );
+        assert!(
+            area.variant_followup_ui
+                .cached_regulatory_fragment_receipt
+                .is_none()
+        );
+        assert!(
+            area.variant_followup_ui
+                .regulatory_fragment_product_approval_digest
+                .is_empty()
+        );
+        assert!(area.op_error_popup.is_some(), "{}", area.op_status);
+    });
+}
+
+#[test]
+fn variant_followup_regulatory_products_reject_output_collisions_without_partial_creation() {
+    with_regulatory_product_gui(|area| {
+        area.plan_variant_followup_regulatory_products();
+        let proposal = area
+            .variant_followup_ui
+            .cached_regulatory_fragment_products
+            .clone()
+            .unwrap();
+        area.variant_followup_ui
+            .regulatory_fragment_product_approval_digest = proposal.proposal_digest.clone();
+        let engine = area.engine.clone().unwrap();
+        engine
+            .write()
+            .unwrap()
+            .apply(Operation::CreateSequenceFromText {
+                name: Some("collision".into()),
+                sequence_text: "ACGT".into(),
+                circular: false,
+                output_id: Some(proposal.products.last().unwrap().output_seq_id.clone()),
+            })
+            .expect("normalized collision state");
+        let before = serde_json::to_value(engine.read().unwrap().snapshot()).unwrap();
+        area.materialize_variant_followup_regulatory_products();
+        assert_eq!(
+            serde_json::to_value(engine.read().unwrap().snapshot()).unwrap(),
+            before
+        );
+        assert!(
+            area.variant_followup_ui
+                .cached_regulatory_fragment_products
+                .is_none()
+        );
+        assert!(
+            area.variant_followup_ui
+                .cached_regulatory_fragment_receipt
+                .is_none()
+        );
+        assert!(
+            area.op_status.contains("output_id_exists"),
+            "{}",
+            area.op_status
+        );
+    });
 }
 
 #[test]

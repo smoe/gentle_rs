@@ -32,6 +32,12 @@
   the reference check. Focused protocol, provider and shared-shell regressions
   cover compatibility, missing identity, mixed-set rejection and read-only state.
 
+- Added exact-product review and digest approval to the existing regulatory
+  fragment GUI panel. Product DNA, topology, source instances and annotation
+  omissions stay inspectable; creation uses the shared atomic operation and
+  displays its receipt without promoting `not_evaluated` product QA to a pass.
+  Input changes and replanning clear review, and creation consumes approval.
+
 - Corrected MCP discovery for both regulatory-product operations: their shared
   typed `op` routes are now explicitly advertised instead of missing from the
   capability surface. Regression tests retain tool confirmation, digest approval,

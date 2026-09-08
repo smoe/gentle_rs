@@ -137,6 +137,7 @@ use crate::{
         QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
         RegulatoryFragmentBinding, RegulatoryFragmentGeometryKind,
         RegulatoryFragmentGeometryRequest, RegulatoryFragmentInstanceRequest,
+        RegulatoryFragmentMaterializationProposal, RegulatoryFragmentMaterializationReceipt,
         RegulatoryFragmentOrientation, RegulatoryFragmentPanelPlan, RegulatoryFragmentPanelRequest,
         RegulatoryFragmentQuestion, RegulatoryFragmentRole, RenderSvgMode,
         RestrictionCloningPcrHandoffMode, RestrictionCloningPcrHandoffReport,
@@ -2024,6 +2025,8 @@ struct VariantFollowupUiState {
     regulatory_fragment_spacing_dependence: bool,
     regulatory_fragment_controlled_spacer: String,
     regulatory_fragment_approval_digest: String,
+    regulatory_fragment_product_prefix: String,
+    regulatory_fragment_product_approval_digest: String,
     cached_score_tracks: Option<TfbsScoreTrackReport>,
     cached_tfbs_track_similarity: Option<TfbsTrackSimilarityReport>,
     cached_report: Option<VariantPromoterContextReport>,
@@ -2039,6 +2042,8 @@ struct VariantFollowupUiState {
     cached_promoter_reporter_panel_proposal: Option<PromoterReporterPanelProposal>,
     cached_promoter_reporter_panel_receipt: Option<PromoterReporterPanelReceipt>,
     cached_regulatory_fragment_panel_plan: Option<RegulatoryFragmentPanelPlan>,
+    cached_regulatory_fragment_products: Option<RegulatoryFragmentMaterializationProposal>,
+    cached_regulatory_fragment_receipt: Option<RegulatoryFragmentMaterializationReceipt>,
 }
 
 impl Default for VariantFollowupUiState {
@@ -2100,6 +2105,8 @@ impl Default for VariantFollowupUiState {
             regulatory_fragment_spacing_dependence: false,
             regulatory_fragment_controlled_spacer: "GG".to_string(),
             regulatory_fragment_approval_digest: String::new(),
+            regulatory_fragment_product_prefix: "regulatory_design".to_string(),
+            regulatory_fragment_product_approval_digest: String::new(),
             cached_score_tracks: None,
             cached_tfbs_track_similarity: None,
             cached_report: None,
@@ -2128,6 +2135,8 @@ impl Default for VariantFollowupUiState {
             cached_promoter_reporter_panel_proposal: None,
             cached_promoter_reporter_panel_receipt: None,
             cached_regulatory_fragment_panel_plan: None,
+            cached_regulatory_fragment_products: None,
+            cached_regulatory_fragment_receipt: None,
         }
     }
 }

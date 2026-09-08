@@ -952,6 +952,9 @@ instances. Approval never authorizes silently regenerating different products.
 Current inputs are rechecked; every product is committed atomically or none is.
 Designed insertion-context replacement is not restriction/Gibson simulation:
 final-product audits remain `not_evaluated`.
+GUI product approval is distinct from panel review and is cleared on input
+changes, replanning and execution attempts. The GUI submits the cached exact
+proposal, never a freshly regenerated replacement under an older approval.
 
 Sequence-derived evidence is computed inside the same read-only operation and
 retained as separate content-addressed lane observations and findings. A bound

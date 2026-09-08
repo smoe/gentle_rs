@@ -9,7 +9,7 @@ executed_during_generation: true
 automated_status: "passing"
 review_status: "codex_reviewed"
 review_stale: false
-codex_reviewed_at: "2026-09-07"
+codex_reviewed_at: "2026-09-08"
 human_reviewed_at: null
 human_reviewer: null
 review_stale_reason: null
@@ -58,7 +58,7 @@ This offline example uses a pinned public Ensembl-116 SERPINE1 locus only as a r
 - You need order, orientation, and spacer DNA recorded per construct rather than implied in prose.
 - You want a bounded panel that names uncovered questions instead of silently dropping them or generating a Cartesian product.
 - You want sequence similarity, repeats, junction uniqueness, cloning risk, and unavailable biological evidence kept in separate lanes.
-- You need the same content-addressed plan in GUI and CLI while ordered multi-fragment materialization remains unavailable.
+- You need the same content-addressed plan in GUI and CLI, with exact-product creation kept behind a separate proposal and approval.
 
 ## What You Learn
 
@@ -86,7 +86,7 @@ This offline example uses a pinned public Ensembl-116 SERPINE1 locus only as a r
 4. Inspect A, B, A+B, the three explicitly requested geometry variants, and both...
 5. Expand the five sequence-computable evidence lanes. Treat evaluated as an ass...
 6. Inspect Ensembl Regulation, TFBS/model-score, and CUT&RUN/chromatin lanes. Al...
-7. Review the proposal digest, blockers, and non-claims. No materialize button i...
+7. Review the panel digest, blockers, and non-claims. This walkthrough stops at ...
 8. Export JSON and SVG. The SVG is a view of the same digest-valid plan; changin...
 
 ## GUI First
@@ -107,7 +107,7 @@ cargo run --bin gentle_cli -- --state /tmp/gentle-regulatory-fragment-tutorial.j
 
 ### Step 2: Open regulatory_panel_locus, choose Promoter design, and expand Regulatory-fr...
 
-GUI: Open `regulatory_panel_locus`, choose `Promoter design`, and expand `Regulatory-fragment panel (read-only)`. Select `Candidate A tutorial span`, `Partner B tutorial span`, and `Minimal promoter-context tutorial span` for their respective roles; leave reference control empty. The selectors show coordinates and `Current` projection status; exact region-set and ROI digests are available in exported JSON.
+GUI: Open `regulatory_panel_locus`, choose `Promoter design`, and expand `Regulatory-fragment panel`. Select `Candidate A tutorial span`, `Partner B tutorial span`, and `Minimal promoter-context tutorial span` for their respective roles; leave reference control empty. The selectors show coordinates and `Current` projection status; exact region-set and ROI digests are available in exported JSON.
 
 CLI:
 
@@ -171,9 +171,9 @@ jq '.evidence_dimensions[] | select(.kind=="ensembl_regulatory_overlap" or .kind
 
 > Expected: Ensembl Regulation, TFBS/model-score, and CUT&RUN/chromatin lanes are explicitly `not_evaluated`; this state is not a pass or evidence of absence.
 
-### Step 7: Review the proposal digest, blockers, and non-claims. No materialize button i...
+### Step 7: Review the panel digest, blockers, and non-claims. This walkthrough stops at ...
 
-GUI: Review the proposal digest, blockers, and non-claims. No materialize button is offered: the ordered inserts are reviewable, but the legacy single-fragment materialization contract cannot represent them.
+GUI: Review the panel digest, blockers, and non-claims. This walkthrough stops at review. The separate `Exact design products` section can prepare full product sequences for another review, but creation requires that product proposal's own digest, not the panel digest. A designed molecule is not a validated cloning reaction.
 
 CLI:
 
@@ -235,7 +235,7 @@ cargo run --bin gentle_examples_docs -- tutorial-check
 - Executed during generation: `yes`
 - Automated status: `passing`
 - Review status: `codex_reviewed`
-- Codex reviewed at: `2026-09-07`
+- Codex reviewed at: `2026-09-08`
 - Human reviewed at: `not recorded`
 - Inspect the source JSON when you need full option-level detail.
 
