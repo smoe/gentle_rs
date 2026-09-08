@@ -605,7 +605,7 @@
         "retained_despite_zero_marginal_discrimination": false,
         "selection_audit_status": "computed",
         "selection_audit_method": "binary_detection_leave_one_out_v1",
-        "selection_audit_generator_revision": "0.1.0-internal.11",
+        "selection_audit_generator_revision": "0.1.0-internal.10",
         "selection_audit_target_kind": "coverage_target",
         "selection_operation_sha256": "sha256:05307c944a0cfcd8737fa31dc9f56030baddc9648900662f0723ffa233564a20",
         "selection_evidence_observation_count": 0,
@@ -619,7 +619,7 @@
         "whole_genome_specificity_status": "not_run",
         "provenance": {
           "source_report_schema": "gentle.transcript_assay_panel.v2",
-          "gentle_version": "0.1.0-internal.11",
+          "gentle_version": "0.1.0-internal.10",
           "primer_backend_requested": "internal",
           "primer_backend_used": "internal",
           "annotation_release": "synthetic Ensembl116-like PATZ1 fixture",

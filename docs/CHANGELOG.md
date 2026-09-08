@@ -2,6 +2,12 @@
 
 ## 2026-09-08 - `v0.1.0-internal.10` candidate preparation
 
+- Reconciled the tutorial fix from `89ee68fe` with the restored `.10` candidate:
+  updated only 14 version/audit labels in the three retained PATZ1 assay reports
+  and their checksums. Scientific results, refreshed JASPAR figures and the new
+  version-drift regression remain unchanged. These normalized tutorial snapshots
+  are not a new runtime acceptance claim.
+
 - Added build-only installer/container CI dispatch with a full candidate SHA
   and `publish=false` default. Shared checks bind version, source, lockfile and
   workflow revision; installers retain digest-bound packages/receipts and
