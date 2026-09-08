@@ -190,7 +190,7 @@ libc = "0.2.189"
 objc2 = { version = "0.6.4", optional = true }
 objc2-foundation = { version = "0.3.2", optional = true }
 objc2-app-kit = { version = "0.3.2", features = ["NSApplication", "NSMenu", "NSMenuItem", "NSResponder", "NSWindow"], optional = true }
-screencapturekit = { version = "9.*", optional = true, features = ["macos_14_0"] }
+screencapturekit = { version = "10.*", optional = true, features = ["macos_14_0"] }
 
 [target.'cfg(target_os = "windows")'.build-dependencies]
 winres = "0.1"
