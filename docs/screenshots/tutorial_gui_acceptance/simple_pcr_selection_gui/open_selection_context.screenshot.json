@@ -1,0 +1,120 @@
+{
+  "acceptance_contract_sha256": "fd24c85c4816bab2c6a9c0978d8ef6c4963f3ce521110f5147773be92094a10d",
+  "capture": {
+    "backend": "scrot",
+    "backend_version": {
+      "argv": [
+        "/home/clawbio/.local/opt/gentle-xvfb-tools-a38ae2e3/root/usr/bin/scrot",
+        "--version"
+      ],
+      "available": true,
+      "exit_code": 0,
+      "output": "scrot version 2.0.0"
+    },
+    "captured_at_unix_ms": 1788889355162,
+    "display": ":104",
+    "gui_process_pid": 3871925,
+    "raw": {
+      "height_px": 1000,
+      "path": "/home/clawbio/GENtle-private/tutorial-gui-three-profile-3de4803a/simple_pcr_selection_gui/checkpoints/open_selection_context.raw.png",
+      "sha256": "5ccdc07f31ad0a31f83ab1e531b57f15156a66958ad606c6f030694f447a7a5f",
+      "width_px": 1600
+    },
+    "scope": "x11_root"
+  },
+  "chapter_id": "simple_pcr_selection_gui",
+  "derived_views": [
+    {
+      "annotation": "Numbered outline derived from the semantic focus rectangle",
+      "crop_physical_pixels": {
+        "max_x": 1600,
+        "max_y": 1000,
+        "min_x": 0,
+        "min_y": 0
+      },
+      "path": "/home/clawbio/GENtle-private/tutorial-gui-three-profile-3de4803a/simple_pcr_selection_gui/checkpoints/open_selection_context.orientation.svg",
+      "role": "orientation",
+      "sha256": "fd6c0cf2e2790257a7078e5346cb431f82253a7dc0948a19e1c5d68463ac8585"
+    },
+    {
+      "annotation": "Padded crop around the same semantic focus rectangle",
+      "crop_physical_pixels": {
+        "max_x": 799,
+        "max_y": 629,
+        "min_x": 61,
+        "min_y": 371
+      },
+      "path": "/home/clawbio/GENtle-private/tutorial-gui-three-profile-3de4803a/simple_pcr_selection_gui/checkpoints/open_selection_context.context.svg",
+      "role": "interaction_context",
+      "sha256": "5ce2d787f4cda47ca2593123fc69dca8382a534f0870816469f6479c91623d40"
+    }
+  ],
+  "gentle_binary_sha256": "9550cdfa298903ea674974fa64e6119ee71fa1ac0b3668d01847933c0d38d37d",
+  "project_state": {
+    "path": "/home/clawbio/GENtle-private/tutorial-gui-three-profile-3de4803a/simple_pcr_selection_gui/starter.project.gentle.json",
+    "sha256": "6a4e67e81b999d5b57b68b1ff8b3faf862ae92ea5d5fbe7c0c4e6bdf1a3cc790"
+  },
+  "prose_step": 3,
+  "requested_target": {
+    "semantic_id": "dna.selection.map_span",
+    "subject_scope": "subject-f33b2c9685525d19be7ecd5efd1f518f",
+    "window_id": "window.dna_viewer"
+  },
+  "requirement": "optional",
+  "schema": "gentle.tutorial_gui_screenshot_evidence.v1",
+  "semantic_snapshot": {
+    "canonical_sha256": "89b7c42fab15df62e17c9c2bd631e3c85a8e4f4230b57045722fce8e3552bc1f",
+    "generation": 186,
+    "retained_file_sha256": "48ae30dfa9600d01d6f5acf6829f23f49668d485e0e6bd329c2a53dab7b1cb5b",
+    "retained_path": "/home/clawbio/GENtle-private/tutorial-gui-three-profile-3de4803a/simple_pcr_selection_gui/checkpoints/open_selection_context.snapshot.json",
+    "schema": "gentle.gui_semantic_snapshot.v2",
+    "settled": true
+  },
+  "source_revision": "3de4803aa7cd4f960b01f71af8a7b4b272b7d576",
+  "step_id": "open_selection_context",
+  "step_sha256": "4b2c0d62f7907302156e7e1003ad96bbac31f4f787f081661dc60b780142c13e",
+  "tutorial_manifest_sha256": "140684f592c7f7fff9d6e0c50b49e9d75984ccfc1d19c680f59e8aa7fc00a3a2",
+  "visual_focus": {
+    "native_window_binding": {
+      "coordinate_transform": "root_screen_px = native_client_origin_px + (target_logical - semantic_window_logical_origin) * pixels_per_point",
+      "egui_viewport_id": "\"0122\"",
+      "native_client_geometry": {
+        "height": 600,
+        "root_x": 1,
+        "root_y": 20,
+        "width": 800
+      },
+      "native_owner_semantic_window_id": "window.dna_viewer",
+      "screen_rect_physical_pixels": {
+        "max_x": 553,
+        "max_y": 509,
+        "min_x": 307,
+        "min_y": 491
+      },
+      "semantic_window_id": "window.dna_viewer",
+      "semantic_window_rect_logical_points": {
+        "max_x": 800.0,
+        "max_y": 600.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
+      "x11_client_window_id": 4194359
+    },
+    "pixels_per_point": 1.0,
+    "rect_logical_points": {
+      "max_x": 551.5625,
+      "max_y": 489.0,
+      "min_x": 306.0,
+      "min_y": 471.0
+    },
+    "rect_physical_pixels": {
+      "max_x": 553,
+      "max_y": 509,
+      "min_x": 307,
+      "min_y": 491
+    },
+    "semantic_id": "dna.selection.simple_pcr",
+    "subject_scope": "subject-f33b2c9685525d19be7ecd5efd1f518f",
+    "window_id": "window.dna_viewer"
+  }
+}

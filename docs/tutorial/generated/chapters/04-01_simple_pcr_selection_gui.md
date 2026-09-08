@@ -105,6 +105,14 @@ cargo run --bin gentle_cli -- shell 'ui open pcr-design'
 
 > Expected: The PCR Designer opens from the same shared UI-intent route used by agent and shell callers.
 
+![Focused selection context menu with the Simple PCR action and enough sequence-map context for orientation.](../../../screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/open_selection_context.context.svg)
+
+*Figure: Focused selection context menu with the Simple PCR action and enough sequence-map context for orientation. Screenshot captured 2026-09-08.*
+
+![Whole-screen orientation for opening the selected core region's context menu.](../../../screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/open_selection_context.orientation.svg)
+
+*Figure: Whole-screen orientation for opening the selected core region's context menu. Screenshot captured 2026-09-08.*
+
 ### Step 4: In PCR Designer, adjust max primer distance from core and max amplicon, then ...
 
 GUI: In `PCR Designer`, adjust `max primer distance from core` and `max amplicon`, then click `Apply simple flank windows` if you changed the distance.
@@ -117,6 +125,10 @@ CLI:
 
 > Expected: The primer-design request should carry flank-window and maximum-amplicon constraints derived from the selected core ROI.
 
+![PCR Designer starter controls after seeding the selected core region.](../../../screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/seed_simple_pcr.context.svg)
+
+*Figure: PCR Designer starter controls after seeding the selected core region. Screenshot captured 2026-09-08.*
+
 ### Step 5: Run Design Primer Pairs and inspect the in-panel primer report preview for le...
 
 GUI: Run `Design Primer Pairs` and inspect the in-panel primer report preview for left/right distance from the core ROI and whether the pair cleanly flanks the core.
@@ -128,6 +140,10 @@ cargo run --bin gentle_cli -- shell 'primers list-reports'
 ```
 
 > Expected: After primer design, report rows expose amplicon length plus left/right distance from the core ROI.
+
+![Whole-screen orientation after primer design, with the PCR Designer report and project lineage visible together.](../../../screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/design_primers.orientation.svg)
+
+*Figure: Whole-screen orientation after primer design, with the PCR Designer report and project lineage visible together. Screenshot captured 2026-09-08.*
 
 
 ## Follow-up Commands

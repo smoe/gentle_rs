@@ -2,6 +2,36 @@
   "schema": "gentle.tutorial_source.v4",
   "id": "simple_pcr_selection_gui",
   "title": "Simple PCR From a Selected Core Region",
+  "graphics": [
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/open_selection_context.orientation.svg",
+      "caption": "Whole-screen orientation for opening the selected core region's context menu.",
+      "illustrates_step": 3,
+      "capture_date": "2026-09-08"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/open_selection_context.context.svg",
+      "caption": "Focused selection context menu with the Simple PCR action and enough sequence-map context for orientation.",
+      "illustrates_step": 3,
+      "capture_date": "2026-09-08"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/seed_simple_pcr.context.svg",
+      "caption": "PCR Designer starter controls after seeding the selected core region.",
+      "illustrates_step": 4,
+      "capture_date": "2026-09-08"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/design_primers.orientation.svg",
+      "caption": "Whole-screen orientation after primer design, with the PCR Designer report and project lineage visible together.",
+      "illustrates_step": 5,
+      "capture_date": "2026-09-08"
+    }
+  ],
   "catalog": {
     "order": 18,
     "path": "docs/tutorial/04-01_simple_pcr_selection_gui.md",

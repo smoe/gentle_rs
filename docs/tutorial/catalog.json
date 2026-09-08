@@ -350,7 +350,37 @@
       "notes": "Beginner-friendly selection-first PCR walkthrough centered on core ROI, maximum primer distance from the core, and maximum amplicon length.",
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/open_selection_context.orientation.svg",
+          "caption": "Whole-screen orientation for opening the selected core region's context menu.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/open_selection_context.context.svg",
+          "caption": "Focused selection context menu with the Simple PCR action and enough sequence-map context for orientation.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/seed_simple_pcr.context.svg",
+          "caption": "PCR Designer starter controls after seeding the selected core region.",
+          "illustrates_step": 4,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/design_primers.orientation.svg",
+          "caption": "Whole-screen orientation after primer design, with the PCR Designer report and project lineage visible together.",
+          "illustrates_step": 5,
+          "capture_date": "2026-09-08"
+        }
+      ]
     },
     {
       "id": "protein_transcript_native_expert_gui",
@@ -489,7 +519,30 @@
       "review_stale": true,
       "review_stale_reason": "source JSON 'docs/tutorial/sources/02-01_load_branch_reverse_complement_pgex_fasta.json' changed after human review date 2026-05-18",
       "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/branch.context.svg",
+          "caption": "Interaction context for creating a branch while preserving the original sequence.",
+          "illustrates_step": 2,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/reverse_complement.orientation.svg",
+          "caption": "Whole-screen orientation for the reverse-complement action in the DNA viewer.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/reverse_complement.context.svg",
+          "caption": "Focused reverse-complement control and nearby sequence context.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-08"
+        }
+      ]
     },
     {
       "id": "find_and_extend_genomic_target_local_catalog",
@@ -533,7 +586,30 @@
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/open_tools.orientation.svg",
+          "caption": "Whole-screen orientation after opening Sequence Tools from the DNA viewer.",
+          "illustrates_step": 2,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/set_prefix.context.svg",
+          "caption": "Digest controls with the enzyme list and output prefix in interaction context.",
+          "illustrates_step": 2,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/digest.orientation.svg",
+          "caption": "Whole-screen orientation after running the digest and publishing its fragment products.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-08"
+        }
+      ]
     },
     {
       "id": "gibson_two_fragment_overlap_preview",

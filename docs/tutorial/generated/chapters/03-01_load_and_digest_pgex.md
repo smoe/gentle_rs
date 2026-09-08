@@ -81,6 +81,14 @@ cargo run --bin gentle_cli -- op '{"Digest":{"input":"pgex","enzymes":["BamHI","
 
 > Expected: The digest operation creates deterministic fragment sequence IDs using the `frag` prefix.
 
+![Whole-screen orientation after opening Sequence Tools from the DNA viewer.](../../../screenshots/tutorial_gui_acceptance/load_and_digest_pgex/open_tools.orientation.svg)
+
+*Figure: Whole-screen orientation after opening Sequence Tools from the DNA viewer. Screenshot captured 2026-09-08.*
+
+![Digest controls with the enzyme list and output prefix in interaction context.](../../../screenshots/tutorial_gui_acceptance/load_and_digest_pgex/set_prefix.context.svg)
+
+*Figure: Digest controls with the enzyme list and output prefix in interaction context. Screenshot captured 2026-09-08.*
+
 ### Step 3: Review created fragment entries and confirm they are stored as independent se...
 
 GUI: Review created fragment entries and confirm they are stored as independent sequence products.
@@ -92,6 +100,10 @@ cargo run --bin gentle_cli -- workflow @docs/examples/workflows/load_and_digest_
 ```
 
 > Expected: Replaying the workflow reproduces the same loaded sequence and fragment-product lineage.
+
+![Whole-screen orientation after running the digest and publishing its fragment products.](../../../screenshots/tutorial_gui_acceptance/load_and_digest_pgex/digest.orientation.svg)
+
+*Figure: Whole-screen orientation after running the digest and publishing its fragment products. Screenshot captured 2026-09-08.*
 
 
 ## Checkpoints

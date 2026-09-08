@@ -1,0 +1,30 @@
+{
+  "schema": "gentle.tutorial_gui_screenshot_selection.v1",
+  "capture_date": "2026-09-08",
+  "source_revision": "3de4803aa7cd4f960b01f71af8a7b4b272b7d576",
+  "chapters": [
+    {
+      "chapter_id": "load_branch_reverse_complement_pgex_fasta",
+      "checkpoints": [
+        "branch",
+        "reverse_complement"
+      ]
+    },
+    {
+      "chapter_id": "load_and_digest_pgex",
+      "checkpoints": [
+        "open_tools",
+        "set_prefix",
+        "digest"
+      ]
+    },
+    {
+      "chapter_id": "simple_pcr_selection_gui",
+      "checkpoints": [
+        "open_selection_context",
+        "seed_simple_pcr",
+        "design_primers"
+      ]
+    }
+  ]
+}

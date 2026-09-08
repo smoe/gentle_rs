@@ -4768,7 +4768,8 @@ fn render_tutorial_inline_graphic(graphic: &TutorialGraphic, output_dir: &Path) 
         out.push('.');
     }
     out.push_str("*\n\n");
-    if retained_artifact_extension(&graphic.path) == "svg"
+    if graphic.kind.trim() == "generated"
+        && retained_artifact_extension(&graphic.path) == "svg"
         && let Some(preview) = retained_svg_text_preview(&graphic_path)
     {
         out.push_str("> SVG text labels: ");
@@ -6278,6 +6279,30 @@ pub fn generate_workflow_example_docs(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn screenshot_svg_caption_does_not_mislabel_annotation_numbers_as_figure_text() {
+        let dir = TempDir::new().expect("temp screenshot dir");
+        let path = dir.path().join("context.svg");
+        fs::write(
+            &path,
+            r#"<svg xmlns="http://www.w3.org/2000/svg"><text>1</text></svg>"#,
+        )
+        .expect("write screenshot projection");
+        let graphic = TutorialGraphic {
+            kind: "screenshot".to_string(),
+            path: path.to_string_lossy().into_owned(),
+            caption: "Interaction context".to_string(),
+            illustrates_step: 1,
+            capture_date: Some("2026-09-08".to_string()),
+            regen_command: None,
+        };
+
+        let rendered = render_tutorial_inline_graphic(&graphic, dir.path());
+
+        assert!(rendered.contains("Interaction context"));
+        assert!(!rendered.contains("SVG text labels:"));
+    }
     use crate::engine::{
         GeneTranscriptAssayRoutineRequest, SequenceFeatureQualifierFilter, SequenceFeatureQuery,
         TranscriptAssayKind, TranscriptAssayPanelCompletionStatus, TranscriptAssayPanelReport,

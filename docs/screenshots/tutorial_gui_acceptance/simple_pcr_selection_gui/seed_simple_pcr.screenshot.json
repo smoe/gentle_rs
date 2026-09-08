@@ -1,0 +1,120 @@
+{
+  "acceptance_contract_sha256": "fd24c85c4816bab2c6a9c0978d8ef6c4963f3ce521110f5147773be92094a10d",
+  "capture": {
+    "backend": "scrot",
+    "backend_version": {
+      "argv": [
+        "/home/clawbio/.local/opt/gentle-xvfb-tools-a38ae2e3/root/usr/bin/scrot",
+        "--version"
+      ],
+      "available": true,
+      "exit_code": 0,
+      "output": "scrot version 2.0.0"
+    },
+    "captured_at_unix_ms": 1788889356712,
+    "display": ":104",
+    "gui_process_pid": 3871925,
+    "raw": {
+      "height_px": 1000,
+      "path": "/home/clawbio/GENtle-private/tutorial-gui-three-profile-3de4803a/simple_pcr_selection_gui/checkpoints/seed_simple_pcr.raw.png",
+      "sha256": "e71ef106b96239221840087ad6d28755fba210a6e1176e917e7aa3f6a48ec9fe",
+      "width_px": 1600
+    },
+    "scope": "x11_root"
+  },
+  "chapter_id": "simple_pcr_selection_gui",
+  "derived_views": [
+    {
+      "annotation": "Numbered outline derived from the semantic focus rectangle",
+      "crop_physical_pixels": {
+        "max_x": 1600,
+        "max_y": 1000,
+        "min_x": 0,
+        "min_y": 0
+      },
+      "path": "/home/clawbio/GENtle-private/tutorial-gui-three-profile-3de4803a/simple_pcr_selection_gui/checkpoints/seed_simple_pcr.orientation.svg",
+      "role": "orientation",
+      "sha256": "065192347013992a44518de2e27a77101ccec60c5bbc87b2490e04ccb834f50c"
+    },
+    {
+      "annotation": "Padded crop around the same semantic focus rectangle",
+      "crop_physical_pixels": {
+        "max_x": 1308,
+        "max_y": 887,
+        "min_x": 840,
+        "min_y": 632
+      },
+      "path": "/home/clawbio/GENtle-private/tutorial-gui-three-profile-3de4803a/simple_pcr_selection_gui/checkpoints/seed_simple_pcr.context.svg",
+      "role": "interaction_context",
+      "sha256": "b365ab3306114f826a0e18771ce8249cec5361dd23484f1775ca7c8999062f38"
+    }
+  ],
+  "gentle_binary_sha256": "9550cdfa298903ea674974fa64e6119ee71fa1ac0b3668d01847933c0d38d37d",
+  "project_state": {
+    "path": "/home/clawbio/GENtle-private/tutorial-gui-three-profile-3de4803a/simple_pcr_selection_gui/starter.project.gentle.json",
+    "sha256": "6a4e67e81b999d5b57b68b1ff8b3faf862ae92ea5d5fbe7c0c4e6bdf1a3cc790"
+  },
+  "prose_step": 3,
+  "requested_target": {
+    "semantic_id": "dna.selection.simple_pcr",
+    "subject_scope": "subject-f33b2c9685525d19be7ecd5efd1f518f",
+    "window_id": "window.dna_viewer"
+  },
+  "requirement": "required",
+  "schema": "gentle.tutorial_gui_screenshot_evidence.v1",
+  "semantic_snapshot": {
+    "canonical_sha256": "bb2a03a6eeabb41eb825f94989cafe5aebbaa92ba9d4d8cedee64edcd5bb462b",
+    "generation": 197,
+    "retained_file_sha256": "b1bcf79293422e7323d2ab96c20839464f62c90957a4871b65193ff839ab1236",
+    "retained_path": "/home/clawbio/GENtle-private/tutorial-gui-three-profile-3de4803a/simple_pcr_selection_gui/checkpoints/seed_simple_pcr.snapshot.json",
+    "schema": "gentle.gui_semantic_snapshot.v2",
+    "settled": true
+  },
+  "source_revision": "3de4803aa7cd4f960b01f71af8a7b4b272b7d576",
+  "step_id": "seed_simple_pcr",
+  "step_sha256": "4eb044bedbe38bec82a1050c650efa7ad6e6bcc9ac8ba72bc733d3c26eaf9fc5",
+  "tutorial_manifest_sha256": "140684f592c7f7fff9d6e0c50b49e9d75984ccfc1d19c680f59e8aa7fc00a3a2",
+  "visual_focus": {
+    "native_window_binding": {
+      "coordinate_transform": "root_screen_px = native_client_origin_px + (target_logical - semantic_window_logical_origin) * pixels_per_point",
+      "egui_viewport_id": "\"8771\"",
+      "native_client_geometry": {
+        "height": 840,
+        "root_x": 399,
+        "root_y": 155,
+        "width": 1200
+      },
+      "native_owner_semantic_window_id": "window.pcr_design",
+      "screen_rect_physical_pixels": {
+        "max_x": 1128,
+        "max_y": 767,
+        "min_x": 1020,
+        "min_y": 752
+      },
+      "semantic_window_id": "window.pcr_design",
+      "semantic_window_rect_logical_points": {
+        "max_x": 1590.0,
+        "max_y": 967.0,
+        "min_x": 406.0,
+        "min_y": 143.0
+      },
+      "x11_client_window_id": 4194515
+    },
+    "pixels_per_point": 1.0,
+    "rect_logical_points": {
+      "max_x": 1134.7188,
+      "max_y": 755.0,
+      "min_x": 1027.0,
+      "min_y": 740.0
+    },
+    "rect_physical_pixels": {
+      "max_x": 1128,
+      "max_y": 767,
+      "min_x": 1020,
+      "min_y": 752
+    },
+    "semantic_id": "pcr.simple_starter.panel",
+    "subject_scope": "subject-f33b2c9685525d19be7ecd5efd1f518f",
+    "window_id": "window.pcr_design"
+  }
+}

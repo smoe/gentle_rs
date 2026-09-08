@@ -80,6 +80,10 @@ cargo run --bin gentle_cli -- op '{"Branch":{"input":"pgex_fasta","output_id":"p
 
 > Expected: A separate derivative sequence `pgex_fasta_branch` appears without replacing the original FASTA record.
 
+![Interaction context for creating a branch while preserving the original sequence.](../../../screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/branch.context.svg)
+
+*Figure: Interaction context for creating a branch while preserving the original sequence. Screenshot captured 2026-09-08.*
+
 ### Step 3: Apply reverse-complement to the branch and confirm a new sequence entry appea...
 
 GUI: Apply reverse-complement to the branch and confirm a new sequence entry appears in lineage/table views. The GUI uses the suffix _revcomp; the scripted example below explicitly chooses _rc instead.
@@ -91,6 +95,14 @@ cargo run --bin gentle_cli -- op '{"ReverseComplement":{"input":"pgex_fasta_bran
 ```
 
 > Expected: A new sequence `pgex_fasta_branch_rc` appears as the reverse-complement product linked to the branch input.
+
+![Focused reverse-complement control and nearby sequence context.](../../../screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/reverse_complement.context.svg)
+
+*Figure: Focused reverse-complement control and nearby sequence context. Screenshot captured 2026-09-08.*
+
+![Whole-screen orientation for the reverse-complement action in the DNA viewer.](../../../screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/reverse_complement.orientation.svg)
+
+*Figure: Whole-screen orientation for the reverse-complement action in the DNA viewer. Screenshot captured 2026-09-08.*
 
 
 ## Checkpoints

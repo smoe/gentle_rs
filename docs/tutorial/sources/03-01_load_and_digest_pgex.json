@@ -2,6 +2,29 @@
   "schema": "gentle.tutorial_source.v4",
   "id": "load_and_digest_pgex",
   "title": "Load pGEX and digest with BamHI/EcoRI",
+  "graphics": [
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/open_tools.orientation.svg",
+      "caption": "Whole-screen orientation after opening Sequence Tools from the DNA viewer.",
+      "illustrates_step": 2,
+      "capture_date": "2026-09-08"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/set_prefix.context.svg",
+      "caption": "Digest controls with the enzyme list and output prefix in interaction context.",
+      "illustrates_step": 2,
+      "capture_date": "2026-09-08"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/digest.orientation.svg",
+      "caption": "Whole-screen orientation after running the digest and publishing its fragment products.",
+      "illustrates_step": 3,
+      "capture_date": "2026-09-08"
+    }
+  ],
   "catalog": {
     "order": 26,
     "path": "docs/tutorial/generated/chapters/03-01_load_and_digest_pgex.md",

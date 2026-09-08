@@ -2,6 +2,29 @@
   "schema": "gentle.tutorial_source.v4",
   "id": "load_branch_reverse_complement_pgex_fasta",
   "title": "Load FASTA, branch, and reverse-complement",
+  "graphics": [
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/branch.context.svg",
+      "caption": "Interaction context for creating a branch while preserving the original sequence.",
+      "illustrates_step": 2,
+      "capture_date": "2026-09-08"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/reverse_complement.orientation.svg",
+      "caption": "Whole-screen orientation for the reverse-complement action in the DNA viewer.",
+      "illustrates_step": 3,
+      "capture_date": "2026-09-08"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/reverse_complement.context.svg",
+      "caption": "Focused reverse-complement control and nearby sequence context.",
+      "illustrates_step": 3,
+      "capture_date": "2026-09-08"
+    }
+  ],
   "catalog": {
     "order": 24,
     "path": "docs/tutorial/generated/chapters/02-01_load_branch_reverse_complement_pgex_fasta.md",

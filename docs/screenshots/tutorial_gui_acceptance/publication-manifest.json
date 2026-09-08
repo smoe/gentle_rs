@@ -1,0 +1,334 @@
+{
+  "acceptance_report": {
+    "source_sha256": "d8a6edc1335749b4c20686ef4f016a6804cb74fae3c46a3119c52622ae595938",
+    "status": "pass"
+  },
+  "capture_date": "2026-09-08",
+  "checkpoints": [
+    {
+      "captured_at_unix_ms": 1788889314028,
+      "chapter_id": "load_branch_reverse_complement_pgex_fasta",
+      "files": [
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/branch.raw.png",
+          "sha256": "0e5845292061dc0b52d26848ac8429de1bf5e45164e89bf7b531be664ed33f3f",
+          "size_bytes": 390716
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/branch.orientation.svg",
+          "sha256": "4d735a18cb7e104c00ebeb775905f459d1ec5135fd6c9f62885641aef5d09f69",
+          "size_bytes": 528
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/branch.context.svg",
+          "sha256": "aacd93fcbde8b3554f1528080cdf26c5abc94d45c565912a436965f6eaa38cdf",
+          "size_bytes": 535
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/branch.screenshot.json",
+          "sha256": "e0abfbe5148399377781be63b852de1624cd9bdec4ed3efa5bdbe358893e902d",
+          "size_bytes": 4444
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/branch.snapshot.json",
+          "sha256": "53cd789338d07014711d4d79274419e2ba00ef23acecbfa70aa118a2074010f7",
+          "size_bytes": 10759
+        }
+      ],
+      "prose_step": 2,
+      "semantic_snapshot_canonical_sha256": "d3e1982a99150ab8049af8ab3776d17f296ecfd4387a1f411569c4fd74a9b476",
+      "semantic_target": {
+        "semantic_id": "dna.sequence.branch",
+        "subject_scope": null,
+        "window_id": "window.dna_viewer"
+      },
+      "source_record_sha256": "e0abfbe5148399377781be63b852de1624cd9bdec4ed3efa5bdbe358893e902d",
+      "step_id": "branch"
+    },
+    {
+      "captured_at_unix_ms": 1788889318638,
+      "chapter_id": "load_branch_reverse_complement_pgex_fasta",
+      "files": [
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/reverse_complement.raw.png",
+          "sha256": "9c021204b7fcfef6748fe080c9fbc9b8fa9f7359f46526f00d12cbcaf029e75c",
+          "size_bytes": 527640
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/reverse_complement.orientation.svg",
+          "sha256": "a12ccf355590c898f42e8671ce69fabd163e00e27e38edc0a62aefdd056b4fb2",
+          "size_bytes": 551
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/reverse_complement.context.svg",
+          "sha256": "1e56e96b64640a39b181f1e2d5e394ec4619100c4be49eec8b42e192bb0ce185",
+          "size_bytes": 558
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/reverse_complement.screenshot.json",
+          "sha256": "e32de97f434362aca3a103703baa0ed5a645c9f711ec99aa364b678661ed0855",
+          "size_bytes": 4525
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/reverse_complement.snapshot.json",
+          "sha256": "b2ec2a67a634ba527082c282470dc48bc1c825a833d7795b1f867ec98334b0e4",
+          "size_bytes": 11310
+        }
+      ],
+      "prose_step": 3,
+      "semantic_snapshot_canonical_sha256": "a47150370f6c2637e1921ee1453fcfb287c4f9a9342cc300643d914336584ae9",
+      "semantic_target": {
+        "semantic_id": "dna.sequence.reverse_complement",
+        "subject_scope": null,
+        "window_id": "window.dna_viewer"
+      },
+      "source_record_sha256": "e32de97f434362aca3a103703baa0ed5a645c9f711ec99aa364b678661ed0855",
+      "step_id": "reverse_complement"
+    },
+    {
+      "captured_at_unix_ms": 1788889330036,
+      "chapter_id": "load_and_digest_pgex",
+      "files": [
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/open_tools.raw.png",
+          "sha256": "cddf4170fadad6bd639fc212d08fe251234877ebd136a8753dd27aab88642f30",
+          "size_bytes": 316798
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/open_tools.orientation.svg",
+          "sha256": "24018170c621207daac78050598055c7a80b385caaa301da8b4b159fc3058c6b",
+          "size_bytes": 513
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/open_tools.context.svg",
+          "sha256": "ba37f0a18474a7ef9a090fd53a5f9760587646d57de9c8df3bf08b7e25c91523",
+          "size_bytes": 519
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/open_tools.screenshot.json",
+          "sha256": "a29de0e5be21dac2e83e1f51249337d9fa928826589d926e5fb92b6f1c683a85",
+          "size_bytes": 4347
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/open_tools.snapshot.json",
+          "sha256": "27837af1a6bf6649831d6c3b404ff3fc5edf677444307991aef324234887389c",
+          "size_bytes": 13584
+        }
+      ],
+      "prose_step": 2,
+      "semantic_snapshot_canonical_sha256": "b1c17130929d67395acf5bfb586d1b9dd3344993cdbe57ab9e28f22c77ef220f",
+      "semantic_target": {
+        "semantic_id": "dna.sequence.open_tools",
+        "subject_scope": null,
+        "window_id": "window.dna_viewer"
+      },
+      "source_record_sha256": "a29de0e5be21dac2e83e1f51249337d9fa928826589d926e5fb92b6f1c683a85",
+      "step_id": "open_tools"
+    },
+    {
+      "captured_at_unix_ms": 1788889333067,
+      "chapter_id": "load_and_digest_pgex",
+      "files": [
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/set_prefix.raw.png",
+          "sha256": "362567a45d30fdc5201ae123b40a08ac91d1cff7759300882619e99cacf09f5c",
+          "size_bytes": 316796
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/set_prefix.orientation.svg",
+          "sha256": "1895ca3d236c942f248233c4e6bfb9f5f0b4e484f6e1adeefbaf9023319d5667",
+          "size_bytes": 516
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/set_prefix.context.svg",
+          "sha256": "f3bda6dfbd2dfeb2e33bcb9705138c659590e1d5c5f63055bb55abd2a5d9d570",
+          "size_bytes": 525
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/set_prefix.screenshot.json",
+          "sha256": "5c3239f6c8b0a60bc844f314d08918a0ef2370980a3c80ca583316c7d6ad0ca9",
+          "size_bytes": 4364
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/set_prefix.snapshot.json",
+          "sha256": "0adc8cac9f3e9647f9f89becb2a349adab505fbdde79bd170923b2d7ac5ff8c0",
+          "size_bytes": 14743
+        }
+      ],
+      "prose_step": 2,
+      "semantic_snapshot_canonical_sha256": "8c03d5b9eb53f1b2df77b7141895c0f4c24984e37ab4c663b80d1be8eef7166a",
+      "semantic_target": {
+        "semantic_id": "sequence_tools.digest.prefix",
+        "subject_scope": null,
+        "window_id": "window.sequence_tools"
+      },
+      "source_record_sha256": "5c3239f6c8b0a60bc844f314d08918a0ef2370980a3c80ca583316c7d6ad0ca9",
+      "step_id": "set_prefix"
+    },
+    {
+      "captured_at_unix_ms": 1788889337378,
+      "chapter_id": "load_and_digest_pgex",
+      "files": [
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/digest.raw.png",
+          "sha256": "f2e2c7f40f180e3ccbf6c250b96e832b057ba5d2d0a5fa24aecc32dc885a263c",
+          "size_bytes": 382494
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/digest.orientation.svg",
+          "sha256": "7bd1a9fad629c0030be1584bfa05d52219a424ca56587be6448db74f86cb908c",
+          "size_bytes": 507
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/digest.context.svg",
+          "sha256": "81f54220e9f8c1cda914f1617793d70ed9d6eff3fa06348975b9c759298bb68e",
+          "size_bytes": 516
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/digest.screenshot.json",
+          "sha256": "2492173d06daba5b7e75500719120ac6be430b5eb9e4dd968c84bf6500903976",
+          "size_bytes": 4340
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/digest.snapshot.json",
+          "sha256": "ccdeac95edd2a491920d723133e9f9d84bf6294458e458f7b72b255372718bb0",
+          "size_bytes": 14715
+        }
+      ],
+      "prose_step": 3,
+      "semantic_snapshot_canonical_sha256": "04b00518bc519825ebf5968e717cf357fb976daa7cf410a10663481cd0fd6d4f",
+      "semantic_target": {
+        "semantic_id": "sequence_tools.digest.run",
+        "subject_scope": null,
+        "window_id": "window.sequence_tools"
+      },
+      "source_record_sha256": "2492173d06daba5b7e75500719120ac6be430b5eb9e4dd968c84bf6500903976",
+      "step_id": "digest"
+    },
+    {
+      "captured_at_unix_ms": 1788889355162,
+      "chapter_id": "simple_pcr_selection_gui",
+      "files": [
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/open_selection_context.raw.png",
+          "sha256": "5ccdc07f31ad0a31f83ab1e531b57f15156a66958ad606c6f030694f447a7a5f",
+          "size_bytes": 543548
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/open_selection_context.orientation.svg",
+          "sha256": "fd6c0cf2e2790257a7078e5346cb431f82253a7dc0948a19e1c5d68463ac8585",
+          "size_bytes": 544
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/open_selection_context.context.svg",
+          "sha256": "5ce2d787f4cda47ca2593123fc69dca8382a534f0870816469f6479c91623d40",
+          "size_bytes": 553
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/open_selection_context.screenshot.json",
+          "sha256": "d85f156bc1c14dd4d5bf528d67585593142c4f7db5e2ea586bee087920cef9c9",
+          "size_bytes": 4467
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/open_selection_context.snapshot.json",
+          "sha256": "48ae30dfa9600d01d6f5acf6829f23f49668d485e0e6bd329c2a53dab7b1cb5b",
+          "size_bytes": 13056
+        }
+      ],
+      "prose_step": 3,
+      "semantic_snapshot_canonical_sha256": "89b7c42fab15df62e17c9c2bd631e3c85a8e4f4230b57045722fce8e3552bc1f",
+      "semantic_target": {
+        "semantic_id": "dna.selection.map_span",
+        "subject_scope": "subject-f33b2c9685525d19be7ecd5efd1f518f",
+        "window_id": "window.dna_viewer"
+      },
+      "source_record_sha256": "d85f156bc1c14dd4d5bf528d67585593142c4f7db5e2ea586bee087920cef9c9",
+      "step_id": "open_selection_context"
+    },
+    {
+      "captured_at_unix_ms": 1788889356712,
+      "chapter_id": "simple_pcr_selection_gui",
+      "files": [
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/seed_simple_pcr.raw.png",
+          "sha256": "e71ef106b96239221840087ad6d28755fba210a6e1176e917e7aa3f6a48ec9fe",
+          "size_bytes": 492773
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/seed_simple_pcr.orientation.svg",
+          "sha256": "065192347013992a44518de2e27a77101ccec60c5bbc87b2490e04ccb834f50c",
+          "size_bytes": 533
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/seed_simple_pcr.context.svg",
+          "sha256": "b365ab3306114f826a0e18771ce8249cec5361dd23484f1775ca7c8999062f38",
+          "size_bytes": 540
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/seed_simple_pcr.screenshot.json",
+          "sha256": "a3c13beb482e3f46daa4cf27f83432c573c29c123e4fa989fc5beaa5313c2769",
+          "size_bytes": 4451
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/seed_simple_pcr.snapshot.json",
+          "sha256": "b1bcf79293422e7323d2ab96c20839464f62c90957a4871b65193ff839ab1236",
+          "size_bytes": 17597
+        }
+      ],
+      "prose_step": 3,
+      "semantic_snapshot_canonical_sha256": "bb2a03a6eeabb41eb825f94989cafe5aebbaa92ba9d4d8cedee64edcd5bb462b",
+      "semantic_target": {
+        "semantic_id": "dna.selection.simple_pcr",
+        "subject_scope": "subject-f33b2c9685525d19be7ecd5efd1f518f",
+        "window_id": "window.dna_viewer"
+      },
+      "source_record_sha256": "a3c13beb482e3f46daa4cf27f83432c573c29c123e4fa989fc5beaa5313c2769",
+      "step_id": "seed_simple_pcr"
+    },
+    {
+      "captured_at_unix_ms": 1788889368197,
+      "chapter_id": "simple_pcr_selection_gui",
+      "files": [
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/design_primers.raw.png",
+          "sha256": "b3f985f33c50311bd69dfd67f0698a1ab12679322f67c098189ee2c1cf6fa448",
+          "size_bytes": 598503
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/design_primers.orientation.svg",
+          "sha256": "a770d027026b4de06a043aa1fd4fa0cb703334a7045d82faba2dc2edb5719522",
+          "size_bytes": 531
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/design_primers.context.svg",
+          "sha256": "7ec9df074e3e94620ea801362ef174efcdc4e418671a1de7f36324e3a3a04312",
+          "size_bytes": 538
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/design_primers.screenshot.json",
+          "sha256": "98bfd11b53427405d6717980bbddf1f671466ccc61c367899c913150143601a1",
+          "size_bytes": 4426
+        },
+        {
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/design_primers.snapshot.json",
+          "sha256": "1649b17150cf804558ad92ef2aaeeaacb77aafb1e3f1710fa92aae826a012841",
+          "size_bytes": 17019
+        }
+      ],
+      "prose_step": 5,
+      "semantic_snapshot_canonical_sha256": "dbccbfeddaee9c7d6a7e1ca8cd60e1bdf7e8193974a5e1f98cc59c149254d660",
+      "semantic_target": {
+        "semantic_id": "pcr.design.run",
+        "subject_scope": "subject-f33b2c9685525d19be7ecd5efd1f518f",
+        "window_id": "window.pcr_design"
+      },
+      "source_record_sha256": "98bfd11b53427405d6717980bbddf1f671466ccc61c367899c913150143601a1",
+      "step_id": "design_primers"
+    }
+  ],
+  "gentle_binary_sha256": "9550cdfa298903ea674974fa64e6119ee71fa1ac0b3668d01847933c0d38d37d",
+  "path_note": "The copied screenshot sidecars are byte-identical capture records. Their absolute paths describe the original run; this manifest binds the portable repository copies by relative path and SHA-256.",
+  "schema": "gentle.tutorial_gui_screenshot_publication.v1",
+  "selection_sha256": "477ccd64b33218015fb9a8e6ba3b93a9dc03b22a17e271137aed8fee02908857",
+  "source_revision": "3de4803aa7cd4f960b01f71af8a7b4b272b7d576"
+}

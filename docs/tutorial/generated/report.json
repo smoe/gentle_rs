@@ -101,14 +101,14 @@
     "artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.synthetic_vector.svg": "c6425417640b6cedbea7f885a6662f908103717aecbc9af293879c7d2428fb07",
     "artifacts/regulatory_fragment_panel_planning_offline/artifacts/regulatory_fragment_panel.locus.svg": "649dd807040d56a4b2e366c94d4b25edf1a3e2e3ac65a1c50b2f69408b20bd40",
     "chapters/01-02_contribute_to_gentle_development.md": "af1a3a79267e801651bd639af531acee1fd23ae6c14c80c295324a57df3bf3f6",
-    "chapters/02-01_load_branch_reverse_complement_pgex_fasta.md": "30e7027c5f89dc2e7a7d1fd9fa2f6fbcd193f5dcbf990dfebe0e8872ee35aa0c",
+    "chapters/02-01_load_branch_reverse_complement_pgex_fasta.md": "a40e3170ec04ab4dff40f765d9168e680aeb3609b30d5b3f9ada07f04046311e",
     "chapters/02-04_tp73_cdna_genomic_dotplot_online.md": "432ba5870f9fff57f983e2df06445248c4bb3be45f9b9c8e7e8d46809e548b7c",
-    "chapters/03-01_load_and_digest_pgex.md": "3fee1c17785d92bcc7c610add78fbbc6dcfff4397f6e0aa2eca63ada396ee653",
+    "chapters/03-01_load_and_digest_pgex.md": "cc2060c93fae2064fb18ed6065d522b194c99903b0f17d9fbcb5290f34a1a7b5",
     "chapters/03-02_digest_ligation_extract_region_minimal.md": "c9050de9bd2081050fa2f6017fc1c25d3aac5144cf76a1fc54b9af2e0078dd68",
     "chapters/03-03_gibson_two_fragment_overlap_preview.md": "a05f71df0cc551e64fdcc8a3a486a9f543d377e5fd50d5979e56aa61c94f3058",
     "chapters/03-04_gibson_specialist_testing_baseline.md": "812504833cae0b52a43bceb26d448059f323e5beca8a8ac1f4d7b13b646da456",
     "chapters/03-06_gibson_arrangements_baseline.md": "59b767f06bbd6eaf79bc02f08d6d96855dbc453815a63d098a8f276eedd43839",
-    "chapters/04-01_simple_pcr_selection_gui.md": "b00d5de03ae3a354fc129550aa115357b08cc44ee7ed3eb6c0d668268156b21c",
+    "chapters/04-01_simple_pcr_selection_gui.md": "c9c53406497dcd5542c327f666ed1b9bb0406a6628aec8a72618c59095b5498c",
     "chapters/04-02_pcr_selection_batch_primer_pairs_offline.md": "fa5a464a78007250bc15fec224f87f85c0b209f9196fe1537356b88195b96420",
     "chapters/04-04_guides_filter_and_generate_oligos.md": "3be07b5d4008a69b6868eb085da499c7808091b8660b25c03daa07e9b9bc01f8",
     "chapters/04-05_guides_export_csv_and_protocol.md": "d6a9ba4e08fe422b7293088183691206c994079574072da8a497998ea58950ac",
@@ -160,6 +160,29 @@
       "review_stale_reason": "source JSON 'docs/tutorial/sources/02-01_load_branch_reverse_complement_pgex_fasta.json' changed after human review date 2026-05-18",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/branch.context.svg",
+          "caption": "Interaction context for creating a branch while preserving the original sequence.",
+          "illustrates_step": 2,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/reverse_complement.orientation.svg",
+          "caption": "Whole-screen orientation for the reverse-complement action in the DNA viewer.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/reverse_complement.context.svg",
+          "caption": "Focused reverse-complement control and nearby sequence context.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-08"
+        }
+      ],
       "retained_artifacts": []
     },
     {
@@ -206,6 +229,29 @@
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/open_tools.orientation.svg",
+          "caption": "Whole-screen orientation after opening Sequence Tools from the DNA viewer.",
+          "illustrates_step": 2,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/set_prefix.context.svg",
+          "caption": "Digest controls with the enzyme list and output prefix in interaction context.",
+          "illustrates_step": 2,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/digest.orientation.svg",
+          "caption": "Whole-screen orientation after running the digest and publishing its fragment products.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-08"
+        }
+      ],
       "retained_artifacts": []
     },
     {
@@ -565,6 +611,36 @@
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/open_selection_context.orientation.svg",
+          "caption": "Whole-screen orientation for opening the selected core region's context menu.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/open_selection_context.context.svg",
+          "caption": "Focused selection context menu with the Simple PCR action and enough sequence-map context for orientation.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/seed_simple_pcr.context.svg",
+          "caption": "PCR Designer starter controls after seeding the selected core region.",
+          "illustrates_step": 4,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/design_primers.orientation.svg",
+          "caption": "Whole-screen orientation after primer design, with the PCR Designer report and project lineage visible together.",
+          "illustrates_step": 5,
+          "capture_date": "2026-09-08"
+        }
+      ],
       "retained_artifacts": []
     },
     {

@@ -165,6 +165,29 @@
         "Workflow executes without warnings or errors.",
         "Derived sequence IDs include a branch and reverse-complement product."
       ],
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/branch.context.svg",
+          "caption": "Interaction context for creating a branch while preserving the original sequence.",
+          "illustrates_step": 2,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/reverse_complement.orientation.svg",
+          "caption": "Whole-screen orientation for the reverse-complement action in the DNA viewer.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/reverse_complement.context.svg",
+          "caption": "Focused reverse-complement control and nearby sequence context.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-08"
+        }
+      ],
       "gui_acceptance": {
         "schema": "gentle.tutorial_gui_acceptance.v1",
         "profile": "smoke",
@@ -444,6 +467,29 @@
       "checkpoints": [
         "Digest operation completes and creates fragment sequence IDs.",
         "Fragment IDs are deterministic across repeated runs."
+      ],
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/open_tools.orientation.svg",
+          "caption": "Whole-screen orientation after opening Sequence Tools from the DNA viewer.",
+          "illustrates_step": 2,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/set_prefix.context.svg",
+          "caption": "Digest controls with the enzyme list and output prefix in interaction context.",
+          "illustrates_step": 2,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/digest.orientation.svg",
+          "caption": "Whole-screen orientation after running the digest and publishing its fragment products.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-08"
+        }
       ],
       "gui_acceptance": {
         "schema": "gentle.tutorial_gui_acceptance.v1",
@@ -1894,6 +1940,36 @@
         "A non-empty selection exposes `Simple PCR from selection` in the DNA-window context menu.",
         "The PCR Designer shows the `Simple PCR starter` block.",
         "After primer design, the report preview shows left/right distance from the core ROI and whether the pair cleanly flanks the core."
+      ],
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/open_selection_context.orientation.svg",
+          "caption": "Whole-screen orientation for opening the selected core region's context menu.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/open_selection_context.context.svg",
+          "caption": "Focused selection context menu with the Simple PCR action and enough sequence-map context for orientation.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/seed_simple_pcr.context.svg",
+          "caption": "PCR Designer starter controls after seeding the selected core region.",
+          "illustrates_step": 4,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/design_primers.orientation.svg",
+          "caption": "Whole-screen orientation after primer design, with the PCR Designer report and project lineage visible together.",
+          "illustrates_step": 5,
+          "capture_date": "2026-09-08"
+        }
       ],
       "gui_acceptance": {
         "schema": "gentle.tutorial_gui_acceptance.v1",
