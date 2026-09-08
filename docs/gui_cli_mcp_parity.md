@@ -19,7 +19,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 |---|---:|---:|---:|
 | GUI | 48 | 714 | 0 |
 | gentle_cli | 457 | 329 | 0 |
-| MCP | 131 | 495 | 64 |
+| MCP | 133 | 493 | 64 |
 | JS | 78 | 527 | 69 |
 | Lua | 77 | 528 | 69 |
 | ClawBio | 0 | 0 | 0 |
@@ -201,8 +201,8 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | promoters panel-materialize | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | promoters regulatory-panel-plan | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | promoters regulatory-panel-render | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
-| promoters regulatory-products-plan | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
-| promoters regulatory-products-materialize | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| promoters regulatory-products-plan | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| promoters regulatory-products-materialize | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | reporters list | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | reporters recommend | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | reporters export-corpus | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |

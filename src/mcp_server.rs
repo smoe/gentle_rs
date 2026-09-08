@@ -1423,6 +1423,8 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
             "promoters compare-architectures",
             "promoters regulatory-panel-plan",
             "promoters regulatory-panel-render",
+            "promoters regulatory-products-plan",
+            "promoters regulatory-products-materialize",
             "uniprot build-linked-transcript-inventory",
         ],
         "workflow" => &["workflow"],

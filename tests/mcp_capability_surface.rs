@@ -227,6 +227,8 @@ fn typed_op_routes_are_advertised_without_exclusion_shortcuts() {
         "splicing cryptic-overlay",
         "splicing cryptic-protein",
         "uniprot build-linked-transcript-inventory",
+        "promoters regulatory-products-plan",
+        "promoters regulatory-products-materialize",
     ] {
         assert!(
             covered.contains(path),

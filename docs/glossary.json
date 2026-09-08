@@ -2333,7 +2333,8 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
-            "cli-direct"
+            "cli-direct",
+            "mcp-op"
          ],
          "path": "promoters regulatory-products-plan",
          "summary": "Prepare a separately approved exact multi-fragment design, including vector-context replacement, source instances, spacers and preserved annotations. No cloning success is implied.",
@@ -2347,7 +2348,8 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
-            "cli-direct"
+            "cli-direct",
+            "mcp-op"
          ],
          "path": "promoters regulatory-products-materialize",
          "summary": "Atomically materialize exact design products after digest approval, refusing stale sources and output collisions; retains a receipt without declaring experimental QA passed.",

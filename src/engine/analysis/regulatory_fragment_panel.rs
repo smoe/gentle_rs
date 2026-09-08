@@ -3535,6 +3535,104 @@ mod tests {
     }
 
     #[test]
+    fn regulatory_fragment_products_mcp_preserves_approval_and_results() {
+        let fixture = planner_fixture(false, gp::GenomicRegionStrand::Plus, false);
+        let plan = fixture
+            .engine
+            .plan_regulatory_fragment_panel(fixture.request)
+            .expect("plan");
+        let state_path = fixture._temp.path().join("mcp_state.json");
+        fixture
+            .engine
+            .snapshot()
+            .save_to_path(&state_path.to_string_lossy())
+            .expect("save state");
+        let before = fs::read(&state_path).expect("state bytes");
+        let call = |operation: &Operation, confirm: bool| {
+            crate::mcp_server::mcp_tool_call_for_capability_surface_tests(
+                &state_path.to_string_lossy(),
+                "op",
+                serde_json::json!({"operation": operation, "confirm": confirm}),
+            )
+        };
+        let planned = call(
+            &Operation::PlanRegulatoryFragmentMaterialization {
+                plan: Box::new(plan),
+                output_prefix: "mcp_design".into(),
+            },
+            true,
+        );
+        assert_eq!(planned["isError"], false, "{planned:#}");
+        let proposal: RegulatoryFragmentMaterializationProposal = serde_json::from_value(
+            planned["structuredContent"]["result"]["regulatory_fragment_materialization_proposal"]
+                .clone(),
+        )
+        .expect("typed MCP proposal");
+        // Generic MCP op saves after success. Reloading rebuilds this unordered
+        // restriction cache; compare its content without mistaking row order for a mutation.
+        let normalized = |bytes: &[u8]| {
+            let mut state: serde_json::Value = serde_json::from_slice(bytes).expect("state JSON");
+            for dna in state["sequences"]
+                .as_object_mut()
+                .expect("sequences")
+                .values_mut()
+            {
+                dna["restriction_enzyme_groups"]
+                    .as_array_mut()
+                    .expect("cache groups")
+                    .sort_by_cached_key(|row| serde_json::to_string(row).expect("cache row"));
+            }
+            state
+        };
+        let after_plan = fs::read(&state_path).expect("state bytes");
+        assert!(
+            normalized(&after_plan) == normalized(&before),
+            "planning changed project content"
+        );
+        let before = after_plan;
+        let operation = Operation::MaterializeRegulatoryFragmentPanel {
+            proposal: Box::new(proposal.clone()),
+            approval_digest: proposal.proposal_digest.clone(),
+        };
+        let denied = call(&operation, false);
+        assert_eq!(denied["isError"], true, "{denied:#}");
+        assert!(
+            fs::read(&state_path).expect("state bytes") == before,
+            "unconfirmed materialization wrote state"
+        );
+        let wrong_digest = call(
+            &Operation::MaterializeRegulatoryFragmentPanel {
+                proposal: Box::new(proposal.clone()),
+                approval_digest: "wrong".into(),
+            },
+            true,
+        );
+        assert_eq!(wrong_digest["isError"], true, "{wrong_digest:#}");
+        assert!(
+            fs::read(&state_path).expect("state bytes") == before,
+            "rejected digest wrote state"
+        );
+        let materialized = call(&operation, true);
+        assert_eq!(materialized["isError"], false, "{materialized:#}");
+        let receipt: RegulatoryFragmentMaterializationReceipt = serde_json::from_value(
+            materialized["structuredContent"]["result"]["regulatory_fragment_materialization_receipt"].clone()
+        ).expect("typed MCP receipt");
+        assert_eq!(receipt.approved_proposal_digest, proposal.proposal_digest);
+        assert_eq!(receipt.created_seq_ids.len(), proposal.products.len());
+        assert_eq!(
+            receipt.final_product_audit_state,
+            RegulatoryFragmentFinalProductAuditState::NotEvaluated
+        );
+        let saved =
+            ProjectState::load_from_path(&state_path.to_string_lossy()).expect("saved products");
+        for product in proposal.products {
+            let dna = &saved.sequences[&product.output_seq_id];
+            assert_eq!(dna.get_forward_string(), product.sequence_5prime_to_3prime);
+            assert_eq!(dna.features(), &product.features);
+        }
+    }
+
+    #[test]
     fn regulatory_fragment_external_reports_are_bound_and_keep_unavailable_distinct() {
         let mut fixture = planner_fixture(false, gp::GenomicRegionStrand::Minus, false);
         let fragment = &fixture.request.fragments[0];

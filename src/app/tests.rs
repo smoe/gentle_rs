@@ -6700,9 +6700,52 @@ fn command_palette_conservation_reuses_pending_sequence_window() {
     assert_eq!(app.new_windows.len(), 1);
     assert_eq!(app.new_windows[0].sequence_id().as_deref(), Some("seq1"));
     assert!(
+        app.new_windows[0].genomic_region_manager_is_open()
+            || app.new_windows[0].genomic_region_manager_focus_is_pending(),
+        "conservation must focus or queue the manager, not just update status"
+    );
+    assert!(
         app.app_status
             .contains("Choose a saved genomic region in 'seq1'")
     );
+}
+
+#[test]
+fn command_palette_conservation_focuses_existing_sequence_window() {
+    let mut app = command_palette_test_app_with_sequence();
+    let viewport = app.register_window(Window::new_dna(
+        DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+        "seq1".into(),
+        app.engine.clone(),
+    ));
+    let window = app.windows[&viewport].clone();
+    assert!(
+        !window
+            .read()
+            .expect("window")
+            .genomic_region_manager_is_open()
+    );
+    for _ in 0..2 {
+        app.execute_command_palette_action(
+            &egui::Context::default(),
+            CommandPaletteAction::OpenGenomicRegionConservation,
+        );
+        assert!(
+            window
+                .read()
+                .expect("window")
+                .genomic_region_manager_is_open()
+        );
+        assert!(app.pending_focus_viewports.contains(&viewport));
+        assert!(app.new_windows.is_empty(), "reuse the existing viewer");
+        assert_eq!(app.windows.len(), 1);
+        assert!(
+            window
+                .write()
+                .expect("window")
+                .close_genomic_region_manager()
+        );
+    }
 }
 
 fn assert_command_palette_ui_intent_side_effect(app: &GENtleApp, target: UiIntentTarget) {

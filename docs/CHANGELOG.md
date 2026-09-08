@@ -1,5 +1,12 @@
 # GENtle Changelog
 
+- Corrected MCP discovery for both regulatory-product operations: their shared
+  typed `op` routes are now explicitly advertised instead of missing from the
+  capability surface. Regression tests retain tool confirmation, digest approval,
+  unchanged state on rejection and exact saved product content. Conservation
+  now shares the Saved Genomic Regions opener, with tests for actual open/queued
+  manager state and repeated reuse of an existing viewer, not status text alone.
+
 - Surfaced the saved-genomic-regions manager as a first-class destination
   instead of a viewer-only control. A shared `saved-genomic-regions` UI intent
   now backs a `Genome > Saved Genomic Regions...` menu item, a command-palette

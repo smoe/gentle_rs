@@ -1221,7 +1221,9 @@ Feature tree grouping:
 - `Conservation...` on a saved region opens a separate, resizable workspace:
   - the `Genomic Region Conservation` command-palette entry opens the saved-region
     manager for the active or first project sequence, where you choose the region
-    and select `Conservation...`. An empty project opens sequence retrieval first
+    and select `Conservation...`. It shares the Saved Genomic Regions opener:
+    existing viewers are focused and pending viewers retain the manager request.
+    An empty project opens sequence retrieval first
   - `Search request` edits the shared request: query resource, catalog/cache,
     explicit target genome IDs, required/optional status, expected ortholog
     loci and evidence sources, and every search-policy threshold. Empty targets

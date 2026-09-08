@@ -8360,16 +8360,7 @@ Error: `{err}`"
                 .to_string();
             return;
         };
-        self.open_sequence_window(&seq_id);
-        if let Some(viewport_id) = self.find_open_sequence_viewport_id(&seq_id) {
-            if let Some(window) = self.windows.get(&viewport_id)
-                && let Ok(mut window) = window.write()
-            {
-                window.focus_genomic_region_manager();
-            }
-        } else if let Some(window) = self.find_pending_sequence_window_mut(&seq_id) {
-            window.focus_genomic_region_manager();
-        }
+        self.open_saved_genomic_regions_for_sequence(&seq_id);
         self.app_status = format!(
             "Choose a saved genomic region in '{seq_id}', then select Conservation... to inspect local homology evidence"
         );
@@ -8768,7 +8759,12 @@ Error: `{err}`"
                 "Cannot open Saved Genomic Regions: no project sequence is available".to_string();
             return;
         };
-        if let Some(viewport_id) = self.find_open_sequence_viewport_id(&seq_id) {
+        self.open_saved_genomic_regions_for_sequence(&seq_id);
+        self.app_status = format!("Opened saved genomic regions for '{seq_id}'");
+    }
+
+    fn open_saved_genomic_regions_for_sequence(&mut self, seq_id: &str) {
+        if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
             let opened = self
                 .windows
                 .get(&viewport_id)
@@ -8781,21 +8777,19 @@ Error: `{err}`"
                 .is_some();
             if opened {
                 self.queue_focus_viewport(viewport_id);
-                self.app_status = format!("Opened saved genomic regions for '{seq_id}'");
                 return;
             }
         }
         if self
-            .find_pending_sequence_window_mut(&seq_id)
+            .find_pending_sequence_window_mut(seq_id)
             .map(|window| window.focus_genomic_region_manager())
             .is_none()
         {
-            self.open_sequence_window(&seq_id);
-            if let Some(window) = self.find_pending_sequence_window_mut(&seq_id) {
+            self.open_sequence_window(seq_id);
+            if let Some(window) = self.find_pending_sequence_window_mut(seq_id) {
                 window.focus_genomic_region_manager();
             }
         }
-        self.app_status = format!("Opened saved genomic regions for '{seq_id}'");
     }
 
     fn close_saved_genomic_regions(&mut self) -> bool {

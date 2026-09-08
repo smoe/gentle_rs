@@ -409,6 +409,10 @@ Key properties:
   advertised through the generic typed `op` tool. Their host-local resource
   discovery, installation, and index preparation commands remain CLI/GUI
   workflows and are explicitly excluded below.
+- `promoters regulatory-products-plan` and `promoters regulatory-products-materialize`
+  are advertised through typed MCP `op` as `PlanRegulatoryFragmentMaterialization`
+  and `MaterializeRegulatoryFragmentPanel`. The tool confirmation and exact
+  proposal-digest approval are separate gates; neither substitutes for the other.
 - UI-intent tools are currently non-mutating query/intent routes
 
 #### Intentionally MCP-excluded shell commands
