@@ -530,6 +530,16 @@ impl WindowDna {
         self.main_area.genomic_region_manager_is_open()
     }
 
+    /// Whether the manager is queued to open once a pending sequence finishes
+    /// loading. Focus is deferred in that state, so "not open" is not the same
+    /// as "the request was dropped".
+    pub fn genomic_region_manager_focus_is_pending(&self) -> bool {
+        matches!(
+            self.deferred_analysis_focus,
+            Some(DeferredAnalysisFocus::GenomicRegionManager)
+        )
+    }
+
     pub fn feature_location_editor_is_open(&self) -> bool {
         self.main_area.feature_location_editor_is_open()
     }

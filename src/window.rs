@@ -220,6 +220,12 @@ impl Window {
         }
     }
 
+    pub fn genomic_region_manager_focus_is_pending(&self) -> bool {
+        match self {
+            Self::Dna(window) => window.genomic_region_manager_focus_is_pending(),
+        }
+    }
+
     pub fn feature_location_editor_is_open(&self) -> bool {
         match self {
             Self::Dna(window) => window.feature_location_editor_is_open(),

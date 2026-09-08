@@ -161,13 +161,13 @@ impl MainAreaDna {
     ///
     /// Mirrors the feature-location editor so `ui close saved-genomic-regions`
     /// can report whether it actually closed anything.
-    pub(super) fn close_genomic_region_manager(&mut self) -> bool {
+    pub fn close_genomic_region_manager(&mut self) -> bool {
         let was_open = self.show_genomic_region_manager;
         self.show_genomic_region_manager = false;
         was_open
     }
 
-    pub(super) fn genomic_region_manager_is_open(&self) -> bool {
+    pub fn genomic_region_manager_is_open(&self) -> bool {
         self.show_genomic_region_manager
     }
 

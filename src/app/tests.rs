@@ -6748,6 +6748,14 @@ fn assert_command_palette_ui_intent_side_effect(app: &GENtleApp, target: UiInten
                     .any(|window| window.feature_location_editor_is_open())
             );
         }
+        UiIntentTarget::SavedGenomicRegions => {
+            // The manager defers focus while a sequence is still loading, so
+            // accept either the opened window or the queued focus.
+            assert!(app.new_windows.iter().any(|window| {
+                window.genomic_region_manager_is_open()
+                    || window.genomic_region_manager_focus_is_pending()
+            }));
+        }
         UiIntentTarget::PcrDesign => {
             assert!(app.show_pcr_design_dialog);
             assert_eq!(app.pcr_design_seq_id, "seq1");
@@ -6811,9 +6819,35 @@ fn command_palette_gui_prominent_ui_intents_dispatch_to_expected_windows() {
             UiIntentTarget::BlastHelperSequence.as_str(),
             UiIntentTarget::ImportGenomeTrack.as_str(),
             UiIntentTarget::FeatureLocationEditor.as_str(),
+            UiIntentTarget::SavedGenomicRegions.as_str(),
             UiIntentTarget::PcrDesign.as_str(),
             UiIntentTarget::SequencingConfirmation.as_str(),
         ])
+    );
+}
+
+#[test]
+fn saved_genomic_regions_ui_intent_closes_only_an_open_manager() {
+    let mut app = command_palette_test_app_with_sequence();
+    assert!(
+        !app.close_saved_genomic_regions(),
+        "closing reports false when no manager window is open"
+    );
+
+    let target = UiIntentTarget::SavedGenomicRegions;
+    assert_eq!(target.as_str(), "saved-genomic-regions");
+    assert_eq!(target.menu_path(), "Genome");
+    assert_eq!(target.discoverability_title(), "Saved Genomic Regions");
+    for alias in ["saved-genomic-regions", "genomic-regions", "regions"] {
+        assert_eq!(UiIntentTarget::parse(alias), Some(target), "alias {alias}");
+    }
+    app.open_saved_genomic_regions();
+    assert!(
+        app.new_windows.iter().any(|window| {
+            window.genomic_region_manager_is_open()
+                || window.genomic_region_manager_focus_is_pending()
+        }),
+        "opening the intent must open or queue the manager"
     );
 }
 

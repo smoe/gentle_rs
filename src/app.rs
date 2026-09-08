@@ -8768,15 +8768,32 @@ Error: `{err}`"
                 "Cannot open Saved Genomic Regions: no project sequence is available".to_string();
             return;
         };
-        self.open_sequence_window(&seq_id);
         if let Some(viewport_id) = self.find_open_sequence_viewport_id(&seq_id) {
-            if let Some(window) = self.windows.get(&viewport_id)
-                && let Ok(mut window) = window.write()
-            {
+            let opened = self
+                .windows
+                .get(&viewport_id)
+                .cloned()
+                .and_then(|window| {
+                    let mut window = window.write().ok()?;
+                    window.focus_genomic_region_manager();
+                    Some(())
+                })
+                .is_some();
+            if opened {
+                self.queue_focus_viewport(viewport_id);
+                self.app_status = format!("Opened saved genomic regions for '{seq_id}'");
+                return;
+            }
+        }
+        if self
+            .find_pending_sequence_window_mut(&seq_id)
+            .map(|window| window.focus_genomic_region_manager())
+            .is_none()
+        {
+            self.open_sequence_window(&seq_id);
+            if let Some(window) = self.find_pending_sequence_window_mut(&seq_id) {
                 window.focus_genomic_region_manager();
             }
-        } else if let Some(window) = self.find_pending_sequence_window_mut(&seq_id) {
-            window.focus_genomic_region_manager();
         }
         self.app_status = format!("Opened saved genomic regions for '{seq_id}'");
     }
