@@ -1,7 +1,7 @@
 # GENtle Roadmap
 
-Last session: 2026-09-08 - `.11` awaits exact-candidate GUI timing, scientific
-acceptance, benchmarks and packaging. The existing `.10` tag is historical.
+Last session: 2026-09-08 - `.10` remains unreleased pending Glen's verdict and
+release-owner approval of the exact candidate. A tag alone is not acceptance.
 
 Purpose: fast session orientation. This file answers "what next?" and should be
 readable in under two minutes. Completed work belongs in
@@ -20,7 +20,7 @@ Maintenance invariant:
 
 ## Release Gate
 
-Current candidate: `v0.1.0-internal.11` (unreleased; no green-light claim).
+Current candidate: `v0.1.0-internal.10` (unreleased; no green-light claim).
 
 Active aim: genome-anchored evidence, regulatory-region comparison and approved reporter designs.
 
@@ -47,7 +47,7 @@ Proof path:
   occupancy, TP73 motif scoring, provenance, and assay continuation on one
   negative-strand axis.
 - [Fixture provenance and regeneration notes](../test_files/fixtures/evidence_viewer/README.md).
-- Draft [`.11` release notes and exact-candidate gate ledger](release_notes/release_notes_v0.1.0-internal.11.md).
+- Draft [`.10` release notes and exact-candidate gate ledger](release_notes/release_notes_v0.1.0-internal.10.md).
 
 Release acceptance:
 
@@ -66,8 +66,8 @@ Release acceptance:
 
 Release cut line:
 
-- Tag `.11` only after the exact-revision matrix and manual viewer/composer smoke;
-  public distribution awaits CI proof of all advertised artifacts.
+- Release `.10` only after Glen's readiness verdict, exact-candidate gates and owner approval.
+- Packaging needs CI proof; [tag reconciliation](release.md#candidate-approval) needs explicit owner authorization.
 
 Pre-release finishing scope:
 
@@ -83,9 +83,9 @@ Pre-release finishing scope:
 
 1. Have Glen measure compact Simple PCR and complete all three GUI chapters plus
    TATA evidence review/materialization, retaining exact-candidate outcomes/screenshots.
-2. Run the `.11` ledger: locked tests, script build/entrypoints, tutorial/parity, IRF9/Q00978,
+2. Run the `.10` ledger: locked tests, script build/entrypoints, tutorial/parity, IRF9/Q00978,
    benchmarks and TP73/PATZ1 TFBS/reporter/CUT&RUN/locus proofs with exact JASPAR 2026 PFMs.
-3. Have CI prove desktop/container packaging and verify clean-tree/version/artifact identity.
+3. Run [build-only CI packaging](release.md#build-only-candidate-verification) at the same SHA; retain receipts before approval.
 4. Retain historical reports, offline-safe regeneration and live Conservation navigation/cancellation/partner-evidence proof;
    keep ClawBio compatibility modes pending separate removal review.
 5. Validate DuckDB real-Parquet boundaries/limits and scan filters; address GUI

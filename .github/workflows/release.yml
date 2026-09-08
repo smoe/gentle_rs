@@ -7,9 +7,18 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to release (example: v0.1.0)'
+        description: 'Version label (need not exist for build-only validation)'
         required: true
         type: string
+      candidate_sha:
+        description: 'Full 40-character candidate commit SHA; never a branch name'
+        required: true
+        type: string
+      publish:
+        description: 'Publish after owner approval; tag must already point to candidate_sha'
+        required: false
+        type: boolean
+        default: false
       linux_distribution:
         description: 'Linux artifact built and published by this workflow'
         required: false
@@ -19,15 +28,23 @@ on:
         default: tarball
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-installers-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.event_name == 'release' && github.event.release.tag_name || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
+  candidate:
+    uses: ./.github/workflows/release-candidate.yml
+    with:
+      tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event.release.tag_name }}
+      candidate_sha: ${{ inputs.candidate_sha || '' }}
+      publish: ${{ inputs.publish || false }}
+
   build-installers:
     name: Build Package (${{ matrix.os }})
+    needs: candidate
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -50,7 +67,11 @@ jobs:
             artifact_name: gentle-linux-tarball
 
     env:
-      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.event_name == 'release' && github.event.release.tag_name || github.ref_name }}
+      RELEASE_TAG: ${{ needs.candidate.outputs.tag }}
+      EXPECTED_REVISION: ${{ needs.candidate.outputs.revision }}
+      EXPECTED_LOCK_SHA256: ${{ needs.candidate.outputs.cargo_lock_sha256 }}
+      WORKFLOW_REVISION: ${{ needs.candidate.outputs.workflow_revision }}
+      CANDIDATE_MODE: ${{ needs.candidate.outputs.mode }}
       CARGO_TARGET_DIR: target
       RUST_MIN_STACK: 67108864
 
@@ -58,7 +79,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ needs.candidate.outputs.revision }}
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -70,21 +91,9 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Verify tag and package identity
+      - name: Verify immutable candidate identity
         shell: bash
-        run: |
-          python3 - <<'PY'
-          import os, pathlib, subprocess, tomllib
-          tag = os.environ["RELEASE_TAG"].removeprefix("refs/tags/")
-          manifest = tomllib.loads(pathlib.Path("Cargo.toml").read_text())
-          version = manifest["workspace"]["package"]["version"]
-          if tag != f"v{version}":
-              raise SystemExit(f"Tag {tag} does not match package version {version}")
-          revision = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
-          tagged = subprocess.check_output(["git", "rev-parse", f"refs/tags/{tag}^{{commit}}"], text=True).strip()
-          if revision != tagged:
-              raise SystemExit("Checkout does not match the requested tag commit")
-          PY
+        run: python3 scripts/release_candidate.py verify
 
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
@@ -347,6 +356,7 @@ jobs:
         env:
           PACKAGE_PLATFORM: ${{ matrix.platform }}
           PACKAGE_ARCH: ${{ runner.arch }}
+          INSTALLER_PATH: ${{ steps.collect.outputs.installer_path }}
         run: |
           set -euo pipefail
           tag="${RELEASE_TAG#refs/tags/}"
@@ -356,6 +366,7 @@ jobs:
           out_path="$out_dir/gentle-${tag}-${{ matrix.platform }}-${arch}.${{ matrix.extension }}"
           cp "${{ steps.collect.outputs.installer_path }}" "$out_path"
           echo "output_path=$out_path" >> "$GITHUB_OUTPUT"
+          python3 scripts/release_candidate.py verify
           python3 - <<'PY'
           import hashlib, json, os, pathlib, subprocess
           tag = os.environ["RELEASE_TAG"].removeprefix("refs/tags/")
@@ -367,27 +378,39 @@ jobs:
               "platform": platform, "arch": arch, "features": ["script-interfaces"],
               "profile": "release",
               "rustc": subprocess.check_output(["rustc", "--version"], text=True).strip(),
+              "cargo": subprocess.check_output(["cargo", "--version"], text=True).strip(),
               "cargo_lock_sha256": hashlib.sha256(pathlib.Path("Cargo.lock").read_bytes()).hexdigest(),
+              "workflow_revision": os.environ["WORKFLOW_REVISION"],
+              "mode": os.environ["CANDIDATE_MODE"],
           }
+          with pathlib.Path(os.environ["INSTALLER_PATH"]).open("rb") as stream:
+              record["artifact_sha256"] = hashlib.file_digest(stream, "sha256").hexdigest()
           pathlib.Path(f"dist/gentle-{tag}-{platform}-{arch}.build.json").write_text(json.dumps(record, indent=2) + "\n")
           PY
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
+          name: ${{ matrix.artifact_name }}-${{ needs.candidate.outputs.revision }}
           path: |
             ${{ steps.normalize.outputs.output_path }}
             dist/*.build.json
           if-no-files-found: error
 
-  publish-release:
-    name: Publish GitHub Release
+  collect-packages:
+    name: Validate and retain candidate packages
     runs-on: ubuntu-latest
-    needs: build-installers
+    needs: [candidate, build-installers]
     env:
-      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.event_name == 'release' && github.event.release.tag_name || github.ref_name }}
+      RELEASE_TAG: ${{ needs.candidate.outputs.tag }}
+      EXPECTED_REVISION: ${{ needs.candidate.outputs.revision }}
+      EXPECTED_LOCK_SHA256: ${{ needs.candidate.outputs.cargo_lock_sha256 }}
+      WORKFLOW_REVISION: ${{ needs.candidate.outputs.workflow_revision }}
+      CANDIDATE_MODE: ${{ needs.candidate.outputs.mode }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.candidate.outputs.revision }}
       - name: Set up Python for release receipts
         uses: actions/setup-python@v5
         with:
@@ -402,53 +425,56 @@ jobs:
         run: |
           find dist -type f | sort
 
-      - name: Write release attributes
-        shell: bash
+      - name: Validate receipts against the selected candidate
         run: |
-          set -euo pipefail
-          tag="${RELEASE_TAG#refs/tags/}"
-          out_dir="dist/release-meta"
-          mkdir -p "$out_dir"
-          out_file="$out_dir/gentle-${tag}-release-attributes.json"
-          python3 - <<'PY'
-          import datetime, hashlib, json, os, pathlib
-          tag = os.environ["RELEASE_TAG"].removeprefix("refs/tags/")
-          receipts = [json.loads(path.read_text()) for path in pathlib.Path("dist").rglob("*.build.json")]
-          if len(receipts) != 3 or {r["platform"] for r in receipts} != {"linux", "macos", "windows"}:
-              raise SystemExit("Expected Linux, macOS and Windows build receipts")
-          revisions = {r["revision"] for r in receipts}
-          lock_hashes = {r["cargo_lock_sha256"] for r in receipts}
-          if len(revisions) != 1 or len(lock_hashes) != 1 or any(r["tag"] != tag for r in receipts):
-              raise SystemExit("Platform packages are not bound to one tag/revision")
-          artifacts = []
-          for pattern in ("*.dmg", "*.zip", "*.tar.gz"):
-              paths = list(pathlib.Path("dist").rglob(pattern))
-              if len(paths) != 1:
-                  raise SystemExit(f"Expected one release artifact for {pattern}")
-              path = paths[0]
-              with path.open("rb") as stream:
-                  digest = hashlib.file_digest(stream, "sha256").hexdigest()
-              artifacts.append({"name": path.name, "sha256": digest, "bytes": path.stat().st_size})
-          record = {
-              "schema": "gentle.release_attributes.v1", "tag": tag,
-              "revision": revisions.pop(), "linux_distribution": "tarball",
-              "cargo_lock_sha256": lock_hashes.pop(),
-              "generated_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-              "artifacts": artifacts,
-          }
-          pathlib.Path(f"dist/release-meta/gentle-{tag}-release-attributes.json").write_text(json.dumps(record, indent=2) + "\n")
-          PY
-          echo "release_attributes=$out_file"
+          python3 scripts/release_candidate.py collect --artifacts dist \
+            --output "dist/release-meta/gentle-${RELEASE_TAG}-release-attributes.json"
 
+      - name: Retain packaging metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-metadata-${{ needs.candidate.outputs.revision }}
+          path: dist/release-meta/*.json
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish approved GitHub Release
+    runs-on: ubuntu-latest
+    needs: [candidate, collect-packages]
+    if: >-
+      needs.candidate.outputs.publish == 'true' &&
+      ((github.event_name == 'workflow_dispatch' && inputs.publish == true) ||
+       (github.event_name == 'release' && github.event.action == 'published'))
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ needs.candidate.outputs.tag }}
+      EXPECTED_REVISION: ${{ needs.candidate.outputs.revision }}
+      EXPECTED_LOCK_SHA256: ${{ needs.candidate.outputs.cargo_lock_sha256 }}
+      WORKFLOW_REVISION: ${{ needs.candidate.outputs.workflow_revision }}
+      CANDIDATE_MODE: publish
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.candidate.outputs.revision }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Recheck tag and package receipts immediately before publication
+        run: python3 scripts/release_candidate.py collect --artifacts dist
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.RELEASE_TAG }}
+          tag_name: ${{ needs.candidate.outputs.tag }}
           files: |
             dist/**/*.dmg
             dist/**/*.zip
             dist/**/*.tar.gz
             dist/**/*.build.json
-            dist/release-meta/*.json
+            dist/**/*-release-attributes.json
           fail_on_unmatched_files: true
           generate_release_notes: true

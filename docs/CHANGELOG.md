@@ -1,6 +1,22 @@
 # GENtle Changelog
 
-## 2026-09-08 - `v0.1.0-internal.11` candidate preparation
+## 2026-09-08 - `v0.1.0-internal.10` candidate preparation
+
+- Added build-only installer/container CI dispatch with a full candidate SHA
+  and `publish=false` default. Shared checks bind version, source, lockfile and
+  workflow revision; installers retain digest-bound packages/receipts and
+  containers retain both runtime identities plus no-network entrypoint smoke.
+  Publication needs an explicit manual request or published-release event and
+  a matching existing tag; tag pushes alone no longer publish GHCR images.
+  Offline synthetic policy regressions run in CI. Native packaging, Docker
+  execution and Glen's scientific/performance acceptance remain unverified.
+
+- Corrected the premature `.11` version advance: `.10` remains unreleased until
+  Glen supplies a readiness verdict and the release owner approves publication.
+  Restored workspace/package and documentation version references to `.10`,
+  transferred the pending exact-candidate ledger to its release notes, and
+  retained `.11`'s draft path as a correction notice. The existing `.10` tag is
+  unchanged and is not evidence of acceptance of the current candidate.
 
 - Adjusted the synthetic general-locus motif island and its sequence-hash binding
   so the exact 16 bp TP73 matrix still exercises a one-base overlap with SP1.
@@ -31,9 +47,9 @@
   boundaries. The Simple-PCR GUI starter now uses the same 800-base TP73
   extract as its oracle, retaining the source and explicit coordinate mapping
   instead of designing on the full locus. Its ten-minute live gate is unchanged.
-- Aligned package metadata, roadmap and release notes on the unreleased `.11`
-  candidate. Exact-revision scientific, GUI, benchmark and packaging gates
-  remain pending; no earlier green result is promoted to candidate acceptance.
+- Prepared the exact-candidate scientific, GUI, benchmark and packaging gates.
+  Their initial `.11` designation was premature and is corrected to `.10`
+  above; no earlier green result is promoted to candidate acceptance.
 - Added actual Ubuntu 24.04 x64 tarball construction and extracted-package
   smoke to release CI, with tracked resources, integrity inventory and
   revision/lockfile-bound platform receipts. Linux download availability still

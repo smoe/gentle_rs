@@ -1,6 +1,6 @@
 # Linux Tarball Quick Start
 
-The `.11` release workflow builds a downloadable
+The current release workflow builds a downloadable
 `gentle-<tag>-linux-x64.tar.gz` on Ubuntu 24.04 x86-64. This is a relocatable
 directory, not a system installer, Debian package, AppImage or static binary.
 Availability is confirmed only when the tag's release workflow passes and
@@ -31,11 +31,12 @@ of treating this GUI-enabled tarball as a minimal headless distribution.
 
 ## Extract And Run
 
-For the intended `.11` archive:
+For the intended `.10` archive, once approved and published from the accepted
+revision (not the existing, unapproved `.10` tag):
 
 ```bash
-tar -xzf gentle-v0.1.0-internal.11-linux-x64.tar.gz
-cd gentle-v0.1.0-internal.11-linux-x64
+tar -xzf gentle-v0.1.0-internal.10-linux-x64.tar.gz
+cd gentle-v0.1.0-internal.10-linux-x64
 sha256sum -c SHA256SUMS
 ./bin/gentle --version
 ./bin/gentle

@@ -1,0 +1,67 @@
+name: Resolve Release Candidate
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+      candidate_sha:
+        required: false
+        default: ''
+        type: string
+      publish:
+        required: false
+        default: false
+        type: boolean
+    outputs:
+      tag:
+        value: ${{ jobs.resolve.outputs.tag }}
+      revision:
+        value: ${{ jobs.resolve.outputs.revision }}
+      cargo_lock_sha256:
+        value: ${{ jobs.resolve.outputs.cargo_lock_sha256 }}
+      workflow_revision:
+        value: ${{ jobs.resolve.outputs.workflow_revision }}
+      mode:
+        value: ${{ jobs.resolve.outputs.mode }}
+      publish:
+        value: ${{ jobs.resolve.outputs.publish }}
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.identity.outputs.tag }}
+      revision: ${{ steps.identity.outputs.revision }}
+      cargo_lock_sha256: ${{ steps.identity.outputs.cargo_lock_sha256 }}
+      workflow_revision: ${{ steps.identity.outputs.workflow_revision }}
+      mode: ${{ steps.identity.outputs.mode }}
+      publish: ${{ steps.identity.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate candidate and publication authority
+        id: identity
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          PUBLISH_REQUESTED: ${{ inputs.publish }}
+          CANDIDATE_EVENT: ${{ github.event_name }}
+          CANDIDATE_EVENT_SHA: ${{ github.sha }}
+          CANDIDATE_ACTION: ${{ github.event.action }}
+          CANDIDATE_REF: ${{ github.ref }}
+          WORKFLOW_REVISION: ${{ github.workflow_sha }}
+        run: python3 scripts/release_candidate.py prepare --output release-candidate.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-candidate
+          path: release-candidate.json
+          if-no-files-found: error

@@ -7,20 +7,88 @@ This project publishes installable desktop packages for:
 - Linux: `.tar.gz` for x86-64, built on Ubuntu 24.04; GUI plus CLI/MCP/script
   entrypoints and tracked resources. See [Linux tarball quick start](linux_tarball.md).
 
-Release tags also publish GitHub-downloadable container images through GitHub
-Container Registry (GHCR):
+Explicitly approved releases also publish container images through GitHub
+Container Registry (GHCR); a tag push alone only runs build checks:
 
 - headless CLI image:
   `ghcr.io/<owner>/<repo>:cli` and `ghcr.io/<owner>/<repo>:<tag>-cli`
 - browser-served GUI image:
   `ghcr.io/<owner>/<repo>:gui` and `ghcr.io/<owner>/<repo>:<tag>`
-- `latest` is updated only from release-tag publishes and remains a GUI tag
+- `latest` is updated only by an explicitly approved publish run and remains a GUI tag
 - current image platform: `linux/amd64`
 
-The `.11` workflow adds an actual Linux tarball; Debian, RPM and AppImage
+The current release workflow adds an actual Linux tarball; Debian, RPM and AppImage
 packaging remain deferred. `linux_distribution=tarball` records the artifact
 actually built, not a future intention. Until that workflow has passed on the
 tag candidate, Linux download packaging remains an unverified release gate.
+
+## Candidate Approval
+
+`v0.1.0-internal.10` remains unreleased pending Glen's exact-candidate readiness
+verdict and the release owner's approval. A Git tag, draft release, successful
+build or individual passing test is not release sign-off. Do not advance the
+candidate to `.11` merely because a `.10` tag exists.
+
+The existing `.10` tag points to `052cf125`, not the current development
+candidate. Leave that tag unchanged unless the release owner explicitly
+authorizes reconciliation after reviewing the accepted SHA. Packaging builds
+the tag's revision; an older tag must not stand in for the candidate evaluated
+by Glen.
+
+## Build-Only Candidate Verification
+
+After the tutorial fix and candidate changes are merged, record one clean
+candidate commit and use it for both workflows. Run these commands only when
+that commit is available on GitHub and includes the candidate-verification
+helper. The `--ref main` selects the workflow definition, while `candidate_sha`
+selects the exact source to build; both revisions are retained in the receipts.
+Keep `main` frozen at the candidate while dispatching the acceptance runs.
+
+```bash
+CANDIDATE_SHA=$(git rev-parse HEAD)
+gh workflow run release.yml --ref main \
+  -f tag=v0.1.0-internal.10 -f candidate_sha="$CANDIDATE_SHA" -F publish=false
+gh workflow run container.yml --ref main \
+  -f tag=v0.1.0-internal.10 -f candidate_sha="$CANDIDATE_SHA" -F publish=false
+```
+
+Manual runs default to **build-only**. They require the full 40-character commit
+SHA and a version label matching `Cargo.toml`; branch names and abbreviated
+SHAs are rejected. The version label need not be an existing tag. In particular,
+the older `.10` tag does not prevent evaluating the new `.10` candidate, and no
+tag is created or moved. Build/check jobs have read-only repository permission;
+the write-capable publication jobs are skipped.
+
+Download the Actions artifacts from those specific run IDs, not from a generic
+"latest" run. Installer runs retain three actual packages, per-platform build
+receipts and an aggregate metadata receipt. Container checks build/load both
+runtime targets, run their CLI/MCP entrypoints with container networking disabled,
+and retain local image IDs/digests and a container receipt. Docker build records
+remain with the Actions run; container validation does not upload images to GHCR.
+These are packaging/entrypoint checks, not graphical or scientific acceptance.
+
+The shared `gentle.release_candidate.v1` receipt records candidate SHA, lockfile
+hash, workflow revision, version label and `validate_only`/`publish` mode.
+Installer receipts also bind the actual archive digest, toolchain, release
+profile and script features. Collection compares every receipt with the selected
+candidate, not merely with the other receipts; missing, stale, mixed-mode or
+modified packages fail closed. Docker retains its existing `release-fast`
+profile and Debian `forky` build arguments, distinct from the installers'
+`release` profile. Neither profile nor production optimization is changed here.
+
+Only after Glen's readiness verdict and release-owner approval may an owner
+explicitly request `publish=true`, with the same SHA and an already-existing tag
+that points to it. Publishing a GitHub Release is also an explicit publication
+event. The tag is checked before building and again in the publication job;
+an older/moved tag fails rather than silently publishing another revision.
+Publication is a new run, not promotion of previously retained validation
+artifacts: its own checks/receipts must pass, and external dependency changes
+can produce different bytes even for the same source SHA. Do not treat earlier
+artifact hashes as the hashes of the published packages.
+
+No workflow dispatch, tag change, GHCR push or GitHub Release publication is
+authorized merely by these instructions. Both real CI workflows still need to
+run successfully on the selected candidate.
 
 ## Source Archive Exclusions
 
@@ -49,21 +117,24 @@ tar -tf "$archive_path" | grep '^docs/tutorial/generated/' && echo "unexpected"
   - Does not publish release assets.
 - Container workflow: `.github/workflows/container.yml`
   - Runs no-push build checks for both Debian-first runtime targets
-    (`runtime-cli`, `runtime-gui`) on tag pushes and manual dispatch.
-  - Publishes `linux/amd64` GHCR images only when the workflow ref is a tag
-    matching `v*`:
+    (`runtime-cli`, `runtime-gui`) on tag pushes, published-release events and
+    manual dispatch, using the resolved immutable candidate commit.
+  - Publishes `linux/amd64` GHCR images only on a published-release event or
+    an explicit manual `publish=true` run after matching tag/SHA checks:
     `:cli` / `:<tag>-cli` for headless use and `:gui` / `:<tag>` for GUI use.
-  - Moves `latest` only on release-tag publishes, as a GUI compatibility tag.
+  - A tag push alone never logs into GHCR or moves `latest`.
 - Release workflow: `.github/workflows/release.yml`
   - Triggered automatically when a GitHub Release is published.
   - Can also be run manually via `workflow_dispatch` with inputs:
     - `tag`
+    - `candidate_sha` (full commit SHA, required for manual runs)
+    - `publish` (boolean, defaults to `false`)
     - `linux_distribution` (currently only `tarball`)
-  - Builds macOS and Windows installers and a Linux tarball, runs smoke checks, and publishes assets
-    to the corresponding GitHub Release.
-  - Uses the release tag itself as the checkout/build target on `release`
-    events, so publishing a release for an already-pushed tag still produces
-    the desktop installers without needing a second tag push.
+  - Builds macOS and Windows installers and a Linux tarball, runs smoke checks,
+    and retains Actions artifacts in both modes. Publication is separate and
+    explicit, never a side effect of a build-only run.
+  - Resolves the candidate once and checks out that SHA in every subsequent
+    job. Release events bind to the event SHA and verify the tag still matches.
   - Forces `CARGO_TARGET_DIR=target` for the release job so installer artifact
     discovery stays inside the checked-out workspace even if a developer or CI
     wrapper has overridden the default local target directory.
@@ -83,6 +154,9 @@ tar -tf "$archive_path" | grep '^docs/tutorial/generated/' && echo "unexpected"
     before packaging. Per-platform build receipts bind tag, full revision,
     lockfile hash, toolchain and profile; publication rejects mismatched or
     missing platform receipts and missing archive formats.
+- Shared identity workflow: `.github/workflows/release-candidate.yml` calls
+  `scripts/release_candidate.py`. Its fail-closed policy is tested offline by
+  `python3 -m unittest scripts.test_release_candidate -v` on every CI push/PR.
 
 ## Artifact Naming
 
@@ -129,7 +203,7 @@ target/release/gentle_publication_report --help
 Record the full candidate SHA, clean-tree status, lockfile hash, toolchain and
 features/profile before running gates. Use the same checkout and built
 binaries for the whole evidence set. Results from nearby commits cannot be
-combined into an exact-candidate pass; the `.11` release notes contain the
+combined into an exact-candidate pass; the `.10` release notes contain the
 pending scientific, GUI, tutorial and packaging gate ledger. Glen owns Linux
 acceptance; Windows/macOS and both Docker runtime targets require CI evidence.
 

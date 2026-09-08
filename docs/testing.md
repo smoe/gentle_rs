@@ -437,7 +437,7 @@ the oracle, not the full locus. Its fixed formula `=201 .. 600` creates a
 `max pairs = 5` bounds report size, not search effort. The ten-minute compute
 budget is unchanged: all three smoke chapters (branch/reverse complement,
 digest, Simple PCR) must complete, and a timeout remains a failure. Rerun live
-Linux acceptance on the exact `.11` candidate before calling this smoke green.
+Linux acceptance on the exact `.10` candidate before calling this smoke green.
 
 `scripts/tutorial_gui_acceptance.py` is the external Linux/X11 runner. It uses
 ordinary `xdotool` events and the read-only semantic rectangles; GENtle does
@@ -543,6 +543,18 @@ convenience. The default compute timeout is ten minutes; exceeding it is a
 product-performance result, not a coordinate or focus harness gap.
 
 ## 6. Practical implementation order
+
+Release packaging has a separate [build-only candidate path](release.md#build-only-candidate-verification).
+Installer and container workflows accept the same immutable candidate SHA,
+default to `publish=false`, and retain revision/lockfile-bound evidence without
+publishing a release. A green ordinary CI run is not a substitute for the full
+locked-workspace and external GUI/scientific gates on that exact candidate.
+Offline policy regressions use synthetic temporary Git repositories and fake
+installer bytes; they do not claim that Docker or native packaging has passed:
+
+```bash
+python3 -m unittest scripts.test_release_candidate -v
+```
 
 1. Keep extending engine tests alongside new operations
 2. Add CLI integration tests for current protocol

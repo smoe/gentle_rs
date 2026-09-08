@@ -3,7 +3,7 @@
 <p align="center">
   <a href="https://github.com/smoe/gentle_rs/actions/workflows/ci.yml"><img src="https://github.com/smoe/gentle_rs/actions/workflows/ci.yml/badge.svg" alt="Build and test status"></a>
   <img src="https://img.shields.io/badge/status-internal%20preview-d18b3f" alt="Status: internal preview">
-  <img src="https://img.shields.io/badge/version-0.1.0--internal.11-4e91a0" alt="Version 0.1.0-internal.11">
+  <img src="https://img.shields.io/badge/version-0.1.0--internal.10-4e91a0" alt="Version 0.1.0-internal.10">
   <a href="copyright"><img src="https://img.shields.io/badge/license-GPL--2.0--or--later-0f5964" alt="License: GPL-2.0-or-later"></a>
 </p>
 
@@ -281,7 +281,8 @@ containers, and platform notes are centralized in [`INSTALL.md`](INSTALL.md).
 
 ## Project Status
 
-- Current package version: `0.1.0-internal.11`. This is an unreleased candidate.
+- Current package version: `0.1.0-internal.10`. This is an unreleased candidate,
+  awaiting Glen's readiness verdict and the release owner's approval.
 - Active release story: a genome-anchored TP73 evidence viewer with inspectable
   exon, repeat, array, BED, TFBS, and coordinate-build provenance.
 - Default builds include GUI, CLI, MCP, and documentation paths.
@@ -291,7 +292,7 @@ containers, and platform notes are centralized in [`INSTALL.md`](INSTALL.md).
 
 See the [`roadmap`](docs/roadmap.md) for the current acceptance gate, the
 [`release guide`](docs/release.md), the
-[`v0.1.0-internal.11` release notes](docs/release_notes/release_notes_v0.1.0-internal.11.md),
+[`v0.1.0-internal.10` release notes](docs/release_notes/release_notes_v0.1.0-internal.10.md),
 and the complete [`release-note index`](docs/release_notes/) for notable
 user-facing changes.
 
