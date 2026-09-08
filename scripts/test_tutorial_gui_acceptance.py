@@ -106,6 +106,23 @@ class TutorialGuiAcceptanceTests(unittest.TestCase):
         self.assertNotIn("secret-value", serialized)
         self.assertTrue(all(len(row["value_sha256"]) == 64 for row in rows))
 
+    def test_pending_metadata_is_flushed_before_scientific_effect(self) -> None:
+        self.assertTrue(
+            acceptance.should_flush_pending_save_before_step(
+                True, {"scientific_effect": True}
+            )
+        )
+        self.assertFalse(
+            acceptance.should_flush_pending_save_before_step(
+                False, {"scientific_effect": True}
+            )
+        )
+        self.assertFalse(
+            acceptance.should_flush_pending_save_before_step(
+                True, {"scientific_effect": False}
+            )
+        )
+
     def test_scoped_lookup_does_not_fall_back_unless_explicit(self) -> None:
         runner = object.__new__(acceptance.TutorialAcceptanceRun)
         snapshot = {
@@ -153,6 +170,107 @@ class TutorialGuiAcceptanceTests(unittest.TestCase):
         self.assertEqual(crop["min_y"], 0)
         self.assertEqual(crop["max_x"], 320)
         self.assertEqual(crop["max_y"], 200)
+
+    def test_xwininfo_geometry_and_client_to_root_translation(self) -> None:
+        native = acceptance.parse_xwininfo_geometry(
+            """
+  Absolute upper-left X:  1
+  Absolute upper-left Y:  20
+  Width: 800
+  Height: 600
+""",
+            4194306,
+        )
+        self.assertEqual(
+            native,
+            acceptance.NativeWindowGeometry(4194306, 1, 20, 800, 600),
+        )
+        semantic_window = {
+            "rect_logical_points": {
+                "min_x": 0.0,
+                "min_y": 0.0,
+                "max_x": 800.0,
+                "max_y": 600.0,
+            },
+            "pixels_per_point": 1.0,
+        }
+        target = {
+            "rect_logical_points": {
+                "min_x": 118.0,
+                "min_y": 346.0,
+                "max_x": 156.0,
+                "max_y": 384.0,
+            },
+            "pixels_per_point": 1.0,
+        }
+        self.assertEqual(
+            acceptance.native_screen_rect(target, semantic_window, native),
+            {"min_x": 119, "min_y": 366, "max_x": 157, "max_y": 404},
+        )
+
+    def test_native_translation_rejects_mismatched_scale_and_bounds(self) -> None:
+        native = acceptance.NativeWindowGeometry(7, 100, 200, 400, 300)
+        semantic_window = {
+            "rect_logical_points": {
+                "min_x": 10.0,
+                "min_y": 20.0,
+                "max_x": 410.0,
+                "max_y": 320.0,
+            },
+            "pixels_per_point": 1.0,
+        }
+        target = {
+            "rect_logical_points": {
+                "min_x": 20.0,
+                "min_y": 30.0,
+                "max_x": 40.0,
+                "max_y": 50.0,
+            },
+            "pixels_per_point": 2.0,
+        }
+        with self.assertRaises(acceptance.AcceptanceFailure):
+            acceptance.native_screen_rect(target, semantic_window, native)
+        target["pixels_per_point"] = 1.0
+        target["rect_logical_points"]["max_x"] = 500.0
+        with self.assertRaises(acceptance.AcceptanceFailure):
+            acceptance.native_screen_rect(target, semantic_window, native)
+
+    def test_parent_network_namespace_is_explicit_and_distinct(self) -> None:
+        acceptance.validate_parent_network_namespace("net:[22]", "net:[11]")
+        for own, parent in [
+            ("net:[11]", "net:[11]"),
+            ("not-a-namespace", "net:[11]"),
+            ("net:[22]", ""),
+        ]:
+            with self.assertRaises(acceptance.AcceptanceFailure):
+                acceptance.validate_parent_network_namespace(own, parent)
+
+    def test_ewmh_client_and_process_identifiers_are_parsed_exactly(self) -> None:
+        self.assertEqual(
+            acceptance.parse_ewmh_client_ids(
+                "_NET_CLIENT_LIST(WINDOW): window id # 0x400002, 0x4001cb"
+            ),
+            [4194306, 4194763],
+        )
+        self.assertEqual(
+            acceptance.parse_ewmh_process_id(
+                "_NET_WM_PID(CARDINAL) = 3785622", 4194306
+            ),
+            3785622,
+        )
+        self.assertEqual(
+            acceptance.parse_ewmh_client_ids(
+                "_NET_CLIENT_LIST:  no such atom on any window."
+            ),
+            [],
+        )
+        self.assertIsNone(
+            acceptance.parse_ewmh_process_id(
+                "_NET_WM_PID:  not found.", 4194306
+            )
+        )
+        with self.assertRaises(acceptance.AcceptanceFailure):
+            acceptance.parse_ewmh_client_ids("unexpected")
 
     def test_png_dimensions_and_teaching_svg_bind_one_raw_capture(self) -> None:
         with TemporaryDirectory() as temporary:

@@ -302,7 +302,7 @@ cohort comparisons, and rollback paths for state patches; defer autonomous
 wet-lab conclusions or unconfirmed mutations.
 
 ## Parking Lot
-
+- Give TP73 Simple-PCR live acceptance a representative small fixture or bounded fast preset; exact interactive defaults exceed the ten-minute smoke budget.
 - Replace whole-transcriptome FASTA materialization in UniProt linked-transcript
   inventory construction with indexed/streaming retrieval, and expose bounded
   progress during large specificity finalization joins.

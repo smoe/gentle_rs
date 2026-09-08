@@ -353,6 +353,10 @@ impl WindowDna {
         if result.is_err() {
             eprintln!("E WindowDna: recovered from panic while rendering DNA window");
         }
+        #[cfg(feature = "gui-test-support")]
+        if let Err(error) = crate::gui_test_support::finish_frame(ctx) {
+            eprintln!("W WindowDna: {error}");
+        }
     }
 
     pub fn update_embedded(&mut self, ui: &mut egui::Ui) {

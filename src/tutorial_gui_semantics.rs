@@ -25,10 +25,12 @@ pub const DNA_SELECTION_FORMULA_INPUT: &str = "dna.selection_formula.input";
 pub const DNA_SELECTION_FORMULA_APPLY: &str = "dna.selection_formula.apply";
 pub const DNA_SELECTION_STATUS: &str = "dna.selection.status";
 pub const DNA_MAP_CANVAS: &str = "dna.map.canvas";
+pub const DNA_SELECTION_MAP_SPAN: &str = "dna.selection.map_span";
 pub const DNA_SELECTION_SIMPLE_PCR: &str = "dna.selection.simple_pcr";
 pub const PCR_SIMPLE_STARTER_PANEL: &str = "pcr.simple_starter.panel";
 pub const PCR_SIMPLE_STARTER_SEED_FROM_SELECTION: &str = "pcr.simple_starter.seed_from_selection";
 pub const PCR_DESIGN_REPORT_ID: &str = "pcr.design.report_id";
+pub const PCR_DESIGN_MAX_PAIRS: &str = "pcr.design.max_pairs";
 pub const PCR_DESIGN_RUN: &str = "pcr.design.run";
 pub const DNA_SELECTION_SAVE_REGION: &str = "dna.selection.save_genomic_region";
 pub const GENOMIC_REGION_REFRESH: &str = "genomic_region.refresh";
@@ -62,6 +64,7 @@ pub enum TutorialGuiInteractionKind {
     SetCheckbox,
     SelectTab,
     PressKey,
+    Scroll,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,6 +93,7 @@ impl TutorialGuiControlAuthority {
 pub enum TutorialGuiTextPolicy {
     SelectionFormula,
     Identifier,
+    PositiveInteger,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -106,6 +110,7 @@ const CLICK: &[TutorialGuiInteractionKind] = &[TutorialGuiInteractionKind::Click
 const RIGHT_CLICK: &[TutorialGuiInteractionKind] = &[TutorialGuiInteractionKind::RightClick];
 const DOUBLE_CLICK: &[TutorialGuiInteractionKind] = &[TutorialGuiInteractionKind::DoubleClick];
 const REPLACE_TEXT: &[TutorialGuiInteractionKind] = &[TutorialGuiInteractionKind::ReplaceText];
+const SCROLL: &[TutorialGuiInteractionKind] = &[TutorialGuiInteractionKind::Scroll];
 
 pub const TUTORIAL_GUI_CONTROLS: &[TutorialGuiControlSpec] = &[
     TutorialGuiControlSpec {
@@ -242,6 +247,13 @@ pub const TUTORIAL_GUI_CONTROLS: &[TutorialGuiControlSpec] = &[
         text_policy: None,
     },
     TutorialGuiControlSpec {
+        semantic_id: DNA_SELECTION_MAP_SPAN,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: RIGHT_CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
         semantic_id: DNA_SELECTION_SIMPLE_PCR,
         window_id: WINDOW_DNA_VIEWER,
         authority: TutorialGuiControlAuthority::ProjectMetadata,
@@ -252,7 +264,7 @@ pub const TUTORIAL_GUI_CONTROLS: &[TutorialGuiControlSpec] = &[
         semantic_id: PCR_SIMPLE_STARTER_PANEL,
         window_id: WINDOW_PCR_DESIGN,
         authority: TutorialGuiControlAuthority::Observe,
-        allowed_interactions: NO_INTERACTIONS,
+        allowed_interactions: SCROLL,
         text_policy: None,
     },
     TutorialGuiControlSpec {
@@ -261,6 +273,13 @@ pub const TUTORIAL_GUI_CONTROLS: &[TutorialGuiControlSpec] = &[
         authority: TutorialGuiControlAuthority::ProjectMetadata,
         allowed_interactions: CLICK,
         text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: PCR_DESIGN_MAX_PAIRS,
+        window_id: WINDOW_PCR_DESIGN,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: REPLACE_TEXT,
+        text_policy: Some(TutorialGuiTextPolicy::PositiveInteger),
     },
     TutorialGuiControlSpec {
         semantic_id: PCR_DESIGN_REPORT_ID,
@@ -480,6 +499,16 @@ pub fn validate_replacement_text(policy: TutorialGuiTextPolicy, text: &str) -> R
                 );
             }
         }
+        TutorialGuiTextPolicy::PositiveInteger => {
+            if text
+                .parse::<usize>()
+                .ok()
+                .filter(|value| *value > 0)
+                .is_none()
+            {
+                return Err("positive-integer replacement text must be an integer >= 1".to_string());
+            }
+        }
     }
     Ok(())
 }
@@ -520,6 +549,9 @@ mod tests {
             validate_replacement_text(TutorialGuiTextPolicy::Identifier, "primer report; rm")
                 .is_err()
         );
+        assert!(validate_replacement_text(TutorialGuiTextPolicy::PositiveInteger, "5").is_ok());
+        assert!(validate_replacement_text(TutorialGuiTextPolicy::PositiveInteger, "0").is_err());
+        assert!(validate_replacement_text(TutorialGuiTextPolicy::PositiveInteger, "five").is_err());
     }
 
     #[test]

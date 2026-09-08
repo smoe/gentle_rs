@@ -300,6 +300,17 @@ pub enum TutorialGuiInteraction {
     PressKey {
         key: String,
     },
+    Scroll {
+        direction: TutorialGuiScrollDirection,
+        clicks: usize,
+    },
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TutorialGuiScrollDirection {
+    Up,
+    Down,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -2482,6 +2493,12 @@ fn validate_tutorial_gui_acceptance(
                     step.id
                 ));
             }
+            TutorialGuiInteraction::Scroll { clicks, .. } if !(1..=20).contains(clicks) => {
+                return Err(format!(
+                    "{context} step '{}' scroll clicks must be in 1..=20",
+                    step.id
+                ));
+            }
             _ => {}
         }
         if step.scientific_effect
@@ -2525,6 +2542,7 @@ fn tutorial_gui_interaction_kind(
         TutorialGuiInteraction::SetCheckbox { .. } => TutorialGuiInteractionKind::SetCheckbox,
         TutorialGuiInteraction::SelectTab => TutorialGuiInteractionKind::SelectTab,
         TutorialGuiInteraction::PressKey { .. } => TutorialGuiInteractionKind::PressKey,
+        TutorialGuiInteraction::Scroll { .. } => TutorialGuiInteractionKind::Scroll,
     }
 }
 

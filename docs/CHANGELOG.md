@@ -16,6 +16,19 @@
   matching the controls that actually drive them; `regions inspect` and
   `regions derive` stay shell-only because no GUI control exists for them yet.
 
+- Linux tutorial GUI acceptance now binds each semantic viewport to its exact
+  native X11 client and translates egui client-area coordinates through a
+  stable root-screen client origin before input or screenshot annotation.
+  Window decorations can no longer displace clicks/crops, repeated pointer
+  locations do not deadlock `xdotool --sync`, and network isolation compares
+  against a caller-captured parent namespace without requiring `/proc/1`.
+  Child viewports now publish fresh semantic generations and exact hover state;
+  the runner flushes deferred metadata before scientific actions, records
+  bounded scroll navigation, and requires a new dirty transition before saving
+  results. Detached GUI operations explicitly wake the root project view.
+  Primer-design workers use a named 16 MiB stack instead of aborting on real
+  designs, and the digest row remains reachable in ordinary-width windows.
+
 - Added a manifest-driven companion for reproducibly extracting transcript-TSS
   promoter windows through GENtle across catalogued genomes/releases, exporting
   exact sequence/provenance rows, collapsing identical windows, and preparing

@@ -782,6 +782,25 @@ contract and exposes read-only semantic state, while an isolated external
 runner owns input delivery, evidence collection, and the final acceptance
 verdict.
 
+Semantic rectangles use egui logical client-area coordinates, not native
+root-screen coordinates. Before emitting X11 input or annotating a retained
+screenshot, the external runner must bind the owning semantic viewport to one
+exact native client, sample a stable root-screen client origin, and record the
+translation. Missing or ambiguous native geometry is a harness gap; it must
+never be repaired with guessed title-bar offsets or classified as a product
+failure.
+
+Embedded semantic windows may share an egui/native viewport with their owning
+tool window. That association is carried by the snapshot's egui viewport
+identity; one semantic-window name does not imply one operating-system window.
+Metadata saves may be deferred across dependent text-field/button interactions,
+but must be flushed before the next scientific action. The scientific action
+must then produce a fresh dirty transition before its result is saved and
+verified; a pre-existing dirty flag is never evidence of completion. Child
+viewports publish their own semantic frames, including exact pointer-hover
+state, so the external runner can prove that the intended egui control observed
+the pointer before emitting a button event.
+
 ## DEC-041: Inner-Agent Web Research Is Explicit, Public, And Audited
 
 Status: active

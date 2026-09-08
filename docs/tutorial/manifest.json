@@ -564,9 +564,10 @@
             "verifiers": [
               {
                 "kind": "visible_claim",
-                "semantic_id": "sequence_tools.digest.run",
+                "semantic_id": "sequence_tools.digest.prefix",
                 "visible": true,
-                "enabled": true
+                "enabled": true,
+                "outcome_role": "populated"
               }
             ],
             "evidence": {
@@ -1963,7 +1964,8 @@
                 "kind": "visible_claim",
                 "semantic_id": "dna.selection_formula.input",
                 "visible": true,
-                "enabled": true
+                "enabled": true,
+                "outcome_role": "populated"
               }
             ],
             "evidence": {
@@ -2002,7 +2004,7 @@
             "id": "open_selection_context",
             "prose_step": 3,
             "window": "window.dna_viewer",
-            "target": "dna.map.canvas",
+            "target": "dna.selection.map_span",
             "subject": {
               "sequence": "tp73_locus"
             },
@@ -2059,6 +2061,35 @@
             }
           },
           {
+            "id": "bound_candidate_count",
+            "prose_step": 4,
+            "window": "window.pcr_design",
+            "target": "pcr.design.max_pairs",
+            "subject": {
+              "sequence": "tp73_locus"
+            },
+            "interaction": {
+              "kind": "replace_text",
+              "text": "5"
+            },
+            "timeout_class": "interactive",
+            "persists_project_state": false,
+            "scientific_effect": false,
+            "verifiers": [
+              {
+                "kind": "visible_claim",
+                "semantic_id": "pcr.design.max_pairs",
+                "visible": true,
+                "enabled": true,
+                "outcome_role": "populated"
+              }
+            ],
+            "evidence": {
+              "screenshot": "optional",
+              "snapshot": "required"
+            }
+          },
+          {
             "id": "set_report_id",
             "prose_step": 4,
             "window": "window.pcr_design",
@@ -2069,6 +2100,36 @@
             "interaction": {
               "kind": "replace_text",
               "text": "simple_pcr_demo_primers"
+            },
+            "timeout_class": "interactive",
+            "persists_project_state": false,
+            "scientific_effect": false,
+            "verifiers": [
+              {
+                "kind": "visible_claim",
+                "semantic_id": "pcr.design.report_id",
+                "visible": true,
+                "enabled": true,
+                "outcome_role": "populated"
+              }
+            ],
+            "evidence": {
+              "screenshot": "optional",
+              "snapshot": "required"
+            }
+          },
+          {
+            "id": "scroll_to_design_action",
+            "prose_step": 4,
+            "window": "window.pcr_design",
+            "target": "pcr.simple_starter.panel",
+            "subject": {
+              "sequence": "tp73_locus"
+            },
+            "interaction": {
+              "kind": "scroll",
+              "direction": "down",
+              "clicks": 20
             },
             "timeout_class": "interactive",
             "persists_project_state": false,

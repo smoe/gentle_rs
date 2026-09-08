@@ -118,7 +118,7 @@ impl MainAreaDna {
                         "Excel-like range formula. Examples: `=CDS.start+10 .. CDS.end-500`, `=gene[label=TP73].start to gene[label=TP73].end`",
                     );
                 #[cfg(feature = "gui-test-support")]
-                crate::gui_test_support::register_response(
+                crate::gui_test_support::register_response_with_outcome(
                     &response,
                     crate::tutorial_gui_semantics::DNA_SELECTION_FORMULA_INPUT,
                     self.semantic_control_window_id(),
@@ -127,6 +127,11 @@ impl MainAreaDna {
                     ])),
                     crate::gui_test_support::GuiTestWidgetKind::TextInput,
                     false,
+                    Some(if self.selection_formula_text.is_empty() {
+                        "empty"
+                    } else {
+                        "populated"
+                    }),
                 );
                 if response.changed() {
                     self.save_engine_ops_state();

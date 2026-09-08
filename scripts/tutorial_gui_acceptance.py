@@ -33,12 +33,16 @@ RUN_SCHEMA = "gentle.tutorial_gui_acceptance_run.v1"
 ENVIRONMENT_SCHEMA = "gentle.tutorial_acceptance_environment.v1"
 PREPARATION_SCHEMA = "gentle.tutorial_gui_project_preparation.v1"
 SCREENSHOT_EVIDENCE_SCHEMA = "gentle.tutorial_gui_screenshot_evidence.v1"
+SEMANTIC_COORDINATE_SPACE = (
+    "egui logical points translated by the viewport outer rectangle; "
+    "native window decorations are excluded"
+)
 
 TIMEOUT_DEFAULTS = {
     "instant": 5.0,
     "interactive": 25.0,
     "io": 75.0,
-    "compute": 300.0,
+    "compute": 600.0,
 }
 
 SAFE_KEY_NAMES = {
@@ -52,6 +56,13 @@ SAFE_KEY_NAMES = {
     "left": "Left",
     "right": "Right",
 }
+
+
+def should_flush_pending_save_before_step(
+    pending_project_save: bool, step: dict[str, Any]
+) -> bool:
+    """Keep an old dirty flag from masquerading as scientific completion."""
+    return pending_project_save and bool(step.get("scientific_effect"))
 
 
 class AcceptanceFailure(RuntimeError):
@@ -370,6 +381,140 @@ class CommandResult:
     receipt: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class NativeWindowGeometry:
+    """Root-screen geometry for one exact X11 client window."""
+
+    window_id: int
+    root_x: int
+    root_y: int
+    width: int
+    height: int
+
+
+def parse_xwininfo_geometry(output: str, window_id: int) -> NativeWindowGeometry:
+    """Parse the stable, locale-independent numeric fields used from xwininfo."""
+
+    fields: dict[str, int] = {}
+    patterns = {
+        "root_x": r"^\s*Absolute upper-left X:\s*(-?\d+)\s*$",
+        "root_y": r"^\s*Absolute upper-left Y:\s*(-?\d+)\s*$",
+        "width": r"^\s*Width:\s*(\d+)\s*$",
+        "height": r"^\s*Height:\s*(\d+)\s*$",
+    }
+    for name, pattern in patterns.items():
+        match = re.search(pattern, output, flags=re.MULTILINE)
+        if match is None:
+            raise AcceptanceFailure(
+                "harness_gap", f"xwininfo omitted {name} for X11 window {window_id}"
+            )
+        fields[name] = int(match.group(1))
+    if fields["width"] <= 0 or fields["height"] <= 0:
+        raise AcceptanceFailure(
+            "harness_gap", f"X11 window {window_id} has invalid client geometry"
+        )
+    return NativeWindowGeometry(window_id=window_id, **fields)
+
+
+def native_screen_rect(
+    item: dict[str, Any],
+    semantic_window: dict[str, Any],
+    native: NativeWindowGeometry,
+) -> dict[str, int]:
+    """Map one egui semantic rectangle into X11 root-screen physical pixels."""
+
+    item_scale = float(item.get("pixels_per_point", 1.0))
+    window_scale = float(semantic_window.get("pixels_per_point", 1.0))
+    if abs(item_scale - window_scale) > 1e-6:
+        raise AcceptanceFailure(
+            "harness_gap", "Target and semantic window use different pixel scales"
+        )
+    target = semantic_pixel_rect(item)
+    viewport = semantic_pixel_rect(semantic_window)
+    local = {
+        "min_x": target["min_x"] - viewport["min_x"],
+        "min_y": target["min_y"] - viewport["min_y"],
+        "max_x": target["max_x"] - viewport["min_x"],
+        "max_y": target["max_y"] - viewport["min_y"],
+    }
+    tolerance = 2
+    if (
+        local["min_x"] < -tolerance
+        or local["min_y"] < -tolerance
+        or local["max_x"] > native.width + tolerance
+        or local["max_y"] > native.height + tolerance
+    ):
+        raise AcceptanceFailure(
+            "harness_gap",
+            f"Semantic target lies outside bound X11 client window {native.window_id}",
+        )
+    return {
+        "min_x": native.root_x + local["min_x"],
+        "min_y": native.root_y + local["min_y"],
+        "max_x": native.root_x + local["max_x"],
+        "max_y": native.root_y + local["max_y"],
+    }
+
+
+def validate_parent_network_namespace(own: str, parent: str | None) -> None:
+    """Prove that the runner entered a namespace distinct from its caller."""
+
+    namespace_pattern = re.compile(r"^net:\[\d+\]$")
+    if parent is None or not namespace_pattern.fullmatch(parent):
+        raise AcceptanceFailure(
+            "harness_gap",
+            "linux_network_namespace requires the parent namespace identity "
+            "captured before unshare",
+        )
+    if not namespace_pattern.fullmatch(own):
+        raise AcceptanceFailure(
+            "harness_gap", f"Unexpected current network namespace identity: {own!r}"
+        )
+    if own == parent:
+        raise AcceptanceFailure(
+            "harness_gap",
+            "linux_network_namespace was declared but the runner shares its "
+            "caller's network namespace",
+        )
+
+
+def parse_ewmh_client_ids(output: str) -> list[int]:
+    """Parse the root window's ordered EWMH client inventory."""
+
+    if "not found" in output.lower() or "no such atom" in output.lower():
+        return []
+    marker = "window id #"
+    if marker not in output:
+        raise AcceptanceFailure(
+            "harness_gap", "Window manager did not expose a valid _NET_CLIENT_LIST"
+        )
+    values = output.split(marker, 1)[1]
+    ids: list[int] = []
+    for value in values.split(","):
+        value = value.strip()
+        if value:
+            try:
+                ids.append(int(value, 0))
+            except ValueError as error:
+                raise AcceptanceFailure(
+                    "harness_gap", f"Invalid X11 client id in _NET_CLIENT_LIST: {value!r}"
+                ) from error
+    return ids
+
+
+def parse_ewmh_process_id(output: str, window_id: int) -> int | None:
+    """Parse one EWMH client PID without relying on xdotool's process lookup."""
+
+    if "not found" in output.lower():
+        return None
+    match = re.search(r"_NET_WM_PID\(CARDINAL\)\s*=\s*(\d+)\s*$", output)
+    if match is None:
+        raise AcceptanceFailure(
+            "harness_gap", f"X11 client {window_id} has malformed _NET_WM_PID"
+        )
+    return int(match.group(1))
+
+
 class CommandRecorder:
     def __init__(self, output_dir: Path, cwd: Path):
         self.output_dir = output_dir
@@ -461,6 +606,7 @@ class TutorialAcceptanceRun:
         self.gui_process: subprocess.Popen[bytes] | None = None
         self.gui_stdout = None
         self.gui_stderr = None
+        self.native_window_bindings: dict[str, int] = {}
         self.isolation_paths = self.prepare_isolation_paths()
         self.process_environment = self.isolated_process_environment()
         self.starter_preparation: dict[str, Any] = {}
@@ -496,6 +642,261 @@ class TutorialAcceptanceRun:
     def write_ledger(self) -> None:
         self.ledger["command_receipts"] = self.recorder.receipts
         atomic_write_json(self.ledger_path, self.ledger)
+
+    def run_x11(
+        self, argv: list[str], *, timeout: float = 10.0
+    ) -> subprocess.CompletedProcess[bytes]:
+        try:
+            completed = subprocess.run(
+                argv,
+                cwd=self.repo_root,
+                env=self.process_environment,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=timeout,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise AcceptanceFailure(
+                "harness_gap", f"X11 command could not complete: {argv}: {error}"
+            ) from error
+        if completed.returncode != 0:
+            diagnostic = completed.stderr.decode("utf-8", errors="replace").strip()
+            raise AcceptanceFailure(
+                "harness_gap",
+                f"X11 command exited {completed.returncode}: {argv}: {diagnostic[-500:]}",
+            )
+        return completed
+
+    def visible_native_window_ids(self) -> list[int]:
+        if self.gui_process is None:
+            raise AcceptanceFailure("harness_gap", "GENtle process is not active")
+        deadline = time.monotonic() + 3.0
+        while time.monotonic() < deadline:
+            root = self.run_x11(
+                [str(self.args.xprop), "-root", "_NET_CLIENT_LIST"]
+            )
+            candidates = parse_ewmh_client_ids(
+                root.stdout.decode("utf-8", errors="replace")
+            )
+            matches: list[int] = []
+            for window_id in candidates:
+                owner = self.run_x11(
+                    [str(self.args.xprop), "-id", str(window_id), "_NET_WM_PID"]
+                )
+                if (
+                    parse_ewmh_process_id(
+                        owner.stdout.decode("utf-8", errors="replace"), window_id
+                    )
+                    == self.gui_process.pid
+                ):
+                    geometry = self.query_native_geometry(window_id)
+                    matches.append(geometry.window_id)
+            if matches:
+                return matches
+            time.sleep(0.1)
+        return []
+
+    @staticmethod
+    def semantic_window_ids(snapshot: dict[str, Any]) -> list[str]:
+        return sorted(
+            {
+                str(item["semantic_id"])
+                for item in snapshot.get("items", [])
+                if item.get("widget_kind") == "window"
+                and item.get("semantic_id") == item.get("window_id")
+                and item.get("state", {}).get("visible")
+            }
+        )
+
+    def refresh_native_window_bindings(self, snapshot: dict[str, Any]) -> None:
+        native_ids = self.visible_native_window_ids()
+        semantic_ids = self.semantic_window_ids(snapshot)
+        visible_native = set(native_ids)
+        visible_semantic = set(semantic_ids)
+        self.native_window_bindings = {
+            semantic_id: native_id
+            for semantic_id, native_id in self.native_window_bindings.items()
+            if semantic_id in visible_semantic and native_id in visible_native
+        }
+        viewport_by_semantic = {
+            str(item["semantic_id"]): str(item.get("egui_viewport_id", ""))
+            for item in snapshot.get("items", [])
+            if item.get("widget_kind") == "window"
+            and item.get("semantic_id") == item.get("window_id")
+        }
+        for semantic_id in semantic_ids:
+            if semantic_id in self.native_window_bindings:
+                continue
+            viewport_id = viewport_by_semantic.get(semantic_id)
+            inherited = {
+                native_id
+                for bound_semantic, native_id in self.native_window_bindings.items()
+                if viewport_id
+                and viewport_by_semantic.get(bound_semantic) == viewport_id
+            }
+            if len(inherited) == 1:
+                self.native_window_bindings[semantic_id] = inherited.pop()
+            elif len(inherited) > 1:
+                raise AcceptanceFailure(
+                    "harness_gap",
+                    f"Egui viewport {viewport_id!r} maps to multiple X11 clients",
+                )
+        bound_native = set(self.native_window_bindings.values())
+        unbound_native = [window_id for window_id in native_ids if window_id not in bound_native]
+        unbound_semantic = [
+            semantic_id
+            for semantic_id in semantic_ids
+            if semantic_id not in self.native_window_bindings
+        ]
+        if not unbound_semantic:
+            return
+        if len(unbound_native) != len(unbound_semantic):
+            raise AcceptanceFailure(
+                "harness_gap",
+                "Could not bind semantic viewports to exact GENtle X11 clients: "
+                f"semantic={unbound_semantic}, native={unbound_native}",
+            )
+        if len(unbound_semantic) > 1:
+            raise AcceptanceFailure(
+                "harness_gap",
+                "Multiple semantic and native GENtle windows appeared simultaneously; "
+                "their identities are ambiguous",
+            )
+        self.native_window_bindings[unbound_semantic[0]] = unbound_native[0]
+
+    def query_native_geometry(self, window_id: int) -> NativeWindowGeometry:
+        completed = self.run_x11(
+            [str(self.args.xwininfo), "-id", str(window_id), "-stats"]
+        )
+        return parse_xwininfo_geometry(
+            completed.stdout.decode("utf-8", errors="replace"), window_id
+        )
+
+    def active_native_window_id(self) -> int:
+        return int(
+            self.run_x11([str(self.args.xdotool), "getactivewindow"])
+            .stdout.decode("ascii")
+            .strip()
+        )
+
+    def focused_native_window_id(self) -> int:
+        return int(
+            self.run_x11([str(self.args.xdotool), "getwindowfocus"])
+            .stdout.decode("ascii")
+            .strip()
+        )
+
+    def ensure_native_window_active(self, window_id: int) -> list[list[str]]:
+        raise_window = [str(self.args.xdotool), "windowraise", str(window_id)]
+        self.run_x11(raise_window)
+        commands: list[list[str]] = [raise_window]
+        if self.active_native_window_id() != window_id:
+            activate = [
+                str(self.args.xdotool),
+                "windowactivate",
+                "--sync",
+                str(window_id),
+            ]
+            self.run_x11(activate)
+            commands.append(activate)
+        if self.focused_native_window_id() != window_id:
+            focus = [
+                str(self.args.xdotool),
+                "windowfocus",
+                "--sync",
+                str(window_id),
+            ]
+            self.run_x11(focus)
+            commands.append(focus)
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline:
+            if (
+                self.active_native_window_id() == window_id
+                and self.focused_native_window_id() == window_id
+            ):
+                time.sleep(0.1)
+                return commands
+            time.sleep(0.05)
+        raise AcceptanceFailure(
+            "harness_gap",
+            f"X11 client {window_id} did not become both active and input-focused",
+        )
+
+    def stable_native_geometry(
+        self, window_id: int, timeout: float = 3.0
+    ) -> NativeWindowGeometry:
+        deadline = time.monotonic() + timeout
+        previous: NativeWindowGeometry | None = None
+        while time.monotonic() < deadline:
+            current = self.query_native_geometry(window_id)
+            if current == previous:
+                return current
+            previous = current
+            time.sleep(0.1)
+        raise AcceptanceFailure(
+            "harness_gap", f"X11 client geometry did not settle for window {window_id}"
+        )
+
+    def native_target_binding(
+        self, snapshot: dict[str, Any], item: dict[str, Any]
+    ) -> dict[str, Any]:
+        if snapshot.get("coordinate_space") != SEMANTIC_COORDINATE_SPACE:
+            raise AcceptanceFailure(
+                "harness_gap",
+                "Semantic snapshot does not declare the client-relative "
+                "coordinate contract required for native X11 input",
+            )
+        self.refresh_native_window_bindings(snapshot)
+        semantic_window_id = str(item.get("window_id", ""))
+        semantic_window = self.item_for(
+            snapshot, semantic_window_id, window_id=semantic_window_id
+        )
+        if semantic_window is None:
+            viewport_id = item.get("egui_viewport_id")
+            candidates = [
+                candidate
+                for candidate in snapshot.get("items", [])
+                if candidate.get("widget_kind") == "window"
+                and candidate.get("semantic_id") == candidate.get("window_id")
+                and viewport_id
+                and candidate.get("egui_viewport_id") == viewport_id
+            ]
+            if len(candidates) != 1:
+                raise AcceptanceFailure(
+                    "harness_gap",
+                    f"Semantic surface '{semantic_window_id}' has no unique owning viewport",
+                )
+            semantic_window = candidates[0]
+        native_owner_id = str(semantic_window["semantic_id"])
+        native_window_id = self.native_window_bindings.get(native_owner_id)
+        if native_window_id is None:
+            raise AcceptanceFailure(
+                "harness_gap",
+                f"Semantic viewport '{native_owner_id}' has no exact X11 client binding",
+            )
+        native = self.stable_native_geometry(native_window_id)
+        screen_rect = native_screen_rect(item, semantic_window, native)
+        return {
+            "semantic_window_id": semantic_window_id,
+            "native_owner_semantic_window_id": native_owner_id,
+            "egui_viewport_id": semantic_window.get("egui_viewport_id"),
+            "x11_client_window_id": native_window_id,
+            "native_client_geometry": {
+                "root_x": native.root_x,
+                "root_y": native.root_y,
+                "width": native.width,
+                "height": native.height,
+            },
+            "semantic_window_rect_logical_points": semantic_window.get(
+                "rect_logical_points"
+            ),
+            "coordinate_transform": (
+                "root_screen_px = native_client_origin_px + "
+                "(target_logical - semantic_window_logical_origin) * pixels_per_point"
+            ),
+            "screen_rect_physical_pixels": screen_rect,
+        }
 
     def prepare_project(self, phase: str) -> dict[str, Any]:
         project_path = self.chapter_dir / f"{phase}.project.gentle.json"
@@ -996,16 +1397,96 @@ class TutorialAcceptanceRun:
             return False
         return True
 
-    def emit_x11(self, step: dict[str, Any], item: dict[str, Any]) -> dict[str, Any]:
-        rectangle = item["rect_logical_points"]
-        scale = float(item["pixels_per_point"])
-        x = round((float(rectangle["min_x"]) + float(rectangle["max_x"])) / 2 * scale)
-        y = round((float(rectangle["min_y"]) + float(rectangle["max_y"])) / 2 * scale)
+    def emit_x11(
+        self,
+        step: dict[str, Any],
+        item: dict[str, Any],
+        snapshot: dict[str, Any],
+        timeout: float,
+    ) -> dict[str, Any]:
+        binding = self.native_target_binding(snapshot, item)
+        native_window_id = binding["x11_client_window_id"]
+        commands: list[list[str]] = []
+        focus_commands = self.ensure_native_window_active(native_window_id)
+        if focus_commands:
+            commands.extend(focus_commands)
+            binding = self.native_target_binding(snapshot, item)
+        rectangle = binding["screen_rect_physical_pixels"]
+        x = round((rectangle["min_x"] + rectangle["max_x"]) / 2)
+        y = round((rectangle["min_y"] + rectangle["max_y"]) / 2)
         interaction = step["interaction"]
         kind = interaction["kind"]
-        commands: list[list[str]] = [
-            [str(self.args.xdotool), "mousemove", "--sync", str(x), str(y)]
-        ]
+        location = self.run_x11(
+            [str(self.args.xdotool), "getmouselocation", "--shell"]
+        ).stdout.decode("ascii", errors="strict")
+        pointer = {
+            key: int(value)
+            for key, value in re.findall(r"^(X|Y)=(-?\d+)$", location, flags=re.MULTILINE)
+        }
+        if pointer.get("X") != x or pointer.get("Y") != y:
+            move = [str(self.args.xdotool), "mousemove", str(x), str(y)]
+            self.run_x11(move)
+            commands.append(move)
+            moved = self.run_x11(
+                [str(self.args.xdotool), "getmouselocation", "--shell"]
+            ).stdout.decode("ascii", errors="strict")
+            moved_pointer = {
+                key: int(value)
+                for key, value in re.findall(
+                    r"^(X|Y)=(-?\d+)$", moved, flags=re.MULTILINE
+                )
+            }
+            if moved_pointer.get("X") != x or moved_pointer.get("Y") != y:
+                raise AcceptanceFailure(
+                    "harness_gap",
+                    f"X11 pointer did not reach verified target ({x}, {y})",
+                )
+        hover_generation = None
+        if kind != "press_key" and not (
+            kind == "set_checkbox"
+            and bool(item.get("state", {}).get("selected"))
+            == bool(interaction["selected"])
+        ):
+            semantic_id = item["semantic_id"]
+            window_id = item["window_id"]
+            subject_scope = item.get("subject_scope")
+
+            def target_hovered(candidate_snapshot: dict[str, Any]) -> bool:
+                candidate = self.item_for(
+                    candidate_snapshot,
+                    semantic_id,
+                    window_id=window_id,
+                    subject_scope=subject_scope,
+                )
+                return bool(candidate and candidate.get("state", {}).get("hovered"))
+
+            hovered_snapshot = self.wait_snapshot(
+                target_hovered,
+                min(timeout, self.args.timeouts["instant"]),
+                f"semantic hover confirmation for step '{step['id']}'",
+            )
+            hovered_item = self.item_for(
+                hovered_snapshot,
+                semantic_id,
+                window_id=window_id,
+                subject_scope=subject_scope,
+            )
+            if hovered_item is None:
+                raise AcceptanceFailure(
+                    "harness_gap",
+                    f"Target vanished while confirming hover for step '{step['id']}'",
+                )
+            binding = self.native_target_binding(hovered_snapshot, hovered_item)
+            rectangle = binding["screen_rect_physical_pixels"]
+            if not (
+                rectangle["min_x"] <= x <= rectangle["max_x"]
+                and rectangle["min_y"] <= y <= rectangle["max_y"]
+            ):
+                raise AcceptanceFailure(
+                    "harness_gap",
+                    f"Target geometry moved after pointer placement for step '{step['id']}'",
+                )
+            hover_generation = hovered_snapshot["generation"]
         if kind in {"click", "select_tab"}:
             commands.append([str(self.args.xdotool), "click", "1"])
         elif kind == "right_click":
@@ -1036,6 +1517,9 @@ class TutorialAcceptanceRun:
                         "--",
                         interaction["text"],
                     ],
+                    # Leaving the field commits the replacement and gives the
+                    # child viewport a deterministic semantic publication.
+                    [str(self.args.xdotool), "key", "--clearmodifiers", "Tab"],
                 ]
             )
         elif kind == "set_checkbox":
@@ -1047,25 +1531,47 @@ class TutorialAcceptanceRun:
                 raise AcceptanceFailure(
                     "tutorial_ambiguity", f"Unsupported typed key '{interaction['key']}'"
                 )
-            commands = [[str(self.args.xdotool), "key", "--clearmodifiers", key]]
+            commands.append([str(self.args.xdotool), "key", "--clearmodifiers", key])
+        elif kind == "scroll":
+            direction = interaction.get("direction")
+            button = {"up": "4", "down": "5"}.get(direction)
+            clicks = interaction.get("clicks")
+            if button is None or not isinstance(clicks, int) or not 1 <= clicks <= 20:
+                raise AcceptanceFailure(
+                    "tutorial_ambiguity",
+                    f"Unsupported bounded scroll request {interaction!r}",
+                )
+            commands.append(
+                [
+                    str(self.args.xdotool),
+                    "click",
+                    "--repeat",
+                    str(clicks),
+                    "--delay",
+                    "50",
+                    button,
+                ]
+            )
         else:
             raise AcceptanceFailure(
                 "tutorial_ambiguity", f"Unsupported interaction kind '{kind}'"
             )
         for command in commands:
-            completed = subprocess.run(
-                command,
-                cwd=self.repo_root,
-                env=self.process_environment,
-                timeout=10,
-                check=False,
-            )
-            if completed.returncode != 0:
-                raise AcceptanceFailure(
-                    "harness_gap",
-                    f"X11 event command exited {completed.returncode}: {command}",
-                )
-        return {"kind": kind, "screen_x": x, "screen_y": y, "argv": commands}
+            if command[1] not in {
+                "windowactivate",
+                "windowfocus",
+                "windowraise",
+                "mousemove",
+            }:
+                self.run_x11(command)
+        return {
+            "kind": kind,
+            "screen_x": x,
+            "screen_y": y,
+            "native_window_binding": binding,
+            "hover_confirmed_generation": hover_generation,
+            "argv": commands,
+        }
 
     def wait_after_interaction(
         self,
@@ -1090,14 +1596,6 @@ class TutorialAcceptanceRun:
                 save_state = self.item_for(snapshot, "main.project.save_state")
                 if not save_state or save_state.get("outcome_role") != "unsaved":
                     return False
-            if step.get("scientific_effect"):
-                target = self.item_for(
-                    snapshot,
-                    step["target"],
-                    window_id=step["window"],
-                    subject_scope=scope,
-                )
-                return bool(target and target.get("state", {}).get("enabled"))
             return True
 
         return self.wait_snapshot(
@@ -1107,16 +1605,21 @@ class TutorialAcceptanceRun:
             after_generation=prior_generation,
         )
 
-    def save_project(self, prior_generation: int, timeout: float) -> dict[str, Any]:
-        completed = subprocess.run(
-            [str(self.args.xdotool), "key", "--clearmodifiers", "ctrl+s"],
-            cwd=self.repo_root,
-            env=self.process_environment,
-            timeout=10,
-            check=False,
-        )
-        if completed.returncode != 0:
-            raise AcceptanceFailure("harness_gap", "Could not emit Ctrl+S through X11")
+    def save_project(self, snapshot: dict[str, Any], timeout: float) -> dict[str, Any]:
+        save_item = self.item_for(snapshot, "main.project.save_state")
+        if save_item is None:
+            raise AcceptanceFailure(
+                "harness_gap", "Project save status is absent from the semantic snapshot"
+            )
+        binding = self.native_target_binding(snapshot, save_item)
+        native_window_id = binding["x11_client_window_id"]
+        commands: list[list[str]] = []
+        focus_commands = self.ensure_native_window_active(native_window_id)
+        if focus_commands:
+            commands.extend(focus_commands)
+        save = [str(self.args.xdotool), "key", "--clearmodifiers", "ctrl+s"]
+        self.run_x11(save)
+        commands.append(save)
 
         def saved(snapshot: dict[str, Any]) -> bool:
             item = self.item_for(snapshot, "main.project.save_state")
@@ -1126,10 +1629,12 @@ class TutorialAcceptanceRun:
             saved,
             timeout,
             "known-path project save",
-            after_generation=prior_generation,
+            after_generation=snapshot["generation"],
         )
         return {
             "event": "ctrl+s",
+            "native_window_binding": binding,
+            "argv": commands,
             "generation": snapshot["generation"],
             "project_sha256": sha256_file(Path(self.starter_preparation["project_path"])),
         }
@@ -1224,6 +1729,9 @@ class TutorialAcceptanceRun:
                 timeout=20,
                 check=False,
             )
+            # scrot briefly grabs the X server. Let the compositor and egui
+            # observe the released grab before the next ordinary input event.
+            time.sleep(0.5)
             if completed.returncode != 0 or not screenshot_path.is_file():
                 if screenshot_requirement == "required":
                     raise AcceptanceFailure(
@@ -1237,7 +1745,8 @@ class TutorialAcceptanceRun:
                         "harness_gap",
                         f"Screenshot step '{step['id']}' has no visible semantic focus item",
                     )
-                focus_rect = semantic_pixel_rect(focus_item)
+                focus_binding = self.native_target_binding(snapshot, focus_item)
+                focus_rect = focus_binding["screen_rect_physical_pixels"]
                 focus_rect = {
                     "min_x": max(0, min(canvas_width - 1, focus_rect["min_x"])),
                     "min_y": max(0, min(canvas_height - 1, focus_rect["min_y"])),
@@ -1329,6 +1838,7 @@ class TutorialAcceptanceRun:
                         "rect_logical_points": focus_item.get("rect_logical_points"),
                         "pixels_per_point": focus_item.get("pixels_per_point"),
                         "rect_physical_pixels": focus_rect,
+                        "native_window_binding": focus_binding,
                     },
                     "derived_views": [
                         {
@@ -1394,7 +1904,9 @@ class TutorialAcceptanceRun:
 
     def execute_steps(self) -> None:
         starter_path = Path(self.starter_preparation["project_path"])
-        for step in self.acceptance["steps"]:
+        pending_project_save = False
+        steps = self.acceptance["steps"]
+        for step_index, step in enumerate(steps):
             started = time.monotonic()
             timeout = self.args.timeouts[step["timeout_class"]]
             scope = self.scope_for_step(step)
@@ -1428,6 +1940,30 @@ class TutorialAcceptanceRun:
                 )
             step_record["before_generation"] = before_snapshot["generation"]
             step_record["resolved_target"] = target
+            if should_flush_pending_save_before_step(pending_project_save, step):
+                step_record["pre_scientific_save"] = self.save_project(
+                    before_snapshot, self.args.timeouts["io"]
+                )
+                pending_project_save = False
+                before_snapshot = self.wait_snapshot(
+                    lambda snapshot: self.target_ready(snapshot, step, scope),
+                    timeout,
+                    f"reacquired target after pre-scientific save for step '{step['id']}'",
+                    after_generation=step_record["pre_scientific_save"]["generation"],
+                )
+                target = self.item_for(
+                    before_snapshot,
+                    step["target"],
+                    window_id=step["window"],
+                    subject_scope=scope,
+                )
+                if target is None:
+                    raise AcceptanceFailure(
+                        "harness_gap",
+                        f"Target vanished after pre-scientific save for step '{step['id']}'",
+                    )
+                step_record["before_generation"] = before_snapshot["generation"]
+                step_record["resolved_target"] = target
             if step.get("scientific_effect"):
                 before = self.fact_eval(
                     starter_path, step["before"], f"runtime-{step['id']}-before"
@@ -1441,21 +1977,35 @@ class TutorialAcceptanceRun:
                         f"Before fact for step '{step['id']}' is {before.get('truth')!r}",
                     )
                 step_record["before_fact"] = before
-            step_record["x11_event"] = self.emit_x11(step, target)
+            step_record["x11_event"] = self.emit_x11(
+                step, target, before_snapshot, timeout
+            )
             after_snapshot = self.wait_after_interaction(
                 step, scope, before_snapshot["generation"], timeout
             )
             step_record["after_generation"] = after_snapshot["generation"]
-            if step.get("persists_project_state"):
+            pending_project_save = pending_project_save or bool(
+                step.get("persists_project_state")
+            )
+            should_save = pending_project_save and (
+                step.get("scientific_effect") or step_index == len(steps) - 1
+            )
+            if should_save:
                 step_record["save"] = self.save_project(
-                    after_snapshot["generation"], self.args.timeouts["io"]
+                    after_snapshot, self.args.timeouts["io"]
                 )
+                pending_project_save = False
                 after_snapshot = self.wait_snapshot(
                     lambda snapshot: snapshot.get("generation", 0)
                     >= step_record["save"]["generation"],
                     self.args.timeouts["instant"],
                     "post-save semantic snapshot",
                 )
+            elif pending_project_save:
+                step_record["save"] = {
+                    "event": "deferred_until_scientific_checkpoint",
+                    "generation": after_snapshot["generation"],
+                }
             if step.get("scientific_effect"):
                 after = self.fact_eval(
                     starter_path, step["after"], f"runtime-{step['id']}-after"
@@ -1511,6 +2061,21 @@ class TutorialAcceptanceRun:
                 self.steps[-1]["status"] = "fail"
                 self.steps[-1]["failure_class"] = error.failure_class
                 self.steps[-1]["message"] = str(error)
+            if self.args.scrot is not None and self.gui_process is not None:
+                failure_path = self.chapter_dir / "failure-diagnostic.raw.png"
+                completed = subprocess.run(
+                    [str(self.args.scrot), str(failure_path)],
+                    cwd=self.repo_root,
+                    env=self.process_environment,
+                    timeout=20,
+                    check=False,
+                )
+                if completed.returncode == 0 and failure_path.is_file():
+                    self.ledger["failure_diagnostic"] = {
+                        "role": "diagnostic_only",
+                        "path": str(failure_path),
+                        "sha256": sha256_file(failure_path),
+                    }
         except Exception as error:  # retain unexpected harness failures as evidence
             self.ledger["status"] = "fail"
             self.ledger["failure_class"] = "harness_gap"
@@ -1579,6 +2144,7 @@ def build_environment_record(
         "xdotool": tool_version([str(args.xdotool), "version"]),
         "xdpyinfo": tool_version([str(args.xdpyinfo)]),
         "xprop": tool_version([str(args.xprop), "-version"]),
+        "xwininfo": tool_version([str(args.xwininfo), "-version"]),
         "window_manager": detect_window_manager(args.xprop),
         "scrot": (
             tool_version([str(args.scrot), "--version"])
@@ -1615,6 +2181,14 @@ def build_environment_record(
         "cleared_inherited_variables": inherited,
         "cleared_variable_names": sorted(cleared_names),
         "network_enforcement": args.network_enforcement,
+        "network_namespace": {
+            "current": (
+                os.readlink("/proc/self/ns/net")
+                if args.network_enforcement == "linux_network_namespace"
+                else None
+            ),
+            "parent": args.parent_network_namespace,
+        },
         "binaries": {
             "gentle": {
                 "path": str(args.gentle),
@@ -1673,7 +2247,15 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--xdotool")
     parser.add_argument("--xdpyinfo")
     parser.add_argument("--xprop")
+    parser.add_argument("--xwininfo")
     parser.add_argument("--scrot")
+    parser.add_argument(
+        "--parent-network-namespace",
+        help=(
+            "Parent network namespace identity captured with "
+            "readlink /proc/self/ns/net before entering unshare"
+        ),
+    )
     parser.add_argument(
         "--network-enforcement",
         choices=["not_enforced", "linux_network_namespace", "container_none", "external_policy"],
@@ -1696,6 +2278,7 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parsed.xdotool = resolve_tool(parsed.xdotool, "xdotool", required=True)
     parsed.xdpyinfo = resolve_tool(parsed.xdpyinfo, "xdpyinfo", required=True)
     parsed.xprop = resolve_tool(parsed.xprop, "xprop", required=True)
+    parsed.xwininfo = resolve_tool(parsed.xwininfo, "xwininfo", required=True)
     parsed.scrot = resolve_tool(parsed.scrot, "scrot", required=False)
     parsed.timeouts = {
         timeout_class: getattr(parsed, f"timeout_{timeout_class}")
@@ -1732,16 +2315,13 @@ def validate_runtime(args: argparse.Namespace, manifest: dict[str, Any]) -> list
         if args.network_enforcement == "linux_network_namespace":
             try:
                 own_namespace = os.readlink("/proc/self/ns/net")
-                init_namespace = os.readlink("/proc/1/ns/net")
             except OSError as error:
                 raise AcceptanceFailure(
                     "harness_gap", f"Could not verify Linux network namespace: {error}"
                 ) from error
-            if own_namespace == init_namespace:
-                raise AcceptanceFailure(
-                    "harness_gap",
-                    "linux_network_namespace was declared but the runner shares PID 1's network namespace",
-                )
+            validate_parent_network_namespace(
+                own_namespace, args.parent_network_namespace
+            )
     if any(
         step.get("evidence", {}).get("screenshot") == "required"
         for chapter in chapters

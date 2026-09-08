@@ -434,19 +434,24 @@ cargo build --locked --features gui-test-support \
 
 xvfb-run -a -s "-screen 0 1600x1000x24" \
   sh -c 'openbox >/tmp/gentle-tutorial-openbox.log 2>&1 & \
+    parent_netns=$(readlink /proc/self/ns/net) && \
     exec unshare --user --map-root-user --net -- \
       python3 scripts/tutorial_gui_acceptance.py \
         --repo-root . \
         --profile smoke \
         --evidence-dir /tmp/gentle-tutorial-gui-smoke \
+        --parent-network-namespace "$parent_netns" \
         --network-enforcement linux_network_namespace'
 ```
 
-The runner requires `xdotool`, `xdpyinfo`, `xprop`, and a named EWMH window
-manager; the example uses Openbox. It also requires `scrot` whenever a selected
-contract marks a screenshot as required. Use repeated `--chapter ID` instead
-of `--profile` for a bounded chapter set. `smoke` currently contains Simple
-PCR, branch/reverse-complement, and BamHI/EcoRI digest contracts.
+The runner requires `xdotool`, `xdpyinfo`, `xprop`, `xwininfo`, and a named EWMH
+window manager; the example uses Openbox. It also requires `scrot` whenever a
+selected contract marks a screenshot as required. The parent network namespace
+identity is captured before `unshare`; the runner compares it with its own
+namespace instead of assuming that `/proc/1/ns/net` is readable. Use repeated
+`--chapter ID` instead of `--profile` for a bounded chapter set. `smoke`
+currently contains Simple PCR, branch/reverse-complement, and BamHI/EcoRI digest
+contracts.
 `offline-core` and `full` become meaningful only as chapters gain
 complete typed acceptance metadata. Online chapters must remain explicit and
 authorized.
@@ -481,13 +486,35 @@ PNG and writes a `gentle.tutorial_gui_screenshot_evidence.v1` sidecar. The
 sidecar binds the image to the exact source revision and GUI binary hash,
 tutorial manifest and acceptance-contract hashes, chapter/prose/step identity,
 semantic snapshot generation and canonical hash, pseudonymous subject scope,
-logical rectangle, pixel scale, and physical-pixel focus rectangle. It also
+logical rectangle, pixel scale, exact native X11 client id and root-screen
+client geometry, egui viewport identity, coordinate transform, and physical-pixel
+focus rectangle. Embedded semantic surfaces inherit the exact native client of
+their owning egui viewport rather than inventing another X11 window. The
+runner subtracts the semantic window origin and adds the native client origin,
+so window-manager decorations cannot displace input or teaching crops. It also
 records the capture backend and timestamp. Two lossless SVG teaching views are
 derived from that same raw PNG: a whole-screen orientation view and a padded
 interaction-context view, each with a numbered outline around the semantic
 focus. Their crop transforms and hashes remain in the sidecar. The raw capture
 is evidence; the SVGs are explanatory projections and never replace typed
 scientific verification.
+
+Project-metadata edits are deferred across dependent field/button interactions,
+then saved immediately *before* the next scientific action (or at chapter end).
+The scientific step must produce a fresh unsaved transition before the runner
+saves and verifies it. An old dirty flag can therefore never masquerade as
+scientific completion. The ledger records both the deferred state and the
+ordinary pre-/post-scientific `Ctrl+S` events; typed verification reads only
+the saved project.
+
+Pointer actions are emitted only after the exact semantic target reports
+`hovered=true` from a child/root viewport publication. Text replacement leaves
+the field with `Tab` before checking its typed outcome. A tutorial may declare
+a bounded `scroll` interaction when a real user must navigate a scroll area;
+the direction is typed and wheel repetitions are limited to 1..=20. Navigation
+is recorded in the same action ledger rather than occurring as a hidden runner
+convenience. The default compute timeout is ten minutes; exceeding it is a
+product-performance result, not a coordinate or focus harness gap.
 
 ## 6. Practical implementation order
 

@@ -5818,11 +5818,27 @@ impl MainAreaDna {
                         .on_hover_text("Optional ΔTₘ constraint for primer-pair ranking.");
                         ui.label("max pairs")
                             .on_hover_text("Maximum number of accepted primer pairs to return.");
-                        ui.add(
+                        let _max_pairs_response = ui.add(
                             egui::TextEdit::singleline(&mut self.primer_design_ui.max_pairs)
                                 .desired_width(92.0),
                         )
                         .on_hover_text("Upper limit for returned primer-pair candidates.");
+                        #[cfg(feature = "gui-test-support")]
+                        crate::gui_test_support::register_response_with_outcome(
+                            &_max_pairs_response,
+                            crate::tutorial_gui_semantics::PCR_DESIGN_MAX_PAIRS,
+                            self.semantic_control_window_id(),
+                            Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
+                                self.seq_id.as_deref().unwrap_or("unnamed"),
+                            ])),
+                            crate::gui_test_support::GuiTestWidgetKind::TextInput,
+                            false,
+                            Some(if self.primer_design_ui.max_pairs.is_empty() {
+                                "empty"
+                            } else {
+                                "populated"
+                            }),
+                        );
                         ui.end_row();
                         ui.label("report_id").on_hover_text(
                             "Persisted report identifier. Batch mode derives deterministic suffixes (`_r01`, `_r02`, ...).",
@@ -5835,7 +5851,7 @@ impl MainAreaDna {
                             "Optional report id stem. Empty value auto-derives from template and ROI.",
                         );
                         #[cfg(feature = "gui-test-support")]
-                        crate::gui_test_support::register_response(
+                        crate::gui_test_support::register_response_with_outcome(
                             &_report_id_response,
                             crate::tutorial_gui_semantics::PCR_DESIGN_REPORT_ID,
                             self.semantic_control_window_id(),
@@ -5844,6 +5860,11 @@ impl MainAreaDna {
                             ])),
                             crate::gui_test_support::GuiTestWidgetKind::TextInput,
                             false,
+                            Some(if self.primer_design_ui.report_id.is_empty() {
+                                "empty"
+                            } else {
+                                "populated"
+                            }),
                         );
                         ui.end_row();
                     });

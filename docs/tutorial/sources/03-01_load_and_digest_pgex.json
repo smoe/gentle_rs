@@ -147,9 +147,10 @@
           "verifiers": [
             {
               "kind": "visible_claim",
-              "semantic_id": "sequence_tools.digest.run",
+              "semantic_id": "sequence_tools.digest.prefix",
               "visible": true,
-              "enabled": true
+              "enabled": true,
+              "outcome_role": "populated"
             }
           ],
           "evidence": {

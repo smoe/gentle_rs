@@ -9,6 +9,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     path::Path,
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 use eframe::egui::{self, Context, Rect, Response};
@@ -55,6 +56,10 @@ pub struct GuiTestState {
     pub visible: bool,
     pub enabled: bool,
     pub selected: bool,
+    /// The native pointer was over this exact egui response/rectangle during
+    /// the frame that produced the snapshot.
+    #[serde(default)]
+    pub hovered: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -81,6 +86,10 @@ impl From<Rect> for GuiTestRect {
 pub struct GuiTestItem {
     pub semantic_id: String,
     pub window_id: String,
+    /// Egui viewport identity used to associate embedded semantic surfaces with
+    /// the exact native client that owns their pixels.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub egui_viewport_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subject_scope: Option<String>,
     pub widget_kind: GuiTestWidgetKind,
@@ -158,6 +167,7 @@ pub fn begin_viewport_frame(ctx: &Context) {
         let mut registry = data
             .get_temp::<GuiTestRegistry>(registry_id())
             .unwrap_or_default();
+        registry.generation = registry.generation.saturating_add(1);
         discard_stale_viewport_items(&mut registry, viewport_id, pass_nr);
         registry.unsettled_viewports.remove(&viewport_id);
         data.insert_temp(registry_id(), registry);
@@ -206,7 +216,7 @@ pub fn register_response_with_outcome(
 ) {
     let semantic_id = semantic_id.into();
     let window_id = window_id.into();
-    register_rect(
+    register_rect_impl(
         response.ctx.clone(),
         semantic_id,
         window_id,
@@ -217,6 +227,7 @@ pub fn register_response_with_outcome(
         response.enabled(),
         selected,
         outcome_role,
+        Some(response.hovered()),
     );
 }
 
@@ -233,6 +244,35 @@ pub fn register_rect(
     selected: bool,
     outcome_role: Option<&str>,
 ) {
+    register_rect_impl(
+        ctx,
+        semantic_id,
+        window_id,
+        subject_scope,
+        widget_kind,
+        rect,
+        visible,
+        enabled,
+        selected,
+        outcome_role,
+        None,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn register_rect_impl(
+    ctx: Context,
+    semantic_id: impl Into<GuiTestId>,
+    window_id: impl Into<GuiTestId>,
+    subject_scope: Option<&str>,
+    widget_kind: GuiTestWidgetKind,
+    rect: Rect,
+    visible: bool,
+    enabled: bool,
+    selected: bool,
+    outcome_role: Option<&str>,
+    hovered_override: Option<bool>,
+) {
     let semantic_id = semantic_id.into();
     let window_id = window_id.into();
     let viewport_id = ctx.viewport_id();
@@ -244,6 +284,15 @@ pub fn register_rect(
     let clipped_rect = rect.intersect(ctx.content_rect());
     let visible = visible && clipped_rect.is_positive();
     let clipped_rect = if visible { clipped_rect } else { Rect::ZERO };
+    let hovered = visible
+        && hovered_override.unwrap_or_else(|| {
+            ctx.input(|input| {
+                input
+                    .pointer
+                    .hover_pos()
+                    .is_some_and(|position| clipped_rect.contains(position))
+            })
+        });
     let viewport_origin = ctx.input(|input| {
         input
             .viewport()
@@ -265,12 +314,14 @@ pub fn register_rect(
         let item = GuiTestItem {
             semantic_id: semantic_id.as_str().to_string(),
             window_id: window_id.as_str().to_string(),
+            egui_viewport_id: format!("{viewport_id:?}"),
             subject_scope: subject_scope.map(str::to_string),
             widget_kind,
             state: GuiTestState {
                 visible,
                 enabled,
                 selected,
+                hovered,
             },
             rect_logical_points: screen_rect.into(),
             pixels_per_point,
@@ -303,9 +354,7 @@ pub fn snapshot(ctx: &Context) -> GuiTestSnapshot {
         .unwrap_or_default();
     GuiTestSnapshot {
         schema: SNAPSHOT_SCHEMA.to_string(),
-        coordinate_space:
-            "screen-relative egui logical points; multiply by pixels_per_point for physical pixels"
-                .to_string(),
+        coordinate_space: "egui logical points translated by the viewport outer rectangle; native window decorations are excluded".to_string(),
         generation: registry.generation,
         settled: registry.unsettled_viewports.is_empty(),
         items: registry
@@ -324,9 +373,14 @@ pub fn finish_frame(ctx: &Context) -> Result<(), String> {
 }
 
 fn write_snapshot(path: &Path, snapshot: &GuiTestSnapshot) -> Result<(), String> {
+    static TEMPORARY_COUNTER: AtomicU64 = AtomicU64::new(0);
     let bytes = serde_json::to_vec_pretty(snapshot)
         .map_err(|error| format!("Could not serialize semantic GUI snapshot: {error}"))?;
-    let temporary = path.with_extension("json.tmp");
+    let temporary = path.with_extension(format!(
+        "json.tmp.{}.{}",
+        std::process::id(),
+        TEMPORARY_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
     fs::write(&temporary, bytes).map_err(|error| {
         format!(
             "Could not write semantic GUI snapshot '{}': {error}",
@@ -711,6 +765,48 @@ mod tests {
         assert!(!first.settled);
         assert!(second.settled);
         assert_eq!(second.generation, first.generation + 1);
+    }
+
+    #[test]
+    fn child_viewport_publication_advances_generation() {
+        let ctx = Context::default();
+        let root = egui::ViewportId::ROOT;
+        let child = egui::ViewportId::from_hash_of("semantic-child-generation");
+
+        ctx.begin_pass(input_for_viewport(root, &[root, child]));
+        begin_frame(&ctx);
+        let root_generation = snapshot(&ctx).generation;
+        end_pass(&ctx);
+
+        ctx.begin_pass(input_for_viewport(child, &[root, child]));
+        begin_viewport_frame(&ctx);
+        assert_eq!(snapshot(&ctx).generation, root_generation + 1);
+        end_pass(&ctx);
+    }
+
+    #[test]
+    fn rectangle_registration_reports_frame_bound_pointer_hover() {
+        let ctx = Context::default();
+        let mut input = egui::RawInput::default();
+        input
+            .events
+            .push(egui::Event::PointerMoved(egui::pos2(10.0, 12.0)));
+        ctx.begin_pass(input);
+        begin_frame(&ctx);
+        register_rect(
+            ctx.clone(),
+            "dna.selection.map_span",
+            "window.dna_viewer",
+            None,
+            GuiTestWidgetKind::Row,
+            Rect::from_min_max(egui::pos2(5.0, 5.0), egui::pos2(20.0, 20.0)),
+            true,
+            true,
+            true,
+            Some("ready"),
+        );
+        assert!(snapshot(&ctx).items[0].state.hovered);
+        end_pass(&ctx);
     }
 
     #[test]

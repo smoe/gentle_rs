@@ -6666,6 +6666,7 @@ impl MainAreaDna {
                         input: self.seq_id.clone().unwrap_or_default(),
                         output_id: None,
                     });
+                    ui.ctx().request_repaint_of(egui::ViewportId::ROOT);
                 }
                 let branch = ui.button(Self::tr("sequence.branch"))
                     .on_hover_text("Create an unchanged branch copy for alternative workflows");
@@ -6676,6 +6677,7 @@ impl MainAreaDna {
                         input: self.seq_id.clone().unwrap_or_default(),
                         output_id: None,
                     });
+                    ui.ctx().request_repaint_of(egui::ViewportId::ROOT);
                 }
             }
             if ui
@@ -6759,6 +6761,7 @@ impl MainAreaDna {
                 {
                     self.show_engine_ops = true;
                     self.save_engine_ops_state();
+                    ui.ctx().request_repaint_of(egui::ViewportId::ROOT);
                 }
                 if ui
                     .button(Self::tr("sequence.tools.shell_open"))
@@ -6906,14 +6909,21 @@ impl MainAreaDna {
                                 .default_open(false)
                                 .show(ui, |ui| {
 
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label(format!("Digest template {}", template_seq_id));
                     ui.label("enzymes");
-                    ui.text_edit_singleline(&mut self.digest_enzymes_text);
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.digest_enzymes_text)
+                            .desired_width(180.0),
+                    );
                     ui.label("prefix");
-                    let prefix = ui.text_edit_singleline(&mut self.digest_prefix_text);
+                    let prefix = ui.add(
+                        egui::TextEdit::singleline(&mut self.digest_prefix_text)
+                            .desired_width(160.0),
+                    );
                     if prefix.changed() {
                         self.save_engine_ops_state();
+                        ui.ctx().request_repaint_of(egui::ViewportId::ROOT);
                     }
                     self.register_tutorial_control(&prefix, crate::tutorial_gui_semantics::TOOLS_DIGEST_PREFIX, crate::tutorial_gui_semantics::WINDOW_SEQUENCE_TOOLS);
                     let digest = ui.button("Digest")
@@ -6938,6 +6948,7 @@ impl MainAreaDna {
                                 enzymes,
                                 output_prefix: Some(self.digest_prefix_text.clone()),
                             });
+                            ui.ctx().request_repaint_of(egui::ViewportId::ROOT);
                         }
                     }
             });
@@ -14078,6 +14089,11 @@ impl MainAreaDna {
         );
         if response.clicked() {
             self.open_simple_pcr_designer_from_current_selection();
+            // The request originates in a detached DNA viewport while the
+            // PCR Designer is owned by the root app. Wake that exact viewport
+            // so it consumes the request even when no root-window input is
+            // otherwise pending.
+            ui.ctx().request_repaint_of(egui::ViewportId::ROOT);
             return true;
         }
         false
@@ -20958,13 +20974,21 @@ impl MainAreaDna {
             } else {
                 crate::gui_test_support::GuiTestWidgetKind::Button
             };
-            crate::gui_test_support::register_response(
+            let outcome = (id == crate::tutorial_gui_semantics::TOOLS_DIGEST_PREFIX).then_some(
+                if self.digest_prefix_text.is_empty() {
+                    "empty"
+                } else {
+                    "populated"
+                },
+            );
+            crate::gui_test_support::register_response_with_outcome(
                 response,
                 id,
                 window,
                 Some(&scope),
                 kind,
                 false,
+                outcome,
             );
         }
         #[cfg(not(feature = "gui-test-support"))]
@@ -21330,22 +21354,31 @@ impl MainAreaDna {
             batch_progress: None,
             receiver: Arc::new(Mutex::new(rx)),
         });
-        std::thread::spawn(move || {
-            let tx_progress = tx.clone();
-            let outcome =
-                crate::background_engine::execute_on_engine_snapshot(&engine, move |snapshot| {
-                    snapshot
-                        .apply_with_progress(op, move |progress| {
-                            if let OperationProgress::PrimerDesign(progress) = progress {
-                                let _ =
-                                    tx_progress.send(PrimerDesignTaskMessage::Progress(progress));
-                            }
-                            true
-                        })
-                        .map(PrimerDesignTaskCompletion::Single)
-                });
-            let _ = tx.send(PrimerDesignTaskMessage::Done(outcome));
-        });
+        let spawn_result = std::thread::Builder::new()
+            .name("gentle-primer-design".to_string())
+            .stack_size(16 * 1024 * 1024)
+            .spawn(move || {
+                let tx_progress = tx.clone();
+                let outcome = crate::background_engine::execute_on_engine_snapshot(
+                    &engine,
+                    move |snapshot| {
+                        snapshot
+                            .apply_with_progress(op, move |progress| {
+                                if let OperationProgress::PrimerDesign(progress) = progress {
+                                    let _ = tx_progress
+                                        .send(PrimerDesignTaskMessage::Progress(progress));
+                                }
+                                true
+                            })
+                            .map(PrimerDesignTaskCompletion::Single)
+                    },
+                );
+                let _ = tx.send(PrimerDesignTaskMessage::Done(outcome));
+            });
+        if let Err(error) = spawn_result {
+            self.primer_design_task = None;
+            self.op_status = format!("Could not start {operation_label}: {error}");
+        }
     }
 
     fn start_queued_primer_pair_design_batch(&mut self) {
@@ -21377,26 +21410,35 @@ impl MainAreaDna {
             batch_progress: None,
             receiver: Arc::new(Mutex::new(rx)),
         });
-        std::thread::spawn(move || {
-            let tx_progress = tx.clone();
-            let outcome =
-                crate::background_engine::execute_on_engine_snapshot(&engine, move |snapshot| {
-                    Ok(PrimerDesignTaskCompletion::Batch(
-                        Self::execute_primer_pair_design_batch(
-                            snapshot,
-                            &prepared.queued_regions,
-                            &prepared.spec,
-                            &prepared.report_base,
-                            prepared.create_copies,
-                            move |progress| {
-                                let _ = tx_progress
-                                    .send(PrimerDesignTaskMessage::BatchProgress(progress));
-                            },
-                        ),
-                    ))
-                });
-            let _ = tx.send(PrimerDesignTaskMessage::Done(outcome));
-        });
+        let spawn_result = std::thread::Builder::new()
+            .name("gentle-primer-design-batch".to_string())
+            .stack_size(16 * 1024 * 1024)
+            .spawn(move || {
+                let tx_progress = tx.clone();
+                let outcome = crate::background_engine::execute_on_engine_snapshot(
+                    &engine,
+                    move |snapshot| {
+                        Ok(PrimerDesignTaskCompletion::Batch(
+                            Self::execute_primer_pair_design_batch(
+                                snapshot,
+                                &prepared.queued_regions,
+                                &prepared.spec,
+                                &prepared.report_base,
+                                prepared.create_copies,
+                                move |progress| {
+                                    let _ = tx_progress
+                                        .send(PrimerDesignTaskMessage::BatchProgress(progress));
+                                },
+                            ),
+                        ))
+                    },
+                );
+                let _ = tx.send(PrimerDesignTaskMessage::Done(outcome));
+            });
+        if let Err(error) = spawn_result {
+            self.primer_design_task = None;
+            self.op_status = format!("Could not start PCR primer batch: {error}");
+        }
     }
 
     fn poll_primer_design_task(&mut self, ctx: &egui::Context) {
@@ -27676,6 +27718,44 @@ impl MainAreaDna {
                     crate::gui_test_support::GuiTestWidgetKind::Row,
                     false,
                 );
+                #[cfg(feature = "gui-test-support")]
+                if !self.is_circular()
+                    && let Some((start, end_exclusive)) = self.current_selection_range_0based()
+                {
+                    let (viewport_start, span_bp, sequence_length) =
+                        self.current_linear_viewport();
+                    let viewport_end = viewport_start
+                        .saturating_add(span_bp)
+                        .min(sequence_length);
+                    let clip_start = start.max(viewport_start);
+                    let clip_end = end_exclusive.min(viewport_end);
+                    if span_bp > 0 && clip_end > clip_start {
+                        let x0 = response.rect.left()
+                            + response.rect.width()
+                                * ((clip_start - viewport_start) as f32 / span_bp as f32);
+                        let x1 = response.rect.left()
+                            + response.rect.width()
+                                * ((clip_end - viewport_start) as f32 / span_bp as f32);
+                        let selection_rect = egui::Rect::from_min_max(
+                            egui::pos2(x0, response.rect.top()),
+                            egui::pos2(x1.max(x0 + 6.0), response.rect.bottom()),
+                        );
+                        crate::gui_test_support::register_rect(
+                            response.ctx.clone(),
+                            crate::tutorial_gui_semantics::DNA_SELECTION_MAP_SPAN,
+                            crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER,
+                            Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
+                                self.seq_id.as_deref().unwrap_or("unnamed"),
+                            ])),
+                            crate::gui_test_support::GuiTestWidgetKind::Row,
+                            selection_rect,
+                            true,
+                            true,
+                            true,
+                            Some("ready"),
+                        );
+                    }
+                }
                 self.draw_pcr_paint_overlays(ui, &response);
                 self.draw_genomic_motif_evidence_overlays(ui, &response);
                 self.render_pcr_post_drag_actions(ui);
