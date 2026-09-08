@@ -5089,10 +5089,15 @@ Isoform architecture panel workflow:
         and checks facts; it never computes or rewrites scientific verdicts
     - `scripts/prepare_regulatory_region_indexes.py` prepares a manifest-declared
       multi-gene promoter/upstream comparison bundle through GENtle's existing
-      `genomes extract-promoter` and `SaveFile` paths. It collapses exact-identical
-      windows into explicit sequence-equivalence classes before building a
-      candidate-pool BLAST database and lower-stringency canonical-k-mer
-      signatures. The candidate database is not presented as a whole-genome
+      promoter/region extraction, canonical region-set import, and `SaveFile`
+      paths. It accepts transcript/TSS windows and typed region sets while
+      preserving comparison classes such as `ensembl_regulation` and
+      `self_defined`. It collapses exact-identical windows into explicit
+      sequence-equivalence classes before building a candidate-pool BLAST
+      database and lower-stringency canonical-k-mer signatures.
+      `scripts/prepare_ensembl_promoter_region_set.py` first captures exact
+      promoter rows from content-verified, non-truncated locus reports through
+      GENtle. The candidate database is not presented as a whole-genome
       uniqueness screen; see `docs/regulatory_region_comparison_preparation.md`
   - same command family for restriction-site details:
     - `inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED]`

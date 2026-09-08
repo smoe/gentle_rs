@@ -32,6 +32,8 @@ from typing import Any
 SCHEMA = "gentle.regulatory_region_index_preparation.v1"
 RECEIPT_SCHEMA = "gentle.regulatory_region_index_preparation_receipt.v1"
 REGION_SET_SCHEMA = "gentle.regulatory_region_comparison_sequences.v1"
+GENOMIC_REGION_SET_SCHEMA = "gentle.genomic_region_set.v1"
+GENOMIC_REGION_SCHEMA = "gentle.genomic_region_of_interest.v1"
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 DNA_COMPLEMENT = str.maketrans("ACGTacgt", "TGCAtgca")
 
@@ -198,12 +200,159 @@ def latest_genome_extraction(state: dict[str, Any], seq_id: str) -> dict[str, An
     extractions = state.get("metadata", {}).get("provenance", {}).get("genome_extractions", [])
     rows = [row for row in extractions if row.get("seq_id") == seq_id]
     require(rows, f"GENtle state has no genome-extraction provenance for '{seq_id}'")
-    return rows[-1]
+    extraction = dict(rows[-1])
+    # Wall-clock recording remains in the retained GENtle project and command
+    # receipt. It is not part of the scientific coordinate/source binding and
+    # would otherwise make candidate_regions.json differ across identical runs.
+    extraction.pop("recorded_at_unix_ms", None)
+    return extraction
 
 
 def resolve_repo_path(repo_root: Path, value: str) -> Path:
     path = Path(value)
     return path.resolve() if path.is_absolute() else (repo_root / path).resolve()
+
+
+def matches_optional_filter(value: Any, allowed: set[str]) -> bool:
+    return not allowed or value in allowed
+
+
+def canonical_region_tasks(manifest: dict[str, Any], manifest_path: Path,
+                           genome: dict[str, Any]) -> list[dict[str, Any]]:
+    """Expand canonical region-set sources into extraction tasks.
+
+    Region-set paths are resolved relative to the manifest so a comparison
+    bundle can move as a unit. Assembly/taxon checks happen before GENtle is
+    invoked; a human-readable genome_id alone is not treated as an assembly
+    proof.
+    """
+    sources = manifest.get("region_sets", [])
+    require(isinstance(sources, list), "manifest.region_sets must be an array")
+    if not sources:
+        return []
+
+    expected = genome.get("expected_reference")
+    require(isinstance(expected, dict),
+            "genome.expected_reference is required when region_sets are used")
+    assembly_name_values = expected.get("assembly_names", [])
+    assembly_accession_values = expected.get("assembly_accessions", [])
+    require(isinstance(assembly_name_values, list)
+            and all(isinstance(value, str) for value in assembly_name_values),
+            "genome.expected_reference.assembly_names must be an array of strings")
+    require(isinstance(assembly_accession_values, list)
+            and all(isinstance(value, str) for value in assembly_accession_values),
+            "genome.expected_reference.assembly_accessions must be an array of strings")
+    assembly_names = set(assembly_name_values)
+    assembly_accessions = set(assembly_accession_values)
+    expected_taxon = expected.get("taxon_id")
+    require(assembly_names or assembly_accessions,
+            "genome.expected_reference must declare assembly_names or assembly_accessions")
+
+    tasks: list[dict[str, Any]] = []
+    for source_index, source in enumerate(sources):
+        require(isinstance(source, dict), f"region_sets[{source_index}] must be an object")
+        comparison_class = checked_id(
+            source.get("comparison_class"),
+            f"region_sets[{source_index}].comparison_class",
+        )
+        path_value = source.get("path")
+        require(isinstance(path_value, str) and path_value.strip(),
+                f"region_sets[{source_index}].path is required")
+        source_path = Path(path_value)
+        if not source_path.is_absolute():
+            source_path = manifest_path.parent / source_path
+        source_path = source_path.resolve(strict=True)
+        payload = json.loads(source_path.read_text(encoding="utf-8"))
+        require(payload.get("schema") == GENOMIC_REGION_SET_SCHEMA,
+                f"{source_path}: expected schema '{GENOMIC_REGION_SET_SCHEMA}'")
+        regions = payload.get("regions")
+        require(isinstance(regions, list), f"{source_path}: regions must be an array")
+
+        prefix = source.get("id_prefix", "")
+        require(isinstance(prefix, str), f"region_sets[{source_index}].id_prefix must be a string")
+        if prefix:
+            checked_id(prefix.rstrip("_.-"), f"region_sets[{source_index}].id_prefix")
+        filter_values: list[list[Any]] = []
+        for filter_name in ("region_ids", "purposes", "selection_methods"):
+            values = source.get(filter_name, [])
+            require(isinstance(values, list),
+                    f"region_sets[{source_index}].{filter_name} must be an array")
+            require(all(isinstance(value, str) for value in values),
+                    f"region_sets[{source_index}].{filter_name} must contain strings")
+            filter_values.append(values)
+        region_ids, purposes, methods = (set(values) for values in filter_values)
+        annotation_scope = source.get("annotation_scope", "none")
+        require(annotation_scope in {"none", "core", "full"},
+                f"region_sets[{source_index}]: invalid annotation_scope")
+
+        selected = 0
+        for region_index, region in enumerate(regions):
+            require(isinstance(region, dict), f"{source_path}: regions[{region_index}] must be an object")
+            require(region.get("schema") == GENOMIC_REGION_SCHEMA,
+                    f"{source_path}: region must use schema '{GENOMIC_REGION_SCHEMA}'")
+            source_region_id = checked_id(region.get("region_id"),
+                                          f"{source_path}: regions[{region_index}].region_id")
+            if not matches_optional_filter(source_region_id, region_ids):
+                continue
+            if not matches_optional_filter(region.get("purpose"), purposes):
+                continue
+            if not matches_optional_filter(region.get("selection_method"), methods):
+                continue
+
+            interval = region.get("interval")
+            require(isinstance(interval, dict), f"{source_region_id}: interval is required")
+            require(interval.get("coordinate_convention") == "zero_based_half_open",
+                    f"{source_region_id}: expected zero_based_half_open coordinates")
+            reference = interval.get("reference")
+            require(isinstance(reference, dict), f"{source_region_id}: interval.reference is required")
+            assembly_name = reference.get("assembly_name")
+            assembly_accession = reference.get("assembly_accession")
+            name_ok = bool(assembly_names and assembly_name in assembly_names)
+            accession_ok = bool(assembly_accessions and assembly_accession in assembly_accessions)
+            require(name_ok or accession_ok,
+                    f"{source_region_id}: reference assembly is not allowed by genome.expected_reference")
+            if expected_taxon is not None:
+                require(reference.get("taxon_id") == expected_taxon,
+                        f"{source_region_id}: taxon_id does not match genome.expected_reference")
+            contig = reference.get("contig_name")
+            require(isinstance(contig, str) and contig.strip(), f"{source_region_id}: contig_name is required")
+            start_0based = interval.get("start_0based")
+            end_exclusive = interval.get("end_0based_exclusive")
+            require(isinstance(start_0based, int) and not isinstance(start_0based, bool) and start_0based >= 0,
+                    f"{source_region_id}: invalid start_0based")
+            require(isinstance(end_exclusive, int) and not isinstance(end_exclusive, bool)
+                    and end_exclusive > start_0based,
+                    f"{source_region_id}: invalid end_0based_exclusive")
+            strand = interval.get("strand", "unstranded")
+            require(strand in {"plus", "minus", "unstranded"},
+                    f"{source_region_id}: invalid strand")
+
+            region_id = checked_id(prefix + source_region_id,
+                                   f"region_sets[{source_index}] output region_id")
+            tasks.append({
+                "kind": "canonical_region",
+                "region_id": region_id,
+                "comparison_class": comparison_class,
+                "annotation_scope": annotation_scope,
+                "contig_name": contig,
+                # GENtle's CLI boundary is 1-based inclusive. For a canonical
+                # [start,end) interval this conversion intentionally leaves
+                # the numeric end unchanged.
+                "start_1based": start_0based + 1,
+                "end_1based": end_exclusive,
+                "source_region": region,
+                "source_region_set": {
+                    "path": str(source_path),
+                    "file_sha256": sha256_file(source_path),
+                    "source_index": source_index,
+                    "set_id": payload.get("set_id"),
+                    "declared_content_sha256": payload.get("content_sha256"),
+                    "source_region_id": source_region_id,
+                },
+            })
+            selected += 1
+        require(selected > 0, f"region_sets[{source_index}] filters selected no regions")
+    return tasks
 
 
 def prepare(args: argparse.Namespace) -> None:
@@ -243,39 +392,89 @@ def prepare(args: argparse.Namespace) -> None:
         ], cwd=repo_root, timeout=args.timeout, log_dir=logs,
             label="prepare_genome", receipts=command_receipts)
 
-    region_specs = manifest.get("regions")
-    require(isinstance(region_specs, list) and region_specs, "manifest.regions must be a non-empty array")
-    declared_region_ids = [
-        checked_id(spec.get("region_id"), f"regions[{index}].region_id")
-        if isinstance(spec, dict) else ""
-        for index, spec in enumerate(region_specs)
-    ]
-    require(all(declared_region_ids), "every regions[] entry must be an object")
-    require(len(declared_region_ids) == len(set(declared_region_ids)), "region_id values must be unique")
+    region_specs = manifest.get("regions", [])
+    require(isinstance(region_specs, list), "manifest.regions must be an array")
+    tasks: list[dict[str, Any]] = []
+    for index, spec in enumerate(region_specs):
+        require(isinstance(spec, dict), f"regions[{index}] must be an object")
+        task = dict(spec)
+        task["kind"] = "transcript_promoter"
+        task["region_id"] = checked_id(spec.get("region_id"), f"regions[{index}].region_id")
+        task["comparison_class"] = checked_id(
+            spec.get("comparison_class", "transcript_tss_window"),
+            f"regions[{index}].comparison_class",
+        )
+        tasks.append(task)
+    tasks.extend(canonical_region_tasks(manifest, manifest_path, genome))
+    require(tasks, "manifest must declare at least one regions[] or region_sets[] input")
+    declared_region_ids = [task["region_id"] for task in tasks]
+    require(len(declared_region_ids) == len(set(declared_region_ids)),
+            "region_id values must be unique after region-set prefixes are applied")
     records: list[tuple[str, str]] = []
     region_rows: list[dict[str, Any]] = []
-    for index, spec in enumerate(region_specs, start=1):
-        require(isinstance(spec, dict), f"regions[{index - 1}] must be an object")
-        region_id = checked_id(spec.get("region_id"), f"regions[{index - 1}].region_id")
-        gene_query = spec.get("gene_query")
-        require(isinstance(gene_query, str) and gene_query.strip(), f"{region_id}: gene_query is required")
-        upstream = int(spec.get("upstream_bp", 5000))
-        downstream = int(spec.get("downstream_bp", 1000))
-        require(upstream >= 0 and downstream >= 0 and upstream + downstream > 0,
-                f"{region_id}: invalid upstream/downstream span")
-        annotation_scope = spec.get("annotation_scope", "core")
+    imported_sources: set[str] = set()
+    for task in tasks:
+        if task["kind"] != "canonical_region":
+            continue
+        source = task["source_region_set"]
+        source_path = source["path"]
+        if source_path in imported_sources:
+            continue
+        imported_sources.add(source_path)
+        source_index = source["source_index"]
+        import_request_path = output / f"region_set_{source_index:03d}.import_request.json"
+        imported_set_id = checked_id(
+            f"{dataset_id}.input{source_index:03d}", "canonical region import set_id"
+        )
+        write_json(import_request_path, {
+            "path": source_path,
+            "format": "json",
+            "set_id_override": imported_set_id,
+            "collision_policy": "reject",
+            "max_bytes": 10_485_760,
+            "max_rows": 100_000,
+        })
+        run_command([
+            str(gentle), "--state", str(state_path), "shell",
+            f"regions import @{import_request_path}",
+        ], cwd=repo_root, timeout=args.timeout, log_dir=logs,
+            label=f"region_set_{source_index:03d}_validate_import", receipts=command_receipts)
+        for matching_task in tasks:
+            if (matching_task["kind"] == "canonical_region"
+                    and matching_task["source_region_set"]["path"] == source_path):
+                matching_task["source_region_set"]["validated_import_set_id"] = imported_set_id
+
+    for index, task in enumerate(tasks, start=1):
+        region_id = task["region_id"]
+        annotation_scope = task.get("annotation_scope", "core")
         require(annotation_scope in {"none", "core", "full"}, f"{region_id}: invalid annotation_scope")
-        command = [
-            str(gentle), "--state", str(state_path), "genomes", "extract-promoter",
-            genome_id, gene_query, "--output-id", region_id,
-            "--upstream-bp", str(upstream), "--downstream-bp", str(downstream),
-            "--annotation-scope", annotation_scope,
-            "--catalog", str(catalog), "--cache-dir", str(cache_dir),
-        ]
-        if spec.get("transcript_id"):
-            command.extend(["--transcript-id", str(spec["transcript_id"])])
-        if spec.get("occurrence") is not None:
-            command.extend(["--occurrence", str(int(spec["occurrence"]))])
+        if task["kind"] == "transcript_promoter":
+            gene_query = task.get("gene_query")
+            require(isinstance(gene_query, str) and gene_query.strip(),
+                    f"{region_id}: gene_query is required")
+            upstream = int(task.get("upstream_bp", 5000))
+            downstream = int(task.get("downstream_bp", 1000))
+            require(upstream >= 0 and downstream >= 0 and upstream + downstream > 0,
+                    f"{region_id}: invalid upstream/downstream span")
+            command = [
+                str(gentle), "--state", str(state_path), "genomes", "extract-promoter",
+                genome_id, gene_query, "--output-id", region_id,
+                "--upstream-bp", str(upstream), "--downstream-bp", str(downstream),
+                "--annotation-scope", annotation_scope,
+                "--catalog", str(catalog), "--cache-dir", str(cache_dir),
+            ]
+            if task.get("transcript_id"):
+                command.extend(["--transcript-id", str(task["transcript_id"])])
+            if task.get("occurrence") is not None:
+                command.extend(["--occurrence", str(int(task["occurrence"]))])
+        else:
+            command = [
+                str(gentle), "--state", str(state_path), "genomes", "extract-region",
+                genome_id, task["contig_name"], str(task["start_1based"]),
+                str(task["end_1based"]), "--output-id", region_id,
+                "--annotation-scope", annotation_scope,
+                "--catalog", str(catalog), "--cache-dir", str(cache_dir),
+            ]
         run_command(command, cwd=repo_root, timeout=args.timeout, log_dir=logs,
                     label=f"{index:03d}_{region_id}_extract", receipts=command_receipts)
 
@@ -291,16 +490,29 @@ def prepare(args: argparse.Namespace) -> None:
 
         state = json.loads(state_path.read_text(encoding="utf-8"))
         extraction = latest_genome_extraction(state, region_id)
-        region_rows.append({
+        row = {
             "region_id": region_id,
-            "gene_query": gene_query,
-            "transcript_id": spec.get("transcript_id"),
-            "upstream_bp": upstream,
-            "downstream_bp": downstream,
+            "input_kind": task["kind"],
+            "comparison_class": task["comparison_class"],
             "sequence_length_bp": len(sequence),
             "sequence_sha256": sha256_bytes(sequence.encode()),
             "genome_extraction": extraction,
-        })
+        }
+        if task["kind"] == "transcript_promoter":
+            row.update({
+                "gene_query": gene_query,
+                "transcript_id": task.get("transcript_id"),
+                "upstream_bp": upstream,
+                "downstream_bp": downstream,
+                "sequence_orientation": "biological_5prime_to_3prime",
+            })
+        else:
+            row.update({
+                "sequence_orientation": "assembly_reference_forward",
+                "source_region_set": task["source_region_set"],
+                "source_region": task["source_region"],
+            })
+        region_rows.append(row)
 
     index_records, equivalence_classes, class_by_region = collapse_equivalent_records(records)
     for row in region_rows:
@@ -321,8 +533,10 @@ def prepare(args: argparse.Namespace) -> None:
         "catalog_sha256": sha256_file(catalog),
         "cache_dir": str(cache_dir),
         "coordinate_interpretation": (
-            "Coordinates and strand are copied from GENtle genome-extraction provenance. "
-            "Each FASTA sequence is exported in GENtle's biological 5-prime-to-3-prime orientation."
+            "Coordinates and strand are copied from GENtle genome-extraction provenance and canonical "
+            "region-set inputs. Transcript/TSS windows are exported in biological 5-prime-to-3-prime "
+            "orientation; explicit genomic intervals are exported in assembly-reference-forward "
+            "orientation. BLAST searches both strands and k-mers are strand-neutral."
         ),
         "input_region_count": len(records),
         "unique_sequence_count": len(index_records),
