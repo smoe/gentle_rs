@@ -33,7 +33,7 @@ Designed products are not validated assays; similarity does not prove sufficienc
 Smoke status: headless proofs do not replace graphical acceptance. All three
 Linux chapters (branch/reverse complement, digest, compact Simple PCR) must pass,
 without waiving the ten-minute compute budget. PCR timing remains unmeasured.
-Glen validates Linux; CI owns Windows/macOS and containers.
+Glen validates Linux and BLAST (missing-tool skips are not acceptance); CI owns Windows/macOS and containers.
 
 Proof path:
 

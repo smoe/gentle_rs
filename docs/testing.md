@@ -62,6 +62,8 @@ GENTLE_TEST_ONLINE=1 cargo test workflow_examples -- --test-threads=1
 - `always`: parsed, validated, and executed in default runs
 - `online`: executed only with `GENTLE_TEST_ONLINE=1`
 - `skip`: parsed/validated only
+- `optional_blast`: native tutorial checks run only with installed BLAST+;
+  missing tools are skipped, while documentation is always checked (see 3.2).
 
 Primer-design CI policy:
 
@@ -104,6 +106,22 @@ Tutorial source + generated outputs are part of the test surface:
 - source units: `docs/tutorial/sources/`
 - generated runtime manifest: `docs/tutorial/manifest.json`
 - generated output: `docs/tutorial/generated/`
+
+The conservation tutorial uses `optional_blast`: its real runtime check runs
+only when `makeblastdb`, `blastdbcmd`, and `blastn` are already available.
+Missing tools produce an explicit skip, never an installation or a claim of
+BLAST acceptance. Installed-but-broken tools and runtime failures still fail.
+`tutorial-check` always checks all generated documentation, then performs this
+optional runtime check separately. Documentation generation itself never runs
+`optional_blast` workflows, so committed output is independent of local tools;
+such chapters cannot retain runtime artifacts during generation.
+
+A [tiny TP73 CDS database fixture](../test_files/fixtures/blast_tp73_isoforms/README.md)
+ships with the source: three ENA-derived DeltaN isoforms, 4,398 bases total.
+Its provenance test needs no BLAST; its native test builds a temporary index,
+inspects it and checks all three exact self matches, or explicitly skips when
+tools are absent. No downloads or prebuilt platform-specific indexes are used.
+Run both fixture tests with `cargo test --lib tp73_blast_fixture -- --nocapture`.
 
 Validation commands:
 

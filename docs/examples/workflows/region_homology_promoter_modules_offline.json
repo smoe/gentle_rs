@@ -3,7 +3,7 @@
   "id": "region_homology_promoter_modules_offline",
   "title": "Query-referenced genomic-region conservation (offline synthetic)",
   "summary": "Prepares three tiny synthetic genomic BLAST indexes, saves a portable query plus one selected evidence span, and emits a content-bound query-referenced homology report with an explicitly designated ortholog locus, unassigned cross-species similarity, same-genome repetition, and omitted target-insertion provenance.",
-  "test_mode": "skip",
+  "test_mode": "optional_blast",
   "required_files": [
     "docs/examples/assets/region_homology_demo/README.md",
     "docs/examples/assets/region_homology_demo/module_cases.json",

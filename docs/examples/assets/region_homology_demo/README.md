@@ -36,6 +36,10 @@ The regression test
 `workflow_examples_region_homology_uses_real_isolated_blast_indexes` executes
 the same committed workflow with scoped native BLAST tools and checks its
 query-width alignment rows and explicitly declared orthology evidence.
+It skips explicitly if any of `makeblastdb`, `blastdbcmd`, or `blastn` is
+missing; installed-but-broken tools or failed workflows remain errors. Nothing
+installs BLAST automatically. A separate, real-sequence smoke fixture lives in
+[`test_files/fixtures/blast_tp73_isoforms`](../../../../test_files/fixtures/blast_tp73_isoforms/README.md).
 
 Complete the walkthrough, including SVG and assessed module reports, with:
 
@@ -48,8 +52,10 @@ the exact screen and assessment/render workflows, checks all four decisions,
 query width/insertion provenance, and source-project preservation, and writes
 `tutorial_receipt.json` with command/output/binary hashes. The same reports can
 be inspected in the GUI. This is a headless executable acceptance path; it does
-not claim a completed Xvfb GUI acceptance run. Tutorial generation checks the
-starter/screen workflow separately from this full acceptance command.
+not claim a completed Xvfb GUI acceptance run. `tutorial-check` checks the
+starter/screen workflow when BLAST+ is available, separately from this full
+acceptance command. Documentation generation never runs this optional native
+workflow, keeping committed pages identical with and without BLAST+.
 The assessment/render operations consume their complete report inputs in an
 empty scratch project. They do not reopen the source project; this also avoids
 the CLI's ordinary save round-trip reordering cached restriction-site groups.

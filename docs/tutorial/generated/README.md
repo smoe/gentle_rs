@@ -84,7 +84,7 @@ Online execution was disabled (`GENTLE_TEST_ONLINE=0` during generation).
 - `08.09` [Promoter-Reporter Panel Planning (Offline Approval-Gated Demo)](./chapters/08-09_promoter_reporter_panel_planning_offline.md) - `core` - example `promoter_reporter_panel_planning_offline` - executed `yes` - review `codex_reviewed` - codex 2026-08-29
 - `08.10` [Save and Share Genomic Regions (Offline SERPINE1 Example)](./chapters/08-10_portable_genomic_regions_offline.md) - `core` - example `portable_genomic_regions_offline` - executed `yes` - review `codex_reviewed` - codex 2026-09-04
 - `08.11` [Plan Exact A/B Regulatory-Fragment Contrasts (Offline)](./chapters/08-11_regulatory_fragment_panel_planning_offline.md) - `core` - example `regulatory_fragment_panel_planning_offline` - executed `yes` - review `codex_reviewed` - codex 2026-09-07
-- `08.12` [Conserved Blocks and Testable Promoter-Module Hypotheses](./chapters/08-12_region_homology_promoter_modules_offline.md) - `advanced` - example `region_homology_promoter_modules_offline` - executed `yes` - review `codex_reviewed` - codex 2026-09-07
+- `08.12` [Conserved Blocks and Testable Promoter-Module Hypotheses](./chapters/08-12_region_homology_promoter_modules_offline.md) - `advanced` - example `region_homology_promoter_modules_offline` - executed `no` - review `codex_reviewed` - codex 2026-09-07
 
 ## Concepts and Where They Recur
 

@@ -801,6 +801,8 @@ pub enum ExampleTestMode {
     Always,
     Skip,
     Online,
+    /// Documentation-only generation; runtime checks need already-installed BLAST+.
+    OptionalBlast,
 }
 
 impl ExampleTestMode {
@@ -809,13 +811,14 @@ impl ExampleTestMode {
             Self::Always => "always",
             Self::Skip => "skip",
             Self::Online => "online",
+            Self::OptionalBlast => "optional_blast",
         }
     }
 
     pub fn should_run(self, online_enabled: bool) -> bool {
         match self {
             Self::Always => true,
-            Self::Skip => false,
+            Self::Skip | Self::OptionalBlast => false,
             Self::Online => online_enabled,
         }
     }
@@ -1058,6 +1061,54 @@ pub fn online_example_tests_enabled() -> bool {
 pub fn run_example_workflow(example: &WorkflowExample) -> Result<(), String> {
     let temp = TempDir::new().map_err(|e| format!("Could not create temp directory: {e}"))?;
     run_example_workflow_in_dir(example, Path::new("."), temp.path())
+}
+
+fn check_optional_blast_runtime_with(
+    mut probe: impl FnMut(&str) -> std::io::Result<bool>,
+    run: impl FnOnce() -> Result<(), String>,
+) -> Result<Option<String>, String> {
+    let mut missing = Vec::new();
+    for (key, default) in [
+        (
+            crate::genomes::MAKEBLASTDB_ENV_BIN,
+            crate::genomes::DEFAULT_MAKEBLASTDB_BIN,
+        ),
+        (
+            crate::genomes::BLASTDBCMD_ENV_BIN,
+            crate::genomes::DEFAULT_BLASTDBCMD_BIN,
+        ),
+        (
+            crate::genomes::BLASTN_ENV_BIN,
+            crate::genomes::DEFAULT_BLASTN_BIN,
+        ),
+    ] {
+        let executable = crate::tool_overrides::resolve_tool_executable(key, default);
+        match probe(&executable) {
+            Ok(true) => {}
+            Ok(false) => {
+                return Err(format!(
+                    "BLAST+ tool '{executable}' failed its version check"
+                ));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => missing.push(default),
+            Err(error) => return Err(format!("Could not run BLAST+ tool '{executable}': {error}")),
+        }
+    }
+    if !missing.is_empty() {
+        return Ok(Some(format!(
+            "Skipped optional BLAST+ runtime check: missing {}. No tools were installed; no BLAST acceptance is claimed.",
+            missing.join(", ")
+        )));
+    }
+    run()?;
+    Ok(None)
+}
+
+fn probe_blast_tool(executable: &str) -> std::io::Result<bool> {
+    Command::new(executable)
+        .arg("-version")
+        .output()
+        .map(|output| output.status.success())
 }
 
 /// Executes one workflow example with path rewriting and returns the resulting
@@ -2307,6 +2358,14 @@ pub fn validate_tutorial_manifest_against_examples(
                 chapter.id,
                 chapter.example_id,
                 loaded.example.test_mode.as_str()
+            ));
+        }
+        if loaded.example.test_mode == ExampleTestMode::OptionalBlast
+            && !chapter.retain_outputs.is_empty()
+        {
+            return Err(format!(
+                "Tutorial chapter '{}' uses optional_blast and cannot retain runtime outputs during documentation generation",
+                chapter.id
             ));
         }
         if let Some(acceptance) = &chapter.gui_acceptance {
@@ -5784,7 +5843,10 @@ pub fn generate_tutorial_docs(
                 )
             })?
             .clone();
-        let mut executed = chapter.tier.should_execute(online_enabled);
+        // Keep committed documentation independent of optional native tools.
+        // Their real runtime check is separate in tutorial-check and the focused test.
+        let mut executed = chapter.tier.should_execute(online_enabled)
+            && loaded.example.test_mode != ExampleTestMode::OptionalBlast;
         if chapter.tier == TutorialTier::Online
             && !executed
             && chapter
@@ -5934,24 +5996,24 @@ pub fn check_tutorial_generated(
     }
     let temp = TempDir::new().map_err(|e| format!("Could not create temp directory: {e}"))?;
     let generated_dir = temp.path().join("generated");
-    let report = generate_tutorial_docs(source_dir, manifest_path, &generated_dir, repo_root)
+    let mut report = generate_tutorial_docs(source_dir, manifest_path, &generated_dir, repo_root)
         .map_err(|error| {
-            let chapter_hint = extract_tutorial_chapter_id_from_error(&error);
-            format!(
-                "{}{}",
-                error,
-                tutorial_check_feedback_context(
-                    &manifest,
-                    &examples,
-                    &tutorial_source_dir,
-                    manifest_path,
-                    expected_output_dir,
-                    None,
-                    chapter_hint.as_deref(),
-                    "tutorial generation failed"
-                )
+        let chapter_hint = extract_tutorial_chapter_id_from_error(&error);
+        format!(
+            "{}{}",
+            error,
+            tutorial_check_feedback_context(
+                &manifest,
+                &examples,
+                &tutorial_source_dir,
+                manifest_path,
+                expected_output_dir,
+                None,
+                chapter_hint.as_deref(),
+                "tutorial generation failed"
             )
-        })?;
+        )
+    })?;
     let expected = directory_bytes_map(expected_output_dir)?;
     let actual = directory_bytes_map(&generated_dir)?;
     if expected.len() != actual.len() {
@@ -6036,6 +6098,30 @@ pub fn check_tutorial_generated(
             ));
         }
     }
+    for chapter in &manifest.chapters {
+        let Some(loaded) = examples
+            .iter()
+            .find(|loaded| loaded.example.id == chapter.example_id)
+        else {
+            continue;
+        };
+        if loaded.example.test_mode == ExampleTestMode::OptionalBlast
+            && chapter.tier.should_execute(report.online_enabled)
+        {
+            validate_example_required_files(&loaded.example, repo_root)?;
+            let skipped = check_optional_blast_runtime_with(probe_blast_tool, || {
+                let run_dir =
+                    TempDir::new().map_err(|e| format!("Could not create temp directory: {e}"))?;
+                run_example_workflow_in_dir(&loaded.example, repo_root, run_dir.path())
+            })
+            .map_err(|error| format!("Tutorial '{}': {error}", chapter.id))?;
+            if let Some(reason) = skipped {
+                report
+                    .warnings
+                    .push(format!("Tutorial '{}': {reason}", chapter.id));
+            }
+        }
+    }
     Ok(report)
 }
 
@@ -6043,6 +6129,9 @@ fn test_mode_doc(test_mode: ExampleTestMode) -> &'static str {
     match test_mode {
         ExampleTestMode::Always => "always (included in default test runs)",
         ExampleTestMode::Skip => "skip (validated for syntax only)",
+        ExampleTestMode::OptionalBlast => {
+            "optional_blast (runtime checked only when BLAST+ tools are installed)"
+        }
         ExampleTestMode::Online => {
             "online (run only when GENTLE_TEST_ONLINE=1 with working internet)"
         }
@@ -6374,6 +6463,209 @@ mod tests {
     }
 
     #[test]
+    fn optional_blast_tutorial_cannot_retain_runtime_outputs() {
+        let mut manifest = load_tutorial_manifest(&tutorial_manifest_path()).unwrap();
+        let examples = load_workflow_examples(&example_dir()).unwrap();
+        let chapter = manifest
+            .chapters
+            .iter_mut()
+            .find(|chapter| chapter.id == "region_homology_promoter_modules_offline")
+            .unwrap();
+        chapter
+            .retain_outputs
+            .push("artifacts/homology.json".to_string());
+        let error = validate_tutorial_manifest_against_examples(&manifest, &examples).unwrap_err();
+        assert!(
+            error.contains("optional_blast and cannot retain runtime outputs"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn optional_blast_runtime_skips_only_missing_tools() {
+        for absent_index in 0..3 {
+            let mut index = 0;
+            let mut ran = false;
+            let skipped = check_optional_blast_runtime_with(
+                |_| {
+                    let absent = index == absent_index;
+                    index += 1;
+                    if absent {
+                        Err(std::io::Error::from(std::io::ErrorKind::NotFound))
+                    } else {
+                        Ok(true)
+                    }
+                },
+                || {
+                    ran = true;
+                    Ok(())
+                },
+            )
+            .expect("missing tools are optional");
+            assert!(!ran);
+            assert!(skipped.unwrap().contains("no BLAST acceptance is claimed"));
+            assert_eq!(index, 3);
+        }
+    }
+
+    #[test]
+    fn optional_blast_runtime_runs_and_propagates_installed_tool_failures() {
+        let mut ran = false;
+        assert_eq!(
+            check_optional_blast_runtime_with(
+                |_| Ok(true),
+                || {
+                    ran = true;
+                    Ok(())
+                }
+            )
+            .unwrap(),
+            None
+        );
+        assert!(ran);
+        let broken = check_optional_blast_runtime_with(
+            |_| Ok(false),
+            || panic!("do not run with a broken tool"),
+        )
+        .unwrap_err();
+        assert!(broken.contains("failed its version check"));
+        let denied = check_optional_blast_runtime_with(
+            |_| Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied)),
+            || panic!("permission errors are not absence"),
+        )
+        .unwrap_err();
+        assert!(denied.contains("Could not run BLAST+ tool"));
+        assert_eq!(
+            check_optional_blast_runtime_with(
+                |_| Ok(true),
+                || { Err("invalid database".to_string()) }
+            )
+            .unwrap_err(),
+            "invalid database"
+        );
+    }
+
+    #[test]
+    fn tp73_blast_fixture_matches_declared_coding_sequences() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let fixture = root.join("test_files/fixtures/blast_tp73_isoforms");
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(fixture.join("manifest.json")).unwrap()).unwrap();
+        let fasta_path = fixture.join(manifest["fasta"].as_str().unwrap());
+        assert_eq!(digest_file(&fasta_path).unwrap(), manifest["fasta_sha256"]);
+        let records = fixture_fasta_records(&fasta_path);
+        let sources = fixture_fasta_records(&root.join(manifest["source_fasta"].as_str().unwrap()));
+        assert_eq!(records.len(), 3);
+        assert_eq!(records.len(), manifest["records"].as_array().unwrap().len());
+        let mut total = 0;
+        for record in manifest["records"].as_array().unwrap() {
+            let sequence = &records[record["id"].as_str().unwrap()];
+            let source = &sources[record["accession"].as_str().unwrap()];
+            let start = record["cds_start_1based"].as_u64().unwrap() as usize;
+            let end = record["cds_end_1based"].as_u64().unwrap() as usize;
+            assert_eq!(
+                crate::digest_utils::sha256_hex_str(source),
+                record["source_sequence_sha256"]
+            );
+            assert_eq!(sequence, &source[start - 1..end]);
+            assert_eq!(sequence.len() as u64, record["length_bp"].as_u64().unwrap());
+            assert_eq!(
+                crate::digest_utils::sha256_hex_str(sequence),
+                record["sequence_sha256"]
+            );
+            assert!(sequence.bytes().all(|base| b"ACGT".contains(&base)));
+            total += sequence.len();
+        }
+        assert_eq!(total as u64, manifest["total_bases"].as_u64().unwrap());
+    }
+
+    fn fixture_fasta_records(path: &Path) -> BTreeMap<String, String> {
+        let mut records = BTreeMap::new();
+        for record in fs::read_to_string(path).unwrap().split('>').skip(1) {
+            let mut lines = record.lines();
+            let id = lines.next().unwrap().split_whitespace().next().unwrap();
+            let sequence = lines
+                .filter(|line| !line.starts_with(';'))
+                .collect::<String>();
+            assert!(
+                records.insert(id.to_string(), sequence).is_none(),
+                "duplicate FASTA id"
+            );
+        }
+        records
+    }
+
+    #[test]
+    fn tp73_blast_fixture_builds_inspects_and_finds_all_self_matches() {
+        let _blast_tools = tutorial_blast_tools();
+        let skipped = check_optional_blast_runtime_with(probe_blast_tool, || {
+            let fasta = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("test_files/fixtures/blast_tp73_isoforms/cds.fasta");
+            let records = fixture_fasta_records(&fasta);
+            let temp = TempDir::new().unwrap();
+            let database = temp.path().join("tp73");
+            let run = |command: &mut Command| -> Result<String, String> {
+                let output = command.output().map_err(|error| error.to_string())?;
+                if !output.status.success() {
+                    return Err(format!(
+                        "{command:?} failed: {}",
+                        String::from_utf8_lossy(&output.stderr)
+                    ));
+                }
+                String::from_utf8(output.stdout).map_err(|error| error.to_string())
+            };
+            run(Command::new(crate::genomes::DEFAULT_MAKEBLASTDB_BIN)
+                .arg("-in")
+                .arg(&fasta)
+                .args([
+                    "-dbtype",
+                    "nucl",
+                    "-parse_seqids",
+                    "-blastdb_version",
+                    "5",
+                    "-out",
+                ])
+                .arg(&database))?;
+            let info = run(Command::new(crate::genomes::DEFAULT_BLASTDBCMD_BIN)
+                .arg("-db")
+                .arg(&database)
+                .arg("-info"))?;
+            assert!(info.contains("3 sequences"), "{info}");
+            let hits = run(Command::new(crate::genomes::DEFAULT_BLASTN_BIN)
+                .args(["-task", "megablast", "-dust", "no", "-query"])
+                .arg(&fasta)
+                .arg("-db")
+                .arg(&database)
+                .args([
+                    "-outfmt",
+                    "6 qseqid sseqid pident length qstart qend sstart send",
+                ]))?;
+            for (id, sequence) in records {
+                assert!(
+                    hits.lines().any(|line| {
+                        let fields = line.split_whitespace().collect::<Vec<_>>();
+                        fields.len() == 8
+                            && fields[0].trim_start_matches("lcl|") == id
+                            && fields[1].trim_start_matches("lcl|") == id
+                            && fields[2].parse::<f64>().ok() == Some(100.0)
+                            && fields[3].parse::<usize>().ok() == Some(sequence.len())
+                            && fields[4] == "1"
+                            && fields[5].parse::<usize>().ok() == Some(sequence.len())
+                            && fields[6] == "1"
+                            && fields[7].parse::<usize>().ok() == Some(sequence.len())
+                    }),
+                    "missing exact full-length self match for {id}: {hits}"
+                );
+            }
+            Ok(())
+        })
+        .expect("installed BLAST+ must pass the TP73 fixture check");
+        if let Some(reason) = skipped {
+            eprintln!("{reason}");
+        }
+    }
+
+    #[test]
     fn workflow_examples_region_homology_uses_real_isolated_blast_indexes() {
         let _outer_stub = crate::tool_overrides::ScopedToolOverrideGuard::set(
             crate::genomes::BLASTDBCMD_ENV_BIN,
@@ -6385,29 +6677,38 @@ mod tests {
             .iter()
             .find(|loaded| loaded.example.id == "region_homology_promoter_modules_offline")
             .expect("synthetic region homology example");
-        let run_dir = TempDir::new().expect("temp run dir");
-        run_example_workflow_in_dir(&loaded.example, Path::new("."), run_dir.path())
-            .expect("synthetic region homology workflow should execute");
-        let report: gentle_protocol::GenomicRegionHomologyScreenReport = serde_json::from_slice(
-            &fs::read(
-                run_dir
-                    .path()
-                    .join("artifacts/region_homology_demo/homology_report.json"),
-            )
-            .expect("read homology report"),
-        )
-        .expect("typed homology report");
-        assert_eq!(report.targets.len(), 3);
-        assert!(!report.alignment_rows.is_empty());
-        assert!(
-            report
-                .alignment_rows
-                .iter()
-                .all(|row| { row.query_projection.len() == report.query.sequence.len() })
-        );
-        assert!(report.loci.iter().any(|locus| {
-            locus.orthology_evidence_id.as_deref() == Some("synthetic_declared_orthology")
-        }));
+        assert_eq!(loaded.example.test_mode, ExampleTestMode::OptionalBlast);
+        let skipped = check_optional_blast_runtime_with(probe_blast_tool, || {
+            let run_dir = TempDir::new().expect("temp run dir");
+            run_example_workflow_in_dir(&loaded.example, Path::new("."), run_dir.path())
+                .expect("synthetic region homology workflow should execute");
+            let report: gentle_protocol::GenomicRegionHomologyScreenReport =
+                serde_json::from_slice(
+                    &fs::read(
+                        run_dir
+                            .path()
+                            .join("artifacts/region_homology_demo/homology_report.json"),
+                    )
+                    .expect("read homology report"),
+                )
+                .expect("typed homology report");
+            assert_eq!(report.targets.len(), 3);
+            assert!(!report.alignment_rows.is_empty());
+            assert!(
+                report
+                    .alignment_rows
+                    .iter()
+                    .all(|row| { row.query_projection.len() == report.query.sequence.len() })
+            );
+            assert!(report.loci.iter().any(|locus| {
+                locus.orthology_evidence_id.as_deref() == Some("synthetic_declared_orthology")
+            }));
+            Ok(())
+        })
+        .expect("installed BLAST+ must execute the real fixture successfully");
+        if let Some(reason) = skipped {
+            eprintln!("{reason}");
+        }
     }
 
     #[test]
@@ -8483,8 +8784,29 @@ mod tests {
         let second_dir = TempDir::new().expect("create second temp dir");
         let first_out = first_dir.path().join("generated");
         let second_out = second_dir.path().join("generated");
-        generate_tutorial_docs(&source, &manifest, &first_out, repo_root)
+        let report = generate_tutorial_docs(&source, &manifest, &first_out, repo_root)
             .expect("first generation should pass");
+        assert!(
+            !report
+                .chapters
+                .iter()
+                .find(|chapter| { chapter.id == "region_homology_promoter_modules_offline" })
+                .unwrap()
+                .executed
+        );
+        let _missing_tools: Vec<_> = [
+            crate::genomes::MAKEBLASTDB_ENV_BIN,
+            crate::genomes::BLASTDBCMD_ENV_BIN,
+            crate::genomes::BLASTN_ENV_BIN,
+        ]
+        .into_iter()
+        .map(|key| {
+            crate::tool_overrides::ScopedToolOverrideGuard::set(
+                key,
+                "gentle-missing-blast-test-tool",
+            )
+        })
+        .collect();
         generate_tutorial_docs(&source, &manifest, &second_out, repo_root)
             .expect("second generation should pass");
         let first = directory_bytes_map(&first_out).expect("collect first outputs");

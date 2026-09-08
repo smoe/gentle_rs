@@ -109,7 +109,7 @@ Canonical, adapter-independent examples are defined in:
 Each example includes:
 
 - metadata (`id`, `title`, `summary`)
-- test policy (`test_mode`: `always|online|skip`)
+- test policy (`test_mode`: `always|online|skip|optional_blast`)
 - required local files (`required_files`)
 - canonical `workflow` payload
 

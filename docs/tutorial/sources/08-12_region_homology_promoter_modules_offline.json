@@ -60,6 +60,7 @@
     "prerequisites": [
       "portable_genomic_regions_offline"
     ],
+    "local_execution_note": "This offline example still needs already-installed BLAST+ (makeblastdb, blastdbcmd and blastn). Nothing installs tools automatically. Documentation generation does not execute it; tutorial-check runs its starter workflow only when all three tools are available, otherwise reporting an explicit skip rather than BLAST acceptance. For the full walkthrough, run the companion command below after making BLAST+ available.",
     "learning_objectives": [
       "Distinguish explicit orthology evidence from BLAST similarity.",
       "Read a query-referenced projection that suppresses target insertion columns without losing insertion provenance.",

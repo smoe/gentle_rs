@@ -4,9 +4,9 @@ title: "Conserved Blocks and Testable Promoter-Module Hypotheses"
 tier: "advanced"
 example_id: "region_homology_promoter_modules_offline"
 source_example: "docs/examples/workflows/region_homology_promoter_modules_offline.json"
-example_test_mode: "skip"
-executed_during_generation: true
-automated_status: "passing"
+example_test_mode: "optional_blast"
+executed_during_generation: false
+automated_status: "skipped"
 review_status: "codex_reviewed"
 review_stale: false
 codex_reviewed_at: "2026-09-07"
@@ -25,6 +25,9 @@ Compare one saved genomic region with validated local genomic indexes, inspect a
 A conserved promoter segment can be a useful fragment candidate, but sequence similarity does not prove that the segment works alone. This chapter keeps three questions separate: whether an explicitly expected ortholog locus supports each query base, whether other species contain merely unassigned similarity, and whether the same genome contains competing copies. The synthetic target includes an inserted base; GENtle records it in provenance but does not add a display column, so every row remains aligned to the query. The Conservation workspace can then evaluate saved CUT&RUN, motif, provider-annotation, or reporter-candidate spans against the exact-support blocks. Its standalone, paired-context, repetitive, and insufficient outcomes are traceable design hypotheses, not regulatory verdicts.
 
 **Prerequisites:** Read [Chapter 30: Save and Share Genomic Regions (Offline SERPINE1 Example)](./08-10_portable_genomic_regions_offline.md) first.
+
+> **How to Run This Locally**
+> This offline example still needs already-installed BLAST+ (makeblastdb, blastdbcmd and blastn). Nothing installs tools automatically. Documentation generation does not execute it; tutorial-check runs its starter workflow only when all three tools are available, otherwise reporting an explicit skip rather than BLAST acceptance. For the full walkthrough, run the companion command below after making BLAST+ available.
 
 ## Parameters That Matter
 
@@ -185,9 +188,9 @@ python3 docs/examples/run_region_homology_tutorial.py --gentle target/debug/gent
 - Tutorial source JSON: `docs/tutorial/sources/08-12_region_homology_promoter_modules_offline.json`
 - Workflow file: `docs/examples/workflows/region_homology_promoter_modules_offline.json`
 - Generated artifact dir: `docs/tutorial/generated/artifacts/region_homology_promoter_modules_offline`
-- Example test_mode: `skip`
-- Executed during generation: `yes`
-- Automated status: `passing`
+- Example test_mode: `optional_blast`
+- Executed during generation: `no`
+- Automated status: `skipped`
 - Review status: `codex_reviewed`
 - Codex reviewed at: `2026-09-07`
 - Human reviewed at: `not recorded`

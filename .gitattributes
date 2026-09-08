@@ -6,3 +6,6 @@ docs/tutorial/generated/** export-ignore
 # PDFs are generated/binary figure artifacts; do not run text whitespace checks
 # against their xref tables.
 *.pdf binary
+
+# Keep the hashed TP73 BLAST fixture byte-identical on Windows checkouts.
+test_files/fixtures/blast_tp73_isoforms/*.fasta text eol=lf

@@ -2,6 +2,14 @@
 
 ## 2026-09-08 - `v0.1.0-internal.11` candidate preparation
 
+- Made the conservation tutorial's BLAST runtime check optional when native
+  tools are missing, without installing tools or treating a skip as acceptance.
+  Installed-tool failures remain errors, and all tutorial drift checks remain
+  active; generated documentation no longer depends on BLAST availability.
+  Added a source-controlled three-isoform TP73 CDS fixture with ENA provenance,
+  hashes, a tool-free provenance test and an optional real-index/self-match test.
+  Runtime verification is delegated to Glen/CI; no local build or native test
+  was run for this change.
 - Integrated Glen's live X11 acceptance corrections from `c7f3f005` while
   preserving native-window, focus, screenshot-provenance and typed-outcome
   boundaries. The Simple-PCR GUI starter now uses the same 800-base TP73

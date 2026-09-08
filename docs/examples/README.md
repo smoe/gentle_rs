@@ -16,6 +16,9 @@ syntax.
 - `always`: validated and executed by default test runs
 - `online`: executed only when `GENTLE_TEST_ONLINE=1`
 - `skip`: parsed and documented, but not executed in automated tests
+- `optional_blast`: documentation generation does not execute it; `tutorial-check`
+  and the focused native test execute it only with already-installed BLAST+.
+  Missing tools are an explicit skip; installed-tool/runtime failures still fail.
 
 ## Draft design-resource examples
 
