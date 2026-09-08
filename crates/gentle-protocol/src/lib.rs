@@ -5617,6 +5617,8 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "PlanPromoterReporterPanel",
     "ComposeRegulatoryReporterStudy",
     "PlanRegulatoryFragmentPanel",
+    "PlanRegulatoryFragmentMaterialization",
+    "MaterializeRegulatoryFragmentPanel",
     "RenderRegulatoryFragmentPanelSvg",
     "InspectPromoterReporterPanelReadiness",
     "MaterializePromoterReporterPanel",
@@ -7233,6 +7235,7 @@ fn infer_engine_operation_mutation(operation: &str) -> CapabilityMutation {
         || operation == "ComparePromoterReporterArchitectures"
         || operation == "PlanPromoterReporterPanel"
         || operation == "PlanRegulatoryFragmentPanel"
+        || operation == "PlanRegulatoryFragmentMaterialization"
         || operation == "InspectPromoterReporterPanelReadiness"
         || operation == "BuildRepeatEnvironmentCohort"
         || operation == "BuildProteinToDnaHandoffReasoning"

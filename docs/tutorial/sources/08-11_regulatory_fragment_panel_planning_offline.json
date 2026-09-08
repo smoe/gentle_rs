@@ -68,7 +68,7 @@
       "Every ordered instance records genomic and assembled coordinates, orientation, and exact spacer-before DNA.",
       "Reference uniqueness within the loaded locus, panel/vector similarity, repeats/low complexity, junction uniqueness, and cloning risk are evaluated as independent lanes; no genome-wide uniqueness claim is made.",
       "Ensembl Regulation, TFBS/model-score, and CUT&RUN/chromatin lanes are explicitly `not_evaluated`; this state is not a pass or evidence of absence.",
-      "The plan requires review under its exact digest but reports `materialization_supported=false`; no construct or primer is added to project state.",
+      "The plan requires review under its exact digest and advertises a separate exact-product proposal via `materialization_supported=true`; planning alone adds no construct or primer to project state.",
       "The renderer accepts the unchanged plan and refuses edited plan content that no longer matches its proposal digest."
     ],
     "prerequisites": [
@@ -82,7 +82,7 @@
       "Recognize deterministic minimal coverage as different from a full Cartesian construct library.",
       "Keep sequence, cloning, provider annotation, motif-model, and occupancy evidence in separate states and never turn `not_evaluated` into a pass.",
       "Use the same read-only operation through the Promoter design GUI and `promoters regulatory-panel-*` shell routes.",
-      "Understand why digest review does not authorize biology and why v1 deliberately stops before ordered multi-fragment materialization."
+      "Understand why panel review does not authorize biology or mutation: creating ordered multi-fragment products requires a separate exact-product proposal and approval, while cloning and functional validation remain separate."
     ],
     "concepts": [
       "shared_engine_contract",

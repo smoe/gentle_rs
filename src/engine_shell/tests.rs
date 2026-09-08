@@ -402,6 +402,46 @@ fn promoters_regulatory_panel_routes_parse_typed_request_and_plan() {
     let error = parse_shell_line(&format!("promoters regulatory-panel-render '{plan_json}'"))
         .expect_err("render path is required");
     assert!(error.contains("requires --path FIGURE.svg"));
+
+    let command = parse_shell_line(&format!(
+        "promoters regulatory-products-plan '{plan_json}' --output-prefix design"
+    ))
+    .expect("products plan");
+    let ShellCommand::Op { payload } = command else {
+        panic!("shared operation route")
+    };
+    assert!(
+        matches!(serde_json::from_str::<Operation>(&payload).expect("operation"),
+        Operation::PlanRegulatoryFragmentMaterialization { output_prefix, .. } if output_prefix == "design")
+    );
+    let proposal = crate::engine::RegulatoryFragmentMaterializationProposal {
+        schema: "gentle.regulatory_fragment_materialization_proposal.v1".into(),
+        proposal_digest: "sha256:exact".into(),
+        plan: Box::new(plan),
+        output_prefix: "design".into(),
+        method: "exact_insertion_context_replacement_v1".into(),
+        vector_features_sha256: "sha256:annotations".into(),
+        products: vec![],
+        nonclaims: vec![],
+    };
+    let json = serde_json::to_string(&proposal).expect("proposal");
+    let command = parse_shell_line(&format!(
+        "promoters regulatory-products-materialize '{json}' --approve sha256:exact"
+    ))
+    .expect("materialize");
+    let ShellCommand::Op { payload } = command else {
+        panic!("shared operation route")
+    };
+    assert!(
+        matches!(serde_json::from_str::<Operation>(&payload).expect("operation"),
+        Operation::MaterializeRegulatoryFragmentPanel { approval_digest, .. } if approval_digest == "sha256:exact")
+    );
+    assert!(
+        parse_shell_line(&format!(
+            "promoters regulatory-products-materialize '{json}'"
+        ))
+        .is_err()
+    );
 }
 
 #[test]

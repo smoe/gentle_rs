@@ -3893,20 +3893,55 @@ Sequencing-trace evidence notes:
   - Ensembl Regulation, TFBS/model-score, and CUT&RUN/chromatin dimensions
     remain `not_evaluated` when only an opaque report id/hash citation is
     supplied; a citation is bound provenance, not evaluated report content
+  - optional `evidence_bindings[].report_path` resolves a typed
+    `gentle.gene_locus_evidence_display.v1` document or a reporter-comparison
+    envelope containing it. `report_sha256` binds exact file bytes (128 MiB
+    limit); `report_id` is the nested locus `panel_id`. Optional `row_id`
+    selects an Ensembl feature, normalized regulatory score track, or occupancy
+    lane by its exact ID. Missing selected rows, stale sequence/anchor,
+    assembly/release mismatch or invalid coordinates fail closed. No implicit
+    fetching occurs; a legacy motif-only track must first be recomposed into
+    normalized `regulatory_score_tracks`.
+  - `external_locus_context` observations retain the original typed payload,
+    source metadata, model calibration and availability separately. Their
+    `fragment_ids` identify the assessed local context, not a claim that every
+    feature overlaps every fragment. Unavailable content is retained as
+    unavailable and cannot upgrade the dimension to evaluated.
   - each dimension keeps its own blockers/warnings and assessment digest;
     absence of a configured sequence pattern is not a general experimental pass
-  - approval validation recomputes the exact plan against current state, but
-    `materialization_supported=false`: ordered instances/orientations/spacers
-    cannot be represented by the legacy single-fragment materializer without a
-    separately reviewed contract
+  - approval validation recomputes the exact plan against current state;
+    `materialization_supported=true` advertises the separate exact-product
+    proposal below, not permission to execute it
   - `RenderRegulatoryFragmentPanelSvg { plan, path }` verifies the embedded
     proposal digest before writing a passive SVG projection; it does not
     recompute, upgrade, or reinterpret evidence
   - shared shell routes `promoters regulatory-panel-plan` and
     `promoters regulatory-panel-render` parse the same request/plan objects;
     the optional planning path writes the exact returned JSON plan
-  - full invariants and the remaining adapter/tutorial boundary are recorded in
-    `regulatory_fragment_panel_slice1_design.md`
+  - the historical slice-one design is recorded in
+    `regulatory_fragment_panel_slice1_design.md`; DEC-046 defines the current boundary
+- `PlanRegulatoryFragmentMaterialization { plan, output_prefix }` is read-only.
+  It emits `gentle.regulatory_fragment_materialization_proposal.v1`, binding
+  the current plan, exact ordered products, uppercase DNA hashes, topology,
+  projected vector annotations, per-instance orientation/spacer provenance,
+  omitted annotation indices, the full source `vector_features_sha256` and
+  exact output IDs. Its method is
+  `exact_insertion_context_replacement_v1`: replace the validated non-wrapping
+  vector insertion interval with each planned insert (including an empty
+  insert for the corresponding control). Features crossing that interval are
+  explicitly omitted, not stretched across new DNA.
+- `MaterializeRegulatoryFragmentPanel { proposal, approval_digest }` requires
+  that proposal's exact digest, revalidates current sources and output identities,
+  then creates all products and persists proposal/receipt atomically with one
+  undoable outer operation. Collisions, tampering or stale inputs leave no partial
+  products. The receipt schema is
+  `gentle.regulatory_fragment_materialization_receipt.v1`; final-product audit
+  remains `not_evaluated`. This creates designed molecules, not a simulated
+  cloning reaction, validated biological function or order-ready constructs.
+  Normal sequence save/export operations remain separate.
+  Both operations use the shared operation route across GUI Shell, CLI, MCP,
+  workflows and scripting adapters; aliases are `promoters regulatory-products-plan`
+  and `promoters regulatory-products-materialize`.
 - `ListReporterCatalog { catalog_path?, filter?, limit?, path? }`
   - emits `gentle.reporter_catalog_report.v1`
   - validates the local reporter catalog, quarantines rows with missing

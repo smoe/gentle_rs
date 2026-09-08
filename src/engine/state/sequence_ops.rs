@@ -2567,6 +2567,11 @@ impl GentleEngine {
             }
             Operation::PlanRegulatoryFragmentPanel { request, path } => {
                 Self::push_unique_token(&mut summary.sequence_ids, &request.vector_seq_id);
+                for binding in &request.evidence_bindings {
+                    if let Some(path) = &binding.report_path {
+                        Self::push_unique_token(&mut summary.file_paths, path);
+                    }
+                }
                 if let Some(path) = request.helper_catalog_path.as_deref() {
                     Self::push_unique_token(&mut summary.file_paths, path);
                 }
@@ -2581,6 +2586,27 @@ impl GentleEngine {
             }
             Operation::RenderRegulatoryFragmentPanelSvg { path, .. } => {
                 Self::push_unique_token(&mut summary.file_paths, path);
+            }
+            Operation::PlanRegulatoryFragmentMaterialization { .. }
+            | Operation::MaterializeRegulatoryFragmentPanel { .. } => {
+                let plan = match op {
+                    Operation::PlanRegulatoryFragmentMaterialization { plan, .. } => plan,
+                    Operation::MaterializeRegulatoryFragmentPanel { proposal, .. } => {
+                        &proposal.plan
+                    }
+                    _ => unreachable!(),
+                };
+                let nested = Self::summarize_run_bundle_operation_inputs(
+                    &Operation::PlanRegulatoryFragmentPanel {
+                        request: Box::new(plan.request.clone()),
+                        path: None,
+                    },
+                    op_id,
+                    run_id,
+                    record_index,
+                );
+                summary.sequence_ids = nested.sequence_ids;
+                summary.file_paths = nested.file_paths;
             }
             Operation::MaterializePromoterReporterPanel { proposal, .. } => {
                 Self::push_unique_token(&mut summary.sequence_ids, &proposal.request.vector_seq_id);

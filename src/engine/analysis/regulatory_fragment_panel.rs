@@ -2,13 +2,18 @@
 //!
 //! This slice consumes exact persisted genomic ROIs and an exact reporter
 //! vector. It plans inserts and comparisons without writing files or mutating
-//! live project state. Evidence population and multi-fragment materialization
-//! remain later, separately reviewed transitions.
+//! live project state. Typed locus evidence stays source-bound; exact product
+//! materialization is a separate, digest-approved atomic transition.
 
 use super::*;
 use gentle_protocol as gp;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
+
+#[path = "regulatory_fragment_panel/external_evidence.rs"]
+mod external_evidence;
+#[path = "regulatory_fragment_panel/materialization.rs"]
+mod materialization;
 
 #[derive(Debug, Clone)]
 struct ResolvedRegulatoryFragment {
@@ -216,7 +221,7 @@ impl GentleEngine {
             cloning_strategy,
             uncovered_questions,
             approval_required: true,
-            materialization_supported: false,
+            materialization_supported: true,
             blockers,
             warnings: validation_warnings,
             nonclaims: vec![
@@ -224,7 +229,7 @@ impl GentleEngine {
                     .to_string(),
                 "Sequence similarity, annotations, occupancy evidence, and cloning feasibility are not proof of reporter activity or causal regulation."
                     .to_string(),
-                "Ordered multi-fragment materialization is not represented by the legacy single-fragment promoter-panel proposal and remains unavailable in this slice."
+                "Exact ordered design constructs require a separate regulatory-fragment materialization proposal and approval; they are not simulated cloning products or evidence of experimental success."
                     .to_string(),
             ],
             ..RegulatoryFragmentPanelPlan::default()
@@ -623,6 +628,17 @@ impl GentleEngine {
         for binding in &mut request.evidence_bindings {
             binding.report_id = binding.report_id.trim().to_string();
             binding.report_sha256 = binding.report_sha256.trim().to_ascii_lowercase();
+            if binding
+                .report_path
+                .as_ref()
+                .is_some_and(|path| path.trim().is_empty())
+            {
+                return Err(Self::regulatory_fragment_error(
+                    "empty_evidence_path",
+                    [&binding.report_id],
+                    "Use a non-empty path or omit report_path for a citation-only binding.",
+                ));
+            }
             binding.row_id = binding
                 .row_id
                 .take()
@@ -643,6 +659,8 @@ impl GentleEngine {
                 .cmp(&right.dimension)
                 .then(left.report_id.cmp(&right.report_id))
                 .then(left.row_id.cmp(&right.row_id))
+                .then(left.report_path.cmp(&right.report_path))
+                .then(left.report_sha256.cmp(&right.report_sha256))
         });
         request.evidence_bindings.dedup();
         request.scientific_caveats = request
@@ -1855,15 +1873,7 @@ impl GentleEngine {
             RegulatoryFragmentEvidenceDimensionKind::TfbsModelScoreContext,
             RegulatoryFragmentEvidenceDimensionKind::CutrunAndChromatinContext,
         ] {
-            dimensions.push(Self::regulatory_fragment_evidence_dimension(
-                request,
-                kind,
-                RegulatoryFragmentEvidenceState::NotEvaluated,
-                vec![],
-                vec![],
-                false,
-                "Exact report citations are retained, but an id and digest alone do not expose verifiable report content to this operation; not_evaluated is never a pass.",
-            )?);
+            dimensions.push(self.regulatory_fragment_external_dimension(request, fragments, kind)?);
         }
         Ok(dimensions)
     }
@@ -3130,7 +3140,7 @@ mod tests {
                 .iter()
                 .all(|member| !member.inclusion_reasons.is_empty())
         );
-        assert!(!plan.materialization_supported);
+        assert!(plan.materialization_supported);
     }
 
     #[test]
@@ -3341,6 +3351,419 @@ mod tests {
                 .any(|warning| { warning.code == "candidate_partner_high_similarity" })
         );
         assert!(plan.nonclaims.iter().all(|text| !text.contains("proves")));
+    }
+
+    #[test]
+    fn regulatory_fragment_materialization_is_exact_approved_and_atomic() {
+        let mut fixture = planner_fixture(true, gp::GenomicRegionStrand::Minus, false);
+        fixture
+            .request
+            .reference_combination
+            .as_mut()
+            .expect("combination")
+            .instances[1]
+            .orientation = RegulatoryFragmentOrientation::ReverseComplement;
+        let plan = fixture
+            .engine
+            .plan_regulatory_fragment_panel(fixture.request)
+            .expect("plan");
+        let before = serde_json::to_value(fixture.engine.snapshot()).expect("baseline");
+        let proposal = fixture
+            .engine
+            .plan_regulatory_fragment_materialization(plan.clone(), "design".into())
+            .expect("proposal");
+        assert_eq!(
+            serde_json::to_value(fixture.engine.snapshot()).expect("state"),
+            before
+        );
+        assert_eq!(
+            serde_json::to_value(&proposal).expect("proposal"),
+            serde_json::to_value(
+                fixture
+                    .engine
+                    .plan_regulatory_fragment_materialization(plan.clone(), "design".into())
+                    .expect("repeat")
+            )
+            .expect("proposal")
+        );
+        assert!(proposal.products.iter().any(|p| p.instances.len() >= 3));
+        let plan_json = serde_json::to_string(&plan).expect("plan JSON");
+        let command = crate::engine_shell::parse_shell_line(&format!(
+            "promoters regulatory-products-plan '{plan_json}' --output-prefix design"
+        ))
+        .expect("shell parse");
+        let result = crate::engine_shell::execute_shell_command(&mut fixture.engine, &command)
+            .expect("shared shell");
+        assert!(!result.state_changed);
+        let actual = &result.output["result"]["regulatory_fragment_materialization_proposal"];
+        // Match the existing portable-JSON digest convention, including its
+        // float round-trip. Approval below consumes the transported object.
+        let expected: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&proposal).expect("proposal JSON"))
+                .expect("portable proposal");
+        assert!(
+            actual == &expected,
+            "shared shell changed the portable proposal"
+        );
+        let proposal: RegulatoryFragmentMaterializationProposal =
+            serde_json::from_str(&serde_json::to_string(actual).expect("returned JSON"))
+                .expect("transported proposal");
+        let vector_id = plan.vector_context.vector_seq_id.clone();
+        let original_features = fixture.engine.state.sequences[&vector_id]
+            .features()
+            .clone();
+        fixture
+            .engine
+            .state
+            .sequences
+            .get_mut(&vector_id)
+            .expect("vector")
+            .features_mut()[0]
+            .qualifiers
+            .push(("note".into(), Some("changed after review".into())));
+        let modified_state = serde_json::to_value(fixture.engine.snapshot()).expect("state");
+        assert!(
+            fixture
+                .engine
+                .materialize_regulatory_fragment_panel(proposal.clone(), &proposal.proposal_digest)
+                .is_err()
+        );
+        assert_eq!(
+            serde_json::to_value(fixture.engine.snapshot()).expect("state"),
+            modified_state
+        );
+        *fixture
+            .engine
+            .state
+            .sequences
+            .get_mut(&vector_id)
+            .expect("vector")
+            .features_mut() = original_features;
+        for product in &proposal.products {
+            let member = plan
+                .members
+                .iter()
+                .find(|m| m.member_id == product.member_id)
+                .expect("member");
+            let start = plan.vector_context.insertion_start_0based;
+            assert_eq!(
+                &product.sequence_5prime_to_3prime[start..start + member.insert_length_bp],
+                member.insert_sequence_5prime_to_3prime
+            );
+            assert_eq!(product.instances, member.instances);
+            assert!(
+                product
+                    .features
+                    .iter()
+                    .filter(|f| f
+                        .qualifiers
+                        .iter()
+                        .any(|(k, _)| k == "gentle_fragment_instance"))
+                    .count()
+                    == member.instances.len()
+            );
+        }
+        let mut tampered = proposal.clone();
+        tampered.products.reverse();
+        assert!(
+            fixture
+                .engine
+                .materialize_regulatory_fragment_panel(tampered, &proposal.proposal_digest)
+                .is_err()
+        );
+        assert!(
+            fixture
+                .engine
+                .materialize_regulatory_fragment_panel(proposal.clone(), "wrong")
+                .is_err()
+        );
+        assert_eq!(
+            serde_json::to_value(fixture.engine.snapshot()).expect("state"),
+            before
+        );
+        // A collision in the last member must not leak earlier products.
+        let collision = proposal
+            .products
+            .last()
+            .expect("last")
+            .output_seq_id
+            .clone();
+        fixture.engine.state.sequences.insert(
+            collision.clone(),
+            DNAsequence::from_sequence("ACGT").expect("DNA"),
+        );
+        let collision_state = serde_json::to_value(fixture.engine.snapshot()).expect("state");
+        assert!(
+            fixture
+                .engine
+                .materialize_regulatory_fragment_panel(proposal.clone(), &proposal.proposal_digest)
+                .is_err()
+        );
+        assert_eq!(
+            serde_json::to_value(fixture.engine.snapshot()).expect("state"),
+            collision_state
+        );
+        fixture.engine.state.sequences.remove(&collision);
+        let result = fixture
+            .engine
+            .apply(Operation::MaterializeRegulatoryFragmentPanel {
+                approval_digest: proposal.proposal_digest.clone(),
+                proposal: Box::new(proposal.clone()),
+            })
+            .expect("approved atomic operation");
+        let receipt = result
+            .regulatory_fragment_materialization_receipt
+            .expect("receipt");
+        assert_eq!(receipt.created_seq_ids.len(), plan.members.len());
+        assert_eq!(
+            receipt.final_product_audit_state,
+            RegulatoryFragmentFinalProductAuditState::NotEvaluated
+        );
+        for product in &proposal.products {
+            let actual = &fixture.engine.state.sequences[&product.output_seq_id];
+            assert_eq!(
+                actual.get_forward_string(),
+                product.sequence_5prime_to_3prime
+            );
+            assert_eq!(actual.features(), &product.features);
+        }
+        fixture.engine.undo_last_operation().expect("one undo");
+        assert_eq!(
+            serde_json::to_value(fixture.engine.snapshot()).expect("state"),
+            before
+        );
+    }
+
+    #[test]
+    fn regulatory_fragment_external_reports_are_bound_and_keep_unavailable_distinct() {
+        let mut fixture = planner_fixture(false, gp::GenomicRegionStrand::Minus, false);
+        let fragment = &fixture.request.fragments[0];
+        let projection = fragment
+            .region
+            .local_projection
+            .as_ref()
+            .expect("projection");
+        let seq_id = projection.seq_id.clone();
+        let dna = &fixture.engine.state.sequences[&seq_id];
+        let anchor = fixture
+            .engine
+            .sequence_genome_anchor_summary(&seq_id)
+            .expect("anchor");
+        let mut locus = gp::GeneLocusEvidenceDisplayReport {
+            schema: gp::GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA.into(),
+            panel_id: "external_panel".into(),
+            seq_id: seq_id.clone(),
+            sequence_binding: Some(crate::locus_report::sequence_binding(dna, Some(&anchor))),
+            locus_local_start_1based: 1,
+            locus_local_end_1based: dna.len(),
+            isoform_evidence: gp::GeneIsoformEvidenceReport {
+                assembly: fragment.region.interval.reference.assembly_name.clone(),
+                annotation_release: Some(fragment.reference_release.clone()),
+                ..Default::default()
+            },
+            regulatory_score_tracks: vec![gp::GeneLocusRegulatoryScoreTrack {
+                track_id: "model".into(),
+                state: gp::GeneLocusRegulatoryScoreState::NotAssessable,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let path = fixture._temp.path().join("locus.json");
+        let write = |locus: &gp::GeneLocusEvidenceDisplayReport| {
+            let bytes = serde_json::to_vec(locus).expect("synthetic typed source");
+            fs::write(&path, &bytes).expect("write source");
+            crate::digest_utils::sha256_prefixed_bytes(&bytes)
+        };
+        fixture.request.evidence_bindings = vec![RegulatoryFragmentEvidenceBinding {
+            dimension: RegulatoryFragmentEvidenceDimensionKind::TfbsModelScoreContext,
+            report_id: locus.panel_id.clone(),
+            report_sha256: write(&locus),
+            report_path: Some(path.to_string_lossy().into_owned()),
+            row_id: Some("model".into()),
+        }];
+        let before = serde_json::to_value(fixture.engine.snapshot()).expect("state");
+        let plan = fixture
+            .engine
+            .plan_regulatory_fragment_panel(fixture.request.clone())
+            .expect("unavailable report");
+        let dimension = &plan.evidence_dimensions[6];
+        assert_eq!(
+            dimension.state,
+            RegulatoryFragmentEvidenceState::NotEvaluated
+        );
+        assert!(matches!(
+            &dimension.observations[0],
+            RegulatoryFragmentEvidenceObservation::ExternalLocusContext {
+                state: RegulatoryFragmentEvidenceState::Unavailable,
+                ..
+            }
+        ));
+        let track = &mut locus.regulatory_score_tracks[0];
+        track.state = gp::GeneLocusRegulatoryScoreState::Available;
+        track.input_sequence_id = seq_id;
+        track.input_sequence_sha256 = locus
+            .sequence_binding
+            .as_ref()
+            .expect("binding")
+            .sequence_sha256
+            .clone();
+        track.assembly = locus.isoform_evidence.assembly.clone();
+        track.chromosome = anchor.chromosome.clone();
+        track.anchor_start_1based = anchor.start_1based;
+        track.anchor_end_1based = anchor.end_1based;
+        track.window_length_bp = 4;
+        track.stride_bp = 1;
+        track.forward_scores = vec![1.5, 2.5];
+        fixture.request.evidence_bindings[0].report_sha256 = write(&locus);
+        let plan = fixture
+            .engine
+            .plan_regulatory_fragment_panel(fixture.request.clone())
+            .expect("available report");
+        assert_eq!(
+            plan.evidence_dimensions[6].state,
+            RegulatoryFragmentEvidenceState::Evaluated
+        );
+        assert_eq!(
+            serde_json::to_value(fixture.engine.snapshot()).expect("state"),
+            before
+        );
+        // The same envelope retains distinct annotation and experimental-signal payloads.
+        let source = gp::EnsemblRegulationSourceDescriptor {
+            source_id: "synthetic_regulation".into(),
+            assembly_name: locus.isoform_evidence.assembly.clone(),
+            annotation_release: "synthetic regulatory release".into(),
+            ..Default::default()
+        };
+        locus.ensembl_regulation = Some(gp::GeneLocusEnsemblRegulationEvidence {
+            availability: gp::GeneLocusEnsemblRegulationAvailability::Available,
+            requested_source_id: source.source_id.clone(),
+            source: Some(source.clone()),
+            source_binding: Some(gp::GeneLocusEnsemblRegulationSourceBinding {
+                source,
+                content_identity_verified: true,
+                index_sha256: format!("sha256:{}", "1".repeat(64)),
+                intervals_sha256: format!("sha256:{}", "2".repeat(64)),
+                ..Default::default()
+            }),
+            rows: vec![gp::GeneLocusEnsemblRegulationFeatureRow {
+                feature_id: "regulatory_feature".into(),
+                assembly_name: locus.isoform_evidence.assembly.clone(),
+                displayed_local_start_1based: 3,
+                displayed_local_end_1based: 12,
+                ..Default::default()
+            }],
+            ..Default::default()
+        });
+        locus.occupancy_groups = vec![gp::GeneLocusOccupancyGroup {
+            group_id: "synthetic_cells".into(),
+            lanes: vec![gp::GeneLocusOccupancyLane {
+                lane: gp::GeneIsoformOccupancyLane {
+                    lane_id: "synthetic_cutrun".into(),
+                    interval_count: 1,
+                    intervals: vec![gp::GeneIsoformOccupancyInterval {
+                        interval_id: "peak".into(),
+                        local_start_1based: 5,
+                        local_end_1based: 15,
+                        score: Some(4.25),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+                source_sha256: Some(format!("sha256:{}", "3".repeat(64))),
+                source_assembly: Some(locus.isoform_evidence.assembly.clone()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }];
+        for (kind, row) in [
+            (
+                RegulatoryFragmentEvidenceDimensionKind::EnsemblRegulatoryOverlap,
+                "regulatory_feature",
+            ),
+            (
+                RegulatoryFragmentEvidenceDimensionKind::CutrunAndChromatinContext,
+                "synthetic_cutrun",
+            ),
+        ] {
+            let mut binding = fixture.request.evidence_bindings[0].clone();
+            binding.dimension = kind;
+            binding.row_id = Some(row.into());
+            fixture.request.evidence_bindings.push(binding);
+        }
+        let digest = write(&locus);
+        for binding in &mut fixture.request.evidence_bindings {
+            binding.report_sha256 = digest.clone();
+        }
+        let plan = fixture
+            .engine
+            .plan_regulatory_fragment_panel(fixture.request.clone())
+            .expect("three typed lanes");
+        for kind in [
+            RegulatoryFragmentEvidenceDimensionKind::EnsemblRegulatoryOverlap,
+            RegulatoryFragmentEvidenceDimensionKind::TfbsModelScoreContext,
+            RegulatoryFragmentEvidenceDimensionKind::CutrunAndChromatinContext,
+        ] {
+            let lane = plan
+                .evidence_dimensions
+                .iter()
+                .find(|lane| lane.kind == kind)
+                .expect("lane");
+            assert_eq!(lane.state, RegulatoryFragmentEvidenceState::Evaluated);
+            assert_eq!(lane.observations.len(), 1);
+        }
+        // Exact bytes, source sequence, assembly, release and row selection fail independently.
+        for field in [
+            "bytes",
+            "sequence",
+            "assembly",
+            "release",
+            "row",
+            "score_bounds",
+            "ensembl_bounds",
+            "occupancy_hash",
+        ] {
+            let mut changed = locus.clone();
+            let mut request = fixture.request.clone();
+            match field {
+                "bytes" => changed.warnings.push("edited".into()),
+                "sequence" => {
+                    changed
+                        .sequence_binding
+                        .as_mut()
+                        .expect("binding")
+                        .sequence_sha256 = format!("sha256:{}", "0".repeat(64))
+                }
+                "assembly" => changed.isoform_evidence.assembly = "other".into(),
+                "release" => changed.isoform_evidence.annotation_release = Some("other".into()),
+                "row" => request.evidence_bindings[0].row_id = Some("missing".into()),
+                "score_bounds" => {
+                    changed.regulatory_score_tracks[0].track_start_0based = usize::MAX
+                }
+                "ensembl_bounds" => {
+                    changed
+                        .ensembl_regulation
+                        .as_mut()
+                        .expect("annotation")
+                        .rows[0]
+                        .displayed_local_start_1based = 0
+                }
+                "occupancy_hash" => changed.occupancy_groups[0].lanes[0].source_sha256 = None,
+                _ => unreachable!(),
+            }
+            let digest = write(&changed);
+            if field != "bytes" {
+                for binding in &mut request.evidence_bindings {
+                    binding.report_sha256 = digest.clone();
+                }
+            }
+            assert!(
+                fixture
+                    .engine
+                    .plan_regulatory_fragment_panel(request)
+                    .is_err(),
+                "{field}"
+            );
+        }
     }
 
     #[test]

@@ -5881,9 +5881,12 @@ Tutorial projects:
       lane with its independent state, observations, warnings, and blockers
     - JSON export reruns the same read-only planning operation; SVG export sends
       the unchanged cached plan through the shared digest-validating renderer
-    - typing the exact plan digest records review locally, but no materialize
-      action is offered because ordered multi-fragment materialization is not
-      supported by the v1 contract
+    - typing the exact plan digest records review locally; exact-product
+      materialization requires a separate proposal and digest through the
+      shared Shell routes `promoters regulatory-products-plan` and
+      `promoters regulatory-products-materialize`. Dedicated approval widgets
+      are not yet offered. Source-bound external locus observations retain their
+      original typed payload in JSON and independent availability in the view.
     - labels remain hypotheses or unresolved comparisons; the panel does not
       claim sufficiency, enhancer/silencer activity, partner dependence, or
       causal regulation

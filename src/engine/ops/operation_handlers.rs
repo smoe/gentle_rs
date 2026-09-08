@@ -40084,6 +40084,8 @@ impl GentleEngine {
             promoter_reporter_panel_proposal: None,
             regulatory_reporter_study: None,
             regulatory_fragment_panel_plan: None,
+            regulatory_fragment_materialization_proposal: None,
+            regulatory_fragment_materialization_receipt: None,
             promoter_reporter_panel_readiness: None,
             promoter_reporter_panel_receipt: None,
             uniprot_projection_audit: None,
@@ -51385,6 +51387,39 @@ impl GentleEngine {
                         "Wrote regulatory-fragment panel-plan SVG '{}' to '{}'",
                         plan.plan_id, path
                     ));
+                }
+                Operation::PlanRegulatoryFragmentMaterialization {
+                    plan,
+                    output_prefix,
+                } => {
+                    let proposal =
+                        self.plan_regulatory_fragment_materialization(*plan, output_prefix)?;
+                    result.messages.push(format!(
+                        "Prepared {} exact design products; review and approve '{}'",
+                        proposal.products.len(),
+                        proposal.proposal_digest
+                    ));
+                    result.regulatory_fragment_materialization_proposal = Some(Box::new(proposal));
+                }
+                Operation::MaterializeRegulatoryFragmentPanel {
+                    proposal,
+                    approval_digest,
+                } => {
+                    parent_seq_ids.push(proposal.plan.vector_context.vector_seq_id.clone());
+                    parent_seq_ids.extend(
+                        proposal
+                            .plan
+                            .members
+                            .iter()
+                            .flat_map(|m| m.instances.iter().map(|i| i.source_seq_id.clone())),
+                    );
+                    parent_seq_ids.sort();
+                    parent_seq_ids.dedup();
+                    let receipt =
+                        self.materialize_regulatory_fragment_panel(*proposal, &approval_digest)?;
+                    result.created_seq_ids = receipt.created_seq_ids.clone();
+                    result.messages.push(format!("Materialized {} exact design sequences; final-product experimental QA remains not evaluated", receipt.created_seq_ids.len()));
+                    result.regulatory_fragment_materialization_receipt = Some(Box::new(receipt));
                 }
                 Operation::InspectPromoterReporterPanelReadiness { request, path } => {
                     let readiness = self.inspect_promoter_reporter_panel_readiness(*request)?;

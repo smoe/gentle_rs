@@ -5802,6 +5802,16 @@ impl MainAreaDna {
         observation: &RegulatoryFragmentEvidenceObservation,
     ) -> String {
         match observation {
+            RegulatoryFragmentEvidenceObservation::ExternalLocusContext {
+                report_id,
+                row_id,
+                fragment_ids,
+                state,
+                ..
+            } => format!(
+                "{report_id} / {row_id}: {state:?}; source context for {} (not an activity verdict)",
+                fragment_ids.join(", ")
+            ),
             RegulatoryFragmentEvidenceObservation::ReferenceGenomicUniqueness {
                 fragment_id,
                 exact_forward_match_count,
@@ -6259,7 +6269,7 @@ impl MainAreaDna {
                         },
                     );
                     ui.small(
-                        "Ordered multi-fragment materialization is unavailable in this version; this review does not create constructs.",
+                        "Panel review does not create constructs. Exact designed products require a separate materialization proposal and digest approval.",
                     );
                 }
             });

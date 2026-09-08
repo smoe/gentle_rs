@@ -27283,6 +27283,38 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "registry": registry_metadata_for_introspection("PlanRegulatoryFragmentPanel")
         }),
         json!({
+            "id": "PlanRegulatoryFragmentMaterialization", "kind": "operation", "mutating": "false", "requires_confirmation": false,
+            "args": [{"name":"PLAN", "required":true, "subject_kind":"other", "detail":"current digest-valid regulatory-fragment plan"},
+                {"name":"OUTPUT_PREFIX", "required":true, "subject_kind":"other", "detail":"exact unused product ID prefix"}],
+            "reads": [], "effects": [], "precondition_expr": {"all":[]},
+            "description":"Prepare exact ordered vector-context replacement designs with per-instance provenance; not a cloning simulation or functional verdict.",
+            "annotation_status":"fact_annotated", "registry":registry_metadata_for_introspection("PlanRegulatoryFragmentMaterialization")
+        }),
+        json!({
+            "id": "promoters regulatory-products-plan", "kind": "command", "mutating": "false", "requires_confirmation": false,
+            "args": [{"name":"PLAN", "required":true, "subject_kind":"other", "detail":"current regulatory-fragment plan JSON or @file"},
+                {"name":"OUTPUT_PREFIX", "required":true, "subject_kind":"other", "detail":"--output-prefix exact unused product ID prefix"}],
+            "reads": [], "effects": [], "precondition_expr": {"all":[]},
+            "description":"Prepare a separate exact-product approval proposal through PlanRegulatoryFragmentMaterialization; validates bound sources without mutation.",
+            "annotation_status":"fact_annotated", "registry":registry_metadata_for_introspection("promoters regulatory-products-plan")
+        }),
+        json!({
+            "id": "MaterializeRegulatoryFragmentPanel", "kind": "operation", "mutating": "true", "requires_confirmation": true,
+            "args": [{"name":"PROPOSAL", "required":true, "subject_kind":"other", "detail":"exact materialization proposal"},
+                {"name":"APPROVAL_DIGEST", "required":true, "subject_kind":"other", "detail":"digest of the reviewed ordered product payload"}],
+            "reads": [], "effects": [], "precondition_expr": {"all":[]},
+            "description":"Atomically create exact design sequences and a retained receipt after content approval; rejects stale sources and existing output IDs. Experimental QA remains not evaluated.",
+            "annotation_status":"fact_annotated", "registry":registry_metadata_for_introspection("MaterializeRegulatoryFragmentPanel")
+        }),
+        json!({
+            "id": "promoters regulatory-products-materialize", "kind": "command", "mutating": "true", "requires_confirmation": true,
+            "args": [{"name":"PROPOSAL", "required":true, "subject_kind":"other", "detail":"exact materialization proposal JSON or @file"},
+                {"name":"APPROVAL_DIGEST", "required":true, "subject_kind":"other", "detail":"--approve digest of the explicitly reviewed proposal"}],
+            "reads": [], "effects": [], "precondition_expr": {"all":[]},
+            "description":"Commit exact designed products atomically through MaterializeRegulatoryFragmentPanel; approval is not biological validation.",
+            "annotation_status":"fact_annotated", "registry":registry_metadata_for_introspection("promoters regulatory-products-materialize")
+        }),
+        json!({
             "id": "RenderRegulatoryFragmentPanelSvg",
             "kind": "operation",
             "mutating": "false",
@@ -42003,7 +42035,7 @@ fn parse_gene_groups_command(tokens: &[String]) -> Result<ShellCommand, String> 
 fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "promoters requires a subcommand: assess-conserved-modules, compose-study, compare-architectures, panel-readiness, panel-plan, panel-materialize, regulatory-panel-plan, or regulatory-panel-render"
+            "promoters requires a subcommand: assess-conserved-modules, compose-study, compare-architectures, panel-readiness, panel-plan, panel-materialize, regulatory-panel-plan, regulatory-panel-render, regulatory-products-plan, or regulatory-products-materialize"
                 .to_string(),
         );
     }
@@ -42201,6 +42233,39 @@ fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
             })?;
             Ok(ShellCommand::PromotersRegulatoryPanelRender { plan, output })
         }
+        "regulatory-products-plan" => {
+            if tokens.len() != 5 || tokens[3] != "--output-prefix" {
+                return Err(
+                    "promoters regulatory-products-plan PLAN_JSON_OR_@FILE --output-prefix PREFIX"
+                        .into(),
+                );
+            }
+            let operation = Operation::PlanRegulatoryFragmentMaterialization {
+                plan: Box::new(parse_required_json_payload(
+                    &tokens[2],
+                    "regulatory panel plan",
+                )?),
+                output_prefix: tokens[4].clone(),
+            };
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&operation).map_err(|e| e.to_string())?,
+            })
+        }
+        "regulatory-products-materialize" => {
+            if tokens.len() != 5 || tokens[3] != "--approve" {
+                return Err("promoters regulatory-products-materialize PROPOSAL_JSON_OR_@FILE --approve DIGEST".into());
+            }
+            let operation = Operation::MaterializeRegulatoryFragmentPanel {
+                proposal: Box::new(parse_required_json_payload(
+                    &tokens[2],
+                    "regulatory materialization proposal",
+                )?),
+                approval_digest: tokens[4].clone(),
+            };
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&operation).map_err(|e| e.to_string())?,
+            })
+        }
         "panel-readiness" => {
             if tokens.len() < 3 || tokens[2].starts_with("--") {
                 return Err(
@@ -42328,7 +42393,7 @@ fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
             })
         }
         other => Err(format!(
-            "Unknown promoters subcommand '{other}' (expected assess-conserved-modules, compose-study, compare-architectures, panel-readiness, panel-plan, panel-materialize, regulatory-panel-plan, or regulatory-panel-render)"
+            "Unknown promoters subcommand '{other}' (expected assess-conserved-modules, compose-study, compare-architectures, panel-readiness, panel-plan, panel-materialize, regulatory-panel-plan, regulatory-panel-render, regulatory-products-plan, or regulatory-products-materialize)"
         )),
     }
 }

@@ -6626,7 +6626,7 @@ mod tests {
                 .collect::<BTreeSet<_>>()
         );
         assert!(plan.approval_required);
-        assert!(!plan.materialization_supported);
+        assert!(plan.materialization_supported);
 
         // Every declared geometry occurs exactly once, with no implicit spacer or orientation.
         for geometry in plan
