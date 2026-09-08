@@ -68,7 +68,7 @@
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "130ca7b9fc03586dac31c66af4ec733efd5be1c038820fa9d2157fa7d294a673",
+    "README.md": "cf0efc1717e89415548733c793e468eca1ad618fd938109b465f273e3f153c2c",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_cohort.json": "a3a9093760934082e5e9ea8c06b2528978908de49e59a6142766d90f8baad5a5",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_comparison.json": "f324456edd43ceb5f6c0f263e085844cddb27da1a454b40b63a68e8d69bc9a0e",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json": "e415893e3a32ed0ed4fc75d5e637bb7f19ac0552d0f671d5a5d0421db17f079d",
@@ -84,7 +84,7 @@
     "artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r02.report.json": "813dfb83318f0a2de397d4ddcd80d8020fe72586ec637d97598c3ea5a353dd3a",
     "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.bed": "a4c0b3b274099f1336ad956e18952008b0a4cefbd5bde255cc24fffcdf76c54c",
     "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.bed.manifest.json": "bb806ac7ff1c9933ab765a34888cd91b531514cbb7ff477818d6eb439bf4560a",
-    "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.locus.svg": "7885f9a74db07a9d0a5275f6cda2aded88cf8ef52e47aec44f306164b41adef4",
+    "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.locus.svg": "495c3deff8c84b31ebfce5f13e15a853f1d06f1e3f41b9eaa49f19be8490fb1e",
     "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.region_set.json": "f99dd295e6b9d8a7d057d71f89bd38d02314ee63c9fc050ef141cca295316d84",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.alternative_promoters.json": "fcdcdcec09c3d595220276e1dd0a542d876634897ef6c270952c6b40d08c6f54",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.evidence_matrix.json": "a29e3031ecde6dd9f945860bda0be48fbced440bb62f464381d42c331e35db25",
@@ -121,7 +121,7 @@
     "chapters/06-05_tp73_uniprot_projection_audit_cli.md": "bfbbeb700eea96654ff2b446128f7dc774429fc0106b2b3a64a71c987f9ac605",
     "chapters/06-06_patz1_gene_locus_evidence_offline.md": "ac745b5fe2fda33f02392aa06a12451990984d20e67d79701ae5ef51b1468bf1",
     "chapters/07-02_tp53_multi_gene_sparse_mapping_online.md": "9def3fb7d79ccf23e05f994bd738cf248e379c185f4eb8ce4cca15672bacdb5c",
-    "chapters/08-03_promoter_design_artifact_slice_offline.md": "76336ac96f1cd0b5f078428676bb203eb0185ef98a6a0b85bada7e27aeea592a",
+    "chapters/08-03_promoter_design_artifact_slice_offline.md": "bbcb97db36c693c6e88ceda487d70d132a7e9cb46861d6a4ee3dccf4fcee7bb8",
     "chapters/08-07_promoter_gene_set_ortholog_cohort_offline.md": "1d5c822a6427c7237f839b55642501224e37119aaac21112a9d3800e77feacc8",
     "chapters/08-08_gene_set_ortholog_promoter_cohorts_offline.md": "fb334f0f59d7795cb89f872570f7d3200e7e6ec125349bdee0155fd80e4540f3",
     "chapters/08-09_promoter_reporter_panel_planning_offline.md": "b5aa8d61d9e7534d99d431c4859853a3f34f7b6a138261d1c42449fce36e5eea",
@@ -131,7 +131,7 @@
   },
   "warnings": [
     "Tutorial 'load_branch_reverse_complement_pgex_fasta' review is stale because source JSON 'docs/tutorial/sources/02-01_load_branch_reverse_complement_pgex_fasta.json' changed after human review date 2026-05-18",
-    "Tutorial 'promoter_design_artifact_slice_offline' review is stale because source JSON 'docs/tutorial/sources/08-03_promoter_design_artifact_slice_offline.json' changed after human review date 2026-05-18"
+    "Tutorial 'promoter_design_artifact_slice_offline' review is stale because declared graphic for tutorial 'promoter_design_artifact_slice_offline' 'docs/tutorial/generated/artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg' changed after human review date 2026-05-18"
   ],
   "chapters": [
     {
@@ -618,9 +618,9 @@
       "human_reviewed_at": "2026-05-18",
       "human_reviewer": "smoe",
       "review_stale": true,
-      "review_stale_reason": "source JSON 'docs/tutorial/sources/08-03_promoter_design_artifact_slice_offline.json' changed after human review date 2026-05-18",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "review_stale_reason": "declared graphic for tutorial 'promoter_design_artifact_slice_offline' 'docs/tutorial/generated/artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg' changed after human review date 2026-05-18",
+      "review_issue_template": "Tutorial artifact/figure problem",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-artifact-figure.md",
       "graphics": [
         {
           "kind": "generated",

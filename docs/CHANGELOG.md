@@ -2,6 +2,15 @@
 
 ## 2026-09-08 - `v0.1.0-internal.10` candidate preparation
 
+- Integrated Glen's `3de4803a` tutorial hardening: PCR designer viewports poll
+  completed workers even when the parent DNA viewer is idle, lineage nodes use
+  ranks within their own layer, and the CUT&RUN GUI test serializes motif-catalog
+  overrides. Retained the exact-matrix tutorial refresh, including the portable
+  regions locus figure and honest stale-review notices. Merge reconciliation
+  preserves the `.10` candidate/version metadata, our synthetic overlap fixture,
+  and poisoned-lock isolation while adding Glen's explicit matrix-ID checks.
+  Glen's upstream acceptance is not a new verdict for this merged candidate.
+
 - Reconciled the tutorial fix from `89ee68fe` with the restored `.10` candidate:
   updated only 14 version/audit labels in the three retained PATZ1 assay reports
   and their checksums. Scientific results, refreshed JASPAR figures and the new

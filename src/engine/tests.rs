@@ -25152,18 +25152,21 @@ fn prepare_gene_locus_evidence_runs_fully_offline_with_normalized_score_sources(
         .expect("E2F1 JASPAR track");
     assert_eq!(e2f1_track.source_ids, ["MA0024.3"]);
     assert_eq!(e2f1_track.factors[0].factor_id, "E2F1");
-    let tp73_sites = &report
+    let tp73_track = report
         .regulatory_score_tracks
         .iter()
         .find(|track| track.track_id == "tp73_jaspar")
-        .expect("TP73 JASPAR track")
-        .sites;
-    let sp1_sites = &report
+        .expect("TP73 JASPAR track");
+    let sp1_track = report
         .regulatory_score_tracks
         .iter()
         .find(|track| track.track_id == "sp1_jaspar")
-        .expect("SP1 JASPAR track")
-        .sites;
+        .expect("SP1 JASPAR track");
+    assert_eq!(tp73_track.source_ids, ["MA0861.2"]);
+    assert_eq!(sp1_track.source_ids, ["MA0079.5"]);
+    // Overlap is intentional in this synthetic fixture, not a biological claim.
+    let tp73_sites = &tp73_track.sites;
+    let sp1_sites = &sp1_track.sites;
     assert!(
         tp73_sites.iter().any(|site| {
             site.local_start_0based == 171 && site.local_end_0based_exclusive == 187

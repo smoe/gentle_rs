@@ -19471,24 +19471,24 @@ Error: `{err}`"
         }
 
         let mut layout_by_node: HashMap<String, (usize, usize)> = HashMap::new();
-        let mut max_rank_seen = 0usize;
+        let mut max_nodes_in_layer = 1usize;
         for (layer, nodes) in &order_by_layer {
-            for node_id in nodes {
-                let rank = row_index.get(node_id).copied().unwrap_or(0);
-                max_rank_seen = max_rank_seen.max(rank);
+            max_nodes_in_layer = max_nodes_in_layer.max(nodes.len());
+            for (rank, node_id) in nodes.iter().enumerate() {
                 layout_by_node.insert(node_id.clone(), (*layer, rank));
             }
         }
 
         for row in rows {
-            let fallback_rank = row_index.get(&row.node_id).copied().unwrap_or(0);
-            max_rank_seen = max_rank_seen.max(fallback_rank);
             layout_by_node
                 .entry(row.node_id.clone())
-                .or_insert((0, fallback_rank));
+                .or_insert_with(|| {
+                    let rank = max_nodes_in_layer;
+                    max_nodes_in_layer = max_nodes_in_layer.saturating_add(1);
+                    (0, rank)
+                });
         }
 
-        let max_nodes_in_layer = max_rank_seen.saturating_add(1);
         (layout_by_node, max_layer + 1, max_nodes_in_layer)
     }
 

@@ -3002,6 +3002,9 @@ fn whole_sequence_tfbs_track_similarity_uses_shared_engine_report_path() {
 
 #[test]
 fn cutrun_regulatory_support_gui_uses_shared_engine_report_path() {
+    let _motif_registry_guard = crate::tf_motifs::test_registry_lock()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
     let td = tempdir().expect("tempdir");
     let root = td.path();
     let sp1_consensus = "TATAAA";
@@ -5215,6 +5218,59 @@ fn primer_design_async_worker_completes_and_applies_operation() {
         .parameters
         .max_fragments_per_container;
     assert_eq!(max_fragments, 12345);
+}
+
+#[test]
+fn pcr_designer_specialist_polls_and_applies_completed_worker() {
+    let mut area = make_primer_batch_area();
+    let op = Operation::SetParameter {
+        name: "max_fragments_per_container".to_string(),
+        value: json!(23456),
+    };
+    area.start_primer_design_operation(op, "Primer-pair design");
+    assert!(area.primer_design_task.is_some());
+
+    // Let the worker finish without polling through the parent DNA viewport.
+    for _ in 0..300 {
+        if area
+            .engine
+            .as_ref()
+            .expect("engine")
+            .read()
+            .expect("engine lock")
+            .state()
+            .parameters
+            .max_fragments_per_container
+            == 23456
+        {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(2));
+    }
+
+    let ctx = egui::Context::default();
+    ctx.begin_pass(egui::RawInput::default());
+    egui::Area::new("pcr_designer_worker_poll".into()).show(&ctx, |ui| {
+        ui.set_width(1000.0);
+        area.render_pcr_designer_specialist(ui, &ctx);
+    });
+    crate::egui_compat::discard_test_pass_output(&ctx);
+
+    assert!(
+        area.primer_design_task.is_none(),
+        "specialist viewport should publish the completed worker"
+    );
+    assert_eq!(
+        area.engine
+            .as_ref()
+            .expect("engine")
+            .read()
+            .expect("engine lock")
+            .state()
+            .parameters
+            .max_fragments_per_container,
+        23456
+    );
 }
 
 #[test]

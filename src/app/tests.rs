@@ -14675,6 +14675,69 @@ fn make_lineage_row(node_id: &str, seq_id: &str) -> LineageRow {
 }
 
 #[test]
+fn lineage_dag_layout_ranks_nodes_within_each_layer() {
+    let rows = vec![
+        make_lineage_row("source", "source_seq"),
+        make_lineage_row("extract", "extract_seq"),
+    ];
+    let edges = vec![(
+        "source".to_string(),
+        "extract".to_string(),
+        "op_extract".to_string(),
+    )];
+
+    let (layout, layer_count, max_nodes_in_layer) =
+        GENtleApp::compute_lineage_dag_layout(&rows, &edges);
+
+    assert_eq!(layout.get("source"), Some(&(0, 0)));
+    assert_eq!(layout.get("extract"), Some(&(1, 0)));
+    assert_eq!(layer_count, 2);
+    assert_eq!(max_nodes_in_layer, 1);
+}
+
+#[test]
+fn lineage_dag_layout_assigns_distinct_ranks_only_to_layer_peers() {
+    let rows = vec![
+        make_lineage_row("source", "source_seq"),
+        make_lineage_row("left", "left_seq"),
+        make_lineage_row("right", "right_seq"),
+        make_lineage_row("product", "product_seq"),
+    ];
+    let edges = vec![
+        (
+            "source".to_string(),
+            "left".to_string(),
+            "op_left".to_string(),
+        ),
+        (
+            "source".to_string(),
+            "right".to_string(),
+            "op_right".to_string(),
+        ),
+        (
+            "left".to_string(),
+            "product".to_string(),
+            "op_product".to_string(),
+        ),
+        (
+            "right".to_string(),
+            "product".to_string(),
+            "op_product".to_string(),
+        ),
+    ];
+
+    let (layout, layer_count, max_nodes_in_layer) =
+        GENtleApp::compute_lineage_dag_layout(&rows, &edges);
+
+    assert_eq!(layout.get("source"), Some(&(0, 0)));
+    assert_eq!(layout.get("left"), Some(&(1, 0)));
+    assert_eq!(layout.get("right"), Some(&(1, 1)));
+    assert_eq!(layout.get("product"), Some(&(2, 0)));
+    assert_eq!(layer_count, 3);
+    assert_eq!(max_nodes_in_layer, 2);
+}
+
+#[test]
 fn lineage_copy_primary_id_prefers_analysis_artifact_id() {
     let mut row = make_lineage_row("analysis:qpcr:tp73_as3", "tp73_as3_template");
     row.kind = LineageNodeKind::Analysis;
