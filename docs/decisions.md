@@ -833,6 +833,14 @@ sequence identity. Row queries require an explicit bounded motif set because
 the sparse package is not an all-motif density index. Saved genomic region sets
 are resolved to their canonical intervals before entering this same bounded
 query contract; they do not define a parallel DuckDB route.
+Their canonical references remain attached to resolved report rows and bound
+into report identity. Before any motif payload query, a saved assembly
+accession must exactly match the package accession; it takes precedence over
+display names. Without a saved accession, its assembly name must exactly match
+the package name or accession. No aliases, patch equivalence, or liftover are
+inferred. Missing required identity or a mismatch rejects the complete query
+as incompatible, even with a matching explicit `expected_genome_id`. This
+validates declared assembly identity, not sequence bytes or annotation release.
 
 ## DEC-043: SCREEN cCRE Evidence Is Optional, Assembly-Bound, And Non-Causal
 

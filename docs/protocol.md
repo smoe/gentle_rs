@@ -2855,12 +2855,25 @@ Current draft operations:
     even where score-family names sound similar
   - `target_kind=stored_region_set` resolves a saved
     `gentle.genomic_region_set.v1` by id and queries its canonical intervals;
-    the resolved intervals pass through the same package compatibility,
-    containment, completeness, and provenance checks as explicit intervals
+    `regions[].source_reference` retains the complete canonical
+    `GenomicRegionReference` and is included in report identity, even when the
+    provider is unavailable. Older rows deserialize with this optional field
+    absent. The region store rejects mixed species/assemblies before querying
+  - before querying any motif payload, saved assembly accessions must exactly
+    match package accessions (taking precedence over display names). Without a
+    saved accession, the saved assembly name must exactly match the package
+    name or accession. A mismatch or missing required identity rejects the
+    complete query with `availability=incompatible_package`; affected rows
+    report `assembly_mismatch` or `assembly_not_verified`, source/package
+    declarations remain inspectable, and no hits are returned. A matching
+    `expected_genome_id` does not bypass this check
+  - successful saved-region checks report
+    `assembly_and_contig_geometry_matched`; interval containment, completeness,
+    and payload provenance still use the existing provider path
   - package `ensembl_release` is sequence-source provenance; the sparse package
     contains no gene annotation. Until GENtle and the package share per-contig
-    sequence hashes, compatibility is explicitly
-    `contig_geometry_matched_only`, not sequence-identity verified
+    sequence hashes, no compatibility state claims verified sequence identity.
+    Targets without a saved reference remain `contig_geometry_matched_only`
   - `path` writes the same deterministic report exposed to shell, CLI, MCP,
     JavaScript, Lua, and GUI callers
 - `RenderIsoformArchitectureSvg { seq_id, panel_id, expression_tsv_path?, path }`

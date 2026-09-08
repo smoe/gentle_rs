@@ -2891,6 +2891,30 @@ mod tests {
         let error = validate_set_digest(&duplicate)
             .expect_err("duplicate region identifiers must be rejected");
         assert!(error.message.contains("duplicate region_id"));
+
+        engine.state.metadata.insert(
+            GENOMIC_REGION_SETS_METADATA_KEY.to_string(),
+            serde_json::to_value(gp::GenomicRegionStore {
+                schema: gp::GENOMIC_REGION_STORE_SCHEMA.to_string(),
+                sets: vec![mixed],
+            })
+            .unwrap(),
+        );
+        let before = serde_json::to_value(engine.state()).unwrap();
+        let error = engine
+            .apply(Operation::QueryGenomicMotifEvidence {
+                request: gp::GenomicMotifEvidenceRequest {
+                    target: gp::GenomicMotifEvidenceTarget::StoredRegionSet {
+                        region_set_id: "validated_set".to_string(),
+                    },
+                    motif_ids: vec!["MA0525.2".to_string()],
+                    ..Default::default()
+                },
+                path: None,
+            })
+            .expect_err("mixed saved assemblies fail before optional provider access");
+        assert!(error.message.contains("mixes incompatible"));
+        assert_eq!(before, serde_json::to_value(engine.state()).unwrap());
     }
 
     #[test]
