@@ -110,6 +110,80 @@ strands, and for canonical k-mers, which are strand-neutral. Original strand,
 purpose, selection method, evidence, persistent colour, region identities,
 source-set digest, and source-file digest remain in `candidate_regions.json`.
 
+## Asking where a candidate recurs upstream of other transcripts
+
+The candidate-pool database above cannot answer this question. Prepare a
+separate transcript-linked background from the same validated genome:
+
+```bash
+python3 scripts/prepare_transcript_promoterome.py \
+  --genome-id "Human GRCh38 Ensembl 116" \
+  --dataset-id human_grch38_ensembl116_promoterome_2000_200_v1 \
+  --upstream-bp 2000 \
+  --downstream-bp 200 \
+  --catalog assets/genomes.json \
+  --cache-dir /path/to/prepared/genomes \
+  --output /path/to/promoterome
+```
+
+GENtle resolves the exact prepared FASTA, FAI, and transcript index. The script
+then creates extract-promoter-compatible strand-aware windows and delegates
+bulk sequence extraction to BEDTools. One exact genomic window/strand is
+indexed once, while `promoter_transcripts.tsv` preserves every gene and
+transcript represented by that window. This avoids counting ten transcripts
+sharing one TSS as ten independent genomic occurrences.
+
+The bundle includes:
+
+- `promoter_windows.fa` and a BLAST v5 database;
+- an optional minimap2 index for fast long-sequence candidate discovery;
+- `promoter_windows.tsv`, with TSS, strand, coordinates, clipping, and member
+  counts;
+- `promoter_transcripts.tsv`, mapping every window to gene IDs, gene names, and
+  transcript IDs;
+- a receipt binding the GENtle binary/status, catalog, prepared transcript
+  index, FASTA index, tools, commands, and artifacts.
+
+Compare the Ensembl/self-defined candidate bundle against that background:
+
+```bash
+python3 scripts/compare_candidates_to_promoterome.py \
+  --candidates-json /path/to/candidates/candidate_regions.json \
+  --query-fasta /path/to/candidates/candidate_regions.fa \
+  --promoterome /path/to/promoterome \
+  --output /path/to/candidate-promoterome-comparison
+```
+
+The comparison runs `megablast`, `blastn`, and `dc-megablast` independently.
+For each candidate it reports:
+
+- matching exact genomic promoter windows;
+- distinct genes and transcripts represented by those windows;
+- same-locus overlaps separately from genuinely other promoter windows;
+- other-promoter frequencies at 25%, 50%, and 80% aggregate query coverage,
+  so a single shared 40-bp tract is not confused with reuse of most of the
+  candidate;
+- query-coordinate segments covered by recurrent hits, with independent
+  window/gene/transcript frequencies;
+- a traceable target table naming every gene and transcript behind each hit.
+
+Thresholds and the BLAST target cap are part of the report. “Not found” means
+not found under that exact prepared annotation, task, threshold, and cap. A
+recurrent segment can help identify a generic/shared part of a reporter insert;
+it does not by itself show that the segment is functional, dispensable, or
+interchangeable. Conversely, a sequence-rare part is not automatically the
+biologically decisive part. Combine recurrence with Ensembl feature geometry,
+TF-score/module evidence, occupancy evidence, cloning constraints, and the
+explicit reporter contrast panel.
+
+The default fragment-recurrence filter is deliberately stricter than a motif
+search: at least 40 aligned bp, at least 80% identity, and E-value at most
+`1e-5`. Override it explicitly for exploration, but do not interpret a 7–20 bp
+match as a shared promoter fragment; use GENtle's typed TF-score/module layer
+for motif-sized resemblance. If `target_cap_reached` is true, the reported
+frequency is a lower bound and the run must be repeated with a larger cap or a
+more discriminating threshold before ranking a reporter boundary.
+
 The source FASTA, JSON, k-mer evidence, and comparison tables are deterministic
 for identical bound inputs and tool versions. BLAST database containers may
 embed build metadata; they are treated as regenerable indexed artifacts whose
