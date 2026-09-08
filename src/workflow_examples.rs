@@ -342,6 +342,9 @@ pub enum TutorialGuiVerifier {
     State {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         seq_ids: Vec<String>,
+        /// Compare bases, topology, end geometry and annotations to the isolated oracle.
+        #[serde(default, skip_serializing_if = "is_false")]
+        compare_with_oracle: bool,
     },
     VisibleClaim {
         semantic_id: String,
@@ -2725,7 +2728,7 @@ fn validate_tutorial_gui_verifier(
                 ));
             }
         }
-        TutorialGuiVerifier::State { seq_ids } => {
+        TutorialGuiVerifier::State { seq_ids, .. } => {
             if seq_ids.is_empty() || seq_ids.iter().any(|seq_id| seq_id.trim().is_empty()) {
                 return Err(format!(
                     "{verifier_context} state verifier requires non-empty seq_ids"
@@ -7323,10 +7326,8 @@ mod tests {
         let report_verifier = manifest
             .chapters
             .iter_mut()
-            .find_map(|chapter| chapter.gui_acceptance.as_mut())
-            .expect("GUI acceptance")
-            .steps
-            .iter_mut()
+            .filter_map(|chapter| chapter.gui_acceptance.as_mut())
+            .flat_map(|acceptance| acceptance.steps.iter_mut())
             .flat_map(|step| step.verifiers.iter_mut())
             .find(|verifier| matches!(verifier, TutorialGuiVerifier::Report { .. }))
             .expect("report verifier");
@@ -7572,6 +7573,68 @@ mod tests {
                     let report = serde_json::to_value(report).expect("serialize oracle report");
                     assert_tutorial_report_verifier(&report, required_fields, assertions);
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn cloning_gui_acceptance_starters_do_not_presatisfy_oracles() {
+        let manifest = load_tutorial_manifest(&tutorial_manifest_path()).expect("manifest");
+        let examples = load_workflow_examples(&example_dir()).expect("examples");
+        let by_id = example_lookup(&examples);
+        for id in [
+            "load_branch_reverse_complement_pgex_fasta",
+            "load_and_digest_pgex",
+        ] {
+            let acceptance = manifest
+                .chapters
+                .iter()
+                .find(|c| c.id == id)
+                .and_then(|c| c.gui_acceptance.as_ref())
+                .expect("cloning acceptance");
+            let starter_dir = TempDir::new().expect("starter");
+            let oracle_dir = TempDir::new().expect("oracle");
+            let run = |id: &str, path: &Path| {
+                GentleEngine::from_state(
+                    run_example_workflow_for_project_state(
+                        &by_id[id].example,
+                        Path::new("."),
+                        path,
+                    )
+                    .expect("workflow"),
+                )
+            };
+            let starter = run(&acceptance.starter.example_id, starter_dir.path());
+            let oracle = run(&acceptance.oracle.example_id, oracle_dir.path());
+            assert_eq!(
+                starter
+                    .evaluate_fact_expression(&acceptance.completion_condition, &[])
+                    .truth,
+                crate::engine::protocol::FactTruth::Unsatisfied,
+                "{id}"
+            );
+            assert_eq!(
+                oracle
+                    .evaluate_fact_expression(&acceptance.completion_condition, &[])
+                    .truth,
+                crate::engine::protocol::FactTruth::Satisfied,
+                "{id}"
+            );
+            for step in acceptance.steps.iter().filter(|s| s.scientific_effect) {
+                assert_eq!(
+                    starter
+                        .evaluate_fact_expression(step.before.as_ref().expect("before"), &[])
+                        .truth,
+                    crate::engine::protocol::FactTruth::Unsatisfied
+                );
+                assert_eq!(
+                    oracle
+                        .evaluate_fact_expression(step.after.as_ref().expect("after"), &[])
+                        .truth,
+                    crate::engine::protocol::FactTruth::Satisfied
+                );
+                assert!(step.verifiers.iter().any(|v| matches!(v,
+                    TutorialGuiVerifier::State { seq_ids, compare_with_oracle: true } if !seq_ids.is_empty())));
             }
         }
     }

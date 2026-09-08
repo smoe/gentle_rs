@@ -14,6 +14,12 @@
   fail without partial products. The legacy single-fragment materializer is
   unchanged; these are designed molecules, not validated cloning reactions.
 
+- Added typed Linux GUI acceptance contracts for branch/reverse-complement and
+  restriction digest alongside Simple PCR, with semantic controls reached by
+  ordinary X11 input. Starter projects remain distinct from completed oracles;
+  sequence verification compares bases, topology, annotations and end geometry,
+  not just product IDs. Live Xvfb replay remains required before release sign-off.
+
 - Added the missing Genomic Region Conservation command-palette action, which
   opens saved-region selection and preserves that request during deferred
   sequence loading. Corrected glossary smoke inputs for JSON report/plan

@@ -69,9 +69,9 @@ cargo run --bin gentle_cli -- op '{"LoadFile":{"path":"test_files/pGEX-3X.gb","a
 
 > Expected: The state contains the annotated pGEX sequence as `pgex`.
 
-### Step 2: Run Digest from the DNA window using enzymes BamHI and EcoRI
+### Step 2: Open Sequence Tools from the DNA window, expand Core cloning operations, keep...
 
-GUI: Run Digest from the DNA window using enzymes `BamHI` and `EcoRI`.
+GUI: Open Sequence Tools from the DNA window, expand Core cloning operations, keep enzymes `BamHI,EcoRI`, set prefix `frag`, and run Digest.
 
 CLI:
 

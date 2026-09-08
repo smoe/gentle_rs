@@ -445,10 +445,22 @@ xvfb-run -a -s "-screen 0 1600x1000x24" \
 The runner requires `xdotool`, `xdpyinfo`, `xprop`, and a named EWMH window
 manager; the example uses Openbox. It also requires `scrot` whenever a selected
 contract marks a screenshot as required. Use repeated `--chapter ID` instead
-of `--profile` for a bounded chapter set. `smoke` currently contains the Simple
-PCR contract; `offline-core` and `full` become meaningful only as chapters gain
+of `--profile` for a bounded chapter set. `smoke` currently contains Simple
+PCR, branch/reverse-complement, and BamHI/EcoRI digest contracts.
+`offline-core` and `full` become meaningful only as chapters gain
 complete typed acceptance metadata. Online chapters must remain explicit and
 authorized.
+
+The two cloning contracts start from load-only workflows
+`branch_gui_starter` and `digest_gui_starter`, not completed results.
+`branch_gui_oracle` deliberately uses the GUI's default `_revcomp` ID;
+the original scripted tutorial's explicit `_rc` name remains supported.
+The digest run uses the ordinary Sequence Tools controls and the explicit
+`frag` prefix. A `state` verifier with `compare_with_oracle: true` hashes
+saved bases, topology, feature annotations, molecule type and end geometry
+against the separately executed oracle. Labels and runtime caches are not
+scientific comparison fields. Headless source/oracle tests and Python verifier
+tests do not constitute a live Xvfb pass.
 
 Each chapter receives a clean `HOME`, XDG roots, temporary directory, and
 starter project. Inherited `GENTLE_*` and `*_API_KEY` variables are removed from

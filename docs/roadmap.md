@@ -309,9 +309,9 @@ wet-lab conclusions or unconfirmed mutations.
 - Extend the feature-gated semantic GUI test identifier registry beyond the
   bounded TP73/PATZ1 DNA-viewer, Splicing Expert, and Agent Assistant release
   controls as additional native acceptance stories require it.
-- Extend typed tutorial GUI acceptance from Simple PCR to three representative
-  offline tutorials as each gains a validated subject/report contract; promote
-  `offline-core` only after stable clean-profile replay through external X11.
+- Retain live Linux/Xvfb replay for the PCR, branch/reverse-complement and digest
+  acceptance contracts; add a fourth representative chapter before promoting
+  broader `offline-core` coverage. Headless oracle tests are not live GUI proof.
 - Then extend context-labelled GUI/CLI/agent tutorial actions; defer skill
   activation and inverse discovery until readiness is safeguarded.
 - Optional OS credential-store persistence for Agent Assistant API keys.

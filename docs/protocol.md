@@ -218,6 +218,10 @@ Tutorial GUI acceptance contract:
   value; arbitrary command-bearing text inputs are not tutorial-eligible
 - report verifiers support required field paths, equality/non-empty/numeric
   value assertions, and numeric field-to-field relations
+- state verifiers can set additive `compare_with_oracle: true` alongside
+  non-empty `seq_ids` to compare persisted bases, topology, features, molecule
+  type and overhang geometry with the isolated oracle; absence retains the
+  original ID-presence check
 - visual claims consume only `gentle.gui_semantic_snapshot.v2`; scientific
   facts/reports/state consume only the saved project or retained artifacts
 - GENtle validates and answers typed questions, but the isolated external

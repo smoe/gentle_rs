@@ -6657,20 +6657,20 @@ impl MainAreaDna {
                         output_id: None,
                     });
                 }
-                if ui
-                    .button(Self::tr("sequence.revcomp"))
-                    .on_hover_text("Create a reverse-complement branch sequence")
-                    .clicked()
+                let revcomp = ui.button(Self::tr("sequence.revcomp"))
+                    .on_hover_text("Create a reverse-complement branch sequence");
+                self.register_tutorial_control(&revcomp, crate::tutorial_gui_semantics::DNA_REVCOMP, crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER);
+                if revcomp.clicked()
                 {
                     self.apply_sequence_derivation(Operation::ReverseComplement {
                         input: self.seq_id.clone().unwrap_or_default(),
                         output_id: None,
                     });
                 }
-                if ui
-                    .button(Self::tr("sequence.branch"))
-                    .on_hover_text("Create an unchanged branch copy for alternative workflows")
-                    .clicked()
+                let branch = ui.button(Self::tr("sequence.branch"))
+                    .on_hover_text("Create an unchanged branch copy for alternative workflows");
+                self.register_tutorial_control(&branch, crate::tutorial_gui_semantics::DNA_BRANCH, crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER);
+                if branch.clicked()
                 {
                     self.apply_sequence_derivation(Operation::Branch {
                         input: self.seq_id.clone().unwrap_or_default(),
@@ -6752,10 +6752,10 @@ impl MainAreaDna {
             }
             if allow_engine_shell_panels {
                 ui.separator();
-                if ui
-                    .button(Self::tr("sequence.tools.open"))
-                    .on_hover_text(Self::tr("sequence.tools.open_hover"))
-                    .clicked()
+                let tools = ui.button(Self::tr("sequence.tools.open"))
+                    .on_hover_text(Self::tr("sequence.tools.open_hover"));
+                self.register_tutorial_control(&tools, crate::tutorial_gui_semantics::DNA_OPEN_TOOLS, crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER);
+                if tools.clicked()
                 {
                     self.show_engine_ops = true;
                     self.save_engine_ops_state();
@@ -6902,7 +6902,7 @@ impl MainAreaDna {
                             .show(ui, |ui| {
                             ui.label(Self::tr("sequence.tools.ids_hint"));
                             let template_seq_id = self.seq_id.clone().unwrap_or_default();
-                            egui::CollapsingHeader::new("Core cloning operations")
+                            let cloning = egui::CollapsingHeader::new("Core cloning operations")
                                 .default_open(false)
                                 .show(ui, |ui| {
 
@@ -6911,11 +6911,15 @@ impl MainAreaDna {
                     ui.label("enzymes");
                     ui.text_edit_singleline(&mut self.digest_enzymes_text);
                     ui.label("prefix");
-                    ui.text_edit_singleline(&mut self.digest_prefix_text);
-                    if ui
-                        .button("Digest")
-                        .on_hover_text("Digest active template with listed enzymes")
-                        .clicked()
+                    let prefix = ui.text_edit_singleline(&mut self.digest_prefix_text);
+                    if prefix.changed() {
+                        self.save_engine_ops_state();
+                    }
+                    self.register_tutorial_control(&prefix, crate::tutorial_gui_semantics::TOOLS_DIGEST_PREFIX, crate::tutorial_gui_semantics::WINDOW_SEQUENCE_TOOLS);
+                    let digest = ui.button("Digest")
+                        .on_hover_text("Digest active template with listed enzymes");
+                    self.register_tutorial_control(&digest, crate::tutorial_gui_semantics::TOOLS_DIGEST_RUN, crate::tutorial_gui_semantics::WINDOW_SEQUENCE_TOOLS);
+                    if digest.clicked()
                     {
                         let enzymes = self
                             .digest_enzymes_text
@@ -7254,6 +7258,7 @@ impl MainAreaDna {
                 });
                             });
 
+                self.register_tutorial_control(&cloning.header_response, crate::tutorial_gui_semantics::TOOLS_CLONING, crate::tutorial_gui_semantics::WINDOW_SEQUENCE_TOOLS);
                 egui::CollapsingHeader::new("Primer and qPCR design reports")
                     .default_open(true)
                     .show(ui, |ui| {
@@ -20934,6 +20939,36 @@ impl MainAreaDna {
                 self.show_isoform_expert_window = false;
             }
         });
+    }
+
+    fn register_tutorial_control(
+        &self,
+        response: &egui::Response,
+        id: &'static str,
+        window: &'static str,
+    ) {
+        #[cfg(feature = "gui-test-support")]
+        {
+            let scope = crate::gui_test_support::pseudonymous_subject_scope(&[self
+                .seq_id
+                .as_deref()
+                .unwrap_or("unnamed")]);
+            let kind = if id == crate::tutorial_gui_semantics::TOOLS_DIGEST_PREFIX {
+                crate::gui_test_support::GuiTestWidgetKind::TextInput
+            } else {
+                crate::gui_test_support::GuiTestWidgetKind::Button
+            };
+            crate::gui_test_support::register_response(
+                response,
+                id,
+                window,
+                Some(&scope),
+                kind,
+                false,
+            );
+        }
+        #[cfg(not(feature = "gui-test-support"))]
+        let _ = (response, id, window);
     }
 
     fn apply_sequence_derivation(&mut self, op: Operation) {

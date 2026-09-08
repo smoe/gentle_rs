@@ -9,6 +9,13 @@
 pub const WINDOW_MAIN: &str = "window.main";
 pub const WINDOW_DNA_VIEWER: &str = "window.dna_viewer";
 pub const WINDOW_PCR_DESIGN: &str = "window.pcr_design";
+pub const WINDOW_SEQUENCE_TOOLS: &str = "window.sequence_tools";
+pub const DNA_BRANCH: &str = "dna.sequence.branch";
+pub const DNA_REVCOMP: &str = "dna.sequence.reverse_complement";
+pub const DNA_OPEN_TOOLS: &str = "dna.sequence.open_tools";
+pub const TOOLS_CLONING: &str = "sequence_tools.cloning";
+pub const TOOLS_DIGEST_PREFIX: &str = "sequence_tools.digest.prefix";
+pub const TOOLS_DIGEST_RUN: &str = "sequence_tools.digest.run";
 pub const WINDOW_GENOMIC_REGIONS: &str = "window.genomic_regions";
 pub const WINDOW_REGION_CONSERVATION: &str = "window.region_conservation";
 pub const WINDOW_SPLICING_EXPERT: &str = "window.splicing_expert";
@@ -101,6 +108,55 @@ const DOUBLE_CLICK: &[TutorialGuiInteractionKind] = &[TutorialGuiInteractionKind
 const REPLACE_TEXT: &[TutorialGuiInteractionKind] = &[TutorialGuiInteractionKind::ReplaceText];
 
 pub const TUTORIAL_GUI_CONTROLS: &[TutorialGuiControlSpec] = &[
+    TutorialGuiControlSpec {
+        semantic_id: WINDOW_SEQUENCE_TOOLS,
+        window_id: WINDOW_SEQUENCE_TOOLS,
+        authority: TutorialGuiControlAuthority::Observe,
+        allowed_interactions: NO_INTERACTIONS,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: DNA_BRANCH,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::ScientificState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: DNA_REVCOMP,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::ScientificState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: DNA_OPEN_TOOLS,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::ProjectMetadata,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TOOLS_CLONING,
+        window_id: WINDOW_SEQUENCE_TOOLS,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TOOLS_DIGEST_PREFIX,
+        window_id: WINDOW_SEQUENCE_TOOLS,
+        authority: TutorialGuiControlAuthority::ProjectMetadata,
+        allowed_interactions: REPLACE_TEXT,
+        text_policy: Some(TutorialGuiTextPolicy::Identifier),
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TOOLS_DIGEST_RUN,
+        window_id: WINDOW_SEQUENCE_TOOLS,
+        authority: TutorialGuiControlAuthority::ScientificState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
     TutorialGuiControlSpec {
         semantic_id: WINDOW_MAIN,
         window_id: WINDOW_MAIN,

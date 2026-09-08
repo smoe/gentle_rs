@@ -28,9 +28,203 @@
       "You need a reproducible digest baseline to compare against wet-lab gel expectations.",
       "You plan to reuse fragment IDs in later operations."
     ],
+    "gui_acceptance": {
+      "schema": "gentle.tutorial_gui_acceptance.v1",
+      "profile": "smoke",
+      "network": "offline",
+      "starter": {
+        "example_id": "digest_gui_starter"
+      },
+      "oracle": {
+        "example_id": "load_and_digest_pgex"
+      },
+      "completion_condition": {
+        "all": [
+          {
+            "fact": "sequence.exists",
+            "subject": {
+              "kind": "sequence",
+              "id": "frag_1"
+            }
+          },
+          {
+            "fact": "sequence.exists",
+            "subject": {
+              "kind": "sequence",
+              "id": "frag_2"
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "id": "open_sequence",
+          "prose_step": 1,
+          "window": "window.main",
+          "target": "main.project.sequence.open",
+          "subject": {
+            "sequence": "pgex"
+          },
+          "interaction": {
+            "kind": "double_click"
+          },
+          "timeout_class": "io",
+          "persists_project_state": false,
+          "scientific_effect": false,
+          "verifiers": [
+            {
+              "kind": "visible_claim",
+              "semantic_id": "window.dna_viewer",
+              "visible": true,
+              "enabled": true
+            }
+          ],
+          "evidence": {
+            "screenshot": "required",
+            "snapshot": "required"
+          }
+        },
+        {
+          "id": "open_tools",
+          "prose_step": 2,
+          "window": "window.dna_viewer",
+          "target": "dna.sequence.open_tools",
+          "interaction": {
+            "kind": "click"
+          },
+          "timeout_class": "interactive",
+          "persists_project_state": true,
+          "scientific_effect": false,
+          "verifiers": [
+            {
+              "kind": "visible_claim",
+              "semantic_id": "sequence_tools.cloning",
+              "visible": true,
+              "enabled": true
+            }
+          ],
+          "evidence": {
+            "screenshot": "required",
+            "snapshot": "required"
+          }
+        },
+        {
+          "id": "expand_cloning",
+          "prose_step": 2,
+          "window": "window.sequence_tools",
+          "target": "sequence_tools.cloning",
+          "interaction": {
+            "kind": "click"
+          },
+          "timeout_class": "interactive",
+          "persists_project_state": false,
+          "scientific_effect": false,
+          "verifiers": [
+            {
+              "kind": "visible_claim",
+              "semantic_id": "sequence_tools.digest.prefix",
+              "visible": true,
+              "enabled": true
+            }
+          ],
+          "evidence": {
+            "screenshot": "required",
+            "snapshot": "required"
+          }
+        },
+        {
+          "id": "set_prefix",
+          "prose_step": 2,
+          "window": "window.sequence_tools",
+          "target": "sequence_tools.digest.prefix",
+          "interaction": {
+            "kind": "replace_text",
+            "text": "frag"
+          },
+          "timeout_class": "interactive",
+          "persists_project_state": true,
+          "scientific_effect": false,
+          "verifiers": [
+            {
+              "kind": "visible_claim",
+              "semantic_id": "sequence_tools.digest.run",
+              "visible": true,
+              "enabled": true
+            }
+          ],
+          "evidence": {
+            "screenshot": "required",
+            "snapshot": "required"
+          }
+        },
+        {
+          "id": "digest",
+          "prose_step": 3,
+          "window": "window.sequence_tools",
+          "target": "sequence_tools.digest.run",
+          "interaction": {
+            "kind": "click"
+          },
+          "timeout_class": "interactive",
+          "persists_project_state": true,
+          "scientific_effect": true,
+          "verifiers": [
+            {
+              "kind": "state",
+              "seq_ids": [
+                "pgex",
+                "frag_1",
+                "frag_2"
+              ],
+              "compare_with_oracle": true
+            }
+          ],
+          "evidence": {
+            "screenshot": "required",
+            "snapshot": "required"
+          },
+          "before": {
+            "all": [
+              {
+                "fact": "sequence.exists",
+                "subject": {
+                  "kind": "sequence",
+                  "id": "frag_1"
+                }
+              },
+              {
+                "fact": "sequence.exists",
+                "subject": {
+                  "kind": "sequence",
+                  "id": "frag_2"
+                }
+              }
+            ]
+          },
+          "after": {
+            "all": [
+              {
+                "fact": "sequence.exists",
+                "subject": {
+                  "kind": "sequence",
+                  "id": "frag_1"
+                }
+              },
+              {
+                "fact": "sequence.exists",
+                "subject": {
+                  "kind": "sequence",
+                  "id": "frag_2"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
     "gui_steps": [
       "Load `test_files/pGEX-3X.gb` in the GUI and inspect annotated features.",
-      "Run Digest from the DNA window using enzymes `BamHI` and `EcoRI`.",
+      "Open Sequence Tools from the DNA window, expand Core cloning operations, keep enzymes `BamHI,EcoRI`, set prefix `frag`, and run Digest.",
       "Review created fragment entries and confirm they are stored as independent sequence products."
     ],
     "cli_steps": [

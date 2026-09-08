@@ -82,7 +82,7 @@ cargo run --bin gentle_cli -- op '{"Branch":{"input":"pgex_fasta","output_id":"p
 
 ### Step 3: Apply reverse-complement to the branch and confirm a new sequence entry appea...
 
-GUI: Apply reverse-complement to the branch and confirm a new sequence entry appears in lineage/table views.
+GUI: Apply reverse-complement to the branch and confirm a new sequence entry appears in lineage/table views. The GUI uses the suffix _revcomp; the scripted example below explicitly chooses _rc instead.
 
 CLI:
 

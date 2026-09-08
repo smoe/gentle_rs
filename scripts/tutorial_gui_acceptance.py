@@ -152,6 +152,23 @@ def canonical_json_bytes(value: Any) -> bytes:
     ).encode("ascii")
 
 
+def sequence_content_identity(project: dict[str, Any], seq_id: str) -> str:
+    """Compare persisted biological content, not volatile runtime caches or labels."""
+    try:
+        dna = project["sequences"][seq_id]
+        sequence = dna["seq"]
+        content = {
+            "bases": sequence["seq"],
+            "topology": sequence["topology"],
+            "features": sequence["features"],
+            "molecule_type": sequence.get("molecule_type"),
+            "overhang": dna["overhang"],
+        }
+    except (KeyError, TypeError) as error:
+        raise AcceptanceFailure("product_failure", f"Missing sequence content for {seq_id}") from error
+    return sha256_bytes(canonical_json_bytes(content))
+
+
 def atomic_write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
@@ -589,7 +606,18 @@ class TutorialAcceptanceRun:
             raise AcceptanceFailure(
                 "product_failure", f"State verifier is missing sequence(s): {', '.join(missing)}"
             )
-        return {"status": "pass", "sequence_ids": required}
+        identities = {}
+        if verifier.get("compare_with_oracle"):
+            current = load_json(project_path)
+            oracle = load_json(Path(self.oracle_preparation["project_path"]))
+            oracle_mapping = self.binding_map(self.oracle_preparation)
+            for source, actual in zip(verifier["seq_ids"], required):
+                expected = oracle_mapping.get(source, source)
+                identity = sequence_content_identity(current, actual)
+                if identity != sequence_content_identity(oracle, expected):
+                    raise AcceptanceFailure("product_failure", f"Sequence content differs from oracle: {actual}")
+                identities[actual] = identity
+        return {"status": "pass", "sequence_ids": required, "sequence_content_sha256": identities}
 
     def expected_effects_verify(
         self, project_path: Path, verifier: dict[str, Any], label: str
@@ -742,6 +770,8 @@ class TutorialAcceptanceRun:
                         raise AcceptanceFailure(
                             "tutorial_ambiguity", "Oracle typed fact verifier is not satisfied"
                         )
+                elif verifier["kind"] == "state":
+                    self.state_verify(oracle_path, verifier, "oracle", f"oracle-check-{step['id']}-state-{index}")
         self.ledger["starter"] = self.starter_preparation
         self.ledger["oracle"] = self.oracle_preparation
         self.ledger["preflight"] = {

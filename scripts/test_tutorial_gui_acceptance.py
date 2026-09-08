@@ -11,6 +11,25 @@ from scripts import tutorial_gui_acceptance as acceptance
 
 
 class TutorialGuiAcceptanceTests(unittest.TestCase):
+    def test_sequence_oracle_identity_checks_bases_topology_ends_and_features(self) -> None:
+        import copy
+        project = {"sequences": {"s": {"seq": {
+            "seq": [65, 67, 71, 84], "topology": "Linear", "features": [],
+        }, "overhang": {}, "gc_content": {"cached": 1}}}}
+        expected = acceptance.sequence_content_identity(project, "s")
+        changed = copy.deepcopy(project)
+        changed["sequences"]["s"]["gc_content"] = {"cached": 99}
+        self.assertEqual(expected, acceptance.sequence_content_identity(changed, "s"))
+        for field, value in [("seq", [65]), ("topology", "Circular"), ("features", ["changed"])]:
+            changed = copy.deepcopy(project)
+            changed["sequences"]["s"]["seq"][field] = value
+            self.assertNotEqual(expected, acceptance.sequence_content_identity(changed, "s"))
+        changed = copy.deepcopy(project)
+        changed["sequences"]["s"]["overhang"] = {"forward_5": "A"}
+        self.assertNotEqual(expected, acceptance.sequence_content_identity(changed, "s"))
+        with self.assertRaises(acceptance.AcceptanceFailure):
+            acceptance.sequence_content_identity(project, "missing")
+
     def test_canonical_contract_hash_ignores_object_key_order(self) -> None:
         left = {"steps": [{"id": "a", "subject": {"b": "2", "a": "1"}}]}
         right = {"steps": [{"subject": {"a": "1", "b": "2"}, "id": "a"}]}
