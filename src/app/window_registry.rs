@@ -220,6 +220,42 @@ const GUI_PROMINENT_GLOSSARY_ENTRIES: &[GuiProminentGlossaryEntry] = &[
         ui_intent_target: None,
     },
     GuiProminentGlossaryEntry {
+        glossary_path: "regions create",
+        menu_path: "Genome > Saved Genomic Regions...",
+        palette_title: "Saved Genomic Regions",
+        ui_intent_target: Some(UiIntentTarget::SavedGenomicRegions),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "regions capture",
+        menu_path: "Genome > Saved Genomic Regions...",
+        palette_title: "Saved Genomic Regions",
+        ui_intent_target: Some(UiIntentTarget::SavedGenomicRegions),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "regions list",
+        menu_path: "Genome > Saved Genomic Regions...",
+        palette_title: "Saved Genomic Regions",
+        ui_intent_target: Some(UiIntentTarget::SavedGenomicRegions),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "regions update",
+        menu_path: "Genome > Saved Genomic Regions...",
+        palette_title: "Saved Genomic Regions",
+        ui_intent_target: Some(UiIntentTarget::SavedGenomicRegions),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "regions import",
+        menu_path: "Genome > Saved Genomic Regions...",
+        palette_title: "Saved Genomic Regions",
+        ui_intent_target: Some(UiIntentTarget::SavedGenomicRegions),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "regions export",
+        menu_path: "Genome > Saved Genomic Regions...",
+        palette_title: "Saved Genomic Regions",
+        ui_intent_target: Some(UiIntentTarget::SavedGenomicRegions),
+    },
+    GuiProminentGlossaryEntry {
         glossary_path: "regions homology-screen",
         menu_path: "DNA Sequence Viewer > Saved genomic regions > Conservation...",
         palette_title: "Genomic Region Conservation",

@@ -157,6 +157,20 @@ impl MainAreaDna {
         self.refresh_genomic_region_store_cache();
     }
 
+    /// Close the manager, reporting whether it had been open.
+    ///
+    /// Mirrors the feature-location editor so `ui close saved-genomic-regions`
+    /// can report whether it actually closed anything.
+    pub(super) fn close_genomic_region_manager(&mut self) -> bool {
+        let was_open = self.show_genomic_region_manager;
+        self.show_genomic_region_manager = false;
+        was_open
+    }
+
+    pub(super) fn genomic_region_manager_is_open(&self) -> bool {
+        self.show_genomic_region_manager
+    }
+
     fn refresh_genomic_region_store_cache(&mut self) {
         let Some(engine) = self.engine.as_ref() else {
             self.genomic_region_status = "No engine attached".to_string();

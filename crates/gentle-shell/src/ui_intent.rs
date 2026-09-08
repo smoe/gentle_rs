@@ -131,6 +131,7 @@ pub enum UiIntentTarget {
     BlastGenomeSequence,
     ImportGenomeTrack,
     FeatureLocationEditor,
+    SavedGenomicRegions,
     PcrDesign,
     SequencingConfirmation,
     AgentAssistant,
@@ -150,6 +151,7 @@ const UI_INTENT_TARGETS: [UiIntentTarget; UiIntentTarget::COUNT] = [
     UiIntentTarget::BlastGenomeSequence,
     UiIntentTarget::ImportGenomeTrack,
     UiIntentTarget::FeatureLocationEditor,
+    UiIntentTarget::SavedGenomicRegions,
     UiIntentTarget::PcrDesign,
     UiIntentTarget::SequencingConfirmation,
     UiIntentTarget::AgentAssistant,
@@ -258,7 +260,7 @@ pub struct UiIntentTargetCatalogRow {
 
 impl UiIntentTarget {
     /// Number of stable UI-intent destinations.
-    pub const COUNT: usize = 16;
+    pub const COUNT: usize = 17;
 
     /// Stable catalog order used by shell, MCP, and GUI discoverability.
     pub fn all() -> &'static [Self] {
@@ -297,6 +299,11 @@ impl UiIntentTarget {
             | "feature_location_editor"
             | "edit-feature-location"
             | "edit_feature_location" => Some(Self::FeatureLocationEditor),
+            "saved-genomic-regions"
+            | "saved_genomic_regions"
+            | "genomic-regions"
+            | "genomic_regions"
+            | "regions" => Some(Self::SavedGenomicRegions),
             "pcr-design" | "pcr_design" | "pcr" | "pcr-designer" | "pcr_designer" => {
                 Some(Self::PcrDesign)
             }
@@ -334,6 +341,7 @@ impl UiIntentTarget {
             Self::BlastGenomeSequence => "blast-genome-sequence",
             Self::ImportGenomeTrack => "import-genome-track",
             Self::FeatureLocationEditor => "feature-location-editor",
+            Self::SavedGenomicRegions => "saved-genomic-regions",
             Self::PcrDesign => "pcr-design",
             Self::SequencingConfirmation => "sequencing-confirmation",
             Self::AgentAssistant => "agent-assistant",
@@ -356,6 +364,7 @@ impl UiIntentTarget {
             Self::BlastGenomeSequence => "BLAST Genome Sequence",
             Self::ImportGenomeTrack => "Import Genome Track",
             Self::FeatureLocationEditor => "Feature Location Editor",
+            Self::SavedGenomicRegions => "Saved Genomic Regions",
             Self::PcrDesign => "PCR Designer",
             Self::SequencingConfirmation => "Sequencing Confirmation",
             Self::AgentAssistant => "Agent Assistant",
@@ -388,6 +397,9 @@ impl UiIntentTarget {
             Self::ImportGenomeTrack => "Import BED/BigWig/VCF tracks onto anchored sequences.",
             Self::FeatureLocationEditor => {
                 "Preview and apply exact simple feature-boundary edits with stale-state protection."
+            }
+            Self::SavedGenomicRegions => {
+                "Save, inspect, recolour, and interchange assembly-bound genomic regions of interest."
             }
             Self::PcrDesign => "Paint-first pair-PCR specialist with queue and live geometry.",
             Self::SequencingConfirmation => {
@@ -424,6 +436,9 @@ impl UiIntentTarget {
             Self::FeatureLocationEditor => {
                 "feature annotation location boundary start end edit preview"
             }
+            Self::SavedGenomicRegions => {
+                "regions roi genomic saved set bed export import assembly coordinates colour"
+            }
             Self::PcrDesign => "pcr primer pair roi paint queue designer",
             Self::SequencingConfirmation => {
                 "sequencing confirmation sanger construct reads trace junction"
@@ -455,6 +470,7 @@ impl UiIntentTarget {
             | Self::RetrieveGenomeSequence
             | Self::BlastGenomeSequence
             | Self::ImportGenomeTrack
+            | Self::SavedGenomicRegions
             | Self::PrepareHelperGenome
             | Self::RetrieveHelperSequence
             | Self::BlastHelperSequence => "Genome",
@@ -473,6 +489,7 @@ impl UiIntentTarget {
             | Self::BlastGenomeSequence
             | Self::ImportGenomeTrack
             | Self::FeatureLocationEditor
+            | Self::SavedGenomicRegions
             | Self::PcrDesign
             | Self::SequencingConfirmation
             | Self::AgentAssistant
@@ -488,7 +505,9 @@ impl UiIntentTarget {
             Self::PreparedReferences => &UI_INTENT_OPTIONAL_ARGUMENTS_PREPARED_REFERENCES,
             Self::Configuration => &UI_INTENT_OPTIONAL_ARGUMENTS_CONFIGURATION,
             Self::RecentProject | Self::TutorialProject => &UI_INTENT_OPTIONAL_ARGUMENTS_NONE,
-            Self::FeatureLocationEditor => &UI_INTENT_OPTIONAL_ARGUMENTS_NONE,
+            Self::FeatureLocationEditor | Self::SavedGenomicRegions => {
+                &UI_INTENT_OPTIONAL_ARGUMENTS_NONE
+            }
             _ => &UI_INTENT_OPTIONAL_ARGUMENTS_DEFAULT,
         }
     }
@@ -499,7 +518,7 @@ impl UiIntentTarget {
             Self::PreparedReferences => &UI_INTENT_ARGUMENTS_PREPARED_REFERENCES,
             Self::RecentProject | Self::TutorialProject => &UI_INTENT_ARGUMENTS_ITEM_ID,
             Self::Configuration => &UI_INTENT_ARGUMENTS_CONFIGURATION,
-            Self::FeatureLocationEditor => &UI_INTENT_ARGUMENTS_NONE,
+            Self::FeatureLocationEditor | Self::SavedGenomicRegions => &UI_INTENT_ARGUMENTS_NONE,
             Self::OpenSequence
             | Self::PrepareReferenceGenome
             | Self::RetrieveGenomeSequence
@@ -601,6 +620,11 @@ mod tests {
             "edit_feature_location",
             UiIntentTarget::FeatureLocationEditor,
         ),
+        ("saved-genomic-regions", UiIntentTarget::SavedGenomicRegions),
+        ("saved_genomic_regions", UiIntentTarget::SavedGenomicRegions),
+        ("genomic-regions", UiIntentTarget::SavedGenomicRegions),
+        ("genomic_regions", UiIntentTarget::SavedGenomicRegions),
+        ("regions", UiIntentTarget::SavedGenomicRegions),
         ("pcr-design", UiIntentTarget::PcrDesign),
         ("pcr_design", UiIntentTarget::PcrDesign),
         ("pcr", UiIntentTarget::PcrDesign),
@@ -667,6 +691,7 @@ mod tests {
             | UiIntentTarget::BlastGenomeSequence
             | UiIntentTarget::ImportGenomeTrack
             | UiIntentTarget::FeatureLocationEditor
+            | UiIntentTarget::SavedGenomicRegions
             | UiIntentTarget::PcrDesign
             | UiIntentTarget::SequencingConfirmation
             | UiIntentTarget::AgentAssistant
@@ -704,6 +729,7 @@ mod tests {
             UiIntentTarget::BlastGenomeSequence,
             UiIntentTarget::ImportGenomeTrack,
             UiIntentTarget::FeatureLocationEditor,
+            UiIntentTarget::SavedGenomicRegions,
             UiIntentTarget::PcrDesign,
             UiIntentTarget::SequencingConfirmation,
             UiIntentTarget::AgentAssistant,

@@ -522,6 +522,14 @@ impl WindowDna {
         self.main_area.close_feature_location_editor()
     }
 
+    pub fn close_genomic_region_manager(&mut self) -> bool {
+        self.main_area.close_genomic_region_manager()
+    }
+
+    pub fn genomic_region_manager_is_open(&self) -> bool {
+        self.main_area.genomic_region_manager_is_open()
+    }
+
     pub fn feature_location_editor_is_open(&self) -> bool {
         self.main_area.feature_location_editor_is_open()
     }

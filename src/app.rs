@@ -8758,6 +8758,42 @@ Error: `{err}`"
         }
     }
 
+    fn open_saved_genomic_regions(&mut self) {
+        let seq_id = self
+            .active_dna_window_context()
+            .map(|(seq_id, _)| seq_id)
+            .or_else(|| self.project_sequence_ids_for_blast().first().cloned());
+        let Some(seq_id) = seq_id else {
+            self.app_status =
+                "Cannot open Saved Genomic Regions: no project sequence is available".to_string();
+            return;
+        };
+        self.open_sequence_window(&seq_id);
+        if let Some(viewport_id) = self.find_open_sequence_viewport_id(&seq_id) {
+            if let Some(window) = self.windows.get(&viewport_id)
+                && let Ok(mut window) = window.write()
+            {
+                window.focus_genomic_region_manager();
+            }
+        } else if let Some(window) = self.find_pending_sequence_window_mut(&seq_id) {
+            window.focus_genomic_region_manager();
+        }
+        self.app_status = format!("Opened saved genomic regions for '{seq_id}'");
+    }
+
+    fn close_saved_genomic_regions(&mut self) -> bool {
+        let Some(active_key) = self.active_window_menu_key else {
+            return false;
+        };
+        let Some(viewport_id) = self.native_window_key_to_viewport.get(&active_key).copied() else {
+            return false;
+        };
+        self.windows
+            .get(&viewport_id)
+            .and_then(|window| window.write().ok())
+            .is_some_and(|mut window| window.close_genomic_region_manager())
+    }
+
     fn close_feature_location_editor(&mut self) -> bool {
         let Some(active_key) = self.active_window_menu_key else {
             return false;
@@ -16753,6 +16789,16 @@ Error: `{err}`"
                     .clicked()
                 {
                     self.open_genome_bed_track_dialog();
+                    ui.close();
+                }
+                if ui
+                    .button(self.tr("menu.genome.saved_genomic_regions"))
+                    .on_hover_text(
+                        "Save, inspect, recolour, and interchange assembly-bound genomic regions of interest",
+                    )
+                    .clicked()
+                {
+                    self.open_saved_genomic_regions();
                     ui.close();
                 }
                 if ui

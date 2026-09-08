@@ -208,6 +208,18 @@ impl Window {
         }
     }
 
+    pub fn close_genomic_region_manager(&mut self) -> bool {
+        match self {
+            Self::Dna(window) => window.close_genomic_region_manager(),
+        }
+    }
+
+    pub fn genomic_region_manager_is_open(&self) -> bool {
+        match self {
+            Self::Dna(window) => window.genomic_region_manager_is_open(),
+        }
+    }
+
     pub fn feature_location_editor_is_open(&self) -> bool {
         match self {
             Self::Dna(window) => window.feature_location_editor_is_open(),

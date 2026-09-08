@@ -38,6 +38,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct",
             "mcp-op"
          ],
@@ -53,6 +54,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct",
             "mcp-op"
          ],
@@ -68,6 +70,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct",
             "mcp-op"
          ],
@@ -98,6 +101,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct",
             "mcp-op"
          ],
@@ -128,6 +132,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct",
             "mcp-op"
          ],
@@ -143,6 +148,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct",
             "mcp-op"
          ],

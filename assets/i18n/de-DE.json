@@ -213,6 +213,7 @@
   "menu.services": "Dienste",
   "menu.genome.prepare_reference": "Referenzgenom vorbereiten...",
   "menu.genome.gene_set_inspector": "Genset-Inspektor...",
+  "menu.genome.saved_genomic_regions": "Gespeicherte genomische Regionen...",
   "menu.genome.prepared_references": "Vorbereitete Referenzen...",
   "menu.genome.clear_caches": "Zwischenspeicher leeren...",
   "menu.genome.retrieve_genomic": "Genomsequenz abrufen...",
