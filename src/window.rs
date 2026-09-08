@@ -84,6 +84,19 @@ impl Window {
         }
     }
 
+    pub(crate) fn focus_tata_boxes(&mut self) {
+        match self {
+            Self::Dna(window) => window.focus_tata_boxes(),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn tata_workspace_open_or_pending(&self) -> bool {
+        match self {
+            Self::Dna(window) => window.tata_workspace_open_or_pending(),
+        }
+    }
+
     pub fn focus_primer_design_report(&mut self, report_id: &str) {
         match self {
             Self::Dna(window) => window.focus_primer_design_report(report_id),

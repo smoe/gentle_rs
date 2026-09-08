@@ -1317,6 +1317,8 @@ mod read_acquisition;
 mod region_homology;
 #[path = "engine/analysis/regulatory_fragment_panel.rs"]
 mod regulatory_fragment_panel;
+#[path = "engine/analysis/tata_boxes.rs"]
+mod tata_boxes;
 pub(crate) use region_homology::validate_genomic_region_homology_report;
 #[path = "engine/analysis/regulatory_partners.rs"]
 mod regulatory_partners;
@@ -4439,6 +4441,14 @@ pub enum Operation {
         request: gentle_protocol::PromoterModuleAssessmentRequest,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
+    },
+    ScreenTataBoxes {
+        request: gentle_protocol::tata_boxes::TataBoxScreenRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    MaterializeTataBoxFeatures {
+        request: gentle_protocol::tata_boxes::TataBoxMaterializeRequest,
     },
     BuildRepeatEnvironmentCohort {
         genome_id: String,
@@ -9818,6 +9828,7 @@ impl GentleEngine {
                 | Operation::RenderTfbsScoreTrackCorrelationSvg { .. }
                 | Operation::RenderFeatureExpertSvg { .. }
                 | Operation::InspectCrypticSplicingScreen { .. }
+                | Operation::ScreenTataBoxes { .. }
                 | Operation::RenderCrypticSplicingScreenSvg { .. }
                 | Operation::InspectCrypticSplicingEvidenceOverlay { .. }
                 | Operation::InspectCrypticSplicingProteinProjection { .. }

@@ -2357,6 +2357,22 @@
       },
       {
          "aliases": [],
+         "engine_operations": ["ScreenTataBoxes"],
+         "interfaces": ["cli-shell", "gui-shell", "gui-menu", "cli-direct", "mcp-op"],
+         "path": "promoters tata-screen",
+         "summary": "Inspect source TATA annotations, optional EPD promoter classifications and TSS-aware exact-version TBP predictions without modifying the sequence.",
+         "usage": "promoters tata-screen REQUEST_JSON_OR_@FILE [--output REPORT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["MaterializeTataBoxFeatures"],
+         "interfaces": ["cli-shell", "gui-shell", "gui-menu", "cli-direct", "mcp-op"],
+         "path": "promoters tata-materialize",
+         "summary": "Explicitly add selected TATA evidence to the DNA map after verifying the exact reviewed report digest; EPD rows are TSS classification markers.",
+         "usage": "promoters tata-materialize REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
          "engine_operations": [
             "ListReporterCatalog"
          ],

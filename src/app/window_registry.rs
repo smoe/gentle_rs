@@ -16,6 +16,18 @@ pub struct GuiProminentGlossaryEntry {
 
 const GUI_PROMINENT_GLOSSARY_ENTRIES: &[GuiProminentGlossaryEntry] = &[
     GuiProminentGlossaryEntry {
+        glossary_path: "promoters tata-screen",
+        menu_path: "DNA Sequence Viewer > TFBS scan > TATA-box evidence",
+        palette_title: "TATA-box Evidence",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "promoters tata-materialize",
+        menu_path: "TATA-box evidence > Add selected to DNA map",
+        palette_title: "TATA-box Evidence",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
         glossary_path: "load-project",
         menu_path: "File > Open Project...",
         palette_title: "Open Project",

@@ -24,6 +24,7 @@ pub mod orthologs;
 pub mod region_homology;
 pub mod regulatory_partners;
 pub mod reporter;
+pub mod tata_boxes;
 
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Value, json};
@@ -5420,6 +5421,8 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "RenderFeatureExpertSvg",
     "PrepareGeneLocusEvidence",
     "InspectCrypticSplicingScreen",
+    "ScreenTataBoxes",
+    "MaterializeTataBoxFeatures",
     "RenderCrypticSplicingScreenSvg",
     "InspectCrypticSplicingEvidenceOverlay",
     "InspectCrypticSplicingProteinProjection",

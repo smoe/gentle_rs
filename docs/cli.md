@@ -1,5 +1,12 @@
 # GENtle CLI Manual
 
+TATA-box evidence is available through
+`promoters tata-screen REQUEST_JSON_OR_@FILE [--output REPORT.json]` and the
+separate, digest-gated `promoters tata-materialize REQUEST_JSON_OR_@FILE`.
+See [TATA-box evidence](tata_box_evidence.md) for the three evidence sources,
+EPD input files and exact request examples. These routes also work through
+the shared Shell, MCP `op`, and normal operation/workflow adapters.
+
 ## Multi-gene publication bundle
 
 `gentle_publication_report REQUEST.json OUTPUT_DIR [--pdf]` resolves one

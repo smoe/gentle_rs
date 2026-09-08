@@ -1,5 +1,14 @@
 # GENtle Changelog
 
+- Added a three-source TATA-box screen and DNA-viewer evidence workspace:
+  source `regulatory_class=TATA_box`/legacy `TATA_signal` annotations, optional
+  EPDnew BED8 + motif-table classifications, and strand-aware full-PFM TBP
+  predictions. Exact model/input hashes, missing evidence, transcript TSS
+  context, and EPD's promoter-level (not exact-site) meaning remain separate.
+  Inspection is read-only and runs off the GUI thread; adding selected rows
+  to the DNA map is explicit, digest-gated and undoable. CLI/shared shell,
+  MCP `op`, workflows and language adapters use the same operations.
+
 - Refreshed the built-in JASPAR 2026 catalog with all 2,633 exact full PFMs and
   pinned upstream provenance. Compact snapshots now supplement by exact
   versioned ID only; older matrices can no longer masquerade as newer IDs via

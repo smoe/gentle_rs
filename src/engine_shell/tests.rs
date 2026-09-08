@@ -181,6 +181,52 @@ fn genomic_region_homology_routes_parse_typed_read_only_operations() {
 }
 
 #[test]
+fn tata_shell_routes_share_engine_results_and_require_reviewed_selection() {
+    let _lock = crate::tf_motifs::test_registry_lock().lock().unwrap();
+    let mut engine = GentleEngine::new();
+    // Synthetic sequence, deterministic recreation in this test only.
+    engine.state_mut().sequences.insert(
+        "toy".into(),
+        DNAsequence::from_sequence("CCCCTATAAAACCCC").unwrap(),
+    );
+    let mut engine = GentleEngine::from_state(engine.snapshot().clone());
+    let req = gentle_protocol::tata_boxes::TataBoxScreenRequest {
+        seq_id: "toy".into(),
+        scan_without_tss: true,
+        ..Default::default()
+    };
+    let expected = engine.screen_tata_boxes(&req).unwrap();
+    let command = parse_shell_line(&format!(
+        "promoters tata-screen '{}'",
+        serde_json::to_string(&req).unwrap()
+    ))
+    .unwrap();
+    let output = execute_shell_command(&mut engine, &command).unwrap();
+    assert!(!output.state_changed);
+    assert_eq!(
+        output.output["result"]["tata_box_screen"],
+        serde_json::to_value(&expected).unwrap()
+    );
+    let selection = gentle_protocol::tata_boxes::TataBoxMaterializeRequest {
+        screen: req,
+        expected_report_sha256: expected.content_sha256,
+        row_ids: vec![expected.rows[0].row_id.clone()],
+    };
+    let command = parse_shell_line(&format!(
+        "promoters tata-materialize '{}'",
+        serde_json::to_string(&selection).unwrap()
+    ))
+    .unwrap();
+    assert!(
+        execute_shell_command(&mut engine, &command)
+            .unwrap()
+            .state_changed
+    );
+    assert!(parse_shell_line("promoters tata-screen '{}' --unknown x").is_err());
+    assert!(parse_shell_line("promoters tata-materialize '{}'").is_err());
+}
+
+#[test]
 fn genomic_region_capabilities_are_fact_annotated_and_exports_require_confirmation() {
     let mut engine = GentleEngine::default();
     let capabilities = execute_shell_command(
@@ -830,6 +876,9 @@ fn command_tokens_from_glossary_usage(path: &str, usage: &str) -> Vec<String> {
 
 fn smoke_command_override(path: &str) -> Option<&'static str> {
     match path {
+        "promoters tata-materialize" => Some(
+            r#"promoters tata-materialize '{"screen":{"seq_id":"demo"},"expected_report_sha256":"sha256:parser-only","row_ids":["synthetic"]}'"#,
+        ),
         "screenshot-window" => Some("screenshot-window out.png"),
         "cache clear" => Some("cache clear all-prepared-in-cache"),
         "transcripts derive" => Some("transcripts derive seq --feature-id 1"),

@@ -1420,6 +1420,8 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
             "splicing cryptic-protein",
             "promoters compose-study",
             "promoters assess-conserved-modules",
+            "promoters tata-screen",
+            "promoters tata-materialize",
             "promoters compare-architectures",
             "promoters regulatory-panel-plan",
             "promoters regulatory-panel-render",
@@ -5122,6 +5124,60 @@ mod tests {
                 .is_some_and(|code| !code.is_empty()),
             "typed engine error must survive the MCP boundary: {failed:#}"
         );
+    }
+
+    #[test]
+    fn tata_mcp_routes_preserve_report_and_confirmation_gate() {
+        let _lock = crate::tf_motifs::test_registry_lock().lock().unwrap();
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("tata.json");
+        let mut state = ProjectState::default();
+        // Synthetic DNA, no imported biological sequence.
+        state.sequences.insert(
+            "toy".into(),
+            DNAsequence::from_sequence("CCCCTATAAAACCCC").unwrap(),
+        );
+        state.save_to_path(&path.to_string_lossy()).unwrap();
+        let request = gentle_protocol::tata_boxes::TataBoxScreenRequest {
+            seq_id: "toy".into(),
+            scan_without_tss: true,
+            ..Default::default()
+        };
+        let output = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({"confirm":true,"state_path":path,"operation":Operation::ScreenTataBoxes {request:request.clone(), path:None}}),
+        );
+        assert_eq!(output["result"]["isError"], false, "{output}");
+        let report: gentle_protocol::tata_boxes::TataBoxScreenReport = serde_json::from_value(
+            output["result"]["structuredContent"]["result"]["tata_box_screen"].clone(),
+        )
+        .unwrap();
+        assert_eq!(
+            report.schema,
+            gentle_protocol::tata_boxes::TATA_BOX_SCREEN_SCHEMA
+        );
+        let before = std::fs::read(&path).unwrap();
+        let operation = Operation::MaterializeTataBoxFeatures {
+            request: gentle_protocol::tata_boxes::TataBoxMaterializeRequest {
+                screen: request,
+                expected_report_sha256: report.content_sha256,
+                row_ids: vec![report.rows[0].row_id.clone()],
+            },
+        };
+        let denied = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({"state_path":path,"operation":operation}),
+        );
+        assert_eq!(denied["result"]["isError"], true);
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        let added = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({"confirm":true,"state_path":path,"operation":operation}),
+        );
+        assert_eq!(added["result"]["isError"], false, "{added}");
     }
 
     #[test]
