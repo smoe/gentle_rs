@@ -182,7 +182,10 @@ fn genomic_region_homology_routes_parse_typed_read_only_operations() {
 
 #[test]
 fn tata_shell_routes_share_engine_results_and_require_reviewed_selection() {
-    let _lock = crate::tf_motifs::test_registry_lock().lock().unwrap();
+    let _lock = crate::tf_motifs::test_registry_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    crate::tf_motifs::reload_builtin_for_test();
     let mut engine = GentleEngine::new();
     // Synthetic sequence, deterministic recreation in this test only.
     engine.state_mut().sequences.insert(

@@ -13,8 +13,12 @@ credential, or network-derived payload. The names `LOCUSDEMO`,
   plus-strand locus. It has two versioned protein-coding transcripts with
   distinct 5' starts and distinct annotated translation starts. Its sequence
   begins with 170 `A` bases, the 26 bp motif island
-  `GACATGTCTGGACATGTGGGGCGGGG`, and 104 `A` bases. The island contains a
-  near-maximal TP73 site and a maximal SP1 site overlapping by one base. The
+  `GACATGTCTGGACATGGGGGCGGGGA`, and 104 `A` bases. The island contains a
+  TP73 MA0861.2 site at [171,187) and a maximal SP1 MA0079.5 site at [186,195),
+  overlapping by one base (zero-based, half-open). The SP1 site was shifted one
+  base left for the exact 16 bp JASPAR 2026 TP73 matrix; this changes the TP73
+  window's last base from its consensus T to G. The old 18 bp TP73 fallback
+  extended into SP1, but the corrected matrix would otherwise only abut it. The
   remainder is `ATG`, 48 `A` bases, `ATG`, 543 `A` bases, `TAA`, and 300 `A`
   bases.
 - `tp73_occupancy.bed` is synthetic locus-level TP73 occupancy evidence.
@@ -39,7 +43,7 @@ credential, or network-derived payload. The names `LOCUSDEMO`,
 1. Recreate the sequence with the segments listed above and verify a length of
    1200 bp.
 2. Verify its digest is
-   `sha256:4813bc39b42785cf6731d92c07fc65bc60e646248d323d22f4525c9a599b2e64`.
+   `sha256:feb83893c3b4d9b43bdf277b059455ad89d21e7d35fb43311664ffedcd0eafe0`.
 3. Canonicalize the external score payload as the JSON object containing only
    `track_start_0based`, `forward_scores`, `reverse_scores`, and `sites`, using
    GENtle's serializer. Its declared score-payload digest is

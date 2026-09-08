@@ -444,7 +444,10 @@ mod tests {
 
     #[test]
     fn tata_gui_worker_is_read_only_and_uses_typed_request() {
-        let _lock = crate::tf_motifs::test_registry_lock().lock().unwrap();
+        let _lock = crate::tf_motifs::test_registry_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        crate::tf_motifs::reload_builtin_for_test();
         // Hand-crafted motif-bearing DNA; no experimental sequence.
         let dna = DNAsequence::from_sequence("CCCCTATAAAACCCC").unwrap();
         let mut state = ProjectState::default();
@@ -500,7 +503,10 @@ mod tests {
 
     #[test]
     fn tata_gui_refuses_late_results_after_sequence_change() {
-        let _lock = crate::tf_motifs::test_registry_lock().lock().unwrap();
+        let _lock = crate::tf_motifs::test_registry_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        crate::tf_motifs::reload_builtin_for_test();
         let dna = DNAsequence::from_sequence("CCCCTATAAAACCCC").unwrap();
         let mut state = ProjectState::default();
         state.sequences.insert("toy".into(), dna.clone());

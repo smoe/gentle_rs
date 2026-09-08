@@ -2,6 +2,22 @@
 
 ## 2026-09-08 - `v0.1.0-internal.11` candidate preparation
 
+- Adjusted the synthetic general-locus motif island and its sequence-hash binding
+  so the exact 16 bp TP73 matrix still exercises a one-base overlap with SP1.
+  The regression retains overlap and coordinate checks. The affected locus/TATA
+  tests now restore bundled matrices under the shared lock and recover the test
+  serialization guard after a prior panic, without masking the original failure.
+  Updated only the stale `.10` package/audit labels in the three retained PATZ1
+  assay reports to `.11` and refreshed checksums; primer sequences, scores and
+  verdicts are unchanged. A cheap report-version regression catches future release
+  drift. Current-revision builds and runtime tests remain for Glen/CI.
+- Refreshed the PATZ1 locus-evidence SVG and synthetic TP73 promoter score-track
+  SVG/similarity table after the exact JASPAR 2026 PFM correction, including their
+  tutorial checksums. The focused PATZ1 workflow regression now also compares
+  its output with the retained snapshot; full tutorial drift checks remain strict.
+  Artifacts were regenerated offline with the existing binary, unchanged scoring
+  and rendering code, and the current full-matrix runtime catalog. Current-revision
+  builds and tests remain delegated to Glen/CI rather than claimed from that run.
 - Made the conservation tutorial's BLAST runtime check optional when native
   tools are missing, without installing tools or treating a skip as acceptance.
   Installed-tool failures remain errors, and all tutorial drift checks remain

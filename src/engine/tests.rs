@@ -24810,7 +24810,10 @@ fn test_ensembl_gene_import_marks_inconsistent_sequence_span_unverified() {
 
 #[test]
 fn prepare_gene_locus_evidence_runs_fully_offline_with_normalized_score_sources() {
-    let _guard = jaspar_test_lock().lock().unwrap();
+    let _guard = jaspar_test_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    crate::tf_motifs::reload_builtin_for_test();
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let fixture = root.join("test_files/fixtures/gene_locus_evidence/general_locus_demo");
     let mut request: GeneLocusEvidencePreparationRequest = serde_json::from_slice(
@@ -25161,6 +25164,16 @@ fn prepare_gene_locus_evidence_runs_fully_offline_with_normalized_score_sources(
         .find(|track| track.track_id == "sp1_jaspar")
         .expect("SP1 JASPAR track")
         .sites;
+    assert!(
+        tp73_sites.iter().any(|site| {
+            site.local_start_0based == 171 && site.local_end_0based_exclusive == 187
+        })
+    );
+    assert!(
+        sp1_sites.iter().any(|site| {
+            site.local_start_0based == 186 && site.local_end_0based_exclusive == 195
+        })
+    );
     assert!(tp73_sites.iter().any(|tp73| {
         sp1_sites.iter().any(|sp1| {
             tp73.local_start_0based < sp1.local_end_0based_exclusive

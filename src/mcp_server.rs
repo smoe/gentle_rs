@@ -5128,7 +5128,10 @@ mod tests {
 
     #[test]
     fn tata_mcp_routes_preserve_report_and_confirmation_gate() {
-        let _lock = crate::tf_motifs::test_registry_lock().lock().unwrap();
+        let _lock = crate::tf_motifs::test_registry_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        crate::tf_motifs::reload_builtin_for_test();
         let directory = tempdir().unwrap();
         let path = directory.path().join("tata.json");
         let mut state = ProjectState::default();

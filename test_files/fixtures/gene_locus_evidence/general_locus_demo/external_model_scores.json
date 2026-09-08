@@ -11,7 +11,7 @@
     }
   ],
   "input_sequence_id": "general_locus_demo",
-  "input_sequence_sha256": "sha256:4813bc39b42785cf6731d92c07fc65bc60e646248d323d22f4525c9a599b2e64",
+  "input_sequence_sha256": "sha256:feb83893c3b4d9b43bdf277b059455ad89d21e7d35fb43311664ffedcd0eafe0",
   "assembly": "GRCh38",
   "chromosome": "chrSynthetic1",
   "anchor_start_1based": 100001,

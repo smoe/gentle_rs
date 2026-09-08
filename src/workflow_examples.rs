@@ -6803,6 +6803,18 @@ mod tests {
         }
         assert!(svg.contains("31326038") && svg.contains("31325801"));
         assert!(!svg.contains("Probe evidence report targets sequence"));
+        let snapshot_path =
+            "artifacts/patz1_gene_locus_evidence_offline/patz1_gene_locus_evidence.svg";
+        let committed = fs::read(tutorial_output_dir().join(snapshot_path))
+            .expect("read committed PATZ1 locus-evidence SVG");
+        assert!(
+            tutorial_generated_bytes_equal(
+                snapshot_path,
+                &committed,
+                normalize_retained_tutorial_artifact_text(&svg).as_bytes(),
+            ),
+            "PATZ1 tutorial snapshot must match the current bundled motif matrices; regenerate tutorial artifacts after model updates"
+        );
     }
 
     #[test]
@@ -7022,6 +7034,40 @@ mod tests {
             .expect("retained locus figure");
         for id in ["candidate_a_roi", "partner_b_roi", "minimal_promoter_roi"] {
             assert!(locus.contains(id), "saved region {id} is displayed");
+        }
+    }
+
+    #[test]
+    fn retained_patz1_assay_tutorial_versions_match_current_package() {
+        let directory =
+            tutorial_output_dir().join("artifacts/patz1_transcript_assay_panels_cli/artifacts");
+        for filename in [
+            "patz1_endpoint_end_matrix.report.json",
+            "patz1_sybr_juc_panel.report.json",
+            "patz1_routine_common_region_screen.report.json",
+        ] {
+            let report: TranscriptAssayPanelReport = serde_json::from_slice(
+                &fs::read(directory.join(filename)).expect("read retained PATZ1 assay report"),
+            )
+            .expect("parse retained PATZ1 assay report");
+            assert!(!report.selected_assays.is_empty(), "{filename}");
+            for assay in report
+                .selected_assays
+                .iter()
+                .chain(&report.short_sybr_junction_assays)
+            {
+                let summary = &assay.primer_pair_summary;
+                assert_eq!(
+                    summary.provenance.gentle_version,
+                    env!("CARGO_PKG_VERSION"),
+                    "stale package provenance in {filename}"
+                );
+                assert_eq!(
+                    summary.selection_audit_generator_revision,
+                    env!("CARGO_PKG_VERSION"),
+                    "stale normalized selection-audit revision in {filename}"
+                );
+            }
         }
     }
 
