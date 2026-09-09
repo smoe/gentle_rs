@@ -366,7 +366,7 @@ wet-lab conclusions or unconfirmed mutations.
   and one provenance-bound review bundle.
 - GuideRNA off-target ranking and macro-template packaging.
 - Cross-tool parity synthesis for Serial Cloner, MacVector, and SnapGene.
-- Post-release hardening backlog that is not tied to the next release scope.
+- `.11` measured gels: [finish the image editor, reviewed peak detection and real-image/performance acceptance](gel_image_analysis.md#remaining-work); excluded from `.10`.
 - Weekly/monthly maintenance chore automation rollout from
   [`maintenance_chore_plan.md`](maintenance_chore_plan.md).
 - Browser/WebAssembly frontend portability after core/headless contracts settle.

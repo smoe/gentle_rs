@@ -2,6 +2,17 @@
 
 This page documents the current graphical interface of GENtle.
 
+### Measured Gel Images (`.11` Development)
+
+The first measured-image sizing slice is accessible from the existing GUI Shell
+through `gel-image import`, `gel-image analyze`, `gel-image inspect` and
+`gel-image export`. See [the request guide](gel_image_analysis.md).
+This is not yet a point-and-click lane/band editor. Existing virtual gel previews
+remain simulations, not imported-image measurements. The dedicated image
+workspace, reviewed peak suggestions and its graphical acceptance are pending;
+none of this development is a `.10` release requirement.
+
+
 ## What To Trust Today
 
 If you are opening GENtle as a biologist rather than as a contributor, use

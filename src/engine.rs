@@ -1276,6 +1276,8 @@ mod external_primer_pairs;
 mod feature_coordinate_formulas;
 #[path = "engine/analysis/feature_expert_ops.rs"]
 mod feature_expert_ops;
+#[path = "engine/io/gel_images.rs"]
+mod gel_images;
 #[path = "engine/analysis/gene_sets.rs"]
 mod gene_sets;
 #[path = "engine/io/genome_tracks.rs"]
@@ -1873,6 +1875,11 @@ pub struct ProjectState {
     pub parameters: EngineParameters,
     #[serde(default)]
     pub container_state: ContainerState,
+    #[serde(
+        default,
+        skip_serializing_if = "gentle_protocol::gel_image::GelImageStore::is_empty"
+    )]
+    pub gel_images: gentle_protocol::gel_image::GelImageStore,
 }
 
 #[derive(Debug)]
@@ -3223,6 +3230,18 @@ impl BlastRunOptions {
 /// rely on `GentleEngine::apply` for execution. This preserves one deterministic
 /// behavior surface and avoids adapter-specific biology logic branches.
 pub enum Operation {
+    ImportGelImage {
+        request: gentle_protocol::gel_image::GelImageImportRequest,
+    },
+    AnalyzeGelImage {
+        request: Box<gentle_protocol::gel_image::GelImageAnalysisRequest>,
+    },
+    InspectGelImageAnalysis {
+        report_id: String,
+    },
+    ExportGelImageAnalysis {
+        request: gentle_protocol::gel_image::GelImageExportRequest,
+    },
     LoadFile {
         path: String,
         as_id: Option<SeqId>,
@@ -9820,6 +9839,8 @@ impl GentleEngine {
         if matches!(
             op,
             Operation::SaveFile { .. }
+                | Operation::InspectGelImageAnalysis { .. }
+                | Operation::ExportGelImageAnalysis { .. }
                 | Operation::PreviewFeatureLocationEdit { .. }
                 | Operation::PreviewFeatureRecordCuration { .. }
                 | Operation::RenderSequenceSvg { .. }

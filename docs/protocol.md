@@ -1,5 +1,29 @@
 # GENtle Engine Protocol (Draft v1)
 
+## Measured Gel Images (`.11` Development)
+
+- `ImportGelImage { request: { image_id, path, tiff_page? } }` stores original
+  image bytes plus a bounded display-only preview and returns `gel_image`.
+- `AnalyzeGelImage { request: GelImageAnalysisRequest }` stores a new immutable
+  `gentle.gel_image_analysis.v1` report and returns `gel_image_analysis`.
+- `InspectGelImageAnalysis { report_id }` returns the saved report without
+  decoding or mutating image data.
+- `ExportGelImageAnalysis { request: { report_id, path, format } }` revalidates
+  the saved evidence and writes JSON, TSV or SVG with no overwrite. It is
+  filesystem-writing but not an undoable project mutation.
+
+Types live in `gentle_protocol::gel_image`; projects retain a default-empty
+`gel_images` store. Coordinates are original decoded pixel centers, zero-based
+with x right and y down, never transformed silently by EXIF/display settings.
+Both manual coordinates and results are bound to the original image SHA-256.
+The only current method is `piecewise_log10_size_v1`, interpolating positive
+sizes between confirmed reference bands that decrease along the declared
+migration direction. Units are selected by `linear_dna_bp|sds_protein_kda`.
+Out-of-range rows have a typed status and null size, not an extrapolated value.
+Optional localization bounds are not statistical or total-calibration intervals.
+See [the full contract and request example](gel_image_analysis.md).
+
+
 ## TATA-Box Evidence
 
 `ScreenTataBoxes { request, path? }` produces the non-persisted

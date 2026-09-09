@@ -9454,6 +9454,32 @@ fn can_close_project_is_disabled_for_empty_untitled_project() {
 }
 
 #[test]
+fn gel_image_only_project_is_user_content_and_protected_as_unsaved() {
+    // Synthetic 2x2 PNG generated in memory; exercises persistence/UI state, not band sizing.
+    let temp = tempdir().unwrap();
+    let path = temp.path().join("gel.png");
+    image::GrayImage::new(2, 2).save(&path).unwrap();
+    let mut app = GENtleApp::default();
+    app.mark_clean_snapshot();
+    app.engine
+        .write()
+        .unwrap()
+        .apply(Operation::ImportGelImage {
+            request: gentle_protocol::gel_image::GelImageImportRequest {
+                image_id: "gel".into(),
+                path: path.to_string_lossy().into(),
+                tiff_page: None,
+            },
+        })
+        .unwrap();
+    assert!(app.project_has_user_content());
+    assert!(app.can_close_project());
+    assert!(app.is_project_dirty());
+    app.engine.write().unwrap().undo_last_operation().unwrap();
+    assert!(!app.project_has_user_content());
+}
+
+#[test]
 fn can_close_project_is_enabled_when_project_path_is_set() {
     let mut app = GENtleApp::default();
     app.current_project_path = Some("/tmp/demo.gentle.json".to_string());
@@ -13585,6 +13611,8 @@ fn poll_prepare_success_after_cancel_request_reports_completion_prefix() {
             promoter_module_assessment: None,
             feature_location_edit_report: None,
             feature_record_curation_report: None,
+            gel_image: None,
+            gel_image_analysis: None,
         }),
     })
     .expect("send prepare done");
@@ -13851,6 +13879,8 @@ fn poll_track_import_refreshes_only_changed_sequence_windows() {
             promoter_module_assessment: None,
             feature_location_edit_report: None,
             feature_record_curation_report: None,
+            gel_image: None,
+            gel_image_analysis: None,
         })),
     })
     .expect("send track import done");
@@ -14007,6 +14037,8 @@ fn poll_track_import_refreshes_all_open_windows_when_changed_ids_missing() {
             promoter_module_assessment: None,
             feature_location_edit_report: None,
             feature_record_curation_report: None,
+            gel_image: None,
+            gel_image_analysis: None,
         })),
     })
     .expect("send track import done");
@@ -14400,6 +14432,8 @@ fn format_extract_region_status_includes_annotation_fallback_reason() {
         promoter_module_assessment: None,
         feature_location_edit_report: None,
         feature_record_curation_report: None,
+        gel_image: None,
+        gel_image_analysis: None,
     });
     assert!(status.contains("annotation: requested=full effective=core"));
     assert!(status.contains("annotation kinds: genes=12 transcripts=26 exons=420 cds=22"));

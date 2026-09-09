@@ -5355,6 +5355,10 @@ pub struct Workflow {
 /// `created_seq_ids` and `changed_seq_ids` are the stable adapter-facing hint
 /// for which sequence windows/views may need refresh after an operation.
 pub struct OpResult {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gel_image: Option<gentle_protocol::gel_image::GelImageDescriptor>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gel_image_analysis: Option<Box<gentle_protocol::gel_image::GelImageAnalysisReport>>,
     pub op_id: OpId,
     pub created_seq_ids: Vec<SeqId>,
     pub changed_seq_ids: Vec<SeqId>,

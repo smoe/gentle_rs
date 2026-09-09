@@ -14,6 +14,8 @@ pub mod encode_ccre;
 pub mod ensembl_regulation;
 pub mod feature_location_edit;
 pub mod feature_record_curation;
+/// Portable measured-gel images, manual calibration requests, and sizing reports.
+pub mod gel_image;
 pub mod gene_groups;
 pub mod gene_set_publication;
 pub mod gene_sets;
@@ -5433,6 +5435,10 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "RenderRnaStructureSvg",
     "RenderLineageSvg",
     "RenderPoolGelSvg",
+    "ImportGelImage",
+    "AnalyzeGelImage",
+    "InspectGelImageAnalysis",
+    "ExportGelImageAnalysis",
     "RenderProteinGelSvg",
     "RenderProteinGelReportsSvg",
     "RenderProteaseDigestGelSvg",

@@ -40098,9 +40098,19 @@ impl GentleEngine {
             lab_assistant_instructions: None,
             feature_location_edit_report: None,
             feature_record_curation_report: None,
+            gel_image: None,
+            gel_image_analysis: None,
         };
 
         if matches!(
+            &op,
+            Operation::ImportGelImage { .. }
+                | Operation::AnalyzeGelImage { .. }
+                | Operation::InspectGelImageAnalysis { .. }
+                | Operation::ExportGelImageAnalysis { .. }
+        ) {
+            self.apply_gel_image_operation(op, &mut result)?;
+        } else if matches!(
             &op,
             Operation::CreateGenomicRegion { .. }
                 | Operation::CaptureGenomicRegion { .. }
@@ -40170,6 +40180,12 @@ impl GentleEngine {
             self.apply_arrangement_rack_and_ladder_operation(op, &mut result)?;
         } else {
             match op {
+                Operation::ImportGelImage { .. }
+                | Operation::AnalyzeGelImage { .. }
+                | Operation::InspectGelImageAnalysis { .. }
+                | Operation::ExportGelImageAnalysis { .. } => {
+                    unreachable!("gel-image operations are handled above")
+                }
                 Operation::CreateGenomicRegion { .. }
                 | Operation::CaptureGenomicRegion { .. }
                 | Operation::ListGenomicRegions { .. }

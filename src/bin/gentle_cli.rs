@@ -530,6 +530,7 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "gene-groups",
     "gene-sets",
     "gene-locus",
+    "gel-image",
     "promoters",
     "collections",
     "planning",

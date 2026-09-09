@@ -999,3 +999,18 @@ Paired-context conservation requires an actual shared ortholog locus with
 strand-consistent block order and measured query/target gaps within the stated
 bounds and gap-difference tolerance. Reuse the alignment's winning-HSP
 projection for those coordinates; query proximity alone is insufficient.
+
+## Measured-Gel Evidence Invariants
+
+Status: active
+
+Measured-image sizing and virtual gel simulation are distinct evidence paths.
+Original image bytes remain unchanged and content-bound; display previews and
+future contrast/geometry transforms never redefine original measurement pixels
+silently. Confirmed band assignments and calibration settings belong to the
+engine report, not a GUI session. DNA fragment length (bp), apparent protein
+mass (kDa), and eventual intensity/abundance measurements are different quantities.
+Reference/sample geometry uses one explicit image coordinate system and
+migration direction. Missing reference bands, absent registration, and values
+outside calibration must not become guessed measurements. A size match is not
+proof of molecular identity, specificity, concentration or biological function.

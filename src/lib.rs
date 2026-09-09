@@ -77,6 +77,8 @@ pub mod feature_location;
 pub mod feature_record_curation;
 /// GC-content computations and display helpers.
 pub mod gc_contents;
+/// Local measured-gel image import and deterministic manual band sizing.
+pub mod gel_image;
 /// Catalog-extensible gene-group knowledge records and validation helpers.
 pub mod gene_groups;
 /// Manifest-driven HTML and print publication bundles for reusable gene sets.

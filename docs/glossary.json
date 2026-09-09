@@ -1,6 +1,38 @@
 {
    "commands": [
       {
+         "aliases": [],
+         "engine_operations": ["ImportGelImage"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "gel-image import",
+         "summary": "Import a measured PNG/JPEG/TIFF gel image, preserving original bytes and pixel-coordinate provenance.",
+         "usage": "gel-image import REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["AnalyzeGelImage"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "gel-image analyze",
+         "summary": "Size manually confirmed sample bands against a confirmed adjacent ladder in bp or apparent kDa, without extrapolation.",
+         "usage": "gel-image analyze REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["InspectGelImageAnalysis"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "gel-image inspect",
+         "summary": "Inspect a saved measured-gel calibration and band-size report.",
+         "usage": "gel-image inspect REPORT_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["ExportGelImageAnalysis"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "gel-image export",
+         "summary": "Export a validated measured-gel report as JSON, TSV or annotated SVG without overwriting an existing file.",
+         "usage": "gel-image export REQUEST_JSON_OR_@FILE"
+      },
+      {
          "aliases": [
             "-h",
             "--help"

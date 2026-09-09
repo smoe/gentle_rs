@@ -1379,6 +1379,10 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
         "op" => &[
             "op",
             "gene-locus prepare",
+            "gel-image import",
+            "gel-image analyze",
+            "gel-image inspect",
+            "gel-image export",
             "regions create",
             "regions capture",
             "regions list",
@@ -4866,6 +4870,41 @@ mod tests {
             .and_then(Value::as_str)
             .unwrap_or_default();
         assert!(text.contains("confirm=true"));
+    }
+
+    #[test]
+    fn gel_image_mcp_import_requires_consent_and_preserves_original() {
+        // Synthetic in-memory 4x4 image; no private photograph or network access.
+        let temp = tempdir().unwrap();
+        let image_path = temp.path().join("gel.png");
+        let state_path = temp.path().join("gel-project.json");
+        image::GrayImage::new(4, 4).save(&image_path).unwrap();
+        let mut request = json!({
+            "jsonrpc":"2.0", "id":1, "method":"tools/call",
+            "params": {"name":"op", "arguments": {
+                "state_path":state_path.to_string_lossy(),
+                "operation":{"ImportGelImage":{"request":{
+                    "image_id":"gel", "path":image_path.to_string_lossy()
+                }}}
+            }}
+        });
+        let denied = run_single(DEFAULT_MCP_STATE_PATH, request.clone());
+        assert_eq!(
+            denied.pointer("/result/isError").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert!(!state_path.exists());
+        request["params"]["arguments"]["confirm"] = true.into();
+        let allowed = run_single(DEFAULT_MCP_STATE_PATH, request);
+        assert_ne!(
+            allowed.pointer("/result/isError").and_then(Value::as_bool),
+            Some(true)
+        );
+        let persisted = ProjectState::load_from_path(state_path.to_str().unwrap()).unwrap();
+        crate::gel_image::validate_gel_image_record(&persisted.gel_images.images["gel"]).unwrap();
+        for action in ["import", "analyze", "inspect", "export"] {
+            assert!(tool_command_paths("op").contains(&format!("gel-image {action}").as_str()));
+        }
     }
 
     #[test]

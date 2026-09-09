@@ -14636,6 +14636,8 @@ impl GentleEngine {
             promoter_module_assessment: None,
             feature_location_edit_report: None,
             feature_record_curation_report: None,
+            gel_image: None,
+            gel_image_analysis: None,
         };
         report.op_id = Some(result.op_id.clone());
         report.run_id = Some(run_id.clone());
@@ -14793,6 +14795,8 @@ impl GentleEngine {
             promoter_module_assessment: None,
             feature_location_edit_report: None,
             feature_record_curation_report: None,
+            gel_image: None,
+            gel_image_analysis: None,
         };
         report.op_id = Some(result.op_id.clone());
         report.run_id = Some(run_id.clone());

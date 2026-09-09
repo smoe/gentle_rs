@@ -7184,6 +7184,7 @@ Error: `{err}`"
         let engine = self.engine.read().unwrap();
         let state = engine.state();
         !state.sequences.is_empty()
+            || !state.gel_images.is_empty()
             || !state.lineage.nodes.is_empty()
             || !state.container_state.containers.is_empty()
             || !state.container_state.arrangements.is_empty()
@@ -12318,6 +12319,8 @@ Error: `{err}`"
                 promoter_module_assessment: None,
                 feature_location_edit_report: None,
                 feature_record_curation_report: None,
+                gel_image: None,
+                gel_image_analysis: None,
             });
             let _ = tx.send(GenomePrepareTaskMessage::Done {
                 job_id,

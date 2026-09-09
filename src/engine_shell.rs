@@ -16561,6 +16561,43 @@ where
         .map_err(|e| format!("Invalid {context} JSON payload: {e}"))
 }
 
+fn parse_gel_image_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    use gentle_protocol::gel_image::{
+        GelImageAnalysisRequest, GelImageExportRequest, GelImageImportRequest,
+    };
+    let payload = tokens.get(2..).unwrap_or_default().join(" ");
+    let operation = match tokens.get(1).map(String::as_str) {
+        Some("import") => Operation::ImportGelImage {
+            request: parse_required_json_payload::<GelImageImportRequest>(
+                &payload,
+                "gel-image import",
+            )?,
+        },
+        Some("analyze") => Operation::AnalyzeGelImage {
+            request: Box::new(parse_required_json_payload::<GelImageAnalysisRequest>(
+                &payload,
+                "gel-image analysis",
+            )?),
+        },
+        Some("export") => Operation::ExportGelImageAnalysis {
+            request: parse_required_json_payload::<GelImageExportRequest>(
+                &payload,
+                "gel-image export",
+            )?,
+        },
+        Some("inspect") if tokens.len() == 3 => Operation::InspectGelImageAnalysis {
+            report_id: tokens[2].clone(),
+        },
+        _ => return Err(
+            "gel-image requires import|analyze|export REQUEST_JSON_OR_@FILE or inspect REPORT_ID"
+                .into(),
+        ),
+    };
+    Ok(ShellCommand::Op {
+        payload: serde_json::to_string(&operation).map_err(|error| error.to_string())?,
+    })
+}
+
 fn parse_genomic_regions_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
@@ -43814,6 +43851,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         }
         "sequence" | "sequences" => parse_sequence_command(tokens),
         "regions" | "region-sets" => parse_genomic_regions_command(tokens),
+        "gel-image" => parse_gel_image_command(tokens),
         "splicing" => parse_splicing_command(tokens),
         "mirna" | "mirnas" => parse_mirna_command(tokens),
         "screenshot-window" => {
@@ -64453,6 +64491,25 @@ fn execute_op_command(engine: &mut GentleEngine, payload: &str) -> Result<ShellR
     let json_text = parse_json_payload(payload)?;
     let op: Operation =
         serde_json::from_str(&json_text).map_err(|e| format!("Invalid operation JSON: {e}"))?;
+    // Image records can be large; these operations have explicit mutation semantics
+    // and must not serialize the entire project twice just to detect a change.
+    if matches!(
+        &op,
+        Operation::ImportGelImage { .. }
+            | Operation::AnalyzeGelImage { .. }
+            | Operation::InspectGelImageAnalysis { .. }
+            | Operation::ExportGelImageAnalysis { .. }
+    ) {
+        let state_changed = matches!(
+            &op,
+            Operation::ImportGelImage { .. } | Operation::AnalyzeGelImage { .. }
+        );
+        let result = engine.apply(op).map_err(|error| error.to_string())?;
+        return Ok(ShellRunResult {
+            state_changed,
+            output: json!({ "result": result }),
+        });
+    }
     let before_state = serde_json::to_value(engine.snapshot()).ok();
     let op_result = engine.apply(op).map_err(|e| e.to_string())?;
     let state_changed = if let Some(before) = before_state {

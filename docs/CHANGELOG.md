@@ -170,6 +170,25 @@
   virtualized GUI and tutorial coverage repeat that these are structural design
   observations, not promoter activity or reporter sufficiency claims.
 
+## 2026-09-09 - `.11` development: measured-gel sizing foundation
+
+- Added local PNG/JPEG/TIFF-page-zero import with unchanged original bytes,
+  digest-bound pixel coordinates, bounded previews and shared immutable image
+  allocations across undo snapshots. This development is isolated on
+  `codex/gel-image-dev`; `.10` version, release gate and packaging are unchanged.
+- Added manual ladder calibration in log10(bp or apparent kDa), explicit
+  migration direction, localization-only size bounds and out-of-range results
+  without extrapolation. Saved reports are immutable; revised assignments use
+  a new report id and normal engine undo/redo.
+- Shared engine, CLI/GUI Shell and MCP `op` routes import, analyze, inspect and
+  export validated JSON/TSV/SVG evidence. SVGs embed a preview with ladder scale,
+  reference/sample legend and scientific caveats. Exports never overwrite files.
+  The dedicated click-based GUI editor, automatic detection, real-image accuracy
+  review and Glen's responsiveness acceptance are not yet implemented/claimed.
+- Verification: 15 targeted gel-image, save-protection and MCP-consent tests
+  passed; `cargo check --locked --offline`, formatting and whitespace checks
+  passed. This is not a whole-workspace or real-gel acceptance verdict.
+
 ## 2026-09-08 - `v0.1.0-internal.10` candidate preparation
 
 - Integrated Glen's `f93f795c` screenshot contribution after the hardening merge:
