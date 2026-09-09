@@ -10,16 +10,18 @@ import json
 import math
 from pathlib import Path
 import re
+import shutil
+import subprocess
 from typing import Any
 
 try:
     from .render_integrated_tss_regulatory_report import (
-        frequency_segments, load_bound_comparison,
+        comparison_tools, frequency_segments, load_bound_comparison,
     )
     from .render_tp73_cutrun_promoter_comparison import ordered_blocks
 except ImportError:
     from render_integrated_tss_regulatory_report import (
-        frequency_segments, load_bound_comparison,
+        comparison_tools, frequency_segments, load_bound_comparison,
     )
     from render_tp73_cutrun_promoter_comparison import ordered_blocks
 
@@ -39,6 +41,36 @@ def sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def render_derivatives(svg: Path, pdf: Path, png: Path, renderer: str) -> dict[str, Any]:
+    executable = shutil.which(renderer)
+    if executable is None:
+        raise RuntimeError("SVG renderer unavailable; provide --renderer rsvg-convert path")
+    executable = str(Path(executable).resolve())
+    version = subprocess.run(
+        [executable, "--version"], check=True, capture_output=True, timeout=30,
+    )
+    commands = []
+    for output_format, output in (("pdf", pdf), ("png", png)):
+        command = [executable, f"--format={output_format}", f"--output={output}", str(svg)]
+        result = subprocess.run(command, check=True, capture_output=True, timeout=180)
+        if not output.is_file() or output.stat().st_size == 0:
+            raise RuntimeError(f"renderer did not produce {output_format.upper()}")
+        commands.append({
+            "command": command,
+            "stdout_sha256": hashlib.sha256(result.stdout).hexdigest(),
+            "stderr_sha256": hashlib.sha256(result.stderr).hexdigest(),
+        })
+    with png.open("rb") as handle:
+        if handle.read(8) != b"\x89PNG\r\n\x1a\n":
+            raise RuntimeError("renderer output is not a PNG")
+    return {
+        "executable": executable,
+        "executable_sha256": f"sha256:{sha256(Path(executable))}",
+        "version": version.stdout.decode(errors="replace").strip(),
+        "commands": commands,
+    }
 
 
 def blue(identity: float, minimum_identity: float) -> str:
@@ -255,6 +287,9 @@ def main() -> None:
     parser.add_argument("--matches", type=Path, required=True)
     parser.add_argument("--hits", type=Path, required=True)
     parser.add_argument("--output-svg", type=Path, required=True)
+    parser.add_argument("--output-pdf", type=Path, required=True)
+    parser.add_argument("--output-png", type=Path, required=True)
+    parser.add_argument("--renderer", default="rsvg-convert")
     args = parser.parse_args()
 
     candidates, _, regions, matches_by_query, hsps, summaries, thresholds = \
@@ -271,13 +306,41 @@ def main() -> None:
         args.base_svg.read_text(), args.gene, candidates, matches_by_query, hsps,
         summaries, thresholds
     )
-    args.output_svg.parent.mkdir(parents=True, exist_ok=True)
+    for path in (args.output_svg, args.output_pdf, args.output_png):
+        path.parent.mkdir(parents=True, exist_ok=True)
     args.output_svg.write_text(output, encoding="utf-8")
+    renderer = render_derivatives(
+        args.output_svg.resolve(), args.output_pdf.resolve(), args.output_png.resolve(),
+        args.renderer,
+    )
+    receipt_path = args.output_svg.with_suffix(".receipt.json")
+    receipt = {
+        "schema": "gentle.tss_local_similarity_locus_report_receipt.v1",
+        "gene": args.gene,
+        "source_revision": candidates["source_revision"],
+        "counting_policy_id": comparison_tools.COUNTING_POLICY,
+        "inputs": {
+            "base_svg": f"sha256:{sha256(args.base_svg)}",
+            "candidates": f"sha256:{sha256(args.candidates_json)}",
+            "comparison": f"sha256:{sha256(args.comparison)}",
+            "matches": f"sha256:{sha256(args.matches)}",
+            "hits": f"sha256:{sha256(args.hits)}",
+        },
+        "outputs": {
+            args.output_svg.name: f"sha256:{sha256(args.output_svg)}",
+            args.output_pdf.name: f"sha256:{sha256(args.output_pdf)}",
+            args.output_png.name: f"sha256:{sha256(args.output_png)}",
+        },
+        "renderer": renderer,
+    }
+    receipt_path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+                            encoding="utf-8")
     print(json.dumps({
         "output_svg": str(args.output_svg),
         "height": height,
         "base_svg_sha256": f"sha256:{sha256(args.base_svg)}",
         "candidate_sha256": f"sha256:{sha256(args.candidates_json)}",
+        "receipt": str(receipt_path),
     }, indent=2))
 
 

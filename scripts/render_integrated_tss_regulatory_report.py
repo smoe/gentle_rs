@@ -508,6 +508,48 @@ def main() -> None:
         ], delimiter="\t", lineterminator="\n")
         writer.writeheader()
         writer.writerows(top_rows)
+    top_by_feature: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in top_rows:
+        top_by_feature[row["feature_id"]].append(row)
+    interpretation = [
+        "# TSS-local regulatory-feature promoterome comparison",
+        "",
+        (f"Parameters: BLASTN >={thresholds['minimum_bp']:g} bp, "
+         f">={thresholds['minimum_identity']:g}% identity, "
+         f"E<={thresholds['maximum_evalue']:g}; same-locus and same-gene windows excluded."),
+        "",
+        "Counts marked lower bounds reached a configured target or per-target HSP cap. "
+        "No reported hit is not proof of uniqueness.",
+        "",
+        "## Derived observations",
+        "",
+    ]
+    for row in summary_rows:
+        qualifier = "lower bounds" if row["counts_are_lower_bounds"] else "observed"
+        statement = (
+            f"- {row['gene']} {row['feature_id']} ({row['feature_type']}, "
+            f"{row['length_bp']} bp): {qualifier} — {row['other_genes_any']} other genes; "
+            f">=25% / >=50% / >=80% coverage: {row['other_genes_25pct']} / "
+            f"{row['other_genes_50pct']} / {row['other_genes_80pct']}."
+        )
+        best = top_by_feature.get(row["feature_id"], [])
+        if best:
+            first = best[0]
+            statement += (f" Highest ranked observed window: {first['target_promoter_id']} "
+                          f"({first['target_gene_names'] or first['target_gene_ids']}), "
+                          f"{float(first['aligned_query_fraction']):.1%} aggregate coverage.")
+        else:
+            statement += " No qualifying other-gene hit was reported under this search."
+        interpretation.append(statement)
+    interpretation.extend([
+        "",
+        "## Interpretation boundary",
+        "",
+        "Sequence recurrence is structural evidence. Ensembl feature classes, predicted TFBS "
+        "and CUT&RUN enrichment do not establish direct binding, reporter activity, or sufficiency.",
+    ])
+    interpretation_path = args.output / "interpretation.md"
+    interpretation_path.write_text("\n".join(interpretation) + "\n", encoding="utf-8")
 
     combined_path = args.output / "CD44_TGFB1_SERPINE1_tss_local_integrated.pdf"
     gene_pdfs = {gene: PdfPages(args.output / f"{gene}_tss_local_integrated.pdf")
@@ -538,7 +580,8 @@ def main() -> None:
         "outputs": {
             path.name: f"sha256:{sha256(path)}"
             for path in sorted(list(args.output.glob("*.pdf")) + list(args.output.glob("*.png"))
-                               + [args.output / "feature_summary.tsv", args.output / "top_matches.tsv"])
+                               + [args.output / "feature_summary.tsv", args.output / "top_matches.tsv",
+                                  interpretation_path])
         },
         "non_claim": "Similarity, predicted TFBS and CUT&RUN enrichment do not prove reporter sufficiency or direct regulation.",
         "counting_policy_id": comparison["counting_policy_id"],
