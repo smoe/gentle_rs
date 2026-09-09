@@ -81,8 +81,8 @@ Pre-release finishing scope:
 
 ## Next Session Priorities
 
-1. Have Glen recheck compact Simple PCR and all three GUI chapters at the merged SHA plus
-   TATA evidence review/materialization, retaining exact-candidate outcomes/screenshots.
+1. Have Glen recheck three introductory GUI chapters plus promoter-similarity navigation and
+   TATA evidence review/materialization at the merged SHA, retaining outcomes/screenshots.
 2. Run the `.10` ledger: locked tests, script build/entrypoints, tutorial/parity, IRF9/Q00978,
    benchmarks and TP73/PATZ1 TFBS/reporter/CUT&RUN/locus proofs with exact JASPAR 2026 PFMs.
 3. Run [build-only CI packaging](release.md#build-only-candidate-verification) at the same SHA; retain receipts before approval.

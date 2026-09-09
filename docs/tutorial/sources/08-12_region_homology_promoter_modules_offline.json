@@ -2,6 +2,43 @@
   "schema": "gentle.tutorial_source.v4",
   "id": "region_homology_promoter_modules_offline",
   "title": "Conserved Blocks and Testable Promoter-Module Hypotheses",
+  "graphics": [
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/open_saved_regions.context.svg",
+      "caption": "The saved-region manager shows the assembly-bound candidate and keeps Conservation and Promoter similarity actions visible at the standard 800×600 DNA-window size.",
+      "illustrates_step": 2,
+      "capture_date": "2026-09-09"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/open_promoter_similarity.orientation.svg",
+      "caption": "Whole-screen orientation after Promoter similarity opens the content-bound Conservation workspace for the selected candidate.",
+      "illustrates_step": 3,
+      "capture_date": "2026-09-09"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/expand_search_request.context.svg",
+      "caption": "The expanded request exposes the query genome, catalog/cache, required target genome, and target role before any search starts.",
+      "illustrates_step": 4,
+      "capture_date": "2026-09-09"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/show_promoter_constraints.orientation.svg",
+      "caption": "Whole-screen orientation for the lower search-policy and transcript-promoter matrix controls.",
+      "illustrates_step": 5,
+      "capture_date": "2026-09-09"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/show_promoter_constraints.context.svg",
+      "caption": "Focused constraints include identity, E-value, aligned length, chain gap, retained-locus and HSP budgets, exact-block length, promoter-window dimensions, and displayed-row limit.",
+      "illustrates_step": 5,
+      "capture_date": "2026-09-09"
+    }
+  ],
   "catalog": {
     "order": 54,
     "path": "docs/tutorial/generated/chapters/08-12_region_homology_promoter_modules_offline.md",
@@ -32,12 +69,161 @@
       "You want an inspectable reason for testing one reporter block alone or together with a partner block.",
       "You need ordinary GENtle use to remain unaffected when optional genomic BLAST indexes are absent."
     ],
+    "gui_acceptance": {
+      "schema": "gentle.tutorial_gui_acceptance.v1",
+      "profile": "offline-core",
+      "network": "offline",
+      "view_only": true,
+      "starter": {
+        "example_id": "promoter_similarity_gui_starter"
+      },
+      "oracle": {
+        "example_id": "promoter_similarity_gui_starter"
+      },
+      "completion_condition": {
+        "fact": "sequence.exists",
+        "subject": {
+          "kind": "sequence",
+          "id": "promoter_similarity_query"
+        }
+      },
+      "steps": [
+        {
+          "id": "open_promoter_sequence",
+          "prose_step": 1,
+          "window": "window.main",
+          "target": "main.project.sequence.open",
+          "subject": {
+            "sequence": "promoter_similarity_query"
+          },
+          "interaction": {
+            "kind": "double_click"
+          },
+          "timeout_class": "io",
+          "persists_project_state": false,
+          "scientific_effect": false,
+          "verifiers": [
+            {
+              "kind": "visible_claim",
+              "semantic_id": "window.dna_viewer",
+              "visible": true,
+              "enabled": true
+            }
+          ],
+          "evidence": {
+            "screenshot": "required",
+            "snapshot": "required"
+          }
+        },
+        {
+          "id": "open_saved_regions",
+          "prose_step": 2,
+          "window": "window.dna_viewer",
+          "target": "dna.sequence.open_regions",
+          "subject": {
+            "sequence": "promoter_similarity_query"
+          },
+          "interaction": {
+            "kind": "click"
+          },
+          "timeout_class": "interactive",
+          "persists_project_state": false,
+          "scientific_effect": false,
+          "verifiers": [
+            {
+              "kind": "visible_claim",
+              "semantic_id": "window.genomic_regions",
+              "visible": true,
+              "enabled": true
+            }
+          ],
+          "evidence": {
+            "screenshot": "required",
+            "snapshot": "required"
+          }
+        },
+        {
+          "id": "open_promoter_similarity",
+          "prose_step": 3,
+          "window": "window.genomic_regions",
+          "target": "genomic_region.promoter_similarity",
+          "interaction": {
+            "kind": "click"
+          },
+          "timeout_class": "interactive",
+          "persists_project_state": false,
+          "scientific_effect": false,
+          "verifiers": [
+            {
+              "kind": "visible_claim",
+              "semantic_id": "window.region_conservation",
+              "visible": true,
+              "enabled": true
+            }
+          ],
+          "evidence": {
+            "screenshot": "required",
+            "snapshot": "required"
+          }
+        },
+        {
+          "id": "expand_search_request",
+          "prose_step": 4,
+          "window": "window.region_conservation",
+          "target": "region_conservation.search_request",
+          "interaction": {
+            "kind": "click"
+          },
+          "timeout_class": "interactive",
+          "persists_project_state": false,
+          "scientific_effect": false,
+          "verifiers": [
+            {
+              "kind": "visible_claim",
+              "semantic_id": "region_conservation.search_fields",
+              "visible": true,
+              "enabled": true
+            }
+          ],
+          "evidence": {
+            "screenshot": "required",
+            "snapshot": "required"
+          }
+        },
+        {
+          "id": "show_promoter_constraints",
+          "prose_step": 5,
+          "window": "window.region_conservation",
+          "target": "region_conservation.search_fields",
+          "interaction": {
+            "kind": "scroll",
+            "direction": "down",
+            "clicks": 8
+          },
+          "timeout_class": "interactive",
+          "persists_project_state": false,
+          "scientific_effect": false,
+          "verifiers": [
+            {
+              "kind": "visible_claim",
+              "semantic_id": "region_conservation.search_fields",
+              "visible": true,
+              "enabled": true
+            }
+          ],
+          "evidence": {
+            "screenshot": "required",
+            "snapshot": "required"
+          }
+        }
+      ]
+    },
     "gui_steps": [
-      "Run the complete companion command shown below into an empty directory. It prepares tiny local indexes, saves the query and two independent evidence spans, then generates the homology SVG and four assessed module reports. Open its `tutorial.project.json` in GENtle.",
-      "Open the DNA viewer, choose `Regions...`, and use `Conservation...` on `synthetic_promoter_query`.",
-      "For a saved region with a prepared genome binding, choose `Promoter similarity...` instead. GENtle opens the same Conservation workspace with a same-genome target, a 2,000 bp upstream plus 200 bp downstream transcript-window policy, and conservative 40 bp / 80% identity defaults. Review these parameters before selecting `Run local screen`.",
-      "Choose `Open report...` and load `homology_report.json` from the companion output directory; GENtle validates its digest and exact saved-region binding. `Import request...` loads that directory's `homology_request.json` without executing it.",
-      "Expand `Search request` to inspect target IDs, required flags, orthology evidence and search thresholds. `Run local screen` submits these exact settings; empty targets instead select all validated local indexes. During BLAST, elapsed time and heartbeats remain visible, and `Cancel` stops the active search without publishing an incomplete report.",
+      "Prepare or open a project containing an assembly-bound saved upstream region, then open its source sequence in the DNA viewer. The executable GUI fixture uses one synthetic 80 bp candidate so that navigation remains unambiguous; it makes no promoter-function claim.",
+      "Choose `Regions...` in the DNA viewer. In `Saved genomic regions`, locate the exact candidate and confirm its assembly, contig, coordinates, strand, purpose, and source binding before searching.",
+      "Choose `Promoter similarity...` on that saved region. GENtle opens the Conservation workspace with the candidate's prepared genome as a required same-genome target, a transcript-linked 2,000 bp upstream plus 200 bp downstream promoter-window policy, and conservative 40 bp / 80% identity defaults.",
+      "Expand `Search request`. First constrain the evidence universe: query genome ID, genome catalog/cache, explicit target genome IDs, required/optional status, target role (`same_genome`, `expected_ortholog`, or `cross_species_unassigned`), and—only for expected orthologs—reviewed expected loci with evidence identifiers. An empty target list searches every validated local index; that is broader, not equivalent to a declared promoterome comparison.",
+      "Scroll within `Search request` to constrain the alignment and promoter interpretation before running: minimum identity, maximum E-value, minimum aligned bases, maximum chain gap, retained loci per target, HSP processing budget, minimum exact-block length, promoter-matrix on/off, upstream/downstream window lengths, and displayed-row limit. Select `Run local screen` only after recording these choices; `Cancel` stops an active search without publishing a partial report, while `Export request...` preserves the exact reusable request.",
       "Inspect target readiness and confirm that expected-ortholog, unassigned cross-species, and same-genome evidence remain separate.",
       "Inspect `Promoter recurrence matrix`. Rows are distinct genomic promoter windows, not raw transcript counts. Read blue intensity as identity and the block number as target-promoter 5'-to-3' order. Hover a row for its genes, transcripts, TSS and coordinates. Treat a red block outline as a structural split candidate: the query order or orientation changed, so GENtle does not join it to the preceding block.",
       "Inspect the query-referenced alignment: dots are exact bases, letters are substitutions, dashes are target deletions, and omitted insertions remain in JSON rather than adding columns.",

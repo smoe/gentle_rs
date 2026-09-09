@@ -226,6 +226,10 @@ pub struct TutorialGuiAcceptance {
     pub schema: String,
     pub profile: TutorialGuiAcceptanceProfile,
     pub network: TutorialGuiNetworkPolicy,
+    /// A view-only contract proves navigation and interpretation without
+    /// claiming that opening or inspecting a workspace changed project state.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub view_only: bool,
     pub starter: TutorialGuiProjectReference,
     pub oracle: TutorialGuiProjectReference,
     pub completion_condition: FactExpression,
@@ -2503,6 +2507,12 @@ fn validate_tutorial_gui_acceptance(
                 step.scientific_effect,
                 step.target,
                 target_spec.authority.requires_scientific_effect()
+            ));
+        }
+        if acceptance.view_only && (step.persists_project_state || step.scientific_effect) {
+            return Err(format!(
+                "{context} view-only step '{}' must not persist project or scientific state",
+                step.id
             ));
         }
         match (

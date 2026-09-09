@@ -79,11 +79,11 @@ A conserved or selectively recurring promoter segment can be a useful fragment c
 
 ## At a Glance
 
-1. Run the complete companion command shown below into an empty directory. It pr...
-2. Open the DNA viewer, choose Regions..., and use Conservation... on synthetic_...
-3. For a saved region with a prepared genome binding, choose Promoter similarity...
-4. Choose Open report... and load homology_report.json from the companion output...
-5. Expand Search request to inspect target IDs, required flags, orthology eviden...
+1. Prepare or open a project containing an assembly-bound saved upstream region,...
+2. Choose Regions... in the DNA viewer. In Saved genomic regions, locate the exa...
+3. Choose Promoter similarity... on that saved region. GENtle opens the Conserva...
+4. Expand Search request. First constrain the evidence universe: query genome ID...
+5. Scroll within Search request to constrain the alignment and promoter interpre...
 6. Inspect target readiness and confirm that expected-ortholog, unassigned cross...
 7. Inspect Promoter recurrence matrix. Rows are distinct genomic promoter window...
 8. Inspect the query-referenced alignment: dots are exact bases, letters are sub...
@@ -94,9 +94,9 @@ A conserved or selectively recurring promoter segment can be a useful fragment c
 
 CLI snippets use GENtle's default `.gentle_state.json` state unless they say otherwise. Add `--state PATH` or `--project PATH` when you want an explicit sandboxed state file for copied commands.
 
-### Step 1: Run the complete companion command shown below into an empty directory. It pr...
+### Step 1: Prepare or open a project containing an assembly-bound saved upstream region,...
 
-GUI: Run the complete companion command shown below into an empty directory. It prepares tiny local indexes, saves the query and two independent evidence spans, then generates the homology SVG and four assessed module reports. Open its `tutorial.project.json` in GENtle.
+GUI: Prepare or open a project containing an assembly-bound saved upstream region, then open its source sequence in the DNA viewer. The executable GUI fixture uses one synthetic 80 bp candidate so that navigation remains unambiguous; it makes no promoter-function claim.
 
 CLI:
 
@@ -106,9 +106,9 @@ cargo build --locked --bin gentle_cli
 
 > Expected: The workflow uses only hand-crafted local FASTA files and requires no network access; it never downloads or indexes an undeclared genome.
 
-### Step 2: Open the DNA viewer, choose Regions..., and use Conservation... on synthetic_...
+### Step 2: Choose Regions... in the DNA viewer. In Saved genomic regions, locate the exa...
 
-GUI: Open the DNA viewer, choose `Regions...`, and use `Conservation...` on `synthetic_promoter_query`.
+GUI: Choose `Regions...` in the DNA viewer. In `Saved genomic regions`, locate the exact candidate and confirm its assembly, contig, coordinates, strand, purpose, and source binding before searching.
 
 CLI:
 
@@ -118,9 +118,13 @@ python3 docs/examples/run_region_homology_tutorial.py --gentle target/debug/gent
 
 > Expected: Every projected alignment row has exactly the query length even though one target contains an insertion.
 
-### Step 3: For a saved region with a prepared genome binding, choose Promoter similarity...
+![The saved-region manager shows the assembly-bound candidate and keeps Conservation and Promoter similarity actions visible at the standard 800×600 DNA-window size.](../../../screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/open_saved_regions.context.svg)
 
-GUI: For a saved region with a prepared genome binding, choose `Promoter similarity...` instead. GENtle opens the same Conservation workspace with a same-genome target, a 2,000 bp upstream plus 200 bp downstream transcript-window policy, and conservative 40 bp / 80% identity defaults. Review these parameters before selecting `Run local screen`.
+*Figure: The saved-region manager shows the assembly-bound candidate and keeps Conservation and Promoter similarity actions visible at the standard 800×600 DNA-window size. Screenshot captured 2026-09-09.*
+
+### Step 3: Choose Promoter similarity... on that saved region. GENtle opens the Conserva...
+
+GUI: Choose `Promoter similarity...` on that saved region. GENtle opens the Conservation workspace with the candidate's prepared genome as a required same-genome target, a transcript-linked 2,000 bp upstream plus 200 bp downstream promoter-window policy, and conservative 40 bp / 80% identity defaults.
 
 CLI:
 
@@ -130,9 +134,13 @@ target/debug/gentle_cli --state /tmp/gentle-conservation-tutorial/report_only.pr
 
 > Expected: The inserted target base is retained under `omitted_insertions` with query anchor, target coordinates, strand, and HSP identity.
 
-### Step 4: Choose Open report... and load homology_report.json from the companion output...
+![Whole-screen orientation after Promoter similarity opens the content-bound Conservation workspace for the selected candidate.](../../../screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/open_promoter_similarity.orientation.svg)
 
-GUI: Choose `Open report...` and load `homology_report.json` from the companion output directory; GENtle validates its digest and exact saved-region binding. `Import request...` loads that directory's `homology_request.json` without executing it.
+*Figure: Whole-screen orientation after Promoter similarity opens the content-bound Conservation workspace for the selected candidate. Screenshot captured 2026-09-09.*
+
+### Step 4: Expand Search request. First constrain the evidence universe: query genome ID...
+
+GUI: Expand `Search request`. First constrain the evidence universe: query genome ID, genome catalog/cache, explicit target genome IDs, required/optional status, target role (`same_genome`, `expected_ortholog`, or `cross_species_unassigned`), and—only for expected orthologs—reviewed expected loci with evidence identifiers. An empty target list searches every validated local index; that is broader, not equivalent to a declared promoterome comparison.
 
 CLI:
 
@@ -142,11 +150,23 @@ target/debug/gentle_cli --state /tmp/gentle-conservation-tutorial/report_only.pr
 
 > Expected: Only the locus backed by `synthetic_declared_orthology` is labelled `expected_ortholog`; BLAST rank alone never establishes orthology.
 
-### Step 5: Expand Search request to inspect target IDs, required flags, orthology eviden...
+![The expanded request exposes the query genome, catalog/cache, required target genome, and target role before any search starts.](../../../screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/expand_search_request.context.svg)
 
-GUI: Expand `Search request` to inspect target IDs, required flags, orthology evidence and search thresholds. `Run local screen` submits these exact settings; empty targets instead select all validated local indexes. During BLAST, elapsed time and heartbeats remain visible, and `Cancel` stops the active search without publishing an incomplete report.
+*Figure: The expanded request exposes the query genome, catalog/cache, required target genome, and target role before any search starts. Screenshot captured 2026-09-09.*
+
+### Step 5: Scroll within Search request to constrain the alignment and promoter interpre...
+
+GUI: Scroll within `Search request` to constrain the alignment and promoter interpretation before running: minimum identity, maximum E-value, minimum aligned bases, maximum chain gap, retained loci per target, HSP processing budget, minimum exact-block length, promoter-matrix on/off, upstream/downstream window lengths, and displayed-row limit. Select `Run local screen` only after recording these choices; `Cancel` stops an active search without publishing a partial report, while `Export request...` preserves the exact reusable request.
 
 > Expected: Same-genome non-self similarity has its own loci, support blocks, coverage percentage, and ambiguity rule.
+
+![Focused constraints include identity, E-value, aligned length, chain gap, retained-locus and HSP budgets, exact-block length, promoter-window dimensions, and displayed-row limit.](../../../screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/show_promoter_constraints.context.svg)
+
+*Figure: Focused constraints include identity, E-value, aligned length, chain gap, retained-locus and HSP budgets, exact-block length, promoter-window dimensions, and displayed-row limit. Screenshot captured 2026-09-09.*
+
+![Whole-screen orientation for the lower search-policy and transcript-promoter matrix controls.](../../../screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/show_promoter_constraints.orientation.svg)
+
+*Figure: Whole-screen orientation for the lower search-policy and transcript-promoter matrix controls. Screenshot captured 2026-09-09.*
 
 ### Step 6: Inspect target readiness and confirm that expected-ortholog, unassigned cross...
 

@@ -1,0 +1,71 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "promoter_similarity_gui_starter",
+  "title": "Promoter similarity GUI starter (offline synthetic)",
+  "summary": "Prepares one tiny local genomic BLAST index and one assembly-bound saved upstream region for the view-only promoter-similarity GUI tutorial.",
+  "test_mode": "optional_blast",
+  "required_files": [
+    "docs/examples/assets/region_homology_demo/genomes.json",
+    "docs/examples/assets/region_homology_demo/query_toy.fa",
+    "docs/examples/assets/region_homology_demo/query_toy.gtf"
+  ],
+  "tags": [
+    "tutorial",
+    "offline",
+    "gui",
+    "genomic-region",
+    "promoter-similarity",
+    "synthetic"
+  ],
+  "workflow": {
+    "run_id": "example_promoter_similarity_gui_starter",
+    "ops": [
+      {
+        "PrepareGenome": {
+          "genome_id": "QueryRegionToy",
+          "catalog_path": "docs/examples/assets/region_homology_demo/genomes.json",
+          "cache_dir": "artifacts/region_homology_demo/genome_cache"
+        }
+      },
+      {
+        "ExtractGenomeRegion": {
+          "genome_id": "QueryRegionToy",
+          "chromosome": "chrQ",
+          "start_1based": 1,
+          "end_1based": 188,
+          "output_id": "promoter_similarity_query",
+          "annotation_scope": "none",
+          "catalog_path": "docs/examples/assets/region_homology_demo/genomes.json",
+          "cache_dir": "artifacts/region_homology_demo/genome_cache"
+        }
+      },
+      {
+        "CaptureGenomicRegion": {
+          "request": {
+            "set_id": "promoter_similarity_gui_regions",
+            "set_label": "Promoter-similarity GUI regions",
+            "region_id": "promoter_similarity_query_roi",
+            "label": "Synthetic upstream-region candidate",
+            "purpose": "reporter_candidate",
+            "source": {
+              "source_kind": "sequence_selection",
+              "seq_id": "promoter_similarity_query",
+              "local_start_0based": 20,
+              "local_end_0based_exclusive": 100,
+              "strand": "plus",
+              "reference_override": {
+                "species_scientific_name": "Synthetic query organism",
+                "taxon_id": 9000001,
+                "assembly_name": "QueryRegionToy",
+                "contig_name": "chrQ"
+              }
+            },
+            "notes": [
+              "Synthetic GUI fixture; no promoter activity or reporter sufficiency is implied."
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

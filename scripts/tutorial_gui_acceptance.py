@@ -71,6 +71,11 @@ class AcceptanceFailure(RuntimeError):
         self.failure_class = failure_class
 
 
+def expected_starter_completion_truth(acceptance_contract: dict[str, Any]) -> str:
+    """Return the typed starter invariant for mutating versus view-only tutorials."""
+    return "satisfied" if acceptance_contract.get("view_only", False) else "unsatisfied"
+
+
 def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -1114,15 +1119,18 @@ class TutorialAcceptanceRun:
         starter_completion = self.fact_eval(
             starter_path, self.acceptance["completion_condition"], "starter-completion"
         )
-        if starter_completion.get("truth") != "unsatisfied":
+        expected_starter_truth = expected_starter_completion_truth(self.acceptance)
+        if starter_completion.get("truth") != expected_starter_truth:
             failure_class = (
                 "starter_precompleted"
-                if starter_completion.get("truth") == "satisfied"
+                if not self.acceptance.get("view_only", False)
+                and starter_completion.get("truth") == "satisfied"
                 else "tutorial_ambiguity"
             )
             raise AcceptanceFailure(
                 failure_class,
-                f"Starter completion fact is {starter_completion.get('truth')!r}, expected 'unsatisfied'",
+                f"Starter completion fact is {starter_completion.get('truth')!r}, "
+                f"expected {expected_starter_truth!r}",
             )
         oracle_completion = self.fact_eval(
             oracle_path, self.acceptance["completion_condition"], "oracle-completion"
@@ -1722,6 +1730,10 @@ class TutorialAcceptanceRun:
             checkpoint_dir = self.chapter_dir / "checkpoints"
             screenshot_path = checkpoint_dir / f"{step['id']}.raw.png"
             screenshot_path.parent.mkdir(parents=True, exist_ok=True)
+            # The semantic snapshot is written during egui's frame. Give the
+            # X11 surface one bounded interval to present that verified frame
+            # before capturing its pixels.
+            time.sleep(0.15)
             completed = subprocess.run(
                 [str(self.args.scrot), str(screenshot_path)],
                 cwd=self.repo_root,

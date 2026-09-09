@@ -253,6 +253,10 @@ Tutorial GUI acceptance contract:
   a byte-checked projection
 - starter and oracle are distinct workflow-example references; optional
   `seq_id_map` entries are checked against their executed project states
+- optional `view_only: true` permits the same starter/oracle reference and
+  requires completion to be satisfied before and after navigation. Every step
+  must be view-only, with no project persistence or scientific effect; the
+  default remains false, requiring completion to be unsatisfied in the starter
 - `target` and `window` values must resolve through the closed
   `tutorial_gui_semantics` catalog
 - the catalog binds each target to allowed interactions and one authority:

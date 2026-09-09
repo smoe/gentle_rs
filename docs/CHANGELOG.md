@@ -2,6 +2,17 @@
 
 ## 2026-09-09 - Promoterome preparation and ordered similarity inspection
 
+- Merged Glen's five-commit promoter-similarity tutorial branch through
+  `6ae4cd1d`: added the offline view-only navigation contract, wrapped region
+  analysis actions, correct DNA-viewport ownership for hosted panels, and a
+  bounded presentation delay before X11 captures. Opening an analysis now
+  closes the underlying region manager. The chapter includes five teaching
+  views from four checkpoints, with all 20 evidence files unchanged and bound
+  to `b087cb22` and its GUI binary. These prove navigation and parameter review,
+  not BLAST execution or promoter function. Local publication/hash, JSON/source
+  consistency and formatting checks pass; merged-candidate runtime acceptance
+  remains with Glen/CI. Preserved the full-history CI fix and `.10` release gate.
+
 - Changed the macOS, Linux and Windows CI tutorial-check jobs to fetch full
   Git history. Shallow history collapsed per-file change dates at `1be4d8b5`,
   changing a stale-review feedback link and failing the generated README check.

@@ -92,6 +92,16 @@ class TutorialGuiAcceptanceTests(unittest.TestCase):
         with self.assertRaises(acceptance.AcceptanceFailure):
             acceptance.selected_chapters(manifest, ["missing"], None)
 
+    def test_view_only_contract_starts_from_a_satisfied_navigation_invariant(self) -> None:
+        self.assertEqual(
+            acceptance.expected_starter_completion_truth({"view_only": True}),
+            "satisfied",
+        )
+        self.assertEqual(
+            acceptance.expected_starter_completion_truth({}),
+            "unsatisfied",
+        )
+
     def test_environment_values_are_hashed_not_exposed(self) -> None:
         rows, names = acceptance.redacted_environment(
             {
