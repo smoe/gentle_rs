@@ -577,9 +577,9 @@ impl MainAreaDna {
             crate::gui_test_support::register_rect(
                 ui.ctx().clone(),
                 crate::tutorial_gui_semantics::WINDOW_GENOMIC_REGIONS,
-                crate::tutorial_gui_semantics::WINDOW_GENOMIC_REGIONS,
+                crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER,
                 Some(&subject_scope),
-                crate::gui_test_support::GuiTestWidgetKind::Window,
+                crate::gui_test_support::GuiTestWidgetKind::Status,
                 ui.max_rect(),
                 true,
                 true,
@@ -1585,9 +1585,9 @@ impl MainAreaDna {
             crate::gui_test_support::register_rect(
                 ui.ctx().clone(),
                 crate::tutorial_gui_semantics::WINDOW_REGION_CONSERVATION,
-                crate::tutorial_gui_semantics::WINDOW_REGION_CONSERVATION,
+                crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER,
                 Some(&_subject_scope),
-                crate::gui_test_support::GuiTestWidgetKind::Window,
+                crate::gui_test_support::GuiTestWidgetKind::Status,
                 ui.max_rect(),
                 true,
                 true,
