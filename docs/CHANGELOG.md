@@ -2,6 +2,18 @@
 
 ## 2026-09-09 - Promoterome preparation and ordered similarity inspection
 
+- Integrated Glen's replacement `ff44ebde` / `a5b01843`, excluding withdrawn
+  `c91bf912`. All 36 occupancy lanes are restored; independent local BigWig
+  checks matched source hashes, 11,797 genomic intervals and their plotted
+  heights. Follow-up validation fixes reject a locus/annotation assembly that
+  disagrees with the receipt-bound genome catalog and compare the complete
+  native interval/score multiset, accounting for clipping, requested filters
+  and six-decimal importer precision. Local coordinates now use the sequence
+  anchor orientation, not the gene strand. All 60 focused Python tests pass;
+  reviewed figures remain unchanged. Glen must refresh the validation receipt
+  against his original request/report JSON before claiming the stronger gate;
+  no local Rust suite or real BLAST replay was run.
+
 - Extended the TSS-local report appender with translucent, colour-matched
   background bands behind the upper genomic lanes, retaining exact stretch
   labels and reciprocal similarity links. Bands follow the bound axis on both

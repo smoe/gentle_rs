@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import hashlib
 import json
 import math
@@ -65,10 +66,11 @@ def compatible_chromosome(bigwig: pyBigWig.pyBigWig, declared: str) -> str:
     return matches[0]
 
 
-def expected_local(anchor: dict[str, Any], strand: str, start: int, end: int) -> tuple[int, int]:
-    if strand == "+":
+def expected_local(anchor: dict[str, Any], start: int, end: int) -> tuple[int, int]:
+    # Sequence orientation, not gene orientation, determines imported local coordinates.
+    if anchor.get("strand") in (None, "+"):
         return start - anchor["start_1based"] + 1, end - anchor["start_1based"] + 1
-    require(strand == "-", "gene strand must be + or -")
+    require(anchor.get("strand") == "-", "anchor strand must be +, - or absent")
     return anchor["end_1based"] - end + 1, anchor["end_1based"] - start + 1
 
 
@@ -93,6 +95,11 @@ def validate_gene(gene: str, report_path: Path, request_path: Path,
             and isinstance(anchor_start, int) and isinstance(anchor_end, int)
             and 1 <= anchor_start <= anchor_end and strand in {"+", "-"},
             f"{gene}: invalid genome anchor")
+    locus_start, locus_end = (report.get("locus_genomic_start_1based"),
+                              report.get("locus_genomic_end_1based"))
+    require(type(locus_start) is int and type(locus_end) is int
+            and anchor_start <= locus_start <= locus_end <= anchor_end,
+            f"{gene}: inspected locus is not inside the genome anchor")
 
     tracks = request.get("local_tracks")
     require(isinstance(tracks, list) and len(tracks) == EXPECTED_LANES,
@@ -151,18 +158,38 @@ def validate_gene(gene: str, report_path: Path, request_path: Path,
         require(bool(native_intervals),
                 f"{gene}/{source_id}: BigWig has no native overlap with the locus anchor")
 
+        minimum, maximum = track.get("min_score"), track.get("max_score")
+        require(all(value is None or (type(value) in (int, float) and math.isfinite(value))
+                    for value in (minimum, maximum))
+                and (minimum is None or maximum is None or minimum <= maximum),
+                f"{gene}/{source_id}: invalid requested score limits")
+        expected_intervals = Counter()
+        for start, end, score in native_intervals:
+            require(math.isfinite(score), f"{gene}/{source_id}: non-finite native score")
+            if (minimum is not None and score < minimum) or (maximum is not None and score > maximum):
+                continue
+            start, end = max(start + 1, locus_start), min(end, locus_end)
+            if start <= end:
+                # genome_tracks.rs persists imported score qualifiers to six decimal places.
+                expected_intervals[start, end, float(f"{score:.6f}")] += 1
+        observed_intervals = Counter()
         for interval in intervals:
             start = interval.get("genomic_start_1based")
             end = interval.get("genomic_end_1based")
             require(isinstance(start, int) and isinstance(end, int)
                     and anchor_start <= start <= end <= anchor_end,
                     f"{gene}/{source_id}: rendered interval lies outside the locus anchor")
-            local_start, local_end = expected_local(anchor, strand, start, end)
+            local_start, local_end = expected_local(anchor, start, end)
             require(interval.get("local_start_1based") == local_start
                     and interval.get("local_end_1based") == local_end,
                     f"{gene}/{source_id}: local/genomic coordinates disagree")
-            require(math.isfinite(float(interval.get("score"))),
+            score = interval.get("score")
+            require(type(score) in (int, float) and math.isfinite(score),
                     f"{gene}/{source_id}: non-finite rendered score")
+            observed_intervals[start, end, score] += 1
+        require(observed_intervals == expected_intervals,
+                f"{gene}/{source_id}: rendered coordinates/scores or interval multiplicity "
+                "differ from the native BigWig after declared clipping/filtering")
         lane_receipts.append({
             "source_id": source_id,
             "track_name": track["track_name"],
@@ -177,6 +204,7 @@ def validate_gene(gene: str, report_path: Path, request_path: Path,
         "gene": gene,
         "chromosome": chromosome,
         "strand": strand,
+        "sequence_anchor_strand": anchor.get("strand"),
         "anchor_start_1based": anchor_start,
         "anchor_end_1based": anchor_end,
         "request_path": str(request_path),
@@ -218,6 +246,7 @@ def main() -> None:
             "expected_genes": sorted(EXPECTED_GENES),
             "expected_lanes_per_gene": EXPECTED_LANES,
             "missing_intervals_are_zero": False,
+            "native_signal_comparison": "exact_interval_multiset_with_importer_six_decimal_scores",
         },
         "genes": genes,
         "total_lane_count": sum(row["lane_count"] for row in genes),

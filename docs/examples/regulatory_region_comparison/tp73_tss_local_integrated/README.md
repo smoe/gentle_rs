@@ -16,6 +16,19 @@ as measured zero signal. The assembly check accepts only the independently
 declared `GRCh38` identifier, not words or numbers borrowed from the promoterome
 catalog label.
 
+Follow-up review found that the original validation could accept a consistently
+mislabelled locus against a different promoterome, or fabricated interval values
+within an otherwise overlapping BigWig. Preparation now checks the assembly in
+the receipt-bound genome catalog entry, and lane validation compares the complete
+interval/score multiset after requested filtering and locus clipping. It follows
+the importer's six-decimal score storage and the sequence anchor's orientation,
+which need not equal the gene's strand. The retained `ff44ebde` validation receipt
+predates these stronger checks and must be refreshed against the original
+request/report JSON; do not relabel it as a new validation. Independent local
+review did match all 36 lanes / 11,797 SVG interval coordinates, source hashes
+and plotted heights to the local BigWigs. The figures need not be redrawn unless
+the stronger full-input check identifies a mismatch.
+
 This bundle extends the existing tall `CD44`, `TGFB1`, and `SERPINE1`
 promoter–reporter architecture reports. Their transcript models, proposed
 reporters, Ensembl Regulation annotations, TP73 CUT&RUN/H3K4me3 lanes, and
@@ -86,6 +99,10 @@ BigWig converter. It implements the two-path `bigWigToBedGraph` interface and
 emits every chromosome in the source file; it must not be replaced by the
 historical chromosome-7 analysis helper.
 
+Both the converter and lane validator require `pyBigWig` in the Python
+environment used to launch them. The converter's executable wrapper uses the
+`python3` selected by the environment.
+
 ```bash
 export GENTLE_BIGWIG_TO_BEDGRAPH_BIN="$PWD/scripts/bigwig_to_bedgraph.py"
 gentle_cli /path/to/original.state.json \
@@ -132,6 +149,7 @@ python3 scripts/prepare_tp73_cutrun_promoter_candidates.py \
 python3 scripts/prepare_tss_regulatory_similarity_candidates.py \
   --selected-tss /path/to/run/selected-tss/candidate_regions.json \
   --promoterome /path/to/human-grch38-ensembl116-promoterome \
+  --catalog /path/to/exact/genomes.json \
   --assembly-id GRCh38 \
   --locus-report /path/to/CD44_luciferase_planning_EnsemblReg_15TF.report.json \
   --locus-report /path/to/TGFB1_luciferase_planning_EnsemblReg_15TF.report.json \
@@ -151,6 +169,12 @@ python3 scripts/compare_candidates_to_promoterome.py \
   --task blastn --min-alignment-bp 40 --min-identity-pct 80 \
   --max-evalue 1e-5 --max-target-seqs 1000000 --max-hsps 10
 ```
+
+`--catalog` may relocate the catalog recorded in the promoterome receipt; its
+SHA-256 must still match. Without the option, preparation uses the recorded
+path. Assembly identity comes from the selected entry's Ensembl `file_stem`
+or NCBI `ncbi_assembly_name`, never an arbitrary word in the catalog label.
+Missing, conflicting or nonmatching assembly metadata is rejected.
 
 Render a tall report and its bound PDF/PNG derivatives (repeat for each gene):
 

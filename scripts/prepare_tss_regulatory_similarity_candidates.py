@@ -130,6 +130,28 @@ def validate_selected_region(row, reference, windows, transcripts, sequences) ->
             "selected sequence digest, length or orientation mismatch")
 
 
+def validate_reference_assembly(reference, assembly_id: str, catalog_path: Path | None) -> None:
+    """Resolve assembly identity from the receipt-bound catalog entry, not its label."""
+    require(isinstance(assembly_id, str) and assembly_id and assembly_id == assembly_id.strip(),
+            "assembly identifier must be nonempty and exact")
+    filename = catalog_path or reference.get("catalog_path")
+    require(filename, "promoterome receipt lacks a catalog path; provide --catalog")
+    payload = Path(filename).read_bytes()
+    require(sha256_bytes(payload) == reference.get("catalog_sha256", "").removeprefix("sha256:"),
+            "promoterome catalog hash mismatch")
+    catalog = json.loads(payload)
+    entry = catalog.get(reference["genome_id"]) if isinstance(catalog, dict) else None
+    require(isinstance(entry, dict), "prepared genome is absent from the receipt-bound catalog")
+    assemblies = []
+    stem = (entry.get("ensembl_template") or {}).get("file_stem")
+    if isinstance(stem, str) and "." in stem:
+        assemblies.append(stem.partition(".")[2])
+    if entry.get("ncbi_assembly_name"):
+        assemblies.append(entry["ncbi_assembly_name"])
+    require(assemblies and all(value == assembly_id for value in assemblies),
+            "declared assembly disagrees with the receipt-bound prepared genome")
+
+
 def validate_locus_reference(report, windows, assembly_id) -> None:
     anchor = (report.get("sequence_binding") or {}).get("genome_anchor") or {}
     chromosomes = {window["chromosome"] for window in windows}
@@ -152,6 +174,8 @@ def main() -> None:
     parser.add_argument("--locus-svg", action="append", default=[], metavar="GENE=PATH",
                         help="Declare the original SVG for each tall-report gene before comparison")
     parser.add_argument("--promoterome", type=Path, required=True)
+    parser.add_argument("--catalog", type=Path,
+                        help="Relocated genome catalog; must match the promoterome receipt hash")
     parser.add_argument(
         "--assembly-id", required=True,
         help="Exact independently declared assembly identifier (for example GRCh38)",
@@ -169,6 +193,7 @@ def main() -> None:
             "Output directory must be absent or empty")
     promoterome = args.promoterome.resolve(strict=True)
     reference = validate_promoterome(promoterome)
+    validate_reference_assembly(reference, args.assembly_id, args.catalog)
     revision = subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=Path(__file__).resolve().parents[1], text=True
     ).strip()

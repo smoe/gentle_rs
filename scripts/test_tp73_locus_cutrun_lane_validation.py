@@ -72,6 +72,7 @@ def gene_fixture(root: Path, gene: str, chromosome: str, strand: str) -> tuple[P
                "assembly": "GRCh38", "local_tracks": tracks}
     report = {"schema": VALIDATE.LOCUS_SCHEMA, "gene_symbol": gene,
               "gene_strand": strand,
+              "locus_genomic_start_1based": 51, "locus_genomic_end_1based": 250,
               "sequence_binding": {"genome_anchor": {
                   "genome_id": "GRCh38", "chromosome": chromosome,
                   "start_1based": 51, "end_1based": 250, "strand": strand}},
@@ -150,6 +151,65 @@ class LaneValidationTests(unittest.TestCase):
                              "Human GRCh38 Ensembl 115"):
                 with self.subTest(assembly=assembly), self.assertRaises(SystemExit):
                     VALIDATE.validate_gene("TGFB1", report_path, request_path, assembly)
+
+    def test_fabricated_signal_coordinates_and_duplicates_fail_native_comparison(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            request, report_path = gene_fixture(root, "CD44", "11", "+")
+            report = json.loads(report_path.read_text())
+            for defect in ("score", "location", "duplicate"):
+                changed = deepcopy(report)
+                lane = changed["occupancy_groups"][0]["lanes"][0]["lane"]
+                interval = lane["intervals"][0]
+                if defect == "score":
+                    interval["score"] = 999.0
+                elif defect == "location":
+                    for key in ("genomic_start_1based", "genomic_end_1based",
+                                "local_start_1based", "local_end_1based"):
+                        interval[key] += 50
+                else:
+                    lane["intervals"].append(deepcopy(interval))
+                    lane["interval_count"] = 2
+                report_path.write_text(json.dumps(changed))
+                with self.subTest(defect=defect), self.assertRaisesRegex(SystemExit, "native BigWig"):
+                    VALIDATE.validate_gene("CD44", report_path, request, "GRCh38")
+
+    def test_projection_uses_sequence_anchor_not_negative_gene_strand(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            request, report_path = gene_fixture(root, "TGFB1", "19", "+")
+            report = json.loads(report_path.read_text())
+            report["gene_strand"] = "-"
+            report_path.write_text(json.dumps(report))
+            self.assertEqual(VALIDATE.validate_gene("TGFB1", report_path, request, "GRCh38")["lane_count"], 12)
+
+    def test_clipping_filters_and_importer_precision_preserve_valid_signal(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            request_path, report_path = gene_fixture(root, "CD44", "11", "+")
+            request = json.loads(request_path.read_text())
+            report = json.loads(report_path.read_text())
+            track = request["local_tracks"][0]
+            source = Path(track["path"])
+            bigwig = pyBigWig.open(str(source), "w")
+            bigwig.addHeader([("11", 1000)])
+            bigwig.addEntries(["11", "11"], [80, 130], ends=[120, 140], values=[2.3456789, 9.0])
+            bigwig.close()
+            # The first interval is clipped by the inspected locus; the second is filtered out.
+            track["max_score"] = 3.0
+            report["locus_genomic_start_1based"] = 101
+            lane = report["occupancy_groups"][0]["lanes"][0]
+            lane["source_sha256"] = f"sha256:{sha256(source)}"
+            interval = lane["lane"]["intervals"][0]
+            interval.update(genomic_start_1based=101, genomic_end_1based=120,
+                            local_start_1based=51, local_end_1based=70, score=2.345679)
+            request_path.write_text(json.dumps(request))
+            report_path.write_text(json.dumps(report))
+            self.assertEqual(VALIDATE.validate_gene("CD44", report_path, request_path, "GRCh38")["lane_count"], 12)
+            del track["max_score"]
+            request_path.write_text(json.dumps(request))
+            with self.assertRaisesRegex(SystemExit, "native BigWig"):
+                VALIDATE.validate_gene("CD44", report_path, request_path, "GRCh38")
 
 
 if __name__ == "__main__":

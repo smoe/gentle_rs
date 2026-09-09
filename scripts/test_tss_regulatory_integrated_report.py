@@ -62,6 +62,11 @@ def source_fixture(root, strand="+"):
     is shared with the existing comparison tests; no downloads or BLAST are used.
     """
     reference, windows, mappings = reference_fixture(root / "reference")
+    catalog = root / "reference/genomes.json"
+    write_json(catalog, {reference["genome_id"]: {
+        "ensembl_template": {"file_stem": "Homo_sapiens.GRCh38"}}})
+    reference.update(catalog_path=str(catalog), catalog_sha256=f"sha256:{sha256(catalog)}")
+    write_json(root / "reference/receipt.json", reference)
     window = next(row for row in windows if row["strand"] == strand)
     mapping = next(row for row in mappings if row["promoter_id"] == window["promoter_id"])
     extraction = dict(genome_id=reference["genome_id"], chromosome="1", strand=strand,
@@ -111,11 +116,11 @@ def source_fixture(root, strand="+"):
     return selected, report, svg
 
 
-def run_preparation(root):
+def run_preparation(root, assembly_id="GRCh38"):
     argv = ["prepare", "--selected-tss", str(root / "selected.json"),
             "--locus-report", str(root / "report.json"), "--locus-svg", f"TOY={root / 'base.svg'}",
             "--promoterome", str(root / "reference"), "--source-revision", "synthetic-revision",
-            "--assembly-id", "GRCh38",
+            "--assembly-id", assembly_id,
             "--output", str(root / "output")]
     with patch.object(sys, "argv", argv), patch.object(
             PREPARE.subprocess, "check_output", return_value="synthetic-revision\n"), redirect_stdout(io.StringIO()):
@@ -260,9 +265,30 @@ class SourceBindingTests(unittest.TestCase):
                 with patch.object(sys, "argv", argv), patch.object(
                         PREPARE.subprocess, "check_output",
                         return_value="synthetic-revision\n"), redirect_stdout(io.StringIO()):
-                    with self.assertRaisesRegex(RuntimeError, "genome/chromosome/strand binding"):
+                    with self.assertRaisesRegex(RuntimeError, "declared assembly"):
                         PREPARE.main()
                 self.assertFalse((root / "output").exists())
+
+    def test_reference_assembly_is_bound_to_catalog_content_not_matching_report_labels(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, report, _ = source_fixture(root)
+            reference = json.loads((root / "reference/receipt.json").read_text())
+            # A report and CLI can agree with one another while using the wrong reference.
+            report["sequence_binding"]["genome_anchor"]["genome_id"] = "GRCh37"
+            for row in report["ensembl_regulation"]["rows"]:
+                row["assembly_name"] = "GRCh37"
+            write_json(root / "report.json", report)
+            with self.assertRaisesRegex(RuntimeError, "receipt-bound prepared genome"):
+                run_preparation(root, "GRCh37")
+            self.assertFalse((root / "output").exists())
+            relocated = root / "relocated.json"
+            relocated.write_bytes((root / "reference/genomes.json").read_bytes())
+            reference["catalog_path"] = "/unavailable/original/catalog.json"
+            PREPARE.validate_reference_assembly(reference, "GRCh38", relocated)
+            relocated.write_text('{}')
+            with self.assertRaisesRegex(RuntimeError, "catalog hash mismatch"):
+                PREPARE.validate_reference_assembly(reference, "GRCh38", relocated)
 
     def test_report_and_svg_are_bound_not_just_gene_labels(self):
         with TemporaryDirectory() as tmp:
