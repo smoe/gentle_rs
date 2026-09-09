@@ -27,6 +27,10 @@ RENDER = load_module(
     "render_integrated_tss_regulatory_report",
     "render_integrated_tss_regulatory_report.py",
 )
+APPEND = load_module(
+    "append_tss_similarity_to_locus_report",
+    "append_tss_similarity_to_locus_report.py",
+)
 
 
 class TssWindowTests(unittest.TestCase):
@@ -72,6 +76,14 @@ class FrequencyTests(unittest.TestCase):
             RENDER.merge_intervals([(8, 12), (0, 5), (5, 9), (20, 21)]),
             [(0, 12), (20, 21)],
         )
+
+    def test_reverse_chain_decreases_in_query_without_false_break(self) -> None:
+        self.assertFalse(APPEND.is_order_break(None, None, 80, -1))
+        self.assertFalse(APPEND.is_order_break(80, -1, 50, -1))
+        self.assertTrue(APPEND.is_order_break(50, -1, 80, -1))
+        self.assertTrue(APPEND.is_order_break(80, -1, 50, 1))
+        self.assertFalse(RENDER.is_order_break(80, -1, 50, -1))
+        self.assertTrue(RENDER.is_order_break(50, -1, 80, -1))
 
 
 if __name__ == "__main__":

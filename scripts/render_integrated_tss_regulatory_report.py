@@ -93,6 +93,22 @@ def blue(identity: float) -> tuple[float, float, float]:
             (250 - 35 * fraction) / 255)
 
 
+def is_order_break(
+    previous_query_mid: float | None,
+    previous_orientation: int | None,
+    query_mid: float,
+    orientation: int,
+) -> bool:
+    """Return whether target-order traversal breaks one collinear query chain."""
+    if previous_query_mid is None:
+        return False
+    if orientation != previous_orientation:
+        return True
+    if orientation == 1:
+        return query_mid < previous_query_mid
+    return query_mid > previous_query_mid
+
+
 def abbreviate_lane(label: str) -> str:
     label = label.replace(" (", "|").split("|", 1)[0]
     return (label.replace("SAOS-2 ", "SAOS ")
@@ -273,8 +289,8 @@ def similarity_axis(ax: Any, stretch: dict[str, Any], report: dict[str, Any],
                 q1 = max(int(hsp["qstart"]), int(hsp["qend"]))
                 orientation = 1 if int(hsp["send"]) >= int(hsp["sstart"]) else -1
                 midpoint = (q0 + q1) / 2
-                broken = previous_mid is not None and (
-                    orientation != previous_orientation or midpoint < previous_mid
+                broken = is_order_break(
+                    previous_mid, previous_orientation, midpoint, orientation
                 )
                 ax.add_patch(Rectangle((x0 + q0, y - 0.14), q1 - q0, 0.28,
                                        facecolor=blue(float(hsp["pident"])),
