@@ -756,14 +756,60 @@ impl MainAreaDna {
                             }
                         });
                         ui.small(format!("set digest {}", set.content_sha256));
+                        ui.horizontal_wrapped(|ui| {
+                            ui.strong("Analyse saved region");
+                            for region in &set.regions {
+                                ui.monospace(&region.region_id);
+                                if ui
+                                    .small_button("Conservation...")
+                                    .on_hover_text(
+                                        "Compare this saved region with validated local genomic BLAST indexes",
+                                    )
+                                    .clicked()
+                                {
+                                    action = Some(
+                                        GenomicRegionManagerAction::OpenConservation {
+                                            set_id: set.set_id.clone(),
+                                            region: region.clone(),
+                                        },
+                                    );
+                                }
+                                let promoter_similarity = ui
+                                    .small_button("Promoter similarity...")
+                                    .on_hover_text(
+                                        "Search this region in its prepared genome and display matching transcript-promoter windows as an ordered block matrix",
+                                    );
+                                #[cfg(feature = "gui-test-support")]
+                                crate::gui_test_support::register_response(
+                                    &promoter_similarity,
+                                    crate::tutorial_gui_semantics::GENOMIC_REGION_PROMOTER_SIMILARITY,
+                                    crate::tutorial_gui_semantics::WINDOW_GENOMIC_REGIONS,
+                                    Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
+                                        self.seq_id.as_deref().unwrap_or("unnamed"),
+                                        &set.set_id,
+                                        &region.region_id,
+                                    ])),
+                                    crate::gui_test_support::GuiTestWidgetKind::Button,
+                                    false,
+                                );
+                                if promoter_similarity.clicked() {
+                                    action = Some(
+                                        GenomicRegionManagerAction::OpenPromoterSimilarity {
+                                            set_id: set.set_id.clone(),
+                                            region: region.clone(),
+                                        },
+                                    );
+                                }
+                            }
+                        });
                         egui::Grid::new(("genomic_region_table", set.set_id.as_str()))
-                            .num_columns(10)
+                            .num_columns(9)
                             .striped(true)
                             .spacing(Vec2::new(12.0, 4.0))
                             .show(ui, |ui| {
                                 for heading in [
                                     "ID", "label", "assembly", "coordinate", "strand", "method",
-                                    "evidence", "colour", "copy", "analyse",
+                                    "evidence", "colour", "copy",
                                 ] {
                                     ui.small(egui::RichText::new(heading).strong());
                                 }
@@ -896,48 +942,6 @@ impl MainAreaDna {
                                             action = Some(GenomicRegionManagerAction::CopyJson(
                                                 region.clone(),
                                             ));
-                                        }
-                                    });
-                                    ui.vertical(|ui| {
-                                        if ui
-                                            .small_button("Conservation...")
-                                            .on_hover_text(
-                                                "Compare this saved region with validated local genomic BLAST indexes",
-                                            )
-                                            .clicked()
-                                        {
-                                            action = Some(
-                                                GenomicRegionManagerAction::OpenConservation {
-                                                    set_id: set.set_id.clone(),
-                                                    region: region.clone(),
-                                                },
-                                            );
-                                        }
-                                        let promoter_similarity = ui
-                                            .small_button("Promoter similarity...")
-                                            .on_hover_text(
-                                                "Search this region in its prepared genome and display matching transcript-promoter windows as an ordered block matrix",
-                                            );
-                                        #[cfg(feature = "gui-test-support")]
-                                        crate::gui_test_support::register_response(
-                                            &promoter_similarity,
-                                            crate::tutorial_gui_semantics::GENOMIC_REGION_PROMOTER_SIMILARITY,
-                                            crate::tutorial_gui_semantics::WINDOW_GENOMIC_REGIONS,
-                                            Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
-                                                self.seq_id.as_deref().unwrap_or("unnamed"),
-                                                &set.set_id,
-                                                &region.region_id,
-                                            ])),
-                                            crate::gui_test_support::GuiTestWidgetKind::Button,
-                                            false,
-                                        );
-                                        if promoter_similarity.clicked() {
-                                            action = Some(
-                                                GenomicRegionManagerAction::OpenPromoterSimilarity {
-                                                    set_id: set.set_id.clone(),
-                                                    region: region.clone(),
-                                                },
-                                            );
                                         }
                                     });
                                     ui.end_row();
