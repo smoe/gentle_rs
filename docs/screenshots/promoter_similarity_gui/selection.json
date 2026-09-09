@@ -1,0 +1,16 @@
+{
+  "schema": "gentle.tutorial_gui_screenshot_selection.v1",
+  "capture_date": "2026-09-09",
+  "source_revision": "b087cb22ca54f0c92b8e47796b6772a7cb7a04ae",
+  "chapters": [
+    {
+      "chapter_id": "region_homology_promoter_modules_offline",
+      "checkpoints": [
+        "open_saved_regions",
+        "open_promoter_similarity",
+        "expand_search_request",
+        "show_promoter_constraints"
+      ]
+    }
+  ]
+}

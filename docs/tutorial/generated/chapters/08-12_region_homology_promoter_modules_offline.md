@@ -118,6 +118,10 @@ python3 docs/examples/run_region_homology_tutorial.py --gentle target/debug/gent
 
 > Expected: Every projected alignment row has exactly the query length even though one target contains an insertion.
 
+![The saved-region manager shows the assembly-bound candidate and keeps Conservation and Promoter similarity actions visible at the standard 800×600 DNA-window size.](../../../screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/open_saved_regions.context.svg)
+
+*Figure: The saved-region manager shows the assembly-bound candidate and keeps Conservation and Promoter similarity actions visible at the standard 800×600 DNA-window size. Screenshot captured 2026-09-09.*
+
 ### Step 3: Choose Promoter similarity... on that saved region. GENtle opens the Conserva...
 
 GUI: Choose `Promoter similarity...` on that saved region. GENtle opens the Conservation workspace with the candidate's prepared genome as a required same-genome target, a transcript-linked 2,000 bp upstream plus 200 bp downstream promoter-window policy, and conservative 40 bp / 80% identity defaults.
@@ -129,6 +133,10 @@ target/debug/gentle_cli --state /tmp/gentle-conservation-tutorial/report_only.pr
 ```
 
 > Expected: The inserted target base is retained under `omitted_insertions` with query anchor, target coordinates, strand, and HSP identity.
+
+![Whole-screen orientation after Promoter similarity opens the content-bound Conservation workspace for the selected candidate.](../../../screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/open_promoter_similarity.orientation.svg)
+
+*Figure: Whole-screen orientation after Promoter similarity opens the content-bound Conservation workspace for the selected candidate. Screenshot captured 2026-09-09.*
 
 ### Step 4: Expand Search request. First constrain the evidence universe: query genome ID...
 
@@ -142,11 +150,23 @@ target/debug/gentle_cli --state /tmp/gentle-conservation-tutorial/report_only.pr
 
 > Expected: Only the locus backed by `synthetic_declared_orthology` is labelled `expected_ortholog`; BLAST rank alone never establishes orthology.
 
+![The expanded request exposes the query genome, catalog/cache, required target genome, and target role before any search starts.](../../../screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/expand_search_request.context.svg)
+
+*Figure: The expanded request exposes the query genome, catalog/cache, required target genome, and target role before any search starts. Screenshot captured 2026-09-09.*
+
 ### Step 5: Scroll within Search request to constrain the alignment and promoter interpre...
 
 GUI: Scroll within `Search request` to constrain the alignment and promoter interpretation before running: minimum identity, maximum E-value, minimum aligned bases, maximum chain gap, retained loci per target, HSP processing budget, minimum exact-block length, promoter-matrix on/off, upstream/downstream window lengths, and displayed-row limit. Select `Run local screen` only after recording these choices; `Cancel` stops an active search without publishing a partial report, while `Export request...` preserves the exact reusable request.
 
 > Expected: Same-genome non-self similarity has its own loci, support blocks, coverage percentage, and ambiguity rule.
+
+![Focused constraints include identity, E-value, aligned length, chain gap, retained-locus and HSP budgets, exact-block length, promoter-window dimensions, and displayed-row limit.](../../../screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/show_promoter_constraints.context.svg)
+
+*Figure: Focused constraints include identity, E-value, aligned length, chain gap, retained-locus and HSP budgets, exact-block length, promoter-window dimensions, and displayed-row limit. Screenshot captured 2026-09-09.*
+
+![Whole-screen orientation for the lower search-policy and transcript-promoter matrix controls.](../../../screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/show_promoter_constraints.orientation.svg)
+
+*Figure: Whole-screen orientation for the lower search-policy and transcript-promoter matrix controls. Screenshot captured 2026-09-09.*
 
 ### Step 6: Inspect target readiness and confirm that expected-ortholog, unassigned cross...
 

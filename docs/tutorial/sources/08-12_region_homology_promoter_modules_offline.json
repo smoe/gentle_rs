@@ -2,6 +2,43 @@
   "schema": "gentle.tutorial_source.v4",
   "id": "region_homology_promoter_modules_offline",
   "title": "Conserved Blocks and Testable Promoter-Module Hypotheses",
+  "graphics": [
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/open_saved_regions.context.svg",
+      "caption": "The saved-region manager shows the assembly-bound candidate and keeps Conservation and Promoter similarity actions visible at the standard 800×600 DNA-window size.",
+      "illustrates_step": 2,
+      "capture_date": "2026-09-09"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/open_promoter_similarity.orientation.svg",
+      "caption": "Whole-screen orientation after Promoter similarity opens the content-bound Conservation workspace for the selected candidate.",
+      "illustrates_step": 3,
+      "capture_date": "2026-09-09"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/expand_search_request.context.svg",
+      "caption": "The expanded request exposes the query genome, catalog/cache, required target genome, and target role before any search starts.",
+      "illustrates_step": 4,
+      "capture_date": "2026-09-09"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/show_promoter_constraints.orientation.svg",
+      "caption": "Whole-screen orientation for the lower search-policy and transcript-promoter matrix controls.",
+      "illustrates_step": 5,
+      "capture_date": "2026-09-09"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/show_promoter_constraints.context.svg",
+      "caption": "Focused constraints include identity, E-value, aligned length, chain gap, retained-locus and HSP budgets, exact-block length, promoter-window dimensions, and displayed-row limit.",
+      "illustrates_step": 5,
+      "capture_date": "2026-09-09"
+    }
+  ],
   "catalog": {
     "order": 54,
     "path": "docs/tutorial/generated/chapters/08-12_region_homology_promoter_modules_offline.md",

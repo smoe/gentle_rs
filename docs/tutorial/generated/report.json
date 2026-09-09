@@ -127,7 +127,7 @@
     "chapters/08-09_promoter_reporter_panel_planning_offline.md": "b5aa8d61d9e7534d99d431c4859853a3f34f7b6a138261d1c42449fce36e5eea",
     "chapters/08-10_portable_genomic_regions_offline.md": "460065d64c04468409ae19df2dcf44af1f2d36dfa7d811aad0832374af90992a",
     "chapters/08-11_regulatory_fragment_panel_planning_offline.md": "e97bb3da884bc59f5dca37ebc5ffa27bf5704767e2333cd9eb02b74b63014f17",
-    "chapters/08-12_region_homology_promoter_modules_offline.md": "de82bdd8689a153d2b66fa8b788982903ea667b6678b72f3105d48ffe8bf1ff1"
+    "chapters/08-12_region_homology_promoter_modules_offline.md": "2676a8dfe052a08accf45ddc5f788586294e75b5c7699b999f88493eba4a6047"
   },
   "warnings": [
     "Tutorial 'load_branch_reverse_complement_pgex_fasta' review is stale because source JSON 'docs/tutorial/sources/02-01_load_branch_reverse_complement_pgex_fasta.json' changed after human review date 2026-05-18",
@@ -978,6 +978,43 @@
       "executed": false,
       "review_status": "codex_reviewed",
       "codex_reviewed_at": "2026-09-07",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/open_saved_regions.context.svg",
+          "caption": "The saved-region manager shows the assembly-bound candidate and keeps Conservation and Promoter similarity actions visible at the standard 800×600 DNA-window size.",
+          "illustrates_step": 2,
+          "capture_date": "2026-09-09"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/open_promoter_similarity.orientation.svg",
+          "caption": "Whole-screen orientation after Promoter similarity opens the content-bound Conservation workspace for the selected candidate.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-09"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/expand_search_request.context.svg",
+          "caption": "The expanded request exposes the query genome, catalog/cache, required target genome, and target role before any search starts.",
+          "illustrates_step": 4,
+          "capture_date": "2026-09-09"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/show_promoter_constraints.orientation.svg",
+          "caption": "Whole-screen orientation for the lower search-policy and transcript-promoter matrix controls.",
+          "illustrates_step": 5,
+          "capture_date": "2026-09-09"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/show_promoter_constraints.context.svg",
+          "caption": "Focused constraints include identity, E-value, aligned length, chain gap, retained-locus and HSP budgets, exact-block length, promoter-window dimensions, and displayed-row limit.",
+          "illustrates_step": 5,
+          "capture_date": "2026-09-09"
+        }
+      ],
       "retained_artifacts": []
     }
   ]

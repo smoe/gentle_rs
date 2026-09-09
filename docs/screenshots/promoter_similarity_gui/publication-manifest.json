@@ -1,0 +1,174 @@
+{
+  "acceptance_report": {
+    "source_sha256": "139ea53a6d2c002e1349df9d775f55c62f33a11348f8c14a8006ae635a80cf6c",
+    "status": "pass"
+  },
+  "capture_date": "2026-09-09",
+  "checkpoints": [
+    {
+      "captured_at_unix_ms": 1788942546139,
+      "chapter_id": "region_homology_promoter_modules_offline",
+      "files": [
+        {
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/open_saved_regions.raw.png",
+          "sha256": "cff5d28271d3d45845d64dd2032bc736c3e100d596305ddbf844bad6b21b2d99",
+          "size_bytes": 264397
+        },
+        {
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/open_saved_regions.orientation.svg",
+          "sha256": "29b86477c2f2c837b7f5f74ba023b473f4b99ee527dee52b49e3b4086d3b18e8",
+          "size_bytes": 549
+        },
+        {
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/open_saved_regions.context.svg",
+          "sha256": "ef359b9c68f500b94d260db973ed79ed48ce4a4a95ea2423c72bd4637190f652",
+          "size_bytes": 557
+        },
+        {
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/open_saved_regions.screenshot.json",
+          "sha256": "e4a22e6d34f261c21677cdffba96e71f795736957aa64eb45843045c4be4983e",
+          "size_bytes": 4515
+        },
+        {
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/open_saved_regions.snapshot.json",
+          "sha256": "1810646de6530bde1d91f6edc9b11be7461e93bf21bbc560412b477b4192b59d",
+          "size_bytes": 16488
+        }
+      ],
+      "prose_step": 2,
+      "semantic_snapshot_canonical_sha256": "634b3fd5e1dc2f16d3d94204bdaad6700c8c8c209d3c1a1e280b21e13eed367e",
+      "semantic_target": {
+        "semantic_id": "dna.sequence.open_regions",
+        "subject_scope": "subject-a1c7b2b8a34b7f698981af24c2819938",
+        "window_id": "window.dna_viewer"
+      },
+      "source_record_sha256": "e4a22e6d34f261c21677cdffba96e71f795736957aa64eb45843045c4be4983e",
+      "step_id": "open_saved_regions"
+    },
+    {
+      "captured_at_unix_ms": 1788942547724,
+      "chapter_id": "region_homology_promoter_modules_offline",
+      "files": [
+        {
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/open_promoter_similarity.raw.png",
+          "sha256": "4bd1f6203c6ac2ee7d5532e76e492ac2ccb98c7aa36e2236f992eac216a392d1",
+          "size_bytes": 324465
+        },
+        {
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/open_promoter_similarity.orientation.svg",
+          "sha256": "babd48aaaac3938e02b0d285334bc637aa72ef3a3b7a95d425e9ab3cc000bd7e",
+          "size_bytes": 561
+        },
+        {
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/open_promoter_similarity.context.svg",
+          "sha256": "0e6bfb9e2509d7fca99b3ccec6244b38c2e3917fec2d8a6f5af1bea717d6bf86",
+          "size_bytes": 569
+        },
+        {
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/open_promoter_similarity.screenshot.json",
+          "sha256": "de636ecb09a16b12db60bf049e2f40141cc88562463373fff49af4fce39b7f7c",
+          "size_bytes": 4526
+        },
+        {
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/open_promoter_similarity.snapshot.json",
+          "sha256": "09b27f94041240ed0ab1178e753e5c0515856d8d37cd3f6ff350e3239a2481fa",
+          "size_bytes": 16538
+        }
+      ],
+      "prose_step": 3,
+      "semantic_snapshot_canonical_sha256": "48f775dcb1ea889805a6c600e02e9d1fa2d458196fdfa483c8dd9829231f479d",
+      "semantic_target": {
+        "semantic_id": "genomic_region.promoter_similarity",
+        "subject_scope": null,
+        "window_id": "window.genomic_regions"
+      },
+      "source_record_sha256": "de636ecb09a16b12db60bf049e2f40141cc88562463373fff49af4fce39b7f7c",
+      "step_id": "open_promoter_similarity"
+    },
+    {
+      "captured_at_unix_ms": 1788942549306,
+      "chapter_id": "region_homology_promoter_modules_offline",
+      "files": [
+        {
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/expand_search_request.raw.png",
+          "sha256": "ba03e25906911997cf1caad3c8467e44e382ca724a1bc3085a30c8daee93fe5c",
+          "size_bytes": 326228
+        },
+        {
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/expand_search_request.orientation.svg",
+          "sha256": "df6a6183d49fc89ae616e81b4dfd77e70504da4db5bb01f02d4bb2c9939fea4d",
+          "size_bytes": 556
+        },
+        {
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/expand_search_request.context.svg",
+          "sha256": "4d55709da4e66623d63345ed278247db066299a4ac85b63c477c2c4845652474",
+          "size_bytes": 564
+        },
+        {
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/expand_search_request.screenshot.json",
+          "sha256": "2c1c22c6a94abff9853ad266f2d3e2116e97243388047f5b4f0b8763dad6355f",
+          "size_bytes": 4543
+        },
+        {
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/expand_search_request.snapshot.json",
+          "sha256": "d7d8200c6c133919d053ab17bcf268096ab49e6c821b8496771e375747c0aaec",
+          "size_bytes": 17119
+        }
+      ],
+      "prose_step": 4,
+      "semantic_snapshot_canonical_sha256": "4bd60f7ec103a218193d53d6b54866ec3aac176b401eec1ec4d4677d0c481570",
+      "semantic_target": {
+        "semantic_id": "region_conservation.search_request",
+        "subject_scope": null,
+        "window_id": "window.region_conservation"
+      },
+      "source_record_sha256": "2c1c22c6a94abff9853ad266f2d3e2116e97243388047f5b4f0b8763dad6355f",
+      "step_id": "expand_search_request"
+    },
+    {
+      "captured_at_unix_ms": 1788942551206,
+      "chapter_id": "region_homology_promoter_modules_offline",
+      "files": [
+        {
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/show_promoter_constraints.raw.png",
+          "sha256": "e9e97f59917b84c8763e6dda1c7de12d234856a390953485098a91a481eed48a",
+          "size_bytes": 325794
+        },
+        {
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/show_promoter_constraints.orientation.svg",
+          "sha256": "f08aa927126aca578016aa51dcbac1cdc73760400f4ac7738c335b0967bdbb54",
+          "size_bytes": 564
+        },
+        {
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/show_promoter_constraints.context.svg",
+          "sha256": "e57b10bd0125789f6ed762f190e64b497c2353e693040bdc5e7c226d3e695b5e",
+          "size_bytes": 572
+        },
+        {
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/show_promoter_constraints.screenshot.json",
+          "sha256": "ee501d61c5b8c5624bc17840bd4ee1e93a21d2bf7f23295864cad92600e3b170",
+          "size_bytes": 4562
+        },
+        {
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/show_promoter_constraints.snapshot.json",
+          "sha256": "b1b29520f4b06c4783ac7e07b209502c4253837479c2400145c15e85d3408302",
+          "size_bytes": 17111
+        }
+      ],
+      "prose_step": 5,
+      "semantic_snapshot_canonical_sha256": "dc5ecdc0f66a42bbfacf2a6aebd075b24a0b61c7de7eb0944843fd1c8dfb7f67",
+      "semantic_target": {
+        "semantic_id": "region_conservation.search_fields",
+        "subject_scope": null,
+        "window_id": "window.region_conservation"
+      },
+      "source_record_sha256": "ee501d61c5b8c5624bc17840bd4ee1e93a21d2bf7f23295864cad92600e3b170",
+      "step_id": "show_promoter_constraints"
+    }
+  ],
+  "gentle_binary_sha256": "9d5e1aa0efb77a9ae51784b4f2fec686a4bd5a5c1c1776accd18e1aec178b3e8",
+  "path_note": "The copied screenshot sidecars are byte-identical capture records. Their absolute paths describe the original run; this manifest binds the portable repository copies by relative path and SHA-256.",
+  "schema": "gentle.tutorial_gui_screenshot_publication.v1",
+  "selection_sha256": "6ce83e00332c3928f0b12bdcae60cdc1976ba5be9b12ca48ccc5dfc02d82ae5e",
+  "source_revision": "b087cb22ca54f0c92b8e47796b6772a7cb7a04ae"
+}
