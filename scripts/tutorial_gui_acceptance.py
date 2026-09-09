@@ -1730,6 +1730,10 @@ class TutorialAcceptanceRun:
             checkpoint_dir = self.chapter_dir / "checkpoints"
             screenshot_path = checkpoint_dir / f"{step['id']}.raw.png"
             screenshot_path.parent.mkdir(parents=True, exist_ok=True)
+            # The semantic snapshot is written during egui's frame. Give the
+            # X11 surface one bounded interval to present that verified frame
+            # before capturing its pixels.
+            time.sleep(0.15)
             completed = subprocess.run(
                 [str(self.args.scrot), str(screenshot_path)],
                 cwd=self.repo_root,

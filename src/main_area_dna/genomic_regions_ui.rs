@@ -994,9 +994,11 @@ impl MainAreaDna {
                 self.export_genomic_region_set_bed(&set_id)
             }
             Some(GenomicRegionManagerAction::OpenConservation { set_id, region }) => {
+                self.show_genomic_region_manager = false;
                 self.open_genomic_region_conservation(&set_id, &region)
             }
             Some(GenomicRegionManagerAction::OpenPromoterSimilarity { set_id, region }) => {
+                self.show_genomic_region_manager = false;
                 self.open_genomic_region_promoter_similarity(&set_id, &region)
             }
             None => {}
