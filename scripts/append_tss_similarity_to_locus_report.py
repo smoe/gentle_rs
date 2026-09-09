@@ -120,7 +120,7 @@ def require_new_outputs(paths: list[Path]) -> None:
 
 def add_stretch_overview(svg: str, gene: str, candidates: dict[str, Any],
                          report: dict[str, Any]) -> tuple[str, int]:
-    """Insert linked stretch bars on the original transcript model's genomic axis."""
+    """Insert linked stretch labels and background bands on the bound genomic axis."""
     root = ET.fromstring(svg)
     lines = [item for item in root.iter() if item.get("data-gentle-transcript")]
     heading = re.search(r'<text\b[^>]*>\s*Transcript models and annotation-derived metrics\s*</text>', svg)
@@ -136,6 +136,17 @@ def add_stretch_overview(svg: str, gene: str, candidates: dict[str, Any],
         raise ValueError("invalid genomic display axis")
     y = float(ET.fromstring(heading.group()).get("y"))
     start_y = y
+    similarity = next((item for item in root.iter()
+                       if item.get("data-gentle-panel") == "tss-local-promoter-similarity"), None)
+    similarity_heading = next((item for item in ([] if similarity is None else similarity)
+                               if item.tag.rsplit("}", 1)[-1] == "text"), None)
+    if similarity_heading is None:
+        raise ValueError("base SVG lacks the similarity boundary for TSS background bands")
+    band_top = start_y - 14
+    band_bottom = float(similarity_heading.get("y")) - 20
+    if not all(math.isfinite(value) for value in (band_top, band_bottom)) or band_bottom <= band_top:
+        raise ValueError("invalid upper genomic overview height for TSS background bands")
+    backgrounds = ['<g data-gentle-tss-stretch-backgrounds="true" pointer-events="none">']
     body = ['<g data-gentle-tss-stretch-overview="true">',
             svg_text(34, y, "TSS stretches: reference for similarity below", size=12, weight="bold")]
     y += 25
@@ -147,6 +158,12 @@ def add_stretch_overview(svg: str, gene: str, candidates: dict[str, Any],
                       for position in (start, end))
         name = escape(stretch["stretch_id"], quote=True)
         colour = STRETCH_COLOURS[index % len(STRETCH_COLOURS)]
+        backgrounds.append(
+            f'<rect data-gentle-tss-stretch-band="{name}" data-gentle-genomic-start="{start}" '
+            f'data-gentle-genomic-end="{end}" x="{a:.2f}" y="{band_top:.2f}" '
+            f'width="{max(1, b-a):.2f}" height="{band_bottom-band_top:.2f}" '
+            f'fill="{colour}" fill-opacity="0.12"/>'
+        )
         body.extend([
             f'<a id="overview-{name}" href="#similarity-{name}">',
             svg_text(34, y + 4, stretch["stretch_id"], size=9, family="monospace", fill=colour),
@@ -159,6 +176,7 @@ def add_stretch_overview(svg: str, gene: str, candidates: dict[str, Any],
         ])
         y += 26
     body.append('</g>')
+    backgrounds.append('</g>')
     shift = math.ceil(y - start_y + 18)
     old_height = int(root.get("height"))
     height = old_height + shift
@@ -166,9 +184,9 @@ def add_stretch_overview(svg: str, gene: str, candidates: dict[str, Any],
     prefix = prefix.replace(f'height="{old_height}"', f'height="{height}"')
     prefix = prefix.replace(f'viewBox="0 0 1400 {old_height}"', f'viewBox="0 0 1400 {height}"')
     tail = svg[heading.start():].rsplit('</svg>', 1)[0]
-    # Translate the original content as one group; do not re-render its scientific lanes.
+    # Paint bands first, behind the untouched scientific lanes, never over their glyphs.
     return (prefix + '\n'.join(body) + f'<g data-gentle-shifted-locus="true" transform="translate(0 {shift})">'
-            + tail + '</g></svg>\n', height)
+            + '\n'.join(backgrounds) + tail + '</g></svg>\n', height)
 
 
 def append_section(

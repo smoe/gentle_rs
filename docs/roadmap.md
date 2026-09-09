@@ -86,7 +86,7 @@ Pre-release finishing scope:
 2. Run the `.10` ledger: locked tests, script build/entrypoints, tutorial/parity, IRF9/Q00978,
    benchmarks and TP73/PATZ1 TFBS/reporter/CUT&RUN/locus proofs with exact JASPAR 2026 PFMs.
 3. Run [build-only CI packaging](release.md#build-only-candidate-verification) at the same SHA; retain receipts before approval.
-4. Have Glen reprepare/recompare/re-render the TSS-local reports with bound locus JSON/SVG, corrected strand/footer layout and upper-genome stretch references; preserve historical figures until that replay.
+4. Require Glen's replacement for withdrawn `c91bf912`: chromosome-general BigWig replay, all 12 CUT&RUN/H3K4me3 lanes populated per locus, strict assembly aliases, and bound TSS background-band figures checked on both strands.
    Keep offline-safe regeneration, live Conservation/partner-evidence proof and ClawBio compatibility pending removal review.
 5. Validate DuckDB real-Parquet boundaries/limits and scan filters; address GUI
    staleness when the selected package changes.

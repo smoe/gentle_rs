@@ -10,6 +10,13 @@
 > using these figures for interpretation. The new upper-genome TSS-stretch
 > references described below are not yet present in these historical files.
 
+Glen withdrew the attempted refresh `c91bf912`; it is not merged. Its replay
+used a chromosome-7-only BigWig adapter, leaving all 12 CD44 and TGFB1
+CUT&RUN/H3K4me3 lanes empty. A replacement must use chromosome-general input
+conversion and verify all 12 lanes for each of CD44, TGFB1, and SERPINE1.
+Missing or incompatible intervals are not measured zero signal. The assembly
+alias validation finding also remains open for that replacement.
+
 This bundle extends the existing tall `CD44`, `TGFB1`, and `SERPINE1`
 promoter–reporter architecture reports. Their transcript models, proposed
 reporters, Ensembl Regulation annotations, TP73 CUT&RUN/H3K4me3 lanes, and
@@ -33,6 +40,11 @@ New tall reports include a labelled TSS-stretch track immediately above the
 transcript models, on the same genomic axis. Its exact stretch IDs and colours
 reappear in the similarity section, with reciprocal links in SVG viewers that
 support them. Each stretch occupies a separate row to avoid label collisions.
+Translucent bands in the same colours extend behind the upper genomic lanes,
+from the transcript-model heading to just before the similarity section. They
+follow the bound genomic axis on either strand, do not intercept mouse input,
+and do not extend into the independently scaled similarity plots or footer.
+The bands identify comparison windows, not extra occupancy or functional evidence.
 The original transcript, reporter and evidence lanes are translated intact,
 not recalculated. Similarity-strip query offsets are assembly-forward; they
 are mirrored when displayed on a minus-strand gene axis.

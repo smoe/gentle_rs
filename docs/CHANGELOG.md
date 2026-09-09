@@ -2,6 +2,17 @@
 
 ## 2026-09-09 - Promoterome preparation and ordered similarity inspection
 
+- Extended the TSS-local report appender with translucent, colour-matched
+  background bands behind the upper genomic lanes, retaining exact stretch
+  labels and reciprocal similarity links. Bands follow the bound axis on both
+  strands, stop before the independently scaled similarity section, and leave
+  original scientific SVG elements unchanged. Synthetic tests cover layering,
+  source-element preservation, boundary validation and determinism. Glen's
+  withdrawn `c91bf912` replay remains unmerged: its chromosome-7-only BigWig
+  adapter emptied CD44/TGFB1 occupancy lanes. Corrected real-data regeneration
+  and per-locus 12-lane acceptance remain with Glen; no scientific figures or
+  receipts were regenerated locally.
+
 - Fixed TSS-local report integration: preparation checks selected reference
   geometry, transcript membership and sequence identity; both renderers require
   the bound locus JSON, and tall reports also require a predeclared, panel-matched

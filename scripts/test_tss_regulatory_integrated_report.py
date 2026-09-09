@@ -417,6 +417,12 @@ class FrequencyTests(unittest.TestCase):
                 tree = ET.fromstring(output)
                 overview = next(node for node in tree if node.get("data-gentle-tss-stretch-overview"))
                 shifted = next(node for node in tree if node.get("data-gentle-shifted-locus"))
+                backgrounds = shifted[0]
+                self.assertEqual(backgrounds.get("data-gentle-tss-stretch-backgrounds"), "true")
+                self.assertEqual(backgrounds.get("pointer-events"), "none")
+                self.assertEqual(len(backgrounds), len(fixture[0]["stretches"]))
+                similarity = next(node for node in shifted if node.get("data-gentle-panel"))
+                similarity_y = float(similarity.find("text").get("y"))
                 self.assertGreater(height, old_height)
                 self.assertLess(output.index('data-gentle-tss-stretch-overview'),
                                 output.index("Transcript models and annotation-derived metrics"))
@@ -428,13 +434,56 @@ class FrequencyTests(unittest.TestCase):
                     self.assertEqual(lower_link.get("href"), f"#overview-{name}")
                     bar = upper_link.find("rect")
                     self.assertEqual(bar.get("fill"), lower_link.find("text").get("fill"))
+                    band = backgrounds[index]
+                    self.assertEqual(band.get("data-gentle-tss-stretch-band"), name)
+                    for key in ("x", "width", "fill", "data-gentle-genomic-start", "data-gentle-genomic-end"):
+                        self.assertEqual(band.get(key), bar.get(key))
+                    self.assertEqual(band.get("fill-opacity"), "0.12")
+                    self.assertLess(float(band.get("y")), 110)  # Original transcript lane.
+                    self.assertGreater(float(band.get("y")) + float(band.get("height")), 110)
+                    self.assertLess(float(band.get("y")) + float(band.get("height")), similarity_y)
                     expected = min(255 + (pos - left) / (right - left) * 795
                                    for pos in (stretch["start_1based"], stretch["end_1based"]))
                     self.assertAlmostEqual(float(bar.get("x")), expected, places=2)
                 original_line = ET.fromstring(base).find("line")
                 self.assertIn(ET.tostring(original_line), ET.tostring(shifted))
+                self.assertEqual((output, height), APPEND.add_stretch_overview(lower, "TOY", fixture[0], report))
             report.update(axis_left_genomic_1based=1, axis_right_genomic_1based=150)
             with self.assertRaisesRegex(ValueError, "outside"):
+                APPEND.add_stretch_overview(lower, "TOY", fixture[0], report)
+
+    def test_background_bands_preserve_native_feature_and_occupancy_elements(self):
+        with TemporaryDirectory() as tmp:
+            _, report, base = source_fixture(Path(tmp))
+            # Synthetic glyphs exercise layering/preservation, not experimental signal validity.
+            glyphs = ('<rect data-gentle-exon="E1" x="280" y="104" width="20" height="12" fill="#2563eb"/>'
+                      '<rect data-gentle-regulatory-feature="F1" x="290" y="122" width="30" height="6" fill="#61d9a8"/>'
+                      '<line data-gentle-occupancy-lane="O1" data-gentle-occupancy-state="available" '
+                      'x1="255" x2="1050" y1="140" y2="140"/>'
+                      '<rect data-gentle-occupancy-interval="I1" x="300" y="134" width="8" height="6" fill="#475569"/>')
+            base = base.replace('<text data-gentle-overlay-non-claims=', glyphs + '<text data-gentle-overlay-non-claims=')
+            fixture = plot_fixture()
+            lower, _ = APPEND.append_section(base, "TOY", *fixture)
+            # The real renderer emits a namespaced SVG; support that as well as tiny test SVGs.
+            lower = lower.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ', 1)
+            output, _ = APPEND.add_stretch_overview(lower, "TOY", fixture[0], report)
+            before = ET.fromstring(lower)
+            after = ET.fromstring(output)
+            original = list(before)[2:]  # Root background and leading title remain outside the shift.
+            shifted = next(node for node in after if node.get("data-gentle-shifted-locus"))
+            self.assertEqual([ET.tostring(node) for node in original],
+                             [ET.tostring(node) for node in list(shifted)[1:]])
+            self.assertIn(glyphs, output)
+
+    def test_background_bands_require_a_valid_similarity_boundary(self):
+        with TemporaryDirectory() as tmp:
+            _, report, base = source_fixture(Path(tmp))
+            fixture = plot_fixture()
+            with self.assertRaisesRegex(ValueError, "similarity boundary"):
+                APPEND.add_stretch_overview(base, "TOY", fixture[0], report)
+            lower, _ = APPEND.append_section(base, "TOY", *fixture)
+            lower = lower.replace('x="34.00" y="170.00"', 'x="34.00" y="60.00"', 1)
+            with self.assertRaisesRegex(ValueError, "overview height"):
                 APPEND.add_stretch_overview(lower, "TOY", fixture[0], report)
 
     def test_frequency_segments_count_distinct_genes_not_transcripts(self) -> None:
