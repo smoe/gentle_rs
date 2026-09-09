@@ -1750,6 +1750,63 @@ impl GENtleApp {
         }
     }
 
+    fn render_genome_gene_extraction_options(&mut self, ui: &mut Ui) {
+        let gene_label = self.tr("genome.extract.gene");
+        let coding_label = self.tr("genome.extract.coding");
+        let flank_hint = self.tr("genome.extract.flank_hint");
+        ui.horizontal_wrapped(|ui| {
+            ui.label(self.tr("genome.extract.mode"));
+            let previous_mode = self.genome_gene_extract_mode;
+            egui::ComboBox::from_id_salt("retrieve_genome_gene_extract_mode")
+                .selected_text(match self.genome_gene_extract_mode {
+                    GenomeGeneExtractMode::Gene => &gene_label,
+                    GenomeGeneExtractMode::CodingWithPromoter => &coding_label,
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut self.genome_gene_extract_mode,
+                        GenomeGeneExtractMode::Gene,
+                        &gene_label,
+                    );
+                    ui.selectable_value(
+                        &mut self.genome_gene_extract_mode,
+                        GenomeGeneExtractMode::CodingWithPromoter,
+                        &coding_label,
+                    );
+                });
+            ui.label(self.tr("genome.extract.flank"));
+            let promoter_changed = ui
+                .add_enabled(
+                    matches!(
+                        self.genome_gene_extract_mode,
+                        GenomeGeneExtractMode::CodingWithPromoter
+                    ),
+                    egui::TextEdit::singleline(&mut self.genome_gene_promoter_upstream_bp)
+                        .desired_width(120.0)
+                        .hint_text(flank_hint),
+                )
+                .changed();
+            if promoter_changed {
+                self.genome_gene_promoter_upstream_bp
+                    .retain(|ch| ch.is_ascii_digit());
+            }
+            if self.genome_gene_extract_mode != previous_mode || promoter_changed {
+                self.refresh_selected_gene_output_id_if_autofilled();
+            }
+        });
+        let note_key = match self.genome_gene_extract_mode {
+            GenomeGeneExtractMode::Gene => "genome.extract.gene_note",
+            GenomeGeneExtractMode::CodingWithPromoter => "genome.extract.coding_note",
+        };
+        ui.add(egui::Label::new(self.tr(note_key)).wrap());
+        for key in [
+            "genome.extract.region_note",
+            "genome.extract.coordinates_note",
+        ] {
+            ui.add(egui::Label::new(egui::RichText::new(self.tr(key)).small()).wrap());
+        }
+    }
+
     pub(super) fn render_reference_genome_retrieve_contents(&mut self, ui: &mut Ui) -> bool {
         let mut close_requested = false;
         ui.push_id("retrieve_genome_dialog_contents", |ui| {
@@ -2033,59 +2090,15 @@ impl GENtleApp {
                         Self::normalize_coordinate_field(&mut self.genome_end_1based);
                     }
                 });
-                ui.horizontal(|ui| {
-                    ui.label("selected gene extract");
-                    let previous_mode = self.genome_gene_extract_mode;
-                    egui::ComboBox::from_id_salt("retrieve_genome_gene_extract_mode")
-                        .selected_text(match self.genome_gene_extract_mode {
-                            GenomeGeneExtractMode::Gene => "gene span",
-                            GenomeGeneExtractMode::CodingWithPromoter => "CDS + promoter",
-                        })
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(
-                                &mut self.genome_gene_extract_mode,
-                                GenomeGeneExtractMode::Gene,
-                                "gene span",
-                            );
-                            ui.selectable_value(
-                                &mut self.genome_gene_extract_mode,
-                                GenomeGeneExtractMode::CodingWithPromoter,
-                                "CDS + promoter",
-                            );
-                        })
-                        .response
-                        .on_hover_text(
-                            "Choose whether Extract Selected Gene uses the full gene span or the CDS span plus an additional 5' promoter flank",
-                        );
-                    ui.label("promoter bp before CDS");
-                    let promoter_changed = ui
-                        .add_enabled(
-                            matches!(
-                                self.genome_gene_extract_mode,
-                                GenomeGeneExtractMode::CodingWithPromoter
-                            ),
-                            egui::TextEdit::singleline(
-                                &mut self.genome_gene_promoter_upstream_bp,
-                            )
-                            .desired_width(120.0)
-                            .hint_text("0 = CDS only"),
-                        )
-                        .on_hover_text(
-                            "Additional bases to include on the gene's 5' side before the first coding base (strand-aware)",
-                        )
-                        .changed();
-                    if promoter_changed {
-                        self.genome_gene_promoter_upstream_bp
-                            .retain(|ch| ch.is_ascii_digit());
-                    }
-                    if self.genome_gene_extract_mode != previous_mode || promoter_changed {
-                        self.refresh_selected_gene_output_id_if_autofilled();
-                    }
+                self.render_genome_gene_extraction_options(ui);
+                let extract_gene_label = self.tr("genome.extract.selected_gene");
+                let extract_region_label = self.tr("genome.extract.region");
+                let extract_gene_hover = self.tr(match self.genome_gene_extract_mode {
+                    GenomeGeneExtractMode::Gene => "genome.extract.gene_note",
+                    GenomeGeneExtractMode::CodingWithPromoter => "genome.extract.coding_note",
                 });
-                ui.small(
-                    "Extract Selected Gene uses the mode above. Extract Region always uses the explicit chr/start/end interval.",
-                );
-                ui.horizontal(|ui| {
+                let extract_region_hover = self.tr("genome.extract.region_note");
+                ui.horizontal_wrapped(|ui| {
                     ui.label("output_id");
                     if ui.text_edit_singleline(&mut self.genome_output_id).changed() {
                         self.genome_output_id_autofilled = false;
@@ -2105,18 +2118,16 @@ impl GENtleApp {
                     if ui
                         .add_enabled(
                             self.genome_selected_gene.is_some(),
-                            egui::Button::new("Extract Selected Gene"),
+                            egui::Button::new(extract_gene_label),
                         )
-                        .on_hover_text(
-                            "Extract the currently selected gene from the prepared reference",
-                        )
+                        .on_hover_text(extract_gene_hover)
                         .clicked()
                     {
                         self.extract_reference_genome_gene();
                     }
                     if ui
-                        .button("Extract Region")
-                        .on_hover_text("Extract the explicit chromosome start/end interval")
+                        .button(extract_region_label)
+                        .on_hover_text(extract_region_hover)
                         .clicked()
                     {
                         self.extract_reference_genome_region();
@@ -4140,5 +4151,96 @@ impl GENtleApp {
             }
         });
         self.show_cache_cleanup_dialog = open && !close_requested;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn collect_text(shape: &egui::epaint::Shape, texts: &mut Vec<(String, egui::Rect)>) {
+        match shape {
+            egui::epaint::Shape::Text(text) => {
+                texts.push((text.galley.job.text.clone(), text.visual_bounding_rect()));
+            }
+            egui::epaint::Shape::Vec(shapes) => {
+                for shape in shapes {
+                    collect_text(shape, texts);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    #[test]
+    fn genome_extraction_notes_are_visible_for_both_modes_and_wrap() {
+        let mut app = GENtleApp::default();
+        app.genome_gene_promoter_upstream_bp = "1500".into();
+        app.genome_output_id = "example_coding_promoter_1500bp".into();
+        app.genome_start_1based = "10000".into();
+        app.genome_end_1based = "20000".into();
+        app.mark_clean_snapshot();
+        for language in [UiLanguage::EnGb, UiLanguage::DeDe] {
+            app.i18n.set_language(language);
+            for (mode, label_key, note_key) in [
+                (
+                    GenomeGeneExtractMode::Gene,
+                    "genome.extract.gene",
+                    "genome.extract.gene_note",
+                ),
+                (
+                    GenomeGeneExtractMode::CodingWithPromoter,
+                    "genome.extract.coding",
+                    "genome.extract.coding_note",
+                ),
+            ] {
+                app.genome_gene_extract_mode = mode;
+                for width in [480.0, 860.0] {
+                    let ctx = egui::Context::default();
+                    for _ in 0..2 {
+                        let mut out = ctx.run_ui(
+                            egui::RawInput {
+                                screen_rect: Some(egui::Rect::from_min_size(
+                                    egui::Pos2::ZERO,
+                                    egui::vec2(width, 700.0),
+                                )),
+                                ..Default::default()
+                            },
+                            |ui| app.render_genome_gene_extraction_options(ui),
+                        );
+                        let mut texts = Vec::new();
+                        for shape in &out.shapes {
+                            collect_text(&shape.shape, &mut texts);
+                        }
+                        out.textures_delta.clear();
+                        for key in [
+                            label_key,
+                            note_key,
+                            "genome.extract.region_note",
+                            "genome.extract.coordinates_note",
+                        ] {
+                            let expected = app.tr(key);
+                            assert_ne!(expected, key, "missing translation");
+                            assert!(
+                                texts.iter().any(|(text, _)| text == &expected),
+                                "{key} must be visible without hovering in {mode:?}"
+                            );
+                        }
+                        for (text, rect) in texts {
+                            assert!(
+                                rect.right() <= width + 1.0,
+                                "clipped {text:?} at {rect:?} for width {width}"
+                            );
+                        }
+                        assert_eq!(app.genome_gene_extract_mode, mode);
+                    }
+                }
+            }
+        }
+        assert_eq!(app.genome_gene_promoter_upstream_bp, "1500");
+        assert_eq!(app.genome_start_1based, "10000");
+        assert_eq!(app.genome_end_1based, "20000");
+        assert_eq!(app.genome_output_id, "example_coding_promoter_1500bp");
+        assert!(!app.is_project_dirty());
     }
 }

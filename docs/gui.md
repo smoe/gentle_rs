@@ -5309,17 +5309,30 @@ Recommended flow:
      - default (`annotation scope=core`) attaches gene + transcript context
      - `annotation scope=full` additionally attaches exon + CDS subfeatures
      - `annotation scope=none` (or unchecked include flag) disables transfer
-     - `selected gene extract` adds a second interval mode:
-       `CDS + promoter`
-     - `promoter bp before CDS` adds an explicit 5' flank before the first
-       coding base in a strand-aware way (`0 = CDS only`)
-     - `gene span` remains the default mode for backward-compatible full-gene
-       extraction
+   - `Selected-gene interval` distinguishes two genomic extraction modes:
+     - `Whole gene (no added flank)` is the default: the complete annotated
+       gene span, including UTRs and introns, with no extra upstream DNA.
+     - `CDS span + upstream flank` spans the first to last coding base across
+       the gene's transcripts, retaining introns. `Upstream of CDS (bp)` adds
+       a strand-aware 5' flank before the first coding base, **not before the
+       transcription start site (TSS)**. `0` means the CDS span only. This is
+       not whole-gene-plus-promoter extraction and may omit UTR sequence.
+   - `Extract Region` ignores the selected-gene mode and flank value: it uses
+     only `chr/start_1based/end_1based`. The shared output name may still contain
+     `promoter`; that name is not proof of included upstream sequence. For a
+     whole gene plus upstream DNA, select the gene, then decrease the explicit
+     start on the plus strand or increase the end on the minus strand before
+     using `Extract Region` (within the prepared chromosome bounds).
+   - These distinctions are visible in the window, with wrapped explanations
+     and translations in all eight catalogs. Extraction behavior and CLI/API
+     options (`coding_with_promoter`, `promoter_upstream_bp`) are unchanged.
    - when transcript exon annotation is available, extraction also auto-creates
      an exon-concatenated synthetic companion sequence (`<seq_id>__exons`) with
      deterministic `N` spacers between merged exon blocks; this is useful as a
      lower-noise reference for cDNA dotplot workflows
-   - coordinates are 1-based and inclusive
+   - chromosome coordinates here are 1-based and inclusive. The DNA viewer
+     uses positions within the imported sequence; negative viewer positions
+     cannot retrieve missing upstream DNA. Import that DNA first.
 3. Run BLAST searches against prepared references:
    - open `BLAST Genome Sequence...`
    - dialog layout is organized into sections:

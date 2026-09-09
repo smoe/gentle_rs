@@ -12,6 +12,13 @@
   unchanged; earlier restriction-derived absence/uniqueness claims should be
   rechecked for nonpalindromic or degenerate motifs before wet-lab use.
 
+- Clarified the prepared-reference import window's whole-gene versus CDS-span
+  modes: the optional upstream flank is measured from the coding start, not
+  the transcription start. Visible, wrapped explanations distinguish explicit
+  coordinate extraction (no automatic flank), potentially misleading output
+  names, and viewer-local positions. New copy is localised in all eight
+  catalogs; extraction behavior and API options are unchanged.
+
 - Added `Zoom to selection` and `Go to selection` to the DNA viewer navigation
   row and map context menu, including off-screen, formula-entered selections.
   Navigation preserves the selection and scientific project state. Toolbar
