@@ -96,7 +96,8 @@ def reference_fixture(root):
     for strand, start, end, tss, tx in [("+", 1000, 3201, 3001, "T1"), ("-", 5800, 8001, 6001, "T2")]:
         key = promoterome.window_id("1", start, end, strand)
         windows.append({"promoter_id": key, "chromosome": "1", "start_0based": start,
-                        "end_0based_exclusive": end, "strand": strand, "tss_1based": tss, "boundary_clipped": False})
+                        "end_0based_exclusive": end, "strand": strand, "tss_1based": tss,
+                        "boundary_clipped": "false"})
         mappings.append({"promoter_id": key, "gene_id": "G1", "gene_name": "TOY", "transcript_id": tx})
         sequences.append(f'>{key}\n{"A" * 2201}\n')
     write_tsv(root / "promoter_windows.tsv", windows)

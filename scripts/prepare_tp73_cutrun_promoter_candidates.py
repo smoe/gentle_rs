@@ -116,7 +116,8 @@ def selected_inputs(promoterome: Path):
         upstream, downstream = receipt["upstream_bp"], receipt["downstream_bp"]
         expected_span = ((tss - upstream - 1, tss + downstream) if strand == "+"
                          else (tss - downstream - 1, tss + upstream))
-        require((start, end) == expected_span and row.get("boundary_clipped") == "False",
+        require((start, end) == expected_span
+                and str(row.get("boundary_clipped", "")).lower() == "false",
                 "selected window is clipped or disagrees with its strand/TSS")
         require(promoter_id == window_id(row["chromosome"], start, end, strand),
                 "selected promoter identity disagrees with geometry")
