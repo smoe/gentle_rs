@@ -1,0 +1,16 @@
+gene	stretch_id	feature_id	feature_type	start_1based	end_1based	length_bp	clipped_to_tss_stretch	other_genes_any	other_genes_25pct	other_genes_50pct	other_genes_80pct	frequency_complete
+CD44	CD44_tss_stretch_1	ENSR00001659002	emar	35138221	35139371	1151	True	0	0	0	0	True
+CD44	CD44_tss_stretch_1	ENSR11_832W64	promoter	35138946	35139181	236	False	0	0	0	0	True
+CD44	CD44_tss_stretch_1	ENSR11_9HXKD	promoter	35138231	35138731	501	False	2	0	0	0	True
+CD44	CD44_tss_stretch_1	ENSR11_B8Z9S	promoter	35139229	35139371	143	True	0	0	0	0	True
+SERPINE1	SERPINE1_tss_stretch_1	ENSR00001588829	emar	101121823	101122358	536	True	34792	0	0	0	True
+SERPINE1	SERPINE1_tss_stretch_1	ENSR7_93H5NS	promoter	101121823	101122168	346	False	34788	12	0	0	True
+SERPINE1	SERPINE1_tss_stretch_1	ENSR7_BQ3T2	enhancer	101122169	101122358	190	True	2	0	0	0	True
+SERPINE1	SERPINE1_tss_stretch_2	ENSR00001588832	emar	101126101	101127304	1204	True	0	0	0	0	True
+SERPINE1	SERPINE1_tss_stretch_2	ENSR7_5TR7ZR	ctcf	101126823	101126844	22	False	0	0	0	0	True
+SERPINE1	SERPINE1_tss_stretch_2	ENSR7_93H5Q4	promoter	101126111	101126611	501	False	0	0	0	0	True
+SERPINE1	SERPINE1_tss_stretch_2	ENSR7_93H5QD	enhancer	101127130	101127304	175	True	0	0	0	0	True
+SERPINE1	SERPINE1_tss_stretch_2	ENSR7_BQ3TL	promoter	101126614	101127129	516	False	0	0	0	0	True
+TGFB1	TGFB1_tss_stretch_1	ENSR00001777739	emar	41353722	41354461	740	True	0	0	0	0	True
+TGFB1	TGFB1_tss_stretch_1	ENSR19_5CPLWC	ctcf	41354129	41354150	22	False	0	0	0	0	True
+TGFB1	TGFB1_tss_stretch_1	ENSR19_9LF6T	promoter	41353912	41354182	271	False	0	0	0	0	True

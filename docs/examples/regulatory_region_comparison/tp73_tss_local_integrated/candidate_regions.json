@@ -1,0 +1,1067 @@
+{
+  "dataset_id": "selected_gene_ensembl_regulation_intersections_tss_500_200_v1",
+  "regions": [
+    {
+      "comparison_class": "ensembl_regulation_tss_window_intersection",
+      "gene_query": "CD44",
+      "input_kind": "canonical_region",
+      "region_id": "CD44_CD44_tss_stretch_1_ENSR00001659002",
+      "sequence_length_bp": 1151,
+      "sequence_orientation": "assembly_reference_forward",
+      "sequence_sha256": "sha256:e3388fee73bd8816900227398fcb6bd57908ba2766163c8e8486fd81c62d563b",
+      "source_region": {
+        "annotation_release": "2026-08",
+        "canonical_feature_url": "https://regulation.ensembl.org/regulatory_features/homo_sapiens/ENSR00001659002",
+        "clipped_to_tss_stretch": true,
+        "core_genomic_end_1based": 35140773,
+        "core_genomic_start_1based": 35138036,
+        "feature_type": "emar",
+        "interval": {
+          "coordinate_convention": "zero_based_half_open",
+          "end_0based_exclusive": 35139371,
+          "reference": {
+            "assembly_accession": "GCA_000001405.29",
+            "assembly_name": "GRCh38",
+            "contig_name": "11"
+          },
+          "start_0based": 35138220,
+          "strand": "unstranded"
+        },
+        "purpose": "regulatory_feature_similarity_within_selected_tss_window",
+        "region_id": "ENSR00001659002",
+        "source_id": "ensembl_regulation_2026_08_grch38",
+        "source_report_sha256": "sha256:0376b6fbf6b227023aa7c4b093a0d05923ad1d0f21cfb8d9104a14f64c2c8dcd",
+        "stretch_id": "CD44_tss_stretch_1",
+        "tss_windows": [
+          {
+            "chromosome": "11",
+            "end_1based": 35138921,
+            "start_1based": 35138221,
+            "strand": "+",
+            "transcript_ids": [
+              "ENST00000263398",
+              "ENST00000278386"
+            ],
+            "tss_1based": 35138721
+          },
+          {
+            "chromosome": "11",
+            "end_1based": 35139371,
+            "start_1based": 35138671,
+            "strand": "+",
+            "transcript_ids": [
+              "ENST00000428726"
+            ],
+            "tss_1based": 35139171
+          }
+        ]
+      }
+    },
+    {
+      "comparison_class": "ensembl_regulation_tss_window_intersection",
+      "gene_query": "CD44",
+      "input_kind": "canonical_region",
+      "region_id": "CD44_CD44_tss_stretch_1_ENSR11_9HXKD",
+      "sequence_length_bp": 501,
+      "sequence_orientation": "assembly_reference_forward",
+      "sequence_sha256": "sha256:789f85421d82f84aa8e5a9224b54611e50693753b7e75107ab8f91869dee73e9",
+      "source_region": {
+        "annotation_release": "2026-08",
+        "canonical_feature_url": "https://regulation.ensembl.org/regulatory_features/homo_sapiens/ENSR11_9HXKD",
+        "clipped_to_tss_stretch": false,
+        "core_genomic_end_1based": 35138731,
+        "core_genomic_start_1based": 35138231,
+        "feature_type": "promoter",
+        "interval": {
+          "coordinate_convention": "zero_based_half_open",
+          "end_0based_exclusive": 35138731,
+          "reference": {
+            "assembly_accession": "GCA_000001405.29",
+            "assembly_name": "GRCh38",
+            "contig_name": "11"
+          },
+          "start_0based": 35138230,
+          "strand": "unstranded"
+        },
+        "purpose": "regulatory_feature_similarity_within_selected_tss_window",
+        "region_id": "ENSR11_9HXKD",
+        "source_id": "ensembl_regulation_2026_08_grch38",
+        "source_report_sha256": "sha256:0376b6fbf6b227023aa7c4b093a0d05923ad1d0f21cfb8d9104a14f64c2c8dcd",
+        "stretch_id": "CD44_tss_stretch_1",
+        "tss_windows": [
+          {
+            "chromosome": "11",
+            "end_1based": 35138921,
+            "start_1based": 35138221,
+            "strand": "+",
+            "transcript_ids": [
+              "ENST00000263398",
+              "ENST00000278386"
+            ],
+            "tss_1based": 35138721
+          },
+          {
+            "chromosome": "11",
+            "end_1based": 35139371,
+            "start_1based": 35138671,
+            "strand": "+",
+            "transcript_ids": [
+              "ENST00000428726"
+            ],
+            "tss_1based": 35139171
+          }
+        ]
+      }
+    },
+    {
+      "comparison_class": "ensembl_regulation_tss_window_intersection",
+      "gene_query": "CD44",
+      "input_kind": "canonical_region",
+      "region_id": "CD44_CD44_tss_stretch_1_ENSR11_832W64",
+      "sequence_length_bp": 236,
+      "sequence_orientation": "assembly_reference_forward",
+      "sequence_sha256": "sha256:9ad3f494fe0db0696c7930f6312d7186c8548c7ff4a8a3be5c8b1ec8acd0f6db",
+      "source_region": {
+        "annotation_release": "2026-08",
+        "canonical_feature_url": "https://regulation.ensembl.org/regulatory_features/homo_sapiens/ENSR11_832W64",
+        "clipped_to_tss_stretch": false,
+        "core_genomic_end_1based": 35139181,
+        "core_genomic_start_1based": 35138946,
+        "feature_type": "promoter",
+        "interval": {
+          "coordinate_convention": "zero_based_half_open",
+          "end_0based_exclusive": 35139181,
+          "reference": {
+            "assembly_accession": "GCA_000001405.29",
+            "assembly_name": "GRCh38",
+            "contig_name": "11"
+          },
+          "start_0based": 35138945,
+          "strand": "unstranded"
+        },
+        "purpose": "regulatory_feature_similarity_within_selected_tss_window",
+        "region_id": "ENSR11_832W64",
+        "source_id": "ensembl_regulation_2026_08_grch38",
+        "source_report_sha256": "sha256:0376b6fbf6b227023aa7c4b093a0d05923ad1d0f21cfb8d9104a14f64c2c8dcd",
+        "stretch_id": "CD44_tss_stretch_1",
+        "tss_windows": [
+          {
+            "chromosome": "11",
+            "end_1based": 35138921,
+            "start_1based": 35138221,
+            "strand": "+",
+            "transcript_ids": [
+              "ENST00000263398",
+              "ENST00000278386"
+            ],
+            "tss_1based": 35138721
+          },
+          {
+            "chromosome": "11",
+            "end_1based": 35139371,
+            "start_1based": 35138671,
+            "strand": "+",
+            "transcript_ids": [
+              "ENST00000428726"
+            ],
+            "tss_1based": 35139171
+          }
+        ]
+      }
+    },
+    {
+      "comparison_class": "ensembl_regulation_tss_window_intersection",
+      "gene_query": "CD44",
+      "input_kind": "canonical_region",
+      "region_id": "CD44_CD44_tss_stretch_1_ENSR11_B8Z9S",
+      "sequence_length_bp": 143,
+      "sequence_orientation": "assembly_reference_forward",
+      "sequence_sha256": "sha256:caf19340751ebb2305ab2d33d0d174a665773b412e2b879c56e4ccb5d8d7d481",
+      "source_region": {
+        "annotation_release": "2026-08",
+        "canonical_feature_url": "https://regulation.ensembl.org/regulatory_features/homo_sapiens/ENSR11_B8Z9S",
+        "clipped_to_tss_stretch": true,
+        "core_genomic_end_1based": 35139801,
+        "core_genomic_start_1based": 35139229,
+        "feature_type": "promoter",
+        "interval": {
+          "coordinate_convention": "zero_based_half_open",
+          "end_0based_exclusive": 35139371,
+          "reference": {
+            "assembly_accession": "GCA_000001405.29",
+            "assembly_name": "GRCh38",
+            "contig_name": "11"
+          },
+          "start_0based": 35139228,
+          "strand": "unstranded"
+        },
+        "purpose": "regulatory_feature_similarity_within_selected_tss_window",
+        "region_id": "ENSR11_B8Z9S",
+        "source_id": "ensembl_regulation_2026_08_grch38",
+        "source_report_sha256": "sha256:0376b6fbf6b227023aa7c4b093a0d05923ad1d0f21cfb8d9104a14f64c2c8dcd",
+        "stretch_id": "CD44_tss_stretch_1",
+        "tss_windows": [
+          {
+            "chromosome": "11",
+            "end_1based": 35138921,
+            "start_1based": 35138221,
+            "strand": "+",
+            "transcript_ids": [
+              "ENST00000263398",
+              "ENST00000278386"
+            ],
+            "tss_1based": 35138721
+          },
+          {
+            "chromosome": "11",
+            "end_1based": 35139371,
+            "start_1based": 35138671,
+            "strand": "+",
+            "transcript_ids": [
+              "ENST00000428726"
+            ],
+            "tss_1based": 35139171
+          }
+        ]
+      }
+    },
+    {
+      "comparison_class": "ensembl_regulation_tss_window_intersection",
+      "gene_query": "SERPINE1",
+      "input_kind": "canonical_region",
+      "region_id": "SERPINE1_SERPINE1_tss_stretch_1_ENSR7_93H5NS",
+      "sequence_length_bp": 346,
+      "sequence_orientation": "assembly_reference_forward",
+      "sequence_sha256": "sha256:d790a90bb702cf334642459caf246a7f984824df1851458ca52a565c2677cedc",
+      "source_region": {
+        "annotation_release": "2026-08",
+        "canonical_feature_url": "https://regulation.ensembl.org/regulatory_features/homo_sapiens/ENSR7_93H5NS",
+        "clipped_to_tss_stretch": false,
+        "core_genomic_end_1based": 101122168,
+        "core_genomic_start_1based": 101121823,
+        "feature_type": "promoter",
+        "interval": {
+          "coordinate_convention": "zero_based_half_open",
+          "end_0based_exclusive": 101122168,
+          "reference": {
+            "assembly_accession": "GCA_000001405.29",
+            "assembly_name": "GRCh38",
+            "contig_name": "7"
+          },
+          "start_0based": 101121822,
+          "strand": "unstranded"
+        },
+        "purpose": "regulatory_feature_similarity_within_selected_tss_window",
+        "region_id": "ENSR7_93H5NS",
+        "source_id": "ensembl_regulation_2026_08_grch38",
+        "source_report_sha256": "sha256:ab8dcf3d867dfff6847e02375330ab5c23d876e3d55926cf69af61edf0a736eb",
+        "stretch_id": "SERPINE1_tss_stretch_1",
+        "tss_windows": [
+          {
+            "chromosome": "7",
+            "end_1based": 101122358,
+            "start_1based": 101121658,
+            "strand": "+",
+            "transcript_ids": [
+              "ENST00000950058"
+            ],
+            "tss_1based": 101122158
+          }
+        ]
+      }
+    },
+    {
+      "comparison_class": "ensembl_regulation_tss_window_intersection",
+      "gene_query": "SERPINE1",
+      "input_kind": "canonical_region",
+      "region_id": "SERPINE1_SERPINE1_tss_stretch_1_ENSR00001588829",
+      "sequence_length_bp": 536,
+      "sequence_orientation": "assembly_reference_forward",
+      "sequence_sha256": "sha256:87660440edbe48e4f23363731b4e877d5b71bc2fb0ca9bdb3a20688651c3599f",
+      "source_region": {
+        "annotation_release": "2026-08",
+        "canonical_feature_url": "https://regulation.ensembl.org/regulatory_features/homo_sapiens/ENSR00001588829",
+        "clipped_to_tss_stretch": true,
+        "core_genomic_end_1based": 101122982,
+        "core_genomic_start_1based": 101121823,
+        "feature_type": "emar",
+        "interval": {
+          "coordinate_convention": "zero_based_half_open",
+          "end_0based_exclusive": 101122358,
+          "reference": {
+            "assembly_accession": "GCA_000001405.29",
+            "assembly_name": "GRCh38",
+            "contig_name": "7"
+          },
+          "start_0based": 101121822,
+          "strand": "unstranded"
+        },
+        "purpose": "regulatory_feature_similarity_within_selected_tss_window",
+        "region_id": "ENSR00001588829",
+        "source_id": "ensembl_regulation_2026_08_grch38",
+        "source_report_sha256": "sha256:ab8dcf3d867dfff6847e02375330ab5c23d876e3d55926cf69af61edf0a736eb",
+        "stretch_id": "SERPINE1_tss_stretch_1",
+        "tss_windows": [
+          {
+            "chromosome": "7",
+            "end_1based": 101122358,
+            "start_1based": 101121658,
+            "strand": "+",
+            "transcript_ids": [
+              "ENST00000950058"
+            ],
+            "tss_1based": 101122158
+          }
+        ]
+      }
+    },
+    {
+      "comparison_class": "ensembl_regulation_tss_window_intersection",
+      "gene_query": "SERPINE1",
+      "input_kind": "canonical_region",
+      "region_id": "SERPINE1_SERPINE1_tss_stretch_1_ENSR7_BQ3T2",
+      "sequence_length_bp": 190,
+      "sequence_orientation": "assembly_reference_forward",
+      "sequence_sha256": "sha256:6a611a84ac77173a85727611f982aa9b888e4c35d75ad8ee15cdff3ed29a1ae3",
+      "source_region": {
+        "annotation_release": "2026-08",
+        "canonical_feature_url": "https://regulation.ensembl.org/regulatory_features/homo_sapiens/ENSR7_BQ3T2",
+        "clipped_to_tss_stretch": true,
+        "core_genomic_end_1based": 101122982,
+        "core_genomic_start_1based": 101122169,
+        "feature_type": "enhancer",
+        "interval": {
+          "coordinate_convention": "zero_based_half_open",
+          "end_0based_exclusive": 101122358,
+          "reference": {
+            "assembly_accession": "GCA_000001405.29",
+            "assembly_name": "GRCh38",
+            "contig_name": "7"
+          },
+          "start_0based": 101122168,
+          "strand": "unstranded"
+        },
+        "purpose": "regulatory_feature_similarity_within_selected_tss_window",
+        "region_id": "ENSR7_BQ3T2",
+        "source_id": "ensembl_regulation_2026_08_grch38",
+        "source_report_sha256": "sha256:ab8dcf3d867dfff6847e02375330ab5c23d876e3d55926cf69af61edf0a736eb",
+        "stretch_id": "SERPINE1_tss_stretch_1",
+        "tss_windows": [
+          {
+            "chromosome": "7",
+            "end_1based": 101122358,
+            "start_1based": 101121658,
+            "strand": "+",
+            "transcript_ids": [
+              "ENST00000950058"
+            ],
+            "tss_1based": 101122158
+          }
+        ]
+      }
+    },
+    {
+      "comparison_class": "ensembl_regulation_tss_window_intersection",
+      "gene_query": "SERPINE1",
+      "input_kind": "canonical_region",
+      "region_id": "SERPINE1_SERPINE1_tss_stretch_2_ENSR00001588832",
+      "sequence_length_bp": 1204,
+      "sequence_orientation": "assembly_reference_forward",
+      "sequence_sha256": "sha256:dad9484e02396472bd9abe553ff5fbf2fd4559f6daf088be5569d6e5a25562f1",
+      "source_region": {
+        "annotation_release": "2026-08",
+        "canonical_feature_url": "https://regulation.ensembl.org/regulatory_features/homo_sapiens/ENSR00001588832",
+        "clipped_to_tss_stretch": true,
+        "core_genomic_end_1based": 101127627,
+        "core_genomic_start_1based": 101126027,
+        "feature_type": "emar",
+        "interval": {
+          "coordinate_convention": "zero_based_half_open",
+          "end_0based_exclusive": 101127304,
+          "reference": {
+            "assembly_accession": "GCA_000001405.29",
+            "assembly_name": "GRCh38",
+            "contig_name": "7"
+          },
+          "start_0based": 101126100,
+          "strand": "unstranded"
+        },
+        "purpose": "regulatory_feature_similarity_within_selected_tss_window",
+        "region_id": "ENSR00001588832",
+        "source_id": "ensembl_regulation_2026_08_grch38",
+        "source_report_sha256": "sha256:ab8dcf3d867dfff6847e02375330ab5c23d876e3d55926cf69af61edf0a736eb",
+        "stretch_id": "SERPINE1_tss_stretch_2",
+        "tss_windows": [
+          {
+            "chromosome": "7",
+            "end_1based": 101126801,
+            "start_1based": 101126101,
+            "strand": "+",
+            "transcript_ids": [
+              "ENST00000870828"
+            ],
+            "tss_1based": 101126601
+          },
+          {
+            "chromosome": "7",
+            "end_1based": 101127304,
+            "start_1based": 101126604,
+            "strand": "+",
+            "transcript_ids": [
+              "ENST00000223095"
+            ],
+            "tss_1based": 101127104
+          }
+        ]
+      }
+    },
+    {
+      "comparison_class": "ensembl_regulation_tss_window_intersection",
+      "gene_query": "SERPINE1",
+      "input_kind": "canonical_region",
+      "region_id": "SERPINE1_SERPINE1_tss_stretch_2_ENSR7_93H5Q4",
+      "sequence_length_bp": 501,
+      "sequence_orientation": "assembly_reference_forward",
+      "sequence_sha256": "sha256:48979733d6826d4f95ccc08e8dd288d2a724a51cef2acf31904cf1324bf0ba78",
+      "source_region": {
+        "annotation_release": "2026-08",
+        "canonical_feature_url": "https://regulation.ensembl.org/regulatory_features/homo_sapiens/ENSR7_93H5Q4",
+        "clipped_to_tss_stretch": false,
+        "core_genomic_end_1based": 101126611,
+        "core_genomic_start_1based": 101126111,
+        "feature_type": "promoter",
+        "interval": {
+          "coordinate_convention": "zero_based_half_open",
+          "end_0based_exclusive": 101126611,
+          "reference": {
+            "assembly_accession": "GCA_000001405.29",
+            "assembly_name": "GRCh38",
+            "contig_name": "7"
+          },
+          "start_0based": 101126110,
+          "strand": "unstranded"
+        },
+        "purpose": "regulatory_feature_similarity_within_selected_tss_window",
+        "region_id": "ENSR7_93H5Q4",
+        "source_id": "ensembl_regulation_2026_08_grch38",
+        "source_report_sha256": "sha256:ab8dcf3d867dfff6847e02375330ab5c23d876e3d55926cf69af61edf0a736eb",
+        "stretch_id": "SERPINE1_tss_stretch_2",
+        "tss_windows": [
+          {
+            "chromosome": "7",
+            "end_1based": 101126801,
+            "start_1based": 101126101,
+            "strand": "+",
+            "transcript_ids": [
+              "ENST00000870828"
+            ],
+            "tss_1based": 101126601
+          },
+          {
+            "chromosome": "7",
+            "end_1based": 101127304,
+            "start_1based": 101126604,
+            "strand": "+",
+            "transcript_ids": [
+              "ENST00000223095"
+            ],
+            "tss_1based": 101127104
+          }
+        ]
+      }
+    },
+    {
+      "comparison_class": "ensembl_regulation_tss_window_intersection",
+      "gene_query": "SERPINE1",
+      "input_kind": "canonical_region",
+      "region_id": "SERPINE1_SERPINE1_tss_stretch_2_ENSR7_BQ3TL",
+      "sequence_length_bp": 516,
+      "sequence_orientation": "assembly_reference_forward",
+      "sequence_sha256": "sha256:c4b4306f4783c8c98987f348c593277156d9e1716c5f7371b9169d147f65466f",
+      "source_region": {
+        "annotation_release": "2026-08",
+        "canonical_feature_url": "https://regulation.ensembl.org/regulatory_features/homo_sapiens/ENSR7_BQ3TL",
+        "clipped_to_tss_stretch": false,
+        "core_genomic_end_1based": 101127129,
+        "core_genomic_start_1based": 101126614,
+        "feature_type": "promoter",
+        "interval": {
+          "coordinate_convention": "zero_based_half_open",
+          "end_0based_exclusive": 101127129,
+          "reference": {
+            "assembly_accession": "GCA_000001405.29",
+            "assembly_name": "GRCh38",
+            "contig_name": "7"
+          },
+          "start_0based": 101126613,
+          "strand": "unstranded"
+        },
+        "purpose": "regulatory_feature_similarity_within_selected_tss_window",
+        "region_id": "ENSR7_BQ3TL",
+        "source_id": "ensembl_regulation_2026_08_grch38",
+        "source_report_sha256": "sha256:ab8dcf3d867dfff6847e02375330ab5c23d876e3d55926cf69af61edf0a736eb",
+        "stretch_id": "SERPINE1_tss_stretch_2",
+        "tss_windows": [
+          {
+            "chromosome": "7",
+            "end_1based": 101126801,
+            "start_1based": 101126101,
+            "strand": "+",
+            "transcript_ids": [
+              "ENST00000870828"
+            ],
+            "tss_1based": 101126601
+          },
+          {
+            "chromosome": "7",
+            "end_1based": 101127304,
+            "start_1based": 101126604,
+            "strand": "+",
+            "transcript_ids": [
+              "ENST00000223095"
+            ],
+            "tss_1based": 101127104
+          }
+        ]
+      }
+    },
+    {
+      "comparison_class": "ensembl_regulation_tss_window_intersection",
+      "gene_query": "SERPINE1",
+      "input_kind": "canonical_region",
+      "region_id": "SERPINE1_SERPINE1_tss_stretch_2_ENSR7_5TR7ZR",
+      "sequence_length_bp": 22,
+      "sequence_orientation": "assembly_reference_forward",
+      "sequence_sha256": "sha256:0eb92065ccadd67038585e027bc1ac7b88ba5dac3e896cab16b5fe03b01db955",
+      "source_region": {
+        "annotation_release": "2026-08",
+        "canonical_feature_url": "https://regulation.ensembl.org/regulatory_features/homo_sapiens/ENSR7_5TR7ZR",
+        "clipped_to_tss_stretch": false,
+        "core_genomic_end_1based": 101126844,
+        "core_genomic_start_1based": 101126823,
+        "feature_type": "ctcf",
+        "interval": {
+          "coordinate_convention": "zero_based_half_open",
+          "end_0based_exclusive": 101126844,
+          "reference": {
+            "assembly_accession": "GCA_000001405.29",
+            "assembly_name": "GRCh38",
+            "contig_name": "7"
+          },
+          "start_0based": 101126822,
+          "strand": "unstranded"
+        },
+        "purpose": "regulatory_feature_similarity_within_selected_tss_window",
+        "region_id": "ENSR7_5TR7ZR",
+        "source_id": "ensembl_regulation_2026_08_grch38",
+        "source_report_sha256": "sha256:ab8dcf3d867dfff6847e02375330ab5c23d876e3d55926cf69af61edf0a736eb",
+        "stretch_id": "SERPINE1_tss_stretch_2",
+        "tss_windows": [
+          {
+            "chromosome": "7",
+            "end_1based": 101126801,
+            "start_1based": 101126101,
+            "strand": "+",
+            "transcript_ids": [
+              "ENST00000870828"
+            ],
+            "tss_1based": 101126601
+          },
+          {
+            "chromosome": "7",
+            "end_1based": 101127304,
+            "start_1based": 101126604,
+            "strand": "+",
+            "transcript_ids": [
+              "ENST00000223095"
+            ],
+            "tss_1based": 101127104
+          }
+        ]
+      }
+    },
+    {
+      "comparison_class": "ensembl_regulation_tss_window_intersection",
+      "gene_query": "SERPINE1",
+      "input_kind": "canonical_region",
+      "region_id": "SERPINE1_SERPINE1_tss_stretch_2_ENSR7_93H5QD",
+      "sequence_length_bp": 175,
+      "sequence_orientation": "assembly_reference_forward",
+      "sequence_sha256": "sha256:6d2a6546e92ea8efb24152a44d4eecfec9d135d29d8247dae111bb0a38a42d43",
+      "source_region": {
+        "annotation_release": "2026-08",
+        "canonical_feature_url": "https://regulation.ensembl.org/regulatory_features/homo_sapiens/ENSR7_93H5QD",
+        "clipped_to_tss_stretch": true,
+        "core_genomic_end_1based": 101127627,
+        "core_genomic_start_1based": 101127130,
+        "feature_type": "enhancer",
+        "interval": {
+          "coordinate_convention": "zero_based_half_open",
+          "end_0based_exclusive": 101127304,
+          "reference": {
+            "assembly_accession": "GCA_000001405.29",
+            "assembly_name": "GRCh38",
+            "contig_name": "7"
+          },
+          "start_0based": 101127129,
+          "strand": "unstranded"
+        },
+        "purpose": "regulatory_feature_similarity_within_selected_tss_window",
+        "region_id": "ENSR7_93H5QD",
+        "source_id": "ensembl_regulation_2026_08_grch38",
+        "source_report_sha256": "sha256:ab8dcf3d867dfff6847e02375330ab5c23d876e3d55926cf69af61edf0a736eb",
+        "stretch_id": "SERPINE1_tss_stretch_2",
+        "tss_windows": [
+          {
+            "chromosome": "7",
+            "end_1based": 101126801,
+            "start_1based": 101126101,
+            "strand": "+",
+            "transcript_ids": [
+              "ENST00000870828"
+            ],
+            "tss_1based": 101126601
+          },
+          {
+            "chromosome": "7",
+            "end_1based": 101127304,
+            "start_1based": 101126604,
+            "strand": "+",
+            "transcript_ids": [
+              "ENST00000223095"
+            ],
+            "tss_1based": 101127104
+          }
+        ]
+      }
+    },
+    {
+      "comparison_class": "ensembl_regulation_tss_window_intersection",
+      "gene_query": "TGFB1",
+      "input_kind": "canonical_region",
+      "region_id": "TGFB1_TGFB1_tss_stretch_1_ENSR00001777739",
+      "sequence_length_bp": 740,
+      "sequence_orientation": "assembly_reference_forward",
+      "sequence_sha256": "sha256:ce1641bd061c0c289ce253c2082f600fbeb1ddc2e92f5b15cc96b5d2bbbd7a72",
+      "source_region": {
+        "annotation_release": "2026-08",
+        "canonical_feature_url": "https://regulation.ensembl.org/regulatory_features/homo_sapiens/ENSR00001777739",
+        "clipped_to_tss_stretch": true,
+        "core_genomic_end_1based": 41355005,
+        "core_genomic_start_1based": 41350638,
+        "feature_type": "emar",
+        "interval": {
+          "coordinate_convention": "zero_based_half_open",
+          "end_0based_exclusive": 41354461,
+          "reference": {
+            "assembly_accession": "GCA_000001405.29",
+            "assembly_name": "GRCh38",
+            "contig_name": "19"
+          },
+          "start_0based": 41353721,
+          "strand": "unstranded"
+        },
+        "purpose": "regulatory_feature_similarity_within_selected_tss_window",
+        "region_id": "ENSR00001777739",
+        "source_id": "ensembl_regulation_2026_08_grch38",
+        "source_report_sha256": "sha256:86312b1460158a4d510e06104bd676b1cc424939032f7be1152e459e9e73b872",
+        "stretch_id": "TGFB1_tss_stretch_1",
+        "tss_windows": [
+          {
+            "chromosome": "19",
+            "end_1based": 41354422,
+            "start_1based": 41353722,
+            "strand": "-",
+            "transcript_ids": [
+              "ENST00000221930"
+            ],
+            "tss_1based": 41353922
+          },
+          {
+            "chromosome": "19",
+            "end_1based": 41354461,
+            "start_1based": 41353761,
+            "strand": "-",
+            "transcript_ids": [
+              "ENST00001090430",
+              "ENST00001114525"
+            ],
+            "tss_1based": 41353961
+          }
+        ]
+      }
+    },
+    {
+      "comparison_class": "ensembl_regulation_tss_window_intersection",
+      "gene_query": "TGFB1",
+      "input_kind": "canonical_region",
+      "region_id": "TGFB1_TGFB1_tss_stretch_1_ENSR19_9LF6T",
+      "sequence_length_bp": 271,
+      "sequence_orientation": "assembly_reference_forward",
+      "sequence_sha256": "sha256:8a437fad5f5d353658746e4f0ec98bcf1c63748e1bfdb309a607e8757bd7131a",
+      "source_region": {
+        "annotation_release": "2026-08",
+        "canonical_feature_url": "https://regulation.ensembl.org/regulatory_features/homo_sapiens/ENSR19_9LF6T",
+        "clipped_to_tss_stretch": false,
+        "core_genomic_end_1based": 41354182,
+        "core_genomic_start_1based": 41353912,
+        "feature_type": "promoter",
+        "interval": {
+          "coordinate_convention": "zero_based_half_open",
+          "end_0based_exclusive": 41354182,
+          "reference": {
+            "assembly_accession": "GCA_000001405.29",
+            "assembly_name": "GRCh38",
+            "contig_name": "19"
+          },
+          "start_0based": 41353911,
+          "strand": "unstranded"
+        },
+        "purpose": "regulatory_feature_similarity_within_selected_tss_window",
+        "region_id": "ENSR19_9LF6T",
+        "source_id": "ensembl_regulation_2026_08_grch38",
+        "source_report_sha256": "sha256:86312b1460158a4d510e06104bd676b1cc424939032f7be1152e459e9e73b872",
+        "stretch_id": "TGFB1_tss_stretch_1",
+        "tss_windows": [
+          {
+            "chromosome": "19",
+            "end_1based": 41354422,
+            "start_1based": 41353722,
+            "strand": "-",
+            "transcript_ids": [
+              "ENST00000221930"
+            ],
+            "tss_1based": 41353922
+          },
+          {
+            "chromosome": "19",
+            "end_1based": 41354461,
+            "start_1based": 41353761,
+            "strand": "-",
+            "transcript_ids": [
+              "ENST00001090430",
+              "ENST00001114525"
+            ],
+            "tss_1based": 41353961
+          }
+        ]
+      }
+    },
+    {
+      "comparison_class": "ensembl_regulation_tss_window_intersection",
+      "gene_query": "TGFB1",
+      "input_kind": "canonical_region",
+      "region_id": "TGFB1_TGFB1_tss_stretch_1_ENSR19_5CPLWC",
+      "sequence_length_bp": 22,
+      "sequence_orientation": "assembly_reference_forward",
+      "sequence_sha256": "sha256:41971c7b4b708c5588dd148d65f947371e39f73e3be52aa7cc79ff54d83a73d3",
+      "source_region": {
+        "annotation_release": "2026-08",
+        "canonical_feature_url": "https://regulation.ensembl.org/regulatory_features/homo_sapiens/ENSR19_5CPLWC",
+        "clipped_to_tss_stretch": false,
+        "core_genomic_end_1based": 41354150,
+        "core_genomic_start_1based": 41354129,
+        "feature_type": "ctcf",
+        "interval": {
+          "coordinate_convention": "zero_based_half_open",
+          "end_0based_exclusive": 41354150,
+          "reference": {
+            "assembly_accession": "GCA_000001405.29",
+            "assembly_name": "GRCh38",
+            "contig_name": "19"
+          },
+          "start_0based": 41354128,
+          "strand": "unstranded"
+        },
+        "purpose": "regulatory_feature_similarity_within_selected_tss_window",
+        "region_id": "ENSR19_5CPLWC",
+        "source_id": "ensembl_regulation_2026_08_grch38",
+        "source_report_sha256": "sha256:86312b1460158a4d510e06104bd676b1cc424939032f7be1152e459e9e73b872",
+        "stretch_id": "TGFB1_tss_stretch_1",
+        "tss_windows": [
+          {
+            "chromosome": "19",
+            "end_1based": 41354422,
+            "start_1based": 41353722,
+            "strand": "-",
+            "transcript_ids": [
+              "ENST00000221930"
+            ],
+            "tss_1based": 41353922
+          },
+          {
+            "chromosome": "19",
+            "end_1based": 41354461,
+            "start_1based": 41353761,
+            "strand": "-",
+            "transcript_ids": [
+              "ENST00001090430",
+              "ENST00001114525"
+            ],
+            "tss_1based": 41353961
+          }
+        ]
+      }
+    }
+  ],
+  "schema": "gentle.regulatory_region_comparison_sequences.v1",
+  "sequence_equivalence_classes": [
+    {
+      "member_region_ids": [
+        "CD44_CD44_tss_stretch_1_ENSR00001659002"
+      ],
+      "representative_region_id": "CD44_CD44_tss_stretch_1_ENSR00001659002",
+      "sequence_equivalence_class_id": "region_seq_eq_e3388fee73bd8816",
+      "sequence_length_bp": 1151,
+      "sequence_sha256": "sha256:e3388fee73bd8816900227398fcb6bd57908ba2766163c8e8486fd81c62d563b"
+    },
+    {
+      "member_region_ids": [
+        "CD44_CD44_tss_stretch_1_ENSR11_832W64"
+      ],
+      "representative_region_id": "CD44_CD44_tss_stretch_1_ENSR11_832W64",
+      "sequence_equivalence_class_id": "region_seq_eq_9ad3f494fe0db069",
+      "sequence_length_bp": 236,
+      "sequence_sha256": "sha256:9ad3f494fe0db0696c7930f6312d7186c8548c7ff4a8a3be5c8b1ec8acd0f6db"
+    },
+    {
+      "member_region_ids": [
+        "CD44_CD44_tss_stretch_1_ENSR11_9HXKD"
+      ],
+      "representative_region_id": "CD44_CD44_tss_stretch_1_ENSR11_9HXKD",
+      "sequence_equivalence_class_id": "region_seq_eq_789f85421d82f84a",
+      "sequence_length_bp": 501,
+      "sequence_sha256": "sha256:789f85421d82f84aa8e5a9224b54611e50693753b7e75107ab8f91869dee73e9"
+    },
+    {
+      "member_region_ids": [
+        "CD44_CD44_tss_stretch_1_ENSR11_B8Z9S"
+      ],
+      "representative_region_id": "CD44_CD44_tss_stretch_1_ENSR11_B8Z9S",
+      "sequence_equivalence_class_id": "region_seq_eq_caf19340751ebb23",
+      "sequence_length_bp": 143,
+      "sequence_sha256": "sha256:caf19340751ebb2305ab2d33d0d174a665773b412e2b879c56e4ccb5d8d7d481"
+    },
+    {
+      "member_region_ids": [
+        "SERPINE1_SERPINE1_tss_stretch_1_ENSR00001588829"
+      ],
+      "representative_region_id": "SERPINE1_SERPINE1_tss_stretch_1_ENSR00001588829",
+      "sequence_equivalence_class_id": "region_seq_eq_87660440edbe48e4",
+      "sequence_length_bp": 536,
+      "sequence_sha256": "sha256:87660440edbe48e4f23363731b4e877d5b71bc2fb0ca9bdb3a20688651c3599f"
+    },
+    {
+      "member_region_ids": [
+        "SERPINE1_SERPINE1_tss_stretch_1_ENSR7_93H5NS"
+      ],
+      "representative_region_id": "SERPINE1_SERPINE1_tss_stretch_1_ENSR7_93H5NS",
+      "sequence_equivalence_class_id": "region_seq_eq_d790a90bb702cf33",
+      "sequence_length_bp": 346,
+      "sequence_sha256": "sha256:d790a90bb702cf334642459caf246a7f984824df1851458ca52a565c2677cedc"
+    },
+    {
+      "member_region_ids": [
+        "SERPINE1_SERPINE1_tss_stretch_1_ENSR7_BQ3T2"
+      ],
+      "representative_region_id": "SERPINE1_SERPINE1_tss_stretch_1_ENSR7_BQ3T2",
+      "sequence_equivalence_class_id": "region_seq_eq_6a611a84ac77173a",
+      "sequence_length_bp": 190,
+      "sequence_sha256": "sha256:6a611a84ac77173a85727611f982aa9b888e4c35d75ad8ee15cdff3ed29a1ae3"
+    },
+    {
+      "member_region_ids": [
+        "SERPINE1_SERPINE1_tss_stretch_2_ENSR00001588832"
+      ],
+      "representative_region_id": "SERPINE1_SERPINE1_tss_stretch_2_ENSR00001588832",
+      "sequence_equivalence_class_id": "region_seq_eq_dad9484e02396472",
+      "sequence_length_bp": 1204,
+      "sequence_sha256": "sha256:dad9484e02396472bd9abe553ff5fbf2fd4559f6daf088be5569d6e5a25562f1"
+    },
+    {
+      "member_region_ids": [
+        "SERPINE1_SERPINE1_tss_stretch_2_ENSR7_5TR7ZR"
+      ],
+      "representative_region_id": "SERPINE1_SERPINE1_tss_stretch_2_ENSR7_5TR7ZR",
+      "sequence_equivalence_class_id": "region_seq_eq_0eb92065ccadd670",
+      "sequence_length_bp": 22,
+      "sequence_sha256": "sha256:0eb92065ccadd67038585e027bc1ac7b88ba5dac3e896cab16b5fe03b01db955"
+    },
+    {
+      "member_region_ids": [
+        "SERPINE1_SERPINE1_tss_stretch_2_ENSR7_93H5Q4"
+      ],
+      "representative_region_id": "SERPINE1_SERPINE1_tss_stretch_2_ENSR7_93H5Q4",
+      "sequence_equivalence_class_id": "region_seq_eq_48979733d6826d4f",
+      "sequence_length_bp": 501,
+      "sequence_sha256": "sha256:48979733d6826d4f95ccc08e8dd288d2a724a51cef2acf31904cf1324bf0ba78"
+    },
+    {
+      "member_region_ids": [
+        "SERPINE1_SERPINE1_tss_stretch_2_ENSR7_93H5QD"
+      ],
+      "representative_region_id": "SERPINE1_SERPINE1_tss_stretch_2_ENSR7_93H5QD",
+      "sequence_equivalence_class_id": "region_seq_eq_6d2a6546e92ea8ef",
+      "sequence_length_bp": 175,
+      "sequence_sha256": "sha256:6d2a6546e92ea8efb24152a44d4eecfec9d135d29d8247dae111bb0a38a42d43"
+    },
+    {
+      "member_region_ids": [
+        "SERPINE1_SERPINE1_tss_stretch_2_ENSR7_BQ3TL"
+      ],
+      "representative_region_id": "SERPINE1_SERPINE1_tss_stretch_2_ENSR7_BQ3TL",
+      "sequence_equivalence_class_id": "region_seq_eq_c4b4306f4783c8c9",
+      "sequence_length_bp": 516,
+      "sequence_sha256": "sha256:c4b4306f4783c8c98987f348c593277156d9e1716c5f7371b9169d147f65466f"
+    },
+    {
+      "member_region_ids": [
+        "TGFB1_TGFB1_tss_stretch_1_ENSR00001777739"
+      ],
+      "representative_region_id": "TGFB1_TGFB1_tss_stretch_1_ENSR00001777739",
+      "sequence_equivalence_class_id": "region_seq_eq_ce1641bd061c0c28",
+      "sequence_length_bp": 740,
+      "sequence_sha256": "sha256:ce1641bd061c0c289ce253c2082f600fbeb1ddc2e92f5b15cc96b5d2bbbd7a72"
+    },
+    {
+      "member_region_ids": [
+        "TGFB1_TGFB1_tss_stretch_1_ENSR19_5CPLWC"
+      ],
+      "representative_region_id": "TGFB1_TGFB1_tss_stretch_1_ENSR19_5CPLWC",
+      "sequence_equivalence_class_id": "region_seq_eq_41971c7b4b708c55",
+      "sequence_length_bp": 22,
+      "sequence_sha256": "sha256:41971c7b4b708c5588dd148d65f947371e39f73e3be52aa7cc79ff54d83a73d3"
+    },
+    {
+      "member_region_ids": [
+        "TGFB1_TGFB1_tss_stretch_1_ENSR19_9LF6T"
+      ],
+      "representative_region_id": "TGFB1_TGFB1_tss_stretch_1_ENSR19_9LF6T",
+      "sequence_equivalence_class_id": "region_seq_eq_8a437fad5f5d3536",
+      "sequence_length_bp": 271,
+      "sequence_sha256": "sha256:8a437fad5f5d353658746e4f0ec98bcf1c63748e1bfdb309a607e8757bd7131a"
+    }
+  ],
+  "source_bindings": {
+    "locus_reports": {
+      "CD44": "sha256:0376b6fbf6b227023aa7c4b093a0d05923ad1d0f21cfb8d9104a14f64c2c8dcd",
+      "SERPINE1": "sha256:ab8dcf3d867dfff6847e02375330ab5c23d876e3d55926cf69af61edf0a736eb",
+      "TGFB1": "sha256:86312b1460158a4d510e06104bd676b1cc424939032f7be1152e459e9e73b872"
+    },
+    "reference_fasta_sha256": "sha256:746dc3b40529bcd09886287ec50b2b9c2f63fc794a14205a94bfd5b12335d845",
+    "selected_tss_sha256": "sha256:981b69e885da3378209f387d607b42cffcb7ad04bf5a28f526fbd87d59c02b5b"
+  },
+  "source_revision": "c23ea8110cfbad1cd0dc09ffcc638ddf12609d07",
+  "stretches": [
+    {
+      "end_1based": 35139371,
+      "gene": "CD44",
+      "start_1based": 35138221,
+      "stretch_id": "CD44_tss_stretch_1",
+      "tss_windows": [
+        {
+          "chromosome": "11",
+          "end_1based": 35138921,
+          "start_1based": 35138221,
+          "strand": "+",
+          "transcript_ids": [
+            "ENST00000263398",
+            "ENST00000278386"
+          ],
+          "tss_1based": 35138721
+        },
+        {
+          "chromosome": "11",
+          "end_1based": 35139371,
+          "start_1based": 35138671,
+          "strand": "+",
+          "transcript_ids": [
+            "ENST00000428726"
+          ],
+          "tss_1based": 35139171
+        }
+      ]
+    },
+    {
+      "end_1based": 101122358,
+      "gene": "SERPINE1",
+      "start_1based": 101121658,
+      "stretch_id": "SERPINE1_tss_stretch_1",
+      "tss_windows": [
+        {
+          "chromosome": "7",
+          "end_1based": 101122358,
+          "start_1based": 101121658,
+          "strand": "+",
+          "transcript_ids": [
+            "ENST00000950058"
+          ],
+          "tss_1based": 101122158
+        }
+      ]
+    },
+    {
+      "end_1based": 101127304,
+      "gene": "SERPINE1",
+      "start_1based": 101126101,
+      "stretch_id": "SERPINE1_tss_stretch_2",
+      "tss_windows": [
+        {
+          "chromosome": "7",
+          "end_1based": 101126801,
+          "start_1based": 101126101,
+          "strand": "+",
+          "transcript_ids": [
+            "ENST00000870828"
+          ],
+          "tss_1based": 101126601
+        },
+        {
+          "chromosome": "7",
+          "end_1based": 101127304,
+          "start_1based": 101126604,
+          "strand": "+",
+          "transcript_ids": [
+            "ENST00000223095"
+          ],
+          "tss_1based": 101127104
+        }
+      ]
+    },
+    {
+      "end_1based": 41354461,
+      "gene": "TGFB1",
+      "start_1based": 41353722,
+      "stretch_id": "TGFB1_tss_stretch_1",
+      "tss_windows": [
+        {
+          "chromosome": "19",
+          "end_1based": 41354422,
+          "start_1based": 41353722,
+          "strand": "-",
+          "transcript_ids": [
+            "ENST00000221930"
+          ],
+          "tss_1based": 41353922
+        },
+        {
+          "chromosome": "19",
+          "end_1based": 41354461,
+          "start_1based": 41353761,
+          "strand": "-",
+          "transcript_ids": [
+            "ENST00001090430",
+            "ENST00001114525"
+          ],
+          "tss_1based": 41353961
+        }
+      ]
+    }
+  ],
+  "window_policy": {
+    "coordinate_basis": "transcript_oriented_tss",
+    "downstream_bp": 200,
+    "feature_sequence_policy": "intersection_with_connected_selected_tss_windows",
+    "upstream_bp": 500
+  }
+}
