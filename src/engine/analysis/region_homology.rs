@@ -964,6 +964,16 @@ fn finalize_projection(
                 .then(left.subject_start_0based.cmp(&right.subject_start_0based))
                 .then(left.locus_id.cmp(&right.locus_id))
         });
+        if target_loci.len() > effective_request.policy.max_loci_per_target
+            && let Some(result) = targets
+                .iter_mut()
+                .find(|result| result.target.genome_id == **target_id)
+        {
+            result.warnings.push(format!(
+                "{} accepted locus chains were truncated to max_loci_per_target={}; promoter-frequency counts are lower bounds",
+                target_loci.len(), effective_request.policy.max_loci_per_target
+            ));
+        }
         target_loci.truncate(effective_request.policy.max_loci_per_target);
         if let Some(result) = targets
             .iter_mut()
@@ -1048,6 +1058,7 @@ fn finalize_projection(
         alignment_rows: rows,
         omitted_insertions: insertions,
         conserved_blocks,
+        promoter_similarity_matrix: None,
         same_genome_nonself_locus_count,
         same_genome_nonself_query_coverage_percent,
         warnings: if no_targets {
@@ -1076,6 +1087,353 @@ fn finalize_projection(
     content.run_id = None;
     report.content_sha256 = canonical_digest(&content, "homology report")?;
     Ok(report)
+}
+
+#[derive(Default)]
+struct PromoterMatrixRowAccum {
+    chromosome: String,
+    promoter_start_0based: u64,
+    promoter_end_0based_exclusive: u64,
+    tss_1based: u64,
+    strand: gp::GenomicRegionStrand,
+    gene_ids: BTreeSet<String>,
+    gene_names: BTreeSet<String>,
+    transcript_ids: BTreeSet<String>,
+    hsp_ids: BTreeSet<String>,
+}
+
+fn transcript_promoter_window(
+    transcript: &crate::genomes::GenomeTranscriptRecord,
+    policy: &gp::PromoterSimilarityMatrixPolicy,
+) -> Option<(u64, u64, u64, gp::GenomicRegionStrand)> {
+    let strand = match transcript.strand? {
+        '+' => gp::GenomicRegionStrand::Plus,
+        '-' => gp::GenomicRegionStrand::Minus,
+        _ => return None,
+    };
+    let start = u64::try_from(transcript.transcript_start_1based).ok()?;
+    let end = u64::try_from(transcript.transcript_end_1based).ok()?;
+    let upstream = policy.upstream_bp as u64;
+    let downstream = policy.downstream_bp as u64;
+    let tss = if strand == gp::GenomicRegionStrand::Minus {
+        end
+    } else {
+        start
+    };
+    let (start_1based, end_1based) = if strand == gp::GenomicRegionStrand::Minus {
+        (
+            tss.saturating_sub(downstream).max(1),
+            tss.saturating_add(upstream),
+        )
+    } else {
+        (
+            tss.saturating_sub(upstream).max(1),
+            tss.saturating_add(downstream),
+        )
+    };
+    Some((start_1based - 1, end_1based, tss, strand))
+}
+
+fn promoter_order_break_before(
+    previous_query_start: Option<usize>,
+    previous_forward: Option<bool>,
+    query_start: usize,
+    forward: bool,
+) -> bool {
+    previous_query_start.is_some_and(|previous| query_start <= previous)
+        || previous_forward.is_some_and(|previous| previous != forward)
+}
+
+fn promoter_contig_key(value: &str) -> String {
+    value
+        .trim()
+        .strip_prefix("chr")
+        .unwrap_or(value.trim())
+        .to_ascii_lowercase()
+}
+
+fn build_promoter_similarity_matrix(
+    catalog: &GenomeCatalog,
+    report: &gp::GenomicRegionHomologyScreenReport,
+    policy: &gp::PromoterSimilarityMatrixPolicy,
+) -> Result<gp::PromoterSimilarityMatrix, EngineError> {
+    if policy.upstream_bp.saturating_add(policy.downstream_bp) == 0 || policy.max_rows == 0 {
+        return Err(homology_error(
+            ErrorCode::InvalidInput,
+            "promoter similarity requires a non-empty window and positive max_rows",
+        ));
+    }
+    let cache_dir = report
+        .effective_request
+        .cache_dir
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let transcripts = catalog
+        .list_all_transcript_records(&report.effective_request.query_genome_id, cache_dir)
+        .map_err(|error| {
+            homology_error(
+                ErrorCode::InvalidInput,
+                format!("could not load transcript promoter background: {error}"),
+            )
+        })?;
+    build_promoter_similarity_matrix_from_transcripts(report, policy, transcripts.as_slice())
+}
+
+fn build_promoter_similarity_matrix_from_transcripts(
+    report: &gp::GenomicRegionHomologyScreenReport,
+    policy: &gp::PromoterSimilarityMatrixPolicy,
+    transcripts: &[crate::genomes::GenomeTranscriptRecord],
+) -> Result<gp::PromoterSimilarityMatrix, EngineError> {
+    let hsp_by_id = report
+        .hsps
+        .iter()
+        .map(|hsp| (hsp.hsp_id.as_str(), hsp))
+        .collect::<BTreeMap<_, _>>();
+    let loci_by_contig = report
+        .loci
+        .iter()
+        .filter(|locus| {
+            locus.target_genome_id == report.effective_request.query_genome_id
+                && locus.locus_class == gp::GenomicRegionHomologyLocusClass::SameGenomeNonself
+        })
+        .fold(
+            BTreeMap::<String, Vec<&gp::GenomicRegionHomologyLocus>>::new(),
+            |mut map, locus| {
+                map.entry(promoter_contig_key(&locus.subject_id))
+                    .or_default()
+                    .push(locus);
+                map
+            },
+        );
+    let mut accum = BTreeMap::<(String, u64, u64, String), PromoterMatrixRowAccum>::new();
+    for transcript in transcripts.iter() {
+        let Some((promoter_start, promoter_end, tss, strand)) =
+            transcript_promoter_window(transcript, policy)
+        else {
+            continue;
+        };
+        let Some(loci) = loci_by_contig.get(&promoter_contig_key(&transcript.chromosome)) else {
+            continue;
+        };
+        let overlapping = loci
+            .iter()
+            .filter(|locus| {
+                locus.subject_start_0based < promoter_end
+                    && promoter_start < locus.subject_end_0based_exclusive
+            })
+            .collect::<Vec<_>>();
+        if overlapping.is_empty() {
+            continue;
+        }
+        let key = (
+            transcript.chromosome.clone(),
+            promoter_start,
+            promoter_end,
+            strand.bed_value().to_string(),
+        );
+        let row = accum.entry(key).or_insert_with(|| PromoterMatrixRowAccum {
+            chromosome: transcript.chromosome.clone(),
+            promoter_start_0based: promoter_start,
+            promoter_end_0based_exclusive: promoter_end,
+            tss_1based: tss,
+            strand,
+            ..Default::default()
+        });
+        if let Some(gene_id) = transcript
+            .gene_id
+            .as_deref()
+            .filter(|value| !value.is_empty())
+        {
+            row.gene_ids.insert(gene_id.to_string());
+        }
+        if let Some(gene_name) = transcript
+            .gene_name
+            .as_deref()
+            .filter(|value| !value.is_empty())
+        {
+            row.gene_names.insert(gene_name.to_string());
+        }
+        row.transcript_ids.insert(transcript.transcript_id.clone());
+        for locus in overlapping {
+            row.hsp_ids.extend(locus.source_hsp_ids.iter().cloned());
+        }
+    }
+
+    let query_len = report.query.sequence.len().max(1);
+    let mut rows = accum
+        .into_values()
+        .filter_map(|row| {
+            let mut hsps = row
+                .hsp_ids
+                .iter()
+                .filter_map(|id| hsp_by_id.get(id.as_str()).copied())
+                .collect::<Vec<_>>();
+            hsps.sort_by_key(|hsp| {
+                if row.strand == gp::GenomicRegionStrand::Minus {
+                    row.promoter_end_0based_exclusive
+                        .saturating_sub(hsp.subject_end_0based_exclusive)
+                } else {
+                    hsp.subject_start_0based
+                        .saturating_sub(row.promoter_start_0based)
+                }
+            });
+            if hsps.is_empty() {
+                return None;
+            }
+            let mut covered = vec![false; query_len];
+            let mut identity_weight = 0.0;
+            let mut identity_bases = 0usize;
+            let mut previous_query_start = None;
+            let mut previous_forward = None;
+            let blocks = hsps
+                .iter()
+                .enumerate()
+                .map(|(index, hsp)| {
+                    for position in
+                        hsp.query_start_0based..hsp.query_end_0based_exclusive.min(query_len)
+                    {
+                        covered[position] = true;
+                    }
+                    identity_weight += hsp.identity_percent * hsp.alignment_length_bp as f64;
+                    identity_bases += hsp.alignment_length_bp;
+                    let (target_start, target_end) = if row.strand == gp::GenomicRegionStrand::Minus
+                    {
+                        (
+                            row.promoter_end_0based_exclusive
+                                .saturating_sub(hsp.subject_end_0based_exclusive),
+                            row.promoter_end_0based_exclusive
+                                .saturating_sub(hsp.subject_start_0based),
+                        )
+                    } else {
+                        (
+                            hsp.subject_start_0based
+                                .saturating_sub(row.promoter_start_0based),
+                            hsp.subject_end_0based_exclusive
+                                .saturating_sub(row.promoter_start_0based),
+                        )
+                    };
+                    let forward = hsp.strand == row.strand;
+                    let order_break_before = promoter_order_break_before(
+                        previous_query_start,
+                        previous_forward,
+                        hsp.query_start_0based,
+                        forward,
+                    );
+                    previous_query_start = Some(hsp.query_start_0based);
+                    previous_forward = Some(forward);
+                    gp::PromoterSimilarityBlock {
+                        block_id: hsp.hsp_id.clone(),
+                        query_start_0based: hsp.query_start_0based,
+                        query_end_0based_exclusive: hsp.query_end_0based_exclusive,
+                        target_start_0based: target_start,
+                        target_end_0based_exclusive: target_end,
+                        target_order: index + 1,
+                        strand: hsp.strand,
+                        identity_percent: hsp.identity_percent,
+                        bit_score: hsp.bit_score,
+                        source_hsp_ids: vec![hsp.hsp_id.clone()],
+                        order_break_before,
+                    }
+                })
+                .collect::<Vec<_>>();
+            let query_coverage_percent =
+                covered.iter().filter(|value| **value).count() as f64 / query_len as f64 * 100.0;
+            let identity = format!(
+                "{}\0{}\0{}\0{}",
+                row.chromosome,
+                row.promoter_start_0based,
+                row.promoter_end_0based_exclusive,
+                row.strand.bed_value()
+            );
+            Some(gp::PromoterSimilarityMatrixRow {
+                row_id: short_sha256_id("promoter_similarity_row", &identity),
+                target_genome_id: report.effective_request.query_genome_id.clone(),
+                chromosome: row.chromosome,
+                promoter_start_0based: row.promoter_start_0based,
+                promoter_end_0based_exclusive: row.promoter_end_0based_exclusive,
+                tss_1based: row.tss_1based,
+                strand: row.strand,
+                gene_ids: row.gene_ids.into_iter().collect(),
+                gene_names: row.gene_names.into_iter().collect(),
+                transcript_ids: row.transcript_ids.into_iter().collect(),
+                query_coverage_percent,
+                mean_identity_percent: identity_weight / identity_bases.max(1) as f64,
+                blocks,
+            })
+        })
+        .collect::<Vec<_>>();
+    rows.sort_by(|left, right| {
+        right
+            .query_coverage_percent
+            .total_cmp(&left.query_coverage_percent)
+            .then(
+                right
+                    .mean_identity_percent
+                    .total_cmp(&left.mean_identity_percent),
+            )
+            .then(left.gene_names.cmp(&right.gene_names))
+            .then(left.row_id.cmp(&right.row_id))
+    });
+    let annotated_promoter_window_count = rows.len();
+    let distinct_gene_count = rows
+        .iter()
+        .flat_map(|row| row.gene_ids.iter())
+        .collect::<BTreeSet<_>>()
+        .len();
+    let distinct_transcript_count = rows
+        .iter()
+        .flat_map(|row| row.transcript_ids.iter())
+        .collect::<BTreeSet<_>>()
+        .len();
+    let omitted_row_count = rows.len().saturating_sub(policy.max_rows);
+    rows.truncate(policy.max_rows);
+    let incomplete_targets = report
+        .targets
+        .iter()
+        .filter(|target| {
+            target.target.role == gp::GenomicRegionHomologyTargetRole::SameGenome
+                && (target.status == gp::GenomicRegionHomologyTargetStatus::SearchOutputTooBroad
+                    || target
+                        .warnings
+                        .iter()
+                        .any(|warning| warning.contains("truncated")))
+        })
+        .count();
+    let frequency_complete = incomplete_targets == 0;
+    let mut warnings = vec![];
+    if !frequency_complete {
+        warnings.push(
+            "The BLAST/HSP or retained-locus budget was reached; promoter frequencies are lower bounds."
+                .to_string(),
+        );
+    }
+    if omitted_row_count > 0 {
+        warnings.push(format!(
+            "{omitted_row_count} matching promoter row(s) are omitted from the matrix display but remain counted."
+        ));
+    }
+    Ok(gp::PromoterSimilarityMatrix {
+        schema: gp::PROMOTER_SIMILARITY_MATRIX_SCHEMA.to_string(),
+        upstream_bp: policy.upstream_bp,
+        downstream_bp: policy.downstream_bp,
+        annotated_promoter_window_count,
+        distinct_gene_count,
+        distinct_transcript_count,
+        displayed_row_count: rows.len(),
+        omitted_row_count,
+        frequency_complete,
+        rows,
+        warnings,
+        non_claims: vec![
+            "Transcript-derived upstream windows are a comparison background, not evidence of promoter activity."
+                .to_string(),
+            "Sequence similarity and block order do not establish regulatory function or reporter sufficiency."
+                .to_string(),
+            "Order breaks are structural observations that require independent biological interpretation."
+                .to_string(),
+        ],
+    })
 }
 
 fn resolve_query_binding(
@@ -1226,6 +1584,12 @@ fn validate_policy(policy: &gp::GenomicRegionHomologySearchPolicy) -> Result<(),
         || policy.max_loci_per_target == 0
         || policy.max_hsps_per_target == 0
         || policy.min_conserved_block_bp == 0
+        || policy
+            .promoter_similarity_matrix
+            .as_ref()
+            .is_some_and(|matrix| {
+                matrix.upstream_bp.saturating_add(matrix.downstream_bp) == 0 || matrix.max_rows == 0
+            })
     {
         return Err(homology_error(
             ErrorCode::InvalidInput,
@@ -1615,6 +1979,21 @@ impl GentleEngine {
         )?;
         let mut report =
             finalize_projection(query, effective, target_results, all_hsps, request_sha256)?;
+        if let Some(policy) = report
+            .effective_request
+            .policy
+            .promoter_similarity_matrix
+            .clone()
+        {
+            report.promoter_similarity_matrix = Some(build_promoter_similarity_matrix(
+                &catalog, &report, &policy,
+            )?);
+            let mut content = report.clone();
+            content.content_sha256.clear();
+            content.op_id = None;
+            content.run_id = None;
+            report.content_sha256 = canonical_digest(&content, "homology report")?;
+        }
         report.op_id = Some(op_id.to_string());
         report.run_id = Some(run_id.to_string());
         if let Ok(mut cache) = REGION_HOMOLOGY_CACHE.lock() {
@@ -1885,6 +2264,109 @@ impl GentleEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transcript_promoter_windows_follow_transcriptional_orientation() {
+        let policy = gp::PromoterSimilarityMatrixPolicy {
+            upstream_bp: 100,
+            downstream_bp: 20,
+            max_rows: 10,
+        };
+        let transcript = |strand| crate::genomes::GenomeTranscriptRecord {
+            chromosome: "1".into(),
+            transcript_id: "tx".into(),
+            gene_id: Some("gene".into()),
+            gene_name: Some("GENE".into()),
+            strand: Some(strand),
+            transcript_start_1based: 1_000,
+            transcript_end_1based: 1_500,
+            exons_1based: vec![],
+            cds_1based: vec![],
+        };
+        assert_eq!(
+            transcript_promoter_window(&transcript('+'), &policy),
+            Some((899, 1_020, 1_000, gp::GenomicRegionStrand::Plus))
+        );
+        assert_eq!(
+            transcript_promoter_window(&transcript('-'), &policy),
+            Some((1_479, 1_600, 1_500, gp::GenomicRegionStrand::Minus))
+        );
+    }
+
+    #[test]
+    fn promoter_matrix_splits_reordered_or_reoriented_blocks() {
+        assert!(!promoter_order_break_before(None, None, 10, true));
+        assert!(!promoter_order_break_before(Some(10), Some(true), 20, true));
+        assert!(promoter_order_break_before(Some(20), Some(true), 10, true));
+        assert!(promoter_order_break_before(Some(10), Some(true), 20, false));
+    }
+
+    #[test]
+    fn promoter_matrix_collapses_shared_tss_and_preserves_target_order_break() {
+        let transcript = |transcript_id: &str| crate::genomes::GenomeTranscriptRecord {
+            chromosome: "chr1".into(),
+            transcript_id: transcript_id.into(),
+            gene_id: Some("ENSG1".into()),
+            gene_name: Some("GENE1".into()),
+            strand: Some('+'),
+            transcript_start_1based: 1_000,
+            transcript_end_1based: 1_500,
+            exons_1based: vec![],
+            cds_1based: vec![],
+        };
+        let hsp = |id: &str, query_start, subject_start| gp::GenomicRegionHomologyHsp {
+            hsp_id: id.into(),
+            target_genome_id: "genome".into(),
+            subject_id: "1".into(),
+            strand: gp::GenomicRegionStrand::Plus,
+            query_start_0based: query_start,
+            query_end_0based_exclusive: query_start + 20,
+            subject_start_0based: subject_start,
+            subject_end_0based_exclusive: subject_start + 20,
+            identity_percent: 90.0,
+            alignment_length_bp: 20,
+            bit_score: 50.0,
+            ..Default::default()
+        };
+        let report = gp::GenomicRegionHomologyScreenReport {
+            query: gp::GenomicRegionHomologyQueryBinding {
+                sequence: "A".repeat(100),
+                ..Default::default()
+            },
+            effective_request: gp::GenomicRegionHomologyEffectiveRequest {
+                query_genome_id: "genome".into(),
+                ..Default::default()
+            },
+            hsps: vec![hsp("hsp-a", 60, 900), hsp("hsp-b", 10, 950)],
+            loci: vec![gp::GenomicRegionHomologyLocus {
+                target_genome_id: "genome".into(),
+                subject_id: "1".into(),
+                subject_start_0based: 900,
+                subject_end_0based_exclusive: 970,
+                locus_class: gp::GenomicRegionHomologyLocusClass::SameGenomeNonself,
+                source_hsp_ids: vec!["hsp-a".into(), "hsp-b".into()],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let matrix = build_promoter_similarity_matrix_from_transcripts(
+            &report,
+            &gp::PromoterSimilarityMatrixPolicy {
+                upstream_bp: 100,
+                downstream_bp: 20,
+                max_rows: 10,
+            },
+            &[transcript("ENST1"), transcript("ENST2")],
+        )
+        .expect("matrix");
+        assert_eq!(matrix.annotated_promoter_window_count, 1);
+        assert_eq!(matrix.distinct_gene_count, 1);
+        assert_eq!(matrix.distinct_transcript_count, 2);
+        assert_eq!(matrix.rows[0].transcript_ids, ["ENST1", "ENST2"]);
+        assert_eq!(matrix.rows[0].blocks[0].target_order, 1);
+        assert_eq!(matrix.rows[0].blocks[1].target_order, 2);
+        assert!(matrix.rows[0].blocks[1].order_break_before);
+    }
 
     fn query() -> gp::GenomicRegionHomologyQueryBinding {
         let sequence = "AACCGGTTAACCGGTT".to_string();

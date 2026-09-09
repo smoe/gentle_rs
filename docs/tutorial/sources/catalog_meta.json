@@ -155,6 +155,16 @@
       "id": "reporter_module_hypotheses",
       "name": "Reporter-Module Hypotheses",
       "description": "Conservation and independently selected evidence produce traceable fragment-testing hypotheses, never proof of autonomous regulatory function."
+    },
+    {
+      "id": "transcript_linked_promoter_recurrence",
+      "name": "Transcript-Linked Promoter Recurrence",
+      "description": "Same-genome sequence matches are counted as distinct strand-aware promoter windows while retaining every associated gene and transcript mapping."
+    },
+    {
+      "id": "ordered_similarity_blocks",
+      "name": "Ordered Similarity Blocks",
+      "description": "Similarity blocks retain query position, target-promoter order and orientation; order/orientation changes create explicit structural boundaries rather than joined chains."
     }
   ]
 }

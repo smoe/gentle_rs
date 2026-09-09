@@ -22,7 +22,8 @@ Maintenance invariant:
 
 Current candidate: `v0.1.0-internal.10` (unreleased; no green-light claim).
 
-Active aim: genome-anchored evidence, regulatory-region comparison and approved reporter designs.
+Active aim: genome-anchored evidence, transcript-linked promoter recurrence,
+regulatory-region comparison and approved reporter designs.
 
 Release story: inspect TP73 GRCh38.p14 exon, repeat, array, CUT&RUN, paired-read,
 motif and coordinate-provenance tracks, plus PATZ1 negative-strand transcript/assay

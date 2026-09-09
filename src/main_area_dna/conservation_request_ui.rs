@@ -199,6 +199,32 @@ pub(super) fn render_conservation_request(
                 ui.end_row();
             }
         });
+    let mut promoter_matrix_enabled = policy.promoter_similarity_matrix.is_some();
+    if ui
+        .checkbox(
+            &mut promoter_matrix_enabled,
+            "Annotate same-genome hits as transcript-promoter matrix",
+        )
+        .changed()
+    {
+        policy.promoter_similarity_matrix =
+            promoter_matrix_enabled.then(gp::PromoterSimilarityMatrixPolicy::default);
+    }
+    if let Some(matrix) = policy.promoter_similarity_matrix.as_mut() {
+        egui::Grid::new("promoter_similarity_policy")
+            .num_columns(2)
+            .show(ui, |ui| {
+                for (label, value) in [
+                    ("Promoter upstream (bp)", &mut matrix.upstream_bp),
+                    ("Promoter downstream (bp)", &mut matrix.downstream_bp),
+                    ("Displayed promoter rows", &mut matrix.max_rows),
+                ] {
+                    ui.label(label);
+                    ui.add(egui::DragValue::new(value));
+                    ui.end_row();
+                }
+            });
+    }
 }
 
 #[cfg(test)]

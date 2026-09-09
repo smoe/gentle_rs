@@ -14,6 +14,7 @@ const TILE_BP: usize = 100;
 const CHAR_WIDTH: f32 = 9.2;
 const ROW_PITCH: f32 = 17.0;
 const MAX_RENDERED_ROWS: usize = 100;
+const MAX_PROMOTER_MATRIX_ROWS: usize = 60;
 
 fn support_color(class: GenomicRegionHomologySupportClass) -> &'static str {
     match class {
@@ -69,7 +70,23 @@ pub fn render_genomic_region_homology_svg(report: &GenomicRegionHomologyScreenRe
     let rows_per_tile = rendered_rows.len() + 1;
     let overview_top = 92.0_f32;
     let overview_height = 58.0_f32;
-    let alignment_top = overview_top + overview_height + 52.0;
+    let promoter_matrix_rows = report
+        .promoter_similarity_matrix
+        .as_ref()
+        .map(|matrix| {
+            matrix
+                .rows
+                .iter()
+                .take(MAX_PROMOTER_MATRIX_ROWS)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let promoter_matrix_height = if promoter_matrix_rows.is_empty() {
+        0.0
+    } else {
+        50.0 + promoter_matrix_rows.len() as f32 * 19.0
+    };
+    let alignment_top = overview_top + overview_height + 52.0 + promoter_matrix_height;
     let tile_height = 42.0 + rows_per_tile as f32 * ROW_PITCH + 28.0;
     let footer_top = alignment_top + tile_count as f32 * tile_height + 18.0;
     let footer_lines = 4 + report.non_claims.len().min(6);
@@ -176,6 +193,111 @@ pub fn render_genomic_region_homology_svg(report: &GenomicRegionHomologyScreenRe
                     .set("data-query-start", block.query_start_0based)
                     .set("data-query-end", block.query_end_0based_exclusive),
             );
+        }
+    }
+
+    if let Some(matrix) = report.promoter_similarity_matrix.as_ref()
+        && !promoter_matrix_rows.is_empty()
+    {
+        let matrix_top = overview_top + overview_height + 38.0;
+        document = document
+            .add(
+                Text::new(format!(
+                    "Promoter recurrence matrix — {} window(s), {} gene(s), {} transcript(s){}",
+                    matrix.annotated_promoter_window_count,
+                    matrix.distinct_gene_count,
+                    matrix.distinct_transcript_count,
+                    if matrix.frequency_complete { "" } else { " (lower bounds)" }
+                ))
+                .set("data-role", "promoter-matrix-heading")
+                .set("x", 36)
+                .set("y", matrix_top)
+                .set("font-family", "sans-serif")
+                .set("font-size", 12)
+                .set("font-weight", 600)
+                .set("fill", "#374151"),
+            )
+            .add(
+                Text::new("Cell intensity = identity; number = block order in target promoter; red outline = order/orientation break")
+                    .set("x", LEFT)
+                    .set("y", matrix_top)
+                    .set("font-family", "sans-serif")
+                    .set("font-size", 10)
+                    .set("fill", "#64748b"),
+            );
+        for (row_index, row) in promoter_matrix_rows.iter().enumerate() {
+            let y = matrix_top + 13.0 + row_index as f32 * 19.0;
+            let label = row
+                .gene_names
+                .first()
+                .or_else(|| row.gene_ids.first())
+                .cloned()
+                .unwrap_or_else(|| row.chromosome.clone());
+            document = document
+                .add(
+                    Text::new(format!(
+                        "{} | {} tx | {:.0}%",
+                        short_label(&label, 18),
+                        row.transcript_ids.len(),
+                        row.query_coverage_percent
+                    ))
+                    .set("x", 36)
+                    .set("y", y + 11.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 10)
+                    .set("fill", "#334155"),
+                )
+                .add(
+                    Rectangle::new()
+                        .set("x", LEFT)
+                        .set("y", y)
+                        .set("width", track_width)
+                        .set("height", 14)
+                        .set("fill", "#f8fafc")
+                        .set("stroke", "#e2e8f0")
+                        .set("data-promoter-row-id", row.row_id.as_str()),
+                );
+            for block in &row.blocks {
+                let x1 = x_for(block.query_start_0based.min(query_len));
+                let x2 = x_for(block.query_end_0based_exclusive.min(query_len));
+                let opacity = (0.18 + 0.82 * block.identity_percent.clamp(0.0, 100.0) / 100.0)
+                    .clamp(0.18, 1.0);
+                document = document
+                    .add(
+                        Rectangle::new()
+                            .set("x", x1)
+                            .set("y", y)
+                            .set("width", (x2 - x1).max(2.0))
+                            .set("height", 14)
+                            .set("fill", "#2563eb")
+                            .set("fill-opacity", opacity)
+                            .set(
+                                "stroke",
+                                if block.order_break_before {
+                                    "#dc2626"
+                                } else {
+                                    "#1d4ed8"
+                                },
+                            )
+                            .set(
+                                "stroke-width",
+                                if block.order_break_before { 2.0 } else { 0.5 },
+                            )
+                            .set("data-block-order", block.target_order)
+                            .set("data-query-start", block.query_start_0based)
+                            .set("data-query-end", block.query_end_0based_exclusive)
+                            .set("data-order-break", block.order_break_before),
+                    )
+                    .add(
+                        Text::new(block.target_order.to_string())
+                            .set("x", x1 + 3.0)
+                            .set("y", y + 11.0)
+                            .set("font-family", "monospace")
+                            .set("font-size", 9)
+                            .set("font-weight", 700)
+                            .set("fill", "#ffffff"),
+                    );
+            }
         }
     }
 
@@ -374,5 +496,47 @@ mod tests {
                 .expect("label position")
         };
         assert!(text_y("support-heading") + 16.0 <= text_y("support-label"));
+    }
+
+    #[test]
+    fn homology_svg_renders_ordered_promoter_matrix_and_break_marker() {
+        let report = GenomicRegionHomologyScreenReport {
+            schema: gentle_protocol::GENOMIC_REGION_HOMOLOGY_SCREEN_SCHEMA.to_string(),
+            content_sha256: "sha256:synthetic".to_string(),
+            query: GenomicRegionHomologyQueryBinding {
+                sequence: "A".repeat(100),
+                ..Default::default()
+            },
+            promoter_similarity_matrix: Some(gentle_protocol::PromoterSimilarityMatrix {
+                schema: gentle_protocol::PROMOTER_SIMILARITY_MATRIX_SCHEMA.to_string(),
+                annotated_promoter_window_count: 1,
+                distinct_gene_count: 1,
+                distinct_transcript_count: 2,
+                frequency_complete: true,
+                rows: vec![gentle_protocol::PromoterSimilarityMatrixRow {
+                    row_id: "promoter-1".into(),
+                    gene_names: vec!["GENE1".into()],
+                    transcript_ids: vec!["TX1".into(), "TX2".into()],
+                    query_coverage_percent: 60.0,
+                    blocks: vec![gentle_protocol::PromoterSimilarityBlock {
+                        block_id: "block-2".into(),
+                        query_start_0based: 20,
+                        query_end_0based_exclusive: 60,
+                        target_order: 2,
+                        identity_percent: 92.0,
+                        order_break_before: true,
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let svg = render_genomic_region_homology_svg(&report);
+        assert!(svg.contains("data-role=\"promoter-matrix-heading\""));
+        assert!(svg.contains("data-promoter-row-id=\"promoter-1\""));
+        assert!(svg.contains("data-block-order=\"2\""));
+        assert!(svg.contains("data-order-break=\"true\""));
     }
 }

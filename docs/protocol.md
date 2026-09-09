@@ -4448,6 +4448,17 @@ external coding agent runtime, see:
     BLAST tool version, projection version, and each genomic database content
     fingerprint. Replacing an index at the same prefix therefore changes cache
     identity
+  - optional `policy.promoter_similarity_matrix` annotates accepted same-genome
+    non-self loci against the prepared genome's transcript catalog. Its
+    `gentle.promoter_similarity_matrix.v1` rows are distinct strand-aware
+    genomic promoter windows; gene and transcript memberships remain attached
+    so shared TSS isoforms do not masquerade as independent genomic matches.
+    Each block retains query coordinates, transcription-oriented target
+    coordinates, percent identity, source HSPs, and one-based target order.
+    A changed query order or alignment orientation sets
+    `order_break_before=true`; consumers must not join across that boundary.
+    The report separately counts windows, genes, and transcripts. HSP or locus
+    truncation makes `frequency_complete=false` and all counts lower bounds
   - only validated `genomic_dna` indexes are eligible. Missing optional targets
     are represented as `unavailable`; missing required targets fail preflight;
     no resource is fetched or indexed implicitly. cDNA/transcriptome indexes

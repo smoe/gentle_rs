@@ -7059,6 +7059,41 @@ FASTA index='{}'.{}{}",
         ))
     }
 
+    /// Load every transcript record from one validated prepared genome.
+    ///
+    /// The returned `Arc` shares the process-wide transcript-index cache so
+    /// promoterome-style analyses can scan the annotation once without cloning
+    /// hundreds of thousands of records or reparsing the GTF.
+    pub fn list_all_transcript_records(
+        &self,
+        genome_id: &str,
+        cache_dir_override: Option<&str>,
+    ) -> Result<Arc<Vec<GenomeTranscriptRecord>>, String> {
+        let prepared = self.resolve_prepared_genome_id(genome_id, cache_dir_override)?;
+        let resolved_genome_id = prepared.resolved_genome_id;
+        let entry = self.entry(&resolved_genome_id)?;
+        let install_dir = self.install_dir(&resolved_genome_id, entry, cache_dir_override);
+        let manifest_path = install_dir.join("manifest.json");
+        let mut manifest = Self::load_manifest(&manifest_path)?;
+        Self::validate_manifest_files(&manifest)?;
+        let annotation_path = PathBuf::from(&manifest.annotation_path);
+        if is_genbank_annotation_path(&annotation_path) || is_xml_annotation_path(&annotation_path)
+        {
+            return Ok(Arc::new(vec![]));
+        }
+        let transcript_index_path = manifest
+            .transcript_index_path
+            .as_ref()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| install_dir.join("transcripts.json"));
+        if !transcript_index_path.exists() {
+            build_transcript_index_file(&annotation_path, &transcript_index_path, |_, _| true)?;
+            manifest.transcript_index_path = Some(canonical_or_display(&transcript_index_path));
+            Self::write_manifest(&manifest_path, &manifest)?;
+        }
+        load_transcript_index_file_cached(&transcript_index_path)
+    }
+
     /// Run BLASTN of query sequence against the prepared genome index.
     ///
     /// The returned report preserves command/stderr/warning context so callers

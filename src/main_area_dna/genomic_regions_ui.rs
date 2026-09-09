@@ -61,6 +61,10 @@ enum GenomicRegionManagerAction {
         set_id: String,
         region: gentle_protocol::GenomicRegionOfInterest,
     },
+    OpenPromoterSimilarity {
+        set_id: String,
+        region: gentle_protocol::GenomicRegionOfInterest,
+    },
 }
 
 /// A colour edit that is still being dragged.
@@ -138,6 +142,57 @@ impl MainAreaDna {
         self.genomic_region_conservation_status =
             "Ready to inspect validated local genomic indexes".to_string();
         self.show_genomic_region_conservation = true;
+    }
+
+    fn open_genomic_region_promoter_similarity(
+        &mut self,
+        set_id: &str,
+        region: &gentle_protocol::GenomicRegionOfInterest,
+    ) {
+        self.open_genomic_region_conservation(set_id, region);
+        let genome_id = self
+            .genomic_region_conservation_request
+            .query_genome_id
+            .clone()
+            .unwrap_or_default();
+        self.genomic_region_conservation_request
+            .policy
+            .min_alignment_length_bp = 40;
+        self.genomic_region_conservation_request
+            .policy
+            .min_identity_percent = 80.0;
+        self.genomic_region_conservation_request.policy.max_evalue = 1.0e-5;
+        self.genomic_region_conservation_request
+            .policy
+            .max_hsps_per_target = 100_000;
+        self.genomic_region_conservation_request
+            .policy
+            .max_loci_per_target = 10_000;
+        self.genomic_region_conservation_request
+            .policy
+            .promoter_similarity_matrix =
+            Some(gentle_protocol::PromoterSimilarityMatrixPolicy::default());
+        self.genomic_region_conservation_request.targets = if genome_id.is_empty() {
+            vec![]
+        } else {
+            vec![gentle_protocol::GenomicRegionHomologyTargetRequest {
+                genome_id,
+                required: true,
+                role: gentle_protocol::GenomicRegionHomologyTargetRole::SameGenome,
+                expected_loci: vec![],
+            }]
+        };
+        self.genomic_region_conservation_status = if self
+            .genomic_region_conservation_request
+            .query_genome_id
+            .as_deref()
+            .is_some_and(|value| !value.is_empty())
+        {
+            "Ready to search the prepared genome and annotate matches against transcript-derived promoter windows"
+                .to_string()
+        } else {
+            "Set the query genome before running promoter similarity".to_string()
+        };
     }
 
     /// Open saved regions, optionally staging a sequence selection for capture.
@@ -843,20 +898,48 @@ impl MainAreaDna {
                                             ));
                                         }
                                     });
-                                    if ui
-                                        .small_button("Conservation...")
-                                        .on_hover_text(
-                                            "Compare this saved region with validated local genomic BLAST indexes",
-                                        )
-                                        .clicked()
-                                    {
-                                        action = Some(
-                                            GenomicRegionManagerAction::OpenConservation {
-                                                set_id: set.set_id.clone(),
-                                                region: region.clone(),
-                                            },
+                                    ui.vertical(|ui| {
+                                        if ui
+                                            .small_button("Conservation...")
+                                            .on_hover_text(
+                                                "Compare this saved region with validated local genomic BLAST indexes",
+                                            )
+                                            .clicked()
+                                        {
+                                            action = Some(
+                                                GenomicRegionManagerAction::OpenConservation {
+                                                    set_id: set.set_id.clone(),
+                                                    region: region.clone(),
+                                                },
+                                            );
+                                        }
+                                        let promoter_similarity = ui
+                                            .small_button("Promoter similarity...")
+                                            .on_hover_text(
+                                                "Search this region in its prepared genome and display matching transcript-promoter windows as an ordered block matrix",
+                                            );
+                                        #[cfg(feature = "gui-test-support")]
+                                        crate::gui_test_support::register_response(
+                                            &promoter_similarity,
+                                            crate::tutorial_gui_semantics::GENOMIC_REGION_PROMOTER_SIMILARITY,
+                                            crate::tutorial_gui_semantics::WINDOW_GENOMIC_REGIONS,
+                                            Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
+                                                self.seq_id.as_deref().unwrap_or("unnamed"),
+                                                &set.set_id,
+                                                &region.region_id,
+                                            ])),
+                                            crate::gui_test_support::GuiTestWidgetKind::Button,
+                                            false,
                                         );
-                                    }
+                                        if promoter_similarity.clicked() {
+                                            action = Some(
+                                                GenomicRegionManagerAction::OpenPromoterSimilarity {
+                                                    set_id: set.set_id.clone(),
+                                                    region: region.clone(),
+                                                },
+                                            );
+                                        }
+                                    });
                                     ui.end_row();
                                 }
                             });
@@ -909,6 +992,9 @@ impl MainAreaDna {
             Some(GenomicRegionManagerAction::OpenConservation { set_id, region }) => {
                 self.open_genomic_region_conservation(&set_id, &region)
             }
+            Some(GenomicRegionManagerAction::OpenPromoterSimilarity { set_id, region }) => {
+                self.open_genomic_region_promoter_similarity(&set_id, &region)
+            }
             None => {}
         }
     }
@@ -923,6 +1009,21 @@ impl MainAreaDna {
             self.genomic_region_conservation_status = "No engine is attached".to_string();
             return;
         };
+        if self
+            .genomic_region_conservation_request
+            .policy
+            .promoter_similarity_matrix
+            .is_some()
+            && self
+                .genomic_region_conservation_request
+                .query_genome_id
+                .as_deref()
+                .is_none_or(|value| value.trim().is_empty())
+        {
+            self.genomic_region_conservation_status =
+                "Set the query genome before running promoter similarity".to_string();
+            return;
+        }
         let request = self.genomic_region_conservation_request.clone();
         let (sender, receiver) = mpsc::channel::<GenomicRegionHomologyTaskMessage>();
         let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -1683,6 +1784,38 @@ impl MainAreaDna {
                                     }
                                 });
                         });
+                    if let Some(matrix) = report.promoter_similarity_matrix.as_ref() {
+                        ui.separator();
+                        ui.strong("Promoter recurrence matrix");
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(format!(
+                                "{} promoter window(s)",
+                                matrix.annotated_promoter_window_count
+                            ));
+                            ui.label(format!("{} gene(s)", matrix.distinct_gene_count));
+                            ui.label(format!(
+                                "{} transcript(s)",
+                                matrix.distinct_transcript_count
+                            ));
+                            ui.label(if matrix.frequency_complete {
+                                "frequency complete within the declared search"
+                            } else {
+                                "lower-bound frequency: a search budget was reached"
+                            });
+                        });
+                        ui.small(
+                            "Rows are distinct transcript-derived promoter windows. Blue intensity reflects identity; numbers show block order in the target promoter. A red outline marks an order/orientation break, which remains a structural observation rather than a functional claim.",
+                        );
+                        for warning in &matrix.warnings {
+                            ui.colored_label(egui::Color32::from_rgb(180, 83, 9), warning);
+                        }
+                        super::conservation_alignment_ui::render_promoter_similarity_matrix(
+                            ui, report,
+                        );
+                        for non_claim in &matrix.non_claims {
+                            ui.small(egui::RichText::new(non_claim).italics());
+                        }
+                    }
                     ui.separator();
                     ui.strong("Conserved blocks");
                     if report.conserved_blocks.is_empty() {

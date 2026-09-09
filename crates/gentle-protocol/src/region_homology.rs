@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 pub const GENOMIC_REGION_HOMOLOGY_SCREEN_SCHEMA: &str = "gentle.genomic_region_homology_screen.v1";
 pub const PROMOTER_MODULE_ASSESSMENT_SCHEMA: &str = "gentle.promoter_module_assessment.v1";
 pub const GENOMIC_REGION_HOMOLOGY_PROJECTION_VERSION: &str = "query_projection_v1";
+pub const PROMOTER_SIMILARITY_MATRIX_SCHEMA: &str = "gentle.promoter_similarity_matrix.v1";
 
 pub const fn default_homology_min_identity_percent() -> f64 {
     70.0
@@ -38,6 +39,34 @@ pub const fn default_homology_max_hsps_per_target() -> usize {
 
 pub const fn default_homology_min_conserved_block_bp() -> usize {
     12
+}
+
+pub const fn default_promoter_similarity_upstream_bp() -> usize {
+    2_000
+}
+
+pub const fn default_promoter_similarity_downstream_bp() -> usize {
+    200
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct PromoterSimilarityMatrixPolicy {
+    pub upstream_bp: usize,
+    pub downstream_bp: usize,
+    /// Maximum displayed promoter rows. Matching rows beyond this bound remain
+    /// counted and are reported as omitted, never silently treated as absent.
+    pub max_rows: usize,
+}
+
+impl Default for PromoterSimilarityMatrixPolicy {
+    fn default() -> Self {
+        Self {
+            upstream_bp: default_promoter_similarity_upstream_bp(),
+            downstream_bp: default_promoter_similarity_downstream_bp(),
+            max_rows: 500,
+        }
+    }
 }
 
 pub const fn default_promoter_module_max_partner_gap_bp() -> usize {
@@ -163,6 +192,10 @@ pub struct GenomicRegionHomologySearchPolicy {
     pub max_loci_per_target: usize,
     pub max_hsps_per_target: usize,
     pub min_conserved_block_bp: usize,
+    /// When present, annotate same-genome similarity against transcript-derived
+    /// promoter windows and retain an ordered block matrix in the report.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub promoter_similarity_matrix: Option<PromoterSimilarityMatrixPolicy>,
 }
 
 impl Default for GenomicRegionHomologySearchPolicy {
@@ -175,8 +208,66 @@ impl Default for GenomicRegionHomologySearchPolicy {
             max_loci_per_target: default_homology_max_loci_per_target(),
             max_hsps_per_target: default_homology_max_hsps_per_target(),
             min_conserved_block_bp: default_homology_min_conserved_block_bp(),
+            promoter_similarity_matrix: None,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct PromoterSimilarityBlock {
+    pub block_id: String,
+    pub query_start_0based: usize,
+    pub query_end_0based_exclusive: usize,
+    /// Target-promoter coordinates in transcriptional 5'-to-3' orientation.
+    pub target_start_0based: u64,
+    pub target_end_0based_exclusive: u64,
+    /// One-based order among blocks in this target promoter.
+    pub target_order: usize,
+    pub strand: GenomicRegionStrand,
+    pub identity_percent: f64,
+    pub bit_score: f64,
+    pub source_hsp_ids: Vec<String>,
+    /// True when query order and target-promoter order differ from the preceding
+    /// block. Such blocks must not be visually joined.
+    pub order_break_before: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct PromoterSimilarityMatrixRow {
+    pub row_id: String,
+    pub target_genome_id: String,
+    pub chromosome: String,
+    pub promoter_start_0based: u64,
+    pub promoter_end_0based_exclusive: u64,
+    pub tss_1based: u64,
+    pub strand: GenomicRegionStrand,
+    pub gene_ids: Vec<String>,
+    pub gene_names: Vec<String>,
+    pub transcript_ids: Vec<String>,
+    pub query_coverage_percent: f64,
+    pub mean_identity_percent: f64,
+    pub blocks: Vec<PromoterSimilarityBlock>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct PromoterSimilarityMatrix {
+    pub schema: String,
+    pub upstream_bp: usize,
+    pub downstream_bp: usize,
+    pub annotated_promoter_window_count: usize,
+    pub distinct_gene_count: usize,
+    pub distinct_transcript_count: usize,
+    pub displayed_row_count: usize,
+    pub omitted_row_count: usize,
+    /// False when the underlying BLAST/HSP or retained-locus budget prevents a
+    /// complete frequency interpretation.
+    pub frequency_complete: bool,
+    pub rows: Vec<PromoterSimilarityMatrixRow>,
+    pub warnings: Vec<String>,
+    pub non_claims: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
@@ -385,6 +476,8 @@ pub struct GenomicRegionHomologyScreenReport {
     pub alignment_rows: Vec<GenomicRegionHomologyAlignmentRow>,
     pub omitted_insertions: Vec<GenomicRegionHomologyOmittedInsertion>,
     pub conserved_blocks: Vec<GenomicRegionHomologyConservedBlock>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub promoter_similarity_matrix: Option<PromoterSimilarityMatrix>,
     pub same_genome_nonself_locus_count: usize,
     pub same_genome_nonself_query_coverage_percent: f64,
     pub warnings: Vec<String>,

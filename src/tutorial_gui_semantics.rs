@@ -44,6 +44,7 @@ pub const GENOMIC_REGION_IMPORT_JSON: &str = "genomic_region.import_set_json";
 pub const GENOMIC_REGION_IMPORT_BED: &str = "genomic_region.import_set_bed_manifest";
 pub const GENOMIC_REGION_CAPTURE_CUTRUN: &str = "genomic_region.capture_cutrun_window";
 pub const GENOMIC_REGION_CAPTURE_ENSEMBL: &str = "genomic_region.capture_ensembl_feature";
+pub const GENOMIC_REGION_PROMOTER_SIMILARITY: &str = "genomic_region.promoter_similarity";
 pub const REGION_CONSERVATION_RUN: &str = "region_conservation.run";
 pub const REGION_CONSERVATION_CANCEL: &str = "region_conservation.cancel";
 pub const REGION_CONSERVATION_OPEN_REPORT: &str = "region_conservation.open_report";
@@ -376,6 +377,13 @@ pub const TUTORIAL_GUI_CONTROLS: &[TutorialGuiControlSpec] = &[
         semantic_id: GENOMIC_REGION_CAPTURE_ENSEMBL,
         window_id: WINDOW_SPLICING_EXPERT,
         authority: TutorialGuiControlAuthority::ScientificState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: GENOMIC_REGION_PROMOTER_SIMILARITY,
+        window_id: WINDOW_GENOMIC_REGIONS,
+        authority: TutorialGuiControlAuthority::ViewState,
         allowed_interactions: CLICK,
         text_policy: None,
     },

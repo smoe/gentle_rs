@@ -20,9 +20,9 @@ generated_artifact_dir: "docs/tutorial/generated/artifacts/region_homology_promo
 
 # Conserved Blocks and Testable Promoter-Module Hypotheses
 
-Compare one saved genomic region with validated local genomic indexes, inspect a query-referenced alignment without insertion columns, and turn explicitly selected evidence spans into conservative reporter-module hypotheses.
+Compare one saved genomic region with validated local genomic indexes, inspect transcript-linked same-genome promoter recurrence as an ordered block matrix, and turn explicitly selected evidence spans into conservative reporter-module hypotheses.
 
-A conserved promoter segment can be a useful fragment candidate, but sequence similarity does not prove that the segment works alone. This chapter keeps three questions separate: whether an explicitly expected ortholog locus supports each query base, whether other species contain merely unassigned similarity, and whether the same genome contains competing copies. The synthetic target includes an inserted base; GENtle records it in provenance but does not add a display column, so every row remains aligned to the query. The Conservation workspace can then evaluate saved CUT&RUN, motif, provider-annotation, or reporter-candidate spans against the exact-support blocks. Its standalone, paired-context, repetitive, and insufficient outcomes are traceable design hypotheses, not regulatory verdicts.
+A conserved or selectively recurring promoter segment can be a useful fragment candidate, but sequence similarity does not prove that the segment works alone. This chapter keeps four questions separate: how candidate blocks recur upstream of annotated transcripts in the same genome, whether an explicitly expected ortholog locus supports each query base, whether other species contain merely unassigned similarity, and whether the same genome contains non-promoter competing copies. In the promoter matrix, every row is one distinct strand-aware transcript-promoter window; shared-TSS transcripts remain attached to that genomic occurrence. Blue intensity reports nucleotide identity, labels 1, 2, 3, and so on report the order of blocks in the target promoter, and a red outline marks an order or orientation break. Blocks are never joined across such a break. The Conservation workspace can then evaluate saved CUT&RUN, motif, provider-annotation, or reporter-candidate spans against the exact-support blocks. Its standalone, paired-context, repetitive, and insufficient outcomes are traceable design hypotheses, not regulatory verdicts.
 
 **Prerequisites:** Read [Chapter 30: Save and Share Genomic Regions (Offline SERPINE1 Example)](./08-10_portable_genomic_regions_offline.md) first.
 
@@ -31,6 +31,9 @@ A conserved promoter segment can be a useful fragment candidate, but sequence si
 
 ## Parameters That Matter
 
+- `policy.promoter_similarity_matrix` (where used: ScreenGenomicRegionHomology from Promoter similarity...)
+  - Why it matters: The upstream/downstream window defines which same-genome hits count as transcript-promoter recurrence; max_rows limits display only, while the report retains total window, gene and transcript counts.
+  - How to derive it: Choose one assembly/release-specific promoter window before search. Keep the default -2,000/+200 bp for broad screening or declare a study-specific window; do not silently mix definitions between candidates.
 - `targets[].role and expected_loci[]` (where used: ScreenGenomicRegionHomology)
   - Why it matters: An expected ortholog label is accepted only when an accepted locus overlaps a caller-supplied, evidence-identified expected locus.
   - How to derive it: Use reviewed orthology resources or an explicit expected locus; leave unrelated cross-species searches unassigned.
@@ -47,6 +50,7 @@ A conserved promoter segment can be a useful fragment candidate, but sequence si
 ## When This Routine Is Useful
 
 - You want to inspect whether a saved promoter candidate contains cross-species exact-support blocks.
+- You want to see which parts of a candidate recur upstream of which genes and transcripts, including changed block order or orientation.
 - You want same-genome repetition reported separately from cross-species conservation.
 - You want a multiple-alignment-like display whose columns always remain query coordinates.
 - You want an inspectable reason for testing one reporter block alone or together with a partner block.
@@ -56,6 +60,8 @@ A conserved promoter segment can be a useful fragment candidate, but sequence si
 
 - Distinguish explicit orthology evidence from BLAST similarity.
 - Read a query-referenced projection that suppresses target insertion columns without losing insertion provenance.
+- Interpret a transcript-linked promoter matrix whose colour encodes identity and whose numbers encode target-promoter block order.
+- Recognize order/orientation breaks as reasons to split or rearrange experimental reporter constructs, while retaining biological non-claims.
 - Interpret exact-support blocks separately by evidence class and available-genome denominator.
 - Use same-genome repetition as an ambiguity signal rather than a functional off-target claim.
 - Explain why a reporter-module assessment proposes experiments but cannot establish autonomous regulatory function.
@@ -67,18 +73,22 @@ A conserved promoter segment can be a useful fragment candidate, but sequence si
 - **Query-Referenced Alignment** (`query_referenced_alignment`): The query defines every display column while target insertions remain separate structured provenance.
 - **Explicit Orthology Evidence** (`explicit_orthology`): An ortholog label requires a declared, provenance-bearing expected locus and is never inferred from similarity rank alone.
 - **Reporter-Module Hypotheses** (`reporter_module_hypotheses`): Conservation and independently selected evidence produce traceable fragment-testing hypotheses, never proof of autonomous regulatory function.
+- **Transcript-Linked Promoter Recurrence** (`transcript_linked_promoter_recurrence`): Same-genome sequence matches are counted as distinct strand-aware promoter windows while retaining every associated gene and transcript mapping.
+- **Ordered Similarity Blocks** (`ordered_similarity_blocks`): Similarity blocks retain query position, target-promoter order and orientation; order/orientation changes create explicit structural boundaries rather than joined chains.
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
 
 ## At a Glance
 
 1. Run the complete companion command shown below into an empty directory. It pr...
 2. Open the DNA viewer, choose Regions..., and use Conservation... on synthetic_...
-3. Choose Open report... and load homology_report.json from the companion output...
-4. Expand Search request to inspect target IDs, required flags, orthology eviden...
-5. Inspect target readiness and confirm that expected-ortholog, unassigned cross...
-6. Inspect the query-referenced alignment: dots are exact bases, letters are sub...
-7. Select only synthetic_occupancy_anchor, choose Assess selected evidence, and ...
-8. Optionally save a selected conserved block as a new portable region. This exp...
+3. For a saved region with a prepared genome binding, choose Promoter similarity...
+4. Choose Open report... and load homology_report.json from the companion output...
+5. Expand Search request to inspect target IDs, required flags, orthology eviden...
+6. Inspect target readiness and confirm that expected-ortholog, unassigned cross...
+7. Inspect Promoter recurrence matrix. Rows are distinct genomic promoter window...
+8. Inspect the query-referenced alignment: dots are exact bases, letters are sub...
+9. Select only synthetic_occupancy_anchor, choose Assess selected evidence, and ...
+10. Optionally save a selected conserved block as a new portable region. This exp...
 
 ## GUI First
 
@@ -108,9 +118,9 @@ python3 docs/examples/run_region_homology_tutorial.py --gentle target/debug/gent
 
 > Expected: Every projected alignment row has exactly the query length even though one target contains an insertion.
 
-### Step 3: Choose Open report... and load homology_report.json from the companion output...
+### Step 3: For a saved region with a prepared genome binding, choose Promoter similarity...
 
-GUI: Choose `Open report...` and load `homology_report.json` from the companion output directory; GENtle validates its digest and exact saved-region binding. `Import request...` loads that directory's `homology_request.json` without executing it.
+GUI: For a saved region with a prepared genome binding, choose `Promoter similarity...` instead. GENtle opens the same Conservation workspace with a same-genome target, a 2,000 bp upstream plus 200 bp downstream transcript-window policy, and conservative 40 bp / 80% identity defaults. Review these parameters before selecting `Run local screen`.
 
 CLI:
 
@@ -120,9 +130,9 @@ target/debug/gentle_cli --state /tmp/gentle-conservation-tutorial/report_only.pr
 
 > Expected: The inserted target base is retained under `omitted_insertions` with query anchor, target coordinates, strand, and HSP identity.
 
-### Step 4: Expand Search request to inspect target IDs, required flags, orthology eviden...
+### Step 4: Choose Open report... and load homology_report.json from the companion output...
 
-GUI: Expand `Search request` to inspect target IDs, required flags, orthology evidence and search thresholds. `Run local screen` submits these exact settings; empty targets instead select all validated local indexes. During BLAST, elapsed time and heartbeats remain visible, and `Cancel` stops the active search without publishing an incomplete report.
+GUI: Choose `Open report...` and load `homology_report.json` from the companion output directory; GENtle validates its digest and exact saved-region binding. `Import request...` loads that directory's `homology_request.json` without executing it.
 
 CLI:
 
@@ -132,25 +142,37 @@ target/debug/gentle_cli --state /tmp/gentle-conservation-tutorial/report_only.pr
 
 > Expected: Only the locus backed by `synthetic_declared_orthology` is labelled `expected_ortholog`; BLAST rank alone never establishes orthology.
 
-### Step 5: Inspect target readiness and confirm that expected-ortholog, unassigned cross...
+### Step 5: Expand Search request to inspect target IDs, required flags, orthology eviden...
 
-GUI: Inspect target readiness and confirm that expected-ortholog, unassigned cross-species, and same-genome evidence remain separate.
+GUI: Expand `Search request` to inspect target IDs, required flags, orthology evidence and search thresholds. `Run local screen` submits these exact settings; empty targets instead select all validated local indexes. During BLAST, elapsed time and heartbeats remain visible, and `Cancel` stops the active search without publishing an incomplete report.
 
 > Expected: Same-genome non-self similarity has its own loci, support blocks, coverage percentage, and ambiguity rule.
 
-### Step 6: Inspect the query-referenced alignment: dots are exact bases, letters are sub...
+### Step 6: Inspect target readiness and confirm that expected-ortholog, unassigned cross...
+
+GUI: Inspect target readiness and confirm that expected-ortholog, unassigned cross-species, and same-genome evidence remain separate.
+
+> Expected: Promoter-matrix counts distinguish genomic windows, genes and transcripts. If an HSP/locus budget is reached, the report labels all frequency counts as lower bounds instead of implying completeness.
+
+### Step 7: Inspect Promoter recurrence matrix. Rows are distinct genomic promoter window...
+
+GUI: Inspect `Promoter recurrence matrix`. Rows are distinct genomic promoter windows, not raw transcript counts. Read blue intensity as identity and the block number as target-promoter 5'-to-3' order. Hover a row for its genes, transcripts, TSS and coordinates. Treat a red block outline as a structural split candidate: the query order or orientation changed, so GENtle does not join it to the preceding block.
+
+> Expected: Changing block order or orientation splits the visual chain. This is structural evidence for testing reporter subfragments or arrangements, not proof that either arrangement is functional.
+
+### Step 8: Inspect the query-referenced alignment: dots are exact bases, letters are sub...
 
 GUI: Inspect the query-referenced alignment: dots are exact bases, letters are substitutions, dashes are target deletions, and omitted insertions remain in JSON rather than adding columns.
 
 > Expected: Module outcomes retain all thresholds, evidence IDs, passed and failed rules, alternatives, and explicit non-claims.
 
-### Step 7: Select only synthetic_occupancy_anchor, choose Assess selected evidence, and ...
+### Step 9: Select only synthetic_occupancy_anchor, choose Assess selected evidence, and ...
 
 GUI: Select only `synthetic_occupancy_anchor`, choose `Assess selected evidence`, and compare the standalone decision with `standalone.json`. Add `synthetic_left_motif` and reassess: the paired decision must cite a shared ortholog locus and compatible target-coordinate gaps, not merely proximity in the query. Select a block to jump to its virtualized alignment tile.
 
 > Expected: The companion asserts standalone and paired results, an insufficient result for evidence in the deliberately substituted gap, and a repetitive result under an explicitly strict 1% policy. Its receipt records the exact commands, binary and artifact hashes. GENtle alone computes these outcomes. Report-only steps use an empty scratch project because their inputs are self-contained; the original tutorial project is not reopened or rewritten.
 
-### Step 8: Optionally save a selected conserved block as a new portable region. This exp...
+### Step 10: Optionally save a selected conserved block as a new portable region. This exp...
 
 GUI: Optionally save a selected conserved block as a new portable region. This explicit mutation preserves the report digest and non-claims.
 
@@ -178,6 +200,7 @@ python3 docs/examples/run_region_homology_tutorial.py --gentle target/debug/gent
 - All target rows are query-length projections; insertions are omitted from display columns and retained structurally.
 - Unavailable optional indexes remain typed unavailable and do not impair unrelated GENtle use.
 - The module decision trace distinguishes standalone, paired-context, repetitive-or-ambiguous, and insufficient-evidence hypotheses.
+- The promoter matrix preserves target-promoter order and orientation, separates shared genomic windows from transcript multiplicity, and marks incomplete frequency counts as lower bounds.
 - Every presentation repeats that conservation does not prove autonomous promoter function.
 
 ## Tutorial Provenance

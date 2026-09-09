@@ -2,6 +2,16 @@
 
 ## 2026-09-08 - `v0.1.0-internal.10` candidate preparation
 
+- Added an ordered transcript-promoter recurrence matrix to saved-region
+  homology reports. The `Promoter similarity...` action searches the prepared
+  same genome and annotates accepted loci against strand-aware transcript
+  windows, keeping distinct window, gene and transcript frequencies. Matrix
+  blocks encode query position, identity, target-promoter order and orientation;
+  changed order/orientation begins an explicit unjoined segment. Search-budget
+  truncation turns frequency counts into labelled lower bounds. Protocol, SVG,
+  virtualized GUI and tutorial coverage repeat that these are structural design
+  observations, not promoter activity or reporter sufficiency claims.
+
 - Integrated Glen's `f93f795c` screenshot contribution after the hardening merge:
   three introductory tutorials now link ten teaching views from eight captured
   checkpoints. All 40 raw/derived/sidecar/snapshot files remain byte-identical to

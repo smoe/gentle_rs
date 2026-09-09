@@ -126,6 +126,10 @@ Online execution was disabled (`GENTLE_TEST_ONLINE=0` during generation).
   - Appears in: [Chapter 32: Conserved Blocks and Testable Promoter-Module Hypotheses](./chapters/08-12_region_homology_promoter_modules_offline.md).
 - **Reporter-Module Hypotheses** (`reporter_module_hypotheses`): Conservation and independently selected evidence produce traceable fragment-testing hypotheses, never proof of autonomous regulatory function.
   - Appears in: [Chapter 32: Conserved Blocks and Testable Promoter-Module Hypotheses](./chapters/08-12_region_homology_promoter_modules_offline.md).
+- **Transcript-Linked Promoter Recurrence** (`transcript_linked_promoter_recurrence`): Same-genome sequence matches are counted as distinct strand-aware promoter windows while retaining every associated gene and transcript mapping.
+  - Appears in: [Chapter 32: Conserved Blocks and Testable Promoter-Module Hypotheses](./chapters/08-12_region_homology_promoter_modules_offline.md).
+- **Ordered Similarity Blocks** (`ordered_similarity_blocks`): Similarity blocks retain query position, target-promoter order and orientation; order/orientation changes create explicit structural boundaries rather than joined chains.
+  - Appears in: [Chapter 32: Conserved Blocks and Testable Promoter-Module Hypotheses](./chapters/08-12_region_homology_promoter_modules_offline.md).
 
 ## Source Summary
 

@@ -1273,6 +1273,21 @@ Feature tree grouping:
   - target readiness, conserved blocks, same-genome alternatives, and the
     query-referenced alignment are inspectable together. Target insertion bases
     stay in exported JSON and never create extra alignment columns
+  - `Promoter similarity...` is a focused entry point into the same workspace.
+    It requires the saved region's prepared-genome identity, selects that genome
+    as the same-genome target, enables transcript-promoter annotation, and starts
+    with 40 bp / 80% identity and a -2,000/+200 bp transcript window. Review or
+    edit these declared parameters before `Run local screen`
+  - the promoter recurrence matrix uses one row per distinct strand-aware
+    genomic promoter window and retains every gene/transcript mapping for shared
+    TSSs. Horizontal position is the selected query region, blue intensity is
+    nucleotide identity, and the number inside each block is its 5'-to-3' order
+    in the target promoter. A red outline begins a new structural segment when
+    query order or alignment orientation changes; GENtle never joins across it
+  - window, gene, and transcript frequencies are displayed separately. If the
+    BLAST HSP or retained-locus budget is reached, the matrix labels frequencies
+    as lower bounds. Similarity, rarity, and rearrangement remain reporter-design
+    evidence, not promoter-activity or fragment-sufficiency claims
   - conserved-block and alignment lists instantiate only visible rows. The
     alignment has no former 50-locus display cap; selecting a block scrolls to
     its query tile without laying out the complete sequence on every repaint
