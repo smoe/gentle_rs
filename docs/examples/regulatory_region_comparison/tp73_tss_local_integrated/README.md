@@ -1,86 +1,100 @@
-# TSS-local integrated regulatory comparison
+# TSS-local regulatory-feature similarity in the tall locus reports
 
-This retained analysis revises the first TP73 CUT&RUN-supported promoterome
-comparison around transcript-oriented **−500/+200 bp** windows. For each of the
-seven selected `CD44`, `TGFB1`, and `SERPINE1` TSS windows it intersects every
-overlapping Ensembl Regulation feature with the displayed genomic stretch.
-Feature similarity is therefore computed only for the sequence visible in this
-TSS-local report, not for a distant portion of a larger eMAR annotation.
+This bundle extends the existing tall `CD44`, `TGFB1`, and `SERPINE1`
+promoter–reporter architecture reports. Their transcript models, proposed
+reporters, Ensembl Regulation annotations, TP73 CUT&RUN/H3K4me3 lanes, and
+15-factor JASPAR score tracks remain in place. A new section immediately before
+the interpretation/provenance footer compares every Ensembl regulatory feature
+intersecting a transcript-oriented **−500/+200 bp** TSS window with the prepared
+human promoterome.
 
-Each connected stretch has one shared 15-factor JASPAR TFBS layer and the same
-12 TP73 CUT&RUN/H3K4me3 BigWig lanes used by the prior luciferase-planning
-reports. Beneath them, one recurrence panel per Ensembl feature shows matches
-to the 389,722-window GRCh38/Ensembl-116 promoterome. Self-locus and same-gene
-targets are excluded. Rows represent distinct genomic promoter windows; genes
-and transcripts sharing one TSS stay attached to that single occurrence.
+The TFBS tracks are deliberately shown once per gene report. The similarity
+section reuses the same genomic stretch and adds, per overlapping regulatory
+feature:
+
+- a position-frequency strip counting distinct other genes;
+- top other-gene promoter windows with their genes and transcript mappings;
+- identity intensity and target-promoter block numbers;
+- red boundaries only when alignment-relative order or orientation changes;
+- an explicit lower-bound label when either the target cap or per-target HSP
+  cap was reached.
+
+The comparison uses the corrected `exclude_overlapping_or_shared_gene_windows.v1`
+policy. Gene-name text is not used to exclude targets. A run without observed
+cap saturation is not described as complete, and an absent hit is not evidence
+of uniqueness.
+
+## Retained outputs
+
+- `*_with_TSS_similarity.{svg,pdf,png}`: the three tall reports in the requested
+  presentation grammar;
+- matching `*.receipt.json`: input/output hashes plus exact SVG renderer command,
+  version, and executable hash;
+- `candidate_regions.{json,fa}`: 15 clipped Ensembl-feature intersections;
+- `selected_tss_candidate_regions.{json,fa}`: the seven TP73-supported source
+  TSS windows;
+- `comparison.json`: corrected counting, cap audit, thresholds, and SHA-256
+  bindings for the regenerable raw tables;
+- `feature_summary.tsv`, `top_matches.tsv`, and `interpretation.md`: conclusions
+  derived from validated outputs rather than fixed prose;
+- `CD44_TGFB1_SERPINE1_tss_local_integrated.pdf`: compact four-page supplement.
+
+The raw BLAST HSP and match tables are about 109 MiB and are intentionally not
+versioned. Their exact hashes and relative paths are retained in
+`comparison.json`; the commands below regenerate them.
 
 ## Reproduce
 
-Prepare the exact intersections from the selected TSS bundle, hash-verified
-GENtle locus reports, and GRCh38 reference:
+All commands must run from the exact GENtle revision recorded in the candidate
+files. The promoterome receipt is validated before any sequence is labelled as
+GRCh38/Ensembl 116 evidence.
 
 ```bash
-python3 scripts/prepare_tss_regulatory_similarity_candidates.py \
-  --selected-tss /path/to/candidate_regions.json \
-  --locus-report /path/to/CD44.report.json \
-  --locus-report /path/to/TGFB1.report.json \
-  --locus-report /path/to/SERPINE1.report.json \
-  --reference-fasta /path/to/GRCh38.fa \
-  --output /path/to/tss-local/candidates \
-  --upstream-bp 500 --downstream-bp 200
-```
-
-Compare all 15 feature intersections with the transcript-linked promoterome:
-
-```bash
-python3 scripts/compare_candidates_to_promoterome.py \
-  --candidates-json /path/to/tss-local/candidates/candidate_regions.json \
-  --query-fasta /path/to/tss-local/candidates/candidate_regions.fa \
+python3 scripts/prepare_tp73_cutrun_promoter_candidates.py \
   --promoterome /path/to/human-grch38-ensembl116-promoterome \
-  --output /path/to/tss-local/blastn-40bp-80pct \
+  --track-root /path/to/cutandrun_20250602_noDuplicates \
+  --output /path/to/run/selected-tss \
+  --source-revision "$(git rev-parse HEAD)"
+
+python3 scripts/prepare_tss_regulatory_similarity_candidates.py \
+  --selected-tss /path/to/run/selected-tss/candidate_regions.json \
+  --promoterome /path/to/human-grch38-ensembl116-promoterome \
+  --locus-report /path/to/CD44_luciferase_planning_EnsemblReg_15TF.report.json \
+  --locus-report /path/to/TGFB1_luciferase_planning_EnsemblReg_15TF.report.json \
+  --locus-report /path/to/SERPINE1_luciferase_planning_EnsemblReg_15TF.report.json \
+  --output /path/to/run/feature-candidates \
+  --source-revision "$(git rev-parse HEAD)" \
+  --upstream-bp 500 --downstream-bp 200
+
+python3 scripts/compare_candidates_to_promoterome.py \
+  --candidates-json /path/to/run/feature-candidates/candidate_regions.json \
+  --query-fasta /path/to/run/feature-candidates/candidate_regions.fa \
+  --promoterome /path/to/human-grch38-ensembl116-promoterome \
+  --output /path/to/run/feature-candidates/blastn-40bp-80pct \
   --task blastn --min-alignment-bp 40 --min-identity-pct 80 \
   --max-evalue 1e-5 --max-target-seqs 1000000 --max-hsps 10
 ```
 
-Render the integrated report:
+Render a tall report and its bound PDF/PNG derivatives (repeat for each gene):
 
 ```bash
-python3 scripts/render_integrated_tss_regulatory_report.py \
-  --candidates-json /path/to/tss-local/candidates/candidate_regions.json \
-  --comparison /path/to/tss-local/blastn-40bp-80pct/comparison.json \
-  --matches /path/to/tss-local/blastn-40bp-80pct/matches.blastn.tsv \
-  --hits /path/to/tss-local/blastn-40bp-80pct/hits.blastn.tsv \
-  --locus-report /path/to/CD44.report.json \
-  --locus-report /path/to/TGFB1.report.json \
-  --locus-report /path/to/SERPINE1.report.json \
-  --output /path/to/tss-local/reports
+python3 scripts/append_tss_similarity_to_locus_report.py \
+  --base-svg /path/to/SERPINE1_luciferase_planning_EnsemblReg_15TF.svg \
+  --gene SERPINE1 \
+  --candidates-json /path/to/run/feature-candidates/candidate_regions.json \
+  --comparison /path/to/run/feature-candidates/blastn-40bp-80pct/comparison.json \
+  --matches /path/to/run/feature-candidates/blastn-40bp-80pct/matches.blastn.tsv \
+  --hits /path/to/run/feature-candidates/blastn-40bp-80pct/hits.blastn.tsv \
+  --output-svg /path/to/run/reports/SERPINE1_with_TSS_similarity.svg \
+  --output-pdf /path/to/run/reports/SERPINE1_with_TSS_similarity.pdf \
+  --output-png /path/to/run/reports/SERPINE1_with_TSS_similarity.png \
+  --renderer rsvg-convert
 ```
 
-The 108 MiB full BLAST tables are regenerable and intentionally not versioned.
-`receipt.json` binds them by SHA-256. The repository retains the exact feature
-candidates, compact comparison metadata/tables, integrated PDFs/PNGs, and
-interpretation.
+## Interpretation boundary
 
-## First result
-
-- `CD44`: three of four feature intersections have no qualifying other-gene
-  hit. `ENSR11_9HXKD` has two short matches, but neither covers 25% of the
-  501-bp promoter feature.
-- `TGFB1`: neither the 740-bp clipped eMAR nor the 271-bp promoter has a
-  qualifying other-gene hit. The 22-bp CTCF feature is displayed but is below
-  the declared 40-bp fragment-search minimum.
-- Distal `SERPINE1`: a repeat-rich approximately 100-bp tract at
-  **−334..−235 bp relative to TSS 101122158** recurs widely. It lies in promoter
-  `ENSR7_93H5NS` and its enclosing eMAR. The leading `ZNF586` promoter matches
-  cover 28.9% of the 346-bp promoter; 12 other genes reach at least 25%, and
-  none reaches 50%.
-- Proximal `SERPINE1`: the eMAR, two promoters, and enhancer have no qualifying
-  other-gene recurrence. Its 22-bp CTCF feature is motif-scale and untested by
-  this fragment gate.
-
-This result motivates a `SERPINE1` reporter deletion/split contrast around the
-recurrent distal tract while preserving the local CUT&RUN and cofactor-TFBS
-context. It does not establish that the tract is functional, dispensable, or
-sufficient. Ensembl feature classes are annotations, JASPAR sites are
-predictions, and CUT&RUN is occupancy/enrichment evidence rather than proof of
-direct binding.
+Sequence recurrence is structural evidence useful for reporter contrasts.
+Ensembl feature classes, predicted TFBS, and CUT&RUN enrichment do not by
+themselves establish direct binding, reporter activity, dispensability, or
+sufficiency. See `interpretation.md` for observations generated from this exact
+comparison rather than a hand-written biological conclusion.

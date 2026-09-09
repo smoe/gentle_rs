@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
+import json
 from pathlib import Path
 import sys
 import unittest
@@ -33,6 +35,16 @@ APPEND = load_module(
     "append_tss_similarity_to_locus_report",
     "append_tss_similarity_to_locus_report.py",
 )
+BUNDLE = ROOT.parent / "docs" / "examples" / "regulatory_region_comparison" / \
+    "tp73_tss_local_integrated"
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 class TssWindowTests(unittest.TestCase):
@@ -132,6 +144,41 @@ class FrequencyTests(unittest.TestCase):
                         output.index("Reporter interpretation boundaries"))
         self.assertIn('data-gentle-shifted-footer="true"', output)
         self.assertIn(f'height="{height}"', output)
+
+
+class RetainedBundleTests(unittest.TestCase):
+    def test_manifest_and_derivative_receipts(self) -> None:
+        entries = {}
+        for line in (BUNDLE / "SHA256SUMS").read_text().splitlines():
+            digest, name = line.split("  ", 1)
+            entries[name] = digest
+        self.assertGreaterEqual(len(entries), 20)
+        for name, digest in entries.items():
+            self.assertEqual(sha256(BUNDLE / name), digest, name)
+        for gene in ("CD44", "TGFB1", "SERPINE1"):
+            stem = f"{gene}_luciferase_planning_EnsemblReg_15TF_with_TSS_similarity"
+            receipt = json.loads((BUNDLE / f"{stem}.receipt.json").read_text())
+            for name, expected in receipt["outputs"].items():
+                self.assertEqual(f"sha256:{sha256(BUNDLE / name)}", expected, name)
+
+    def test_retained_comparison_uses_corrected_policy_and_limit_audit(self) -> None:
+        comparison = json.loads((BUNDLE / "comparison.json").read_text())
+        self.assertEqual(comparison["schema"], RENDER.comparison_tools.SCHEMA)
+        self.assertEqual(comparison["counting_policy_id"],
+                         RENDER.comparison_tools.COUNTING_POLICY)
+        queries = comparison["tasks"]["blastn"]["queries"]
+        self.assertEqual(len(queries), 15)
+        for row in queries:
+            self.assertTrue(row["other_gene_exclusion_verified"])
+            self.assertEqual(row["counts_are_lower_bounds"],
+                             row["target_cap_reached"] or row["hsp_cap_reached"])
+
+    def test_tall_reports_place_similarity_before_original_footer(self) -> None:
+        for gene in ("CD44", "TGFB1", "SERPINE1"):
+            svg = (BUNDLE / f"{gene}_luciferase_planning_EnsemblReg_15TF_with_TSS_similarity.svg").read_text()
+            self.assertLess(svg.index("TSS-local Ensembl-feature promoterome similarity"),
+                            svg.index("Reporter interpretation boundaries"))
+            self.assertIn('data-gentle-shifted-footer="true"', svg)
 
 
 if __name__ == "__main__":

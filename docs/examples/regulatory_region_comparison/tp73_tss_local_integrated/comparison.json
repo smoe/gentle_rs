@@ -1,6 +1,13 @@
 {
-  "candidate_metadata_path": "/home/clawbio/GENtle-private/tss-regulatory-integrated-c23ea811/candidates/candidate_regions.json",
-  "candidate_metadata_sha256": "sha256:a48921468119930c0462b2e4f3c17667d83b29ceeb48a2ac818888a6c036cc48",
+  "background": {
+    "downstream_bp": 200,
+    "genome_id": "Human GRCh38 Ensembl 116",
+    "sequence_orientation": "transcript_5prime_to_3prime_via_bedtools_strand",
+    "unique_promoter_window_count": 389722,
+    "upstream_bp": 2000
+  },
+  "candidate_metadata_path": "/home/clawbio/GENtle-private/tss-regulatory-integrated-f29c39c9-corrected/feature-candidates/candidate_regions.json",
+  "candidate_metadata_sha256": "sha256:9987b5992461ab05d4be6421760f31c250eee9b66d0a98d644d5c5c6d1f44e40",
   "commands": [
     {
       "command": [
@@ -8,7 +15,7 @@
         "-task",
         "blastn",
         "-query",
-        "/home/clawbio/GENtle-private/tss-regulatory-integrated-c23ea811/candidates/candidate_regions.fa",
+        "/home/clawbio/GENtle-private/tss-regulatory-integrated-f29c39c9-corrected/feature-candidates/candidate_regions.fa",
         "-db",
         "/home/clawbio/GENtle-private/promoter-comparison-20260908/human-grch38-ensembl116-promoterome/indexes/promoterome",
         "-dust",
@@ -22,9 +29,9 @@
         "-outfmt",
         "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore",
         "-out",
-        "/home/clawbio/GENtle-private/tss-regulatory-integrated-c23ea811/blastn-40bp-80pct/hits.blastn.tsv"
+        "/home/clawbio/GENtle-private/tss-regulatory-integrated-f29c39c9-corrected/feature-candidates/blastn-40bp-80pct/hits.blastn.tsv"
       ],
-      "elapsed_seconds": 59.794817,
+      "elapsed_seconds": 59.605697,
       "exit_code": 0,
       "label": "blast_blastn",
       "stderr_bytes": 0,
@@ -35,21 +42,29 @@
       "stdout_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     }
   ],
-  "counting_policy": "Frequency is reported separately for distinct genomic promoter windows, genes, and transcripts. Targets overlapping the query's own genomic locus are retained but excluded from other_promoters.",
+  "completeness_policy": "Target/HSP cap saturation is assessed on raw output before filters. Saturation makes counts lower bounds; no saturation means only that no output cap was observed, not exhaustive homology.",
+  "counting_policy": "Frequency is reported separately for distinct genomic promoter windows, genes, and transcripts. Overlapping windows and windows sharing any resolved query gene ID are excluded together from other_promoters, coverage tiers, frequency strips and ranked other-gene rows. Without a resolved query gene, only non-overlap is established; this is explicitly labelled.",
+  "counting_policy_id": "exclude_overlapping_or_shared_gene_windows.v1",
   "non_claims": [
     "A recurrent sequence segment is not proof of promoter activity or functional interchangeability.",
     "Absence of a reported hit is conditional on the declared task, thresholds, prepared annotation, and target cap.",
     "Motif/module similarity and reporter sufficiency require separate evidence and experimental contrasts."
   ],
+  "producer_sha256": "sha256:fed84390aa96a0090632bc66d2715524c05c48f8e79e12a84340710ca0153534",
   "promoterome_path": "/home/clawbio/GENtle-private/promoter-comparison-20260908/human-grch38-ensembl116-promoterome",
   "promoterome_receipt_sha256": "sha256:fe86c9adb0381e0f128fcf129ccc52a22ef7eaa0d9035e2b6c51f61f17dfafc5",
-  "query_fasta_path": "/home/clawbio/GENtle-private/tss-regulatory-integrated-c23ea811/candidates/candidate_regions.fa",
+  "query_fasta_path": "/home/clawbio/GENtle-private/tss-regulatory-integrated-f29c39c9-corrected/feature-candidates/candidate_regions.fa",
   "query_fasta_sha256": "sha256:773ecc39b22e22be8be944b4a82997b819347481ee546812bc45d90025946f8b",
   "schema": "gentle.candidate_promoterome_comparison.v1",
+  "search_policy": {
+    "dust": "yes",
+    "soft_masking": true
+  },
   "tasks": {
     "blastn": {
       "filtered_hsp_count": 357218,
       "matches_path": "matches.blastn.tsv",
+      "matches_sha256": "sha256:96e4d4dd71624acf1878100d684a1f1988fe337812b920342d53505bd6c56536",
       "queries": [
         {
           "all_matches": {
@@ -58,6 +73,10 @@
             "distinct_transcripts": 89
           },
           "comparison_class": "ensembl_regulation_tss_window_intersection",
+          "counts_are_lower_bounds": true,
+          "hsp_cap_reached": true,
+          "max_hsps_observed": 10,
+          "other_gene_exclusion_verified": true,
           "other_promoters": {
             "distinct_genes": 0,
             "distinct_promoter_windows": 0,
@@ -80,8 +99,12 @@
               "distinct_transcripts": 0
             }
           },
+          "query_gene_ids": [
+            "ENSG00000026508"
+          ],
           "query_id": "CD44_CD44_tss_stretch_1_ENSR00001659002",
           "query_length_bp": 1151,
+          "raw_target_count": 868,
           "recurrent_query_segments": [],
           "target_cap_reached": false
         },
@@ -92,6 +115,10 @@
             "distinct_transcripts": 11
           },
           "comparison_class": "ensembl_regulation_tss_window_intersection",
+          "counts_are_lower_bounds": false,
+          "hsp_cap_reached": false,
+          "max_hsps_observed": 1,
+          "other_gene_exclusion_verified": true,
           "other_promoters": {
             "distinct_genes": 0,
             "distinct_promoter_windows": 0,
@@ -114,8 +141,12 @@
               "distinct_transcripts": 0
             }
           },
+          "query_gene_ids": [
+            "ENSG00000026508"
+          ],
           "query_id": "CD44_CD44_tss_stretch_1_ENSR11_832W64",
           "query_length_bp": 236,
+          "raw_target_count": 155,
           "recurrent_query_segments": [],
           "target_cap_reached": false
         },
@@ -126,6 +157,10 @@
             "distinct_transcripts": 87
           },
           "comparison_class": "ensembl_regulation_tss_window_intersection",
+          "counts_are_lower_bounds": true,
+          "hsp_cap_reached": true,
+          "max_hsps_observed": 10,
+          "other_gene_exclusion_verified": true,
           "other_promoters": {
             "distinct_genes": 2,
             "distinct_promoter_windows": 2,
@@ -148,8 +183,12 @@
               "distinct_transcripts": 0
             }
           },
+          "query_gene_ids": [
+            "ENSG00000026508"
+          ],
           "query_id": "CD44_CD44_tss_stretch_1_ENSR11_9HXKD",
           "query_length_bp": 501,
+          "raw_target_count": 667,
           "recurrent_query_segments": [
             {
               "distinct_genes": 1,
@@ -182,6 +221,10 @@
             "distinct_transcripts": 11
           },
           "comparison_class": "ensembl_regulation_tss_window_intersection",
+          "counts_are_lower_bounds": false,
+          "hsp_cap_reached": false,
+          "max_hsps_observed": 1,
+          "other_gene_exclusion_verified": true,
           "other_promoters": {
             "distinct_genes": 0,
             "distinct_promoter_windows": 0,
@@ -204,8 +247,12 @@
               "distinct_transcripts": 0
             }
           },
+          "query_gene_ids": [
+            "ENSG00000026508"
+          ],
           "query_id": "CD44_CD44_tss_stretch_1_ENSR11_B8Z9S",
           "query_length_bp": 143,
+          "raw_target_count": 361,
           "recurrent_query_segments": [],
           "target_cap_reached": false
         },
@@ -216,10 +263,14 @@
             "distinct_transcripts": 231449
           },
           "comparison_class": "ensembl_regulation_tss_window_intersection",
+          "counts_are_lower_bounds": false,
+          "hsp_cap_reached": false,
+          "max_hsps_observed": 8,
+          "other_gene_exclusion_verified": true,
           "other_promoters": {
-            "distinct_genes": 34793,
-            "distinct_promoter_windows": 130130,
-            "distinct_transcripts": 231448
+            "distinct_genes": 34792,
+            "distinct_promoter_windows": 130127,
+            "distinct_transcripts": 231434
           },
           "other_promoters_by_min_query_coverage": {
             "0.25": {
@@ -238,8 +289,12 @@
               "distinct_transcripts": 0
             }
           },
+          "query_gene_ids": [
+            "ENSG00000106366"
+          ],
           "query_id": "SERPINE1_SERPINE1_tss_stretch_1_ENSR00001588829",
           "query_length_bp": 536,
+          "raw_target_count": 164412,
           "recurrent_query_segments": [
             {
               "distinct_genes": 10383,
@@ -347,324 +402,324 @@
               "query_start_0based": 14
             },
             {
-              "distinct_genes": 33241,
-              "distinct_promoter_windows": 122613,
-              "distinct_transcripts": 218820,
+              "distinct_genes": 33240,
+              "distinct_promoter_windows": 122610,
+              "distinct_transcripts": 218806,
               "query_end_0based_exclusive": 16,
               "query_start_0based": 15
             },
             {
-              "distinct_genes": 33657,
-              "distinct_promoter_windows": 124924,
-              "distinct_transcripts": 222698,
+              "distinct_genes": 33656,
+              "distinct_promoter_windows": 124921,
+              "distinct_transcripts": 222684,
               "query_end_0based_exclusive": 17,
               "query_start_0based": 16
             },
             {
-              "distinct_genes": 34209,
-              "distinct_promoter_windows": 127302,
-              "distinct_transcripts": 226629,
+              "distinct_genes": 34208,
+              "distinct_promoter_windows": 127299,
+              "distinct_transcripts": 226615,
               "query_end_0based_exclusive": 18,
               "query_start_0based": 17
             },
             {
-              "distinct_genes": 34328,
-              "distinct_promoter_windows": 127883,
-              "distinct_transcripts": 227570,
+              "distinct_genes": 34327,
+              "distinct_promoter_windows": 127880,
+              "distinct_transcripts": 227556,
               "query_end_0based_exclusive": 19,
               "query_start_0based": 18
             },
             {
-              "distinct_genes": 34415,
-              "distinct_promoter_windows": 128259,
-              "distinct_transcripts": 228205,
+              "distinct_genes": 34414,
+              "distinct_promoter_windows": 128256,
+              "distinct_transcripts": 228191,
               "query_end_0based_exclusive": 20,
               "query_start_0based": 19
             },
             {
-              "distinct_genes": 34651,
-              "distinct_promoter_windows": 129438,
-              "distinct_transcripts": 230121,
+              "distinct_genes": 34650,
+              "distinct_promoter_windows": 129435,
+              "distinct_transcripts": 230107,
               "query_end_0based_exclusive": 21,
               "query_start_0based": 20
             },
             {
-              "distinct_genes": 34690,
-              "distinct_promoter_windows": 129633,
-              "distinct_transcripts": 230449,
+              "distinct_genes": 34689,
+              "distinct_promoter_windows": 129630,
+              "distinct_transcripts": 230435,
               "query_end_0based_exclusive": 22,
               "query_start_0based": 21
             },
             {
-              "distinct_genes": 34734,
-              "distinct_promoter_windows": 129829,
-              "distinct_transcripts": 230824,
+              "distinct_genes": 34733,
+              "distinct_promoter_windows": 129826,
+              "distinct_transcripts": 230810,
               "query_end_0based_exclusive": 23,
               "query_start_0based": 22
             },
             {
-              "distinct_genes": 34748,
-              "distinct_promoter_windows": 129891,
-              "distinct_transcripts": 230897,
+              "distinct_genes": 34747,
+              "distinct_promoter_windows": 129888,
+              "distinct_transcripts": 230883,
               "query_end_0based_exclusive": 24,
               "query_start_0based": 23
             },
             {
-              "distinct_genes": 34760,
-              "distinct_promoter_windows": 129940,
-              "distinct_transcripts": 230999,
+              "distinct_genes": 34759,
+              "distinct_promoter_windows": 129937,
+              "distinct_transcripts": 230985,
               "query_end_0based_exclusive": 25,
               "query_start_0based": 24
             },
             {
-              "distinct_genes": 34778,
-              "distinct_promoter_windows": 130063,
-              "distinct_transcripts": 231364,
+              "distinct_genes": 34777,
+              "distinct_promoter_windows": 130060,
+              "distinct_transcripts": 231350,
               "query_end_0based_exclusive": 26,
               "query_start_0based": 25
             },
             {
-              "distinct_genes": 34780,
-              "distinct_promoter_windows": 130086,
-              "distinct_transcripts": 231400,
+              "distinct_genes": 34779,
+              "distinct_promoter_windows": 130083,
+              "distinct_transcripts": 231386,
               "query_end_0based_exclusive": 27,
               "query_start_0based": 26
             },
             {
-              "distinct_genes": 34783,
-              "distinct_promoter_windows": 130098,
-              "distinct_transcripts": 231412,
+              "distinct_genes": 34782,
+              "distinct_promoter_windows": 130095,
+              "distinct_transcripts": 231398,
               "query_end_0based_exclusive": 28,
               "query_start_0based": 27
             },
             {
-              "distinct_genes": 34786,
-              "distinct_promoter_windows": 130116,
-              "distinct_transcripts": 231434,
+              "distinct_genes": 34785,
+              "distinct_promoter_windows": 130113,
+              "distinct_transcripts": 231420,
               "query_end_0based_exclusive": 29,
               "query_start_0based": 28
             },
             {
-              "distinct_genes": 34789,
-              "distinct_promoter_windows": 130121,
-              "distinct_transcripts": 231439,
+              "distinct_genes": 34788,
+              "distinct_promoter_windows": 130118,
+              "distinct_transcripts": 231425,
               "query_end_0based_exclusive": 30,
               "query_start_0based": 29
             },
             {
-              "distinct_genes": 34790,
-              "distinct_promoter_windows": 130123,
-              "distinct_transcripts": 231441,
+              "distinct_genes": 34789,
+              "distinct_promoter_windows": 130120,
+              "distinct_transcripts": 231427,
               "query_end_0based_exclusive": 31,
               "query_start_0based": 30
             },
             {
-              "distinct_genes": 34791,
-              "distinct_promoter_windows": 130126,
-              "distinct_transcripts": 231444,
+              "distinct_genes": 34790,
+              "distinct_promoter_windows": 130123,
+              "distinct_transcripts": 231430,
               "query_end_0based_exclusive": 41,
               "query_start_0based": 31
             },
             {
-              "distinct_genes": 34791,
-              "distinct_promoter_windows": 130121,
-              "distinct_transcripts": 231438,
+              "distinct_genes": 34790,
+              "distinct_promoter_windows": 130118,
+              "distinct_transcripts": 231424,
               "query_end_0based_exclusive": 42,
               "query_start_0based": 41
             },
             {
-              "distinct_genes": 34791,
-              "distinct_promoter_windows": 130120,
-              "distinct_transcripts": 231437,
+              "distinct_genes": 34790,
+              "distinct_promoter_windows": 130117,
+              "distinct_transcripts": 231423,
               "query_end_0based_exclusive": 43,
               "query_start_0based": 42
             },
             {
-              "distinct_genes": 34789,
-              "distinct_promoter_windows": 130104,
-              "distinct_transcripts": 231412,
+              "distinct_genes": 34788,
+              "distinct_promoter_windows": 130101,
+              "distinct_transcripts": 231398,
               "query_end_0based_exclusive": 44,
               "query_start_0based": 43
             },
             {
-              "distinct_genes": 34779,
-              "distinct_promoter_windows": 130072,
-              "distinct_transcripts": 231358,
+              "distinct_genes": 34778,
+              "distinct_promoter_windows": 130069,
+              "distinct_transcripts": 231344,
               "query_end_0based_exclusive": 45,
               "query_start_0based": 44
             },
             {
-              "distinct_genes": 34769,
-              "distinct_promoter_windows": 130015,
-              "distinct_transcripts": 231287,
+              "distinct_genes": 34768,
+              "distinct_promoter_windows": 130012,
+              "distinct_transcripts": 231273,
               "query_end_0based_exclusive": 46,
               "query_start_0based": 45
             },
             {
-              "distinct_genes": 34761,
-              "distinct_promoter_windows": 129942,
-              "distinct_transcripts": 231192,
+              "distinct_genes": 34760,
+              "distinct_promoter_windows": 129939,
+              "distinct_transcripts": 231178,
               "query_end_0based_exclusive": 47,
               "query_start_0based": 46
             },
             {
-              "distinct_genes": 34752,
-              "distinct_promoter_windows": 129877,
-              "distinct_transcripts": 231087,
+              "distinct_genes": 34751,
+              "distinct_promoter_windows": 129874,
+              "distinct_transcripts": 231073,
               "query_end_0based_exclusive": 48,
               "query_start_0based": 47
             },
             {
-              "distinct_genes": 34751,
-              "distinct_promoter_windows": 129826,
-              "distinct_transcripts": 230998,
+              "distinct_genes": 34750,
+              "distinct_promoter_windows": 129823,
+              "distinct_transcripts": 230984,
               "query_end_0based_exclusive": 49,
               "query_start_0based": 48
             },
             {
-              "distinct_genes": 34749,
-              "distinct_promoter_windows": 129820,
-              "distinct_transcripts": 230991,
+              "distinct_genes": 34748,
+              "distinct_promoter_windows": 129817,
+              "distinct_transcripts": 230977,
               "query_end_0based_exclusive": 50,
               "query_start_0based": 49
             },
             {
-              "distinct_genes": 34728,
-              "distinct_promoter_windows": 129767,
-              "distinct_transcripts": 230912,
+              "distinct_genes": 34727,
+              "distinct_promoter_windows": 129764,
+              "distinct_transcripts": 230898,
               "query_end_0based_exclusive": 51,
               "query_start_0based": 50
             },
             {
-              "distinct_genes": 34717,
-              "distinct_promoter_windows": 129730,
-              "distinct_transcripts": 230854,
+              "distinct_genes": 34716,
+              "distinct_promoter_windows": 129727,
+              "distinct_transcripts": 230840,
               "query_end_0based_exclusive": 52,
               "query_start_0based": 51
             },
             {
-              "distinct_genes": 34697,
-              "distinct_promoter_windows": 129633,
-              "distinct_transcripts": 230691,
+              "distinct_genes": 34696,
+              "distinct_promoter_windows": 129630,
+              "distinct_transcripts": 230677,
               "query_end_0based_exclusive": 53,
               "query_start_0based": 52
             },
             {
-              "distinct_genes": 34686,
-              "distinct_promoter_windows": 129537,
-              "distinct_transcripts": 230496,
+              "distinct_genes": 34685,
+              "distinct_promoter_windows": 129534,
+              "distinct_transcripts": 230482,
               "query_end_0based_exclusive": 54,
               "query_start_0based": 53
             },
             {
-              "distinct_genes": 34657,
-              "distinct_promoter_windows": 129453,
-              "distinct_transcripts": 230375,
+              "distinct_genes": 34656,
+              "distinct_promoter_windows": 129450,
+              "distinct_transcripts": 230361,
               "query_end_0based_exclusive": 55,
               "query_start_0based": 54
             },
             {
-              "distinct_genes": 34624,
-              "distinct_promoter_windows": 129294,
-              "distinct_transcripts": 230041,
+              "distinct_genes": 34623,
+              "distinct_promoter_windows": 129291,
+              "distinct_transcripts": 230027,
               "query_end_0based_exclusive": 56,
               "query_start_0based": 55
             },
             {
-              "distinct_genes": 34572,
-              "distinct_promoter_windows": 129083,
-              "distinct_transcripts": 229713,
+              "distinct_genes": 34571,
+              "distinct_promoter_windows": 129080,
+              "distinct_transcripts": 229699,
               "query_end_0based_exclusive": 57,
               "query_start_0based": 56
             },
             {
-              "distinct_genes": 34501,
-              "distinct_promoter_windows": 128680,
-              "distinct_transcripts": 229075,
+              "distinct_genes": 34500,
+              "distinct_promoter_windows": 128677,
+              "distinct_transcripts": 229061,
               "query_end_0based_exclusive": 58,
               "query_start_0based": 57
             },
             {
-              "distinct_genes": 34422,
-              "distinct_promoter_windows": 128240,
-              "distinct_transcripts": 228341,
+              "distinct_genes": 34421,
+              "distinct_promoter_windows": 128237,
+              "distinct_transcripts": 228327,
               "query_end_0based_exclusive": 59,
               "query_start_0based": 58
             },
             {
-              "distinct_genes": 34272,
-              "distinct_promoter_windows": 127548,
-              "distinct_transcripts": 227190,
+              "distinct_genes": 34271,
+              "distinct_promoter_windows": 127545,
+              "distinct_transcripts": 227176,
               "query_end_0based_exclusive": 60,
               "query_start_0based": 59
             },
             {
-              "distinct_genes": 34054,
-              "distinct_promoter_windows": 126505,
-              "distinct_transcripts": 225272,
+              "distinct_genes": 34053,
+              "distinct_promoter_windows": 126502,
+              "distinct_transcripts": 225258,
               "query_end_0based_exclusive": 61,
               "query_start_0based": 60
             },
             {
-              "distinct_genes": 33780,
-              "distinct_promoter_windows": 125190,
-              "distinct_transcripts": 222748,
+              "distinct_genes": 33779,
+              "distinct_promoter_windows": 125187,
+              "distinct_transcripts": 222734,
               "query_end_0based_exclusive": 62,
               "query_start_0based": 61
             },
             {
-              "distinct_genes": 33370,
-              "distinct_promoter_windows": 123145,
-              "distinct_transcripts": 219269,
+              "distinct_genes": 33369,
+              "distinct_promoter_windows": 123142,
+              "distinct_transcripts": 219255,
               "query_end_0based_exclusive": 63,
               "query_start_0based": 62
             },
             {
-              "distinct_genes": 32885,
-              "distinct_promoter_windows": 120879,
-              "distinct_transcripts": 215294,
+              "distinct_genes": 32884,
+              "distinct_promoter_windows": 120876,
+              "distinct_transcripts": 215280,
               "query_end_0based_exclusive": 64,
               "query_start_0based": 63
             },
             {
-              "distinct_genes": 32296,
-              "distinct_promoter_windows": 117875,
-              "distinct_transcripts": 209780,
+              "distinct_genes": 32295,
+              "distinct_promoter_windows": 117872,
+              "distinct_transcripts": 209766,
               "query_end_0based_exclusive": 65,
               "query_start_0based": 64
             },
             {
-              "distinct_genes": 31406,
-              "distinct_promoter_windows": 113699,
-              "distinct_transcripts": 202215,
+              "distinct_genes": 31405,
+              "distinct_promoter_windows": 113696,
+              "distinct_transcripts": 202201,
               "query_end_0based_exclusive": 66,
               "query_start_0based": 65
             },
             {
-              "distinct_genes": 30426,
-              "distinct_promoter_windows": 108722,
-              "distinct_transcripts": 193457,
+              "distinct_genes": 30425,
+              "distinct_promoter_windows": 108719,
+              "distinct_transcripts": 193443,
               "query_end_0based_exclusive": 67,
               "query_start_0based": 66
             },
             {
-              "distinct_genes": 29240,
-              "distinct_promoter_windows": 102992,
-              "distinct_transcripts": 183291,
+              "distinct_genes": 29239,
+              "distinct_promoter_windows": 102989,
+              "distinct_transcripts": 183277,
               "query_end_0based_exclusive": 68,
               "query_start_0based": 67
             },
             {
-              "distinct_genes": 26260,
-              "distinct_promoter_windows": 89215,
-              "distinct_transcripts": 158188,
+              "distinct_genes": 26259,
+              "distinct_promoter_windows": 89212,
+              "distinct_transcripts": 158174,
               "query_end_0based_exclusive": 69,
               "query_start_0based": 68
             },
             {
-              "distinct_genes": 22917,
-              "distinct_promoter_windows": 74957,
-              "distinct_transcripts": 132910,
+              "distinct_genes": 22916,
+              "distinct_promoter_windows": 74954,
+              "distinct_transcripts": 132896,
               "query_end_0based_exclusive": 70,
               "query_start_0based": 69
             },
@@ -846,10 +901,14 @@
             "distinct_transcripts": 231442
           },
           "comparison_class": "ensembl_regulation_tss_window_intersection",
+          "counts_are_lower_bounds": false,
+          "hsp_cap_reached": false,
+          "max_hsps_observed": 8,
+          "other_gene_exclusion_verified": true,
           "other_promoters": {
-            "distinct_genes": 34789,
-            "distinct_promoter_windows": 130123,
-            "distinct_transcripts": 231441
+            "distinct_genes": 34788,
+            "distinct_promoter_windows": 130120,
+            "distinct_transcripts": 231427
           },
           "other_promoters_by_min_query_coverage": {
             "0.25": {
@@ -868,8 +927,12 @@
               "distinct_transcripts": 0
             }
           },
+          "query_gene_ids": [
+            "ENSG00000106366"
+          ],
           "query_id": "SERPINE1_SERPINE1_tss_stretch_1_ENSR7_93H5NS",
           "query_length_bp": 346,
+          "raw_target_count": 164322,
           "recurrent_query_segments": [
             {
               "distinct_genes": 10380,
@@ -977,324 +1040,324 @@
               "query_start_0based": 14
             },
             {
-              "distinct_genes": 33239,
-              "distinct_promoter_windows": 122610,
-              "distinct_transcripts": 218817,
+              "distinct_genes": 33238,
+              "distinct_promoter_windows": 122607,
+              "distinct_transcripts": 218803,
               "query_end_0based_exclusive": 16,
               "query_start_0based": 15
             },
             {
-              "distinct_genes": 33655,
-              "distinct_promoter_windows": 124921,
-              "distinct_transcripts": 222695,
+              "distinct_genes": 33654,
+              "distinct_promoter_windows": 124918,
+              "distinct_transcripts": 222681,
               "query_end_0based_exclusive": 17,
               "query_start_0based": 16
             },
             {
-              "distinct_genes": 34207,
-              "distinct_promoter_windows": 127299,
-              "distinct_transcripts": 226626,
+              "distinct_genes": 34206,
+              "distinct_promoter_windows": 127296,
+              "distinct_transcripts": 226612,
               "query_end_0based_exclusive": 18,
               "query_start_0based": 17
             },
             {
-              "distinct_genes": 34326,
-              "distinct_promoter_windows": 127880,
-              "distinct_transcripts": 227567,
+              "distinct_genes": 34325,
+              "distinct_promoter_windows": 127877,
+              "distinct_transcripts": 227553,
               "query_end_0based_exclusive": 19,
               "query_start_0based": 18
             },
             {
-              "distinct_genes": 34413,
-              "distinct_promoter_windows": 128256,
-              "distinct_transcripts": 228202,
+              "distinct_genes": 34412,
+              "distinct_promoter_windows": 128253,
+              "distinct_transcripts": 228188,
               "query_end_0based_exclusive": 20,
               "query_start_0based": 19
             },
             {
-              "distinct_genes": 34649,
-              "distinct_promoter_windows": 129435,
-              "distinct_transcripts": 230118,
+              "distinct_genes": 34648,
+              "distinct_promoter_windows": 129432,
+              "distinct_transcripts": 230104,
               "query_end_0based_exclusive": 21,
               "query_start_0based": 20
             },
             {
-              "distinct_genes": 34688,
-              "distinct_promoter_windows": 129630,
-              "distinct_transcripts": 230446,
+              "distinct_genes": 34687,
+              "distinct_promoter_windows": 129627,
+              "distinct_transcripts": 230432,
               "query_end_0based_exclusive": 22,
               "query_start_0based": 21
             },
             {
-              "distinct_genes": 34732,
-              "distinct_promoter_windows": 129826,
-              "distinct_transcripts": 230821,
+              "distinct_genes": 34731,
+              "distinct_promoter_windows": 129823,
+              "distinct_transcripts": 230807,
               "query_end_0based_exclusive": 23,
               "query_start_0based": 22
             },
             {
-              "distinct_genes": 34746,
-              "distinct_promoter_windows": 129888,
-              "distinct_transcripts": 230894,
+              "distinct_genes": 34745,
+              "distinct_promoter_windows": 129885,
+              "distinct_transcripts": 230880,
               "query_end_0based_exclusive": 24,
               "query_start_0based": 23
             },
             {
-              "distinct_genes": 34758,
-              "distinct_promoter_windows": 129937,
-              "distinct_transcripts": 230996,
+              "distinct_genes": 34757,
+              "distinct_promoter_windows": 129934,
+              "distinct_transcripts": 230982,
               "query_end_0based_exclusive": 25,
               "query_start_0based": 24
             },
             {
-              "distinct_genes": 34776,
-              "distinct_promoter_windows": 130060,
-              "distinct_transcripts": 231361,
+              "distinct_genes": 34775,
+              "distinct_promoter_windows": 130057,
+              "distinct_transcripts": 231347,
               "query_end_0based_exclusive": 26,
               "query_start_0based": 25
             },
             {
-              "distinct_genes": 34778,
-              "distinct_promoter_windows": 130083,
-              "distinct_transcripts": 231397,
+              "distinct_genes": 34777,
+              "distinct_promoter_windows": 130080,
+              "distinct_transcripts": 231383,
               "query_end_0based_exclusive": 27,
               "query_start_0based": 26
             },
             {
-              "distinct_genes": 34781,
-              "distinct_promoter_windows": 130095,
-              "distinct_transcripts": 231409,
+              "distinct_genes": 34780,
+              "distinct_promoter_windows": 130092,
+              "distinct_transcripts": 231395,
               "query_end_0based_exclusive": 28,
               "query_start_0based": 27
             },
             {
-              "distinct_genes": 34784,
-              "distinct_promoter_windows": 130113,
-              "distinct_transcripts": 231431,
+              "distinct_genes": 34783,
+              "distinct_promoter_windows": 130110,
+              "distinct_transcripts": 231417,
               "query_end_0based_exclusive": 29,
               "query_start_0based": 28
             },
             {
-              "distinct_genes": 34787,
-              "distinct_promoter_windows": 130118,
-              "distinct_transcripts": 231436,
+              "distinct_genes": 34786,
+              "distinct_promoter_windows": 130115,
+              "distinct_transcripts": 231422,
               "query_end_0based_exclusive": 30,
               "query_start_0based": 29
             },
             {
-              "distinct_genes": 34788,
-              "distinct_promoter_windows": 130120,
-              "distinct_transcripts": 231438,
+              "distinct_genes": 34787,
+              "distinct_promoter_windows": 130117,
+              "distinct_transcripts": 231424,
               "query_end_0based_exclusive": 31,
               "query_start_0based": 30
             },
             {
-              "distinct_genes": 34789,
-              "distinct_promoter_windows": 130123,
-              "distinct_transcripts": 231441,
+              "distinct_genes": 34788,
+              "distinct_promoter_windows": 130120,
+              "distinct_transcripts": 231427,
               "query_end_0based_exclusive": 41,
               "query_start_0based": 31
             },
             {
-              "distinct_genes": 34789,
-              "distinct_promoter_windows": 130118,
-              "distinct_transcripts": 231435,
+              "distinct_genes": 34788,
+              "distinct_promoter_windows": 130115,
+              "distinct_transcripts": 231421,
               "query_end_0based_exclusive": 42,
               "query_start_0based": 41
             },
             {
-              "distinct_genes": 34789,
-              "distinct_promoter_windows": 130117,
-              "distinct_transcripts": 231434,
+              "distinct_genes": 34788,
+              "distinct_promoter_windows": 130114,
+              "distinct_transcripts": 231420,
               "query_end_0based_exclusive": 43,
               "query_start_0based": 42
             },
             {
-              "distinct_genes": 34787,
-              "distinct_promoter_windows": 130101,
-              "distinct_transcripts": 231409,
+              "distinct_genes": 34786,
+              "distinct_promoter_windows": 130098,
+              "distinct_transcripts": 231395,
               "query_end_0based_exclusive": 44,
               "query_start_0based": 43
             },
             {
-              "distinct_genes": 34777,
-              "distinct_promoter_windows": 130069,
-              "distinct_transcripts": 231355,
+              "distinct_genes": 34776,
+              "distinct_promoter_windows": 130066,
+              "distinct_transcripts": 231341,
               "query_end_0based_exclusive": 45,
               "query_start_0based": 44
             },
             {
-              "distinct_genes": 34767,
-              "distinct_promoter_windows": 130012,
-              "distinct_transcripts": 231284,
+              "distinct_genes": 34766,
+              "distinct_promoter_windows": 130009,
+              "distinct_transcripts": 231270,
               "query_end_0based_exclusive": 46,
               "query_start_0based": 45
             },
             {
-              "distinct_genes": 34759,
-              "distinct_promoter_windows": 129939,
-              "distinct_transcripts": 231189,
+              "distinct_genes": 34758,
+              "distinct_promoter_windows": 129936,
+              "distinct_transcripts": 231175,
               "query_end_0based_exclusive": 47,
               "query_start_0based": 46
             },
             {
-              "distinct_genes": 34750,
-              "distinct_promoter_windows": 129874,
-              "distinct_transcripts": 231084,
+              "distinct_genes": 34749,
+              "distinct_promoter_windows": 129871,
+              "distinct_transcripts": 231070,
               "query_end_0based_exclusive": 48,
               "query_start_0based": 47
             },
             {
-              "distinct_genes": 34749,
-              "distinct_promoter_windows": 129823,
-              "distinct_transcripts": 230995,
+              "distinct_genes": 34748,
+              "distinct_promoter_windows": 129820,
+              "distinct_transcripts": 230981,
               "query_end_0based_exclusive": 49,
               "query_start_0based": 48
             },
             {
-              "distinct_genes": 34747,
-              "distinct_promoter_windows": 129817,
-              "distinct_transcripts": 230988,
+              "distinct_genes": 34746,
+              "distinct_promoter_windows": 129814,
+              "distinct_transcripts": 230974,
               "query_end_0based_exclusive": 50,
               "query_start_0based": 49
             },
             {
-              "distinct_genes": 34726,
-              "distinct_promoter_windows": 129764,
-              "distinct_transcripts": 230909,
+              "distinct_genes": 34725,
+              "distinct_promoter_windows": 129761,
+              "distinct_transcripts": 230895,
               "query_end_0based_exclusive": 51,
               "query_start_0based": 50
             },
             {
-              "distinct_genes": 34715,
-              "distinct_promoter_windows": 129727,
-              "distinct_transcripts": 230851,
+              "distinct_genes": 34714,
+              "distinct_promoter_windows": 129724,
+              "distinct_transcripts": 230837,
               "query_end_0based_exclusive": 52,
               "query_start_0based": 51
             },
             {
-              "distinct_genes": 34695,
-              "distinct_promoter_windows": 129630,
-              "distinct_transcripts": 230688,
+              "distinct_genes": 34694,
+              "distinct_promoter_windows": 129627,
+              "distinct_transcripts": 230674,
               "query_end_0based_exclusive": 53,
               "query_start_0based": 52
             },
             {
-              "distinct_genes": 34684,
-              "distinct_promoter_windows": 129534,
-              "distinct_transcripts": 230493,
+              "distinct_genes": 34683,
+              "distinct_promoter_windows": 129531,
+              "distinct_transcripts": 230479,
               "query_end_0based_exclusive": 54,
               "query_start_0based": 53
             },
             {
-              "distinct_genes": 34655,
-              "distinct_promoter_windows": 129450,
-              "distinct_transcripts": 230372,
+              "distinct_genes": 34654,
+              "distinct_promoter_windows": 129447,
+              "distinct_transcripts": 230358,
               "query_end_0based_exclusive": 55,
               "query_start_0based": 54
             },
             {
-              "distinct_genes": 34622,
-              "distinct_promoter_windows": 129291,
-              "distinct_transcripts": 230038,
+              "distinct_genes": 34621,
+              "distinct_promoter_windows": 129288,
+              "distinct_transcripts": 230024,
               "query_end_0based_exclusive": 56,
               "query_start_0based": 55
             },
             {
-              "distinct_genes": 34570,
-              "distinct_promoter_windows": 129080,
-              "distinct_transcripts": 229710,
+              "distinct_genes": 34569,
+              "distinct_promoter_windows": 129077,
+              "distinct_transcripts": 229696,
               "query_end_0based_exclusive": 57,
               "query_start_0based": 56
             },
             {
-              "distinct_genes": 34499,
-              "distinct_promoter_windows": 128677,
-              "distinct_transcripts": 229072,
+              "distinct_genes": 34498,
+              "distinct_promoter_windows": 128674,
+              "distinct_transcripts": 229058,
               "query_end_0based_exclusive": 58,
               "query_start_0based": 57
             },
             {
-              "distinct_genes": 34420,
-              "distinct_promoter_windows": 128237,
-              "distinct_transcripts": 228338,
+              "distinct_genes": 34419,
+              "distinct_promoter_windows": 128234,
+              "distinct_transcripts": 228324,
               "query_end_0based_exclusive": 59,
               "query_start_0based": 58
             },
             {
-              "distinct_genes": 34270,
-              "distinct_promoter_windows": 127545,
-              "distinct_transcripts": 227187,
+              "distinct_genes": 34269,
+              "distinct_promoter_windows": 127542,
+              "distinct_transcripts": 227173,
               "query_end_0based_exclusive": 60,
               "query_start_0based": 59
             },
             {
-              "distinct_genes": 34052,
-              "distinct_promoter_windows": 126502,
-              "distinct_transcripts": 225269,
+              "distinct_genes": 34051,
+              "distinct_promoter_windows": 126499,
+              "distinct_transcripts": 225255,
               "query_end_0based_exclusive": 61,
               "query_start_0based": 60
             },
             {
-              "distinct_genes": 33778,
-              "distinct_promoter_windows": 125187,
-              "distinct_transcripts": 222745,
+              "distinct_genes": 33777,
+              "distinct_promoter_windows": 125184,
+              "distinct_transcripts": 222731,
               "query_end_0based_exclusive": 62,
               "query_start_0based": 61
             },
             {
-              "distinct_genes": 33368,
-              "distinct_promoter_windows": 123142,
-              "distinct_transcripts": 219266,
+              "distinct_genes": 33367,
+              "distinct_promoter_windows": 123139,
+              "distinct_transcripts": 219252,
               "query_end_0based_exclusive": 63,
               "query_start_0based": 62
             },
             {
-              "distinct_genes": 32883,
-              "distinct_promoter_windows": 120876,
-              "distinct_transcripts": 215291,
+              "distinct_genes": 32882,
+              "distinct_promoter_windows": 120873,
+              "distinct_transcripts": 215277,
               "query_end_0based_exclusive": 64,
               "query_start_0based": 63
             },
             {
-              "distinct_genes": 32294,
-              "distinct_promoter_windows": 117872,
-              "distinct_transcripts": 209777,
+              "distinct_genes": 32293,
+              "distinct_promoter_windows": 117869,
+              "distinct_transcripts": 209763,
               "query_end_0based_exclusive": 65,
               "query_start_0based": 64
             },
             {
-              "distinct_genes": 31405,
-              "distinct_promoter_windows": 113697,
-              "distinct_transcripts": 202213,
+              "distinct_genes": 31404,
+              "distinct_promoter_windows": 113694,
+              "distinct_transcripts": 202199,
               "query_end_0based_exclusive": 66,
               "query_start_0based": 65
             },
             {
-              "distinct_genes": 30425,
-              "distinct_promoter_windows": 108720,
-              "distinct_transcripts": 193455,
+              "distinct_genes": 30424,
+              "distinct_promoter_windows": 108717,
+              "distinct_transcripts": 193441,
               "query_end_0based_exclusive": 67,
               "query_start_0based": 66
             },
             {
-              "distinct_genes": 29239,
-              "distinct_promoter_windows": 102990,
-              "distinct_transcripts": 183289,
+              "distinct_genes": 29238,
+              "distinct_promoter_windows": 102987,
+              "distinct_transcripts": 183275,
               "query_end_0based_exclusive": 68,
               "query_start_0based": 67
             },
             {
-              "distinct_genes": 26259,
-              "distinct_promoter_windows": 89213,
-              "distinct_transcripts": 158186,
+              "distinct_genes": 26258,
+              "distinct_promoter_windows": 89210,
+              "distinct_transcripts": 158172,
               "query_end_0based_exclusive": 69,
               "query_start_0based": 68
             },
             {
-              "distinct_genes": 22916,
-              "distinct_promoter_windows": 74955,
-              "distinct_transcripts": 132908,
+              "distinct_genes": 22915,
+              "distinct_promoter_windows": 74952,
+              "distinct_transcripts": 132894,
               "query_end_0based_exclusive": 70,
               "query_start_0based": 69
             },
@@ -1469,6 +1532,10 @@
             "distinct_transcripts": 5
           },
           "comparison_class": "ensembl_regulation_tss_window_intersection",
+          "counts_are_lower_bounds": false,
+          "hsp_cap_reached": false,
+          "max_hsps_observed": 3,
+          "other_gene_exclusion_verified": true,
           "other_promoters": {
             "distinct_genes": 2,
             "distinct_promoter_windows": 4,
@@ -1491,8 +1558,12 @@
               "distinct_transcripts": 0
             }
           },
+          "query_gene_ids": [
+            "ENSG00000106366"
+          ],
           "query_id": "SERPINE1_SERPINE1_tss_stretch_1_ENSR7_BQ3T2",
           "query_length_bp": 190,
+          "raw_target_count": 298,
           "recurrent_query_segments": [
             {
               "distinct_genes": 2,
@@ -1511,6 +1582,10 @@
             "distinct_transcripts": 14
           },
           "comparison_class": "ensembl_regulation_tss_window_intersection",
+          "counts_are_lower_bounds": false,
+          "hsp_cap_reached": false,
+          "max_hsps_observed": 1,
+          "other_gene_exclusion_verified": true,
           "other_promoters": {
             "distinct_genes": 0,
             "distinct_promoter_windows": 0,
@@ -1533,8 +1608,12 @@
               "distinct_transcripts": 0
             }
           },
+          "query_gene_ids": [
+            "ENSG00000106366"
+          ],
           "query_id": "SERPINE1_SERPINE1_tss_stretch_2_ENSR00001588832",
           "query_length_bp": 1204,
+          "raw_target_count": 34,
           "recurrent_query_segments": [],
           "target_cap_reached": false
         },
@@ -1545,6 +1624,10 @@
             "distinct_transcripts": 0
           },
           "comparison_class": "ensembl_regulation_tss_window_intersection",
+          "counts_are_lower_bounds": false,
+          "hsp_cap_reached": false,
+          "max_hsps_observed": 1,
+          "other_gene_exclusion_verified": true,
           "other_promoters": {
             "distinct_genes": 0,
             "distinct_promoter_windows": 0,
@@ -1567,8 +1650,12 @@
               "distinct_transcripts": 0
             }
           },
+          "query_gene_ids": [
+            "ENSG00000106366"
+          ],
           "query_id": "SERPINE1_SERPINE1_tss_stretch_2_ENSR7_5TR7ZR",
           "query_length_bp": 22,
+          "raw_target_count": 91,
           "recurrent_query_segments": [],
           "target_cap_reached": false
         },
@@ -1579,6 +1666,10 @@
             "distinct_transcripts": 14
           },
           "comparison_class": "ensembl_regulation_tss_window_intersection",
+          "counts_are_lower_bounds": false,
+          "hsp_cap_reached": false,
+          "max_hsps_observed": 1,
+          "other_gene_exclusion_verified": true,
           "other_promoters": {
             "distinct_genes": 0,
             "distinct_promoter_windows": 0,
@@ -1601,8 +1692,12 @@
               "distinct_transcripts": 0
             }
           },
+          "query_gene_ids": [
+            "ENSG00000106366"
+          ],
           "query_id": "SERPINE1_SERPINE1_tss_stretch_2_ENSR7_93H5Q4",
           "query_length_bp": 501,
+          "raw_target_count": 55,
           "recurrent_query_segments": [],
           "target_cap_reached": false
         },
@@ -1613,6 +1708,10 @@
             "distinct_transcripts": 3
           },
           "comparison_class": "ensembl_regulation_tss_window_intersection",
+          "counts_are_lower_bounds": false,
+          "hsp_cap_reached": false,
+          "max_hsps_observed": 1,
+          "other_gene_exclusion_verified": true,
           "other_promoters": {
             "distinct_genes": 0,
             "distinct_promoter_windows": 0,
@@ -1635,8 +1734,12 @@
               "distinct_transcripts": 0
             }
           },
+          "query_gene_ids": [
+            "ENSG00000106366"
+          ],
           "query_id": "SERPINE1_SERPINE1_tss_stretch_2_ENSR7_93H5QD",
           "query_length_bp": 175,
+          "raw_target_count": 59,
           "recurrent_query_segments": [],
           "target_cap_reached": false
         },
@@ -1647,6 +1750,10 @@
             "distinct_transcripts": 14
           },
           "comparison_class": "ensembl_regulation_tss_window_intersection",
+          "counts_are_lower_bounds": false,
+          "hsp_cap_reached": false,
+          "max_hsps_observed": 1,
+          "other_gene_exclusion_verified": true,
           "other_promoters": {
             "distinct_genes": 0,
             "distinct_promoter_windows": 0,
@@ -1669,8 +1776,12 @@
               "distinct_transcripts": 0
             }
           },
+          "query_gene_ids": [
+            "ENSG00000106366"
+          ],
           "query_id": "SERPINE1_SERPINE1_tss_stretch_2_ENSR7_BQ3TL",
           "query_length_bp": 516,
+          "raw_target_count": 46,
           "recurrent_query_segments": [],
           "target_cap_reached": false
         },
@@ -1681,6 +1792,10 @@
             "distinct_transcripts": 17
           },
           "comparison_class": "ensembl_regulation_tss_window_intersection",
+          "counts_are_lower_bounds": false,
+          "hsp_cap_reached": false,
+          "max_hsps_observed": 2,
+          "other_gene_exclusion_verified": true,
           "other_promoters": {
             "distinct_genes": 0,
             "distinct_promoter_windows": 0,
@@ -1703,8 +1818,12 @@
               "distinct_transcripts": 0
             }
           },
+          "query_gene_ids": [
+            "ENSG00000105329"
+          ],
           "query_id": "TGFB1_TGFB1_tss_stretch_1_ENSR00001777739",
           "query_length_bp": 740,
+          "raw_target_count": 490,
           "recurrent_query_segments": [],
           "target_cap_reached": false
         },
@@ -1715,6 +1834,10 @@
             "distinct_transcripts": 0
           },
           "comparison_class": "ensembl_regulation_tss_window_intersection",
+          "counts_are_lower_bounds": false,
+          "hsp_cap_reached": false,
+          "max_hsps_observed": 1,
+          "other_gene_exclusion_verified": true,
           "other_promoters": {
             "distinct_genes": 0,
             "distinct_promoter_windows": 0,
@@ -1737,8 +1860,12 @@
               "distinct_transcripts": 0
             }
           },
+          "query_gene_ids": [
+            "ENSG00000105329"
+          ],
           "query_id": "TGFB1_TGFB1_tss_stretch_1_ENSR19_5CPLWC",
           "query_length_bp": 22,
+          "raw_target_count": 138,
           "recurrent_query_segments": [],
           "target_cap_reached": false
         },
@@ -1749,6 +1876,10 @@
             "distinct_transcripts": 17
           },
           "comparison_class": "ensembl_regulation_tss_window_intersection",
+          "counts_are_lower_bounds": false,
+          "hsp_cap_reached": false,
+          "max_hsps_observed": 2,
+          "other_gene_exclusion_verified": true,
           "other_promoters": {
             "distinct_genes": 0,
             "distinct_promoter_windows": 0,
@@ -1771,13 +1902,18 @@
               "distinct_transcripts": 0
             }
           },
+          "query_gene_ids": [
+            "ENSG00000105329"
+          ],
           "query_id": "TGFB1_TGFB1_tss_stretch_1_ENSR19_9LF6T",
           "query_length_bp": 271,
+          "raw_target_count": 123,
           "recurrent_query_segments": [],
           "target_cap_reached": false
         }
       ],
-      "raw_hits_path": "hits.blastn.tsv"
+      "raw_hits_path": "hits.blastn.tsv",
+      "raw_hits_sha256": "sha256:82893309f45ac78b14c209f432a2f75eb8ccc0edd445d88698f4ce3e2e16fa81"
     }
   },
   "thresholds": {

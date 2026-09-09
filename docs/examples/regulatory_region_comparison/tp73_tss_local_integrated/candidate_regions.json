@@ -4,6 +4,14 @@
     {
       "comparison_class": "ensembl_regulation_tss_window_intersection",
       "gene_query": "CD44",
+      "genome_extraction": {
+        "chromosome": "11",
+        "end_1based": 35139371,
+        "gene_id": "ENSG00000026508",
+        "gene_name": "CD44",
+        "genome_id": "Human GRCh38 Ensembl 116",
+        "start_1based": 35138221
+      },
       "input_kind": "canonical_region",
       "region_id": "CD44_CD44_tss_stretch_1_ENSR00001659002",
       "sequence_length_bp": 1151,
@@ -36,6 +44,7 @@
           {
             "chromosome": "11",
             "end_1based": 35138921,
+            "promoterome_id": "promoter_5cb11c3a8c991e5309b9",
             "start_1based": 35138221,
             "strand": "+",
             "transcript_ids": [
@@ -47,6 +56,7 @@
           {
             "chromosome": "11",
             "end_1based": 35139371,
+            "promoterome_id": "promoter_7e38106c6b3906d5ced2",
             "start_1based": 35138671,
             "strand": "+",
             "transcript_ids": [
@@ -55,11 +65,24 @@
             "tss_1based": 35139171
           }
         ]
-      }
+      },
+      "transcript_ids": [
+        "ENST00000263398",
+        "ENST00000278386",
+        "ENST00000428726"
+      ]
     },
     {
       "comparison_class": "ensembl_regulation_tss_window_intersection",
       "gene_query": "CD44",
+      "genome_extraction": {
+        "chromosome": "11",
+        "end_1based": 35138731,
+        "gene_id": "ENSG00000026508",
+        "gene_name": "CD44",
+        "genome_id": "Human GRCh38 Ensembl 116",
+        "start_1based": 35138231
+      },
       "input_kind": "canonical_region",
       "region_id": "CD44_CD44_tss_stretch_1_ENSR11_9HXKD",
       "sequence_length_bp": 501,
@@ -92,6 +115,7 @@
           {
             "chromosome": "11",
             "end_1based": 35138921,
+            "promoterome_id": "promoter_5cb11c3a8c991e5309b9",
             "start_1based": 35138221,
             "strand": "+",
             "transcript_ids": [
@@ -103,6 +127,7 @@
           {
             "chromosome": "11",
             "end_1based": 35139371,
+            "promoterome_id": "promoter_7e38106c6b3906d5ced2",
             "start_1based": 35138671,
             "strand": "+",
             "transcript_ids": [
@@ -111,11 +136,24 @@
             "tss_1based": 35139171
           }
         ]
-      }
+      },
+      "transcript_ids": [
+        "ENST00000263398",
+        "ENST00000278386",
+        "ENST00000428726"
+      ]
     },
     {
       "comparison_class": "ensembl_regulation_tss_window_intersection",
       "gene_query": "CD44",
+      "genome_extraction": {
+        "chromosome": "11",
+        "end_1based": 35139181,
+        "gene_id": "ENSG00000026508",
+        "gene_name": "CD44",
+        "genome_id": "Human GRCh38 Ensembl 116",
+        "start_1based": 35138946
+      },
       "input_kind": "canonical_region",
       "region_id": "CD44_CD44_tss_stretch_1_ENSR11_832W64",
       "sequence_length_bp": 236,
@@ -148,6 +186,7 @@
           {
             "chromosome": "11",
             "end_1based": 35138921,
+            "promoterome_id": "promoter_5cb11c3a8c991e5309b9",
             "start_1based": 35138221,
             "strand": "+",
             "transcript_ids": [
@@ -159,6 +198,7 @@
           {
             "chromosome": "11",
             "end_1based": 35139371,
+            "promoterome_id": "promoter_7e38106c6b3906d5ced2",
             "start_1based": 35138671,
             "strand": "+",
             "transcript_ids": [
@@ -167,11 +207,24 @@
             "tss_1based": 35139171
           }
         ]
-      }
+      },
+      "transcript_ids": [
+        "ENST00000263398",
+        "ENST00000278386",
+        "ENST00000428726"
+      ]
     },
     {
       "comparison_class": "ensembl_regulation_tss_window_intersection",
       "gene_query": "CD44",
+      "genome_extraction": {
+        "chromosome": "11",
+        "end_1based": 35139371,
+        "gene_id": "ENSG00000026508",
+        "gene_name": "CD44",
+        "genome_id": "Human GRCh38 Ensembl 116",
+        "start_1based": 35139229
+      },
       "input_kind": "canonical_region",
       "region_id": "CD44_CD44_tss_stretch_1_ENSR11_B8Z9S",
       "sequence_length_bp": 143,
@@ -204,6 +257,7 @@
           {
             "chromosome": "11",
             "end_1based": 35138921,
+            "promoterome_id": "promoter_5cb11c3a8c991e5309b9",
             "start_1based": 35138221,
             "strand": "+",
             "transcript_ids": [
@@ -215,6 +269,7 @@
           {
             "chromosome": "11",
             "end_1based": 35139371,
+            "promoterome_id": "promoter_7e38106c6b3906d5ced2",
             "start_1based": 35138671,
             "strand": "+",
             "transcript_ids": [
@@ -223,11 +278,24 @@
             "tss_1based": 35139171
           }
         ]
-      }
+      },
+      "transcript_ids": [
+        "ENST00000263398",
+        "ENST00000278386",
+        "ENST00000428726"
+      ]
     },
     {
       "comparison_class": "ensembl_regulation_tss_window_intersection",
       "gene_query": "SERPINE1",
+      "genome_extraction": {
+        "chromosome": "7",
+        "end_1based": 101122168,
+        "gene_id": "ENSG00000106366",
+        "gene_name": "SERPINE1",
+        "genome_id": "Human GRCh38 Ensembl 116",
+        "start_1based": 101121823
+      },
       "input_kind": "canonical_region",
       "region_id": "SERPINE1_SERPINE1_tss_stretch_1_ENSR7_93H5NS",
       "sequence_length_bp": 346,
@@ -260,6 +328,7 @@
           {
             "chromosome": "7",
             "end_1based": 101122358,
+            "promoterome_id": "promoter_379bd0de7dda774c7927",
             "start_1based": 101121658,
             "strand": "+",
             "transcript_ids": [
@@ -268,11 +337,22 @@
             "tss_1based": 101122158
           }
         ]
-      }
+      },
+      "transcript_ids": [
+        "ENST00000950058"
+      ]
     },
     {
       "comparison_class": "ensembl_regulation_tss_window_intersection",
       "gene_query": "SERPINE1",
+      "genome_extraction": {
+        "chromosome": "7",
+        "end_1based": 101122358,
+        "gene_id": "ENSG00000106366",
+        "gene_name": "SERPINE1",
+        "genome_id": "Human GRCh38 Ensembl 116",
+        "start_1based": 101121823
+      },
       "input_kind": "canonical_region",
       "region_id": "SERPINE1_SERPINE1_tss_stretch_1_ENSR00001588829",
       "sequence_length_bp": 536,
@@ -305,6 +385,7 @@
           {
             "chromosome": "7",
             "end_1based": 101122358,
+            "promoterome_id": "promoter_379bd0de7dda774c7927",
             "start_1based": 101121658,
             "strand": "+",
             "transcript_ids": [
@@ -313,11 +394,22 @@
             "tss_1based": 101122158
           }
         ]
-      }
+      },
+      "transcript_ids": [
+        "ENST00000950058"
+      ]
     },
     {
       "comparison_class": "ensembl_regulation_tss_window_intersection",
       "gene_query": "SERPINE1",
+      "genome_extraction": {
+        "chromosome": "7",
+        "end_1based": 101122358,
+        "gene_id": "ENSG00000106366",
+        "gene_name": "SERPINE1",
+        "genome_id": "Human GRCh38 Ensembl 116",
+        "start_1based": 101122169
+      },
       "input_kind": "canonical_region",
       "region_id": "SERPINE1_SERPINE1_tss_stretch_1_ENSR7_BQ3T2",
       "sequence_length_bp": 190,
@@ -350,6 +442,7 @@
           {
             "chromosome": "7",
             "end_1based": 101122358,
+            "promoterome_id": "promoter_379bd0de7dda774c7927",
             "start_1based": 101121658,
             "strand": "+",
             "transcript_ids": [
@@ -358,11 +451,22 @@
             "tss_1based": 101122158
           }
         ]
-      }
+      },
+      "transcript_ids": [
+        "ENST00000950058"
+      ]
     },
     {
       "comparison_class": "ensembl_regulation_tss_window_intersection",
       "gene_query": "SERPINE1",
+      "genome_extraction": {
+        "chromosome": "7",
+        "end_1based": 101127304,
+        "gene_id": "ENSG00000106366",
+        "gene_name": "SERPINE1",
+        "genome_id": "Human GRCh38 Ensembl 116",
+        "start_1based": 101126101
+      },
       "input_kind": "canonical_region",
       "region_id": "SERPINE1_SERPINE1_tss_stretch_2_ENSR00001588832",
       "sequence_length_bp": 1204,
@@ -395,6 +499,7 @@
           {
             "chromosome": "7",
             "end_1based": 101126801,
+            "promoterome_id": "promoter_bd61be147c132c2eecfd",
             "start_1based": 101126101,
             "strand": "+",
             "transcript_ids": [
@@ -405,6 +510,7 @@
           {
             "chromosome": "7",
             "end_1based": 101127304,
+            "promoterome_id": "promoter_f26b9f97102c9a4a9c88",
             "start_1based": 101126604,
             "strand": "+",
             "transcript_ids": [
@@ -413,11 +519,23 @@
             "tss_1based": 101127104
           }
         ]
-      }
+      },
+      "transcript_ids": [
+        "ENST00000223095",
+        "ENST00000870828"
+      ]
     },
     {
       "comparison_class": "ensembl_regulation_tss_window_intersection",
       "gene_query": "SERPINE1",
+      "genome_extraction": {
+        "chromosome": "7",
+        "end_1based": 101126611,
+        "gene_id": "ENSG00000106366",
+        "gene_name": "SERPINE1",
+        "genome_id": "Human GRCh38 Ensembl 116",
+        "start_1based": 101126111
+      },
       "input_kind": "canonical_region",
       "region_id": "SERPINE1_SERPINE1_tss_stretch_2_ENSR7_93H5Q4",
       "sequence_length_bp": 501,
@@ -450,6 +568,7 @@
           {
             "chromosome": "7",
             "end_1based": 101126801,
+            "promoterome_id": "promoter_bd61be147c132c2eecfd",
             "start_1based": 101126101,
             "strand": "+",
             "transcript_ids": [
@@ -460,6 +579,7 @@
           {
             "chromosome": "7",
             "end_1based": 101127304,
+            "promoterome_id": "promoter_f26b9f97102c9a4a9c88",
             "start_1based": 101126604,
             "strand": "+",
             "transcript_ids": [
@@ -468,11 +588,23 @@
             "tss_1based": 101127104
           }
         ]
-      }
+      },
+      "transcript_ids": [
+        "ENST00000223095",
+        "ENST00000870828"
+      ]
     },
     {
       "comparison_class": "ensembl_regulation_tss_window_intersection",
       "gene_query": "SERPINE1",
+      "genome_extraction": {
+        "chromosome": "7",
+        "end_1based": 101127129,
+        "gene_id": "ENSG00000106366",
+        "gene_name": "SERPINE1",
+        "genome_id": "Human GRCh38 Ensembl 116",
+        "start_1based": 101126614
+      },
       "input_kind": "canonical_region",
       "region_id": "SERPINE1_SERPINE1_tss_stretch_2_ENSR7_BQ3TL",
       "sequence_length_bp": 516,
@@ -505,6 +637,7 @@
           {
             "chromosome": "7",
             "end_1based": 101126801,
+            "promoterome_id": "promoter_bd61be147c132c2eecfd",
             "start_1based": 101126101,
             "strand": "+",
             "transcript_ids": [
@@ -515,6 +648,7 @@
           {
             "chromosome": "7",
             "end_1based": 101127304,
+            "promoterome_id": "promoter_f26b9f97102c9a4a9c88",
             "start_1based": 101126604,
             "strand": "+",
             "transcript_ids": [
@@ -523,11 +657,23 @@
             "tss_1based": 101127104
           }
         ]
-      }
+      },
+      "transcript_ids": [
+        "ENST00000223095",
+        "ENST00000870828"
+      ]
     },
     {
       "comparison_class": "ensembl_regulation_tss_window_intersection",
       "gene_query": "SERPINE1",
+      "genome_extraction": {
+        "chromosome": "7",
+        "end_1based": 101126844,
+        "gene_id": "ENSG00000106366",
+        "gene_name": "SERPINE1",
+        "genome_id": "Human GRCh38 Ensembl 116",
+        "start_1based": 101126823
+      },
       "input_kind": "canonical_region",
       "region_id": "SERPINE1_SERPINE1_tss_stretch_2_ENSR7_5TR7ZR",
       "sequence_length_bp": 22,
@@ -560,6 +706,7 @@
           {
             "chromosome": "7",
             "end_1based": 101126801,
+            "promoterome_id": "promoter_bd61be147c132c2eecfd",
             "start_1based": 101126101,
             "strand": "+",
             "transcript_ids": [
@@ -570,6 +717,7 @@
           {
             "chromosome": "7",
             "end_1based": 101127304,
+            "promoterome_id": "promoter_f26b9f97102c9a4a9c88",
             "start_1based": 101126604,
             "strand": "+",
             "transcript_ids": [
@@ -578,11 +726,23 @@
             "tss_1based": 101127104
           }
         ]
-      }
+      },
+      "transcript_ids": [
+        "ENST00000223095",
+        "ENST00000870828"
+      ]
     },
     {
       "comparison_class": "ensembl_regulation_tss_window_intersection",
       "gene_query": "SERPINE1",
+      "genome_extraction": {
+        "chromosome": "7",
+        "end_1based": 101127304,
+        "gene_id": "ENSG00000106366",
+        "gene_name": "SERPINE1",
+        "genome_id": "Human GRCh38 Ensembl 116",
+        "start_1based": 101127130
+      },
       "input_kind": "canonical_region",
       "region_id": "SERPINE1_SERPINE1_tss_stretch_2_ENSR7_93H5QD",
       "sequence_length_bp": 175,
@@ -615,6 +775,7 @@
           {
             "chromosome": "7",
             "end_1based": 101126801,
+            "promoterome_id": "promoter_bd61be147c132c2eecfd",
             "start_1based": 101126101,
             "strand": "+",
             "transcript_ids": [
@@ -625,6 +786,7 @@
           {
             "chromosome": "7",
             "end_1based": 101127304,
+            "promoterome_id": "promoter_f26b9f97102c9a4a9c88",
             "start_1based": 101126604,
             "strand": "+",
             "transcript_ids": [
@@ -633,11 +795,23 @@
             "tss_1based": 101127104
           }
         ]
-      }
+      },
+      "transcript_ids": [
+        "ENST00000223095",
+        "ENST00000870828"
+      ]
     },
     {
       "comparison_class": "ensembl_regulation_tss_window_intersection",
       "gene_query": "TGFB1",
+      "genome_extraction": {
+        "chromosome": "19",
+        "end_1based": 41354461,
+        "gene_id": "ENSG00000105329",
+        "gene_name": "TGFB1",
+        "genome_id": "Human GRCh38 Ensembl 116",
+        "start_1based": 41353722
+      },
       "input_kind": "canonical_region",
       "region_id": "TGFB1_TGFB1_tss_stretch_1_ENSR00001777739",
       "sequence_length_bp": 740,
@@ -670,6 +844,7 @@
           {
             "chromosome": "19",
             "end_1based": 41354422,
+            "promoterome_id": "promoter_0c7303b1bf23e0934772",
             "start_1based": 41353722,
             "strand": "-",
             "transcript_ids": [
@@ -680,6 +855,7 @@
           {
             "chromosome": "19",
             "end_1based": 41354461,
+            "promoterome_id": "promoter_36a1b28d8f28c83a9602",
             "start_1based": 41353761,
             "strand": "-",
             "transcript_ids": [
@@ -689,11 +865,24 @@
             "tss_1based": 41353961
           }
         ]
-      }
+      },
+      "transcript_ids": [
+        "ENST00000221930",
+        "ENST00001090430",
+        "ENST00001114525"
+      ]
     },
     {
       "comparison_class": "ensembl_regulation_tss_window_intersection",
       "gene_query": "TGFB1",
+      "genome_extraction": {
+        "chromosome": "19",
+        "end_1based": 41354182,
+        "gene_id": "ENSG00000105329",
+        "gene_name": "TGFB1",
+        "genome_id": "Human GRCh38 Ensembl 116",
+        "start_1based": 41353912
+      },
       "input_kind": "canonical_region",
       "region_id": "TGFB1_TGFB1_tss_stretch_1_ENSR19_9LF6T",
       "sequence_length_bp": 271,
@@ -726,6 +915,7 @@
           {
             "chromosome": "19",
             "end_1based": 41354422,
+            "promoterome_id": "promoter_0c7303b1bf23e0934772",
             "start_1based": 41353722,
             "strand": "-",
             "transcript_ids": [
@@ -736,6 +926,7 @@
           {
             "chromosome": "19",
             "end_1based": 41354461,
+            "promoterome_id": "promoter_36a1b28d8f28c83a9602",
             "start_1based": 41353761,
             "strand": "-",
             "transcript_ids": [
@@ -745,11 +936,24 @@
             "tss_1based": 41353961
           }
         ]
-      }
+      },
+      "transcript_ids": [
+        "ENST00000221930",
+        "ENST00001090430",
+        "ENST00001114525"
+      ]
     },
     {
       "comparison_class": "ensembl_regulation_tss_window_intersection",
       "gene_query": "TGFB1",
+      "genome_extraction": {
+        "chromosome": "19",
+        "end_1based": 41354150,
+        "gene_id": "ENSG00000105329",
+        "gene_name": "TGFB1",
+        "genome_id": "Human GRCh38 Ensembl 116",
+        "start_1based": 41354129
+      },
       "input_kind": "canonical_region",
       "region_id": "TGFB1_TGFB1_tss_stretch_1_ENSR19_5CPLWC",
       "sequence_length_bp": 22,
@@ -782,6 +986,7 @@
           {
             "chromosome": "19",
             "end_1based": 41354422,
+            "promoterome_id": "promoter_0c7303b1bf23e0934772",
             "start_1based": 41353722,
             "strand": "-",
             "transcript_ids": [
@@ -792,6 +997,7 @@
           {
             "chromosome": "19",
             "end_1based": 41354461,
+            "promoterome_id": "promoter_36a1b28d8f28c83a9602",
             "start_1based": 41353761,
             "strand": "-",
             "transcript_ids": [
@@ -801,7 +1007,12 @@
             "tss_1based": 41353961
           }
         ]
-      }
+      },
+      "transcript_ids": [
+        "ENST00000221930",
+        "ENST00001090430",
+        "ENST00001114525"
+      ]
     }
   ],
   "schema": "gentle.regulatory_region_comparison_sequences.v1",
@@ -948,10 +1159,12 @@
       "SERPINE1": "sha256:ab8dcf3d867dfff6847e02375330ab5c23d876e3d55926cf69af61edf0a736eb",
       "TGFB1": "sha256:86312b1460158a4d510e06104bd676b1cc424939032f7be1152e459e9e73b872"
     },
-    "reference_fasta_sha256": "sha256:746dc3b40529bcd09886287ec50b2b9c2f63fc794a14205a94bfd5b12335d845",
-    "selected_tss_sha256": "sha256:981b69e885da3378209f387d607b42cffcb7ad04bf5a28f526fbd87d59c02b5b"
+    "producer_sha256": "e8deeb5d6ef6bf6df70b8835669e099debc66a4f3ebdb6aa1fd3bc0417296a5b",
+    "promoterome_fasta_sha256": "sha256:6f2cecc5fa347adb5cc541eeac2ea540de641ed15e507dd83e963e0c1ddc8096",
+    "promoterome_receipt_sha256": "fe86c9adb0381e0f128fcf129ccc52a22ef7eaa0d9035e2b6c51f61f17dfafc5",
+    "selected_tss_sha256": "sha256:a17f2e388a158ba28633f8d30e501838e05e5c21ec22adfad78a643e44f562ba"
   },
-  "source_revision": "c23ea8110cfbad1cd0dc09ffcc638ddf12609d07",
+  "source_revision": "f29c39c984940ce9b5f1677f9b23e52acbc3aeb9",
   "stretches": [
     {
       "end_1based": 35139371,
@@ -962,6 +1175,7 @@
         {
           "chromosome": "11",
           "end_1based": 35138921,
+          "promoterome_id": "promoter_5cb11c3a8c991e5309b9",
           "start_1based": 35138221,
           "strand": "+",
           "transcript_ids": [
@@ -973,6 +1187,7 @@
         {
           "chromosome": "11",
           "end_1based": 35139371,
+          "promoterome_id": "promoter_7e38106c6b3906d5ced2",
           "start_1based": 35138671,
           "strand": "+",
           "transcript_ids": [
@@ -991,6 +1206,7 @@
         {
           "chromosome": "7",
           "end_1based": 101122358,
+          "promoterome_id": "promoter_379bd0de7dda774c7927",
           "start_1based": 101121658,
           "strand": "+",
           "transcript_ids": [
@@ -1009,6 +1225,7 @@
         {
           "chromosome": "7",
           "end_1based": 101126801,
+          "promoterome_id": "promoter_bd61be147c132c2eecfd",
           "start_1based": 101126101,
           "strand": "+",
           "transcript_ids": [
@@ -1019,6 +1236,7 @@
         {
           "chromosome": "7",
           "end_1based": 101127304,
+          "promoterome_id": "promoter_f26b9f97102c9a4a9c88",
           "start_1based": 101126604,
           "strand": "+",
           "transcript_ids": [
@@ -1037,6 +1255,7 @@
         {
           "chromosome": "19",
           "end_1based": 41354422,
+          "promoterome_id": "promoter_0c7303b1bf23e0934772",
           "start_1based": 41353722,
           "strand": "-",
           "transcript_ids": [
@@ -1047,6 +1266,7 @@
         {
           "chromosome": "19",
           "end_1based": 41354461,
+          "promoterome_id": "promoter_36a1b28d8f28c83a9602",
           "start_1based": 41353761,
           "strand": "-",
           "transcript_ids": [
