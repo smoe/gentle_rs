@@ -80,6 +80,37 @@ revision. Replaying the historical revision reproduces the historical defects.
 The promoterome receipt, selected transcript membership, chromosome, strand,
 TSS geometry, and selected sequence digest are validated before extraction.
 
+Re-export each original locus request with the repository's chromosome-general
+BigWig converter. It implements the two-path `bigWigToBedGraph` interface and
+emits every chromosome in the source file; it must not be replaced by the
+historical chromosome-7 analysis helper.
+
+```bash
+export GENTLE_BIGWIG_TO_BEDGRAPH_BIN="$PWD/scripts/bigwig_to_bedgraph.py"
+gentle_cli /path/to/original.state.json \
+  gene-locus prepare @/path/to/fresh/request.json
+```
+
+Before feature preparation, validate the three re-exported reports against
+their exact requests and source BigWigs. This gate requires 12 available,
+nonempty lanes per gene, verifies native BigWig overlap on the bound chromosome,
+checks source hashes and assembly identity, and checks rendered local/genomic
+coordinates on both strands. Missing intervals are rejected rather than treated
+as measured zero signal.
+
+```bash
+python3 scripts/validate_tp73_locus_cutrun_lanes.py \
+  --assembly-id GRCh38 \
+  --request CD44=/path/to/fresh/CD44.request.json \
+  --request TGFB1=/path/to/fresh/TGFB1.request.json \
+  --request SERPINE1=/path/to/fresh/SERPINE1.request.json \
+  --report CD44=/path/to/fresh/CD44.report.json \
+  --report TGFB1=/path/to/fresh/TGFB1.report.json \
+  --report SERPINE1=/path/to/fresh/SERPINE1.report.json \
+  --source-revision "$(git rev-parse HEAD)" \
+  --output /path/to/run/cutrun_lane_validation.json
+```
+
 The locus JSON must carry a matching `sequence_binding.genome_anchor`; re-export
 legacy reports that lack it. Both renderers require the exact preparation-bound
 JSON bytes, including each candidate's source-report digest. For tall reports,
@@ -100,6 +131,7 @@ python3 scripts/prepare_tp73_cutrun_promoter_candidates.py \
 python3 scripts/prepare_tss_regulatory_similarity_candidates.py \
   --selected-tss /path/to/run/selected-tss/candidate_regions.json \
   --promoterome /path/to/human-grch38-ensembl116-promoterome \
+  --assembly-id GRCh38 \
   --locus-report /path/to/CD44_luciferase_planning_EnsemblReg_15TF.report.json \
   --locus-report /path/to/TGFB1_luciferase_planning_EnsemblReg_15TF.report.json \
   --locus-report /path/to/SERPINE1_luciferase_planning_EnsemblReg_15TF.report.json \
@@ -141,7 +173,9 @@ PDF renderer does. Focused offline regression tests, including synthetic source
 mismatches, both axis directions and dense-footer geometry, run with:
 
 ```bash
-python3 -m unittest scripts.test_tss_regulatory_integrated_report
+python3 -m unittest \
+  scripts.test_tss_regulatory_integrated_report \
+  scripts.test_tp73_locus_cutrun_lane_validation
 ```
 
 ## Interpretation boundary

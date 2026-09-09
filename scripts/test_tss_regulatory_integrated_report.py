@@ -84,7 +84,7 @@ def source_fixture(root, strand="+"):
         "panel_id": "toy_panel", "gene_strand": strand,
         "axis_left_genomic_1based": 1 if strand == "+" else 10000,
         "axis_right_genomic_1based": 10000 if strand == "+" else 1,
-        "sequence_binding": {"genome_anchor": {"genome_id": reference["genome_id"],
+        "sequence_binding": {"genome_anchor": {"genome_id": "GRCh38",
                              "chromosome": "1", "start_1based": 1, "end_1based": 10000}},
         "isoform_evidence": {"chromosome": "1"},
         "ensembl_regulation": {
@@ -115,6 +115,7 @@ def run_preparation(root):
     argv = ["prepare", "--selected-tss", str(root / "selected.json"),
             "--locus-report", str(root / "report.json"), "--locus-svg", f"TOY={root / 'base.svg'}",
             "--promoterome", str(root / "reference"), "--source-revision", "synthetic-revision",
+            "--assembly-id", "GRCh38",
             "--output", str(root / "output")]
     with patch.object(sys, "argv", argv), patch.object(
             PREPARE.subprocess, "check_output", return_value="synthetic-revision\n"), redirect_stdout(io.StringIO()):
@@ -240,6 +241,27 @@ class SourceBindingTests(unittest.TestCase):
                 write_json(root / "report.json", report)
                 with self.assertRaises(RuntimeError):
                     run_preparation(root)
+                self.assertFalse((root / "output").exists())
+
+    def test_assembly_identifier_is_exact_and_independent_of_catalog_words(self):
+        rejected = ("Human", "Ensembl", "116", "GRCh3", "GRCh37",
+                    "Human GRCh38 Ensembl 115")
+        for assembly_id in rejected:
+            with self.subTest(assembly_id=assembly_id), TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                source_fixture(root)
+                argv = ["prepare", "--selected-tss", str(root / "selected.json"),
+                        "--locus-report", str(root / "report.json"),
+                        "--locus-svg", f"TOY={root / 'base.svg'}",
+                        "--promoterome", str(root / "reference"),
+                        "--assembly-id", assembly_id,
+                        "--source-revision", "synthetic-revision",
+                        "--output", str(root / "output")]
+                with patch.object(sys, "argv", argv), patch.object(
+                        PREPARE.subprocess, "check_output",
+                        return_value="synthetic-revision\n"), redirect_stdout(io.StringIO()):
+                    with self.assertRaisesRegex(RuntimeError, "genome/chromosome/strand binding"):
+                        PREPARE.main()
                 self.assertFalse((root / "output").exists())
 
     def test_report_and_svg_are_bound_not_just_gene_labels(self):

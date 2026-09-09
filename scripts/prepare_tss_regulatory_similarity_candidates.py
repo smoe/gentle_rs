@@ -130,12 +130,12 @@ def validate_selected_region(row, reference, windows, transcripts, sequences) ->
             "selected sequence digest, length or orientation mismatch")
 
 
-def validate_locus_reference(report, windows, genome_id) -> None:
+def validate_locus_reference(report, windows, assembly_id) -> None:
     anchor = (report.get("sequence_binding") or {}).get("genome_anchor") or {}
     chromosomes = {window["chromosome"] for window in windows}
     strands = {window["strand"] for window in windows}
     require(len(chromosomes) == len(strands) == 1, "gene has mixed chromosome/strand TSS windows")
-    require(anchor.get("genome_id") == genome_id
+    require(anchor.get("genome_id") == assembly_id
             and anchor.get("chromosome") == next(iter(chromosomes))
             and report.get("gene_strand") == next(iter(strands))
             and report.get("isoform_evidence", {}).get("chromosome") == anchor.get("chromosome"),
@@ -152,6 +152,10 @@ def main() -> None:
     parser.add_argument("--locus-svg", action="append", default=[], metavar="GENE=PATH",
                         help="Declare the original SVG for each tall-report gene before comparison")
     parser.add_argument("--promoterome", type=Path, required=True)
+    parser.add_argument(
+        "--assembly-id", required=True,
+        help="Exact independently declared assembly identifier (for example GRCh38)",
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--source-revision", required=True)
     parser.add_argument("--upstream-bp", type=int, default=500)
@@ -215,13 +219,12 @@ def main() -> None:
         if gene in reports:
             raise SystemExit(f"duplicate locus report for {gene}")
         require(gene in selected_by_gene, f"unexpected locus report for {gene}")
-        validate_locus_reference(report, selected_by_gene[gene], reference["genome_id"])
+        validate_locus_reference(report, selected_by_gene[gene], args.assembly_id)
         binding = report["ensembl_regulation"]["source_binding"]
         if binding["content_identity_verified"] is not True or binding["truncated"] is not False:
             raise SystemExit(f"unverified or truncated Ensembl evidence for {gene}")
         assembly_names = {row["assembly_name"] for row in report["ensembl_regulation"]["rows"]}
-        require(len(assembly_names) == 1 and next(iter(assembly_names))
-                and next(iter(assembly_names)) in reference["genome_id"].split(),
+        require(assembly_names == {args.assembly_id},
                 f"Ensembl feature assembly disagrees with promoterome for {gene}")
         reports[gene] = (path.resolve(), report)
         report_hashes[gene] = digest
@@ -359,6 +362,7 @@ def main() -> None:
         "regions": regions,
         "sequence_equivalence_classes": equivalence,
         "source_bindings": {
+            "assembly_id": args.assembly_id,
             "selected_tss_sha256": f"sha256:{sha256_bytes(selected_bytes)}",
             "promoterome_receipt_sha256": sha256_file(promoterome / "receipt.json"),
             "promoterome_fasta_sha256": reference["artifacts"]["promoter_windows.fa"],
