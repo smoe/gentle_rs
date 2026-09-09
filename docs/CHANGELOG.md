@@ -12,6 +12,13 @@
   unchanged; earlier restriction-derived absence/uniqueness claims should be
   rechecked for nonpalindromic or degenerate motifs before wet-lab use.
 
+- Added `Zoom to selection` and `Go to selection` to the DNA viewer navigation
+  row and map context menu, including off-screen, formula-entered selections.
+  Navigation preserves the selection and scientific project state. Toolbar
+  controls wrap at the window width, with bounded vertical scrolling to keep
+  the map accessible; coordinate fields synchronise to the newly applied view.
+  Both actions are localised in all eight language catalogs.
+
 - Grouped `Help -> Tutorials` by the existing catalog topics instead of one
   clipped list. Help and File tutorial menus now bound their size to the window,
   wrap long titles, and support wheel/trackpad, scrollbar and edge-hover

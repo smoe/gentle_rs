@@ -2518,6 +2518,9 @@ Toolbar layout:
 - The `Selection formula` / `Apply Sel` controls now stay left-aligned on
   their own row instead of floating into the preceding button row when the
   window becomes narrower.
+- Each toolbar row wraps to the available window width, including the `Go`
+  coordinate fields and formula controls. The toolbar scrolls vertically when
+  it reaches its height limit, leaving space for the sequence map.
 - High-frequency map/display controls use existing icon assets where the
   meaning is clear, while every icon keeps the same hover/status description
   used for support and debugging. Text labels remain for controls without a
@@ -2817,6 +2820,12 @@ Controls:
    - `Apply Sel` resolves the formula and sets the active map/text selection,
      which can then be used directly by `Extract Sel`, `Queue PCR selection`,
      or `PCR ROI` actions.
+   - To inspect that selection, use `Zoom to selection` in the navigation row
+     or the map context menu. It fits the entire selected interval, even if it
+     was off-screen. `Go to selection` centres the same interval without
+     changing the zoom level. Neither action reapplies an edited formula:
+     press `Apply Sel` first. Invalid formulas leave the previous selection
+     unchanged and do not move the view.
    - The same `Selection formula` + `Apply Sel` control is also shown in the
      dedicated `PCR Designer` specialist window so pair-PCR setup can stay
      selection-first without switching back to the sequence toolbar.
@@ -4023,9 +4032,23 @@ Toolbar alternatives (linear mode):
 - `+`: zoom in
 - `Fit Seq`: reset to full sequence span and recenter vertically
 - `Fit Features`: keep the current subsequence span and recenter the feature lanes vertically
+- `Zoom to selection`: fit the complete current selection, including one entered
+  by formula outside the visible range
+- `Go to selection`: centre the selection at the current zoom level; if the
+  selection is wider than the view, use `Zoom to selection` to see all of it
 - `Pan` slider: move the current viewport left/right
 - Right-side vertical slider (`V pan`) in the map panel: move feature lanes up/down
   directly; `0` applies vertical feature fit for the current subsequence
+
+For a promoter and nearby first-exon region, select the intended coordinates
+with `Selection formula`, press `Apply Sel`, then `Zoom to selection`. Numeric
+selection formulas use 0-based, end-exclusive boundaries, whereas the `Go`
+viewport fields use 1-based inclusive coordinates. For feature-relative
+selection, use the intended annotated transcript/TSS rather than treating
+`CDS.start` as a transcription start. A negative resolved coordinate means the
+requested interval extends outside the loaded sequence: retrieve/extend the
+sequence or explicitly choose a smaller interval. GENtle does not silently
+truncate that biological request.
 
 ### Lineage graph: zoom and pan (mouse/touchpad)
 
