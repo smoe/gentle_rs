@@ -1,8 +1,8 @@
 # Measured Gel Image Sizing
 
 This is `.11` development on `codex/gel-image-dev`, not a `.10` release gate.
-The first slice is manual calibration through the shared engine and Shell.
-There is no click-based image editor or automatic band detector yet.
+Manual calibration is available in a point-and-click editor and through the
+same shared engine/Shell contract. Automatic band detection is not yet available.
 
 ## What Is Measured
 
@@ -31,8 +31,8 @@ gel/buffer systems ([manufacturer guidance](https://www.thermofisher.com/order/c
 For `prestained=true`, GENtle requires `sds_protein_kda` and an explicit
 `gel_system`; use the corresponding vendor calibration values, not a generic
 virtual-gel preset. `ladder.source` records that document or an explicit custom
-or synthetic origin. The first slice accepts explicit values; catalog picking
-will be added with the graphical editor.
+or synthetic origin. The editor currently accepts explicit values; verified
+ladder catalog picking remains a follow-up rather than guessing a standard.
 
 ## Import And Coordinates
 
@@ -57,7 +57,53 @@ exposure may violate that assumption. Do not treat the output as reliable until
 the geometry has been reviewed. Separate marker exposures cannot currently be
 registered through this workflow; use one correctly registered image.
 
-## Manual Workflow
+## Graphical Walkthrough
+
+1. Open **Patterns -> Gel Image Analysis...**. The command palette and shared
+   `ui open gel-image-editor` open the same independent window; DNA is not required.
+2. Click **Import image...**, or enter a local path first. For TIFF, explicitly
+   check **TIFF page 0 only** before import. Leave it unchecked for PNG/JPEG.
+   Previously imported images are available in the image selector after reopening
+   the project, even if the source file has moved.
+3. With **Draw lane**, drag a rectangle around the ladder, then one around each
+   sample lane. The first rectangle is the ladder. Lane labels are editable;
+   **Use as ladder** is available before any reference bands have been assigned.
+   Deleting a lane removes its marks; **Undo project edit** restores them.
+4. Select **bp** for linear DNA or **kDa** for SDS proteins and confirm the
+   migration direction. Enter a ladder name and source/catalog/lot. For prestained
+   protein markers also record the gel system and use its documented sizes.
+   Changing units does not convert previously entered ladder values.
+5. Select **Ladder band**, enter a known positive size, then click that band's
+   center inside the ladder rectangle. The size input resets after each mark to
+   prevent accidentally reusing a size. Repeat for at least two references that
+   bracket the sample bands. Orange marks are your confirmed assignments.
+6. Select **Sample band**, then click sample band centers. If lane rectangles
+   overlap, explicitly select the intended sample lane. Teal marks are sample
+   assignments. **Select / move band** drags a mark within its lane; the
+   **Assignments** list also selects bands for numeric position/size correction,
+   labeling, deletion and optional localization half-width entry.
+7. Zoom and scroll to inspect the preview; coordinates always remain original
+   pixel centers. **Analyze and save report** checks geometry and calibration,
+   saves a new immutable report and presents estimates, warnings and an expandable
+   log10-size calibration plot. It does not extrapolate beyond the references.
+8. Choose SVG, TSV or JSON and **Export...**. A blank output path opens a file
+   chooser. Existing files are never overwritten. Changing assignments marks the
+   previous report outdated and disables export until another analysis succeeds.
+   Saved reports can be reopened as editable drafts without replacing the original
+   report. Use **File -> Save Project** to retain images, drafts and reports on disk.
+
+Incomplete assignments are automatically stored as **unvalidated drafts** in the
+project, including after closing the editor. They are not sizing results. Import,
+original verification/preview decoding, analysis and export run in background
+workers. Canceled mutation results are discarded on completion, and project changes
+prevent stale commits. Cancellation does not interrupt an image decoder halfway;
+the editor waits for that worker rather than starting unlimited overlapping jobs.
+An already requested export is not cancelable from the editor because it writes a
+file; the native file chooser can still be canceled. Closing the editor merely
+hides it and does not cancel a pending job. Switching projects discards pending
+project mutations, but does not undo an explicitly requested export.
+
+## Shell Workflow
 
 All commands below also work in GENtle's GUI Shell. With the CLI, use the same
 `--state PROJECT.json` for each call so images and reports stay together.
@@ -109,6 +155,10 @@ gentle_cli --state gel-project.json gel-image export '{"report_id":"measurement1
 gentle_cli --state gel-project.json gel-image export '{"report_id":"measurement1","path":"measurement1.svg","format":"svg"}'
 ```
 
+To retain an incomplete assignment without a sizing claim, use
+`gel-image save-draft @analysis.json`. It accepts the same request shape and
+replaces that image's draft only; validated reports remain immutable.
+
 The optional localization half-width gives min/max sizes by moving the marked
 center along migration within that span. It is not a confidence interval and
 does not include ladder uncertainty, gel distortion, transfer effects, or
@@ -129,7 +179,7 @@ ladder/sample legend, measured ladder scale, estimated-size table and warnings.
 Dense ladder ruler labels are thinned to remain readable; JSON contains all
 confirmed ladder assignments. JSON/TSV retain unrounded numerical estimates.
 
-MCP uses the normal typed `op` tool with `ImportGelImage`, `AnalyzeGelImage`,
+MCP uses the normal typed `op` tool with `ImportGelImage`, `SaveGelImageDraft`, `AnalyzeGelImage`,
 `InspectGelImageAnalysis` or `ExportGelImageAnalysis`; existing confirmation
 guardrails still apply. JS/Lua/Python use their existing `op`/Shell wrappers,
 not a second calibration implementation.
@@ -143,14 +193,19 @@ Tests cover geometric interpolation, all four migration directions, protein
 units, two-reference warnings, missing references, out-of-range rows, invalid
 assignments, native 16-bit PNG/TIFF retention, source/report tampering,
 project save/reopen, undo/redo, no-clobber exports, SVG semantics and shared
-Shell execution. These are not real-gel accuracy or GUI responsiveness verdicts.
+Shell execution. Editor tests in `src/app/gel_image_ui_tests.rs` additionally
+exercise pointer clicks, pixel-center transforms through zoom/pan/resize,
+manual assignment constraints, persisted drafts, history synchronization,
+stale/canceled/project-switched result rejection, shared window intents and idle
+frames without texture reuploads or project mutations. These are not native
+window performance or real-gel accuracy verdicts.
 
 ## Remaining Work
 
-1. Dedicated image editor with lane/marker selection, zoom, calibration curve,
-   ladder catalogs and clear original-to-display coordinate transforms.
-2. Background decode/detection with progress/cancellation, cached previews,
-   editable peak suggestions, quality checks and semantic GUI test identifiers.
+1. Verified ladder catalogs and richer editable lane geometry; human native-window
+   walkthrough across platforms. Current sizing requires explicit ladder values.
+2. Editable peak suggestions, saturation/smear quality checks and finer-grained
+   worker progress; expanded semantic controls for a full automated GUI tutorial.
 3. Reviewed rotation/crop and two-sided ladder corrections; explicitly registered
    Western marker exposures; optional restricted-range log-linear fitting.
 4. Reference-image validation with documented acquisition/provenance, sample

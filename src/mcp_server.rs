@@ -1380,6 +1380,7 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
             "op",
             "gene-locus prepare",
             "gel-image import",
+            "gel-image save-draft",
             "gel-image analyze",
             "gel-image inspect",
             "gel-image export",

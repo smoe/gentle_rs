@@ -2,6 +2,14 @@
    "commands": [
       {
          "aliases": [],
+         "engine_operations": ["SaveGelImageDraft"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "gel-image save-draft",
+         "summary": "Save incomplete manual gel assignments in the project without claiming validated measurements.",
+         "usage": "gel-image save-draft REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
          "engine_operations": ["ImportGelImage"],
          "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
          "path": "gel-image import",

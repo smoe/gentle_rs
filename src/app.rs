@@ -101,6 +101,9 @@ mod main_lineage_ui;
 #[path = "app/rack_workspace_ui.rs"]
 mod rack_workspace_ui;
 
+#[path = "app/gel_image_ui.rs"]
+mod gel_image_ui;
+
 #[path = "app/gibson_ui.rs"]
 mod gibson_ui;
 
@@ -1019,6 +1022,7 @@ pub struct GENtleApp {
     gibson_preview_svg_uri: String,
     container_pool_export_task: Option<ContainerPoolExportTask>,
     arrangement_gel_preview: ArrangementGelPreviewState,
+    gel_image_editor: gel_image_ui::GelImageEditor,
     rack_labels_preview: RackLabelsPreviewState,
     rack_view_rack_id: String,
     rack_view_status: String,
@@ -2935,6 +2939,7 @@ impl Default for GENtleApp {
             gibson_preview_svg_uri: String::new(),
             container_pool_export_task: None,
             arrangement_gel_preview: ArrangementGelPreviewState::default(),
+            gel_image_editor: gel_image_ui::GelImageEditor::default(),
             rack_labels_preview: RackLabelsPreviewState::default(),
             rack_view_rack_id: String::new(),
             rack_view_status: String::new(),
@@ -16871,6 +16876,10 @@ Error: `{err}`"
                 }
             });
             ui.menu_button(self.tr("menu.patterns"), |ui| {
+                if ui.button("Gel Image Analysis...").clicked() {
+                    self.open_gel_image_editor();
+                    ui.close();
+                }
                 if ui
                     .button(self.tr("menu.patterns.import_file"))
                     .on_hover_text("Import workflow macro templates from one JSON pattern file")
@@ -25657,6 +25666,7 @@ impl GENtleApp {
                 self.render_genome_bed_track_dialog(ctx);
                 self.render_gibson_dialog(ctx);
                 self.render_arrangement_gel_preview_dialog(ctx);
+                self.render_gel_image_editor(ctx);
                 self.render_rack_labels_preview_dialog(ctx);
                 self.render_place_arrangement_on_rack_dialog(ctx);
                 self.render_rack_dialog(ctx);

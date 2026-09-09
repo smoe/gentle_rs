@@ -409,6 +409,11 @@ impl GENtleApp {
                 viewport_id,
             ))));
         }
+        if viewport_id == Self::gel_image_viewport_id() {
+            return Some(Self::embedded_window_layer_from_window_id(
+                Self::gel_image_window_id(),
+            ));
+        }
         if viewport_id == Self::pcr_design_viewport_id() {
             return Some(Self::embedded_window_layer_from_window_id(egui::Id::new((
                 "hosted_pcr_design_window",
@@ -499,6 +504,7 @@ impl GENtleApp {
         self.show_genome_bed_track_dialog.hash(&mut hasher);
         self.show_gibson_dialog.hash(&mut hasher);
         self.show_arrangement_gel_preview_dialog.hash(&mut hasher);
+        self.gel_image_editor.open.hash(&mut hasher);
         if self.show_arrangement_gel_preview_dialog {
             self.arrangement_gel_preview
                 .arrangement_title
@@ -687,6 +693,14 @@ impl GENtleApp {
                 viewport_id: Self::arrangement_gel_preview_viewport_id(),
                 title: self.arrangement_gel_preview_title(),
                 detail: "Serial gel preview with live ladder selection".to_string(),
+            });
+        }
+        if self.gel_image_editor.open {
+            entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(Self::gel_image_viewport_id()),
+                viewport_id: Self::gel_image_viewport_id(),
+                title: "Gel Image Analysis".into(),
+                detail: "Measured gel lanes, confirmed ladder calibration and band sizing".into(),
             });
         }
         if self.show_pcr_design_dialog {

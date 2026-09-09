@@ -16579,6 +16579,11 @@ fn parse_gel_image_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 "gel-image analysis",
             )?),
         },
+        Some("save-draft") => Operation::SaveGelImageDraft {
+            request: std::sync::Arc::new(parse_required_json_payload::<GelImageAnalysisRequest>(
+                &payload, "gel-image draft",
+            )?),
+        },
         Some("export") => Operation::ExportGelImageAnalysis {
             request: parse_required_json_payload::<GelImageExportRequest>(
                 &payload,
@@ -16589,7 +16594,7 @@ fn parse_gel_image_command(tokens: &[String]) -> Result<ShellCommand, String> {
             report_id: tokens[2].clone(),
         },
         _ => return Err(
-            "gel-image requires import|analyze|export REQUEST_JSON_OR_@FILE or inspect REPORT_ID"
+            "gel-image requires import|save-draft|analyze|export REQUEST_JSON_OR_@FILE or inspect REPORT_ID"
                 .into(),
         ),
     };
@@ -39982,6 +39987,9 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
                     .join(", ");
                 format!("Unknown ui target. Expected one of: {expected}")
             })?;
+            if target == UiIntentTarget::GelImageEditor && tokens.len() != 3 {
+                return Err("ui open|focus|close gel-image-editor takes no options".into());
+            }
             if !target
                 .actions()
                 .iter()
@@ -64496,13 +64504,16 @@ fn execute_op_command(engine: &mut GentleEngine, payload: &str) -> Result<ShellR
     if matches!(
         &op,
         Operation::ImportGelImage { .. }
+            | Operation::SaveGelImageDraft { .. }
             | Operation::AnalyzeGelImage { .. }
             | Operation::InspectGelImageAnalysis { .. }
             | Operation::ExportGelImageAnalysis { .. }
     ) {
         let state_changed = matches!(
             &op,
-            Operation::ImportGelImage { .. } | Operation::AnalyzeGelImage { .. }
+            Operation::ImportGelImage { .. }
+                | Operation::AnalyzeGelImage { .. }
+                | Operation::SaveGelImageDraft { .. }
         );
         let result = engine.apply(op).map_err(|error| error.to_string())?;
         return Ok(ShellRunResult {

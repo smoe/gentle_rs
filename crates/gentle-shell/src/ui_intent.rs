@@ -138,6 +138,7 @@ pub enum UiIntentTarget {
     PrepareHelperGenome,
     RetrieveHelperSequence,
     BlastHelperSequence,
+    GelImageEditor,
 }
 
 const UI_INTENT_TARGETS: [UiIntentTarget; UiIntentTarget::COUNT] = [
@@ -158,6 +159,7 @@ const UI_INTENT_TARGETS: [UiIntentTarget; UiIntentTarget::COUNT] = [
     UiIntentTarget::PrepareHelperGenome,
     UiIntentTarget::RetrieveHelperSequence,
     UiIntentTarget::BlastHelperSequence,
+    UiIntentTarget::GelImageEditor,
 ];
 
 const UI_INTENT_ACTION_NAMES: [&str; 3] = ["open", "focus", "close"];
@@ -260,7 +262,7 @@ pub struct UiIntentTargetCatalogRow {
 
 impl UiIntentTarget {
     /// Number of stable UI-intent destinations.
-    pub const COUNT: usize = 17;
+    pub const COUNT: usize = 18;
 
     /// Stable catalog order used by shell, MCP, and GUI discoverability.
     pub fn all() -> &'static [Self] {
@@ -270,6 +272,7 @@ impl UiIntentTarget {
     /// Parse stable shell spellings and common aliases.
     pub fn parse(raw: &str) -> Option<Self> {
         match raw.trim().to_ascii_lowercase().as_str() {
+            "gel-image-editor" | "gel_image_editor" => Some(Self::GelImageEditor),
             "open-sequence" | "open_sequence" | "sequence-file" | "sequence_file" => {
                 Some(Self::OpenSequence)
             }
@@ -331,6 +334,7 @@ impl UiIntentTarget {
     /// Stable machine-readable spelling used in shell output payloads.
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::GelImageEditor => "gel-image-editor",
             Self::OpenSequence => "open-sequence",
             Self::RecentProject => "recent-project",
             Self::TutorialProject => "tutorial-project",
@@ -354,6 +358,7 @@ impl UiIntentTarget {
     /// Stable human-facing title reused by UI-intent discovery surfaces.
     pub fn discoverability_title(self) -> &'static str {
         match self {
+            Self::GelImageEditor => "Gel Image Analysis",
             Self::OpenSequence => "Open Sequence",
             Self::RecentProject => "Open Recent Project",
             Self::TutorialProject => "Open Tutorial Project",
@@ -382,6 +387,9 @@ impl UiIntentTarget {
     /// Short discoverability copy for command palettes, agent helpers, and MCP.
     pub fn discoverability_detail(self) -> &'static str {
         match self {
+            Self::GelImageEditor => {
+                "Mark imported gel lanes and bands, confirm ladder sizes, and export measured results."
+            }
             Self::OpenSequence => "Open a FASTA, GenBank, EMBL, SnapGene, or XML sequence file.",
             Self::RecentProject => {
                 "Open one project from the GUI host's bounded recent-project list."
@@ -422,6 +430,7 @@ impl UiIntentTarget {
     /// Search keywords shared across UI-intent discoverability surfaces.
     pub fn discoverability_keywords(self) -> &'static str {
         match self {
+            Self::GelImageEditor => "gel image agarose western SDS ladder band sizing bp kDa",
             Self::OpenSequence => "open sequence import file fasta genbank snapgene embl xml",
             Self::RecentProject => "open recent previous saved project continue",
             Self::TutorialProject => "open tutorial example demo chapter project",
@@ -464,7 +473,7 @@ impl UiIntentTarget {
             | Self::AgentAssistant => "File",
             Self::Configuration => "Settings",
             Self::FeatureLocationEditor => "Edit",
-            Self::PcrDesign | Self::SequencingConfirmation => "Patterns",
+            Self::PcrDesign | Self::SequencingConfirmation | Self::GelImageEditor => "Patterns",
             Self::PreparedReferences
             | Self::PrepareReferenceGenome
             | Self::RetrieveGenomeSequence
@@ -482,7 +491,7 @@ impl UiIntentTarget {
         match self {
             Self::OpenSequence => &UI_INTENT_FILE_PICKER_ACTION_NAMES,
             Self::RecentProject | Self::TutorialProject => &UI_INTENT_OPEN_ACTION_NAMES,
-            Self::Configuration => &UI_INTENT_ACTION_NAMES,
+            Self::Configuration | Self::GelImageEditor => &UI_INTENT_ACTION_NAMES,
             Self::PreparedReferences
             | Self::PrepareReferenceGenome
             | Self::RetrieveGenomeSequence
@@ -504,7 +513,9 @@ impl UiIntentTarget {
         match self {
             Self::PreparedReferences => &UI_INTENT_OPTIONAL_ARGUMENTS_PREPARED_REFERENCES,
             Self::Configuration => &UI_INTENT_OPTIONAL_ARGUMENTS_CONFIGURATION,
-            Self::RecentProject | Self::TutorialProject => &UI_INTENT_OPTIONAL_ARGUMENTS_NONE,
+            Self::RecentProject | Self::TutorialProject | Self::GelImageEditor => {
+                &UI_INTENT_OPTIONAL_ARGUMENTS_NONE
+            }
             Self::FeatureLocationEditor | Self::SavedGenomicRegions => {
                 &UI_INTENT_OPTIONAL_ARGUMENTS_NONE
             }
@@ -518,7 +529,9 @@ impl UiIntentTarget {
             Self::PreparedReferences => &UI_INTENT_ARGUMENTS_PREPARED_REFERENCES,
             Self::RecentProject | Self::TutorialProject => &UI_INTENT_ARGUMENTS_ITEM_ID,
             Self::Configuration => &UI_INTENT_ARGUMENTS_CONFIGURATION,
-            Self::FeatureLocationEditor | Self::SavedGenomicRegions => &UI_INTENT_ARGUMENTS_NONE,
+            Self::FeatureLocationEditor | Self::SavedGenomicRegions | Self::GelImageEditor => {
+                &UI_INTENT_ARGUMENTS_NONE
+            }
             Self::OpenSequence
             | Self::PrepareReferenceGenome
             | Self::RetrieveGenomeSequence
@@ -681,7 +694,8 @@ mod tests {
 
     fn assert_exhaustive_target_match(target: UiIntentTarget) {
         match target {
-            UiIntentTarget::OpenSequence
+            UiIntentTarget::GelImageEditor
+            | UiIntentTarget::OpenSequence
             | UiIntentTarget::RecentProject
             | UiIntentTarget::TutorialProject
             | UiIntentTarget::Configuration
@@ -736,6 +750,7 @@ mod tests {
             UiIntentTarget::PrepareHelperGenome,
             UiIntentTarget::RetrieveHelperSequence,
             UiIntentTarget::BlastHelperSequence,
+            UiIntentTarget::GelImageEditor,
         ];
         assert_eq!(UiIntentTarget::COUNT, expected.len());
         assert_eq!(UiIntentTarget::all(), expected.as_slice());

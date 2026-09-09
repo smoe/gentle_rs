@@ -2898,6 +2898,7 @@ impl GENtleApp {
             UiIntentTarget::PcrDesign => self.open_pcr_design_dialog(),
             UiIntentTarget::SequencingConfirmation => self.open_sequencing_confirmation_dialog(),
             UiIntentTarget::AgentAssistant => self.open_agent_assistant_dialog(),
+            UiIntentTarget::GelImageEditor => self.open_gel_image_editor(),
             UiIntentTarget::PrepareHelperGenome => self.open_helper_genome_prepare_dialog(),
             UiIntentTarget::RetrieveHelperSequence => self.open_helper_genome_retrieve_dialog(),
             UiIntentTarget::BlastHelperSequence => self.open_helper_genome_blast_dialog(),
@@ -3098,6 +3099,11 @@ impl GENtleApp {
 
     fn apply_close_ui_intent_target(&mut self, target: UiIntentTarget) -> String {
         let was_open = match target {
+            UiIntentTarget::GelImageEditor => {
+                let was_open = self.gel_image_editor.open;
+                self.gel_image_editor.open = false;
+                was_open
+            }
             UiIntentTarget::OpenSequence => {
                 return "ui intent close 'open-sequence' is not applicable; use ui close sequence-window SEQ_ID for DNA viewers".to_string();
             }

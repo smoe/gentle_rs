@@ -6791,6 +6791,7 @@ fn assert_command_palette_ui_intent_side_effect(app: &GENtleApp, target: UiInten
         app.app_status
     );
     match target {
+        UiIntentTarget::GelImageEditor => assert!(app.gel_image_editor.open),
         UiIntentTarget::PrepareReferenceGenome => {
             assert!(app.show_reference_genome_prepare_dialog);
             assert_eq!(app.genome_dialog_scope, GenomeDialogScope::Reference);

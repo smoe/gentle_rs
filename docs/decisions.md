@@ -1014,3 +1014,14 @@ Reference/sample geometry uses one explicit image coordinate system and
 migration direction. Missing reference bands, absent registration, and values
 outside calibration must not become guessed measurements. A size match is not
 proof of molecular identity, specificity, concentration or biological function.
+
+Incomplete manual assignments are engine-owned, digest-bound **drafts**, separate
+from validated immutable reports. Persisting a draft is not a sizing claim; analysis
+must validate it again. GUI zoom/pan maps pixel centers, never thumbnail pixels.
+Heavy image work runs on detached snapshots; only the live host commits a current,
+uncanceled result. File exports remain explicit side effects and are not undone
+by closing the editor or switching projects.
+Draft-only undo checkpoints retain the draft store and journal, not a copy of
+unrelated DNA state; these edits advance mutation but not structural revision.
+Draft request allocations are shared across journal copies as well as project
+snapshots; the serialized contract remains ordinary self-contained JSON.

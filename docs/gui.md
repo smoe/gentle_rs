@@ -4,13 +4,19 @@ This page documents the current graphical interface of GENtle.
 
 ### Measured Gel Images (`.11` Development)
 
-The first measured-image sizing slice is accessible from the existing GUI Shell
-through `gel-image import`, `gel-image analyze`, `gel-image inspect` and
-`gel-image export`. See [the request guide](gel_image_analysis.md).
-This is not yet a point-and-click lane/band editor. Existing virtual gel previews
-remain simulations, not imported-image measurements. The dedicated image
-workspace, reviewed peak suggestions and its graphical acceptance are pending;
-none of this development is a `.10` release requirement.
+Open **Patterns -> Gel Image Analysis...**, the command palette, or
+`ui open gel-image-editor`. Import a PNG/JPEG or explicitly selected TIFF page 0,
+draw lane rectangles, enter known ladder sizes and click band centers. Select/move
+marks or correct their coordinates in the assignment editor. Zoom and scroll
+only change the view. Drafts are undoable project data and survive Save Project.
+**Analyze and save report** validates the assignments through the same engine as
+the CLI; changed assignments mark the old result as outdated and disable export
+until reanalysis. Results include a calibration plot and JSON/TSV/SVG exports.
+See [the walkthrough and limitations](gel_image_analysis.md#graphical-walkthrough).
+Image loading and analysis run in background workers; canceled or stale mutation
+results do not commit. Existing virtual gel previews remain simulations.
+Automatic detection, native responsiveness and real-gel acceptance remain pending;
+this development is not a `.10` release requirement.
 
 
 ## What To Trust Today

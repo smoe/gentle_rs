@@ -5437,6 +5437,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "RenderPoolGelSvg",
     "ImportGelImage",
     "AnalyzeGelImage",
+    "SaveGelImageDraft",
     "InspectGelImageAnalysis",
     "ExportGelImageAnalysis",
     "RenderProteinGelSvg",

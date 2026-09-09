@@ -3236,6 +3236,11 @@ pub enum Operation {
     AnalyzeGelImage {
         request: Box<gentle_protocol::gel_image::GelImageAnalysisRequest>,
     },
+    /// Save incomplete manual assignments without claiming a calibrated result.
+    SaveGelImageDraft {
+        /// Shared across history journals; JSON still contains an ordinary request.
+        request: std::sync::Arc<gentle_protocol::gel_image::GelImageAnalysisRequest>,
+    },
     InspectGelImageAnalysis {
         report_id: String,
     },
@@ -6328,6 +6333,7 @@ struct GenomeSequenceAnchor {
 enum EngineHistoryCheckpointKind {
     Full,
     DisplayOnly,
+    GelDraftsOnly,
 }
 
 #[derive(Debug, Clone)]
@@ -6342,6 +6348,12 @@ enum EngineHistoryCheckpoint {
         journal: Vec<OperationRecord>,
         op_counter: u64,
     },
+    GelDraftsOnly {
+        drafts:
+            BTreeMap<String, std::sync::Arc<gentle_protocol::gel_image::GelImageAnalysisRequest>>,
+        journal: Vec<OperationRecord>,
+        op_counter: u64,
+    },
 }
 
 impl EngineHistoryCheckpoint {
@@ -6349,12 +6361,15 @@ impl EngineHistoryCheckpoint {
         match self {
             Self::Full { .. } => EngineHistoryCheckpointKind::Full,
             Self::DisplayOnly { .. } => EngineHistoryCheckpointKind::DisplayOnly,
+            Self::GelDraftsOnly { .. } => EngineHistoryCheckpointKind::GelDraftsOnly,
         }
     }
 
     fn journal(&self) -> &[OperationRecord] {
         match self {
-            Self::Full { journal, .. } | Self::DisplayOnly { journal, .. } => journal,
+            Self::Full { journal, .. }
+            | Self::DisplayOnly { journal, .. }
+            | Self::GelDraftsOnly { journal, .. } => journal,
         }
     }
 }
@@ -7217,6 +7232,7 @@ impl GentleEngine {
                 EngineHistoryCheckpoint::DisplayOnly { display, .. } => {
                     *display = live_display.clone()
                 }
+                EngineHistoryCheckpoint::GelDraftsOnly { .. } => {}
             }
         }
         self.execution_revision = live.execution_revision.wrapping_add(1);
@@ -9807,11 +9823,25 @@ impl GentleEngine {
                 journal: self.journal.clone(),
                 op_counter: self.op_counter,
             },
+            EngineHistoryCheckpointKind::GelDraftsOnly => EngineHistoryCheckpoint::GelDraftsOnly {
+                drafts: self.state.gel_images.drafts.clone(),
+                journal: self.journal.clone(),
+                op_counter: self.op_counter,
+            },
         }
     }
 
     fn restore_history_checkpoint(&mut self, checkpoint: EngineHistoryCheckpoint) {
         match checkpoint {
+            EngineHistoryCheckpoint::GelDraftsOnly {
+                drafts,
+                journal,
+                op_counter,
+            } => {
+                self.state.gel_images.drafts = drafts;
+                self.journal = journal;
+                self.op_counter = op_counter;
+            }
             EngineHistoryCheckpoint::Full {
                 state,
                 journal,
@@ -9836,6 +9866,9 @@ impl GentleEngine {
     }
 
     fn operation_checkpoint_kind(op: &Operation) -> Option<EngineHistoryCheckpointKind> {
+        if matches!(op, Operation::SaveGelImageDraft { .. }) {
+            return Some(EngineHistoryCheckpointKind::GelDraftsOnly);
+        }
         if matches!(
             op,
             Operation::SaveFile { .. }
@@ -10004,7 +10037,10 @@ impl GentleEngine {
     ) {
         match checkpoint_kind {
             Some(EngineHistoryCheckpointKind::Full) => self.bump_structural_revision(),
-            Some(EngineHistoryCheckpointKind::DisplayOnly) => self.bump_mutation_revision(),
+            Some(
+                EngineHistoryCheckpointKind::DisplayOnly
+                | EngineHistoryCheckpointKind::GelDraftsOnly,
+            ) => self.bump_mutation_revision(),
             None => self.bump_execution_revision(),
         }
     }

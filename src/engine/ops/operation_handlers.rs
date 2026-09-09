@@ -40105,6 +40105,7 @@ impl GentleEngine {
         if matches!(
             &op,
             Operation::ImportGelImage { .. }
+                | Operation::SaveGelImageDraft { .. }
                 | Operation::AnalyzeGelImage { .. }
                 | Operation::InspectGelImageAnalysis { .. }
                 | Operation::ExportGelImageAnalysis { .. }
@@ -40181,6 +40182,7 @@ impl GentleEngine {
         } else {
             match op {
                 Operation::ImportGelImage { .. }
+                | Operation::SaveGelImageDraft { .. }
                 | Operation::AnalyzeGelImage { .. }
                 | Operation::InspectGelImageAnalysis { .. }
                 | Operation::ExportGelImageAnalysis { .. } => {

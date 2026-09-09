@@ -209,10 +209,13 @@ pub struct GelImageStore {
     pub images: BTreeMap<String, Arc<GelImageRecord>>,
     #[serde(default)]
     pub analyses: BTreeMap<String, Arc<GelImageAnalysisReport>>,
+    /// Incomplete manual assignments, not validated measurements. One draft per image.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub drafts: BTreeMap<String, Arc<GelImageAnalysisRequest>>,
 }
 
 impl GelImageStore {
     pub fn is_empty(&self) -> bool {
-        self.images.is_empty() && self.analyses.is_empty()
+        self.images.is_empty() && self.analyses.is_empty() && self.drafts.is_empty()
     }
 }

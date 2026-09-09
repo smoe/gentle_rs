@@ -170,6 +170,32 @@
   virtualized GUI and tutorial coverage repeat that these are structural design
   observations, not promoter activity or reporter sufficiency claims.
 
+## 2026-09-09 - `.11` development: manual measured-gel editor
+
+- Added Patterns -> Gel Image Analysis and the shared `ui open|focus|close
+  gel-image-editor` intent, including command-palette/window-list discovery.
+  Manual lane rectangles, ladder sizes, sample marks, band movement/correction,
+  zoom/scroll, calibration inspection and JSON/TSV/SVG export reuse the sizing
+  engine rather than a second GUI calibration algorithm.
+- Added digest-bound, incomplete `SaveGelImageDraft` assignments with Shell/MCP
+  parity and project save/reopen protection. Draft-only undo snapshots avoid
+  cloning unrelated DNA state or invalidating structural layout caches. Revised
+  measurements get new immutable report ids; stale displayed results cannot be
+  exported until reanalysis or explicitly reopening their saved assignments.
+- Image verification/preview generation, analysis and export run in workers.
+  The GUI commits only current, uncanceled mutation results; heavy discarded
+  snapshots are released off the UI thread. Closing the window preserves drafts;
+  pending exports remain explicit, non-undoable file writes.
+- Added a manual walkthrough and synthetic editor regressions for pixel-center
+  mapping, pointer interaction, assignment constraints, persistence/history,
+  stale/canceled results and idle-frame texture reuse. Native window performance,
+  real-gel accuracy, ladder catalogs and reviewed peak detection remain pending.
+  `.10` version and release gates are unchanged.
+- Verification: 25 gel/editor tests, six shared UI-intent catalog tests, four
+  existing engine-history regressions and one command-palette parity test passed.
+  `cargo check --locked --offline --features gui-test-support`, formatting and
+  whitespace checks passed. No whole-workspace or native GUI acceptance is claimed.
+
 ## 2026-09-09 - `.11` development: measured-gel sizing foundation
 
 - Added local PNG/JPEG/TIFF-page-zero import with unchanged original bytes,

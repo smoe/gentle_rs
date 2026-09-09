@@ -6,6 +6,12 @@
   image bytes plus a bounded display-only preview and returns `gel_image`.
 - `AnalyzeGelImage { request: GelImageAnalysisRequest }` stores a new immutable
   `gentle.gel_image_analysis.v1` report and returns `gel_image_analysis`.
+- `SaveGelImageDraft { request: GelImageAnalysisRequest }` replaces the image's
+  editable draft in `gel_images.drafts`, with ordinary project undo/redo. It
+  requires an existing image and matching digest, finite values and bounded
+  record counts/size, but deliberately permits incomplete calibration. It does
+  not produce a report or claim valid sizing. Empty `report_id` is allowed in a
+  draft; Analyze still requires a new nonempty report id and full validation.
 - `InspectGelImageAnalysis { report_id }` returns the saved report without
   decoding or mutating image data.
 - `ExportGelImageAnalysis { request: { report_id, path, format } }` revalidates

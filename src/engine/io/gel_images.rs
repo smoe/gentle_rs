@@ -39,6 +39,61 @@ impl GentleEngine {
         result: &mut OpResult,
     ) -> Result<(), EngineError> {
         match op {
+            Operation::SaveGelImageDraft { request } => {
+                let image = self
+                    .state
+                    .gel_images
+                    .images
+                    .get(&request.image_id)
+                    .ok_or_else(|| {
+                        EngineError::new(
+                            ErrorCode::NotFound,
+                            "Import the image before saving a draft",
+                        )
+                    })?;
+                if request.image_sha256 != image.descriptor.sha256 {
+                    return Err(EngineError::invalid_input(
+                        "Draft image digest does not match the imported original",
+                    ));
+                }
+                let point_finite = |p: GelImagePoint| p.x.is_finite() && p.y.is_finite();
+                if !request
+                    .lanes
+                    .iter()
+                    .all(|l| point_finite(l.min) && point_finite(l.max))
+                    || !request
+                        .ladder
+                        .bands
+                        .iter()
+                        .all(|b| point_finite(b.center) && b.size.is_finite())
+                    || !request.sample_bands.iter().all(|b| {
+                        point_finite(b.center)
+                            && b.position_half_width_px.is_none_or(f64::is_finite)
+                    })
+                {
+                    return Err(EngineError::invalid_input(
+                        "Draft coordinates and sizes must be finite",
+                    ));
+                }
+                // Drafts intentionally permit incomplete calibration, but remain bounded.
+                if request.lanes.len() > 256
+                    || request.ladder.bands.len() > 2048
+                    || request.sample_bands.len() > 2048
+                    || serde_json::to_vec(&request)
+                        .map_err(|e| EngineError::invalid_input(e.to_string()))?
+                        .len()
+                        > 2 * 1024 * 1024
+                {
+                    return Err(EngineError::invalid_input(
+                        "Gel draft exceeds the manual editor limits",
+                    ));
+                }
+                self.state
+                    .gel_images
+                    .drafts
+                    .insert(request.image_id.clone(), request);
+                result.messages.push("Saved unvalidated gel assignments in the project; analyze to obtain measurements".into());
+            }
             Operation::ImportGelImage { request } => {
                 if self.state.gel_images.images.contains_key(&request.image_id) {
                     return Err(EngineError::invalid_input(
