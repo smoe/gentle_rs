@@ -2,6 +2,12 @@
 
 ## 2026-09-09 - Promoterome preparation and ordered similarity inspection
 
+- Changed the macOS, Linux and Windows CI tutorial-check jobs to fetch full
+  Git history. Shallow history collapsed per-file change dates at `1be4d8b5`,
+  changing a stale-review feedback link and failing the generated README check.
+  The README stays tracked and strict drift checks remain enabled; no generated
+  files or review dates were changed. End-to-end confirmation awaits CI.
+
 - Fast-forwarded Glen's preparation commits `b5a10983` and `9864727b`, then
   the separate GUI/tutorial commit `7d5d860e`, preserving their original hashes.
   Preparation now accepts canonical region sets, captures verified Ensembl

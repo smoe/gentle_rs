@@ -110,6 +110,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          # Tutorial review badges use per-file Git history during drift checks.
+          fetch-depth: 0
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -248,6 +251,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          # Tutorial review badges use per-file Git history during drift checks.
+          fetch-depth: 0
 
       - name: Install Linux system dependencies
         run: |
@@ -415,6 +421,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          # Tutorial review badges use per-file Git history during drift checks.
+          fetch-depth: 0
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
