@@ -2,6 +2,13 @@
 
 ## 2026-09-09 - Promoterome preparation and ordered similarity inspection
 
+- Grouped `Help -> Tutorials` by the existing catalog topics instead of one
+  clipped list. Help and File tutorial menus now bound their size to the window,
+  wrap long titles, and support wheel/trackpad, scrollbar and edge-hover
+  scrolling. Tutorial selection, catalog order and project-opening behavior
+  are unchanged; headless GUI regressions exercise selection at the end of an
+  overflowing list in a small viewport.
+
 - Fixed TSS-local report integration: preparation checks selected reference
   geometry, transcript membership and sequence identity; both renderers require
   the bound locus JSON, and tall reports also require a predeclared, panel-matched

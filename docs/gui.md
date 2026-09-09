@@ -3768,6 +3768,11 @@ The `Help` menu now includes:
 - `Tutorials`: opens tutorial markdown docs in the same help window
   (`Topic` selector starts the second help-header row, ahead of search)
   - curated order now comes from `docs/tutorial/catalog.json` when available
+  - choose a topic group first, then its tutorial; catalog numbering and order
+    are preserved, including entries discovered without catalog metadata
+  - menus fit within the current window, with wrapped titles and scrollbars
+    for long lists. Scroll with the wheel/trackpad, drag the scrollbar, or hold
+    the pointer near the top/bottom of a list to scroll toward that end
   - falls back to recursive markdown discovery under `docs/tutorial/**` if the
     catalog is unavailable
 - on macOS, app menu `GENtle -> GENtle Help...` opens the same help window
@@ -5695,6 +5700,9 @@ Tutorial projects:
 - Chapters are grouped by tutorial content area using the derived decimal ids
   from `docs/tutorial/catalog.json` / `docs/tutorial/manifest.json`; tier and
   online status remain visible in hover text and labels.
+- Tutorial project and guided-walkthrough menus use the same window-bounded
+  scrolling as `Help -> Tutorials`, so later entries remain reachable in a
+  small window.
 - Generated tutorial project files are written under a process- and
   invocation-specific directory below the system temp directory
   (`.../gentle_tutorial_projects/process-PID-invocation-N`) and opened without
