@@ -1,21 +1,20 @@
 # TSS-local regulatory-feature similarity in the tall locus reports
 
-> **Historical publication; refresh required.** The retained figures and receipts
-> are from `49596e68`, not the subsequent renderer fixes. Review found mirrored
-> minus-strand query strips and overlapping CD44/SERPINE1 interpretation footers,
-> as well as missing checks binding selected TSS metadata and the source figures.
-> Their hashes are preserved; passing an integrity check does not validate the
-> old presentation. Regenerate from the original locus JSON/SVG and reference
-> inputs with the corrected preparation/comparison/rendering pipeline before
-> using these figures for interpretation. The new upper-genome TSS-stretch
-> references described below are not yet present in these historical files.
+> **Corrected replacement.** These retained reports were regenerated from exact
+> producer revision `ff44ebdec0ff46e3ea485cd3a36ef3d4c403b6f9`, above the
+> reviewed TSS-background renderer change `c6e34de3`. They replace, but do not
+> rewrite, the historical reports. The withdrawn `c91bf912` PDFs remain
+> non-mergeable because their chromosome-7-only adapter emptied the CD44 and
+> TGFB1 lanes.
 
-Glen withdrew the attempted refresh `c91bf912`; it is not merged. Its replay
-used a chromosome-7-only BigWig adapter, leaving all 12 CD44 and TGFB1
-CUT&RUN/H3K4me3 lanes empty. A replacement must use chromosome-general input
-conversion and verify all 12 lanes for each of CD44, TGFB1, and SERPINE1.
-Missing or incompatible intervals are not measured zero signal. The assembly
-alias validation finding also remains open for that replacement.
+The replacement uses the chromosome-general converter below and a separate
+validation receipt. All 12 requested CUT&RUN/H3K4me3 lanes are nonempty for
+each of CD44, TGFB1, and SERPINE1; their native BigWig chromosome overlaps,
+source hashes, assembly identifier, interval counts, and strand-aware local
+coordinates were checked. Missing or incompatible intervals are never treated
+as measured zero signal. The assembly check accepts only the independently
+declared `GRCh38` identifier, not words or numbers borrowed from the promoterome
+catalog label.
 
 This bundle extends the existing tall `CD44`, `TGFB1`, and `SERPINE1`
 promoter–reporter architecture reports. Their transcript models, proposed
@@ -63,6 +62,8 @@ of uniqueness.
 - `candidate_regions.{json,fa}`: 15 clipped Ensembl-feature intersections;
 - `selected_tss_candidate_regions.{json,fa}`: the seven TP73-supported source
   TSS windows;
+- `cutrun_lane_validation.json`: exact request/report/source bindings and the
+  nonempty per-lane interval counts for all 36 known input lanes;
 - `comparison.json`: corrected counting, cap audit, thresholds, and SHA-256
   bindings for the regenerable raw tables;
 - `feature_summary.tsv`, `top_matches.tsv`, and `interpretation.md`: conclusions

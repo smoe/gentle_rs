@@ -6,8 +6,8 @@
     "unique_promoter_window_count": 389722,
     "upstream_bp": 2000
   },
-  "candidate_metadata_path": "/home/clawbio/GENtle-private/tss-regulatory-integrated-f29c39c9-corrected/feature-candidates/candidate_regions.json",
-  "candidate_metadata_sha256": "sha256:9987b5992461ab05d4be6421760f31c250eee9b66d0a98d644d5c5c6d1f44e40",
+  "candidate_metadata_path": "/home/clawbio/GENtle-private/tss-regulatory-integrated-ff44ebde-replacement/feature-candidates/candidate_regions.json",
+  "candidate_metadata_sha256": "sha256:dd467f4d33d463b11e95f697b69361169a74e14cfce6cb2db1b06deee7ff129a",
   "commands": [
     {
       "command": [
@@ -15,7 +15,7 @@
         "-task",
         "blastn",
         "-query",
-        "/home/clawbio/GENtle-private/tss-regulatory-integrated-f29c39c9-corrected/feature-candidates/candidate_regions.fa",
+        "/home/clawbio/GENtle-private/tss-regulatory-integrated-ff44ebde-replacement/feature-candidates/candidate_regions.fa",
         "-db",
         "/home/clawbio/GENtle-private/promoter-comparison-20260908/human-grch38-ensembl116-promoterome/indexes/promoterome",
         "-dust",
@@ -29,9 +29,9 @@
         "-outfmt",
         "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore",
         "-out",
-        "/home/clawbio/GENtle-private/tss-regulatory-integrated-f29c39c9-corrected/feature-candidates/blastn-40bp-80pct/hits.blastn.tsv"
+        "/home/clawbio/GENtle-private/tss-regulatory-integrated-ff44ebde-replacement/feature-candidates/blastn-40bp-80pct/hits.blastn.tsv"
       ],
-      "elapsed_seconds": 59.605697,
+      "elapsed_seconds": 59.829699,
       "exit_code": 0,
       "label": "blast_blastn",
       "stderr_bytes": 0,
@@ -53,7 +53,7 @@
   "producer_sha256": "sha256:fed84390aa96a0090632bc66d2715524c05c48f8e79e12a84340710ca0153534",
   "promoterome_path": "/home/clawbio/GENtle-private/promoter-comparison-20260908/human-grch38-ensembl116-promoterome",
   "promoterome_receipt_sha256": "sha256:fe86c9adb0381e0f128fcf129ccc52a22ef7eaa0d9035e2b6c51f61f17dfafc5",
-  "query_fasta_path": "/home/clawbio/GENtle-private/tss-regulatory-integrated-f29c39c9-corrected/feature-candidates/candidate_regions.fa",
+  "query_fasta_path": "/home/clawbio/GENtle-private/tss-regulatory-integrated-ff44ebde-replacement/feature-candidates/candidate_regions.fa",
   "query_fasta_sha256": "sha256:773ecc39b22e22be8be944b4a82997b819347481ee546812bc45d90025946f8b",
   "schema": "gentle.candidate_promoterome_comparison.v1",
   "search_policy": {

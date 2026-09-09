@@ -598,6 +598,29 @@ class RetainedBundleTests(unittest.TestCase):
             self.assertEqual(row["counts_are_lower_bounds"],
                              row["target_cap_reached"] or row["hsp_cap_reached"])
 
+    def test_retained_reports_have_validated_nonempty_cutrun_lanes(self) -> None:
+        validation = json.loads((BUNDLE / "cutrun_lane_validation.json").read_text())
+        self.assertEqual(validation["schema"],
+                         "gentle.tp73_locus_cutrun_lane_validation.v1")
+        self.assertEqual(validation["assembly_id"], "GRCh38")
+        self.assertEqual(validation["total_lane_count"], 36)
+        self.assertGreater(validation["total_rendered_interval_count"], 0)
+        self.assertEqual({row["gene"] for row in validation["genes"]},
+                         {"CD44", "TGFB1", "SERPINE1"})
+        for row in validation["genes"]:
+            self.assertEqual(row["lane_count"], 12)
+            self.assertGreater(row["rendered_interval_count"], 0)
+            self.assertEqual(len(row["lanes"]), 12)
+            for lane in row["lanes"]:
+                self.assertEqual(lane["source_assembly"], "GRCh38")
+                self.assertGreater(lane["source_overlapping_interval_count"], 0)
+                self.assertGreater(lane["rendered_interval_count"], 0)
+                self.assertRegex(lane["source_sha256"], r"^sha256:[0-9a-f]{64}$")
+            stem = f'{row["gene"]}_luciferase_planning_EnsemblReg_15TF_with_TSS_similarity.svg'
+            svg = (BUNDLE / stem).read_text()
+            self.assertEqual(svg.count('data-gentle-occupancy-state="available"'), 12)
+            self.assertNotIn('data-gentle-occupancy-state="no_compatible_interval"', svg)
+
     def test_tall_reports_place_similarity_before_original_footer(self) -> None:
         for gene in ("CD44", "TGFB1", "SERPINE1"):
             svg = (BUNDLE / f"{gene}_luciferase_planning_EnsemblReg_15TF_with_TSS_similarity.svg").read_text()

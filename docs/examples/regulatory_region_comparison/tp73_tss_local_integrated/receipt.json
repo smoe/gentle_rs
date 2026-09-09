@@ -1,33 +1,33 @@
 {
-  "candidate_source_revision": "f29c39c984940ce9b5f1677f9b23e52acbc3aeb9",
+  "candidate_source_revision": "ff44ebdec0ff46e3ea485cd3a36ef3d4c403b6f9",
   "counting_policy_id": "exclude_overlapping_or_shared_gene_windows.v1",
   "inputs": {
-    "candidates": "sha256:9987b5992461ab05d4be6421760f31c250eee9b66d0a98d644d5c5c6d1f44e40",
-    "comparison": "sha256:b2b3c070ad7be11c78b18d2fcff4a5effacb8f249e13293aea8e2e873b286913",
+    "candidates": "sha256:dd467f4d33d463b11e95f697b69361169a74e14cfce6cb2db1b06deee7ff129a",
+    "comparison": "sha256:fc536f4fa009eaf9408683bb7ace9d9eafc631d8f4d0feac5238702c4b54bdf8",
     "hits": "sha256:82893309f45ac78b14c209f432a2f75eb8ccc0edd445d88698f4ce3e2e16fa81",
     "locus_reports": {
-      "CD44_luciferase_planning_EnsemblReg_15TF.report.json": "sha256:0376b6fbf6b227023aa7c4b093a0d05923ad1d0f21cfb8d9104a14f64c2c8dcd",
-      "SERPINE1_luciferase_planning_EnsemblReg_15TF.report.json": "sha256:ab8dcf3d867dfff6847e02375330ab5c23d876e3d55926cf69af61edf0a736eb",
-      "TGFB1_luciferase_planning_EnsemblReg_15TF.report.json": "sha256:86312b1460158a4d510e06104bd676b1cc424939032f7be1152e459e9e73b872"
+      "CD44": "sha256:abe3ec89167b2b76cdd427f7d6aa3119f9d6a21aaf2dbf0fe3dfd5bb19a0f8f9",
+      "SERPINE1": "sha256:92ab879c99b226377ee8eb2b7e3260d410e3311f6c775bda3f017f15d69bca89",
+      "TGFB1": "sha256:2b9ee083a1b037f7b55dfddda3f73bb3fc54a1839a84953db6a4cec98e0525a9"
     },
     "matches": "sha256:96e4d4dd71624acf1878100d684a1f1988fe337812b920342d53505bd6c56536"
   },
   "non_claim": "Similarity, predicted TFBS and CUT&RUN enrichment do not prove reporter sufficiency or direct regulation.",
   "outputs": {
-    "CD44_TGFB1_SERPINE1_tss_local_integrated.pdf": "sha256:2d65f6d4156fc7adfefa845811c9b28a2511eb96908dae829186c1a7836a2a15",
-    "CD44_tss_local_integrated.pdf": "sha256:4aec5c5b9d4ff12a1eaac0f9da6160a13a9212cb160075e3c866bd56d23f5227",
-    "CD44_tss_stretch_1.png": "sha256:f53ed6868e1fe73624af3a3b8dccb800817ad25844f74c40af81fa7a62d0ef9e",
-    "SERPINE1_tss_local_integrated.pdf": "sha256:63a73c2c502a8be115b7299f106b37d523dcd57fa30ba88fc6d82bfd8f9c4c85",
-    "SERPINE1_tss_stretch_1.png": "sha256:2fe5df1214fd445dc50099c07af41da5122670b976e642b7221e809de7660ca6",
-    "SERPINE1_tss_stretch_2.png": "sha256:13ee3654bdd3dd4f3e42a1868f4d6b468956463325f875c0ddd8004c8a9ec96b",
-    "TGFB1_tss_local_integrated.pdf": "sha256:5c59574b45d6a063fa8415b56a042632a5e009ed467c67442738ea440a5559a5",
-    "TGFB1_tss_stretch_1.png": "sha256:4e44e48e353c7e160f197c9dab0b55301a8a731d2648bea2ba4e7555139ff034",
+    "CD44_TGFB1_SERPINE1_tss_local_integrated.pdf": "sha256:60754f073fedbd21ab17585b18b2128546ff30ac93322c83b5e1554f44464512",
+    "CD44_tss_local_integrated.pdf": "sha256:789f570b1aa61b54ae71980bd7a9383e389c9b3b885eb61d881c53699a8d11de",
+    "CD44_tss_stretch_1.png": "sha256:e5a013ce16dccab718b48617b8b27fc8576a8b8bbc36dd0f0751a780c79487c9",
+    "SERPINE1_tss_local_integrated.pdf": "sha256:e3aa84a0715accab6863cbe90c227b98966ab680412b7a0f6ee903c0bd2c82d3",
+    "SERPINE1_tss_stretch_1.png": "sha256:027b5b2d5cea72c5efe1ba2318a9a657145d4dae333a5220252a98e78d7f3137",
+    "SERPINE1_tss_stretch_2.png": "sha256:c5da4be43a5e47b082af25e557c117437c6aabd3086c22d7f62f71b83d3a0125",
+    "TGFB1_tss_local_integrated.pdf": "sha256:d6c47c9e31bac67e3e48cb9e0513823940bca48bf53f283e31e4d04c57a0117e",
+    "TGFB1_tss_stretch_1.png": "sha256:a0bfc4b0c5b7762ebe2d60c9893d087c70be827a8d38baffacf91570d48d533c",
     "feature_summary.tsv": "sha256:46c61c8a3582646c69b0c546141b4c8f005e079b4ef5281e09fa087b46df5817",
     "interpretation.md": "sha256:2e5455f5072e5ebb71d4c6a41f675a9241c03854849e720ca7fb94963974c4a0",
     "top_matches.tsv": "sha256:42fd235333070e8d9d6144a206697284057424ff5be1ea3eb85948791f25fa09"
   },
-  "renderer_revision": "e980868109fc91ff99d2800dbeba65af7fd9b519",
-  "renderer_sha256": "sha256:48762e64e3a1a83ff4100c683989568e360f0ed807ac3944ac41bcaaf0da2bbb",
+  "renderer_revision": "ff44ebdec0ff46e3ea485cd3a36ef3d4c403b6f9",
+  "renderer_sha256": "sha256:3eb4649f9b675d987460684c89dece94245c063453334dfcc8df034ac13c7634",
   "schema": "gentle.tss_local_integrated_regulatory_report_receipt.v1",
   "search_limit_status": {
     "CD44_CD44_tss_stretch_1_ENSR00001659002": {
@@ -106,7 +106,7 @@
       "target_cap_reached": false
     }
   },
-  "source_revision": "f29c39c984940ce9b5f1677f9b23e52acbc3aeb9",
+  "source_revision": "ff44ebdec0ff46e3ea485cd3a36ef3d4c403b6f9",
   "thresholds": {
     "max_evalue": 1e-05,
     "max_hsps_per_target": 10,
