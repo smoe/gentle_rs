@@ -13,6 +13,7 @@ pub const WINDOW_SEQUENCE_TOOLS: &str = "window.sequence_tools";
 pub const DNA_BRANCH: &str = "dna.sequence.branch";
 pub const DNA_REVCOMP: &str = "dna.sequence.reverse_complement";
 pub const DNA_OPEN_TOOLS: &str = "dna.sequence.open_tools";
+pub const DNA_OPEN_REGIONS: &str = "dna.sequence.open_regions";
 pub const TOOLS_CLONING: &str = "sequence_tools.cloning";
 pub const TOOLS_DIGEST_PREFIX: &str = "sequence_tools.digest.prefix";
 pub const TOOLS_DIGEST_RUN: &str = "sequence_tools.digest.run";
@@ -55,6 +56,8 @@ pub const REGION_CONSERVATION_EXPORT_JSON: &str = "region_conservation.export_js
 pub const REGION_CONSERVATION_EXPORT_SVG: &str = "region_conservation.export_svg";
 pub const REGION_CONSERVATION_SAVE_BLOCK: &str = "region_conservation.save_selected_block";
 pub const REGION_CONSERVATION_ASSESS_MODULES: &str = "region_conservation.assess_modules";
+pub const REGION_CONSERVATION_SEARCH_REQUEST: &str = "region_conservation.search_request";
+pub const REGION_CONSERVATION_SEARCH_FIELDS: &str = "region_conservation.search_fields";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TutorialGuiInteractionKind {
@@ -139,6 +142,13 @@ pub const TUTORIAL_GUI_CONTROLS: &[TutorialGuiControlSpec] = &[
         semantic_id: DNA_OPEN_TOOLS,
         window_id: WINDOW_DNA_VIEWER,
         authority: TutorialGuiControlAuthority::ProjectMetadata,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: DNA_OPEN_REGIONS,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::ViewState,
         allowed_interactions: CLICK,
         text_policy: None,
     },
@@ -455,6 +465,20 @@ pub const TUTORIAL_GUI_CONTROLS: &[TutorialGuiControlSpec] = &[
         window_id: WINDOW_REGION_CONSERVATION,
         authority: TutorialGuiControlAuthority::ViewState,
         allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: REGION_CONSERVATION_SEARCH_REQUEST,
+        window_id: WINDOW_REGION_CONSERVATION,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: REGION_CONSERVATION_SEARCH_FIELDS,
+        window_id: WINDOW_REGION_CONSERVATION,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: SCROLL,
         text_policy: None,
     },
 ];

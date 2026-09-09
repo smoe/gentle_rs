@@ -402,6 +402,14 @@ green scientific result. At runtime the eventual external runner must repeat
 those checks around each scientific effect and save whenever a
 project-persisting step leaves `main.project.save_state` unsaved.
 
+An explicitly declared `view_only: true` contract has the complementary
+invariant: its completion condition is already `Satisfied` in both starter and
+oracle, every step has view-state authority, and no step may persist project or
+scientific state. This supports provenance-bound navigation and parameter-review
+tutorials without dressing “the window opened” up as a scientific result. The
+runner repeats the satisfied invariant after the final interaction to prove
+that inspection did not replace or remove the bound project content.
+
 Text entry uses `replace_text`, never implicit append semantics. The catalog
 currently permits it only for selection formulas and bounded identifiers, with
 format validation appropriate to each target. Report verifiers reject vacuous

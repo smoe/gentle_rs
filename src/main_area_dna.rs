@@ -6792,11 +6792,15 @@ impl MainAreaDna {
                     self.save_engine_ops_state();
                 }
             }
-            if ui
+            let regions = ui
                 .button("Regions...")
-                .on_hover_text("Save, inspect, copy, and export assembly-bound genomic regions")
-                .clicked()
-            {
+                .on_hover_text("Save, inspect, copy, and export assembly-bound genomic regions");
+            self.register_tutorial_control(
+                &regions,
+                crate::tutorial_gui_semantics::DNA_OPEN_REGIONS,
+                crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER,
+            );
+            if regions.clicked() {
                 self.open_genomic_region_manager(None);
             }
         });

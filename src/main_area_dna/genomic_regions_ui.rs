@@ -1702,10 +1702,10 @@ impl MainAreaDna {
                 }
             });
             ui.add_enabled_ui(!running, |ui| {
-                egui::CollapsingHeader::new("Search request")
+                let _request_header = egui::CollapsingHeader::new("Search request")
                     .id_salt("conservation_request")
                     .show(ui, |ui| {
-                        egui::ScrollArea::vertical()
+                        let _fields = egui::ScrollArea::vertical()
                             .id_salt("conservation_request_fields")
                             .max_height(300.0)
                             .show(ui, |ui| {
@@ -1714,7 +1714,29 @@ impl MainAreaDna {
                                     &mut self.genomic_region_conservation_request,
                                 );
                             });
+                        #[cfg(feature = "gui-test-support")]
+                        crate::gui_test_support::register_rect(
+                            ui.ctx().clone(),
+                            crate::tutorial_gui_semantics::REGION_CONSERVATION_SEARCH_FIELDS,
+                            crate::tutorial_gui_semantics::WINDOW_REGION_CONSERVATION,
+                            Some(&_subject_scope),
+                            crate::gui_test_support::GuiTestWidgetKind::Row,
+                            _fields.inner_rect,
+                            _fields.inner_rect.is_positive(),
+                            true,
+                            false,
+                            None,
+                        );
                     });
+                #[cfg(feature = "gui-test-support")]
+                crate::gui_test_support::register_response(
+                    &_request_header.header_response,
+                    crate::tutorial_gui_semantics::REGION_CONSERVATION_SEARCH_REQUEST,
+                    crate::tutorial_gui_semantics::WINDOW_REGION_CONSERVATION,
+                    Some(&_subject_scope),
+                    crate::gui_test_support::GuiTestWidgetKind::Button,
+                    false,
+                );
             });
             if !self.genomic_region_conservation_status.trim().is_empty() {
                 let _status = ui.small(&self.genomic_region_conservation_status);
