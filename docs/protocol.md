@@ -1476,6 +1476,22 @@ Implemented first-class operation on top of that operand:
   - `enzymes=[]` means:
     - use the current shared preferred restriction-enzyme list
     - if that list is empty, fall back to the default preferred enzyme set
+  - recognition scans both motif orientations, case-insensitively, including
+    IUPAC recognition codes; palindromic motifs are emitted once. A template
+    ambiguity is a definite match only when every represented base is permitted
+    by the motif. Unknown template bases do not establish a specific match;
+    absence of definite hits on ambiguous DNA is not proof of biological absence.
+  - `max_sites_per_enzyme` counts both orientations and excludes the entire
+    enzyme when exceeded, with the existing explicit skipped-enzyme disclosure.
+  - full circular scans retain origin-crossing motifs. Their recognition and
+    opening intervals are unrolled: an end above `scan_length_bp` denotes an
+    origin crossing, not a longer molecule. Cut coordinates are top/bottom
+    reference-strand coordinates, mirrored for reverse-oriented recognition.
+  - cut geometry follows the active catalog. Type-IIS offsets may fall outside
+    the motif; when a cut cannot fit on a linear operand, geometry is `null`,
+    never fabricated at the recognition start. Digests skip such uncleavable
+    matches. These are recognition/geometry predictions, not an audit of
+    catalog accuracy, methylation sensitivity, or reaction conditions.
 - `ScanTfbsHits { target, motifs, min_llr_bits?, min_llr_quantile?, per_tf_thresholds?, max_hits?, path? }`
   - purpose:
     - non-mutating thresholded JASPAR/IUPAC hit scan directly on one operand

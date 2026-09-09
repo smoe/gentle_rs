@@ -84,7 +84,7 @@ Pre-release finishing scope:
 1. Have Glen recheck three introductory GUI chapters plus promoter-similarity navigation and
    TATA evidence review/materialization at the merged SHA, retaining outcomes/screenshots.
 2. Run the `.10` ledger: locked tests, script build/entrypoints, tutorial/parity, IRF9/Q00978,
-   benchmarks and TP73/PATZ1 TFBS/reporter/CUT&RUN/locus proofs with exact JASPAR 2026 PFMs.
+   benchmarks, circular ORF/feature regressions and TP73/PATZ1 TFBS/reporter/CUT&RUN/locus proofs with exact JASPAR 2026 PFMs.
 3. Run [build-only CI packaging](release.md#build-only-candidate-verification) at the same SHA; retain receipts before approval.
 4. Have Glen refresh the `a5b01843` lane-validation receipt using native interval/score comparison and catalog-bound assembly checks against original inputs; preserve the verified figures unless those checks expose a mismatch.
    Validate the [candidate-first view and peak-centred follow-up](cofactor_candidate_interface_plan.md); keep offline-safe regeneration, live Conservation/partner-evidence proof and ClawBio compatibility pending removal review.
@@ -322,10 +322,10 @@ wet-lab conclusions or unconfirmed mutations.
 - Optional tiny generation probe for quota verification.
 - Implement the opt-in native-Mistral inner-agent conformance routine described
   in `docs/testing.md`; self-skip unless `MISTRAL_API_KEY` is supplied.
-- Supplemental restriction-enzyme usage annotations beyond REBASE.
+- Audit restriction-catalog cut offsets (especially Type IIS) and extend usage annotations beyond REBASE; recheck older cloning absence/uniqueness claims before laboratory use.
 - Floating restriction-site detail popover/window if the Description panel is
   too easy to miss.
-- SnapGene-style plasmid-map presentation parity and dense selected-site polish.
+- Audit general linear-SVG feature clipping (inclusive-end helper versus half-open feature bounds); retain broader plasmid-map presentation parity and dense selected-site polish.
 - Engine-owned portable findings/artifact inspection for agent-driven work.
 - Engine-owned exhaustive operation-effect metadata so new filesystem-writing
   operations cannot bypass rollback-safety classification or provenance path

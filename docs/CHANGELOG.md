@@ -34,6 +34,48 @@
   and per-locus 12-lane acceptance remain with Glen; no scientific figures or
   receipts were regenerated locally.
 
+- Corrected circular ORF discovery on the reverse strand and codons split by
+  the origin; all six frames now retain boundary starts/stops and deterministic
+  ordering, with no second-lap predictions. Activated the previously disabled
+  reverse test and added exhaustive synthetic rotations. Shared span conversion
+  keeps GUI and SVG ORF overlays on the correct arc, including linear views of
+  circular molecules and full-lap SVGs. Circular feature bounds retain terminal
+  bases and adjacent segments; hover labels explicitly use 1-based coordinates.
+  ORF record fields, frame labels and the existing minimum threshold remain
+  compatible. Historical overlays are not retroactively reanalysed, and these
+  predictions do not replace annotated CDSs or establish translation.
+
+- Corrected restriction recognition: genuine IUPAC reverse complements,
+  content-derived palindrome checks, both-strand matching and origin-crossing
+  circular hits. Ambiguous template bases must be fully permitted by the motif;
+  unknown bases are not treated as confirmed specific matches. Shared scans,
+  map/unique-site inventories and digest geometry now retain reverse hits.
+  Out-of-molecule cuts remain recognition-only rather than causing a digest
+  panic or fabricated cut coordinates. Existing enzyme catalog values are
+  unchanged; earlier restriction-derived absence/uniqueness claims should be
+  rechecked for nonpalindromic or degenerate motifs before wet-lab use.
+
+- Clarified the prepared-reference import window's whole-gene versus CDS-span
+  modes: the optional upstream flank is measured from the coding start, not
+  the transcription start. Visible, wrapped explanations distinguish explicit
+  coordinate extraction (no automatic flank), potentially misleading output
+  names, and viewer-local positions. New copy is localised in all eight
+  catalogs; extraction behavior and API options are unchanged.
+
+- Added `Zoom to selection` and `Go to selection` to the DNA viewer navigation
+  row and map context menu, including off-screen, formula-entered selections.
+  Navigation preserves the selection and scientific project state. Toolbar
+  controls wrap at the window width, with bounded vertical scrolling to keep
+  the map accessible; coordinate fields synchronise to the newly applied view.
+  Both actions are localised in all eight language catalogs.
+
+- Grouped `Help -> Tutorials` by the existing catalog topics instead of one
+  clipped list. Help and File tutorial menus now bound their size to the window,
+  wrap long titles, and support wheel/trackpad, scrollbar and edge-hover
+  scrolling. Tutorial selection, catalog order and project-opening behavior
+  are unchanged; headless GUI regressions exercise selection at the end of an
+  overflowing list in a small viewport.
+
 - Fixed TSS-local report integration: preparation checks selected reference
   geometry, transcript membership and sequence identity; both renderers require
   the bound locus JSON, and tall reports also require a predeclared, panel-matched

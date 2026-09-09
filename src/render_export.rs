@@ -1273,7 +1273,9 @@ fn orf_bounds_in_viewport(
     sequence_length: usize,
     viewport: LinearExportViewport,
 ) -> Option<(usize, usize)> {
-    clip_linear_bounds_to_viewport(from, to, sequence_length, viewport)
+    let start = from.max(viewport.start_bp);
+    let end = to.min(sequence_length).min(viewport.end_bp_exclusive);
+    (start < end).then_some((start, end))
 }
 
 fn collect_features(
@@ -1954,48 +1956,53 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
 
     if display.show_open_reading_frames {
         for orf in dna.open_reading_frames() {
-            let start = (orf.from().min(orf.to())).max(0) as usize;
-            let end = (orf.from().max(orf.to())).max(0) as usize;
-            let Some((view_start, view_end)) = orf_bounds_in_viewport(start, end, len, viewport)
-            else {
-                continue;
-            };
-            let x1 = absolute_bp_to_view_x(view_start, viewport, left, right);
-            let x2 = absolute_bp_to_view_x(view_end, viewport, left, right).max(x1 + 1.0);
-            let level = (orf.frame().unsigned_abs()) as f32;
-            let y = if orf.is_reverse() {
-                baseline + 10.0 + 7.0 * level
-            } else {
-                baseline - 10.0 - 7.0 * level
-            };
-            let color = match orf.frame() {
-                -1 => "#ff7777",
-                -2 => "#77cc77",
-                -3 => "#7777ff",
-                1 => "#8b0000",
-                2 => "#006400",
-                3 => "#00008b",
-                _ => "#444444",
-            };
-            doc = doc.add(
-                Rectangle::new()
-                    .set("x", x1)
-                    .set("y", y - 2.5)
-                    .set("width", x2 - x1)
-                    .set("height", 5.0)
-                    .set("fill", color),
-            );
-            let label = format!("ORF {}", orf.frame());
-            if (x2 - x1) >= estimate_text_width(&label) + 6.0 {
-                labels.push(
-                    Text::new(label)
-                        .set("x", (x1 + x2) / 2.0)
-                        .set("y", y + 3.0)
-                        .set("text-anchor", "middle")
-                        .set("font-family", "monospace")
-                        .set("font-size", 8)
-                        .set("fill", "#111111"),
+            for (start, end) in orf.spans_0based(len) {
+                let Some((view_start, view_end)) =
+                    orf_bounds_in_viewport(start, end, len, viewport)
+                else {
+                    continue;
+                };
+                let x1 = absolute_bp_to_view_x(view_start, viewport, left, right);
+                let x2 = absolute_bp_to_view_x(view_end, viewport, left, right).max(x1 + 1.0);
+                let level = (orf.frame().unsigned_abs()) as f32;
+                let y = if orf.is_reverse() {
+                    baseline + 10.0 + 7.0 * level
+                } else {
+                    baseline - 10.0 - 7.0 * level
+                };
+                let color = match orf.frame() {
+                    -1 => "#ff7777",
+                    -2 => "#77cc77",
+                    -3 => "#7777ff",
+                    1 => "#8b0000",
+                    2 => "#006400",
+                    3 => "#00008b",
+                    _ => "#444444",
+                };
+                doc = doc.add(
+                    Rectangle::new()
+                        .set("x", x1)
+                        .set("y", y - 2.5)
+                        .set("width", x2 - x1)
+                        .set("height", 5.0)
+                        .set("data-gentle-role", "orf")
+                        .set("data-start-0based", view_start)
+                        .set("data-end-0based-exclusive", view_end)
+                        .set("data-frame", orf.frame())
+                        .set("fill", color),
                 );
+                let label = format!("ORF {}", orf.frame());
+                if (x2 - x1) >= estimate_text_width(&label) + 6.0 {
+                    labels.push(
+                        Text::new(label)
+                            .set("x", (x1 + x2) / 2.0)
+                            .set("y", y + 3.0)
+                            .set("text-anchor", "middle")
+                            .set("font-family", "monospace")
+                            .set("font-size", 8)
+                            .set("fill", "#111111"),
+                    );
+                }
             }
         }
     }
@@ -3122,8 +3129,9 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
 
     if display.show_open_reading_frames {
         for orf in dna.open_reading_frames() {
-            let start = (orf.from().min(orf.to())).max(0) as usize;
-            let end = (orf.from().max(orf.to())).max(0) as usize;
+            let Some((start, end)) = orf.unrolled_bounds_0based(len) else {
+                continue;
+            };
             let frame = orf.frame().unsigned_abs() as f32;
             let rr = if orf.is_reverse() {
                 r * (0.92 - 0.03 * frame)
@@ -3139,14 +3147,26 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                 3 => "#00008b",
                 _ => "#444444",
             };
-            if let Some(path_d) = circular_arc_path(start, end, len, cx, cy, rr) {
-                doc = doc.add(
-                    Path::new()
-                        .set("d", path_d)
-                        .set("fill", "none")
-                        .set("stroke", color)
-                        .set("stroke-width", 2),
-                );
+            // SVG needs two arcs for a full lap whose endpoints coincide.
+            let parts = if end - start == len {
+                [Some((start, start + len / 2)), Some((start + len / 2, end))]
+            } else {
+                [Some((start, end)), None]
+            };
+            for (part_start, part_end) in parts.into_iter().flatten() {
+                if let Some(path_d) = circular_arc_path(part_start, part_end, len, cx, cy, rr) {
+                    doc = doc.add(
+                        Path::new()
+                            .set("d", path_d)
+                            .set("data-gentle-role", "orf")
+                            .set("data-start-0based", start)
+                            .set("data-end-0based-exclusive", end)
+                            .set("data-frame", orf.frame())
+                            .set("fill", "none")
+                            .set("stroke", color)
+                            .set("stroke-width", 2),
+                    );
+                }
             }
         }
     }
@@ -3216,6 +3236,75 @@ mod tests {
     use gb_io::seq::Location;
     #[cfg(feature = "snapshot-tests")]
     use std::fs;
+
+    #[test]
+    fn circular_orf_svg_and_linear_projection_keep_origin_crossings() {
+        let mut sequence = format!("ATG{}TAACCCCCC", "CCC".repeat(105)).into_bytes();
+        sequence.rotate_left(10);
+        for reverse in [false, true] {
+            let sequence: String = if reverse {
+                sequence
+                    .iter()
+                    .rev()
+                    .map(|base| match base {
+                        b'A' => 'T',
+                        b'T' => 'A',
+                        b'C' => 'G',
+                        b'G' => 'C',
+                        _ => 'N',
+                    })
+                    .collect()
+            } else {
+                String::from_utf8(sequence.clone()).expect("ASCII fixture")
+            };
+            let mut dna = DNAsequence::from_sequence(&sequence).expect("synthetic DNA");
+            dna.set_circular(true);
+            dna.update_computed_features();
+            assert_eq!(dna.open_reading_frames().len(), 1);
+            let display = DisplaySettings {
+                show_open_reading_frames: true,
+                ..Default::default()
+            };
+            let before = dna.forward_bytes().to_vec();
+            let svg = export_circular_svg(&dna, &display);
+            let rows: Vec<_> = svg
+                .lines()
+                .filter(|line| line.contains("data-gentle-role=\"orf\""))
+                .collect();
+            assert_eq!(rows.len(), 1);
+            let (start, end) = if reverse { (16, 337) } else { (317, 638) };
+            assert!(rows[0].contains(&format!("data-start-0based=\"{start}\"")));
+            assert!(rows[0].contains(&format!("data-end-0based-exclusive=\"{end}\"")));
+            let linear = export_linear_svg(&dna, &display);
+            let rows: Vec<_> = linear
+                .lines()
+                .filter(|line| line.contains("data-gentle-role=\"orf\""))
+                .collect();
+            assert_eq!(rows.len(), 2);
+            assert!(rows[0].contains(&format!("data-start-0based=\"{start}\"")));
+            assert!(rows[0].contains("data-end-0based-exclusive=\"327\""));
+            assert!(rows[1].contains("data-start-0based=\"0\""));
+            assert!(rows[1].contains(&format!("data-end-0based-exclusive=\"{}\"", end - 327)));
+            assert_eq!(dna.forward_bytes(), before.as_slice());
+            assert_eq!(export_circular_svg(&dna, &display), svg);
+        }
+    }
+
+    #[test]
+    fn circular_orf_svg_renders_a_full_lap_as_two_arcs() {
+        let mut dna = DNAsequence::from_sequence(&format!("ATG{}TAA", "CCC".repeat(105)))
+            .expect("synthetic DNA");
+        dna.set_circular(true);
+        dna.update_computed_features();
+        let svg = export_circular_svg(
+            &dna,
+            &DisplaySettings {
+                show_open_reading_frames: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(svg.matches("data-gentle-role=\"orf\"").count(), 2);
+    }
 
     fn push_tfbs_feature(
         dna: &mut DNAsequence,

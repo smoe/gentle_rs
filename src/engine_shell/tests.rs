@@ -20049,6 +20049,23 @@ fn execute_features_restriction_scan_matches_inline_and_stored_sequence_targets(
 }
 
 #[test]
+fn execute_restriction_scan_retains_reverse_and_circular_hits() {
+    let mut engine = GentleEngine::default();
+    for (sequence, topology, start, end) in
+        [("GAGACC", "linear", 0, 6), ("ACCAAGAG", "circular", 5, 11)]
+    {
+        let command = parse_shell_line(&format!("features restriction-scan --sequence-text {sequence} --topology {topology} --enzyme Eco31")).unwrap();
+        let result = execute_shell_command(&mut engine, &command).unwrap();
+        assert!(!result.state_changed);
+        let report = &result.output["report"];
+        assert_eq!(report["matched_site_count"], 1);
+        assert_eq!(report["rows"][0]["forward_strand"], false);
+        assert_eq!(report["rows"][0]["recognition_start_0based"], start);
+        assert_eq!(report["rows"][0]["recognition_end_0based_exclusive"], end);
+    }
+}
+
+#[test]
 fn execute_collection_restriction_scan_returns_wrapper_owned_child_reports() {
     let mut state = ProjectState::default();
     state.sequences.insert(

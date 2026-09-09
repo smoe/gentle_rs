@@ -106,8 +106,8 @@ impl MainAreaDna {
         ui.vertical(|ui| {
             ui.label(Self::tr("sequence.selection_formula"))
                 .on_hover_text("Set map/text selection from feature-relative formula range");
-            ui.horizontal(|ui| {
-                let field_width = (ui.available_width() - 96.0).clamp(72.0, desired_width);
+            ui.horizontal_wrapped(|ui| {
+                let field_width = (ui.available_width() - 96.0).clamp(1.0, desired_width);
                 let response = ui
                     .add(
                         egui::TextEdit::singleline(&mut self.selection_formula_text)

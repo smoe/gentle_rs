@@ -80,6 +80,12 @@ impl IupacCode {
         Self(self.0 & other.0)
     }
 
+    /// Complement all represented bases, preserving IUPAC ambiguity (and invalid/empty codes).
+    #[inline]
+    pub fn complement(self) -> Self {
+        Self(((self.0 & 1) << 3) | ((self.0 & 2) << 1) | ((self.0 & 4) >> 1) | ((self.0 & 8) >> 3))
+    }
+
     #[inline(always)]
     pub fn is_valid_letter(letter: u8) -> bool {
         matches!(
@@ -206,6 +212,20 @@ mod tests {
         assert_eq!(IupacCode::letter_complement(b'U'), b'A');
         assert_eq!(IupacCode::letter_complement(b'X'), b' ');
         assert_eq!(IupacCode::letter_complement(b'a'), b'T');
+    }
+
+    #[test]
+    fn iupac_complement_preserves_every_ambiguity_code() {
+        for (base, expected) in b"ACGTWSMKRYBDHVN".iter().zip(b"TGCAWSKMYRVHDBN") {
+            let code = IupacCode::from_letter(*base);
+            assert_eq!(code.complement().to_letter(), *expected);
+            assert_eq!(code.complement().complement(), code);
+            assert_eq!(
+                IupacCode::from_letter(base.to_ascii_lowercase()).complement(),
+                code.complement()
+            );
+        }
+        assert!(IupacCode::from_letter(b'?').complement().is_empty());
     }
 
     #[test]

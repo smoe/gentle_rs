@@ -44,6 +44,9 @@
 #[path = "app/help_docs.rs"]
 mod help_docs;
 
+#[path = "app/tutorial_menus.rs"]
+mod tutorial_menus;
+
 #[path = "app/window_registry.rs"]
 mod window_registry;
 
@@ -16418,7 +16421,7 @@ Error: `{err}`"
                         ui.close();
                     }
                 });
-                ui.menu_button(self.tr("menu.file.open_tutorial_project"), |ui| {
+                tutorial_menus::submenu(ui, self.tr("menu.file.open_tutorial_project"), |ui| {
                     if let Some(task) = &self.tutorial_project_task {
                         let mut cancel_tutorial_clicked = false;
                         let mut show_jobs_clicked = false;
@@ -16462,139 +16465,107 @@ Error: `{err}`"
                         return;
                     }
 
-                    let guided_entries = Self::tutorial_project_guided_walkthrough_entries();
-                    let mut selected_guided_tutorial: Option<HelpTutorialDocEntry> = None;
-                    if !guided_entries.is_empty() {
-                        ui.menu_button(
-                            format!(
-                                "{} ({})",
-                                self.tr("menu.file.guided_walkthroughs"),
+                    tutorial_menus::scroll(ui, |ui| {
+                        let guided_entries = Self::tutorial_project_guided_walkthrough_entries();
+                        let mut selected_guided_tutorial: Option<HelpTutorialDocEntry> = None;
+                        if !guided_entries.is_empty() {
+                            ui.menu_button(
+                                format!(
+                                    "{} ({})",
+                                    self.tr("menu.file.guided_walkthroughs"),
                                 guided_entries.len()
-                            ),
-                            |ui| {
-                                ui.small(self.tr("menu.file.guided_walkthroughs.note"));
-                                ui.separator();
-                                let mut by_group: BTreeMap<
-                                    (usize, String),
-                                    Vec<&HelpTutorialDocEntry>,
-                                > =
-                                    BTreeMap::new();
-                                for entry in &guided_entries {
-                                    let group = Self::tutorial_audience_group_label(entry);
-                                    by_group
-                                        .entry((
-                                            entry.group_order.unwrap_or(usize::MAX),
-                                            group,
-                                        ))
-                                        .or_default()
-                                        .push(entry);
-                                }
-                                for ((_group_order, group), rows) in by_group {
-                                    ui.menu_button(format!("{group} ({})", rows.len()), |ui| {
-                                        for entry in rows {
-                                            let label = Self::tutorial_display_label(
-                                                entry.decimal_id.as_deref(),
-                                                None,
-                                                &entry.title,
-                                            );
-                                            if ui
-                                                .button(label)
-                                                .on_hover_text(format!(
-                                                    "Open this tutorial guide in Help\n{}\n{}",
-                                                    Self::help_tutorial_review_label(entry),
-                                                    entry.summary
-                                                ))
-                                                .clicked()
-                                            {
-                                                selected_guided_tutorial = Some(entry.clone());
-                                            }
-                                        }
-                                    });
-                                }
-                            },
-                        );
-                        ui.separator();
-                    }
-                    if let Some(entry) = selected_guided_tutorial {
-                        if let Err(err) =
-                            self.open_help_tutorial_path(&entry.path, &entry.title, &entry.summary)
-                        {
-                            self.app_status = err;
+                                ),
+                                |ui| {
+                                    if let Some(index) = tutorial_menus::help_entries(ui, &guided_entries) {
+                                        selected_guided_tutorial = Some(guided_entries[index].clone());
+                                    }
+                                },
+                            ).response.on_hover_text(self.tr("menu.file.guided_walkthroughs.note"));
+                            ui.separator();
                         }
-                        ui.close();
-                        return;
-                    }
-
-                    let entries = match Self::load_tutorial_project_entries() {
-                        Ok(entries) => entries,
-                        Err(err) => {
-                            ui.label(self.tr("menu.file.executable_catalog_unavailable"));
-                            ui.small(err);
+                        if let Some(entry) = selected_guided_tutorial {
+                            if let Err(err) =
+                                self.open_help_tutorial_path(&entry.path, &entry.title, &entry.summary)
+                            {
+                                self.app_status = err;
+                            }
+                            ui.close();
                             return;
                         }
-                    };
-                    if entries.is_empty() {
-                        ui.add_enabled(
-                            false,
-                            egui::Button::new(self.tr("menu.file.no_tutorial_chapters")),
-                        );
-                        return;
-                    }
 
-                    let mut selected_chapter_id: Option<String> = None;
-                    let mut by_group: BTreeMap<(usize, String), Vec<&TutorialProjectEntry>> =
-                        BTreeMap::new();
-                    for entry in &entries {
-                        let group = entry
-                            .group_label
-                            .clone()
-                            .unwrap_or_else(|| entry.tier.as_str().to_string());
-                        by_group
-                            .entry((entry.group_order.unwrap_or(usize::MAX), group))
-                            .or_default()
-                            .push(entry);
-                    }
-                    for ((_group_order, group), group_entries) in by_group {
-                        ui.menu_button(format!("{group} ({})", group_entries.len()), |ui| {
-                            for entry in group_entries {
-                                let mut label = Self::tutorial_display_label(
-                                    entry.decimal_id.as_deref(),
-                                    Some(entry.chapter_order),
-                                    &entry.chapter_title,
-                                );
-                                if entry.example.test_mode == ExampleTestMode::Online {
-                                    label.push_str(" [online]");
-                                }
-                                let hover = format!(
-                                    "chapter_id: {}\nexample_id: {}\ntier: {}\ngroup: {}\n{}\n{}",
-                                    entry.chapter_id,
-                                    entry.example.id,
-                                    entry.tier.as_str(),
-                                    group,
-                                    crate::workflow_examples::tutorial_review_badge_label(
-                                        entry.review_status.as_deref(),
-                                        entry.review_stale,
-                                        entry.codex_reviewed_at.as_deref(),
-                                        entry.human_reviewed_at.as_deref(),
-                                        entry.human_reviewer.as_deref(),
-                                    ),
-                                    if entry.chapter_summary.trim().is_empty() {
-                                        "No summary provided."
-                                    } else {
-                                        entry.chapter_summary.trim()
-                                    }
-                                );
-                                if ui.button(label).on_hover_text(hover).clicked() {
-                                    selected_chapter_id = Some(entry.chapter_id.clone());
-                                }
+                        let entries = match Self::load_tutorial_project_entries() {
+                            Ok(entries) => entries,
+                            Err(err) => {
+                                ui.label(self.tr("menu.file.executable_catalog_unavailable"));
+                                ui.small(err);
+                                return;
                             }
-                        });
-                    }
+                        };
+                        if entries.is_empty() {
+                            ui.add_enabled(
+                                false,
+                                egui::Button::new(self.tr("menu.file.no_tutorial_chapters")),
+                            );
+                            return;
+                        }
 
-                    if let Some(chapter_id) = selected_chapter_id {
-                        self.request_project_action(ProjectAction::OpenTutorialChapter(chapter_id));
-                        ui.close();
-                    }
+                        let mut selected_chapter_id: Option<String> = None;
+                        let mut by_group: BTreeMap<(usize, String), Vec<&TutorialProjectEntry>> =
+                            BTreeMap::new();
+                        for entry in &entries {
+                            let group = entry
+                                .group_label
+                                .clone()
+                                .unwrap_or_else(|| entry.tier.as_str().to_string());
+                            by_group
+                                .entry((entry.group_order.unwrap_or(usize::MAX), group))
+                                .or_default()
+                                .push(entry);
+                        }
+                        for ((_group_order, group), group_entries) in by_group {
+                            ui.menu_button(format!("{group} ({})", group_entries.len()), |ui| {
+                                tutorial_menus::scroll(ui, |ui| {
+                                    for entry in group_entries {
+                                        let mut label = Self::tutorial_display_label(
+                                            entry.decimal_id.as_deref(),
+                                            Some(entry.chapter_order),
+                                            &entry.chapter_title,
+                                        );
+                                        if entry.example.test_mode == ExampleTestMode::Online {
+                                            label.push_str(" [online]");
+                                        }
+                                        let hover = format!(
+                                            "chapter_id: {}\nexample_id: {}\ntier: {}\ngroup: {}\n{}\n{}",
+                                            entry.chapter_id,
+                                            entry.example.id,
+                                            entry.tier.as_str(),
+                                            group,
+                                            crate::workflow_examples::tutorial_review_badge_label(
+                                                entry.review_status.as_deref(),
+                                                entry.review_stale,
+                                                entry.codex_reviewed_at.as_deref(),
+                                                entry.human_reviewed_at.as_deref(),
+                                                entry.human_reviewer.as_deref(),
+                                            ),
+                                            if entry.chapter_summary.trim().is_empty() {
+                                                "No summary provided."
+                                            } else {
+                                                entry.chapter_summary.trim()
+                                            }
+                                        );
+                                        if ui.add(egui::Button::new(label).wrap()).on_hover_text(hover).clicked() {
+                                            selected_chapter_id = Some(entry.chapter_id.clone());
+                                        }
+                                    }
+                                });
+                            });
+                        }
+
+                        if let Some(chapter_id) = selected_chapter_id {
+                            self.request_project_action(ProjectAction::OpenTutorialChapter(chapter_id));
+                            ui.close();
+                        }
+                    });
                 });
                 let save_response = ui
                     .button(self.tr("menu.file.save_project"))
@@ -17237,7 +17208,7 @@ Error: `{err}`"
                     self.open_help_doc(HelpDoc::Shell);
                     ui.close();
                 }
-                ui.menu_button("Tutorials", |ui| {
+                tutorial_menus::submenu(ui, "Tutorials", |ui| {
                     if self.help_tutorial_entries.is_empty() {
                         self.help_tutorial_entries = Self::discover_help_tutorial_entries();
                         self.set_help_tutorial_selected(self.help_tutorial_selected);
@@ -17246,16 +17217,7 @@ Error: `{err}`"
                         ui.add_enabled(false, egui::Button::new("No tutorial docs found"));
                         return;
                     }
-                    let mut selected_tutorial: Option<usize> = None;
-                    for (index, entry) in self.help_tutorial_entries.iter().enumerate() {
-                        if ui
-                            .button(entry.title.as_str())
-                            .on_hover_text(format!("Open {}\n{}", entry.title, entry.summary))
-                            .clicked()
-                        {
-                            selected_tutorial = Some(index);
-                        }
-                    }
+                    let selected_tutorial = tutorial_menus::help_entries(ui, &self.help_tutorial_entries);
                     if let Some(index) = selected_tutorial {
                         self.open_help_tutorial_doc(index);
                         ui.close();

@@ -49,9 +49,9 @@ static ORF_COLORS: LazyLock<HashMap<i32, Color32>> = LazyLock::new(|| {
 /// Represents the position and attributes of a feature (e.g., gene, CDS) on the circular DNA.
 #[derive(Debug, Clone)]
 struct FeatureSegmentPosition {
-    // FIXME: Clarify if the first position is 0 or 1
+    /// 0-based start boundary, unrolled across the origin where necessary.
     from: i64,
-    // FIXME: Clarify if the first position is 0 or 1
+    /// Exclusive end boundary; may equal or exceed the molecule length.
     to: i64,
     to_90: i64,
     angle_start: f32,
@@ -62,9 +62,9 @@ struct FeatureSegmentPosition {
 #[derive(Debug, Clone)]
 struct FeaturePosition {
     feature_number: usize,
-    // FIXME: Clarify if the first position is 0 or 1
+    /// 0-based start boundary of the segment envelope, used for radial packing.
     from: i64,
-    // FIXME: Clarify if the first position is 0 or 1
+    /// Exclusive end of the unrolled envelope, not a 1-based base index.
     to: i64,
     /// Representation as segment - start (degree: 0-360)
     angle_start: f32,
@@ -492,7 +492,7 @@ impl RenderDnaCircular {
         if let Some(feature) = feature
             && let Ok((from, to)) = feature.location.find_bounds()
         {
-            let text = format!("{}: {}-{}", &fp.label, from, to);
+            let text = Self::feature_hover_text(&fp.label, from, to);
             let font = FontId {
                 size: 12.0,
                 family: FontFamily::Monospace,
@@ -505,6 +505,10 @@ impl RenderDnaCircular {
                 Color32::DARK_GRAY,
             );
         }
+    }
+
+    fn feature_hover_text(label: &str, from: i64, to: i64) -> String {
+        format!("{label}: {}-{to} bp", from.saturating_add(1))
     }
 
     /// Converts a position to an angle and geometric distance (Pythagoras) from the center.
@@ -520,71 +524,38 @@ impl RenderDnaCircular {
     /// Draws an arc with an arrow indicating direction
     fn draw_pointed_arc(
         &self,
-        from: i32,
-        to: i32,
+        from: i64,
+        to: i64,
         radius: f32,
         is_reverse: bool,
         stroke: Stroke,
         painter: &egui::Painter,
     ) {
-        // start <= end
-        let start = from.min(to);
-        let end = from.max(to);
-        if is_reverse {
-            let step = -10;
-            let mut pos = end;
-            let mut last_pos = pos;
-
-            // Draw starting point
-            let r0 = radius / 75.0;
-            let point = self.pos2xy(pos as i64, radius);
-            painter.circle_filled(point, r0, stroke.color.to_owned());
-
-            // Draw arc
-            while pos > start {
-                let point1 = self.pos2xy(last_pos as i64, radius);
-                let point2 = self.pos2xy(pos as i64, radius);
-                painter.line_segment([point1, point2], stroke.to_owned());
-                last_pos = pos;
-                pos += step;
-            }
-
-            // Draw arrow
-            last_pos = start + step * 2;
-            let point1 = self.pos2xy(last_pos as i64, radius * 0.98);
-            let point2 = self.pos2xy(start as i64, radius);
-            painter.line_segment([point1, point2], stroke.to_owned());
-            let point1 = self.pos2xy(last_pos as i64, radius * 1.02);
-            let point2 = self.pos2xy(start as i64, radius);
-            painter.line_segment([point1, point2], stroke.to_owned());
+        if from >= to {
+            return;
+        }
+        let span = to - from;
+        let steps = ((span + 9) / 10).clamp(1, 720);
+        let (start, tip) = if is_reverse { (to, from) } else { (from, to) };
+        let mut previous = self.pos2xy(start, radius);
+        painter.circle_filled(previous, radius / 75.0, stroke.color);
+        for step in 1..=steps {
+            let pos = start + (tip - start) * step / steps;
+            let point = self.pos2xy(pos, radius);
+            painter.line_segment([previous, point], stroke);
+            previous = point;
+        }
+        let tail = if is_reverse {
+            tip + span.min(20)
         } else {
-            let step = 10;
-            let mut pos = start;
-            let mut last_pos = pos;
-
-            // Draw starting point
-            let r0 = radius / 75.0;
-            let point = self.pos2xy(pos as i64, radius);
-            painter.circle_filled(point, r0, stroke.color.to_owned());
-
-            // Draw arc
-            while pos < end {
-                let point1 = self.pos2xy(last_pos as i64, radius);
-                let point2 = self.pos2xy(pos as i64, radius);
-                painter.line_segment([point1, point2], stroke.to_owned());
-                last_pos = pos;
-                pos += step;
-            }
-
-            // Draw arrow
-            last_pos = end - step * 2;
-            let point1 = self.pos2xy(last_pos as i64, radius * 0.98);
-            let point2 = self.pos2xy(end as i64, radius);
-            painter.line_segment([point1, point2], stroke.to_owned());
-            let point1 = self.pos2xy(last_pos as i64, radius * 1.02);
-            let point2 = self.pos2xy(end as i64, radius);
-            painter.line_segment([point1, point2], stroke.to_owned());
+            tip - span.min(20)
         };
+        for factor in [0.98, 1.02] {
+            painter.line_segment(
+                [self.pos2xy(tail, radius * factor), self.pos2xy(tip, radius)],
+                stroke,
+            );
+        }
     }
 
     /// Draws Open Reading Frames (ORFs) on the circular DNA
@@ -605,9 +576,14 @@ impl RenderDnaCircular {
             };
             let radius = self.radius * 1.1 + self.radius * 0.05 * (orf.frame() as f32);
             let stroke = Stroke::new(1.0_f32, color);
+            let Some((from, end)) =
+                orf.unrolled_bounds_0based(self.sequence_length.max(0) as usize)
+            else {
+                continue;
+            };
             self.draw_pointed_arc(
-                orf.from(),
-                orf.to(),
+                from as i64,
+                end as i64,
                 radius,
                 orf.is_reverse(),
                 stroke,
@@ -1123,16 +1099,8 @@ impl RenderDnaCircular {
             return None;
         }
 
-        let feature_from = ranges
-            .iter()
-            .map(|(start, _)| start.rem_euclid(seq_len))
-            .min()
-            .unwrap_or(0);
-        let feature_to = ranges
-            .iter()
-            .map(|(_, end)| end.rem_euclid(seq_len))
-            .max()
-            .unwrap_or(feature_from);
+        let feature_from = ranges.first()?.0;
+        let feature_to = ranges.last()?.1;
 
         let feature_color = RenderDna::feature_color(feature);
         let (intron_arch_color, intron_arch_width, intron_arch_lift_factor) =
@@ -1779,6 +1747,68 @@ mod tests {
         renderer.radius = 220.0;
         renderer.sequence_length = sequence_len as i64;
         renderer
+    }
+
+    #[test]
+    fn circular_features_preserve_zero_based_half_open_terminal_bounds() {
+        for (start, end) in [(0, 1), (999, 1000), (0, 1000), (900, 1000)] {
+            let feature = make_test_feature(Location::simple_range(start, end));
+            let mut renderer = test_renderer_with_feature(feature, 1000);
+            renderer.layout_features();
+            let feature = &renderer.features[0];
+            assert_eq!((feature.from, feature.to), (start, end));
+            assert_eq!(
+                (feature.segments[0].from, feature.segments[0].to),
+                (start, end)
+            );
+            assert_eq!(
+                renderer.normalized_feature_range(feature.from, feature.to),
+                Some((start, end))
+            );
+        }
+        assert_eq!(
+            RenderDnaCircular::feature_hover_text("feature", 0, 1),
+            "feature: 1-1 bp"
+        );
+        assert_eq!(
+            RenderDnaCircular::feature_hover_text("feature", 999, 1000),
+            "feature: 1000-1000 bp"
+        );
+    }
+
+    #[test]
+    fn circular_orf_arc_crosses_origin_instead_of_drawing_the_complement() {
+        let renderer =
+            test_renderer_with_feature(make_test_feature(Location::simple_range(0, 1)), 1000);
+        for reverse in [false, true] {
+            let context = egui::Context::default();
+            let mut output = context.run_ui(egui::RawInput::default(), |ui| {
+                renderer.draw_pointed_arc(
+                    990,
+                    1010,
+                    renderer.radius,
+                    reverse,
+                    Stroke::new(1.0, Color32::RED),
+                    ui.painter(),
+                );
+            });
+            let lines: Vec<_> = output
+                .shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    Shape::LineSegment { points, .. } => Some(points),
+                    _ => None,
+                })
+                .collect();
+            assert!(lines.len() >= 4);
+            assert!(
+                lines
+                    .iter()
+                    .flat_map(|points| points.iter())
+                    .all(|p| p.y < renderer.center.y - 200.0)
+            );
+            output.textures_delta.clear();
+        }
     }
 
     #[test]

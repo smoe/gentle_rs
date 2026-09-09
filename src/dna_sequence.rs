@@ -909,24 +909,16 @@ impl DNAsequence {
         let mut name2cut_count = HashMap::new();
         self.restriction_enzyme_groups = HashMap::new();
 
-        for re_site in self
-            .restriction_enzyme_sites
-            .iter()
-            .filter(|site| site.forward_strand)
-        {
+        for re_site in &self.restriction_enzyme_sites {
             name2cut_count
                 .entry(&re_site.enzyme.name)
                 .and_modify(|c| *c += 1)
                 .or_insert(1);
         }
-        for re_site in self
-            .restriction_enzyme_sites
-            .iter()
-            .filter(|site| site.forward_strand)
-        {
-            let (pos, mate_pos) = re_site.enzyme.strand_cut_offsets();
-            let pos = re_site.offset + pos;
-            let mate_pos = re_site.offset + mate_pos;
+        for re_site in &self.restriction_enzyme_sites {
+            let Some((pos, mate_pos)) = re_site.strand_cut_positions_unwrapped() else {
+                continue;
+            };
             let cut_size = re_site.enzyme.cut;
             let number_of_cuts = name2cut_count.get(&re_site.enzyme.name).unwrap();
             let from = re_site.offset;
@@ -944,8 +936,10 @@ impl DNAsequence {
     }
 
     fn split_at_restriction_enzyme_site_circular(&self, site: &RestrictionEnzymeSite) -> Self {
-        let (forward_cut, reverse_cut) = site.enzyme.strand_cut_offsets();
-        let right = (site.offset + forward_cut.max(reverse_cut)).rem_euclid(self.len() as isize);
+        let Some((forward_cut, reverse_cut)) = site.strand_cut_positions_unwrapped() else {
+            return self.clone();
+        };
+        let right = forward_cut.max(reverse_cut).rem_euclid(self.len() as isize);
 
         // Rotate so that position 0 is now the sequence after the cut
         let seq = self.seq.set_origin(right as i64);
@@ -955,7 +949,7 @@ impl DNAsequence {
         let overhang = seq.seq[new_size as usize..self.len()].to_owned();
         let overhang_rc: Vec<u8> = overhang
             .iter()
-            .map(|c| IupacCode::letter_complement(*c))
+            .map(|c| IupacCode::from_letter(*c).complement().to_letter())
             .collect();
         let mut seq = seq.extract_range(0, new_size);
 
@@ -978,9 +972,9 @@ impl DNAsequence {
     }
 
     fn split_at_restriction_enzyme_site_linear(&self, site: &RestrictionEnzymeSite) -> Vec<Self> {
-        let (forward_cut, reverse_cut) = site.enzyme.strand_cut_offsets();
-        let strand_cut_1 = site.offset + forward_cut;
-        let strand_cut_2 = site.offset + reverse_cut;
+        let Some((strand_cut_1, strand_cut_2)) = site.strand_cut_positions_unwrapped() else {
+            return vec![self.clone()];
+        };
         let left = usize::try_from(strand_cut_1.min(strand_cut_2))
             .expect("restriction cut must start within the linear sequence");
         let right = usize::try_from(strand_cut_1.max(strand_cut_2))
@@ -993,7 +987,7 @@ impl DNAsequence {
         let overhang = self.seq.seq[left..right].to_owned();
         let overhang_rc: Vec<u8> = overhang
             .iter()
-            .map(|c| IupacCode::letter_complement(*c))
+            .map(|c| IupacCode::from_letter(*c).complement().to_letter())
             .collect();
 
         let mut seq1 = Self::from_u8(self.forward());
@@ -1021,6 +1015,9 @@ impl DNAsequence {
     }
 
     pub fn split_at_restriction_enzyme_site(&self, site: &RestrictionEnzymeSite) -> Vec<Self> {
+        if !site.can_cleave(self.len(), self.is_circular()) {
+            return vec![self.clone()];
+        }
         if self.is_circular() {
             vec![self.split_at_restriction_enzyme_site_circular(site)]
         } else {
@@ -1035,7 +1032,11 @@ impl DNAsequence {
                 let mut found_one = false;
                 let mut new_ret = vec![];
                 for seq in ret.drain(..) {
-                    if let Some(site) = enzyme.get_sites(&seq, None).first() {
+                    if let Some(site) = enzyme
+                        .get_sites(&seq, None)
+                        .iter()
+                        .find(|site| site.can_cleave(seq.len(), seq.is_circular()))
+                    {
                         let tmp = seq.split_at_restriction_enzyme_site(site);
                         new_ret.extend(tmp);
                         found_one = true;
@@ -1293,6 +1294,85 @@ mod tests {
     use crate::enzymes::Enzymes;
     use std::{fs, io::Write};
     use tempfile::Builder;
+
+    #[test]
+    fn restriction_reverse_site_is_drawn_and_digested_in_reference_orientation() {
+        // Synthetic nonpalindromic motif with deliberately asymmetric within-motif cuts.
+        let enzyme: RestrictionEnzyme = serde_json::from_value(serde_json::json!({
+            "name": "synthetic", "sequence": "AAGC", "cut": 1, "overlap": 1
+        }))
+        .unwrap();
+        let mut dna = DNAsequence::from_sequence("TTGCTTAA").unwrap();
+        dna.restriction_enzymes = vec![enzyme.clone()];
+        dna.update_computed_features();
+        assert_eq!(dna.restriction_enzyme_sites.len(), 1);
+        assert!(!dna.restriction_enzyme_sites[0].forward_strand);
+        let key = dna
+            .restriction_enzyme_groups
+            .keys()
+            .next()
+            .expect("reverse site in map");
+        assert_eq!((key.pos(), key.mate_pos(), key.number_of_cuts()), (4, 5, 1));
+        let fragments = dna.restriction_enzymes_full_digest(vec![enzyme.clone()]);
+        assert_eq!(
+            fragments
+                .iter()
+                .map(DNAsequence::get_forward_string)
+                .collect::<Vec<_>>(),
+            vec!["TTGC", "TAA"]
+        );
+        assert_eq!(fragments[0].overhang.reverse_5, b"A");
+        assert_eq!(fragments[1].overhang.forward_5, b"T");
+        dna.set_circular(true);
+        let fragments = dna.restriction_enzymes_full_digest(vec![enzyme]);
+        assert_eq!(fragments.len(), 1);
+        assert_eq!(fragments[0].get_forward_string(), "TAATTGC");
+        assert_eq!(fragments[0].overhang.forward_5, b"T");
+        assert_eq!(fragments[0].overhang.reverse_5, b"A");
+    }
+
+    #[test]
+    fn restriction_digest_skips_recognition_when_external_cuts_do_not_fit() {
+        // Synthetic Type-IIS-like geometry: recognition can survive while a cut falls off an end.
+        let enzyme: RestrictionEnzyme = serde_json::from_value(serde_json::json!({
+            "name": "synthetic", "sequence": "AAGC", "cut": 6, "overlap": 2
+        }))
+        .unwrap();
+        for sequence in ["AAGC", "GCTT"] {
+            let dna = DNAsequence::from_sequence(sequence).unwrap();
+            assert_eq!(enzyme.get_sites(&dna, None).len(), 1);
+            let fragments = dna.restriction_enzymes_full_digest(vec![enzyme.clone()]);
+            assert_eq!(fragments.len(), 1);
+            assert_eq!(fragments[0].get_forward_string(), sequence);
+        }
+        let dna = DNAsequence::from_sequence("TTAAGCCCCCCC").unwrap();
+        let fragments = dna.restriction_enzymes_full_digest(vec![enzyme]);
+        assert_eq!(
+            fragments
+                .iter()
+                .map(DNAsequence::get_forward_string)
+                .collect::<Vec<_>>(),
+            vec!["TTAAGCCC", "CC"]
+        );
+    }
+
+    #[test]
+    fn restriction_uniqueness_counts_forward_and_reverse_sites() {
+        let enzyme: RestrictionEnzyme = serde_json::from_value(serde_json::json!({
+            "name": "synthetic", "sequence": "AAGC", "cut": 1, "overlap": 1
+        }))
+        .unwrap();
+        let mut dna = DNAsequence::from_sequence("TTAAGCCCCCGCTTAA").unwrap();
+        dna.restriction_enzymes = vec![enzyme];
+        dna.update_computed_features();
+        assert_eq!(dna.restriction_enzyme_sites.len(), 2);
+        assert_eq!(dna.restriction_enzyme_groups.len(), 2);
+        assert!(
+            dna.restriction_enzyme_groups
+                .keys()
+                .all(|key| key.number_of_cuts() == 2)
+        );
+    }
 
     #[test]
     fn restriction_enzyme_group_aliases_are_sorted() {

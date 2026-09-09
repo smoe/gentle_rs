@@ -66,6 +66,7 @@ mod feature_tree_ui;
 
 #[path = "main_area_dna/formula_controls.rs"]
 mod formula_controls;
+mod selection_navigation;
 
 mod conservation_alignment_ui;
 mod conservation_request_ui;
@@ -3663,23 +3664,8 @@ impl MainAreaDna {
         viewport_start: usize,
         viewport_end: usize,
     ) -> bool {
-        if sequence_length == 0 {
-            return false;
-        }
-        let from = orf.from().max(0) as usize;
-        let to = orf.to().max(0) as usize;
-        if to >= from {
-            let from = from.min(sequence_length);
-            let to = to.min(sequence_length);
-            if to <= from {
-                return false;
-            }
-            return Self::ranges_overlap(from, to, viewport_start, viewport_end);
-        }
-        let wrapped_left = from.min(sequence_length);
-        let wrapped_right = to.min(sequence_length);
-        Self::ranges_overlap(wrapped_left, sequence_length, viewport_start, viewport_end)
-            || Self::ranges_overlap(0, wrapped_right, viewport_start, viewport_end)
+        orf.spans_0based(sequence_length)
+            .any(|(from, end)| Self::ranges_overlap(from, end, viewport_start, viewport_end))
     }
 
     fn normalize_restriction_group_cut_pos_0based(
@@ -4747,6 +4733,21 @@ impl MainAreaDna {
     }
 
     pub fn render_top_panel(&mut self, ui: &mut egui::Ui) {
+        let width = ui.available_width().min(ui.clip_rect().width()).max(1.0);
+        let max_height = (ui.ctx().content_rect().height() * 0.45).clamp(100.0, 420.0);
+        egui::ScrollArea::vertical()
+            .id_salt(("dna_toolbar_scroll", self.panel_scope_key()))
+            .max_width(width)
+            .max_height(max_height)
+            .auto_shrink([false, true])
+            .show(ui, |ui| {
+                ui.set_max_width(width);
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+                self.render_top_panel_contents(ui);
+            });
+    }
+
+    fn render_top_panel_contents(&mut self, ui: &mut egui::Ui) {
         let icon_size = Self::top_panel_icon_size(ui);
         let layer_counts = self.compute_layer_visibility_counts();
         let allow_roi_tools = self.dna_presentation_mode.allows_roi_tools();
@@ -4969,6 +4970,7 @@ impl MainAreaDna {
                     {
                         self.fit_linear_features_in_view();
                     }
+                    self.render_selection_navigation_controls(ui);
                     let view_end = start_bp.saturating_add(span_bp).min(sequence_length);
                     ui.monospace(format!(
                         "view {}..{} ({} bp)",
@@ -4981,7 +4983,7 @@ impl MainAreaDna {
                     {
                         self.sync_linear_view_input_fields_to_viewport();
                     }
-                    ui.horizontal(|ui| {
+                    {
                         ui.label(Self::tr("sequence.go"));
                         let start_response = ui
                             .add(
@@ -5009,16 +5011,9 @@ impl MainAreaDna {
                             self.apply_linear_viewport_from_input_fields();
                         }
                         if !start_response.has_focus() && !end_response.has_focus() {
-                            let current_start = start_bp.saturating_add(1).to_string();
-                            let current_end = view_end.to_string();
-                            if self.linear_view_start_1based_input != current_start
-                                || self.linear_view_end_1based_input != current_end
-                            {
-                                self.linear_view_start_1based_input = current_start;
-                                self.linear_view_end_1based_input = current_end;
-                            }
+                            self.sync_linear_view_input_fields_to_viewport();
                         }
-                    });
+                    }
                 }
             }
 
@@ -6121,7 +6116,6 @@ impl MainAreaDna {
                 if select_visible_response.clicked() {
                     self.select_current_visible_span();
                 }
-
                 let extract_selection_response = ui.add_enabled(
                     selection_roi.is_some(),
                     egui::Button::new("Extract Sel"),
@@ -24781,24 +24775,21 @@ impl MainAreaDna {
         let mut enzyme_cut_counts: HashMap<String, usize> = HashMap::new();
         let mut enzyme_first_cut_0based: HashMap<String, usize> = HashMap::new();
         let mut enzyme_has_cds_cut: HashMap<String, bool> = HashMap::new();
-        for site in dna
-            .restriction_enzyme_sites()
-            .iter()
-            .filter(|site| site.forward_strand)
-        {
+        for site in dna.restriction_enzyme_sites() {
             let name = site.enzyme.name.clone();
             *enzyme_cut_counts.entry(name.clone()).or_insert(0) += 1;
 
+            let Some((raw_cut, _)) = site.strand_cut_positions_unwrapped() else {
+                continue;
+            };
             let cut_pos_0based = if dna.is_circular() {
                 let len = seq_len as isize;
-                let raw = site.offset.saturating_add(site.enzyme.cut);
-                raw.rem_euclid(len) as usize
+                raw_cut.rem_euclid(len) as usize
             } else {
-                let raw = site.offset.saturating_add(site.enzyme.cut);
-                if raw < 0 || raw >= seq_len as isize {
+                if raw_cut < 0 || raw_cut >= seq_len as isize {
                     continue;
                 }
-                raw as usize
+                raw_cut as usize
             };
             enzyme_first_cut_0based
                 .entry(name.clone())
@@ -24850,7 +24841,6 @@ impl MainAreaDna {
         let available_sites: HashSet<String> = dna
             .restriction_enzyme_sites()
             .iter()
-            .filter(|site| site.forward_strand)
             .map(|site| site.enzyme.name.clone())
             .collect();
         let mut selected = vec![];
@@ -27795,6 +27785,10 @@ impl MainAreaDna {
                 let mut map_delete_feature: Option<usize> = None;
                 response.context_menu(|ui| {
                     let mut showed_any = false;
+                    if self.render_selection_navigation_controls(ui) {
+                        ui.close();
+                        return;
+                    }
                     if self.render_selection_simple_pcr_context_action(ui) {
                         ui.close();
                         return;

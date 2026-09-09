@@ -4,7 +4,7 @@
 > Status: `manual/reference`
 > Audience: users operating GENtle through the in-app Agent Assistant, CLI/shared shell, MCP, or external coding agents.
 
-Last updated: 2026-08-11
+Last updated: 2026-09-09
 
 This tutorial explains how to let an AI assistant help with GENtle without
 giving up reproducibility. The most important idea is simple:
@@ -15,8 +15,10 @@ giving up reproducibility. The most important idea is simple:
 
 You can open this page inside GENtle from:
 
-1. `Help -> Tutorials -> Agent Assistant and Agent Interfaces Tutorial`
-2. `File -> Open Tutorial Project... -> Guided walkthroughs -> GENtle Agent Assistant and Agent Interfaces Tutorial`
+1. `Help -> Tutorials -> Getting Started & Interfaces`, then select
+   `01.01 GENtle Agent Assistant and Agent Interfaces Tutorial`.
+2. `File -> Open Tutorial Project... -> Guided walkthroughs -> Getting Started & Interfaces`,
+   then select the same tutorial.
 3. `Help -> Agent Interface` for the shorter protocol overview
 
 Protocol-level details live in `docs/agent_interface.md` and

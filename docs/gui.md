@@ -2536,6 +2536,9 @@ Toolbar layout:
 - The `Selection formula` / `Apply Sel` controls now stay left-aligned on
   their own row instead of floating into the preceding button row when the
   window becomes narrower.
+- Each toolbar row wraps to the available window width, including the `Go`
+  coordinate fields and formula controls. The toolbar scrolls vertically when
+  it reaches its height limit, leaving space for the sequence map.
 - High-frequency map/display controls use existing icon assets where the
   meaning is clear, while every icon keeps the same hover/status description
   used for support and debugging. Text labels remain for controls without a
@@ -2712,6 +2715,13 @@ Controls:
    - Aggregation uses the configurable GC bin size (default `100 bp`).
 14. Show/Hide ORFs
    - Toggles open reading frame overlays.
+   - Predictions use ATG and the first in-frame TAA/TAG/TGA, on both strands.
+     The existing display threshold is 100 codons including the stop (at least
+     99 translated residues). These overlays are not annotation-backed CDSs.
+   - Circular predictions may cross the origin, including a start or stop
+     codon split by that origin, but never traverse more than one molecule
+     length. Switching to the linear map splits such an overlay at the origin
+     rather than displaying the complementary interval. SVG uses the same spans.
 15. Show/Hide methylation sites
    - Toggles methylation-site markers.
 16. Extract Sel
@@ -2835,6 +2845,12 @@ Controls:
    - `Apply Sel` resolves the formula and sets the active map/text selection,
      which can then be used directly by `Extract Sel`, `Queue PCR selection`,
      or `PCR ROI` actions.
+   - To inspect that selection, use `Zoom to selection` in the navigation row
+     or the map context menu. It fits the entire selected interval, even if it
+     was off-screen. `Go to selection` centres the same interval without
+     changing the zoom level. Neither action reapplies an edited formula:
+     press `Apply Sel` first. Invalid formulas leave the previous selection
+     unchanged and do not move the view.
    - The same `Selection formula` + `Apply Sel` control is also shown in the
      dedicated `PCR Designer` specialist window so pair-PCR setup can stay
      selection-first without switching back to the sequence toolbar.
@@ -3786,6 +3802,11 @@ The `Help` menu now includes:
 - `Tutorials`: opens tutorial markdown docs in the same help window
   (`Topic` selector starts the second help-header row, ahead of search)
   - curated order now comes from `docs/tutorial/catalog.json` when available
+  - choose a topic group first, then its tutorial; catalog numbering and order
+    are preserved, including entries discovered without catalog metadata
+  - menus fit within the current window, with wrapped titles and scrollbars
+    for long lists. Scroll with the wheel/trackpad, drag the scrollbar, or hold
+    the pointer near the top/bottom of a list to scroll toward that end
   - falls back to recursive markdown discovery under `docs/tutorial/**` if the
     catalog is unavailable
 - on macOS, app menu `GENtle -> GENtle Help...` opens the same help window
@@ -4036,9 +4057,23 @@ Toolbar alternatives (linear mode):
 - `+`: zoom in
 - `Fit Seq`: reset to full sequence span and recenter vertically
 - `Fit Features`: keep the current subsequence span and recenter the feature lanes vertically
+- `Zoom to selection`: fit the complete current selection, including one entered
+  by formula outside the visible range
+- `Go to selection`: centre the selection at the current zoom level; if the
+  selection is wider than the view, use `Zoom to selection` to see all of it
 - `Pan` slider: move the current viewport left/right
 - Right-side vertical slider (`V pan`) in the map panel: move feature lanes up/down
   directly; `0` applies vertical feature fit for the current subsequence
+
+For a promoter and nearby first-exon region, select the intended coordinates
+with `Selection formula`, press `Apply Sel`, then `Zoom to selection`. Numeric
+selection formulas use 0-based, end-exclusive boundaries, whereas the `Go`
+viewport fields use 1-based inclusive coordinates. For feature-relative
+selection, use the intended annotated transcript/TSS rather than treating
+`CDS.start` as a transcription start. A negative resolved coordinate means the
+requested interval extends outside the loaded sequence: retrieve/extend the
+sequence or explicitly choose a smaller interval. GENtle does not silently
+truncate that biological request.
 
 ### Lineage graph: zoom and pan (mouse/touchpad)
 
@@ -4194,6 +4229,11 @@ Current circular map conventions include:
 - Features arranged around the circular backbone
 - Restriction enzyme labels around the perimeter
 - Optional overlays for GC content, ORFs, and methylation sites
+- Feature geometry is internally 0-based and end-exclusive. The last base is
+  retained when a feature ends at the sequence boundary; hover coordinates
+  are shown as 1-based inclusive positions (`1-1 bp` denotes the first base).
+- An origin-crossing ORF is drawn across the origin on either strand, not
+  around the opposite arc. This is an ORF prediction, not evidence of expression.
 
 ## Pool Distribution (Engine Ops)
 
@@ -5299,17 +5339,30 @@ Recommended flow:
      - default (`annotation scope=core`) attaches gene + transcript context
      - `annotation scope=full` additionally attaches exon + CDS subfeatures
      - `annotation scope=none` (or unchecked include flag) disables transfer
-     - `selected gene extract` adds a second interval mode:
-       `CDS + promoter`
-     - `promoter bp before CDS` adds an explicit 5' flank before the first
-       coding base in a strand-aware way (`0 = CDS only`)
-     - `gene span` remains the default mode for backward-compatible full-gene
-       extraction
+   - `Selected-gene interval` distinguishes two genomic extraction modes:
+     - `Whole gene (no added flank)` is the default: the complete annotated
+       gene span, including UTRs and introns, with no extra upstream DNA.
+     - `CDS span + upstream flank` spans the first to last coding base across
+       the gene's transcripts, retaining introns. `Upstream of CDS (bp)` adds
+       a strand-aware 5' flank before the first coding base, **not before the
+       transcription start site (TSS)**. `0` means the CDS span only. This is
+       not whole-gene-plus-promoter extraction and may omit UTR sequence.
+   - `Extract Region` ignores the selected-gene mode and flank value: it uses
+     only `chr/start_1based/end_1based`. The shared output name may still contain
+     `promoter`; that name is not proof of included upstream sequence. For a
+     whole gene plus upstream DNA, select the gene, then decrease the explicit
+     start on the plus strand or increase the end on the minus strand before
+     using `Extract Region` (within the prepared chromosome bounds).
+   - These distinctions are visible in the window, with wrapped explanations
+     and translations in all eight catalogs. Extraction behavior and CLI/API
+     options (`coding_with_promoter`, `promoter_upstream_bp`) are unchanged.
    - when transcript exon annotation is available, extraction also auto-creates
      an exon-concatenated synthetic companion sequence (`<seq_id>__exons`) with
      deterministic `N` spacers between merged exon blocks; this is useful as a
      lower-noise reference for cDNA dotplot workflows
-   - coordinates are 1-based and inclusive
+   - chromosome coordinates here are 1-based and inclusive. The DNA viewer
+     uses positions within the imported sequence; negative viewer positions
+     cannot retrieve missing upstream DNA. Import that DNA first.
 3. Run BLAST searches against prepared references:
    - open `BLAST Genome Sequence...`
    - dialog layout is organized into sections:
@@ -5713,6 +5766,9 @@ Tutorial projects:
 - Chapters are grouped by tutorial content area using the derived decimal ids
   from `docs/tutorial/catalog.json` / `docs/tutorial/manifest.json`; tier and
   online status remain visible in hover text and labels.
+- Tutorial project and guided-walkthrough menus use the same window-bounded
+  scrolling as `Help -> Tutorials`, so later entries remain reachable in a
+  small window.
 - Generated tutorial project files are written under a process- and
   invocation-specific directory below the system temp directory
   (`.../gentle_tutorial_projects/process-PID-invocation-N`) and opened without

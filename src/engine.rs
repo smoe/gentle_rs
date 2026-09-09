@@ -10876,11 +10876,7 @@ impl GentleEngine {
     fn restriction_cloning_cut_positions_0based(dna: &DNAsequence) -> BTreeMap<String, Vec<usize>> {
         let seq_len = dna.len();
         let mut by_enzyme: BTreeMap<String, Vec<usize>> = BTreeMap::new();
-        for site in dna
-            .restriction_enzyme_sites()
-            .iter()
-            .filter(|site| site.forward_strand)
-        {
+        for site in dna.restriction_enzyme_sites() {
             let Some((cut_start, _)) = site.recessed_opening_window_0based(seq_len) else {
                 continue;
             };
@@ -15914,7 +15910,7 @@ impl GentleEngine {
             }
             for site in sites {
                 let Some((recognition_start_0based, recognition_end_0based_exclusive)) =
-                    site.recognition_bounds_0based(scan_dna.len())
+                    site.recognition_bounds_for_topology(scan_dna.len(), scan_dna.is_circular())
                 else {
                     continue;
                 };
@@ -15924,18 +15920,17 @@ impl GentleEngine {
                     opening_start_0based,
                     opening_end_0based_exclusive,
                 ) = if include_cut_geometry {
-                    let (forward_cut_0based, reverse_cut_0based) = site
-                        .strand_cut_positions_0based(scan_dna.len())
-                        .unwrap_or((recognition_start_0based, recognition_start_0based));
-                    let (opening_start_0based, opening_end_0based_exclusive) = site
-                        .recessed_opening_window_0based(scan_dna.len())
-                        .unwrap_or((forward_cut_0based, reverse_cut_0based));
-                    (
-                        Some(forward_cut_0based),
-                        Some(reverse_cut_0based),
-                        Some(opening_start_0based),
-                        Some(opening_end_0based_exclusive),
-                    )
+                    match site
+                        .strand_cut_positions_for_topology(scan_dna.len(), scan_dna.is_circular())
+                    {
+                        Some((forward, reverse)) => (
+                            Some(forward),
+                            Some(reverse),
+                            Some(forward.min(reverse)),
+                            Some(forward.max(reverse)),
+                        ),
+                        None => (None, None, None, None),
+                    }
                 } else {
                     (None, None, None, None)
                 };
