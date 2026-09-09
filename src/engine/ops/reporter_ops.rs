@@ -1205,11 +1205,7 @@ impl GentleEngine {
         }
 
         let mut site_counts: BTreeMap<String, usize> = BTreeMap::new();
-        for site in dna
-            .restriction_enzyme_sites()
-            .iter()
-            .filter(|site| site.forward_strand)
-        {
+        for site in dna.restriction_enzyme_sites() {
             *site_counts.entry(site.enzyme.name.clone()).or_default() += 1;
         }
         let unique_restriction_sites = site_counts

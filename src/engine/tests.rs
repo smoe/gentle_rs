@@ -60382,6 +60382,74 @@ fn test_find_restriction_sites_operation_supports_inline_sequence_targets() {
 }
 
 #[test]
+fn restriction_scan_reports_reverse_and_origin_crossing_sites_without_mutation() {
+    let mut engine = GentleEngine::default();
+    let before = serde_json::to_value(engine.state()).unwrap();
+    // Hand-crafted copies of the catalog motif, including its reverse and origin split.
+    for (sequence, topology, start, end, forward) in [
+        ("TTGAGACC", InlineSequenceTopology::Linear, 2, 8, false),
+        ("ACCAAGAG", InlineSequenceTopology::Circular, 5, 11, false),
+        ("CTCAAGGT", InlineSequenceTopology::Circular, 5, 11, true),
+    ] {
+        let result = engine
+            .apply(Operation::FindRestrictionSites {
+                target: SequenceScanTarget::InlineSequence {
+                    sequence_text: sequence.into(),
+                    topology,
+                    id_hint: None,
+                    span_start_0based: None,
+                    span_end_0based_exclusive: None,
+                },
+                enzymes: vec!["Eco31".into()],
+                max_sites_per_enzyme: None,
+                include_cut_geometry: true,
+                path: None,
+            })
+            .unwrap();
+        let report = result.restriction_site_scan.unwrap();
+        assert_eq!(report.matched_site_count, 1);
+        let row = &report.rows[0];
+        assert_eq!(
+            (
+                row.recognition_start_0based,
+                row.recognition_end_0based_exclusive,
+                row.forward_strand
+            ),
+            (start, end, forward)
+        );
+        assert_eq!(row.recognition_length_bp, 6);
+        assert_eq!(row.forward_cut_0based, Some(start + 1));
+        assert_eq!(row.reverse_cut_0based, Some(start + 5));
+        assert_eq!(
+            row.opening_end_0based_exclusive.unwrap() - row.opening_start_0based.unwrap(),
+            4
+        );
+    }
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+}
+
+#[test]
+fn restriction_guarded_digest_uses_reverse_geometry_and_skips_uncleavable_sites() {
+    let enzyme: RestrictionEnzyme = serde_json::from_value(serde_json::json!({
+        "name":"synthetic", "sequence":"AAGC", "cut":6, "overlap":2
+    }))
+    .unwrap();
+    let dna = DNAsequence::from_sequence("TTTTTTTTTTGCTTTTTT").unwrap();
+    let fragments = GentleEngine::digest_with_guard(&dna, vec![enzyme.clone()], 10).unwrap();
+    assert_eq!(
+        fragments
+            .iter()
+            .map(DNAsequence::get_forward_string)
+            .collect::<Vec<_>>(),
+        vec!["TTTTTT", "TTGCTTTTTT"]
+    );
+    let edge = DNAsequence::from_sequence("GCTT").unwrap();
+    let fragments = GentleEngine::digest_with_guard(&edge, vec![enzyme], 10).unwrap();
+    assert_eq!(fragments.len(), 1);
+    assert_eq!(fragments[0].get_forward_string(), "GCTT");
+}
+
+#[test]
 fn collection_restriction_scan_matches_direct_scans_defaults_and_circular_geometry() {
     let mut linear = DNAsequence::from_sequence("AAGAATTCCCGG").expect("linear sequence");
     linear.set_circular(false);

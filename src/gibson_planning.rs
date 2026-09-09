@@ -507,7 +507,7 @@ pub fn suggest_gibson_destination_openings(
     }
 
     let mcs_hints = collect_mcs_feature_hints(dna);
-    let unique_sites = unique_forward_sites(dna);
+    let unique_sites = unique_restriction_sites(dna);
 
     let mut seen_enzymes = HashSet::new();
     let mut suggestions = vec![];
@@ -546,16 +546,12 @@ pub fn suggest_gibson_destination_openings(
     Ok(suggestions)
 }
 
-fn unique_forward_sites(
+fn unique_restriction_sites(
     dna: &crate::dna_sequence::DNAsequence,
 ) -> HashMap<String, &RestrictionEnzymeSite> {
     let mut counts: HashMap<String, usize> = HashMap::new();
     let mut first_sites: HashMap<String, &RestrictionEnzymeSite> = HashMap::new();
-    for site in dna
-        .restriction_enzyme_sites()
-        .iter()
-        .filter(|site| site.forward_strand)
-    {
+    for site in dna.restriction_enzyme_sites() {
         let name = site.enzyme.name.clone();
         *counts.entry(name.clone()).or_insert(0) += 1;
         first_sites.entry(name).or_insert(site);
@@ -665,7 +661,6 @@ fn collect_mcs_feature_hints(dna: &crate::dna_sequence::DNAsequence) -> Vec<Gibs
     let available_sites: HashSet<String> = dna
         .restriction_enzyme_sites()
         .iter()
-        .filter(|site| site.forward_strand)
         .map(|site| site.enzyme.name.clone())
         .collect();
     let mut hints = vec![];
@@ -1921,7 +1916,7 @@ fn refresh_projected_mcs_annotations(product: &mut DNAsequence) {
     let all_sites = product.calculate_restriction_enzyme_sites(&enzymes, None);
     let seq_len = product.len();
     let mut global_counts: HashMap<String, usize> = HashMap::new();
-    for site in all_sites.iter().filter(|site| site.forward_strand) {
+    for site in &all_sites {
         *global_counts.entry(site.enzyme.name.clone()).or_insert(0) += 1;
     }
     for feature in product.features_mut() {
@@ -1946,7 +1941,7 @@ fn rewrite_mcs_feature_qualifiers(
     let mut seen_region = HashSet::new();
     let mut seen_unique = HashSet::new();
     let mut seen_nonunique = HashSet::new();
-    for site in all_sites.iter().filter(|site| site.forward_strand) {
+    for site in all_sites {
         if !feature_contains_site_span(feature, site, seq_len) {
             continue;
         }
@@ -5025,6 +5020,25 @@ fn normalized_orientation(raw: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn restriction_uniqueness_in_gibson_includes_reverse_sites() {
+        // Synthetic geometry isolates counting from the installed enzyme catalog.
+        let enzyme: super::RestrictionEnzyme = serde_json::from_value(serde_json::json!({
+            "name":"synthetic", "sequence":"AAGC", "cut":1, "overlap":1
+        }))
+        .unwrap();
+        for (sequence, expected) in [("TTGCTTAA", 1), ("TTAAGCCCCCGCTTAA", 0)] {
+            let mut dna = crate::dna_sequence::DNAsequence::from_sequence(sequence).unwrap();
+            *dna.restriction_enzymes_mut() = vec![enzyme.clone()];
+            dna.update_computed_features();
+            let sites = super::unique_restriction_sites(&dna);
+            assert_eq!(sites.len(), expected);
+            if expected == 1 {
+                assert!(!sites["synthetic"].forward_strand);
+            }
+        }
+    }
+
     use super::*;
     use crate::{
         dna_sequence::DNAsequence,

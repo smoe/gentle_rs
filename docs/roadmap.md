@@ -322,7 +322,7 @@ wet-lab conclusions or unconfirmed mutations.
 - Optional tiny generation probe for quota verification.
 - Implement the opt-in native-Mistral inner-agent conformance routine described
   in `docs/testing.md`; self-skip unless `MISTRAL_API_KEY` is supplied.
-- Supplemental restriction-enzyme usage annotations beyond REBASE.
+- Audit restriction-catalog cut offsets (especially Type IIS) and extend usage annotations beyond REBASE; recheck older cloning absence/uniqueness claims before laboratory use.
 - Floating restriction-site detail popover/window if the Description panel is
   too easy to miss.
 - SnapGene-style plasmid-map presentation parity and dense selected-site polish.

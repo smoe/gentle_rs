@@ -24781,24 +24781,21 @@ impl MainAreaDna {
         let mut enzyme_cut_counts: HashMap<String, usize> = HashMap::new();
         let mut enzyme_first_cut_0based: HashMap<String, usize> = HashMap::new();
         let mut enzyme_has_cds_cut: HashMap<String, bool> = HashMap::new();
-        for site in dna
-            .restriction_enzyme_sites()
-            .iter()
-            .filter(|site| site.forward_strand)
-        {
+        for site in dna.restriction_enzyme_sites() {
             let name = site.enzyme.name.clone();
             *enzyme_cut_counts.entry(name.clone()).or_insert(0) += 1;
 
+            let Some((raw_cut, _)) = site.strand_cut_positions_unwrapped() else {
+                continue;
+            };
             let cut_pos_0based = if dna.is_circular() {
                 let len = seq_len as isize;
-                let raw = site.offset.saturating_add(site.enzyme.cut);
-                raw.rem_euclid(len) as usize
+                raw_cut.rem_euclid(len) as usize
             } else {
-                let raw = site.offset.saturating_add(site.enzyme.cut);
-                if raw < 0 || raw >= seq_len as isize {
+                if raw_cut < 0 || raw_cut >= seq_len as isize {
                     continue;
                 }
-                raw as usize
+                raw_cut as usize
             };
             enzyme_first_cut_0based
                 .entry(name.clone())
@@ -24850,7 +24847,6 @@ impl MainAreaDna {
         let available_sites: HashSet<String> = dna
             .restriction_enzyme_sites()
             .iter()
-            .filter(|site| site.forward_strand)
             .map(|site| site.enzyme.name.clone())
             .collect();
         let mut selected = vec![];

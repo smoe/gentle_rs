@@ -2,6 +2,16 @@
 
 ## 2026-09-09 - Promoterome preparation and ordered similarity inspection
 
+- Corrected restriction recognition: genuine IUPAC reverse complements,
+  content-derived palindrome checks, both-strand matching and origin-crossing
+  circular hits. Ambiguous template bases must be fully permitted by the motif;
+  unknown bases are not treated as confirmed specific matches. Shared scans,
+  map/unique-site inventories and digest geometry now retain reverse hits.
+  Out-of-molecule cuts remain recognition-only rather than causing a digest
+  panic or fabricated cut coordinates. Existing enzyme catalog values are
+  unchanged; earlier restriction-derived absence/uniqueness claims should be
+  rechecked for nonpalindromic or degenerate motifs before wet-lab use.
+
 - Grouped `Help -> Tutorials` by the existing catalog topics instead of one
   clipped list. Help and File tutorial menus now bound their size to the window,
   wrap long titles, and support wheel/trackpad, scrollbar and edge-hover

@@ -839,7 +839,11 @@ impl GentleEngine {
                 let mut found_one = false;
                 let mut new_fragments: Vec<DNAsequence> = vec![];
                 for seq in fragments.drain(..) {
-                    if let Some(site) = enzyme.get_sites(&seq, None).first() {
+                    if let Some(site) = enzyme
+                        .get_sites(&seq, None)
+                        .iter()
+                        .find(|site| site.can_cleave(seq.len(), seq.is_circular()))
+                    {
                         let split = seq.split_at_restriction_enzyme_site(site);
                         found_one = true;
                         new_fragments.extend(split);

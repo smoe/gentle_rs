@@ -1,6 +1,8 @@
 //! Restriction-enzyme site model and cut geometry utilities.
 
-use crate::{dna_sequence::DNAsequence, engine::RestrictionEnzymeDisplayMode};
+use crate::{
+    dna_sequence::DNAsequence, engine::RestrictionEnzymeDisplayMode, iupac_code::IupacCode,
+};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeSet, fmt};
 
@@ -207,62 +209,79 @@ pub struct RestrictionEnzymeSite {
 
 impl RestrictionEnzyme {
     pub fn check_palimdromic(&mut self) {
-        self.is_palindromic = self.sequence == self.get_sequence_rc();
+        self.is_palindromic = self.is_palindromic();
     }
 
-    #[inline(always)]
+    /// Derive identity from the current motif, including after deserialization or editing.
     pub fn is_palindromic(&self) -> bool {
-        self.is_palindromic
+        !self.sequence.is_empty()
+            && self
+                .sequence
+                .bytes()
+                .zip(self.sequence.bytes().rev())
+                .all(|(a, b)| {
+                    let a = IupacCode::from_letter(a);
+                    !a.is_empty() && a == IupacCode::from_letter(b).complement()
+                })
     }
 
     fn get_sequence_rc(&self) -> String {
-        // TODO cache this?
-        let rc = self.sequence.as_bytes();
-        let rc = match std::str::from_utf8(rc) {
-            Ok(rc) => rc,
-            Err(_) => panic!("RestrictionEnzyme::check_palimdromic: non-utf8 char"),
-        };
-        rc.to_string()
+        self.sequence
+            .bytes()
+            .rev()
+            .map(|base| IupacCode::from_letter(base).complement().to_letter() as char)
+            .collect()
     }
 
+    /// Find definite recognition sites, ordered by start and then forward/reverse orientation.
+    /// Every possible template base must be allowed by the motif's IUPAC code; an unknown
+    /// template N does not establish a specific A/C/G/T match. Palindromes are emitted once.
+    /// Circular sites may cross the origin, but the motif must fit within one molecule.
+    /// `max_sites` retains the historical all-or-nothing filter, not a truncated hit list.
     pub fn get_sites(
         &self,
         seq: &DNAsequence,
         max_sites: Option<usize>,
     ) -> Vec<RestrictionEnzymeSite> {
-        // TODO reverse-complement if required
         let mut ret = vec![];
         let recognition_len = self.sequence.len();
+        if recognition_len == 0 || seq.len() < recognition_len {
+            return ret;
+        }
+        let motif: Vec<_> = self.sequence.bytes().map(IupacCode::from_letter).collect();
+        if motif.iter().any(IupacCode::is_empty) {
+            return ret;
+        }
+        let reverse: Vec<_> = self
+            .get_sequence_rc()
+            .bytes()
+            .map(IupacCode::from_letter)
+            .collect();
+        let palindrome = motif == reverse;
         let seq_len = if seq.is_circular() {
             seq.len()
         } else {
-            if seq.len() < recognition_len {
-                return ret;
-            }
             seq.len() - recognition_len + 1
         };
         for start in 0..seq_len {
-            let range = std::ops::Range {
-                start,
-                end: start + recognition_len,
-            };
-            let s = seq.get_range_safe(range); // Safe for circular
-            if let Some(s) = s {
-                let s = std::str::from_utf8(&s).unwrap().to_uppercase(); // TODO do this once?
-                if s == self.sequence {
-                    // TODO IUPAC
+            for (forward_strand, pattern) in [(true, &motif), (false, &reverse)] {
+                if !forward_strand && palindrome {
+                    continue;
+                }
+                if pattern.iter().enumerate().all(|(index, allowed)| {
+                    let base = IupacCode::from_letter(seq.get_base_or_n(start + index));
+                    !base.is_empty() && base.subset(*allowed) == base
+                }) {
                     ret.push(RestrictionEnzymeSite {
                         offset: start as isize,
                         enzyme: self.to_owned(),
-                        forward_strand: true,
+                        forward_strand,
                     });
+                    if max_sites.is_some_and(|max| ret.len() > max) {
+                        return vec![];
+                    }
                 }
             }
-        }
-        if let Some(max) = max_sites
-            && max < ret.len()
-        {
-            return vec![];
         }
         ret
     }
@@ -310,10 +329,59 @@ impl RestrictionEnzyme {
 }
 
 impl RestrictionEnzymeSite {
+    /// Absolute top/bottom cut coordinates in the displayed reference orientation.
+    /// Coordinates are unwrapped and may lie outside the recognition motif (Type IIS).
+    pub fn strand_cut_positions_unwrapped(&self) -> Option<(isize, isize)> {
+        let length = isize::try_from(self.enzyme.sequence.len()).ok()?;
+        let (forward, reverse) = self.enzyme.strand_cut_offsets();
+        let (forward, reverse) = if self.forward_strand {
+            (forward, reverse)
+        } else {
+            (length.checked_sub(reverse)?, length.checked_sub(forward)?)
+        };
+        Some((
+            self.offset.checked_add(forward)?,
+            self.offset.checked_add(reverse)?,
+        ))
+    }
+
+    /// Recognition alone does not imply that both cuts fit on a linear molecule.
+    pub fn can_cleave(&self, seq_len: usize, circular: bool) -> bool {
+        if self
+            .recognition_bounds_for_topology(seq_len, circular)
+            .is_none()
+        {
+            return false;
+        }
+        let Some((forward, reverse)) = self.strand_cut_positions_unwrapped() else {
+            return false;
+        };
+        if circular {
+            forward.abs_diff(reverse) < seq_len
+        } else {
+            forward >= 0
+                && reverse >= 0
+                && forward as usize <= seq_len
+                && reverse as usize <= seq_len
+                && (forward != reverse || (forward > 0 && (forward as usize) < seq_len))
+        }
+    }
+
     pub fn recognition_bounds_0based(&self, seq_len: usize) -> Option<(usize, usize)> {
+        self.recognition_bounds_for_topology(seq_len, false)
+    }
+
+    /// Circular intervals are unrolled: an end above `seq_len` crosses the origin.
+    pub fn recognition_bounds_for_topology(
+        &self,
+        seq_len: usize,
+        circular: bool,
+    ) -> Option<(usize, usize)> {
+        let length = self.enzyme.sequence.len();
         let start = usize::try_from(self.offset).ok()?;
-        let end = start.checked_add(self.enzyme.sequence.len())?;
-        (end <= seq_len).then_some((start, end))
+        let end = start.checked_add(length)?;
+        (length > 0 && length <= seq_len && start < seq_len && (circular || end <= seq_len))
+            .then_some((start, end))
     }
 
     /// Return the zero-based opening window between the two recessed ends of
@@ -328,15 +396,36 @@ impl RestrictionEnzymeSite {
     }
 
     pub fn strand_cut_positions_0based(&self, seq_len: usize) -> Option<(usize, usize)> {
-        let (recognition_start, recognition_end) = self.recognition_bounds_0based(seq_len)?;
-        let (forward_offset, reverse_offset) = self.enzyme.strand_cut_offsets();
-        let forward_cut = usize::try_from(self.offset.checked_add(forward_offset)?).ok()?;
-        let reverse_cut = usize::try_from(self.offset.checked_add(reverse_offset)?).ok()?;
-        (forward_cut >= recognition_start
-            && forward_cut <= recognition_end
-            && reverse_cut >= recognition_start
-            && reverse_cut <= recognition_end)
-            .then_some((forward_cut, reverse_cut))
+        self.strand_cut_positions_for_topology(seq_len, false)
+    }
+
+    /// Circular opening coordinates are unrolled together, preserving overhang length/order.
+    pub fn strand_cut_positions_for_topology(
+        &self,
+        seq_len: usize,
+        circular: bool,
+    ) -> Option<(usize, usize)> {
+        self.recognition_bounds_for_topology(seq_len, circular)?;
+        let (forward, reverse) = self.strand_cut_positions_unwrapped()?;
+        if circular {
+            let len = isize::try_from(seq_len).ok()?;
+            let low = forward.min(reverse);
+            let width = forward.abs_diff(reverse);
+            if width >= seq_len {
+                return None;
+            }
+            let start = low.rem_euclid(len) as usize;
+            let end = start.checked_add(width)?;
+            Some(if forward <= reverse {
+                (start, end)
+            } else {
+                (end, start)
+            })
+        } else {
+            let forward = usize::try_from(forward).ok()?;
+            let reverse = usize::try_from(reverse).ok()?;
+            (forward <= seq_len && reverse <= seq_len).then_some((forward, reverse))
+        }
     }
 }
 
@@ -344,6 +433,215 @@ impl RestrictionEnzymeSite {
 mod tests {
     use super::*;
     use crate::dna_sequence::DNAsequence;
+
+    // Hand-crafted motifs/templates exercise strand and ambiguity rules, not vendor cut data.
+    fn synthetic_enzyme(motif: &str, cut: isize, overlap: isize) -> RestrictionEnzyme {
+        let mut enzyme = RestrictionEnzyme {
+            name: "synthetic".into(),
+            sequence: motif.into(),
+            note: None,
+            cut,
+            overlap,
+            is_palindromic: false,
+        };
+        enzyme.check_palimdromic();
+        enzyme
+    }
+
+    #[test]
+    fn restriction_nonpalindromic_reverse_only_regression() {
+        let enzyme = synthetic_enzyme("GGTCTC", 1, 4);
+        assert!(!enzyme.is_palindromic());
+        assert_eq!(enzyme.get_sequence_rc(), "GAGACC");
+        let sites = enzyme.get_sites(&DNAsequence::from_sequence("GAGACC").unwrap(), None);
+        assert_eq!(sites.len(), 1);
+        assert_eq!(sites[0].offset, 0);
+        assert!(!sites[0].forward_strand);
+    }
+
+    #[test]
+    fn restriction_both_strands_are_ordered_and_count_towards_the_limit() {
+        let enzyme = synthetic_enzyme("ggtctc", 1, 4);
+        let dna = DNAsequence::from_sequence("ttGGTCTCttGAGACCtt").unwrap();
+        let sites = enzyme.get_sites(&dna, Some(2));
+        assert_eq!(
+            sites
+                .iter()
+                .map(|site| (site.offset, site.forward_strand))
+                .collect::<Vec<_>>(),
+            vec![(2, true), (10, false)]
+        );
+        assert!(enzyme.get_sites(&dna, Some(1)).is_empty());
+        assert!(enzyme.get_sites(&dna, Some(0)).is_empty());
+        let overlapping = synthetic_enzyme("AAGC", 1, 1)
+            .get_sites(&DNAsequence::from_sequence("AAGCTT").unwrap(), None);
+        assert_eq!(
+            overlapping
+                .iter()
+                .map(|site| (site.offset, site.forward_strand))
+                .collect::<Vec<_>>(),
+            vec![(0, true), (2, false)]
+        );
+        let palindrome = synthetic_enzyme("gaatTc", 1, 4);
+        assert!(palindrome.is_palindromic());
+        assert_eq!(
+            palindrome
+                .get_sites(&DNAsequence::from_sequence("gaattc").unwrap(), Some(1))
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn restriction_palindrome_identity_does_not_trust_a_serialized_or_stale_flag() {
+        let mut enzyme: RestrictionEnzyme = serde_json::from_value(serde_json::json!({
+            "name":"synthetic", "sequence":"GGTCTC", "cut":1, "overlap":4,
+            "is_palindromic":true
+        }))
+        .unwrap();
+        assert!(!enzyme.is_palindromic());
+        enzyme.sequence = "GAATTC".into();
+        assert!(enzyme.is_palindromic());
+        assert_eq!(
+            enzyme
+                .get_sites(&DNAsequence::from_sequence("GAATTC").unwrap(), None)
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn restriction_iupac_recognition_is_definite_not_merely_compatible() {
+        for (code, allowed) in [
+            ("A", "A"),
+            ("C", "C"),
+            ("G", "G"),
+            ("T", "T"),
+            ("R", "AG"),
+            ("Y", "CT"),
+            ("S", "CG"),
+            ("W", "AT"),
+            ("K", "GT"),
+            ("M", "AC"),
+            ("B", "CGT"),
+            ("D", "AGT"),
+            ("H", "ACT"),
+            ("V", "ACG"),
+            ("N", "ACGT"),
+        ] {
+            let enzyme = synthetic_enzyme(code, 0, 0);
+            for base in ["A", "C", "G", "T"] {
+                let sites = enzyme.get_sites(&DNAsequence::from_sequence(base).unwrap(), None);
+                assert_eq!(
+                    sites.iter().any(|s| s.forward_strand),
+                    allowed.contains(base),
+                    "motif {code}, base {base}"
+                );
+            }
+        }
+        let enzyme = synthetic_enzyme("GCNNGC", 1, 4);
+        assert_eq!(
+            enzyme
+                .get_sites(&DNAsequence::from_sequence("GCNNGC").unwrap(), None)
+                .len(),
+            1
+        );
+        assert!(
+            enzyme
+                .get_sites(&DNAsequence::from_sequence("NCNNGC").unwrap(), None)
+                .is_empty()
+        );
+        let mixed = synthetic_enzyme("ACGTWSMKRYBDHVN", 1, 1);
+        assert_eq!(mixed.get_sequence_rc(), "NBDHVRYMKSWACGT");
+        let sites = mixed.get_sites(
+            &DNAsequence::from_sequence("NBDHVRYMKSWACGT").unwrap(),
+            None,
+        );
+        assert_eq!(sites.len(), 1);
+        assert!(!sites[0].forward_strand);
+        let padded = synthetic_enzyme("GAAGACNNNNNN", 6, 4);
+        assert!(
+            !padded
+                .get_sites(&DNAsequence::from_sequence("GAAGACACGTAC").unwrap(), None)
+                .is_empty()
+        );
+        assert!(
+            !padded
+                .get_sites(&DNAsequence::from_sequence("GTACGTGTCTTC").unwrap(), None)
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn restriction_circular_sites_cross_origin_once_on_either_strand() {
+        let enzyme = synthetic_enzyme("GGTCTC", 1, 4);
+        for (sequence, forward) in [("CTCAAGGT", true), ("ACCAAGAG", false)] {
+            let mut dna = DNAsequence::from_sequence(sequence).unwrap();
+            assert!(enzyme.get_sites(&dna, None).is_empty());
+            dna.set_circular(true);
+            let sites = enzyme.get_sites(&dna, None);
+            assert_eq!(sites.len(), 1);
+            assert_eq!((sites[0].offset, sites[0].forward_strand), (5, forward));
+            assert_eq!(
+                sites[0].recognition_bounds_for_topology(8, true),
+                Some((5, 11))
+            );
+            assert_eq!(
+                sites[0].strand_cut_positions_for_topology(8, true),
+                Some((6, 10))
+            );
+        }
+    }
+
+    #[test]
+    fn restriction_empty_short_or_invalid_input_cannot_match_or_panic() {
+        for sequence in [b"".as_slice(), b"GGT", b"GG\xffCTC"] {
+            for circular in [false, true] {
+                let mut record = DNAsequence::from_sequence("").unwrap().clone_seq_record();
+                record.seq = sequence.to_vec();
+                record.len = Some(sequence.len());
+                let mut dna = DNAsequence::from_genbank_seq(record);
+                dna.set_circular(circular);
+                assert!(
+                    synthetic_enzyme("GGTCTC", 1, 4)
+                        .get_sites(&dna, None)
+                        .is_empty()
+                );
+            }
+        }
+        let dna = DNAsequence::from_sequence("GAATTC").unwrap();
+        for motif in ["", "?", "G\u{00e4}T"] {
+            let enzyme = synthetic_enzyme(motif, 0, 0);
+            assert!(!enzyme.is_palindromic());
+            assert!(enzyme.get_sites(&dna, None).is_empty());
+        }
+    }
+
+    #[test]
+    fn restriction_reverse_cut_geometry_swaps_strands_and_allows_external_offsets() {
+        let enzyme = synthetic_enzyme("AAGC", 6, 2);
+        let forward = RestrictionEnzymeSite {
+            offset: 2,
+            enzyme: enzyme.clone(),
+            forward_strand: true,
+        };
+        assert_eq!(forward.strand_cut_positions_0based(12), Some((8, 10)));
+        let reverse = RestrictionEnzymeSite {
+            offset: 10,
+            enzyme,
+            forward_strand: false,
+        };
+        assert_eq!(reverse.strand_cut_positions_0based(18), Some((6, 8)));
+        let mut edge = reverse;
+        edge.offset = 0;
+        assert_eq!(edge.strand_cut_positions_0based(18), None);
+        assert!(!edge.can_cleave(18, false));
+        assert_eq!(
+            edge.strand_cut_positions_for_topology(18, true),
+            Some((14, 16))
+        );
+        assert!(edge.can_cleave(18, true));
+    }
 
     #[test]
     fn preferred_restriction_enzyme_names_are_normalized_and_deduplicated() {
