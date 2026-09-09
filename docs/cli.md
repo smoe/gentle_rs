@@ -6246,9 +6246,13 @@ Tutorial companion:
     `gentle.gene_set_cutrun_regulatory_support.v1` report. An evaluated promoter
     with zero support is a fail branch; an unevaluated promoter is an unknown
     branch. `motif-only` leaves occupancy unknown by design.
-  - The Gene Set Inspector consumes the same command. Hovering a tree node
-    highlights genes whose recorded trace traversed it; selecting a gene shows
+  - The Gene Set Inspector consumes the same command and opens with a compact
+    candidate table; its TSV clipboard view projects the same ledger. The
+    advanced tree still highlights genes by trace, and selecting a gene shows
     promoter-oriented DNA with exact anchor, partner, overlap, and TSS spans.
+    The GUI's explicit `Use 150 bp` shortcut corresponds to `--max-distance-bp
+    150`; no shared defaults change. This is a TSS-window motif screen, not a
+    CUT&RUN-summit-centred scan, and expression is not evaluated.
   - Motif proximity and promoter occupancy are association evidence, not proof
     of direct or causal co-regulation. This first screen does not perform
     matched-control enrichment, multiple-testing correction, time-ordering, or

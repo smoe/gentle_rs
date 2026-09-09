@@ -677,6 +677,7 @@ pub(super) struct GeneSetInspectorUiState {
     regulatory_partner_task: Option<RegulatoryPartnerScreenTask>,
     regulatory_partner_report: Option<RegulatoryPartnerScreenReport>,
     selected_regulatory_partner_gene: String,
+    regulatory_partner_show_distant: bool,
     status: String,
     resolve_form: GeneSetResolveFormState,
     resolve_status: String,
@@ -707,6 +708,7 @@ impl Default for GeneSetInspectorUiState {
             regulatory_partner_task: None,
             regulatory_partner_report: None,
             selected_regulatory_partner_gene: String::new(),
+            regulatory_partner_show_distant: false,
             status: String::new(),
             resolve_form: GeneSetResolveFormState::default(),
             resolve_status: String::new(),
@@ -4017,9 +4019,9 @@ impl GENtleApp {
             gene.strand.as_deref().unwrap_or("-"),
             gene.transcript_id.as_deref().unwrap_or("-")
         ));
-        egui::CollapsingHeader::new(format!("Decision trace ({})", gene.trace.len()))
-            .default_open(true)
-            .show(ui, |ui| {
+        egui::CollapsingHeader::new(format!("Decision trace ({})", gene.trace.len())).show(
+            ui,
+            |ui| {
                 for step in &gene.trace {
                     let outcome = match step.outcome {
                         RegulatoryPartnerDecisionOutcome::Pass => "pass",
@@ -4034,7 +4036,8 @@ impl GENtleApp {
                         }
                     });
                 }
-            });
+            },
+        );
         ui.horizontal_wrapped(|ui| {
             ui.colored_label(egui::Color32::from_rgb(34, 112, 76), "Anchor motif");
             ui.colored_label(egui::Color32::from_rgb(177, 105, 22), "Partner motif");
@@ -4111,56 +4114,51 @@ impl GENtleApp {
                 }
             });
 
-        egui::CollapsingHeader::new(format!("Exact motif hits ({})", hits.len()))
-            .default_open(true)
-            .show(ui, |ui| {
-                egui::ScrollArea::both()
-                    .id_salt(("regulatory_partner_hit_table", &gene.member_dedup_key))
-                    .max_height(220.0)
-                    .show(ui, |ui| {
-                        egui::Grid::new(("regulatory_partner_hits", &gene.member_dedup_key))
-                            .striped(true)
-                            .spacing([10.0, 4.0])
-                            .show(ui, |ui| {
-                                ui.strong("Role");
-                                ui.strong("Motif");
-                                ui.strong("Promoter interval");
-                                ui.strong("Genome interval");
-                                ui.strong("Strand");
-                                ui.strong("LLR bits");
-                                ui.strong("To TSS");
+        egui::CollapsingHeader::new(format!("Exact motif hits ({})", hits.len())).show(ui, |ui| {
+            egui::ScrollArea::both()
+                .id_salt(("regulatory_partner_hit_table", &gene.member_dedup_key))
+                .max_height(220.0)
+                .show(ui, |ui| {
+                    egui::Grid::new(("regulatory_partner_hits", &gene.member_dedup_key))
+                        .striped(true)
+                        .spacing([10.0, 4.0])
+                        .show(ui, |ui| {
+                            ui.strong("Role");
+                            ui.strong("Motif");
+                            ui.strong("Promoter interval");
+                            ui.strong("Genome interval");
+                            ui.strong("Strand");
+                            ui.strong("LLR bits");
+                            ui.strong("To TSS");
+                            ui.end_row();
+                            for hit in &hits {
+                                ui.label(match hit.role {
+                                    RegulatoryPartnerMotifRole::Anchor => "anchor",
+                                    RegulatoryPartnerMotifRole::Partner => "partner",
+                                });
+                                ui.monospace(hit.tf_name.as_deref().unwrap_or(hit.tf_id.as_str()));
+                                ui.monospace(format!(
+                                    "{}..{}",
+                                    hit.promoter_start_0based, hit.promoter_end_0based_exclusive
+                                ));
+                                ui.monospace(format!(
+                                    "{}:{}-{}",
+                                    gene.chromosome.as_deref().unwrap_or("-"),
+                                    hit.genomic_start_1based,
+                                    hit.genomic_end_1based
+                                ));
+                                ui.label(if hit.promoter_forward_strand {
+                                    "+"
+                                } else {
+                                    "-"
+                                });
+                                ui.monospace(format!("{:.2}", hit.llr_bits));
+                                ui.monospace(format!("{:+} bp", hit.signed_center_to_tss_bp));
                                 ui.end_row();
-                                for hit in &hits {
-                                    ui.label(match hit.role {
-                                        RegulatoryPartnerMotifRole::Anchor => "anchor",
-                                        RegulatoryPartnerMotifRole::Partner => "partner",
-                                    });
-                                    ui.monospace(
-                                        hit.tf_name.as_deref().unwrap_or(hit.tf_id.as_str()),
-                                    );
-                                    ui.monospace(format!(
-                                        "{}..{}",
-                                        hit.promoter_start_0based,
-                                        hit.promoter_end_0based_exclusive
-                                    ));
-                                    ui.monospace(format!(
-                                        "{}:{}-{}",
-                                        gene.chromosome.as_deref().unwrap_or("-"),
-                                        hit.genomic_start_1based,
-                                        hit.genomic_end_1based
-                                    ));
-                                    ui.label(if hit.promoter_forward_strand {
-                                        "+"
-                                    } else {
-                                        "-"
-                                    });
-                                    ui.monospace(format!("{:.2}", hit.llr_bits));
-                                    ui.monospace(format!("{:+} bp", hit.signed_center_to_tss_bp));
-                                    ui.end_row();
-                                }
-                            });
-                    });
-            });
+                            }
+                        });
+                });
+        });
 
         let gene_tuple_ids = gene.tuple_ids.iter().collect::<BTreeSet<_>>();
         let gene_tuples = report
@@ -4190,6 +4188,168 @@ impl GENtleApp {
         );
     }
 
+    fn render_regulatory_partner_candidates(
+        &mut self,
+        ui: &mut Ui,
+        report: &RegulatoryPartnerScreenReport,
+    ) {
+        ui.strong("Candidate list");
+        ui.small("Predicted motif pairs, not confirmed cofactors. Distances are motif-centre to motif-centre, signed in promoter 5' to 3' direction. CUT&RUN support is promoter-level, not a measured summit or evidence of binding at either motif.");
+        ui.small("Expression is not evaluated by this screen. Row order follows the engine's gene/distance order; it is not an enrichment or functional ranking.");
+        ui.horizontal_wrapped(|ui| {
+            ui.checkbox(
+                &mut self.gene_set_inspector.regulatory_partner_show_distant,
+                "Include pairs outside the distance rule",
+            );
+            ui.small(format!(
+                "Report rule: motif centres within {} bp",
+                report.ledger.request.max_anchor_partner_distance_bp
+            ));
+        });
+        let nearby_only = !self.gene_set_inspector.regulatory_partner_show_distant;
+        let rows = match gentle_render::regulatory_partner_candidate_rows(report, nearby_only) {
+            Ok(rows) => rows,
+            Err(error) => {
+                ui.colored_label(
+                    ui.visuals().error_fg_color,
+                    format!("Cannot show candidate list: {error}"),
+                );
+                return;
+            }
+        };
+        let shown_members = rows
+            .iter()
+            .map(|row| row.gene.member_dedup_key.as_str())
+            .collect::<BTreeSet<_>>();
+        ui.horizontal_wrapped(|ui| {
+            ui.small(format!(
+                "{} of {} motif pairs shown | {} of {} member rows represented (not peak counts)",
+                rows.len(), report.ledger.tuples.len(), shown_members.len(), report.ledger.genes.len()
+            ));
+            if ui.button("Copy candidate table (TSV)")
+                .on_hover_text("Copy the displayed motif pairs with transcript/tuple IDs and source-report digests; the full JSON remains the evidence record")
+                .clicked()
+            {
+                match gentle_render::regulatory_partner_candidates_tsv(report, nearby_only) {
+                    Ok(tsv) => ui.ctx().copy_text(tsv),
+                    Err(error) => self.gene_set_inspector.status = error,
+                }
+            }
+        });
+        if rows.is_empty() {
+            ui.label("No motif pairs satisfy the current display filter. This does not establish absence of binding. Include distant pairs or inspect the gene statuses below.");
+        } else {
+            egui::ScrollArea::horizontal()
+                .id_salt("regulatory_partner_candidates_horizontal")
+                .show(ui, |ui| {
+                    let widths = [95.0, 205.0, 205.0, 90.0, 100.0, 75.0, 150.0, 100.0];
+                    let mut table = egui_extras::TableBuilder::new(ui)
+                        .id_salt("regulatory_partner_candidates")
+                        .striped(true)
+                        .max_scroll_height(330.0);
+                    for width in widths {
+                        table = table.column(egui_extras::Column::exact(width));
+                    }
+                    table
+                        .header(40.0, |mut header| {
+                            for label in [
+                                "Gene",
+                                "Predicted anchor / site",
+                                "Candidate motif / site",
+                                "Distance (bp)",
+                                "LLR bits anchor / candidate",
+                                "Rule",
+                                "Promoter CUT&RUN",
+                                "Expression",
+                            ] {
+                                header.col(|ui| {
+                                    ui.strong(label);
+                                });
+                            }
+                        })
+                        .body(|body| {
+                            body.rows(46.0, rows.len(), |mut table_row| {
+                                let row = &rows[table_row.index()];
+                                let cells = row.cells();
+                                table_row.col(|ui| {
+                                    if ui
+                                        .selectable_label(
+                                            self.gene_set_inspector
+                                                .selected_regulatory_partner_gene
+                                                == row.gene.member_dedup_key,
+                                            &cells[0],
+                                        )
+                                        .on_hover_text(format!(
+                                            "Inspect promoter DNA\nTranscript: {}\nTuple: {}",
+                                            row.gene.transcript_id.as_deref().unwrap_or("unknown"),
+                                            row.tuple.tuple_id
+                                        ))
+                                        .clicked()
+                                    {
+                                        self.gene_set_inspector.selected_regulatory_partner_gene =
+                                            row.gene.member_dedup_key.clone();
+                                    }
+                                });
+                                for (motif, site) in [(1, 3), (2, 4)] {
+                                    table_row.col(|ui| {
+                                        ui.vertical(|ui| {
+                                            ui.add(egui::Label::new(&cells[motif]).truncate())
+                                                .on_hover_text(&cells[motif]);
+                                            ui.add(
+                                                egui::Label::new(
+                                                    egui::RichText::new(&cells[site]).small(),
+                                                )
+                                                .truncate(),
+                                            )
+                                            .on_hover_text(&cells[site]);
+                                        });
+                                    });
+                                }
+                                for cell in &cells[5..] {
+                                    table_row.col(|ui| {
+                                        ui.label(cell);
+                                    });
+                                }
+                            });
+                        });
+                });
+        }
+        let unshown = report
+            .ledger
+            .genes
+            .iter()
+            .filter(|gene| !shown_members.contains(gene.member_dedup_key.as_str()))
+            .collect::<Vec<_>>();
+        if !unshown.is_empty() {
+            egui::CollapsingHeader::new(format!(
+                "Genes without displayed pairs ({})",
+                unshown.len()
+            ))
+            .show(ui, |ui| {
+                for gene in unshown {
+                    ui.horizontal_wrapped(|ui| {
+                        if ui
+                            .selectable_label(
+                                self.gene_set_inspector.selected_regulatory_partner_gene
+                                    == gene.member_dedup_key,
+                                &gene.gene_symbol,
+                            )
+                            .clicked()
+                        {
+                            self.gene_set_inspector.selected_regulatory_partner_gene =
+                                gene.member_dedup_key.clone();
+                        }
+                        ui.label(
+                            gene.unresolved_reason
+                                .as_deref()
+                                .unwrap_or(&gene.terminal_class),
+                        );
+                    });
+                }
+            });
+        }
+    }
+
     fn render_regulatory_partner_report(
         &mut self,
         ui: &mut Ui,
@@ -4197,7 +4357,7 @@ impl GENtleApp {
     ) {
         ui.separator();
         ui.horizontal_wrapped(|ui| {
-            ui.strong("Evidence decision tree");
+            ui.strong("Cofactor candidates: promoter motif screen");
             ui.small(format!(
                 "{} promoter(s) | {} exact hit(s) | {} tuple(s)",
                 report.ledger.resolved_promoter_count,
@@ -4213,6 +4373,13 @@ impl GENtleApp {
                 ui.ctx().copy_text(json);
             }
         });
+        self.render_regulatory_partner_candidates(ui, report);
+        if let Some(gene) = report.ledger.genes.iter().find(|gene| {
+            gene.member_dedup_key == self.gene_set_inspector.selected_regulatory_partner_gene
+        }) {
+            self.render_regulatory_partner_sequence(ui, report, gene);
+        }
+        egui::CollapsingHeader::new("Advanced evidence: decision tree and all genes").show(ui, |ui| {
         ui.small(
             "Hover a tree node to highlight every gene whose recorded path traverses it. Select a gene to inspect the exact promoter sequence and motif intervals.",
         );
@@ -4263,12 +4430,7 @@ impl GENtleApp {
                     });
                 }
             });
-
-        if let Some(gene) = report.ledger.genes.iter().find(|gene| {
-            gene.member_dedup_key == self.gene_set_inspector.selected_regulatory_partner_gene
-        }) {
-            self.render_regulatory_partner_sequence(ui, report, gene);
-        }
+        });
         if !report.warnings.is_empty() {
             egui::CollapsingHeader::new(format!("Warnings ({})", report.warnings.len())).show(
                 ui,
@@ -4279,20 +4441,18 @@ impl GENtleApp {
                 },
             );
         }
-        egui::CollapsingHeader::new("Interpretation limits")
-            .default_open(true)
-            .show(ui, |ui| {
-                for non_claim in &report.non_claims {
-                    ui.small(format!("- {non_claim}"));
-                }
-            });
+        egui::CollapsingHeader::new("Interpretation limits").show(ui, |ui| {
+            for non_claim in &report.non_claims {
+                ui.small(format!("- {non_claim}"));
+            }
+        });
     }
 
     fn render_regulatory_partner_screen(&mut self, ui: &mut Ui, choice: &GeneSetResolutionChoice) {
         ui.separator();
-        ui.strong("Regulatory-partner screen");
+        ui.strong("Find cofactor candidates: promoter motif screen");
         ui.small(
-            "Enumerate exact anchor-plus-partner motif tuples in strand-aware promoter windows. Occupancy support remains promoter-level association evidence.",
+            "Choose the anchor and candidate motifs, then review nearby pairs. No ENCODE/Ensembl regulatory annotation or promoter-similarity search is required. This screen uses TSS-defined promoters, not a 500 bp window centred on a CUT&RUN peak.",
         );
         let cutrun_choices = self.gene_set_inspector.cutrun_support_reports.clone();
         let running = self.gene_set_inspector.regulatory_partner_task.is_some();
@@ -4328,8 +4488,13 @@ impl GENtleApp {
                         .hint_text("MOTIF=BITS, MOTIF=BITS"),
                 );
                 ui.end_row();
-                ui.label("Maximum tuple distance (bp)");
-                ui.add(egui::TextEdit::singleline(&mut form.max_distance_bp).desired_width(100.0));
+                ui.label("Maximum motif-centre distance (bp)");
+                ui.horizontal(|ui| {
+                    ui.add(egui::TextEdit::singleline(&mut form.max_distance_bp).desired_width(100.0));
+                    if ui.button("Use 150 bp").on_hover_text("Set a proximity rule of +/-150 bp between predicted motif centres; this does not choose a peak or alter the promoter window").clicked() {
+                        form.max_distance_bp = "150".to_string();
+                    }
+                });
                 ui.end_row();
                 ui.label("Anchor evidence mode");
                 ui.horizontal(|ui| {
@@ -4375,7 +4540,7 @@ impl GENtleApp {
                         }
                     });
                 ui.end_row();
-                ui.label("Promoter window");
+                ui.label("Promoter window around TSS (not peak)");
                 ui.horizontal(|ui| {
                     ui.add(egui::TextEdit::singleline(&mut form.upstream_bp).desired_width(80.0));
                     ui.label("upstream");
@@ -6369,6 +6534,100 @@ mod tests {
             },
             ..RegulatoryPartnerScreenReport::default()
         }
+    }
+
+    #[test]
+    fn regulatory_partner_candidate_view_is_first_and_virtualizes_large_ledgers() {
+        // Synthetic display-only rows; no motif scan or biological ranking is claimed.
+        let mut report = regulatory_partner_gui_test_report();
+        report.ledger.motif_hits = [
+            ("anchor", RegulatoryPartnerMotifRole::Anchor, "ANCHOR"),
+            (
+                "partner",
+                RegulatoryPartnerMotifRole::Partner,
+                "SYNTHETIC_FACTOR",
+            ),
+        ]
+        .into_iter()
+        .map(
+            |(id, role, tf_id)| gentle_protocol::RegulatoryPartnerMotifHit {
+                hit_id: id.into(),
+                member_dedup_key: "gene:pair".into(),
+                role,
+                tf_id: tf_id.into(),
+                genomic_start_1based: 1,
+                genomic_end_1based: 4,
+                ..Default::default()
+            },
+        )
+        .collect();
+        report.ledger.tuples = (0..1000)
+            .map(|index| gentle_protocol::RegulatoryPartnerTupleRow {
+                tuple_id: format!("tuple:{index}"),
+                member_dedup_key: "gene:pair".into(),
+                anchor_hit_id: "anchor".into(),
+                partner_hit_id: "partner".into(),
+                within_requested_distance: true,
+                ..Default::default()
+            })
+            .collect();
+        let before = serde_json::to_value(&report).unwrap();
+        let mut app = seeded_app();
+        let ctx = egui::Context::default();
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1600.0, 1000.0),
+            )),
+            ..Default::default()
+        });
+        crate::egui_compat::show_central_panel_for_test_context(
+            &ctx,
+            egui::CentralPanel::default(),
+            |ui| app.render_regulatory_partner_report(ui, &report),
+        );
+        let output = crate::egui_compat::end_test_pass(&ctx);
+        fn texts(shape: &egui::epaint::Shape, out: &mut Vec<String>) {
+            match shape {
+                egui::epaint::Shape::Text(text) => out.push(text.galley.job.text.clone()),
+                egui::epaint::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        texts(shape, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut labels = Vec::new();
+        for shape in output.shapes {
+            texts(&shape.shape, &mut labels);
+        }
+        let candidates = labels
+            .iter()
+            .position(|text| text == "Candidate list")
+            .unwrap();
+        let advanced = labels
+            .iter()
+            .position(|text| text == "Advanced evidence: decision tree and all genes")
+            .unwrap();
+        assert!(candidates < advanced);
+        assert!(!labels.iter().any(|text| text == "Genes and recorded paths"));
+        let painted = labels
+            .iter()
+            .filter(|text| text.as_str() == "SYNTHETIC_FACTOR")
+            .count();
+        assert!(
+            painted > 0 && painted < 1000,
+            "painted {painted} of 1000 candidate rows"
+        );
+        assert_eq!(serde_json::to_value(&report).unwrap(), before);
+        assert_eq!(
+            gentle_render::regulatory_partner_candidates_tsv(&report, true)
+                .unwrap()
+                .lines()
+                .count(),
+            1001
+        );
     }
 
     #[test]

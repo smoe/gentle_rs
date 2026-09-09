@@ -518,7 +518,22 @@ The project main window (lineage page) supports two views:
     gene-set CUT&RUN support report. It dispatches the shared
     `gene-sets regulatory-partner-screen` command on a detached engine snapshot
     and caches the portable result in the inspector
-  - its decision view is a branching tree derived from the engine report.
+  - results open with a **Candidate list**: gene, predicted anchor and partner
+    matrix IDs/sites, signed motif-centre distance, both LLR scores, proximity
+    outcome, promoter-level CUT&RUN support, and expression (`Not evaluated`).
+    Nearby pairs are shown first; a checkbox includes distant pairs without
+    changing the report. Counts are motif pairs/member rows, not independent
+    peaks or enrichment. Genes without displayed pairs remain inspectable.
+  - `Use 150 bp` explicitly changes the form's proximity parameter; it does not
+    change the existing shared default or select a 500 bp neighbourhood.
+    The current scan window remains **TSS-centred**, not CUT&RUN-peak-centred.
+    ENCODE/Ensembl regulatory annotation and promoter similarity are not gates.
+  - `Copy candidate table (TSV)` copies the displayed rows with tuple/member,
+    transcript, genome, operation/run identifiers and input-report digests.
+    Keep `Copy report JSON` for the complete evidence and threshold policy.
+  - selecting a candidate's gene opens its promoter sequence detail. The
+    **Advanced evidence: decision tree and all genes** section retains the
+    branching tree derived from the engine report.
     Hovering a node highlights every gene whose recorded trace traverses that
     node; selecting a gene displays its strand-aware promoter DNA with the
     exact anchor, partner, overlapping-role, and TSS bases highlighted
@@ -528,6 +543,9 @@ The project main window (lineage page) supports two views:
   - wording remains evidence-focused: motif-family matches and promoter-level
     occupancy are cross-gene association evidence, not proof of a unique bound
     protein or causal co-regulation
+  - the next peak-centred/expression-aware slice is specified separately in
+    [`cofactor_candidate_interface_plan.md`](cofactor_candidate_interface_plan.md);
+    the current view does not substitute predicted motifs for measured summits
   - external mappings are resolved from configured local catalogs; opening the
     form does not perform a live ontology lookup
   - the collection-operation catalog is projected from canonical

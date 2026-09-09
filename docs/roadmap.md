@@ -87,7 +87,7 @@ Pre-release finishing scope:
    benchmarks and TP73/PATZ1 TFBS/reporter/CUT&RUN/locus proofs with exact JASPAR 2026 PFMs.
 3. Run [build-only CI packaging](release.md#build-only-candidate-verification) at the same SHA; retain receipts before approval.
 4. Have Glen refresh the `a5b01843` lane-validation receipt using native interval/score comparison and catalog-bound assembly checks against original inputs; preserve the verified figures unless those checks expose a mismatch.
-   Keep offline-safe regeneration, live Conservation/partner-evidence proof and ClawBio compatibility pending removal review.
+   Validate the [candidate-first view and peak-centred follow-up](cofactor_candidate_interface_plan.md); keep offline-safe regeneration, live Conservation/partner-evidence proof and ClawBio compatibility pending removal review.
 5. Validate DuckDB real-Parquet boundaries/limits and scan filters; address GUI
    staleness when the selected package changes.
 

@@ -10,6 +10,7 @@ pub mod pool_gel;
 pub mod protein_gel;
 pub mod protocol_cartoon;
 mod region_homology;
+mod regulatory_partners;
 
 pub use feature_expert::{
     GeneLocusEvidenceOverlay, GeneLocusEvidenceOverlayLegendItem, GeneLocusEvidenceOverlayRow,
@@ -27,3 +28,7 @@ pub use gene_set_publication::{
     render_gene_set_publication_markdown,
 };
 pub use region_homology::render_genomic_region_homology_svg;
+pub use regulatory_partners::{
+    REGULATORY_PARTNER_CANDIDATE_COLUMNS, RegulatoryPartnerCandidateRow,
+    regulatory_partner_candidate_rows, regulatory_partner_candidates_tsv,
+};

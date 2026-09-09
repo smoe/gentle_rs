@@ -46,6 +46,18 @@
   historical pending Glen's full source-bound regeneration; no local Cargo or
   real BLAST run was attempted.
 
+- Prepared a candidate-first regulatory-partner interface in the Gene Set
+  Inspector. The headless rendering helper joins exact ledger IDs, preserves
+  engine order/proximity outcomes and distinguishes unknown from evaluated
+  zero CUT&RUN support. The GUI offers a virtualized table, TSV copy, an
+  explicit 150 bp shortcut, and optional advanced evidence. No motif rescoring,
+  new biological ranking, schema/default change or scientific fixture refresh
+  is included. The current screen remains TSS-window/motif-centred; reviewed
+  experimental anchors and expression integration are follow-up work in
+  `cofactor_candidate_interface_plan.md`. Deterministic presentation tests are
+  added; Rust/native acceptance remains with Glen/CI on the resource-limited
+  development machine.
+
 - Hardened the TP73 comparison scripts after review: validate receipt-bound
   reference files, transcript membership and strand/TSS geometry; use one
   gene-ID exclusion policy across counts and detail rows; audit raw target/HSP
