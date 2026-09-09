@@ -1,6 +1,18 @@
 # GENtle Changelog
 
-## 2026-09-08 - `v0.1.0-internal.10` candidate preparation
+## 2026-09-09 - Promoterome preparation and ordered similarity inspection
+
+- Fast-forwarded Glen's preparation commits `b5a10983` and `9864727b`, then
+  the separate GUI/tutorial commit `7d5d860e`, preserving their original hashes.
+  Preparation now accepts canonical region sets, captures verified Ensembl
+  promoter annotations, builds transcript-linked promoterome indexes, and
+  compares candidates while retaining shared-window transcript memberships,
+  declared assembly/annotation identities, receipts and completeness limits.
+  Local checks cover Python syntax, JSON/source-manifest consistency, all 60
+  retained tutorial checksums, Rust formatting and diff cleanliness; builds,
+  runtime tests and native GUI acceptance remain delegated to Glen/CI.
+  The candidate remains unreleased `.10`; the real CD44/TGFB1/SERPINE1 manual
+  ROI set still needs canonical export before any reporter recommendation.
 
 - Added an ordered transcript-promoter recurrence matrix to saved-region
   homology reports. The `Promoter similarity...` action searches the prepared
@@ -11,6 +23,8 @@
   truncation turns frequency counts into labelled lower bounds. Protocol, SVG,
   virtualized GUI and tutorial coverage repeat that these are structural design
   observations, not promoter activity or reporter sufficiency claims.
+
+## 2026-09-08 - `v0.1.0-internal.10` candidate preparation
 
 - Integrated Glen's `f93f795c` screenshot contribution after the hardening merge:
   three introductory tutorials now link ten teaching views from eight captured

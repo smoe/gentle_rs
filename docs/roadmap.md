@@ -1,6 +1,6 @@
 # GENtle Roadmap
 
-Last session: 2026-09-08 - `.10` remains unreleased pending Glen's verdict and
+Last session: 2026-09-09 - `.10` remains unreleased pending Glen's verdict and
 release-owner approval of the exact candidate. A tag alone is not acceptance.
 
 Purpose: fast session orientation. This file answers "what next?" and should be
@@ -22,8 +22,7 @@ Maintenance invariant:
 
 Current candidate: `v0.1.0-internal.10` (unreleased; no green-light claim).
 
-Active aim: genome-anchored evidence, transcript-linked promoter recurrence,
-regulatory-region comparison and approved reporter designs.
+Active aim: genome-anchored evidence, transcript-linked promoter recurrence, regulatory-region comparison and approved reporter designs.
 
 Release story: inspect TP73 GRCh38.p14 exon, repeat, array, CUT&RUN, paired-read,
 motif and coordinate-provenance tracks, plus PATZ1 negative-strand transcript/assay
@@ -72,8 +71,8 @@ Release cut line:
 
 Pre-release finishing scope:
 
-- Run the manual GUI smoke from the TP73 and PATZ1 runbooks and fix only
-  evidence-inspection or composition problems supported by that review.
+- Run TP73/PATZ1 and promoter-matrix GUI smoke, including cancellation; obtain canonical
+  CD44/TGFB1/SERPINE1 region sets before real-candidate analysis, never infer missing ROIs.
 - Repeat the copied-state IRF9/Q00978 acceptance and require the one-assay panel
   to report one of three linked cDNAs and two of four linked records covered,
   with only the true patch record genomically unassessed.
