@@ -3,13 +3,13 @@
 use gentle_protocol::{
     CrypticSplicingScreenView, CrypticSplicingSignalStatus, FeatureExpertView,
     GeneIsoformEvidenceReport, GeneLocusCodonKind, GeneLocusEnsemblRegulationAvailability,
-    GeneLocusEvidenceDisplayReport, GeneLocusLocalAxisDirection, GeneLocusOccupancyLaneRole,
-    GeneLocusOccupancyLaneState, GeneLocusOccupancyScaleMode, GeneLocusProbeClass,
-    GeneLocusProbeEffectContrast, GeneLocusRegulatoryScoreProviderKind,
-    GeneLocusRegulatoryScoreTrack, GeneLocusScaleBarMode, GenomicRegionEvidenceAvailability,
-    GenomicRegionHomologySupportClass, GenomicRegionPurpose, IsoformArchitectureExpertView,
-    RestrictionSiteExpertView, SplicingExonSummary, SplicingExpertView, SplicingJunctionArc,
-    TfbsExpertView,
+    GeneLocusEnsemblRegulationFeatureRow, GeneLocusEvidenceDisplayReport,
+    GeneLocusLocalAxisDirection, GeneLocusOccupancyLaneRole, GeneLocusOccupancyLaneState,
+    GeneLocusOccupancyScaleMode, GeneLocusProbeClass, GeneLocusProbeEffectContrast,
+    GeneLocusRegulatoryScoreProviderKind, GeneLocusRegulatoryScoreTrack, GeneLocusScaleBarMode,
+    GenomicRegionEvidenceAvailability, GenomicRegionHomologySupportClass, GenomicRegionPurpose,
+    IsoformArchitectureExpertView, RestrictionSiteExpertView, SplicingExonSummary,
+    SplicingExpertView, SplicingJunctionArc, TfbsExpertView,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use svg::Document;
@@ -4682,6 +4682,99 @@ fn ensembl_regulation_distance_label(distance: Option<i64>) -> String {
     }
 }
 
+#[derive(Debug)]
+struct EnsemblRegulationDisplayRow<'a> {
+    primary: &'a GeneLocusEnsemblRegulationFeatureRow,
+    redundant_emars: Vec<&'a GeneLocusEnsemblRegulationFeatureRow>,
+}
+
+fn ensembl_regulation_same_display_geometry(
+    left: &GeneLocusEnsemblRegulationFeatureRow,
+    right: &GeneLocusEnsemblRegulationFeatureRow,
+) -> bool {
+    left.assembly_name == right.assembly_name
+        && left.assembly_accession == right.assembly_accession
+        && left.core_genomic_start_1based == right.core_genomic_start_1based
+        && left.core_genomic_end_1based == right.core_genomic_end_1based
+        && left.displayed_genomic_start_1based == right.displayed_genomic_start_1based
+        && left.displayed_genomic_end_1based == right.displayed_genomic_end_1based
+        && left.displayed_local_start_1based == right.displayed_local_start_1based
+        && left.displayed_local_end_1based == right.displayed_local_end_1based
+        && left.extended_genomic_start_1based == right.extended_genomic_start_1based
+        && left.extended_genomic_end_1based == right.extended_genomic_end_1based
+        && left.extended_local_start_1based == right.extended_local_start_1based
+        && left.extended_local_end_1based == right.extended_local_end_1based
+        && left.local_strand == right.local_strand
+        && left.genomic_strand == right.genomic_strand
+}
+
+fn ensembl_regulation_display_rows(
+    rows: &[GeneLocusEnsemblRegulationFeatureRow],
+) -> Vec<EnsemblRegulationDisplayRow<'_>> {
+    let is_emar =
+        |row: &GeneLocusEnsemblRegulationFeatureRow| row.feature_type.eq_ignore_ascii_case("emar");
+    rows.iter()
+        .enumerate()
+        .filter_map(|(index, row)| {
+            if is_emar(row)
+                && rows.iter().any(|candidate| {
+                    !is_emar(candidate) && ensembl_regulation_same_display_geometry(row, candidate)
+                })
+            {
+                return None;
+            }
+            let redundant_emars = if is_emar(row)
+                || rows[..index].iter().any(|candidate| {
+                    !is_emar(candidate) && ensembl_regulation_same_display_geometry(row, candidate)
+                }) {
+                Vec::new()
+            } else {
+                rows.iter()
+                    .filter(|candidate| {
+                        is_emar(candidate)
+                            && ensembl_regulation_same_display_geometry(row, candidate)
+                    })
+                    .collect()
+            };
+            Some(EnsemblRegulationDisplayRow {
+                primary: row,
+                redundant_emars,
+            })
+        })
+        .collect()
+}
+
+fn gene_locus_chromosome_label(report: &GeneLocusEvidenceDisplayReport) -> Option<String> {
+    let chromosome = report
+        .sequence_binding
+        .as_ref()
+        .and_then(|binding| binding.genome_anchor.as_ref())
+        .map(|anchor| anchor.chromosome.as_str())
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            report
+                .isoform_evidence
+                .chromosome
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+        })?;
+    Some(if chromosome.to_ascii_lowercase().starts_with("chr") {
+        chromosome.to_string()
+    } else {
+        format!("chr{chromosome}")
+    })
+}
+
+fn gene_locus_axis_endpoint_label(
+    report: &GeneLocusEvidenceDisplayReport,
+    genomic_1based: usize,
+) -> String {
+    match gene_locus_chromosome_label(report) {
+        Some(chromosome) => format!("{chromosome}:{genomic_1based}"),
+        None => genomic_1based.to_string(),
+    }
+}
+
 /// Render normalized locus evidence with an optional already-resolved design
 /// overlay. The renderer never derives transcript or assay biology.
 pub fn render_gene_locus_evidence_with_overlay_svg(
@@ -4780,22 +4873,31 @@ pub fn render_gene_locus_evidence_with_overlay(
     } else {
         conservation_top
     };
-    let ensembl_display_count = report
+    let ensembl_display_rows = report
         .ensembl_regulation
         .as_ref()
-        .map(|evidence| evidence.rows.len().min(ENSEMBL_DISPLAY_ROW_CAP))
+        .map(|evidence| ensembl_regulation_display_rows(&evidence.rows))
         .unwrap_or_default();
-    let ensembl_omitted_count = report
-        .ensembl_regulation
-        .as_ref()
-        .map(|evidence| evidence.rows.len().saturating_sub(ensembl_display_count))
-        .unwrap_or_default();
+    let ensembl_redundant_emar_count = ensembl_display_rows
+        .iter()
+        .take(ENSEMBL_DISPLAY_ROW_CAP)
+        .map(|row| row.redundant_emars.len())
+        .sum::<usize>();
+    let ensembl_display_count = ensembl_display_rows.len().min(ENSEMBL_DISPLAY_ROW_CAP);
+    let ensembl_omitted_count = ensembl_display_rows
+        .len()
+        .saturating_sub(ensembl_display_count);
     let ensembl_height = report
         .ensembl_regulation
         .as_ref()
         .map(|_| {
             58.0 + ensembl_display_count as f32 * 30.0
                 + if ensembl_omitted_count > 0 { 18.0 } else { 0.0 }
+                + if ensembl_redundant_emar_count > 0 {
+                    18.0
+                } else {
+                    0.0
+                }
         })
         .unwrap_or_default();
     let probe_top = if ensembl_height > 0.0 {
@@ -4928,7 +5030,10 @@ pub fn render_gene_locus_evidence_with_overlay(
                 .set("stroke-width", 1),
         )
         .add(
-            Text::new(report.axis_left_genomic_1based.to_string())
+            Text::new(gene_locus_axis_endpoint_label(
+                report,
+                report.axis_left_genomic_1based,
+            ))
                 .set("x", plot_left)
                 .set("y", 102)
                 .set("font-family", "monospace")
@@ -4936,9 +5041,13 @@ pub fn render_gene_locus_evidence_with_overlay(
                 .set("fill", "#64748b"),
         )
         .add(
-            Text::new(report.axis_right_genomic_1based.to_string())
-                .set("x", plot_right - 68.0)
+            Text::new(gene_locus_axis_endpoint_label(
+                report,
+                report.axis_right_genomic_1based,
+            ))
+                .set("x", plot_right)
                 .set("y", 102)
+                .set("text-anchor", "end")
                 .set("font-family", "monospace")
                 .set("font-size", 9)
                 .set("fill", "#64748b"),
@@ -5092,7 +5201,7 @@ pub fn render_gene_locus_evidence_with_overlay(
             .max(1);
         let width_px =
             (report.scale_bar.length_bp as f32 / span_bp as f32) * (plot_right - plot_left);
-        let scale_x1 = plot_left;
+        let scale_x1 = plot_left + ((plot_right - plot_left) - width_px) / 2.0;
         let scale_x2 = scale_x1 + width_px;
         doc = doc
             .add(
@@ -5903,7 +6012,7 @@ pub fn render_gene_locus_evidence_with_overlay(
                 );
             }
             GeneLocusEnsemblRegulationAvailability::Available => {
-                if evidence.rows.is_empty() {
+                if ensembl_display_rows.is_empty() {
                     doc = doc.add(
                         Text::new(
                             "No matching Ensembl regulatory regions overlap this displayed locus.",
@@ -5916,15 +6025,26 @@ pub fn render_gene_locus_evidence_with_overlay(
                         .set("data-gentle-ensembl-empty", "true"),
                     );
                 }
-                for (index, row) in evidence
-                    .rows
+                for (index, display_row) in ensembl_display_rows
                     .iter()
                     .take(ENSEMBL_DISPLAY_ROW_CAP)
                     .enumerate()
                 {
+                    let row = display_row.primary;
                     let y = ensembl_top + 34.0 + index as f32 * 30.0;
                     let color = ensembl_regulation_palette(&row.feature_type);
                     let id_label = isoform_evidence_compact_label(&row.feature_id, 28);
+                    let displayed_feature_type = if display_row.redundant_emars.is_empty() {
+                        row.feature_type.clone()
+                    } else {
+                        format!("{} + eMAR", row.feature_type)
+                    };
+                    let redundant_emar_ids = display_row
+                        .redundant_emars
+                        .iter()
+                        .map(|emar| emar.feature_id.as_str())
+                        .collect::<Vec<_>>()
+                        .join(",");
                     if ensembl_regulation_safe_link(&row.canonical_feature_url) {
                         uri_links.push(SvgUriLinkRectangle {
                             x_px: 34.0,
@@ -6003,7 +6123,11 @@ pub fn render_gene_locus_evidence_with_overlay(
                             .set("data-gentle-ensembl-core-span", row.feature_id.as_str())
                             .set(
                                 "data-gentle-ensembl-feature-type",
-                                row.feature_type.as_str(),
+                                displayed_feature_type.as_str(),
+                            )
+                            .set(
+                                "data-gentle-redundant-emar-features",
+                                redundant_emar_ids.as_str(),
                             )
                             .set("data-gentle-local-start", row.displayed_local_start_1based)
                             .set("data-gentle-local-end", row.displayed_local_end_1based)
@@ -6032,7 +6156,7 @@ pub fn render_gene_locus_evidence_with_overlay(
                         Text::new(isoform_evidence_compact_label(
                             &format!(
                                 "{} | {}:{}-{} | {} | {} | {}",
-                                row.feature_type,
+                                displayed_feature_type,
                                 row.assembly_name,
                                 row.core_genomic_start_1based,
                                 row.core_genomic_end_1based,
@@ -6070,6 +6194,29 @@ pub fn render_gene_locus_evidence_with_overlay(
                         .set("font-size", 8)
                         .set("fill", "#64748b")
                         .set("data-gentle-ensembl-omitted-rows", ensembl_omitted_count),
+                    );
+                }
+                if ensembl_redundant_emar_count > 0 {
+                    doc = doc.add(
+                        Text::new(format!(
+                            "{} exact-geometry eMAR row(s) combined with matching displayed features; complete rows remain in JSON.",
+                            ensembl_redundant_emar_count
+                        ))
+                        .set("x", 34)
+                        .set(
+                            "y",
+                            ensembl_top
+                                + 38.0
+                                + ensembl_display_count as f32 * 30.0
+                                + if ensembl_omitted_count > 0 { 18.0 } else { 0.0 },
+                        )
+                        .set("font-family", "monospace")
+                        .set("font-size", 8)
+                        .set("fill", "#64748b")
+                        .set(
+                            "data-gentle-ensembl-combined-emar-rows",
+                            ensembl_redundant_emar_count,
+                        ),
                     );
                 }
             }
@@ -7832,6 +7979,99 @@ mod tests {
                 .svg
                 .contains("data-gentle-ensembl-link-state=\"rejected\"")
         );
+    }
+
+    #[test]
+    fn gene_locus_renderer_centers_scale_and_labels_axis_with_chromosome() {
+        let report = GeneLocusEvidenceDisplayReport {
+            schema: GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA.to_string(),
+            gene_symbol: "TGFB1".to_string(),
+            locus_local_start_1based: 1,
+            locus_local_end_1based: 2_000,
+            axis_left_genomic_1based: 41_358_961,
+            axis_right_genomic_1based: 41_356_962,
+            sequence_binding: Some(gentle_protocol::GeneLocusSequenceBinding {
+                sequence_sha256: "sha256:sequence".to_string(),
+                sequence_length_bp: 2_000,
+                genome_anchor: Some(gentle_protocol::GeneLocusGenomeAnchorBinding {
+                    genome_id: "GRCh38".to_string(),
+                    chromosome: "19".to_string(),
+                    start_1based: 41_356_962,
+                    end_1based: 41_358_961,
+                    strand: Some('-'),
+                }),
+            }),
+            scale_bar: GeneLocusScaleBar {
+                mode: GeneLocusScaleBarMode::Fixed,
+                length_bp: 1_000,
+                label: "1000 bp".to_string(),
+            },
+            ..Default::default()
+        };
+        let svg = render_gene_locus_evidence_with_overlay(&report, None).svg;
+        assert!(svg.contains("chr19:41358961"));
+        assert!(svg.contains("chr19:41356962"));
+        assert!(svg.contains("data-gentle-genomic-scale-bar=\"label\""));
+        assert!(
+            svg.contains("x=\"652.5\""),
+            "the scale bar and its label must be centred on the genomic axis"
+        );
+    }
+
+    #[test]
+    fn gene_locus_renderer_combines_only_exact_geometry_emar_duplicates() {
+        let enhancer = gentle_protocol::GeneLocusEnsemblRegulationFeatureRow {
+            feature_id: "ENSR19_SHARED".to_string(),
+            feature_type: "enhancer".to_string(),
+            assembly_name: "GRCh38".to_string(),
+            assembly_accession: "GCA_000001405.29".to_string(),
+            core_genomic_start_1based: 100,
+            core_genomic_end_1based: 200,
+            displayed_genomic_start_1based: 100,
+            displayed_genomic_end_1based: 200,
+            displayed_local_start_1based: 101,
+            displayed_local_end_1based: 201,
+            local_strand: "+".to_string(),
+            genomic_strand: "+".to_string(),
+            ..Default::default()
+        };
+        let mut redundant_emar = enhancer.clone();
+        redundant_emar.feature_id = "ENSR19_SHARED_EMAR".to_string();
+        redundant_emar.feature_type = "emar".to_string();
+        let mut distinct_emar = redundant_emar.clone();
+        distinct_emar.feature_id = "ENSR19_DISTINCT_EMAR".to_string();
+        distinct_emar.core_genomic_start_1based = 300;
+        distinct_emar.core_genomic_end_1based = 350;
+        distinct_emar.displayed_genomic_start_1based = 300;
+        distinct_emar.displayed_genomic_end_1based = 350;
+        distinct_emar.displayed_local_start_1based = 301;
+        distinct_emar.displayed_local_end_1based = 351;
+
+        let rows = vec![enhancer.clone(), redundant_emar, distinct_emar.clone()];
+        let displayed = ensembl_regulation_display_rows(&rows);
+        assert_eq!(displayed.len(), 2);
+        assert_eq!(displayed[0].primary.feature_id, enhancer.feature_id);
+        assert_eq!(displayed[0].redundant_emars.len(), 1);
+        assert_eq!(displayed[1].primary.feature_id, distinct_emar.feature_id);
+        assert!(displayed[1].redundant_emars.is_empty());
+
+        let report = GeneLocusEvidenceDisplayReport {
+            schema: GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA.to_string(),
+            gene_symbol: "DEMO".to_string(),
+            locus_local_start_1based: 1,
+            locus_local_end_1based: 1_000,
+            ensembl_regulation: Some(gentle_protocol::GeneLocusEnsemblRegulationEvidence {
+                availability: GeneLocusEnsemblRegulationAvailability::Available,
+                rows,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let svg = render_gene_locus_evidence_with_overlay(&report, None).svg;
+        assert!(svg.contains("enhancer + eMAR"));
+        assert!(svg.contains("data-gentle-redundant-emar-features=\"ENSR19_SHARED_EMAR\""));
+        assert!(svg.contains("data-gentle-ensembl-feature=\"ENSR19_DISTINCT_EMAR\""));
+        assert!(svg.contains("data-gentle-ensembl-combined-emar-rows=\"1\""));
     }
 
     #[test]

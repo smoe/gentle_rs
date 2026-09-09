@@ -2,6 +2,15 @@
 
 ## 2026-09-09 - Promoterome preparation and ordered similarity inspection
 
+- Refined the locus-report genomic overview: chromosome-qualified endpoint
+  labels now identify the plotted reference explicitly, and the genomic scale
+  bar is centred so it cannot collide with either physical endpoint. Exact-
+  geometry Ensembl eMAR duplicates are folded into their matching displayed
+  feature (for example, `enhancer + eMAR`), while distinct eMAR intervals and
+  every original source row remain available. Focused renderer tests cover the
+  bound chromosome preference, scale geometry, exact-only folding and retained
+  standalone eMAR rows; both axis directions were reviewed on real locus data.
+
 - Integrated Glen's replacement `ff44ebde` / `a5b01843`, excluding withdrawn
   `c91bf912`. All 36 occupancy lanes are restored; independent local BigWig
   checks matched source hashes, 11,797 genomic intervals and their plotted
