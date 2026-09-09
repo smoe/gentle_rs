@@ -3664,23 +3664,8 @@ impl MainAreaDna {
         viewport_start: usize,
         viewport_end: usize,
     ) -> bool {
-        if sequence_length == 0 {
-            return false;
-        }
-        let from = orf.from().max(0) as usize;
-        let to = orf.to().max(0) as usize;
-        if to >= from {
-            let from = from.min(sequence_length);
-            let to = to.min(sequence_length);
-            if to <= from {
-                return false;
-            }
-            return Self::ranges_overlap(from, to, viewport_start, viewport_end);
-        }
-        let wrapped_left = from.min(sequence_length);
-        let wrapped_right = to.min(sequence_length);
-        Self::ranges_overlap(wrapped_left, sequence_length, viewport_start, viewport_end)
-            || Self::ranges_overlap(0, wrapped_right, viewport_start, viewport_end)
+        orf.spans_0based(sequence_length)
+            .any(|(from, end)| Self::ranges_overlap(from, end, viewport_start, viewport_end))
     }
 
     fn normalize_restriction_group_cut_pos_0based(

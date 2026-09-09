@@ -767,15 +767,9 @@ impl RenderDnaLinear {
                 .map(|dna| dna.open_reading_frames().clone())
                 .unwrap_or_default();
             for orf in &orfs {
-                let from = self.normalize_pos(orf.from() as isize);
-                let to = self.normalize_pos(orf.to() as isize);
-                let start = from.min(to);
-                let end_exclusive = from.max(to).saturating_add(1).min(self.sequence_length);
-                if start >= end_exclusive {
-                    continue;
-                }
-                if Self::range_overlap(start, end_exclusive, viewport.start, viewport.end).is_none()
-                {
+                if !orf.spans_0based(self.sequence_length).any(|(start, end)| {
+                    Self::range_overlap(start, end, viewport.start, viewport.end).is_some()
+                }) {
                     continue;
                 }
                 let frame_abs = orf.frame().unsigned_abs() as f32;
@@ -3151,65 +3145,67 @@ impl RenderDnaLinear {
         color: Color32,
         viewport: LinearViewport,
     ) {
-        let from = self.normalize_pos(orf.from() as isize);
-        let to = self.normalize_pos(orf.to() as isize);
-        let start = from.min(to);
-        let end_exclusive = from.max(to).saturating_add(1).min(self.sequence_length);
-        if start >= end_exclusive {
-            return;
-        }
+        for (start, end_exclusive) in orf.spans_0based(self.sequence_length) {
+            let Some((draw_start, draw_end)) =
+                Self::range_overlap(start, end_exclusive, viewport.start, viewport.end)
+            else {
+                continue;
+            };
 
-        let Some((draw_start, draw_end)) =
-            Self::range_overlap(start, end_exclusive, viewport.start, viewport.end)
-        else {
-            return;
-        };
+            let x1 = self.bp_to_x(draw_start, viewport);
+            let x2 = self.bp_to_x(draw_end, viewport).max(x1 + 1.0);
+            let frame_abs = orf.frame().unsigned_abs() as f32;
+            let y = if orf.is_reverse() {
+                self.baseline_y() + 10.0 + frame_abs * 7.0
+            } else {
+                self.baseline_y() - 10.0 - frame_abs * 7.0
+            };
 
-        let x1 = self.bp_to_x(draw_start, viewport);
-        let x2 = self.bp_to_x(draw_end, viewport).max(x1 + 1.0);
-        let frame_abs = orf.frame().unsigned_abs() as f32;
-        let y = if orf.is_reverse() {
-            self.baseline_y() + 10.0 + frame_abs * 7.0
-        } else {
-            self.baseline_y() - 10.0 - frame_abs * 7.0
-        };
-
-        let rect = Rect::from_min_max(
-            Pos2::new(x1, y - ORF_HEIGHT / 2.0),
-            Pos2::new(x2, y + ORF_HEIGHT / 2.0),
-        );
-        painter.rect_filled(rect, 1.0, color);
-
-        let tip = if orf.is_reverse() {
-            Pos2::new(x1 - 5.0, y)
-        } else {
-            Pos2::new(x2 + 5.0, y)
-        };
-        let base_x = if orf.is_reverse() { x1 } else { x2 };
-        painter.add(egui::Shape::convex_polygon(
-            vec![
-                Pos2::new(base_x, y - ORF_HEIGHT / 2.0),
-                tip,
-                Pos2::new(base_x, y + ORF_HEIGHT / 2.0),
-            ],
-            color,
-            Stroke::NONE,
-        ));
-
-        let label = format!("ORF {}", orf.frame());
-        let label_width = Self::estimate_label_width(&label);
-        if (x2 - x1) >= label_width + 6.0 {
-            let label_pos = Pos2::new((x1 + x2) / 2.0, y);
-            painter.text(
-                label_pos,
-                Align2::CENTER_CENTER,
-                label,
-                FontId {
-                    size: 8.0,
-                    family: FontFamily::Monospace,
-                },
-                Color32::BLACK,
+            let rect = Rect::from_min_max(
+                Pos2::new(x1, y - ORF_HEIGHT / 2.0),
+                Pos2::new(x2, y + ORF_HEIGHT / 2.0),
             );
+            painter.rect_filled(rect, 1.0, color);
+
+            let tip = if orf.is_reverse() {
+                Pos2::new(x1 - 5.0, y)
+            } else {
+                Pos2::new(x2 + 5.0, y)
+            };
+            let base_x = if orf.is_reverse() { x1 } else { x2 };
+            // Do not put a stop-direction arrow at a clipped or split-origin edge.
+            let terminal = if orf.is_reverse() {
+                draw_start == orf.from() as usize
+            } else {
+                draw_end == orf.to() as usize + 1
+            };
+            if terminal {
+                painter.add(egui::Shape::convex_polygon(
+                    vec![
+                        Pos2::new(base_x, y - ORF_HEIGHT / 2.0),
+                        tip,
+                        Pos2::new(base_x, y + ORF_HEIGHT / 2.0),
+                    ],
+                    color,
+                    Stroke::NONE,
+                ));
+            }
+
+            let label = format!("ORF {}", orf.frame());
+            let label_width = Self::estimate_label_width(&label);
+            if (x2 - x1) >= label_width + 6.0 {
+                let label_pos = Pos2::new((x1 + x2) / 2.0, y);
+                painter.text(
+                    label_pos,
+                    Align2::CENTER_CENTER,
+                    label,
+                    FontId {
+                        size: 8.0,
+                        family: FontFamily::Monospace,
+                    },
+                    Color32::BLACK,
+                );
+            }
         }
     }
 

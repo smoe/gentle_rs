@@ -2,6 +2,17 @@
 
 ## 2026-09-09 - Promoterome preparation and ordered similarity inspection
 
+- Corrected circular ORF discovery on the reverse strand and codons split by
+  the origin; all six frames now retain boundary starts/stops and deterministic
+  ordering, with no second-lap predictions. Activated the previously disabled
+  reverse test and added exhaustive synthetic rotations. Shared span conversion
+  keeps GUI and SVG ORF overlays on the correct arc, including linear views of
+  circular molecules and full-lap SVGs. Circular feature bounds retain terminal
+  bases and adjacent segments; hover labels explicitly use 1-based coordinates.
+  ORF record fields, frame labels and the existing minimum threshold remain
+  compatible. Historical overlays are not retroactively reanalysed, and these
+  predictions do not replace annotated CDSs or establish translation.
+
 - Corrected restriction recognition: genuine IUPAC reverse complements,
   content-derived palindrome checks, both-strand matching and origin-crossing
   circular hits. Ambiguous template bases must be fully permitted by the motif;

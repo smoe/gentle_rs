@@ -84,7 +84,7 @@ Pre-release finishing scope:
 1. Have Glen recheck three introductory GUI chapters plus promoter-similarity navigation and
    TATA evidence review/materialization at the merged SHA, retaining outcomes/screenshots.
 2. Run the `.10` ledger: locked tests, script build/entrypoints, tutorial/parity, IRF9/Q00978,
-   benchmarks and TP73/PATZ1 TFBS/reporter/CUT&RUN/locus proofs with exact JASPAR 2026 PFMs.
+   benchmarks, circular ORF/feature regressions and TP73/PATZ1 TFBS/reporter/CUT&RUN/locus proofs with exact JASPAR 2026 PFMs.
 3. Run [build-only CI packaging](release.md#build-only-candidate-verification) at the same SHA; retain receipts before approval.
 4. Have Glen reprepare/recompare/re-render the TSS-local reports with bound locus JSON/SVG, corrected strand/footer layout and upper-genome stretch references; preserve historical figures until that replay.
    Keep offline-safe regeneration, live Conservation/partner-evidence proof and ClawBio compatibility pending removal review.
@@ -325,7 +325,7 @@ wet-lab conclusions or unconfirmed mutations.
 - Audit restriction-catalog cut offsets (especially Type IIS) and extend usage annotations beyond REBASE; recheck older cloning absence/uniqueness claims before laboratory use.
 - Floating restriction-site detail popover/window if the Description panel is
   too easy to miss.
-- SnapGene-style plasmid-map presentation parity and dense selected-site polish.
+- Audit general linear-SVG feature clipping (inclusive-end helper versus half-open feature bounds); retain broader plasmid-map presentation parity and dense selected-site polish.
 - Engine-owned portable findings/artifact inspection for agent-driven work.
 - Engine-owned exhaustive operation-effect metadata so new filesystem-writing
   operations cannot bypass rollback-safety classification or provenance path

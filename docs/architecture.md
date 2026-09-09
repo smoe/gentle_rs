@@ -284,6 +284,20 @@ Biological-extension composition rule:
 - The implementation workflow and current source seam inventory are documented
   in `docs/biological_extension_guide.md`.
 
+Circular ORF / map coordinate invariant:
+
+- The legacy `OpenReadingFrame` record retains 0-based inclusive `from`/`to`
+  bounds in reference-strand order, including the stop codon. `from > to`
+  means an origin crossing on either strand, not reversed bounds to sort.
+- Shared ORF helpers convert these records to half-open, unrolled bounds or
+  origin-split spans for GUI and SVG consumers. Detection reads every codon
+  base topology-aware and limits a prediction to one molecule-length traversal.
+- Feature segments use 0-based half-open boundaries; an exclusive end equal
+  to sequence length must not collapse to zero. Human feature hover labels
+  convert to 1-based inclusive coordinates only at presentation.
+- Predicted ORFs remain separate from annotation-backed CDS interpretation;
+  their existence does not establish translation or protein function.
+
 Test-data provenance rule:
 
 - Every committed test fixture (for example under `test_files/` or `tests/`)

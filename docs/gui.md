@@ -2697,6 +2697,13 @@ Controls:
    - Aggregation uses the configurable GC bin size (default `100 bp`).
 14. Show/Hide ORFs
    - Toggles open reading frame overlays.
+   - Predictions use ATG and the first in-frame TAA/TAG/TGA, on both strands.
+     The existing display threshold is 100 codons including the stop (at least
+     99 translated residues). These overlays are not annotation-backed CDSs.
+   - Circular predictions may cross the origin, including a start or stop
+     codon split by that origin, but never traverse more than one molecule
+     length. Switching to the linear map splits such an overlay at the origin
+     rather than displaying the complementary interval. SVG uses the same spans.
 15. Show/Hide methylation sites
    - Toggles methylation-site markers.
 16. Extract Sel
@@ -4204,6 +4211,11 @@ Current circular map conventions include:
 - Features arranged around the circular backbone
 - Restriction enzyme labels around the perimeter
 - Optional overlays for GC content, ORFs, and methylation sites
+- Feature geometry is internally 0-based and end-exclusive. The last base is
+  retained when a feature ends at the sequence boundary; hover coordinates
+  are shown as 1-based inclusive positions (`1-1 bp` denotes the first base).
+- An origin-crossing ORF is drawn across the origin on either strand, not
+  around the opposite arc. This is an ORF prediction, not evidence of expression.
 
 ## Pool Distribution (Engine Ops)
 

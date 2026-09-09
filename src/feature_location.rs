@@ -687,15 +687,23 @@ pub fn feature_ranges_sorted_i64(feature: &Feature) -> Vec<(i64, i64)> {
     ranges
 }
 
+/// Normalize circular half-open bounds without losing a terminal end or full lap.
+/// The start is in `[0, seq_len)`; an origin-crossing end can exceed `seq_len`.
 pub fn normalize_range(seq_len: i64, from: i64, to: i64) -> Option<(i64, i64)> {
     if seq_len <= 0 {
         return None;
     }
-    let mut start = from.rem_euclid(seq_len);
-    let mut end = to.rem_euclid(seq_len);
-    if end < start {
-        std::mem::swap(&mut start, &mut end);
+    let raw_span = to.checked_sub(from)?;
+    let span = if raw_span < 0 {
+        raw_span.rem_euclid(seq_len)
+    } else {
+        raw_span
+    };
+    if span == 0 || span > seq_len {
+        return None;
     }
+    let start = from.rem_euclid(seq_len);
+    let end = start.checked_add(span)?;
     Some((start, end))
 }
 
@@ -710,9 +718,14 @@ pub fn unwrap_ranges_monotonic(seq_len: i64, ranges: &[(i64, i64)]) -> Vec<(i64,
             continue;
         };
         if let Some(prev_end) = previous_end {
-            while start <= prev_end {
-                start += seq_len;
-                end += seq_len;
+            while start < prev_end {
+                let (Some(next_start), Some(next_end)) =
+                    (start.checked_add(seq_len), end.checked_add(seq_len))
+                else {
+                    return vec![];
+                };
+                start = next_start;
+                end = next_end;
             }
         }
         if end < start {
@@ -727,6 +740,22 @@ pub fn unwrap_ranges_monotonic(seq_len: i64, ranges: &[(i64, i64)]) -> Vec<(i64,
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn circular_half_open_bounds_preserve_terminal_bases_and_adjacent_segments() {
+        assert_eq!(normalize_range(1000, 0, 1), Some((0, 1)));
+        assert_eq!(normalize_range(1000, 999, 1000), Some((999, 1000)));
+        assert_eq!(normalize_range(1000, 0, 1000), Some((0, 1000)));
+        assert_eq!(normalize_range(1000, 990, 10), Some((990, 1010)));
+        assert_eq!(normalize_range(1000, 1000, 1010), Some((0, 10)));
+        assert_eq!(normalize_range(1000, 10, 10), None);
+        assert_eq!(normalize_range(1000, 0, 1001), None);
+        assert_eq!(normalize_range(0, 0, 1), None);
+        assert_eq!(
+            unwrap_ranges_monotonic(1000, &[(900, 1000), (0, 20), (20, 30)]),
+            vec![(900, 1000), (1000, 1020), (1020, 1030)]
+        );
+    }
 
     fn make_feature(location: Location) -> Feature {
         Feature {
