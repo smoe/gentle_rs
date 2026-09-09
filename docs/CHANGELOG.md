@@ -2,6 +2,14 @@
 
 ## 2026-09-09 - Promoterome preparation and ordered similarity inspection
 
+- Retained the first TP73 CUT&RUN-supported promoterome comparison for the
+  selected CD44, TGFB1 and SERPINE1 transcript models. Seven distinct
+  GRCh38/Ensembl-116 −2,000/+200 TSS windows pass an inspectable matched-GFP
+  BigWig rule. The versioned compact evidence includes source hashes, candidate
+  sequences, complete window/gene/transcript frequency summaries, top promoter
+  rows, block-order rendering and explicit non-claims; the 474 MiB raw BLAST
+  tables remain regenerable rather than committed.
+
 - Merged Glen's five-commit promoter-similarity tutorial branch through
   `6ae4cd1d`: added the offline view-only navigation contract, wrapped region
   analysis actions, correct DNA-viewport ownership for hosted panels, and a

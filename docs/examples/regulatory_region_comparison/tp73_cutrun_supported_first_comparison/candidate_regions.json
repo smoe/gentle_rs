@@ -1,0 +1,607 @@
+{
+  "dataset_id": "tp73_cutrun_supported_selected_gene_tss_windows_grch38_ensembl116_v1",
+  "regions": [
+    {
+      "comparison_class": "tp73_cutrun_supported_tss_window",
+      "cutrun_support": {
+        "criterion": "At least one TP73 experimental BigWig mean across the exact TSS window exceeds the matched GFP-control mean in the same cell line",
+        "dataset": "E-MTAB-15709",
+        "evidence": [
+          {
+            "cell_line": "SAOS-2",
+            "experimental_minus_matched_gfp": {
+              "DNp73beta": -0.18537028623353022,
+              "TAp73alpha": 0.16992276238073603
+            },
+            "mean_signal_per_base": {
+              "DNp73beta": 0.0,
+              "GFP": 0.18537028623353022,
+              "TAp73alpha": 0.35529304861426625
+            },
+            "source_ids": {
+              "DNp73beta": "E-MTAB-15709:tp73:SAOS-2:DNp73beta:R1",
+              "GFP": "E-MTAB-15709:tp73:SAOS-2:GFP:R1",
+              "TAp73alpha": "E-MTAB-15709:tp73:SAOS-2:TAp73alpha:R1"
+            }
+          },
+          {
+            "cell_line": "SK-MEL-29-2",
+            "experimental_minus_matched_gfp": {
+              "DNp73beta": 0.9054975011358474,
+              "TAp73alpha": 0.47660154475238525
+            },
+            "mean_signal_per_base": {
+              "DNp73beta": 0.9054975011358474,
+              "GFP": 0.0,
+              "TAp73alpha": 0.47660154475238525
+            },
+            "source_ids": {
+              "DNp73beta": "E-MTAB-15709:tp73:SK-MEL-29-2:DNp73beta:R1",
+              "GFP": "E-MTAB-15709:tp73:SK-MEL-29-2:GFP:R1",
+              "TAp73alpha": "E-MTAB-15709:tp73:SK-MEL-29-2:TAp73alpha:R1"
+            }
+          }
+        ],
+        "factor": "TP73",
+        "non_claim": "Signal support is occupancy evidence, not proof of direct binding or promoter activity"
+      },
+      "gene_query": "TGFB1",
+      "genome_extraction": {
+        "anchor_verified": true,
+        "chromosome": "19",
+        "end_1based": 41355922,
+        "gene_id": "ENSG00000105329",
+        "gene_name": "TGFB1",
+        "genome_id": "Human GRCh38 Ensembl 116",
+        "promoter_downstream_bp": 200,
+        "promoter_upstream_bp": 2000,
+        "start_1based": 41353722,
+        "strand": "-",
+        "transcript_ids": [
+          "ENST00000221930"
+        ],
+        "tss_1based": 41353922
+      },
+      "input_kind": "transcript_promoter",
+      "promoterome_id": "promoter_0c7303b1bf23e0934772",
+      "region_id": "TGFB1_promoter_0c7303b1bf23e0934772_tp73_cutrun_supported",
+      "sequence_length_bp": 2201,
+      "sequence_orientation": "biological_5prime_to_3prime",
+      "sequence_sha256": "sha256:9510ee8419fc3332d02dde984c3c73032ca20064ad1bd38e8fd1a84f4028de4d",
+      "transcript_ids": [
+        "ENST00000221930"
+      ]
+    },
+    {
+      "comparison_class": "tp73_cutrun_supported_tss_window",
+      "cutrun_support": {
+        "criterion": "At least one TP73 experimental BigWig mean across the exact TSS window exceeds the matched GFP-control mean in the same cell line",
+        "dataset": "E-MTAB-15709",
+        "evidence": [
+          {
+            "cell_line": "SAOS-2",
+            "experimental_minus_matched_gfp": {
+              "DNp73beta": -0.17492049068605178,
+              "TAp73alpha": 0.18491594729668334
+            },
+            "mean_signal_per_base": {
+              "DNp73beta": 0.0,
+              "GFP": 0.17492049068605178,
+              "TAp73alpha": 0.3598364379827351
+            },
+            "source_ids": {
+              "DNp73beta": "E-MTAB-15709:tp73:SAOS-2:DNp73beta:R1",
+              "GFP": "E-MTAB-15709:tp73:SAOS-2:GFP:R1",
+              "TAp73alpha": "E-MTAB-15709:tp73:SAOS-2:TAp73alpha:R1"
+            }
+          },
+          {
+            "cell_line": "SK-MEL-29-2",
+            "experimental_minus_matched_gfp": {
+              "DNp73beta": 0.8709677419354839,
+              "TAp73alpha": 0.48477964561562925
+            },
+            "mean_signal_per_base": {
+              "DNp73beta": 0.8709677419354839,
+              "GFP": 0.0,
+              "TAp73alpha": 0.48477964561562925
+            },
+            "source_ids": {
+              "DNp73beta": "E-MTAB-15709:tp73:SK-MEL-29-2:DNp73beta:R1",
+              "GFP": "E-MTAB-15709:tp73:SK-MEL-29-2:GFP:R1",
+              "TAp73alpha": "E-MTAB-15709:tp73:SK-MEL-29-2:TAp73alpha:R1"
+            }
+          }
+        ],
+        "factor": "TP73",
+        "non_claim": "Signal support is occupancy evidence, not proof of direct binding or promoter activity"
+      },
+      "gene_query": "TGFB1",
+      "genome_extraction": {
+        "anchor_verified": true,
+        "chromosome": "19",
+        "end_1based": 41355961,
+        "gene_id": "ENSG00000105329",
+        "gene_name": "TGFB1",
+        "genome_id": "Human GRCh38 Ensembl 116",
+        "promoter_downstream_bp": 200,
+        "promoter_upstream_bp": 2000,
+        "start_1based": 41353761,
+        "strand": "-",
+        "transcript_ids": [
+          "ENST00001090430",
+          "ENST00001114525"
+        ],
+        "tss_1based": 41353961
+      },
+      "input_kind": "transcript_promoter",
+      "promoterome_id": "promoter_36a1b28d8f28c83a9602",
+      "region_id": "TGFB1_promoter_36a1b28d8f28c83a9602_tp73_cutrun_supported",
+      "sequence_length_bp": 2201,
+      "sequence_orientation": "biological_5prime_to_3prime",
+      "sequence_sha256": "sha256:d9a0b654e98b2e6ca65ed2b85e7b6e0cfadd835b3a963918425d4271cd405b70",
+      "transcript_ids": [
+        "ENST00001090430",
+        "ENST00001114525"
+      ]
+    },
+    {
+      "comparison_class": "tp73_cutrun_supported_tss_window",
+      "cutrun_support": {
+        "criterion": "At least one TP73 experimental BigWig mean across the exact TSS window exceeds the matched GFP-control mean in the same cell line",
+        "dataset": "E-MTAB-15709",
+        "evidence": [
+          {
+            "cell_line": "SAOS-2",
+            "experimental_minus_matched_gfp": {
+              "DNp73beta": -0.11767378464334394,
+              "TAp73alpha": -0.07269422989550205
+            },
+            "mean_signal_per_base": {
+              "DNp73beta": 0.0,
+              "GFP": 0.11767378464334394,
+              "TAp73alpha": 0.04497955474784189
+            },
+            "source_ids": {
+              "DNp73beta": "E-MTAB-15709:tp73:SAOS-2:DNp73beta:R1",
+              "GFP": "E-MTAB-15709:tp73:SAOS-2:GFP:R1",
+              "TAp73alpha": "E-MTAB-15709:tp73:SAOS-2:TAp73alpha:R1"
+            }
+          },
+          {
+            "cell_line": "SK-MEL-29-2",
+            "experimental_minus_matched_gfp": {
+              "DNp73beta": 1.064970467969105,
+              "TAp73alpha": 1.2289868241708315
+            },
+            "mean_signal_per_base": {
+              "DNp73beta": 1.1363016810540663,
+              "GFP": 0.07133121308496138,
+              "TAp73alpha": 1.3003180372557928
+            },
+            "source_ids": {
+              "DNp73beta": "E-MTAB-15709:tp73:SK-MEL-29-2:DNp73beta:R1",
+              "GFP": "E-MTAB-15709:tp73:SK-MEL-29-2:GFP:R1",
+              "TAp73alpha": "E-MTAB-15709:tp73:SK-MEL-29-2:TAp73alpha:R1"
+            }
+          }
+        ],
+        "factor": "TP73",
+        "non_claim": "Signal support is occupancy evidence, not proof of direct binding or promoter activity"
+      },
+      "gene_query": "SERPINE1",
+      "genome_extraction": {
+        "anchor_verified": true,
+        "chromosome": "7",
+        "end_1based": 101122358,
+        "gene_id": "ENSG00000106366",
+        "gene_name": "SERPINE1",
+        "genome_id": "Human GRCh38 Ensembl 116",
+        "promoter_downstream_bp": 200,
+        "promoter_upstream_bp": 2000,
+        "start_1based": 101120158,
+        "strand": "+",
+        "transcript_ids": [
+          "ENST00000950058"
+        ],
+        "tss_1based": 101122158
+      },
+      "input_kind": "transcript_promoter",
+      "promoterome_id": "promoter_379bd0de7dda774c7927",
+      "region_id": "SERPINE1_promoter_379bd0de7dda774c7927_tp73_cutrun_supported",
+      "sequence_length_bp": 2201,
+      "sequence_orientation": "biological_5prime_to_3prime",
+      "sequence_sha256": "sha256:5794eb89ee16dac8599297a6bb5aba7262b2f37e4f33df0853efa15133a7e95a",
+      "transcript_ids": [
+        "ENST00000950058"
+      ]
+    },
+    {
+      "comparison_class": "tp73_cutrun_supported_tss_window",
+      "cutrun_support": {
+        "criterion": "At least one TP73 experimental BigWig mean across the exact TSS window exceeds the matched GFP-control mean in the same cell line",
+        "dataset": "E-MTAB-15709",
+        "evidence": [
+          {
+            "cell_line": "SAOS-2",
+            "experimental_minus_matched_gfp": {
+              "DNp73beta": -0.1890049977283053,
+              "TAp73alpha": -0.1190368014538846
+            },
+            "mean_signal_per_base": {
+              "DNp73beta": 0.07996365288505225,
+              "GFP": 0.26896865061335756,
+              "TAp73alpha": 0.14993184915947297
+            },
+            "source_ids": {
+              "DNp73beta": "E-MTAB-15709:tp73:SAOS-2:DNp73beta:R1",
+              "GFP": "E-MTAB-15709:tp73:SAOS-2:GFP:R1",
+              "TAp73alpha": "E-MTAB-15709:tp73:SAOS-2:TAp73alpha:R1"
+            }
+          },
+          {
+            "cell_line": "SK-MEL-29-2",
+            "experimental_minus_matched_gfp": {
+              "DNp73beta": 0.6783280327124035,
+              "TAp73alpha": 0.6138119036801454
+            },
+            "mean_signal_per_base": {
+              "DNp73beta": 0.7092230804179919,
+              "GFP": 0.030895047705588367,
+              "TAp73alpha": 0.6447069513857338
+            },
+            "source_ids": {
+              "DNp73beta": "E-MTAB-15709:tp73:SK-MEL-29-2:DNp73beta:R1",
+              "GFP": "E-MTAB-15709:tp73:SK-MEL-29-2:GFP:R1",
+              "TAp73alpha": "E-MTAB-15709:tp73:SK-MEL-29-2:TAp73alpha:R1"
+            }
+          }
+        ],
+        "factor": "TP73",
+        "non_claim": "Signal support is occupancy evidence, not proof of direct binding or promoter activity"
+      },
+      "gene_query": "CD44",
+      "genome_extraction": {
+        "anchor_verified": true,
+        "chromosome": "11",
+        "end_1based": 35138921,
+        "gene_id": "ENSG00000026508",
+        "gene_name": "CD44",
+        "genome_id": "Human GRCh38 Ensembl 116",
+        "promoter_downstream_bp": 200,
+        "promoter_upstream_bp": 2000,
+        "start_1based": 35136721,
+        "strand": "+",
+        "transcript_ids": [
+          "ENST00000263398",
+          "ENST00000278386"
+        ],
+        "tss_1based": 35138721
+      },
+      "input_kind": "transcript_promoter",
+      "promoterome_id": "promoter_5cb11c3a8c991e5309b9",
+      "region_id": "CD44_promoter_5cb11c3a8c991e5309b9_tp73_cutrun_supported",
+      "sequence_length_bp": 2201,
+      "sequence_orientation": "biological_5prime_to_3prime",
+      "sequence_sha256": "sha256:550b6c2821e434a914a846f4a9dc111f96c9f30e9c3d750175528e19675a332f",
+      "transcript_ids": [
+        "ENST00000263398",
+        "ENST00000278386"
+      ]
+    },
+    {
+      "comparison_class": "tp73_cutrun_supported_tss_window",
+      "cutrun_support": {
+        "criterion": "At least one TP73 experimental BigWig mean across the exact TSS window exceeds the matched GFP-control mean in the same cell line",
+        "dataset": "E-MTAB-15709",
+        "evidence": [
+          {
+            "cell_line": "SAOS-2",
+            "experimental_minus_matched_gfp": {
+              "DNp73beta": -0.1721944570649705,
+              "TAp73alpha": -0.14357110404361656
+            },
+            "mean_signal_per_base": {
+              "DNp73beta": 0.03180372557928214,
+              "GFP": 0.20399818264425262,
+              "TAp73alpha": 0.06042707860063608
+            },
+            "source_ids": {
+              "DNp73beta": "E-MTAB-15709:tp73:SAOS-2:DNp73beta:R1",
+              "GFP": "E-MTAB-15709:tp73:SAOS-2:GFP:R1",
+              "TAp73alpha": "E-MTAB-15709:tp73:SAOS-2:TAp73alpha:R1"
+            }
+          },
+          {
+            "cell_line": "SK-MEL-29-2",
+            "experimental_minus_matched_gfp": {
+              "DNp73beta": 1.3012267151294865,
+              "TAp73alpha": 0.9359382099045889
+            },
+            "mean_signal_per_base": {
+              "DNp73beta": 1.3012267151294865,
+              "GFP": 0.0,
+              "TAp73alpha": 0.9359382099045889
+            },
+            "source_ids": {
+              "DNp73beta": "E-MTAB-15709:tp73:SK-MEL-29-2:DNp73beta:R1",
+              "GFP": "E-MTAB-15709:tp73:SK-MEL-29-2:GFP:R1",
+              "TAp73alpha": "E-MTAB-15709:tp73:SK-MEL-29-2:TAp73alpha:R1"
+            }
+          }
+        ],
+        "factor": "TP73",
+        "non_claim": "Signal support is occupancy evidence, not proof of direct binding or promoter activity"
+      },
+      "gene_query": "CD44",
+      "genome_extraction": {
+        "anchor_verified": true,
+        "chromosome": "11",
+        "end_1based": 35139371,
+        "gene_id": "ENSG00000026508",
+        "gene_name": "CD44",
+        "genome_id": "Human GRCh38 Ensembl 116",
+        "promoter_downstream_bp": 200,
+        "promoter_upstream_bp": 2000,
+        "start_1based": 35137171,
+        "strand": "+",
+        "transcript_ids": [
+          "ENST00000428726"
+        ],
+        "tss_1based": 35139171
+      },
+      "input_kind": "transcript_promoter",
+      "promoterome_id": "promoter_7e38106c6b3906d5ced2",
+      "region_id": "CD44_promoter_7e38106c6b3906d5ced2_tp73_cutrun_supported",
+      "sequence_length_bp": 2201,
+      "sequence_orientation": "biological_5prime_to_3prime",
+      "sequence_sha256": "sha256:2252a3d9e91c1c4a682ae404f88a3b72b04f02b00ca9dc07e8121f35696667fd",
+      "transcript_ids": [
+        "ENST00000428726"
+      ]
+    },
+    {
+      "comparison_class": "tp73_cutrun_supported_tss_window",
+      "cutrun_support": {
+        "criterion": "At least one TP73 experimental BigWig mean across the exact TSS window exceeds the matched GFP-control mean in the same cell line",
+        "dataset": "E-MTAB-15709",
+        "evidence": [
+          {
+            "cell_line": "SAOS-2",
+            "experimental_minus_matched_gfp": {
+              "DNp73beta": -0.049977283053157656,
+              "TAp73alpha": 0.0009086778736937667
+            },
+            "mean_signal_per_base": {
+              "DNp73beta": 0.03543843707405725,
+              "GFP": 0.0854157201272149,
+              "TAp73alpha": 0.08632439800090867
+            },
+            "source_ids": {
+              "DNp73beta": "E-MTAB-15709:tp73:SAOS-2:DNp73beta:R1",
+              "GFP": "E-MTAB-15709:tp73:SAOS-2:GFP:R1",
+              "TAp73alpha": "E-MTAB-15709:tp73:SAOS-2:TAp73alpha:R1"
+            }
+          },
+          {
+            "cell_line": "SK-MEL-29-2",
+            "experimental_minus_matched_gfp": {
+              "DNp73beta": 2.049522944116311,
+              "TAp73alpha": 2.858700590640618
+            },
+            "mean_signal_per_base": {
+              "DNp73beta": 2.1640163562017265,
+              "GFP": 0.11449341208541572,
+              "TAp73alpha": 2.9731940027260335
+            },
+            "source_ids": {
+              "DNp73beta": "E-MTAB-15709:tp73:SK-MEL-29-2:DNp73beta:R1",
+              "GFP": "E-MTAB-15709:tp73:SK-MEL-29-2:GFP:R1",
+              "TAp73alpha": "E-MTAB-15709:tp73:SK-MEL-29-2:TAp73alpha:R1"
+            }
+          }
+        ],
+        "factor": "TP73",
+        "non_claim": "Signal support is occupancy evidence, not proof of direct binding or promoter activity"
+      },
+      "gene_query": "SERPINE1",
+      "genome_extraction": {
+        "anchor_verified": true,
+        "chromosome": "7",
+        "end_1based": 101126801,
+        "gene_id": "ENSG00000106366",
+        "gene_name": "SERPINE1",
+        "genome_id": "Human GRCh38 Ensembl 116",
+        "promoter_downstream_bp": 200,
+        "promoter_upstream_bp": 2000,
+        "start_1based": 101124601,
+        "strand": "+",
+        "transcript_ids": [
+          "ENST00000870828"
+        ],
+        "tss_1based": 101126601
+      },
+      "input_kind": "transcript_promoter",
+      "promoterome_id": "promoter_bd61be147c132c2eecfd",
+      "region_id": "SERPINE1_promoter_bd61be147c132c2eecfd_tp73_cutrun_supported",
+      "sequence_length_bp": 2201,
+      "sequence_orientation": "biological_5prime_to_3prime",
+      "sequence_sha256": "sha256:23e951dcefe3767500f79fb7309ab2b6a1c2f26debf70c5a7ce3eda8cbe7caa9",
+      "transcript_ids": [
+        "ENST00000870828"
+      ]
+    },
+    {
+      "comparison_class": "tp73_cutrun_supported_tss_window",
+      "cutrun_support": {
+        "criterion": "At least one TP73 experimental BigWig mean across the exact TSS window exceeds the matched GFP-control mean in the same cell line",
+        "dataset": "E-MTAB-15709",
+        "evidence": [
+          {
+            "cell_line": "SAOS-2",
+            "experimental_minus_matched_gfp": {
+              "DNp73beta": -0.030895047705588374,
+              "TAp73alpha": 0.13948205361199453
+            },
+            "mean_signal_per_base": {
+              "DNp73beta": 0.05452067242162653,
+              "GFP": 0.0854157201272149,
+              "TAp73alpha": 0.22489777373920944
+            },
+            "source_ids": {
+              "DNp73beta": "E-MTAB-15709:tp73:SAOS-2:DNp73beta:R1",
+              "GFP": "E-MTAB-15709:tp73:SAOS-2:GFP:R1",
+              "TAp73alpha": "E-MTAB-15709:tp73:SAOS-2:TAp73alpha:R1"
+            }
+          },
+          {
+            "cell_line": "SK-MEL-29-2",
+            "experimental_minus_matched_gfp": {
+              "DNp73beta": 2.795093139482054,
+              "TAp73alpha": 3.077237619263971
+            },
+            "mean_signal_per_base": {
+              "DNp73beta": 2.8650613357564745,
+              "GFP": 0.06996819627442072,
+              "TAp73alpha": 3.1472058155383915
+            },
+            "source_ids": {
+              "DNp73beta": "E-MTAB-15709:tp73:SK-MEL-29-2:DNp73beta:R1",
+              "GFP": "E-MTAB-15709:tp73:SK-MEL-29-2:GFP:R1",
+              "TAp73alpha": "E-MTAB-15709:tp73:SK-MEL-29-2:TAp73alpha:R1"
+            }
+          }
+        ],
+        "factor": "TP73",
+        "non_claim": "Signal support is occupancy evidence, not proof of direct binding or promoter activity"
+      },
+      "gene_query": "SERPINE1",
+      "genome_extraction": {
+        "anchor_verified": true,
+        "chromosome": "7",
+        "end_1based": 101127304,
+        "gene_id": "ENSG00000106366",
+        "gene_name": "SERPINE1",
+        "genome_id": "Human GRCh38 Ensembl 116",
+        "promoter_downstream_bp": 200,
+        "promoter_upstream_bp": 2000,
+        "start_1based": 101125104,
+        "strand": "+",
+        "transcript_ids": [
+          "ENST00000223095"
+        ],
+        "tss_1based": 101127104
+      },
+      "input_kind": "transcript_promoter",
+      "promoterome_id": "promoter_f26b9f97102c9a4a9c88",
+      "region_id": "SERPINE1_promoter_f26b9f97102c9a4a9c88_tp73_cutrun_supported",
+      "sequence_length_bp": 2201,
+      "sequence_orientation": "biological_5prime_to_3prime",
+      "sequence_sha256": "sha256:6116ddc9787ad77a1a2a3997e2792e3f1fb52cbc7d6d53c0cb0b8d96d7fae3af",
+      "transcript_ids": [
+        "ENST00000223095"
+      ]
+    }
+  ],
+  "schema": "gentle.regulatory_region_comparison_sequences.v1",
+  "selection_policy": {
+    "cutrun_support_rule": "At least one experimental TP73 mean exceeds its matched GFP-control mean within the exact promoter window",
+    "genes": [
+      "CD44",
+      "SERPINE1",
+      "TGFB1"
+    ],
+    "transcripts": [
+      "ENST00000221930",
+      "ENST00000223095",
+      "ENST00000263398",
+      "ENST00000278386",
+      "ENST00000428726",
+      "ENST00000870828",
+      "ENST00000950058",
+      "ENST00001090430",
+      "ENST00001114525"
+    ],
+    "window": {
+      "downstream_bp": 200,
+      "upstream_bp": 2000
+    }
+  },
+  "sequence_equivalence_classes": [
+    {
+      "member_region_ids": [
+        "CD44_promoter_5cb11c3a8c991e5309b9_tp73_cutrun_supported"
+      ],
+      "representative_region_id": "CD44_promoter_5cb11c3a8c991e5309b9_tp73_cutrun_supported",
+      "sequence_equivalence_class_id": "region_seq_eq_550b6c2821e434a9",
+      "sequence_length_bp": 2201,
+      "sequence_sha256": "sha256:550b6c2821e434a914a846f4a9dc111f96c9f30e9c3d750175528e19675a332f"
+    },
+    {
+      "member_region_ids": [
+        "CD44_promoter_7e38106c6b3906d5ced2_tp73_cutrun_supported"
+      ],
+      "representative_region_id": "CD44_promoter_7e38106c6b3906d5ced2_tp73_cutrun_supported",
+      "sequence_equivalence_class_id": "region_seq_eq_2252a3d9e91c1c4a",
+      "sequence_length_bp": 2201,
+      "sequence_sha256": "sha256:2252a3d9e91c1c4a682ae404f88a3b72b04f02b00ca9dc07e8121f35696667fd"
+    },
+    {
+      "member_region_ids": [
+        "SERPINE1_promoter_379bd0de7dda774c7927_tp73_cutrun_supported"
+      ],
+      "representative_region_id": "SERPINE1_promoter_379bd0de7dda774c7927_tp73_cutrun_supported",
+      "sequence_equivalence_class_id": "region_seq_eq_5794eb89ee16dac8",
+      "sequence_length_bp": 2201,
+      "sequence_sha256": "sha256:5794eb89ee16dac8599297a6bb5aba7262b2f37e4f33df0853efa15133a7e95a"
+    },
+    {
+      "member_region_ids": [
+        "SERPINE1_promoter_bd61be147c132c2eecfd_tp73_cutrun_supported"
+      ],
+      "representative_region_id": "SERPINE1_promoter_bd61be147c132c2eecfd_tp73_cutrun_supported",
+      "sequence_equivalence_class_id": "region_seq_eq_23e951dcefe37675",
+      "sequence_length_bp": 2201,
+      "sequence_sha256": "sha256:23e951dcefe3767500f79fb7309ab2b6a1c2f26debf70c5a7ce3eda8cbe7caa9"
+    },
+    {
+      "member_region_ids": [
+        "SERPINE1_promoter_f26b9f97102c9a4a9c88_tp73_cutrun_supported"
+      ],
+      "representative_region_id": "SERPINE1_promoter_f26b9f97102c9a4a9c88_tp73_cutrun_supported",
+      "sequence_equivalence_class_id": "region_seq_eq_6116ddc9787ad77a",
+      "sequence_length_bp": 2201,
+      "sequence_sha256": "sha256:6116ddc9787ad77a1a2a3997e2792e3f1fb52cbc7d6d53c0cb0b8d96d7fae3af"
+    },
+    {
+      "member_region_ids": [
+        "TGFB1_promoter_0c7303b1bf23e0934772_tp73_cutrun_supported"
+      ],
+      "representative_region_id": "TGFB1_promoter_0c7303b1bf23e0934772_tp73_cutrun_supported",
+      "sequence_equivalence_class_id": "region_seq_eq_9510ee8419fc3332",
+      "sequence_length_bp": 2201,
+      "sequence_sha256": "sha256:9510ee8419fc3332d02dde984c3c73032ca20064ad1bd38e8fd1a84f4028de4d"
+    },
+    {
+      "member_region_ids": [
+        "TGFB1_promoter_36a1b28d8f28c83a9602_tp73_cutrun_supported"
+      ],
+      "representative_region_id": "TGFB1_promoter_36a1b28d8f28c83a9602_tp73_cutrun_supported",
+      "sequence_equivalence_class_id": "region_seq_eq_d9a0b654e98b2e6c",
+      "sequence_length_bp": 2201,
+      "sequence_sha256": "sha256:d9a0b654e98b2e6ca65ed2b85e7b6e0cfadd835b3a963918425d4271cd405b70"
+    }
+  ],
+  "source_bindings": {
+    "promoterome_receipt_sha256": "fe86c9adb0381e0f128fcf129ccc52a22ef7eaa0d9035e2b6c51f61f17dfafc5",
+    "track_sha256": {
+      "SAOS-2:DNp73beta": "882e283dbab11d089c012f5ad4f3104cc12b0e23adfd6a83f78b0007e2073d96",
+      "SAOS-2:GFP": "a8b58631e9cadc8388cddd77414633eac8f4ce342a0493b1e2f7b0297de04af3",
+      "SAOS-2:TAp73alpha": "27844db1716bc2adb378572dbb3f0c8d0abdba35259d64f6b69249cf34ae0d9e",
+      "SK-MEL-29-2:DNp73beta": "181a9a2fc0de6ce4eb6b2fb12b48854083ff1804fe5cf19f1a51172b77a31759",
+      "SK-MEL-29-2:GFP": "a96d22bef00409c09c233088afdc6421d7168cb2246b4c1de12ac2e360e30152",
+      "SK-MEL-29-2:TAp73alpha": "5f02641cf33b23ac6de3705e9acc8bf33f67a886346833fa2b98da3a4455454d"
+    }
+  },
+  "source_revision": "c23ea8110cfbad1cd0dc09ffcc638ddf12609d07"
+}
