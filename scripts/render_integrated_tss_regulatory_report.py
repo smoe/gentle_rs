@@ -10,6 +10,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import subprocess
 from typing import Any
 
 import matplotlib.pyplot as plt
@@ -526,6 +527,13 @@ def main() -> None:
     ]
     for row in summary_rows:
         qualifier = "lower bounds" if row["counts_are_lower_bounds"] else "observed"
+        if row["length_bp"] < thresholds["minimum_bp"]:
+            interpretation.append(
+                f"- {row['gene']} {row['feature_id']} ({row['feature_type']}, "
+                f"{row['length_bp']} bp): below the {thresholds['minimum_bp']:g}-bp "
+                "fragment-search gate; displayed as motif-scale and not tested."
+            )
+            continue
         statement = (
             f"- {row['gene']} {row['feature_id']} ({row['feature_type']}, "
             f"{row['length_bp']} bp): {qualifier} — {row['other_genes_any']} other genes; "
@@ -567,9 +575,15 @@ def main() -> None:
             plt.close(fig)
     for pdf in gene_pdfs.values():
         pdf.close()
+    renderer_revision = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=Path(__file__).resolve().parents[1], text=True
+    ).strip()
     receipt = {
         "schema": "gentle.tss_local_integrated_regulatory_report_receipt.v1",
         "source_revision": candidates["source_revision"],
+        "candidate_source_revision": candidates["source_revision"],
+        "renderer_revision": renderer_revision,
+        "renderer_sha256": f"sha256:{sha256(Path(__file__))}",
         "inputs": {
             "candidates": f"sha256:{sha256(args.candidates_json)}",
             "comparison": f"sha256:{sha256(args.comparison)}",

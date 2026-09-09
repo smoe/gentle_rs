@@ -314,10 +314,16 @@ def main() -> None:
         args.renderer,
     )
     receipt_path = args.output_svg.with_suffix(".receipt.json")
+    renderer_revision = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=Path(__file__).resolve().parents[1], text=True
+    ).strip()
     receipt = {
         "schema": "gentle.tss_local_similarity_locus_report_receipt.v1",
         "gene": args.gene,
         "source_revision": candidates["source_revision"],
+        "candidate_source_revision": candidates["source_revision"],
+        "renderer_revision": renderer_revision,
+        "producer_sha256": f"sha256:{sha256(Path(__file__))}",
         "counting_policy_id": comparison_tools.COUNTING_POLICY,
         "inputs": {
             "base_svg": f"sha256:{sha256(args.base_svg)}",
