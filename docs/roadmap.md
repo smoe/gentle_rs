@@ -86,8 +86,8 @@ Pre-release finishing scope:
 2. Run the `.10` ledger: locked tests, script build/entrypoints, tutorial/parity, IRF9/Q00978,
    benchmarks and TP73/PATZ1 TFBS/reporter/CUT&RUN/locus proofs with exact JASPAR 2026 PFMs.
 3. Run [build-only CI packaging](release.md#build-only-candidate-verification) at the same SHA; retain receipts before approval.
-4. Retain historical reports, offline-safe regeneration and live Conservation navigation/cancellation/partner-evidence proof;
-   keep ClawBio compatibility modes pending separate removal review.
+4. Replay the corrected TP73 promoter-comparison pipeline on Glen's bound inputs; retain the historical figures as uncorrected evidence.
+   Keep offline-safe regeneration, live Conservation/partner-evidence proof and ClawBio compatibility pending removal review.
 5. Validate DuckDB real-Parquet boundaries/limits and scan filters; address GUI
    staleness when the selected package changes.
 

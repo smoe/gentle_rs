@@ -167,8 +167,25 @@ For each candidate it reports:
   window/gene/transcript frequencies;
 - a traceable target table naming every gene and transcript behind each hit.
 
-Thresholds and the BLAST target cap are part of the report. “Not found” means
-not found under that exact prepared annotation, task, threshold, and cap. A
+Comparison validates the promoterome receipt and consumed reference/index
+hashes before searching, and binds candidate sequences to their metadata and
+equivalence classes. The corrected counting policy is
+`exclude_overlapping_or_shared_gene_windows.v1`: overlapping windows and windows
+sharing any resolved query gene ID are excluded together from other-promoter
+counts, coverage tiers, frequency strips and detailed other-gene rows. Query
+gene identity is resolved from declared gene/transcript IDs (gene-name lookup
+is a fallback), never by display-name equality between hits. An unassigned
+query gene is explicitly marked unverified; its non-overlapping promoters must
+not be described as proven other-gene matches.
+
+Thresholds and both BLAST caps are part of the report. `target_cap_reached` and
+`hsp_cap_reached` inspect raw output before filtering, so discarded HSPs cannot
+hide saturation. `counts_are_lower_bounds` is true if either limit is reached;
+equivalent query members inherit their representative's audit. No saturation
+is only an observation about these output limits, not an exhaustiveness proof.
+Raw HSP and match-table hashes are retained for downstream rendering.
+“Not found” means not found under that exact prepared annotation, task,
+threshold, and caps. A
 recurrent segment can help identify a generic/shared part of a reporter insert;
 it does not by itself show that the segment is functional, dispensable, or
 interchangeable. Conversely, a sequence-rare part is not automatically the

@@ -2,11 +2,23 @@
 
 ## 2026-09-09 - Promoterome preparation and ordered similarity inspection
 
+- Hardened the TP73 comparison scripts after review: validate receipt-bound
+  reference files, transcript membership and strand/TSS geometry; use one
+  gene-ID exclusion policy across counts and detail rows; audit raw target/HSP
+  cap saturation and propagate lower-bound labels. Reports now derive their
+  parameters and observations from bound inputs, reverse-oriented blocks no
+  longer produce automatic order breaks, and explicit PNG rendering records
+  its tool and output hashes. Historical evidence remains unchanged and is
+  labelled uncorrected; real-data replay and publication acceptance remain
+  with Glen. All 25 focused Python checks pass, including a mocked end-to-end
+  preparation/comparison/rendering run. No Cargo build or real BLAST run was
+  attempted on the local machine.
+
 - Retained the first TP73 CUT&RUN-supported promoterome comparison for the
   selected CD44, TGFB1 and SERPINE1 transcript models. Seven distinct
   GRCh38/Ensembl-116 −2,000/+200 TSS windows pass an inspectable matched-GFP
   BigWig rule. The versioned compact evidence includes source hashes, candidate
-  sequences, complete window/gene/transcript frequency summaries, top promoter
+  sequences, historical window/gene/transcript frequency summaries, top promoter
   rows, block-order rendering and explicit non-claims; the 474 MiB raw BLAST
   tables remain regenerable rather than committed.
 

@@ -30,6 +30,39 @@ SCHEMA = "gentle.transcript_promoterome_preparation.v1"
 RECEIPT_SCHEMA = "gentle.transcript_promoterome_preparation_receipt.v1"
 
 
+def validate_promoterome(root: Path, *, include_blast: bool = False) -> dict[str, Any]:
+    """Check the receipt and the exact files consumed downstream, before use.
+
+    This verifies consistency with a declared prepared reference, not the
+    biological correctness of the annotation or an external signal track.
+    """
+    receipt = json.loads((root / "receipt.json").read_text(encoding="utf-8"))
+    require(receipt.get("schema") == RECEIPT_SCHEMA, "unsupported promoterome receipt schema")
+    require(receipt.get("sequence_orientation") == "transcript_5prime_to_3prime_via_bedtools_strand",
+            "promoterome must contain transcript-oriented sequences")
+    require(isinstance(receipt.get("genome_id"), str) and receipt["genome_id"],
+            "promoterome receipt lacks genome identity")
+    for key in ("upstream_bp", "downstream_bp", "unique_promoter_window_count", "included_transcript_count"):
+        require(type(receipt.get(key)) is int and receipt[key] >= 0,
+                f"invalid promoterome receipt {key}")
+    required = {"promoter_windows.tsv", "promoter_transcripts.tsv", "promoter_windows.fa"}
+    artifacts = receipt.get("artifacts", {})
+    require(isinstance(artifacts, dict), "invalid promoterome artifact inventory")
+    if include_blast:
+        recorded = {name for name in artifacts if name.startswith("indexes/promoterome.")
+                    and not name.endswith(".mmi")}
+        actual = {path.relative_to(root).as_posix() for path in (root / "indexes").glob("promoterome.*")
+                  if path.is_file() and path.suffix != ".mmi"}
+        require(recorded and recorded == actual, "BLAST index files differ from promoterome receipt")
+        required.update(recorded)
+    for name in sorted(required):
+        path = (root / name).resolve(strict=True)
+        require(path.is_relative_to(root.resolve()), "promoterome artifact escapes its bundle")
+        require(name in artifacts and sha256_file(path) == artifacts[name],
+                f"promoterome artifact hash mismatch: {name}")
+    return receipt
+
+
 def promoter_interval(transcript: dict[str, Any], upstream_bp: int,
                       downstream_bp: int, contig_length: int) -> tuple[int, int, int, bool]:
     strand = transcript.get("strand")

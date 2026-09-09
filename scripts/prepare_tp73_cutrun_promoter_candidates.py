@@ -9,8 +9,14 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import subprocess
 
-import pyBigWig
+try:
+    from .prepare_transcript_promoterome import validate_promoterome, window_id
+    from .prepare_regulatory_region_indexes import require
+except ImportError:
+    from prepare_transcript_promoterome import validate_promoterome, window_id
+    from prepare_regulatory_region_indexes import require
 
 
 TRACKS = {
@@ -50,8 +56,12 @@ def load_tsv(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(handle, delimiter="\t"))
 
 
-def mean_zero_filled(bw: pyBigWig.pyBigWig, chromosome: str, start: int, end: int) -> float:
+def mean_zero_filled(bw, chromosome: str, start: int, end: int) -> float:
+    require(end > start >= 0, "invalid BigWig interval")
     values = bw.values(chromosome, start, end)
+    require(len(values) == end - start, "BigWig did not return the complete window")
+    require(all(math.isfinite(value) or math.isnan(value) for value in values),
+            "BigWig signal contains infinite values")
     return sum(0.0 if math.isnan(value) else value for value in values) / len(values)
 
 
@@ -64,6 +74,7 @@ def extract_fasta(path: Path, wanted: set[str]) -> dict[str, str]:
                 name = line[1:].strip().split()[0]
                 current = name if name in wanted else None
                 if current is not None:
+                    require(current not in found, f"duplicate promoter FASTA record: {current}")
                     found[current] = []
             elif current is not None:
                 found[current].append(line.strip())
@@ -73,31 +84,74 @@ def extract_fasta(path: Path, wanted: set[str]) -> dict[str, str]:
     return {name: "".join(chunks) for name, chunks in found.items()}
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--promoterome", type=Path, required=True)
-    parser.add_argument("--track-root", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--source-revision", required=True)
-    args = parser.parse_args()
+def selected_inputs(promoterome: Path):
+    receipt = validate_promoterome(promoterome)
+    require(receipt["genome_id"] == "Human GRCh38 Ensembl 116",
+            "TP73 track selection requires Human GRCh38 Ensembl 116")
+    require((receipt["upstream_bp"], receipt["downstream_bp"]) == (2000, 200),
+            "TP73 selection requires the declared -2000/+200 promoterome")
+    window_rows = load_tsv(promoterome / "promoter_windows.tsv")
+    windows = {row["promoter_id"]: row for row in window_rows}
+    mappings = load_tsv(promoterome / "promoter_transcripts.tsv")
+    require(len(windows) == len(window_rows) == receipt["unique_promoter_window_count"],
+            "promoter window inventory disagrees with receipt")
+    require(len(mappings) == receipt["included_transcript_count"],
+            "transcript inventory disagrees with receipt")
+    expected = {transcript: gene for gene, transcripts in SELECTED_TRANSCRIPTS.items()
+                for transcript in transcripts}
+    selected = [row for row in mappings if row["transcript_id"] in expected]
+    require(len(selected) == len(expected)
+            and {row["transcript_id"] for row in selected} == set(expected),
+            "selected transcripts are missing or duplicated in the promoterome")
+    require(all(row["gene_name"] == expected[row["transcript_id"]] and row["gene_id"]
+                and row["promoter_id"] in windows for row in selected),
+            "selected transcript gene/window mapping disagrees with selection")
+    promoter_ids = {row["promoter_id"] for row in selected}
+    sequences = extract_fasta(promoterome / "promoter_windows.fa", promoter_ids)
+    for promoter_id in sorted(promoter_ids):
+        row = windows[promoter_id]
+        start, end, tss = (int(row[key]) for key in ("start_0based", "end_0based_exclusive", "tss_1based"))
+        strand = row["strand"]
+        require(strand in {"+", "-"} and start >= 0 and end > start, "invalid selected window geometry")
+        upstream, downstream = receipt["upstream_bp"], receipt["downstream_bp"]
+        expected_span = ((tss - upstream - 1, tss + downstream) if strand == "+"
+                         else (tss - downstream - 1, tss + upstream))
+        require((start, end) == expected_span and row.get("boundary_clipped") == "False",
+                "selected window is clipped or disagrees with its strand/TSS")
+        require(promoter_id == window_id(row["chromosome"], start, end, strand),
+                "selected promoter identity disagrees with geometry")
+        require(len(sequences[promoter_id]) == end - start
+                and set(sequences[promoter_id].upper()) <= set("ACGTRYSWKMBDHVN"),
+                "selected promoter sequence disagrees with window length/alphabet")
+    return receipt, windows, selected, sequences
+
+
+def prepare(args, *, open_bigwig=None) -> None:
     output = args.output.resolve()
-    output.mkdir(parents=True, exist_ok=True)
+    require(not output.exists() or not any(output.iterdir()), "Output directory must be absent or empty")
     promoterome = args.promoterome.resolve()
     track_root = args.track_root.resolve()
-
-    windows = {row["promoter_id"]: row for row in load_tsv(promoterome / "promoter_windows.tsv")}
-    mappings = load_tsv(promoterome / "promoter_transcripts.tsv")
+    receipt, windows, selected_mappings, sequences = selected_inputs(promoterome)
     selected_ids = set().union(*SELECTED_TRANSCRIPTS.values())
-    selected_mappings = [row for row in mappings if row["transcript_id"] in selected_ids]
-    promoter_ids = sorted({row["promoter_id"] for row in selected_mappings})
-    sequences = extract_fasta(promoterome / "promoter_windows.fa", set(promoter_ids))
-
-    opened = {
-        cell: {condition: pyBigWig.open(str(track_root / filename))
-               for condition, filename in conditions.items()}
-        for cell, conditions in TRACKS.items()
+    promoter_ids = sorted(sequences)
+    repo = Path(__file__).resolve().parents[1]
+    revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+    require(args.source_revision == revision, "--source-revision must be the current checkout's full HEAD SHA")
+    source_bindings = {
+        "promoterome_receipt_sha256": sha256_file(promoterome / "receipt.json"),
+        "producer_sha256": sha256_file(Path(__file__)),
+        "track_sha256": {f"{cell}:{condition}": sha256_file(track_root / filename)
+                         for cell, conditions in TRACKS.items() for condition, filename in conditions.items()},
     }
+    if open_bigwig is None:
+        import pyBigWig
+        open_bigwig = pyBigWig.open
+    opened = {}
     try:
+        for cell, conditions in TRACKS.items():
+            opened[cell] = {}
+            for condition, filename in conditions.items():
+                opened[cell][condition] = open_bigwig(str(track_root / filename))
         regions = []
         for promoter_id in promoter_ids:
             window = windows[promoter_id]
@@ -146,25 +200,27 @@ def main() -> None:
                     "dataset": "E-MTAB-15709",
                     "factor": "TP73",
                     "evidence": evidence,
-                    "non_claim": "Signal support is occupancy evidence, not proof of direct binding or promoter activity",
+                    "non_claim": "Positive window-mean difference only; no peak, significance, direct-binding or activity claim",
                 },
                 "genome_extraction": {
-                    "genome_id": "Human GRCh38 Ensembl 116",
+                    "genome_id": receipt["genome_id"],
                     "chromosome": chromosome,
                     "start_1based": start + 1,
                     "end_1based": end,
                     "strand": window["strand"],
                     "tss_1based": int(window["tss_1based"]),
-                    "promoter_upstream_bp": 2000,
-                    "promoter_downstream_bp": 200,
+                    "promoter_upstream_bp": receipt["upstream_bp"],
+                    "promoter_downstream_bp": receipt["downstream_bp"],
                     "gene_id": members[0]["gene_id"],
                     "gene_name": gene_names[0],
                     "transcript_ids": transcript_ids,
                     "anchor_verified": True,
+                    "anchor_verification_basis": "receipt-bound window, transcript membership, TSS geometry and FASTA length",
                 },
                 "promoterome_id": promoter_id,
             })
 
+        require(regions, "no selected TSS window passes the declared signal-difference rule")
         sequence_to_members: dict[str, list[str]] = {}
         sequence_by_region: dict[str, str] = {}
         for region in regions:
@@ -188,27 +244,21 @@ def main() -> None:
         payload = {
             "schema": "gentle.regulatory_region_comparison_sequences.v1",
             "dataset_id": "tp73_cutrun_supported_selected_gene_tss_windows_grch38_ensembl116_v1",
-            "source_revision": args.source_revision,
+            "source_revision": revision,
             "regions": regions,
             "sequence_equivalence_classes": equivalence_classes,
             "selection_policy": {
                 "genes": sorted(SELECTED_TRANSCRIPTS),
                 "transcripts": sorted(selected_ids),
-                "window": {"upstream_bp": 2000, "downstream_bp": 200},
+                "window": {"upstream_bp": receipt["upstream_bp"], "downstream_bp": receipt["downstream_bp"]},
                 "cutrun_support_rule": (
                     "At least one experimental TP73 mean exceeds its matched GFP-control mean "
                     "within the exact promoter window"
                 ),
             },
-            "source_bindings": {
-                "promoterome_receipt_sha256": sha256_file(promoterome / "receipt.json"),
-                "track_sha256": {
-                    f"{cell}:{condition}": sha256_file(track_root / filename)
-                    for cell, conditions in TRACKS.items()
-                    for condition, filename in conditions.items()
-                },
-            },
+            "source_bindings": source_bindings,
         }
+        output.mkdir(parents=True, exist_ok=True)
         (output / "candidate_regions.json").write_text(
             json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
@@ -227,6 +277,15 @@ def main() -> None:
         for conditions in opened.values():
             for bw in conditions.values():
                 bw.close()
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--promoterome", type=Path, required=True)
+    parser.add_argument("--track-root", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--source-revision", required=True)
+    prepare(parser.parse_args())
 
 
 if __name__ == "__main__":
