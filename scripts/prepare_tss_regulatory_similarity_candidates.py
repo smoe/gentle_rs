@@ -13,12 +13,14 @@ from typing import Any
 
 try:
     from .prepare_regulatory_region_indexes import require
-    from .prepare_transcript_promoterome import validate_promoterome
+    from .prepare_transcript_promoterome import validate_promoterome, window_id
     from .prepare_tp73_cutrun_promoter_candidates import extract_fasta, load_tsv
+    from .tss_regulatory_report_binding import read_locus_report, validate_locus_svg
 except ImportError:
     from prepare_regulatory_region_indexes import require
-    from prepare_transcript_promoterome import validate_promoterome
+    from prepare_transcript_promoterome import validate_promoterome, window_id
     from prepare_tp73_cutrun_promoter_candidates import extract_fasta, load_tsv
+    from tss_regulatory_report_binding import read_locus_report, validate_locus_svg
 
 
 SCHEMA = "gentle.regulatory_region_comparison_sequences.v1"
@@ -45,6 +47,8 @@ def selected_window(tss: int, strand: str, upstream: int, downstream: int) -> tu
 
 
 def connected_stretches(windows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    require(len({(row.get("chromosome"), row.get("strand")) for row in windows}) <= 1,
+            "TSS stretches must share a chromosome and strand")
     stretches: list[dict[str, Any]] = []
     for window in sorted(windows, key=lambda row: (row["start_1based"], row["end_1based"])):
         if not stretches or window["start_1based"] > stretches[-1]["end_1based"] + 1:
@@ -84,10 +88,69 @@ def assembly_forward_slice(
     return reverse_complement(biological_slice)
 
 
+def validate_selected_region(row, reference, windows, transcripts, sequences) -> None:
+    """Resolve all labels against one receipt-bound promoter, not independent IDs."""
+    promoter_id = row["promoterome_id"]
+    require(promoter_id in windows, "selected TSS promoter is absent from the prepared promoterome")
+    window = windows[promoter_id]
+    extraction = row["genome_extraction"]
+    start, end, tss = (int(window[key]) for key in
+                       ("start_0based", "end_0based_exclusive", "tss_1based"))
+    strand = window["strand"]
+    require(strand in {"+", "-"} and 0 <= start < end,
+            "invalid receipt-bound promoter geometry")
+    expected_start, expected_end = selected_window(
+        tss, strand, reference["upstream_bp"], reference["downstream_bp"])
+    require((start + 1, end) == (expected_start, expected_end)
+            and str(window.get("boundary_clipped", "")).lower() == "false"
+            and promoter_id == window_id(window["chromosome"], start, end, strand),
+            "receipt-bound promoter identity, clipping or TSS geometry mismatch")
+    expected = dict(genome_id=reference["genome_id"], chromosome=window["chromosome"],
+                    strand=strand, tss_1based=tss, start_1based=start + 1, end_1based=end,
+                    promoter_upstream_bp=reference["upstream_bp"],
+                    promoter_downstream_bp=reference["downstream_bp"])
+    require(all(extraction.get(key) == value for key, value in expected.items()),
+            "selected TSS geometry differs from its receipt-bound promoter")
+    ids = row["transcript_ids"]
+    require(ids and len(set(ids)) == len(ids)
+            and sorted(extraction.get("transcript_ids", [])) == sorted(ids),
+            "missing, duplicate or inconsistent selected transcript membership")
+    require(all(tx in transcripts and transcripts[tx]["promoter_id"] == promoter_id
+                and transcripts[tx]["gene_name"] == row["gene_query"] for tx in ids),
+            "selected transcript does not belong to the selected gene/promoter")
+    gene_ids = {transcripts[tx]["gene_id"] for tx in ids}
+    require(len(gene_ids) == 1 and next(iter(gene_ids))
+            and extraction.get("gene_id") == next(iter(gene_ids))
+            and extraction.get("gene_name") == row["gene_query"],
+            "selected gene identity disagrees with transcript membership")
+    sequence = sequences[promoter_id]
+    require(len(sequence) == end - start == row["sequence_length_bp"]
+            and row.get("sequence_orientation") == "biological_5prime_to_3prime"
+            and row["sequence_sha256"].removeprefix("sha256:") == sha256_bytes(sequence.encode("ascii")),
+            "selected sequence digest, length or orientation mismatch")
+
+
+def validate_locus_reference(report, windows, genome_id) -> None:
+    anchor = (report.get("sequence_binding") or {}).get("genome_anchor") or {}
+    chromosomes = {window["chromosome"] for window in windows}
+    strands = {window["strand"] for window in windows}
+    require(len(chromosomes) == len(strands) == 1, "gene has mixed chromosome/strand TSS windows")
+    require(anchor.get("genome_id") == genome_id
+            and anchor.get("chromosome") == next(iter(chromosomes))
+            and report.get("gene_strand") == next(iter(strands))
+            and report.get("isoform_evidence", {}).get("chromosome") == anchor.get("chromosome"),
+            "locus report lacks a matching genome/chromosome/strand binding; re-export it")
+    require(all(anchor.get("start_1based", 0) <= row["start_1based"]
+                and row["end_1based"] <= anchor.get("end_1based", 0) for row in windows),
+            "selected TSS window lies outside the locus sequence binding")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--selected-tss", type=Path, required=True)
     parser.add_argument("--locus-report", type=Path, action="append", required=True)
+    parser.add_argument("--locus-svg", action="append", default=[], metavar="GENE=PATH",
+                        help="Declare the original SVG for each tall-report gene before comparison")
     parser.add_argument("--promoterome", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--source-revision", required=True)
@@ -107,29 +170,33 @@ def main() -> None:
     ).strip()
     require(args.source_revision == revision,
             "--source-revision must be the current checkout's full HEAD SHA")
-    selected = json.loads(args.selected_tss.read_text())
+    selected_bytes = args.selected_tss.read_bytes()
+    selected = json.loads(selected_bytes)
     require(selected.get("schema") == SCHEMA, "unsupported selected-TSS candidate schema")
     require(selected.get("source_bindings", {}).get("promoterome_receipt_sha256", "").removeprefix("sha256:")
             == sha256_file(promoterome / "receipt.json").removeprefix("sha256:"),
             "selected TSS candidates and feature comparison use different promoterome receipts")
-    windows = {row["promoter_id"]: row for row in load_tsv(promoterome / "promoter_windows.tsv")}
+    window_rows = load_tsv(promoterome / "promoter_windows.tsv")
+    windows = {row["promoter_id"]: row for row in window_rows}
     mappings = load_tsv(promoterome / "promoter_transcripts.tsv")
     transcripts = {row["transcript_id"]: row for row in mappings}
+    require(len(windows) == len(window_rows) == reference["unique_promoter_window_count"]
+            and len(transcripts) == len(mappings) == reference["included_transcript_count"],
+            "duplicate or inconsistent promoter/transcript inventory")
+    require(selected["regions"] and len({row["region_id"] for row in selected["regions"]})
+            == len(selected["regions"]), "empty or duplicate selected regions")
     selected_promoter_ids = {row["promoterome_id"] for row in selected["regions"]}
     promoter_sequences = extract_fasta(promoterome / "promoter_windows.fa", selected_promoter_ids)
     selected_by_gene: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in selected["regions"]:
         extraction = row["genome_extraction"]
-        require(extraction["genome_id"] == reference["genome_id"],
-                "selected TSS genome differs from the prepared promoterome")
-        require(row["promoterome_id"] in windows,
-                "selected TSS promoter is absent from the prepared promoterome")
-        require(all(transcript in transcripts for transcript in row["transcript_ids"]),
-                "selected TSS transcript is absent from the prepared promoterome")
+        validate_selected_region(row, reference, windows, transcripts, promoter_sequences)
         start, end = selected_window(
             extraction["tss_1based"], extraction["strand"],
             args.upstream_bp, args.downstream_bp,
         )
+        require(extraction["start_1based"] <= start <= end <= extraction["end_1based"],
+                "requested TSS window exceeds the selected promoter")
         selected_by_gene[row["gene_query"]].append({
             "tss_1based": extraction["tss_1based"],
             "strand": extraction["strand"],
@@ -141,22 +208,36 @@ def main() -> None:
         })
 
     reports = {}
+    report_hashes = {}
     for path in args.locus_report:
-        report = json.loads(path.read_text())
+        report, digest = read_locus_report(path)
         gene = report["gene_symbol"]
         if gene in reports:
             raise SystemExit(f"duplicate locus report for {gene}")
+        require(gene in selected_by_gene, f"unexpected locus report for {gene}")
+        validate_locus_reference(report, selected_by_gene[gene], reference["genome_id"])
         binding = report["ensembl_regulation"]["source_binding"]
-        if not binding["content_identity_verified"] or binding["truncated"]:
+        if binding["content_identity_verified"] is not True or binding["truncated"] is not False:
             raise SystemExit(f"unverified or truncated Ensembl evidence for {gene}")
         assembly_names = {row["assembly_name"] for row in report["ensembl_regulation"]["rows"]}
-        require(len(assembly_names) == 1 and next(iter(assembly_names)) in reference["genome_id"],
+        require(len(assembly_names) == 1 and next(iter(assembly_names))
+                and next(iter(assembly_names)) in reference["genome_id"].split(),
                 f"Ensembl feature assembly disagrees with promoterome for {gene}")
         reports[gene] = (path.resolve(), report)
+        report_hashes[gene] = digest
 
     missing = sorted(set(selected_by_gene) - set(reports))
     if missing:
         raise SystemExit(f"missing locus reports: {missing}")
+
+    svg_hashes = {}
+    for value in args.locus_svg:
+        gene, separator, filename = value.partition("=")
+        require(separator and filename and gene in reports and gene not in svg_hashes,
+                "--locus-svg requires a unique selected GENE=PATH")
+        payload = Path(filename).read_bytes()
+        validate_locus_svg(payload.decode("utf-8"), reports[gene][1])
+        svg_hashes[gene] = sha256_bytes(payload)
 
     regions = []
     sequences: dict[str, str] = {}
@@ -243,7 +324,7 @@ def main() -> None:
                         "canonical_feature_url": feature["canonical_feature_url"],
                         "source_id": feature["source_id"],
                         "annotation_release": feature["annotation_release"],
-                        "source_report_sha256": f"sha256:{sha256_file(report_path)}",
+                        "source_report_sha256": f"sha256:{report_hashes[gene]}",
                     },
                 })
 
@@ -278,13 +359,14 @@ def main() -> None:
         "regions": regions,
         "sequence_equivalence_classes": equivalence,
         "source_bindings": {
-            "selected_tss_sha256": f"sha256:{sha256_file(args.selected_tss)}",
+            "selected_tss_sha256": f"sha256:{sha256_bytes(selected_bytes)}",
             "promoterome_receipt_sha256": sha256_file(promoterome / "receipt.json"),
             "promoterome_fasta_sha256": reference["artifacts"]["promoter_windows.fa"],
             "producer_sha256": sha256_file(Path(__file__)),
             "locus_reports": {
-                gene: f"sha256:{sha256_file(path)}" for gene, (path, _) in sorted(reports.items())
+                gene: f"sha256:{digest}" for gene, digest in sorted(report_hashes.items())
             },
+            "locus_svgs": {gene: f"sha256:{digest}" for gene, digest in sorted(svg_hashes.items())},
         },
     }
     output.mkdir(parents=True, exist_ok=True)

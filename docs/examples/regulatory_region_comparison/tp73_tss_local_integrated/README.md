@@ -1,5 +1,15 @@
 # TSS-local regulatory-feature similarity in the tall locus reports
 
+> **Historical publication; refresh required.** The retained figures and receipts
+> are from `49596e68`, not the subsequent renderer fixes. Review found mirrored
+> minus-strand query strips and overlapping CD44/SERPINE1 interpretation footers,
+> as well as missing checks binding selected TSS metadata and the source figures.
+> Their hashes are preserved; passing an integrity check does not validate the
+> old presentation. Regenerate from the original locus JSON/SVG and reference
+> inputs with the corrected preparation/comparison/rendering pipeline before
+> using these figures for interpretation. The new upper-genome TSS-stretch
+> references described below are not yet present in these historical files.
+
 This bundle extends the existing tall `CD44`, `TGFB1`, and `SERPINE1`
 promoter–reporter architecture reports. Their transcript models, proposed
 reporters, Ensembl Regulation annotations, TP73 CUT&RUN/H3K4me3 lanes, and
@@ -18,6 +28,14 @@ feature:
 - red boundaries only when alignment-relative order or orientation changes;
 - an explicit lower-bound label when either the target cap or per-target HSP
   cap was reached.
+
+New tall reports include a labelled TSS-stretch track immediately above the
+transcript models, on the same genomic axis. Its exact stretch IDs and colours
+reappear in the similarity section, with reciprocal links in SVG viewers that
+support them. Each stretch occupies a separate row to avoid label collisions.
+The original transcript, reporter and evidence lanes are translated intact,
+not recalculated. Similarity-strip query offsets are assembly-forward; they
+are mirrored when displayed on a minus-strand gene axis.
 
 The comparison uses the corrected `exclude_overlapping_or_shared_gene_windows.v1`
 policy. Gene-name text is not used to exclude targets. A run without observed
@@ -45,9 +63,20 @@ versioned. Their exact hashes and relative paths are retained in
 
 ## Reproduce
 
-All commands must run from the exact GENtle revision recorded in the candidate
-files. The promoterome receipt is validated before any sequence is labelled as
-GRCh38/Ensembl 116 evidence.
+For a corrected run, use a new output directory and record the current GENtle
+revision. Replaying the historical revision reproduces the historical defects.
+The promoterome receipt, selected transcript membership, chromosome, strand,
+TSS geometry, and selected sequence digest are validated before extraction.
+
+The locus JSON must carry a matching `sequence_binding.genome_anchor`; re-export
+legacy reports that lack it. Both renderers require the exact preparation-bound
+JSON bytes, including each candidate's source-report digest. For tall reports,
+preparation also records the declared original SVG's hash in
+`source_bindings.locus_svgs`, keyed by gene, and verifies its schema/panel ID
+against that JSON. This binds the supplied pair; it does not prove the biological
+truth of a drawing. The appender requires both original files and rejects an
+already-extended SVG or existing output paths. Legacy candidate files without
+SVG bindings must be prepared and compared again, not edited to bypass checks.
 
 ```bash
 python3 scripts/prepare_tp73_cutrun_promoter_candidates.py \
@@ -62,6 +91,9 @@ python3 scripts/prepare_tss_regulatory_similarity_candidates.py \
   --locus-report /path/to/CD44_luciferase_planning_EnsemblReg_15TF.report.json \
   --locus-report /path/to/TGFB1_luciferase_planning_EnsemblReg_15TF.report.json \
   --locus-report /path/to/SERPINE1_luciferase_planning_EnsemblReg_15TF.report.json \
+  --locus-svg CD44=/path/to/CD44_luciferase_planning_EnsemblReg_15TF.svg \
+  --locus-svg TGFB1=/path/to/TGFB1_luciferase_planning_EnsemblReg_15TF.svg \
+  --locus-svg SERPINE1=/path/to/SERPINE1_luciferase_planning_EnsemblReg_15TF.svg \
   --output /path/to/run/feature-candidates \
   --source-revision "$(git rev-parse HEAD)" \
   --upstream-bp 500 --downstream-bp 200
@@ -80,6 +112,7 @@ Render a tall report and its bound PDF/PNG derivatives (repeat for each gene):
 ```bash
 python3 scripts/append_tss_similarity_to_locus_report.py \
   --base-svg /path/to/SERPINE1_luciferase_planning_EnsemblReg_15TF.svg \
+  --locus-report /path/to/SERPINE1_luciferase_planning_EnsemblReg_15TF.report.json \
   --gene SERPINE1 \
   --candidates-json /path/to/run/feature-candidates/candidate_regions.json \
   --comparison /path/to/run/feature-candidates/blastn-40bp-80pct/comparison.json \
@@ -89,6 +122,14 @@ python3 scripts/append_tss_similarity_to_locus_report.py \
   --output-pdf /path/to/run/reports/SERPINE1_with_TSS_similarity.pdf \
   --output-png /path/to/run/reports/SERPINE1_with_TSS_similarity.png \
   --renderer rsvg-convert
+```
+
+Preparation and the tall-SVG path do not require Matplotlib; only the compact
+PDF renderer does. Focused offline regression tests, including synthetic source
+mismatches, both axis directions and dense-footer geometry, run with:
+
+```bash
+python3 -m unittest scripts.test_tss_regulatory_integrated_report
 ```
 
 ## Interpretation boundary

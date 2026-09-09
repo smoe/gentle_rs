@@ -2,6 +2,18 @@
 
 ## 2026-09-09 - Promoterome preparation and ordered similarity inspection
 
+- Fixed TSS-local report integration: preparation checks selected reference
+  geometry, transcript membership and sequence identity; both renderers require
+  the bound locus JSON, and tall reports also require a predeclared, panel-matched
+  original SVG. Existing outputs cannot overwrite bound evidence. Minus-strand
+  frequency/HSP strips now follow the displayed axis, and footer space comes
+  from the rows actually drawn. Upper-genome TSS-stretch rows share exact IDs,
+  colours and SVG links with the similarity section while preserving the
+  original evidence lanes. All 48 focused Python checks pass, with synthetic
+  SVG visual checks on both strands. Retained real-data artifacts remain
+  historical pending Glen's full source-bound regeneration; no local Cargo or
+  real BLAST run was attempted.
+
 - Hardened the TP73 comparison scripts after review: validate receipt-bound
   reference files, transcript membership and strand/TSS geometry; use one
   gene-ID exclusion policy across counts and detail rows; audit raw target/HSP

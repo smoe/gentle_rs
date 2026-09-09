@@ -13,17 +13,14 @@ from pathlib import Path
 import subprocess
 from typing import Any
 
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
-from matplotlib.patches import Rectangle
-from matplotlib.ticker import FuncFormatter
-
 try:
     from . import compare_candidates_to_promoterome as comparison_tools
     from .render_tp73_cutrun_promoter_comparison import ordered_blocks
+    from .tss_regulatory_report_binding import load_bound_locus_report
 except ImportError:
     import compare_candidates_to_promoterome as comparison_tools
     from render_tp73_cutrun_promoter_comparison import ordered_blocks
+    from tss_regulatory_report_binding import load_bound_locus_report
 
 require = comparison_tools.require
 
@@ -213,11 +210,14 @@ def abbreviate_lane(label: str) -> str:
 
 def context_axis(ax: Any, stretch: dict[str, Any], report: dict[str, Any],
                  regions: list[dict[str, Any]]) -> None:
+    from matplotlib.patches import Rectangle
+    from matplotlib.ticker import FuncFormatter
+
     start, end = stretch["start_1based"], stretch["end_1based"]
     ax.set_xlim((end, start) if report["gene_strand"] == "-" else (start, end))
     ax.set_ylim(-0.3, len(regions) + 1.5)
     ax.set_yticks([])
-    ax.set_title("Selected TSS windows and all overlapping Ensembl Regulation features",
+    ax.set_title(f"{stretch['stretch_id']}: TSS windows and overlapping Ensembl features",
                  loc="left", fontsize=9, fontweight="bold")
     for window in stretch["tss_windows"]:
         ax.axvspan(window["start_1based"], window["end_1based"], color="#e7e9ed", alpha=0.45)
@@ -279,6 +279,8 @@ def tfbs_axis(ax: Any, stretch: dict[str, Any], report: dict[str, Any]) -> None:
 
 
 def cutrun_axis(ax: Any, stretch: dict[str, Any], report: dict[str, Any]) -> None:
+    from matplotlib.patches import Rectangle
+
     start, end = stretch["start_1based"], stretch["end_1based"]
     groups = report["occupancy_groups"]
     lanes = [(group, item["lane"]) for group in groups for item in group["lanes"]]
@@ -315,6 +317,8 @@ def similarity_axis(ax: Any, stretch: dict[str, Any], report: dict[str, Any],
                     hsps: dict[tuple[str, str], list[dict[str, Any]]],
                     summaries: dict[str, dict[str, Any]], minimum_bp: int,
                     minimum_identity: float) -> None:
+    from matplotlib.patches import Rectangle
+
     start, end = stretch["start_1based"], stretch["end_1based"]
     row_count = sum(2 if region["sequence_length_bp"] < minimum_bp else 4 for region in regions)
     ax.set_xlim((end, start) if report["gene_strand"] == "-" else (start, end))
@@ -405,6 +409,8 @@ def render_page(gene: str, stretch: dict[str, Any], report: dict[str, Any],
                 regions: list[dict[str, Any]], matches_by_query: dict[str, list[dict[str, str]]],
                 hsps: dict[tuple[str, str], list[dict[str, Any]]],
                 summaries: dict[str, dict[str, Any]], thresholds: dict[str, float]) -> Any:
+    import matplotlib.pyplot as plt
+
     fig = plt.figure(figsize=(11.69, 8.27))
     grid = fig.add_gridspec(
         4, 1, height_ratios=[1.45, 0.7, 1.9, 3.15],
@@ -448,9 +454,19 @@ def main() -> None:
      thresholds) = load_bound_comparison(
         args.candidates_json, args.comparison, args.matches, args.hits)
     reports = {}
+    report_hashes = {}
     for path in args.locus_report:
-        report = json.loads(path.read_text())
-        reports[report["gene_symbol"]] = report
+        report, digest = load_bound_locus_report(candidates, path)
+        gene = report["gene_symbol"]
+        require(gene not in reports, f"duplicate locus report for {gene}")
+        reports[gene] = report
+        report_hashes[gene] = f"sha256:{digest}"
+    require(set(reports) == {row["gene"] for row in candidates["stretches"]},
+            "locus reports do not cover exactly the candidate genes")
+    # Pure evidence validation and SVG rendering do not need Matplotlib.
+    import matplotlib.pyplot as plt
+    from matplotlib.backends.backend_pdf import PdfPages
+
     summary_rows = []
     top_rows = []
     for query_id, region in sorted(regions_by_id.items()):
@@ -589,7 +605,7 @@ def main() -> None:
             "comparison": f"sha256:{sha256(args.comparison)}",
             "matches": f"sha256:{sha256(args.matches)}",
             "hits": f"sha256:{sha256(args.hits)}",
-            "locus_reports": {path.name: f"sha256:{sha256(path)}" for path in args.locus_report},
+            "locus_reports": report_hashes,
         },
         "outputs": {
             path.name: f"sha256:{sha256(path)}"

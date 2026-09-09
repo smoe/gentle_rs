@@ -13,17 +13,20 @@ import re
 import shutil
 import subprocess
 from typing import Any
+import xml.etree.ElementTree as ET
 
 try:
     from .render_integrated_tss_regulatory_report import (
         comparison_tools, frequency_segments, load_bound_comparison,
     )
     from .render_tp73_cutrun_promoter_comparison import ordered_blocks
+    from .tss_regulatory_report_binding import load_bound_locus_report, load_bound_locus_svg
 except ImportError:
     from render_integrated_tss_regulatory_report import (
         comparison_tools, frequency_segments, load_bound_comparison,
     )
     from render_tp73_cutrun_promoter_comparison import ordered_blocks
+    from tss_regulatory_report_binding import load_bound_locus_report, load_bound_locus_svg
 
 
 FEATURE_COLOURS = {
@@ -33,6 +36,7 @@ FEATURE_COLOURS = {
     "ctcf": "#f6bd5b",
     "open_chromatin_region": "#78d3f8",
 }
+STRETCH_COLOURS = ("#0f766e", "#b45309", "#1d4ed8")
 
 
 def sha256(path: Path) -> str:
@@ -99,6 +103,74 @@ def x_for(genomic: int, stretch: dict[str, Any], strand: str) -> float:
     return 255 + fraction * 795
 
 
+def query_interval_pixels(start: int, end: int, length: int,
+                          left: float, width: float, strand: str) -> tuple[float, float]:
+    """Project assembly-forward, half-open query offsets onto the gene-oriented axis."""
+    if strand not in {"+", "-"} or not 0 <= start < end <= length:
+        raise ValueError("invalid query interval or gene strand")
+    offset = start if strand == "+" else length - end
+    return left + offset / length * width, (end - start) / length * width
+
+
+def require_new_outputs(paths: list[Path]) -> None:
+    resolved = [path.resolve() for path in paths]
+    if len(set(resolved)) != len(resolved) or any(path.exists() or path.is_symlink() for path in paths):
+        raise ValueError("output paths must be distinct and absent; do not overwrite bound evidence")
+
+
+def add_stretch_overview(svg: str, gene: str, candidates: dict[str, Any],
+                         report: dict[str, Any]) -> tuple[str, int]:
+    """Insert linked stretch bars on the original transcript model's genomic axis."""
+    root = ET.fromstring(svg)
+    lines = [item for item in root.iter() if item.get("data-gentle-transcript")]
+    heading = re.search(r'<text\b[^>]*>\s*Transcript models and annotation-derived metrics\s*</text>', svg)
+    stretches = [row for row in candidates["stretches"] if row["gene"] == gene]
+    if not heading or not lines or not stretches:
+        raise ValueError("base SVG lacks a transcript-model axis for TSS-stretch references")
+    frames = {(float(item.get("x1")), float(item.get("x2"))) for item in lines}
+    if len(frames) != 1:
+        raise ValueError("base SVG has inconsistent transcript-model axes")
+    x0, x1 = next(iter(frames))
+    left, right = report["axis_left_genomic_1based"], report["axis_right_genomic_1based"]
+    if left == right or x0 >= x1:
+        raise ValueError("invalid genomic display axis")
+    y = float(ET.fromstring(heading.group()).get("y"))
+    start_y = y
+    body = ['<g data-gentle-tss-stretch-overview="true">',
+            svg_text(34, y, "TSS stretches: reference for similarity below", size=12, weight="bold")]
+    y += 25
+    for index, stretch in enumerate(stretches):
+        start, end = stretch["start_1based"], stretch["end_1based"]
+        if not min(left, right) <= start <= end <= max(left, right):
+            raise ValueError("TSS stretch is outside the original genomic display axis")
+        a, b = sorted(x0 + (position - left) / (right - left) * (x1 - x0)
+                      for position in (start, end))
+        name = escape(stretch["stretch_id"], quote=True)
+        colour = STRETCH_COLOURS[index % len(STRETCH_COLOURS)]
+        body.extend([
+            f'<a id="overview-{name}" href="#similarity-{name}">',
+            svg_text(34, y + 4, stretch["stretch_id"], size=9, family="monospace", fill=colour),
+            f'<line x1="{x0:.2f}" x2="{x1:.2f}" y1="{y}" y2="{y}" stroke="#cbd5e1"/>',
+            f'<rect data-gentle-tss-stretch="{name}" data-gentle-genomic-start="{start}" '
+            f'data-gentle-genomic-end="{end}" x="{a:.2f}" y="{y-6:.2f}" '
+            f'width="{max(1, b-a):.2f}" height="12" fill="{colour}"/>',
+            svg_text(x1 + 20, y + 4, f"{start:,}..{end:,}", size=8, family="monospace"),
+            '</a>',
+        ])
+        y += 26
+    body.append('</g>')
+    shift = math.ceil(y - start_y + 18)
+    old_height = int(root.get("height"))
+    height = old_height + shift
+    prefix = svg[:heading.start()]
+    prefix = prefix.replace(f'height="{old_height}"', f'height="{height}"')
+    prefix = prefix.replace(f'viewBox="0 0 1400 {old_height}"', f'viewBox="0 0 1400 {height}"')
+    tail = svg[heading.start():].rsplit('</svg>', 1)[0]
+    # Translate the original content as one group; do not re-render its scientific lanes.
+    return (prefix + '\n'.join(body) + f'<g data-gentle-shifted-locus="true" transform="translate(0 {shift})">'
+            + tail + '</g></svg>\n', height)
+
+
 def append_section(
     base_svg: str,
     gene: str,
@@ -120,14 +192,6 @@ def append_section(
         ]
         for stretch in stretches
     }
-    section_height = 104
-    for stretch in stretches:
-        section_height += 76 + sum(
-            54 if region["sequence_length_bp"] < thresholds["minimum_bp"]
-            else 80 if matches_by_query.get(region["region_id"])
-            else 58
-            for region in regions_by_stretch[stretch["stretch_id"]]
-        )
     boundary = re.search(
         r'<text[^>]*data-gentle-overlay-non-claims="true"[^>]*\by="([0-9.]+)"[^>]*>\s*\n?'
         r'Reporter interpretation boundaries', base_svg,
@@ -135,21 +199,6 @@ def append_section(
     if not boundary:
         raise ValueError("base SVG lacks the interpretation/provenance insertion boundary")
     boundary_y = float(boundary.group(1))
-    boundary_start = boundary.start()
-    new_height = old_height + section_height
-    opening = root.group(0).replace(f'height="{old_height}"', f'height="{new_height}"')
-    opening = opening.replace(f'viewBox="0 0 1400 {old_height}"', f'viewBox="0 0 1400 {new_height}"')
-    base_svg = base_svg.replace(root.group(0), opening, 1)
-    base_svg = base_svg.replace(
-        f'<rect fill="#ffffff" height="{old_height}" width="1400" x="0" y="0"/>',
-        f'<rect fill="#ffffff" height="{new_height}" width="1400" x="0" y="0"/>', 1,
-    )
-    boundary = re.search(
-        r'<text[^>]*data-gentle-overlay-non-claims="true"[^>]*\by="([0-9.]+)"[^>]*>\s*\n?'
-        r'Reporter interpretation boundaries', base_svg,
-    )
-    if not boundary:
-        raise ValueError("base SVG insertion boundary disappeared after geometry update")
     boundary_start = boundary.start()
     body = [f'<g data-gentle-panel="tss-local-promoter-similarity" data-gentle-gene="{escape(gene)}">']
     y = boundary_y
@@ -170,11 +219,14 @@ def append_section(
         size=9, fill="#64748b",
     ))
     y += 26
-    for stretch in stretches:
+    for index, stretch in enumerate(stretches):
         strand = stretch["tss_windows"][0]["strand"]
         regions = regions_by_stretch[stretch["stretch_id"]]
+        name = escape(stretch["stretch_id"], quote=True)
+        body.append(f'<a id="similarity-{name}" href="#overview-{name}">')
         body.append(svg_text(34, y, stretch["stretch_id"], size=11,
-                             fill="#334155", weight="bold"))
+                             fill=STRETCH_COLOURS[index % len(STRETCH_COLOURS)], weight="bold"))
+        body.append('</a>')
         body.append(svg_text(
             255, y,
             f"GRCh38 {stretch['tss_windows'][0]['chromosome']}:{stretch['start_1based']:,}–{stretch['end_1based']:,} ({strand})",
@@ -232,8 +284,7 @@ def append_section(
                     round(235 - 190 * fraction), round(242 - 130 * fraction),
                     round(252 - 35 * fraction),
                 )
-                sx = fx0 + start / length * max(2, fw)
-                sw = (end - start) / length * max(2, fw)
+                sx, sw = query_interval_pixels(start, end, length, fx0, max(2, fw), strand)
                 body.append(f'<rect x="{sx:.2f}" y="{y-6}" width="{max(0.7,sw):.2f}" height="12" fill="{colour}"/>')
             body.append(svg_text(1070, y + 4, f"position frequency; max {maximum:,} genes",
                                  size=8, family="monospace", fill="#64748b"))
@@ -253,8 +304,7 @@ def append_section(
                 for number, (hsp, broken) in enumerate(ordered_blocks(blocks), 1):
                     q0 = min(int(hsp["qstart"]), int(hsp["qend"])) - 1
                     q1 = max(int(hsp["qstart"]), int(hsp["qend"]))
-                    bx = fx0 + q0 / length * max(2, fw)
-                    bw = (q1 - q0) / length * max(2, fw)
+                    bx, bw = query_interval_pixels(q0, q1, length, fx0, max(2, fw), strand)
                     body.append(f'<rect x="{bx:.2f}" y="{y-5}" width="{max(1,bw):.2f}" height="12" fill="{blue(float(hsp["pident"]), thresholds["minimum_identity"])}" stroke="{"#dc2626" if broken else "#475569"}" stroke-width="{1.4 if broken else 0.5}"/>')
                     if bw >= 10:
                         body.append(svg_text(bx + bw / 2, y + 4, str(number), size=7,
@@ -272,7 +322,17 @@ def append_section(
         size=9, fill="#64748b",
     ))
     body.append("</g>")
+    # Reserve the height actually drawn, including all ranked matches and empty rows.
+    section_height = math.ceil(y - boundary_y + 32)
+    new_height = old_height + section_height
     prefix = base_svg[:boundary_start]
+    opening = root.group(0).replace(f'height="{old_height}"', f'height="{new_height}"')
+    opening = opening.replace(f'viewBox="0 0 1400 {old_height}"', f'viewBox="0 0 1400 {new_height}"')
+    prefix = prefix.replace(root.group(0), opening, 1)
+    prefix = prefix.replace(
+        f'<rect fill="#ffffff" height="{old_height}" width="1400" x="0" y="0"/>',
+        f'<rect fill="#ffffff" height="{new_height}" width="1400" x="0" y="0"/>', 1,
+    )
     tail = base_svg[boundary_start:].rsplit("</svg>", 1)[0]
     translated_tail = f'<g data-gentle-shifted-footer="true" transform="translate(0 {section_height})">\n{tail}\n</g>'
     return prefix + "\n" + "\n".join(body) + "\n" + translated_tail + "\n</svg>\n", new_height
@@ -281,6 +341,7 @@ def append_section(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-svg", type=Path, required=True)
+    parser.add_argument("--locus-report", type=Path, required=True)
     parser.add_argument("--gene", required=True)
     parser.add_argument("--candidates-json", type=Path, required=True)
     parser.add_argument("--comparison", type=Path, required=True)
@@ -291,6 +352,8 @@ def main() -> None:
     parser.add_argument("--output-png", type=Path, required=True)
     parser.add_argument("--renderer", default="rsvg-convert")
     args = parser.parse_args()
+    receipt_path = args.output_svg.with_suffix(".receipt.json")
+    require_new_outputs([args.output_svg, args.output_pdf, args.output_png, receipt_path])
 
     candidates, _, regions, matches_by_query, hsps, summaries, thresholds = \
         load_bound_comparison(
@@ -298,14 +361,17 @@ def main() -> None:
     require_gene = {row["gene_query"] for row in regions.values() if row["gene_query"] == args.gene}
     if require_gene != {args.gene}:
         raise ValueError("requested gene has no candidate regions")
+    report, report_digest = load_bound_locus_report(candidates, args.locus_report, args.gene)
+    base_svg, svg_digest = load_bound_locus_svg(candidates, args.base_svg, report)
     matches_by_query = {
         query_id: rows for query_id, rows in matches_by_query.items()
         if regions[query_id]["gene_query"] == args.gene
     }
     output, height = append_section(
-        args.base_svg.read_text(), args.gene, candidates, matches_by_query, hsps,
+        base_svg, args.gene, candidates, matches_by_query, hsps,
         summaries, thresholds
     )
+    output, height = add_stretch_overview(output, args.gene, candidates, report)
     for path in (args.output_svg, args.output_pdf, args.output_png):
         path.parent.mkdir(parents=True, exist_ok=True)
     args.output_svg.write_text(output, encoding="utf-8")
@@ -313,7 +379,6 @@ def main() -> None:
         args.output_svg.resolve(), args.output_pdf.resolve(), args.output_png.resolve(),
         args.renderer,
     )
-    receipt_path = args.output_svg.with_suffix(".receipt.json")
     renderer_revision = subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=Path(__file__).resolve().parents[1], text=True
     ).strip()
@@ -326,7 +391,8 @@ def main() -> None:
         "producer_sha256": f"sha256:{sha256(Path(__file__))}",
         "counting_policy_id": comparison_tools.COUNTING_POLICY,
         "inputs": {
-            "base_svg": f"sha256:{sha256(args.base_svg)}",
+            "base_svg": f"sha256:{svg_digest}",
+            "locus_report": f"sha256:{report_digest}",
             "candidates": f"sha256:{sha256(args.candidates_json)}",
             "comparison": f"sha256:{sha256(args.comparison)}",
             "matches": f"sha256:{sha256(args.matches)}",
@@ -344,7 +410,7 @@ def main() -> None:
     print(json.dumps({
         "output_svg": str(args.output_svg),
         "height": height,
-        "base_svg_sha256": f"sha256:{sha256(args.base_svg)}",
+        "base_svg_sha256": f"sha256:{svg_digest}",
         "candidate_sha256": f"sha256:{sha256(args.candidates_json)}",
         "receipt": str(receipt_path),
     }, indent=2))
