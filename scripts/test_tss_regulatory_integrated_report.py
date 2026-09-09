@@ -5,10 +5,12 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import sys
 import unittest
 
 
 ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT))
 
 
 def load_module(name: str, filename: str):
@@ -51,6 +53,22 @@ class TssWindowTests(unittest.TestCase):
                           for row in stretches], [(500, 1_200), (1_202, 1_500)])
         self.assertEqual([row["name"] for row in stretches[0]["tss_windows"]], ["a", "b"])
 
+    def test_receipt_bound_window_slice_is_assembly_forward(self) -> None:
+        window = {"start_0based": "100", "end_0based_exclusive": "110", "strand": "+"}
+        self.assertEqual(
+            PREPARE.assembly_forward_slice("AACCGGTTAA", window, 103, 106),
+            "CCGG",
+        )
+        assembly = "AACCGGTTAA"
+        transcript_oriented = PREPARE.reverse_complement(assembly)
+        window["strand"] = "-"
+        self.assertEqual(
+            PREPARE.assembly_forward_slice(transcript_oriented, window, 103, 106),
+            "CCGG",
+        )
+        with self.assertRaises(RuntimeError):
+            PREPARE.assembly_forward_slice("AACCGGTTAA", window, 99, 106)
+
 
 class FrequencyTests(unittest.TestCase):
     def test_frequency_segments_count_distinct_genes_not_transcripts(self) -> None:
@@ -78,12 +96,42 @@ class FrequencyTests(unittest.TestCase):
         )
 
     def test_reverse_chain_decreases_in_query_without_false_break(self) -> None:
-        self.assertFalse(APPEND.is_order_break(None, None, 80, -1))
-        self.assertFalse(APPEND.is_order_break(80, -1, 50, -1))
-        self.assertTrue(APPEND.is_order_break(50, -1, 80, -1))
-        self.assertTrue(APPEND.is_order_break(80, -1, 50, 1))
-        self.assertFalse(RENDER.is_order_break(80, -1, 50, -1))
-        self.assertTrue(RENDER.is_order_break(50, -1, 80, -1))
+        reverse = [
+            {"sstart": 10, "send": 20, "qstart": 90, "qend": 80, "bitscore": 20},
+            {"sstart": 30, "send": 40, "qstart": 60, "qend": 50, "bitscore": 20},
+        ]
+        self.assertEqual([broken for _, broken in APPEND.ordered_blocks(reverse)],
+                         [False, False])
+        reordered = [reverse[0], {**reverse[1], "qstart": 100, "qend": 95}]
+        self.assertEqual([broken for _, broken in APPEND.ordered_blocks(reordered)],
+                         [False, True])
+
+    def test_similarity_panel_is_inserted_before_interpretation_footer(self) -> None:
+        base = (
+            '<svg height="100" viewBox="0 0 1400 100" width="1400">\n'
+            '<rect fill="#ffffff" height="100" width="1400" x="0" y="0"/>\n'
+            '<text x="34" y="20">existing evidence</text>\n'
+            '<text data-gentle-overlay-non-claims="true" x="34" y="70">\n'
+            'Reporter interpretation boundaries\n</text>\n'
+            '<text x="34" y="90">Evidence provenance</text>\n</svg>\n'
+        )
+        candidates = {
+            "stretches": [{
+                "stretch_id": "G_tss_stretch_1", "gene": "G",
+                "start_1based": 100, "end_1based": 800,
+                "tss_windows": [{"strand": "+", "chromosome": "1", "tss_1based": 600}],
+            }],
+            "regions": [],
+        }
+        output, height = APPEND.append_section(
+            base, "G", candidates, {}, {}, {},
+            {"minimum_bp": 40, "minimum_identity": 80.0, "maximum_evalue": 1e-5},
+        )
+        self.assertGreater(height, 100)
+        self.assertLess(output.index("TSS-local Ensembl-feature promoterome similarity"),
+                        output.index("Reporter interpretation boundaries"))
+        self.assertIn('data-gentle-shifted-footer="true"', output)
+        self.assertIn(f'height="{height}"', output)
 
 
 if __name__ == "__main__":

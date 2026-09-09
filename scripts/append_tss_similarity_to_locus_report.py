@@ -4,8 +4,6 @@
 from __future__ import annotations
 
 import argparse
-from collections import Counter, defaultdict
-import csv
 from html import escape
 import hashlib
 import json
@@ -13,6 +11,17 @@ import math
 from pathlib import Path
 import re
 from typing import Any
+
+try:
+    from .render_integrated_tss_regulatory_report import (
+        frequency_segments, load_bound_comparison,
+    )
+    from .render_tp73_cutrun_promoter_comparison import ordered_blocks
+except ImportError:
+    from render_integrated_tss_regulatory_report import (
+        frequency_segments, load_bound_comparison,
+    )
+    from render_tp73_cutrun_promoter_comparison import ordered_blocks
 
 
 FEATURE_COLOURS = {
@@ -32,66 +41,12 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def load_tsv(path: Path) -> list[dict[str, str]]:
-    with path.open(newline="", encoding="utf-8") as handle:
-        return list(csv.DictReader(handle, delimiter="\t"))
-
-
-def frequency_segments(rows: list[dict[str, str]]) -> list[tuple[int, int, int]]:
-    events: dict[int, dict[str, set[str]]] = defaultdict(lambda: {"add": set(), "remove": set()})
-    genes_by_target: dict[str, set[str]] = {}
-    for row in rows:
-        target = row["promoter_id"]
-        genes_by_target[target] = {value for value in row["gene_ids"].split(";") if value}
-        for value in row["query_intervals_0based_half_open"].split(";"):
-            start, end = map(int, value.split("-"))
-            events[start]["add"].add(target)
-            events[end]["remove"].add(target)
-    active: set[str] = set()
-    gene_counts: Counter[str] = Counter()
-    segments = []
-    previous = None
-    for position in sorted(events):
-        if previous is not None and previous < position and active:
-            segments.append((previous, position, len(gene_counts)))
-        for target in events[position]["remove"]:
-            if target in active:
-                active.remove(target)
-                for gene in genes_by_target[target]:
-                    gene_counts[gene] -= 1
-                    if gene_counts[gene] == 0:
-                        del gene_counts[gene]
-        for target in events[position]["add"]:
-            if target not in active:
-                active.add(target)
-                gene_counts.update(genes_by_target[target])
-        previous = position
-    return segments
-
-
-def blue(identity: float) -> str:
-    fraction = min(1.0, max(0.0, (identity - 80.0) / 20.0))
+def blue(identity: float, minimum_identity: float) -> str:
+    fraction = min(1.0, max(0.0, (identity - minimum_identity)
+                            / max(1.0, 100.0 - minimum_identity)))
     return "#{:02x}{:02x}{:02x}".format(
         round(210 - 170 * fraction), round(230 - 120 * fraction), round(250 - 35 * fraction)
     )
-
-
-def is_order_break(
-    previous_query_mid: float | None,
-    previous_orientation: int | None,
-    query_mid: float,
-    orientation: int,
-) -> bool:
-    """Return whether target-order traversal breaks one collinear query chain."""
-    if previous_query_mid is None:
-        return False
-    if orientation != previous_orientation:
-        return True
-    if orientation == 1:
-        return query_mid < previous_query_mid
-    return query_mid > previous_query_mid
-
-
 def svg_text(x: float, y: float, text: str, *, size: float = 9,
              fill: str = "#475569", weight: str | None = None,
              family: str = "sans-serif", anchor: str | None = None) -> str:
@@ -117,8 +72,9 @@ def append_section(
     gene: str,
     candidates: dict[str, Any],
     matches_by_query: dict[str, list[dict[str, str]]],
-    hsps: dict[tuple[str, str], list[dict[str, str]]],
-    complete: dict[str, bool],
+    hsps: dict[tuple[str, str], list[dict[str, Any]]],
+    summaries: dict[str, dict[str, Any]],
+    thresholds: dict[str, float],
 ) -> tuple[str, int]:
     root = re.search(r"<svg[^>]*height=\"(\d+)\"[^>]*viewBox=\"0 0 1400 (\d+)\"[^>]*>", base_svg)
     if not root or root.group(1) != root.group(2):
@@ -135,11 +91,19 @@ def append_section(
     section_height = 104
     for stretch in stretches:
         section_height += 76 + sum(
-            54 if region["sequence_length_bp"] < 40
+            54 if region["sequence_length_bp"] < thresholds["minimum_bp"]
             else 80 if matches_by_query.get(region["region_id"])
             else 58
             for region in regions_by_stretch[stretch["stretch_id"]]
         )
+    boundary = re.search(
+        r'<text[^>]*data-gentle-overlay-non-claims="true"[^>]*\by="([0-9.]+)"[^>]*>\s*\n?'
+        r'Reporter interpretation boundaries', base_svg,
+    )
+    if not boundary:
+        raise ValueError("base SVG lacks the interpretation/provenance insertion boundary")
+    boundary_y = float(boundary.group(1))
+    boundary_start = boundary.start()
     new_height = old_height + section_height
     opening = root.group(0).replace(f'height="{old_height}"', f'height="{new_height}"')
     opening = opening.replace(f'viewBox="0 0 1400 {old_height}"', f'viewBox="0 0 1400 {new_height}"')
@@ -148,15 +112,23 @@ def append_section(
         f'<rect fill="#ffffff" height="{old_height}" width="1400" x="0" y="0"/>',
         f'<rect fill="#ffffff" height="{new_height}" width="1400" x="0" y="0"/>', 1,
     )
+    boundary = re.search(
+        r'<text[^>]*data-gentle-overlay-non-claims="true"[^>]*\by="([0-9.]+)"[^>]*>\s*\n?'
+        r'Reporter interpretation boundaries', base_svg,
+    )
+    if not boundary:
+        raise ValueError("base SVG insertion boundary disappeared after geometry update")
+    boundary_start = boundary.start()
     body = [f'<g data-gentle-panel="tss-local-promoter-similarity" data-gentle-gene="{escape(gene)}">']
-    y = old_height + 30
+    y = boundary_y
     body.append(svg_text(34, y, "TSS-local Ensembl-feature promoterome similarity",
                          size=14, fill="#1f2937", weight="bold"))
     y += 20
     body.append(svg_text(
         34, y,
         "Transcript-oriented −500/+200 bp; features clipped to the displayed stretch; "
-        "BLASTN ≥40 bp, ≥80% identity, E≤1e−5; self-locus and same-gene targets excluded.",
+        f"BLASTN ≥{thresholds['minimum_bp']:g} bp, ≥{thresholds['minimum_identity']:g}% identity, "
+        f"E≤{thresholds['maximum_evalue']:g}; self-locus and same-gene targets excluded.",
         size=9, family="monospace", fill="#64748b",
     ))
     y += 18
@@ -188,14 +160,10 @@ def append_section(
             query_id = region["region_id"]
             source = region["source_region"]
             length = region["sequence_length_bp"]
-            rows = [row for row in matches_by_query.get(query_id, [])
-                    if row["same_locus_overlap"] == "False"
-                    and gene not in set(row["gene_names"].split(";"))]
-            genes = {value for row in rows for value in row["gene_ids"].split(";") if value}
-            genes_25 = {value for row in rows if float(row["aligned_query_fraction"]) >= 0.25
-                        for value in row["gene_ids"].split(";") if value}
-            genes_50 = {value for row in rows if float(row["aligned_query_fraction"]) >= 0.50
-                        for value in row["gene_ids"].split(";") if value}
+            rows = matches_by_query.get(query_id, [])
+            summary = summaries[query_id]
+            counts = summary["other_promoters"]
+            tiers = summary["other_promoters_by_min_query_coverage"]
             feature_start = source["interval"]["start_0based"] + 1
             feature_end = source["interval"]["end_0based_exclusive"]
             fx0 = min(x_for(feature_start, stretch, strand), x_for(feature_end, stretch, strand))
@@ -207,15 +175,19 @@ def append_section(
             ))
             body.append(f'<rect x="255" y="{y-3}" width="795" height="16" fill="#f8fafc" stroke="#cbd5e1" stroke-width="0.7"/>')
             body.append(f'<rect x="{fx0:.2f}" y="{y-3}" width="{max(2,fw):.2f}" height="16" fill="{FEATURE_COLOURS.get(source["feature_type"], "#aaaaaa")}" fill-opacity="0.34" stroke="#475569" stroke-width="0.7"/>')
-            if length < 40:
-                body.append(svg_text(1070, y + 8, "motif-scale; below 40-bp search gate",
+            if length < thresholds["minimum_bp"]:
+                body.append(svg_text(1070, y + 8,
+                                     f"motif-scale; below {thresholds['minimum_bp']:g}-bp search gate",
                                      size=8, family="monospace", fill="#64748b"))
                 y += 54
                 continue
-            status = "complete" if complete.get(query_id, True) else "lower bound"
+            status = ("LOWER BOUNDS" if summary["counts_are_lower_bounds"]
+                      else "observed; no cap saturation")
             body.append(svg_text(
                 1070, y + 8,
-                f"other genes {len(genes):,}; ≥25% {len(genes_25):,}; ≥50% {len(genes_50):,}; {status}",
+                f"other genes {counts['distinct_genes']:,}; "
+                f"≥25% {tiers['0.25']['distinct_genes']:,}; "
+                f"≥50% {tiers['0.50']['distinct_genes']:,}; {status}",
                 size=8, family="monospace", fill="#475569",
             ))
             y += 22
@@ -243,26 +215,18 @@ def append_section(
                                      f"{rank}. {target_label} · {float(target['aligned_query_fraction']):.1%}",
                                      size=8, family="monospace", fill="#475569"))
                 body.append(f'<rect x="255" y="{y-6}" width="795" height="14" fill="#f8fafc" stroke="#e2e8f0" stroke-width="0.5"/>')
-                ordered = sorted(hsps.get((query_id, target["promoter_id"]), []),
-                                 key=lambda row: min(int(row["sstart"]), int(row["send"])))
-                previous_mid = None
-                previous_orientation = None
-                for number, hsp in enumerate(ordered, 1):
+                blocks = hsps.get((query_id, target["promoter_id"]), [])
+                if not blocks:
+                    raise ValueError("ranked match lacks qualifying bound HSPs")
+                for number, (hsp, broken) in enumerate(ordered_blocks(blocks), 1):
                     q0 = min(int(hsp["qstart"]), int(hsp["qend"])) - 1
                     q1 = max(int(hsp["qstart"]), int(hsp["qend"]))
-                    orientation = 1 if int(hsp["send"]) >= int(hsp["sstart"]) else -1
-                    midpoint = (q0 + q1) / 2
-                    broken = is_order_break(
-                        previous_mid, previous_orientation, midpoint, orientation
-                    )
                     bx = fx0 + q0 / length * max(2, fw)
                     bw = (q1 - q0) / length * max(2, fw)
-                    body.append(f'<rect x="{bx:.2f}" y="{y-5}" width="{max(1,bw):.2f}" height="12" fill="{blue(float(hsp["pident"]))}" stroke="{"#dc2626" if broken else "#475569"}" stroke-width="{1.4 if broken else 0.5}"/>')
+                    body.append(f'<rect x="{bx:.2f}" y="{y-5}" width="{max(1,bw):.2f}" height="12" fill="{blue(float(hsp["pident"]), thresholds["minimum_identity"])}" stroke="{"#dc2626" if broken else "#475569"}" stroke-width="{1.4 if broken else 0.5}"/>')
                     if bw >= 10:
                         body.append(svg_text(bx + bw / 2, y + 4, str(number), size=7,
                                              fill="#111827", anchor="middle"))
-                    previous_mid = midpoint
-                    previous_orientation = orientation
                 y += 19
             if not top:
                 body.append(svg_text(652, y + 4, "No qualifying other-gene promoter match",
@@ -271,12 +235,15 @@ def append_section(
             y += 16
         y += 18
     body.append(svg_text(
-        34, new_height - 18,
-        "Interpretation boundary: sequence recurrence is structural evidence; Ensembl classes, predicted TFBS and CUT&RUN enrichment do not prove reporter activity or sufficiency.",
+        34, y,
+        "Similarity is structural evidence; Ensembl classes, predicted TFBS and CUT&RUN enrichment do not prove reporter activity or sufficiency.",
         size=9, fill="#64748b",
     ))
     body.append("</g>")
-    return base_svg.rsplit("</svg>", 1)[0] + "\n" + "\n".join(body) + "\n</svg>\n", new_height
+    prefix = base_svg[:boundary_start]
+    tail = base_svg[boundary_start:].rsplit("</svg>", 1)[0]
+    translated_tail = f'<g data-gentle-shifted-footer="true" transform="translate(0 {section_height})">\n{tail}\n</g>'
+    return prefix + "\n" + "\n".join(body) + "\n" + translated_tail + "\n</svg>\n", new_height
 
 
 def main() -> None:
@@ -290,35 +257,19 @@ def main() -> None:
     parser.add_argument("--output-svg", type=Path, required=True)
     args = parser.parse_args()
 
-    candidates = json.loads(args.candidates_json.read_text())
-    comparison = json.loads(args.comparison.read_text())
-    regions = {row["region_id"]: row for row in candidates["regions"]}
-    matches_by_query: dict[str, list[dict[str, str]]] = defaultdict(list)
-    for row in load_tsv(args.matches):
-        if regions[row["query_id"]]["gene_query"] == args.gene:
-            matches_by_query[row["query_id"]].append(row)
-    selected_pairs = set()
-    for query_id, rows in matches_by_query.items():
-        eligible = [row for row in rows if row["same_locus_overlap"] == "False"
-                    and args.gene not in set(row["gene_names"].split(";"))]
-        for row in sorted(eligible, key=lambda item: (
-                float(item["aligned_query_fraction"]), float(item["best_bitscore"])),
-                reverse=True)[:2]:
-            selected_pairs.add((query_id, row["promoter_id"]))
-    hsps: dict[tuple[str, str], list[dict[str, str]]] = defaultdict(list)
-    columns = ["qseqid", "sseqid", "pident", "length", "mismatch", "gapopen",
-               "qstart", "qend", "sstart", "send", "evalue", "bitscore"]
-    with args.hits.open(encoding="utf-8") as handle:
-        for line in handle:
-            row = dict(zip(columns, line.rstrip("\n").split("\t")))
-            pair = (row["qseqid"], row["sseqid"])
-            if pair in selected_pairs and int(row["length"]) >= 40 \
-                    and float(row["pident"]) >= 80 and float(row["evalue"]) <= 1e-5:
-                hsps[pair].append(row)
-    complete = {row["query_id"]: not row["target_cap_reached"]
-                for row in comparison["tasks"]["blastn"]["queries"]}
+    candidates, _, regions, matches_by_query, hsps, summaries, thresholds = \
+        load_bound_comparison(
+            args.candidates_json, args.comparison, args.matches, args.hits)
+    require_gene = {row["gene_query"] for row in regions.values() if row["gene_query"] == args.gene}
+    if require_gene != {args.gene}:
+        raise ValueError("requested gene has no candidate regions")
+    matches_by_query = {
+        query_id: rows for query_id, rows in matches_by_query.items()
+        if regions[query_id]["gene_query"] == args.gene
+    }
     output, height = append_section(
-        args.base_svg.read_text(), args.gene, candidates, matches_by_query, hsps, complete
+        args.base_svg.read_text(), args.gene, candidates, matches_by_query, hsps,
+        summaries, thresholds
     )
     args.output_svg.parent.mkdir(parents=True, exist_ok=True)
     args.output_svg.write_text(output, encoding="utf-8")
