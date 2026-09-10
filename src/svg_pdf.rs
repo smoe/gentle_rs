@@ -1,12 +1,13 @@
 //! Deterministic SVG-to-PDF conversion helpers shared by headless exports.
 //!
 //! The PDF path intentionally reuses GENtle's existing `resvg` rasterization
-//! helper, then embeds the resulting RGB image into one simple PDF page. That
+//! helper, then embeds the losslessly compressed RGB image into one PDF page. That
 //! keeps PDF generation dependency-light and visually consistent with SVG/PNG
 //! exports.
 
+use flate2::{Compression, write::ZlibEncoder};
 use serde::Serialize;
-use std::path::Path;
+use std::{io::Write, path::Path};
 
 use crate::svg_png::{
     SvgPngRenderBytes, SvgPngRenderOptions, SvgUsedFontIdentity, render_svg_file_to_png_bytes,
@@ -233,7 +234,16 @@ fn png_bytes_to_single_page_pdf(png_bytes: &[u8], links: &[PdfUriLink]) -> Resul
     let (width, height) = image.dimensions();
     let page_width_pt = width as f32 * 72.0 / 96.0;
     let page_height_pt = height as f32 * 72.0 / 96.0;
-    let rgb = image.into_raw();
+    // PDF's FlateDecode expects a zlib stream, not raw DEFLATE or gzip. Keep
+    // every pixel and the original resolution; tall scientific pages compress
+    // well without introducing JPEG artifacts or changing their geometry.
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+    encoder
+        .write_all(image.as_raw())
+        .map_err(|e| format!("Could not compress PDF image: {e}"))?;
+    let compressed_rgb = encoder
+        .finish()
+        .map_err(|e| format!("Could not finish PDF image compression: {e}"))?;
     let content = format!("q\n{page_width_pt:.2} 0 0 {page_height_pt:.2} 0 0 cm\n/Im0 Do\nQ\n");
 
     let mut pdf = Vec::new();
@@ -272,11 +282,11 @@ fn png_bytes_to_single_page_pdf(png_bytes: &[u8], links: &[PdfUriLink]) -> Resul
         &mut pdf,
         &mut offsets,
         format!(
-            "<< /Type /XObject /Subtype /Image /Width {width} /Height {height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Length {} >>",
-            rgb.len()
+            "<< /Type /XObject /Subtype /Image /Width {width} /Height {height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length {} >>",
+            compressed_rgb.len()
         )
         .as_bytes(),
-        &rgb,
+        &compressed_rgb,
     );
     push_pdf_stream_object(
         &mut pdf,
@@ -343,7 +353,71 @@ fn push_pdf_stream_object(
 mod tests {
     use super::*;
     use std::fs;
+    use std::io::{Cursor, Read};
     use tempfile::tempdir;
+
+    #[test]
+    fn pdf_image_compression_is_lossless_deterministic_and_compact() {
+        // Hand-crafted tall page: white background, coloured tracks and sparse
+        // marks, independent of host fonts and external scientific inputs.
+        let image = image::RgbImage::from_fn(512, 2048, |x, y| {
+            if y % 100 < 2 {
+                image::Rgb([20, 80, 160])
+            } else if x % 97 < 3 && y % 31 < 12 {
+                image::Rgb([180, 40, 60])
+            } else {
+                image::Rgb([255, 255, 255])
+            }
+        });
+        let mut png = Cursor::new(Vec::new());
+        image.write_to(&mut png, image::ImageFormat::Png).unwrap();
+        let pdf = png_bytes_to_single_page_pdf(png.get_ref(), &[]).unwrap();
+        assert_eq!(
+            pdf,
+            png_bytes_to_single_page_pdf(png.get_ref(), &[]).unwrap()
+        );
+        let stream_start = pdf.windows(7).position(|v| v == b"stream\n").unwrap() + 7;
+        let header = std::str::from_utf8(&pdf[..stream_start]).unwrap();
+        assert!(header.contains("/Filter /FlateDecode"));
+        assert!(header.contains("/Width 512 /Height 2048"));
+        assert!(header.contains("/MediaBox [0 0 384.00 1536.00]"));
+        let length: usize = header
+            .rsplit("/Length ")
+            .next()
+            .unwrap()
+            .split_whitespace()
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap();
+        let mut restored = Vec::new();
+        flate2::read::ZlibDecoder::new(&pdf[stream_start..stream_start + length])
+            .read_to_end(&mut restored)
+            .unwrap();
+        assert_eq!(restored, *image.as_raw());
+        assert!(
+            pdf.len() < restored.len() / 10,
+            "{} PDF bytes for {} RGB bytes",
+            pdf.len(),
+            restored.len()
+        );
+        assert!(pdf[stream_start + length..].starts_with(b"\nendstream\n"));
+
+        let startxref = pdf.windows(10).rposition(|v| v == b"startxref\n").unwrap() + 10;
+        let xref: usize = std::str::from_utf8(&pdf[startxref..])
+            .unwrap()
+            .lines()
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap();
+        let entries = std::str::from_utf8(&pdf[xref..]).unwrap();
+        assert!(entries.starts_with("xref\n0 6\n"));
+        for (i, entry) in entries.lines().skip(3).take(5).enumerate() {
+            let offset: usize = entry.split_whitespace().next().unwrap().parse().unwrap();
+            assert!(pdf[offset..].starts_with(format!("{} 0 obj\n", i + 1).as_bytes()));
+        }
+    }
 
     #[test]
     fn audited_pdf_keeps_legacy_bytes_summary_and_exact_embedded_font_audit() {

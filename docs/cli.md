@@ -9,6 +9,14 @@ See [complete offline commands and input requirements](tss_tfbs_profiles.md).
 These shared-parser routes also work in the GUI Shell and through typed MCP
 `op`; output directories are fresh and writes require normal confirmation.
 
+The CLI prints an export summary, not the full scored report, for these routes
+(also through `shell`, direct JSON `op`, and JSON `workflow`). It retains artifact
+paths, hashes, counts, warnings and verification limits. Put `--full-report`
+**before the command** to restore full result JSON on stdout. Exported
+`report.json` is always complete; compute-only operations without an export,
+GUI Shell and MCP retain their full result contract. See the
+[stdout compatibility details](tss_tfbs_profiles.md#cli-output).
+
 ## Measured Gel Images (`.11` Development)
 
 The following routes share typed engine operations with GUI Shell and MCP `op`:

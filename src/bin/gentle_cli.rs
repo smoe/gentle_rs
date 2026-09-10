@@ -26,6 +26,8 @@ mod gentle_cli_rescue_screen;
 mod gentle_cli_resources;
 #[path = "gentle_cli/services.rs"]
 mod gentle_cli_services;
+#[path = "gentle_cli/tss_output.rs"]
+mod gentle_cli_tss_output;
 
 use gentle::{
     about,
@@ -485,7 +487,7 @@ fn usage_text() -> String {
   gentle_cli --help\n  \
   gentle_cli --version\n  \
   gentle_cli help [COMMAND ...] [--format text|json|markdown] [--interface all|cli-direct|cli-shell|gui-shell|gui-menu|js|lua|mcp]\n  \
-  gentle_cli [--state PATH|--project PATH] [--progress|--progress-stderr|--progress-stdout] COMMAND ...\n\n  \
+  gentle_cli [--state PATH|--project PATH] [--progress|--progress-stderr|--progress-stdout] [--full-report] COMMAND ...\n\n  \
   gentle_cli [--state PATH|--project PATH] capabilities\n  \
   gentle_cli [--state PATH|--project PATH] introspect facts|capabilities|readiness|verify-effects|all [...]\n  \
   gentle_cli [--state PATH|--project PATH] doctor --agent\n  \
@@ -508,7 +510,9 @@ fn usage_text() -> String {
   gentle_cli rescue-screen --transcript-fasta PATH [--transcript-fasta PATH ...] --genes SYM[,SYM,...] [--gene SYM ...] (--reads PATH [--reads PATH ...] | --read-pair R1,R2 [--read-pair R1,R2 ...]) [--exon-fasta PATH] [--junction-fasta PATH] [--exon-intron-boundary-fasta PATH] [--intron-fasta PATH] [--genomic-region-fasta PATH] [--read-id-allowlist PATH] [--salmon-unmapped-names PATH] [--salmon-mappings-sam PATH] [--kmer-len N] [--min-kmer-hits N] [--gene-symbol-tag KEY ...] --output-prefix PREFIX\n\n  \
   gentle_cli [--state PATH|--project PATH] allele-hash-screen --gene GENE --transcript-fasta PATH (--variant-table PATH | --vcf PATH --transcript-map PATH [--vcf-sample SAMPLE]) [--from-rna-report REPORT_ID] [--read-file PATH ...] [--read-pair R1,R2 ...] [--salmon-unmapped-names PATH] [--salmon-mappings-sam PATH] [--read-id-allowlist PATH] [--kmer-len N] [--min-unique-kmer-hits N] [--min-informative-reads N] [--balanced-band-lo F] [--balanced-band-hi F] [--max-inline-read-calls N] --out OUT_DIR\n\n  \
   Tip: pass @file.json instead of inline JSON\n  \
-  --project is an alias of --state for project.gentle.json files\n\n  \
+  --project is an alias of --state for project.gentle.json files\n  \
+  TSS exports print a compact summary by default; --full-report restores complete result JSON on stdout.\n  \
+  Full scored data is always saved as OUTPUT_DIR/report.json when exporting.\n\n  \
   Shared command reference (generated from docs/glossary.json):\n  \
   {shell_help}",
         shell_help = shell_help_text()
@@ -693,12 +697,14 @@ struct GlobalCliArgs {
     cmd_idx: usize,
     progress_sink: Option<ProgressSink>,
     allow_screenshots: bool,
+    full_report: bool,
 }
 
 fn parse_global_args(args: &[String]) -> Result<GlobalCliArgs, String> {
     let mut state_path = DEFAULT_STATE_PATH.to_string();
     let mut progress_sink: Option<ProgressSink> = None;
     let allow_screenshots = false;
+    let mut full_report = false;
     let mut idx = 1usize;
 
     while idx < args.len() {
@@ -718,6 +724,10 @@ fn parse_global_args(args: &[String]) -> Result<GlobalCliArgs, String> {
                 progress_sink = Some(ProgressSink::Stdout);
                 idx += 1;
             }
+            "--full-report" => {
+                full_report = true;
+                idx += 1;
+            }
             "--allow-screenshots" => {
                 return Err("--allow-screenshots is disabled by security policy".to_string());
             }
@@ -730,6 +740,7 @@ fn parse_global_args(args: &[String]) -> Result<GlobalCliArgs, String> {
         cmd_idx: idx,
         progress_sink,
         allow_screenshots,
+        full_report,
     })
 }
 
@@ -1161,6 +1172,7 @@ fn run() -> Result<(), String> {
     let command = &args[cmd_idx];
 
     if let Some(shell_command) = parse_forwarded_shell_command(&args, cmd_idx)? {
+        let export_dir = gentle_cli_tss_output::shell_export_directory(&shell_command);
         let mut engine = GentleEngine::from_state(load_state(&state_path)?);
         let run = execute_shell_command_with_options(&mut engine, &shell_command, &shell_options)?;
         if run.state_changed {
@@ -1169,7 +1181,11 @@ fn run() -> Result<(), String> {
                 .save_to_path(&state_path)
                 .map_err(|e| e.to_string())?;
         }
-        return print_json(&run.output);
+        return print_json(&gentle_cli_tss_output::shell_output(
+            run.output,
+            export_dir.as_deref(),
+            global.full_report,
+        ));
     }
 
     match command.as_str() {
@@ -1208,6 +1224,7 @@ fn run() -> Result<(), String> {
             }
             let line = args[cmd_idx + 1..].join(" ");
             let command = parse_shell_line(&line)?;
+            let export_dir = gentle_cli_tss_output::shell_export_directory(&command);
             let mut engine = GentleEngine::from_state(load_state(&state_path)?);
             let run = execute_shell_command_with_options(&mut engine, &command, &shell_options)?;
             if run.state_changed {
@@ -1216,7 +1233,11 @@ fn run() -> Result<(), String> {
                     .save_to_path(&state_path)
                     .map_err(|e| e.to_string())?;
             }
-            print_json(&run.output)
+            print_json(&gentle_cli_tss_output::shell_output(
+                run.output,
+                export_dir.as_deref(),
+                global.full_report,
+            ))
         }
         "candidates" => gentle_cli_candidates::handle_candidates_family(
             &args,
@@ -1286,6 +1307,7 @@ fn run() -> Result<(), String> {
             let json = load_json_arg(&args[cmd_idx + 1])?;
             let op: Operation =
                 serde_json::from_str(&json).map_err(|e| format!("Invalid operation JSON: {e}"))?;
+            let export_dir = gentle_cli_tss_output::export_directory(&op);
 
             let mut engine = GentleEngine::from_state(load_state(&state_path)?);
             let result = if let Some(sink) = global.progress_sink {
@@ -1303,7 +1325,11 @@ fn run() -> Result<(), String> {
                 .state()
                 .save_to_path(&state_path)
                 .map_err(|e| e.to_string())?;
-            print_json(&result)
+            print_json(&gentle_cli_tss_output::operation_output(
+                result,
+                export_dir.as_deref(),
+                global.full_report,
+            )?)
         }
         "workflow" => {
             if args.len() <= cmd_idx + 1 {
@@ -1312,6 +1338,11 @@ fn run() -> Result<(), String> {
             }
             let json = load_json_arg(&args[cmd_idx + 1])?;
             let workflow = parse_workflow_json_payload(&json)?;
+            let export_dirs: Vec<_> = workflow
+                .ops
+                .iter()
+                .map(gentle_cli_tss_output::export_directory)
+                .collect();
 
             let mut engine = GentleEngine::from_state(load_state(&state_path)?);
             let results = if let Some(sink) = global.progress_sink {
@@ -1329,7 +1360,18 @@ fn run() -> Result<(), String> {
                 .state()
                 .save_to_path(&state_path)
                 .map_err(|e| e.to_string())?;
-            print_json(&results)
+            let output = results
+                .into_iter()
+                .zip(export_dirs)
+                .map(|(result, directory)| {
+                    gentle_cli_tss_output::operation_output(
+                        result,
+                        directory.as_deref(),
+                        global.full_report,
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            print_json(&output)
         }
         _ => {
             usage();
@@ -1507,7 +1549,26 @@ mod tests {
         assert_eq!(parsed.state_path, "x.json");
         assert_eq!(parsed.progress_sink, Some(ProgressSink::Stdout));
         assert!(!parsed.allow_screenshots);
+        assert!(!parsed.full_report);
         assert_eq!(parsed.cmd_idx, 4);
+    }
+
+    #[test]
+    fn test_parse_global_args_full_report_precedes_command() {
+        let args = [
+            "gentle_cli",
+            "--full-report",
+            "--state",
+            "x.json",
+            "features",
+            "tss-tfbs-profiles",
+        ]
+        .map(str::to_string);
+        let parsed = parse_global_args(&args).unwrap();
+        assert!(parsed.full_report);
+        assert_eq!(parsed.cmd_idx, 4);
+        assert_eq!(parsed.state_path, "x.json");
+        assert!(usage_text().contains("--full-report"));
     }
 
     #[test]

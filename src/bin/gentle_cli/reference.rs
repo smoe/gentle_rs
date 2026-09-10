@@ -1367,6 +1367,7 @@ mod tests {
             cmd_idx: 1,
             progress_sink: None,
             allow_screenshots: false,
+            full_report: false,
         }
     }
 

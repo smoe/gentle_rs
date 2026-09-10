@@ -22,6 +22,13 @@ at distinct loci is retained with a warning. Saved score JSON must round-trip
 floating-point bits exactly so export-only replay does not change results. See the
 [portable contract and explicit limits](tss_tfbs_profiles.md).
 
+Presentation-size reductions must not discard scores, change sampling or weaken
+receipt checks. Raster-backed PDF image compression is lossless; encoding and
+output hashes are recorded. CLI summaries are adapter-only projections of
+successful exports, with an explicit full-JSON opt-in. Compute-only results
+remain complete when there is no persisted report. GUI/MCP and the shared
+engine contract are unchanged, and verification non-claims remain visible.
+
 ## 2026-08-01: derive web and print gene-set reports from one record
 
 Publication-style multi-gene analyses use one portable manifest and one

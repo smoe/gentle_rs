@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-09-10 - Lossless PDF compression and concise TSS CLI output
+
+- Replaced uncompressed PDF RGB streams with lossless FlateDecode/zlib using
+  the existing dependency. Resolution, page geometry, pixels and URI links are
+  unchanged; TSS receipts explicitly record the encoding and hash final bytes.
+- Exported TSS CLI results default to artifact-linked summaries. Global
+  `--full-report` restores full JSON stdout; saved reports/TSVs, compute-only
+  results and GUI/MCP contracts stay complete. Summaries retain warnings and
+  verification limits without treating bundle integrity as reference validation.
+- Added synthetic pixel round-trip, deterministic compression, PDF structure,
+  receipt and CLI projection regressions. No scientific formula or fixture
+  changed. TSV compression/pagination redesign are outside this focused fix.
+  Glen's reported 58-TSS/30-matrix acceptance binds `44b73e4a`; real bundle size
+  and exact-candidate acceptance must be repeated for these presentation changes.
+
 ## 2026-09-10 - Gel introspection and GUI/tutorial regression repairs
 
 - Completed gel-image shell/operation fact annotations and report readiness.

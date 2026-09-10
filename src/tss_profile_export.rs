@@ -1598,6 +1598,7 @@ fn write_page(
             &used_fonts,
         )?;
         entry["pdf_representation"] = json!("single-page raster-backed RGB image; not vector PDF");
+        entry["pdf_image_encoding"] = json!("FlateDecode (lossless zlib-compressed RGB)");
         entry["pdf_helper"] = json!("crate::svg_pdf::render_svg_file_to_pdf_audited");
         entry["page_width_pt"] = json!(summary.page_width_pt);
         entry["page_height_pt"] = json!(summary.page_height_pt);
@@ -1700,7 +1701,8 @@ as \\\\, \\t, \\r and \\n respectively; a leading # in a text cell is escaped as
 ## Rendering And Replay\n\n\
 SVG pages use gentle_render::tss_profiles::render_tss_profile_pages. Optional PNG uses in-process\n\
 resvg at scale 1 with metadata stripping disabled. PDF is a single-page raster-backed RGB image,\n\
-not a vector PDF. Receipt metadata records actual dimensions, available font-face counts and the\n\
+not a vector PDF. Its FlateDecode/zlib compression preserves every RGB pixel and the resolution.\n\
+Receipt metadata records that encoding, actual dimensions, available font-face counts and the\n\
 root's locked resvg version. Audited PNG/PDF helpers inspect positioned glyphs in the same parsed\n\
 rendering tree, including fallback and nested SVG trees. Each font_identities entry records its\n\
 family names, PostScript name, face_index and lowercase SHA-256 of the complete font source/container\n\
@@ -3332,6 +3334,40 @@ mod tests {
         fs::rename(output.join(README_FILE), root.join("original-readme.md")).unwrap();
         symlink(root.join("original-readme.md"), output.join(README_FILE)).unwrap();
         assert!(verify_tss_profile_receipt(&output, &receipt).is_err());
+    }
+
+    #[test]
+    fn pdf_export_records_lossless_encoding_and_verifies_finished_hashes() {
+        let (_temp, root) = temporary_root();
+        let output = root.join("pdf-export");
+        let request = ExportTssProfilesRequest {
+            output_dir: output.to_str().unwrap().into(),
+            rendering: TssProfileRenderOptions::default(),
+            formats: vec![TssExportFormat::Pdf],
+        };
+        let report = synthetic_report();
+        let receipt = export_tss_profiles(&report, &request).unwrap();
+        verify_tss_profile_receipt(&output, &receipt).unwrap();
+        assert_eq!(
+            fs::read(output.join(REPORT_FILE)).unwrap(),
+            serde_json::to_vec(&report).unwrap()
+        );
+        let pdfs: Vec<_> = receipt
+            .render_metadata
+            .iter()
+            .filter(|entry| entry["format"] == "pdf")
+            .collect();
+        assert_eq!(pdfs.len(), receipt.page_count);
+        assert!(!pdfs.is_empty());
+        for entry in pdfs {
+            assert_eq!(
+                entry["pdf_image_encoding"],
+                "FlateDecode (lossless zlib-compressed RGB)"
+            );
+            let bytes = fs::read(output.join(entry["output_path"].as_str().unwrap())).unwrap();
+            let filter = b"/Filter /FlateDecode";
+            assert!(bytes.windows(filter.len()).any(|v| v == filter));
+        }
     }
 
     /// Opt-in visual review artifact, using the real SVG/PNG/PDF helpers. The

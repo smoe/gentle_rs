@@ -3,8 +3,8 @@
 This development workflow plots predicted TF-binding scores over already
 transcript-oriented TSS windows. It does not infer TSSs or retrieve a genome.
 It leaves the older locus-evidence figures and their defaults unchanged.
-Native wizard support and Glen's real five-gene acceptance remain separate
-work; this is not a new `.10` release requirement.
+Native wizard support and exact-candidate release acceptance remain separate
+work; this is not a new `.10` scientific release requirement.
 
 ## Offline Example
 
@@ -44,6 +44,37 @@ these through `op` with explicit `confirm: true`. Neither operation changes
 source sequences. Both are conservatively classified as external effects,
 because they may publish files. Input availability and scientific compatibility
 are validated at execution, not inferred from an empty project's readiness.
+
+## CLI Output
+
+After a successful export, CLI stdout contains
+`tss_tfbs_profile_summary` with schema `gentle.tss_tfbs_profile_cli_summary.v1`,
+instead of `tss_tfbs_profiles` and the complete `tss_tfbs_profile_receipt`.
+The normal outer `result` wrapper (for shell routes), operation ID, messages and
+warnings are retained. The summary links `report.json`, `index.json` and
+`receipt.json`, with the report/index hashes, TSS/page/file counts, source and
+producer/exporter revisions, report warnings and verification limits. It does
+not contain score vectors, matrix PFMs or the per-page font audit.
+
+The **complete** scored report and receipt remain in the export directory.
+Existing scripts reading full JSON from stdout must opt in with the global flag:
+
+```sh
+gentle_cli --full-report features tss-tfbs-profiles-export \
+  --report tss-example/report.json --output-dir tss-full-output --formats svg
+```
+
+Place `--full-report` before `features`, `shell`, `op` or `workflow`, not inside
+a shared-shell command or JSON request. Default summaries apply to direct TSS
+commands, CLI `shell` TSS/`op` commands, and exported TSS operations in the CLI's
+direct JSON `op`/`workflow` entrypoints. Unexported compute results remain full:
+there is no saved copy to point to. GUI Shell, MCP and other adapters retain
+complete typed results; unrelated CLI results are unchanged.
+
+Computation summaries copy the report's `verification` verbatim, including
+`prepared_reference_not_assessed`. Report-only export summaries say
+`not_reassessed_report_only_export`; inspect the saved report for its original
+verification/reference/warnings. Neither mode upgrades source authenticity.
 
 ## Exact Inputs
 
@@ -182,6 +213,13 @@ Exports include a complete `report.json`, per-gene data and pages, long-form
 TSV, comparisons, index, methods README and
 `gentle.tss_tfbs_profile_receipt.v1`. SVG is rendered from the report; optional
 PNG and single-page raster-backed PDF use the existing in-process renderer.
+PDF RGB streams use lossless FlateDecode/zlib compression: every pixel, page
+dimension, link annotation and raster resolution is retained, not JPEG-compressed
+or downsampled. The receipt records `pdf_image_encoding`. Older uncompressed PDFs
+remain valid historical artifacts; re-export changes PDF and receipt hashes,
+not scientific scores. Long-form TSV serialization is unchanged. For transfer,
+archive the **whole** directory (including the receipt) rather than replacing
+individual files inside a hash-bound export with compressed variants.
 Pages default to one TSS with full-size rows; `--panels-per-page` is bounded to
 1..32. Very tall exports may exceed raster limits rather than silently shrink.
 
@@ -198,10 +236,13 @@ Input and output sizes are bounded; computation allows at most 4096 TSS windows,
 request. Larger jobs must be split explicitly; oversized matrices are rejected.
 Predictions are not measured binding, occupancy, affinity or promoter activity.
 Matrix correlation is not evidence of co-regulation or a preferred model.
-The real input checks pass for 58 TSS records, all 13 selected windows and
-30 pinned matrices. Full committed-producer scoring, export and visual acceptance
-of those five genes remain pending, as do optional smoothing, independent
-reference extraction checks and a native configuration wizard.
+Glen reports a successful five-gene replay at
+`44b73e4ac3296a9ba10caa4136a65ae49d89f289`: 58 TSSs, 13 selected windows,
+30 exact matrices, 194/194 output hashes and 58 readable, visually checked PDFs.
+That audit exposed uncompressed PDF size and excessive CLI stdout, addressed
+by the presentation changes above. It does not certify this newer revision:
+Glen must repeat exact-candidate size, hash, pixel and stdout checks. Independent
+reference extraction, optional smoothing and a native wizard remain follow-ups.
 
 ## Developer Verification
 
@@ -216,6 +257,8 @@ cargo test --locked --no-default-features --lib tss_ -- --test-threads=1
 cargo test --locked --no-default-features --lib tfbs_track_panel::tests
 cargo test --locked --no-default-features --lib svg_png::tests
 cargo test --locked --no-default-features --lib svg_pdf::tests
+cargo test --locked --no-default-features --bin gentle_cli tss_
+cargo test --locked --no-default-features --bin gentle_cli test_parse_global_args
 ```
 
 The real-bundle reader check is deliberately ignored by ordinary tests: it needs
@@ -234,3 +277,14 @@ This checks all 58 records, transcript memberships and 13 selection joins. It is
 not a substitute for generating and visually reviewing the five-gene outputs on
 the final producer revision. The full release and native GUI gates remain with
 the release auditor.
+
+For Glen's next acceptance, use a fresh directory and retain the original
+`44b73e4a` bundle. First use the report-only export command above with
+`--formats svg,png,pdf`: `report.json` and all score/comparison TSV bytes must be
+unchanged. Decode old/new PDF image streams and compare RGB pixels/dimensions
+under the same recorded fonts; review representative plus/minus pages and the
+tallest page. Verify every new receipt hash and record PDF/TSV/bundle byte totals.
+Then rerun the original compute command at the exact new candidate, measure
+stdout bytes, confirm the summary's verification limits and artifact hashes,
+and compare saved score bits/comparisons against the retained report. Producer
+revision/executable changes are expected; changed scientific values are not.
