@@ -1,0 +1,236 @@
+# Accession-Pinned TSS Profiles
+
+This development workflow plots predicted TF-binding scores over already
+transcript-oriented TSS windows. It does not infer TSSs or retrieve a genome.
+It leaves the older locus-evidence figures and their defaults unchanged.
+Native wizard support and Glen's real five-gene acceptance remain separate
+work; this is not a new `.10` release requirement.
+
+## Offline Example
+
+From the checkout root, using a built `gentle_cli`:
+
+```sh
+gentle_cli features tss-tfbs-profiles \
+  --manifest test_files/fixtures/tss_profiles/manifest.json \
+  --panel test_files/fixtures/tss_profiles/panel.json \
+  --selection selection.json \
+  --expected-genome-id synthetic-genome-v1 \
+  --expected-assembly synthetic-assembly-v1 \
+  --expected-annotation-release synthetic-annotation-v1 \
+  --output-dir tss-example \
+  --formats svg,png,pdf
+```
+
+The output parent must already exist; choose a fresh destination. This tiny
+plus/minus example tests software behavior, not promoter biology. Its 11-base
+windows deliberately include an ambiguous base and are not adequate biological
+promoter windows. The pinned Arnt matrix comes from the bundled JASPAR registry;
+the synthetic DNA does not come from an organism. See the fixture
+[provenance and header specification](../test_files/fixtures/tss_profiles/README.md).
+
+To change presentation without rescoring:
+
+```sh
+gentle_cli features tss-tfbs-profiles-export \
+  --report tss-example/report.json \
+  --output-dir tss-reexport \
+  --formats svg --panels-per-page 1
+```
+
+The same `features ...` commands work in the GUI Shell. JSON operation/workflow
+adapters use `ComputeTssTfbsProfiles` and `ExportTssTfbsProfiles`; MCP exposes
+these through `op` with explicit `confirm: true`. Neither operation changes
+source sequences. Both are conservatively classified as external effects,
+because they may publish files. Input availability and scientific compatibility
+are validated at execution, not inferred from an empty project's readiness.
+
+## Exact Inputs
+
+The reader supports the existing `gentle.target_tss_fasta_export.v1` input
+format identified in Glen's pinned input revision
+`a106cbbd5223f8c4be55a7d846b8416bc4b3ae33`. That revision is not merged by this
+feature. Its manifest binds the exact `SHA256SUMS` bytes; both the manifest and
+checksum inventory must agree with each FASTA. The profile report/receipt bind
+the manifest's digest and its declared source revision separately from GENtle's
+profile-producer revision. Original FASTA files are not rewritten.
+
+For that format, callers must supply exact `--expected-genome-id`,
+`--expected-assembly` and `--expected-dataset-id` strings. For Glen's input these
+are `Human GRCh38 Ensembl 116`, `GRCh38`, and
+`human_grch38_ensembl116_promoterome_2000_200_v1`. Substrings such as `116` do not
+match. The manifest has no separately declared annotation-release field; that
+field remains null, rather than being guessed from the genome/dataset names.
+The geometry uses the manifest's extents, not gene-specific runtime defaults.
+
+With `BUNDLE`, `PANEL` and `SELECTION` set to absolute paths to that pinned input
+bundle directory, panel JSON and selection JSON respectively:
+
+```sh
+gentle_cli features tss-tfbs-profiles \
+  --manifest "$BUNDLE/manifest.json" --panel "$PANEL" \
+  --selection "$SELECTION" \
+  --expected-genome-id 'Human GRCh38 Ensembl 116' \
+  --expected-assembly GRCh38 \
+  --expected-dataset-id human_grch38_ensembl116_promoterome_2000_200_v1 \
+  --output-dir five-gene-tss-profiles --formats svg,png,pdf
+```
+
+Use a committed producer and a fresh output directory for an audit. This is an
+explicit input example, not a built-in gene or factor preset. Inspect the new
+receipt rather than reusing a successful receipt from another revision.
+
+The small synthetic example uses a second explicit development format:
+
+`gentle.tss_fasta_bundle.v1` contains `reference` (separate `genome_id`,
+`assembly`, optional `annotation_release`), `fasta_files` (relative name to SHA-256), and
+`records`. Each record has `promoter_id`, `gene_id`, `gene_symbol`, `geometry`,
+`transcripts`, and a normalized `sequence_sha256`. Geometry specifies chromosome,
+strand, inclusive genomic bounds/TSS, and upstream/downstream extents. The
+sequence length is upstream + 1 + downstream. No clipping at contig ends is
+silently performed. The fixture manifest is a complete concrete example.
+
+For this synthetic format, the manifest directory is the bundle root and
+`SHA256SUMS` binds exact manifest, FASTA and requested selection bytes.
+Repeated `--fasta` arguments, if supplied,
+must name exactly the manifest's FASTA set; selection and FASTA paths remain
+inside the bundle. Absolute contained paths work, but traversal and escaping
+symlinks fail. Headers must agree with the manifest. Only ASCII-whitespace
+removal and uppercasing A/C/G/T/N are allowed before sequence hashing. Missing
+fields, unknown settings, duplicate identifiers and contradictory checksums fail.
+
+The existing `gentle.regulatory_region_comparison_sequences.v1` selection
+format joins `regions[].promoterome_id` to the TSS manifest's `promoter_id`.
+The gene, chromosome, TSS and strand must match; selection transcript IDs must
+be a subset of the manifest's memberships. Evidence-window lengths, genomic
+extents and sequence hashes are deliberately not compared: a -2000/+200
+selection can refer to the same TSS as a -500/+200 display window. The explicitly
+supplied selection file is read-only and its exact bytes enter the receipt.
+Selected panels carry the recorded factor/criterion and a legend explaining
+that selection does not establish TSS usage, direct binding or promoter activity.
+
+For simple synthetic selection, `gentle.tss_profile_selection.v1` has the same `reference` and a `selected`
+array of exact `{promoter_id, gene_id}` records. Selection changes ordering,
+not which windows are scored. Without it, every record is unselected. Windows
+are grouped by gene ID, selected first, then chromosome, ascending interval
+start and promoter ID. Equal DNA at different positions remains distinct.
+Repeated physical TSSs currently fail rather than silently losing memberships;
+multi-gene ownership of one physical TSS needs an additive contract extension.
+
+The existing `gentle.jaspar_target_panel.v1` accepts `tracks[]`, each carrying
+its exact `source_ids`, factor identity and display/scoring policies. Its generic
+typed parser can represent mixed score kinds, but the TSS-profile gate requires
+one score kind and one clipping policy. Unsupported settings are rejected, not
+silently discarded. No factor or accession list is a production default.
+
+The synthetic shorthand of the same schema has `panel_id`, `label`, `score_kind`,
+`clip_negative`, `scale_mode`, `strand_policy`, `calibration_state`,
+`calibration_statement`, `top_hit_count` and `factors`. Each `factors` entry is
+one matrix, with exact versioned `source_id`, case-sensitive expected registry
+`factor_id`, presentation `label`, ascending unique `display_order`, and optional
+`color_hint` (`#RRGGBB`). Multiple accessions for one factor remain separate.
+Unknown accessions, aliases, duplicate accessions, incomplete PFMs, name/order
+conflicts and mixed score kinds fail. Names alone do not verify species.
+
+## Scores And Geometry
+
+Both motif orientations use the same transcript-oriented **window-start** axis.
+For index `i`, relative coordinate is `i - upstream`; genomic coordinate is
+`TSS + strand_sign * (i - upstream)`. A minus-strand input is already oriented:
+it is not reverse-complemented again. Its genomic labels decrease left to right.
+A reverse-motif hit's 5-prime end differs from that shared plotting coordinate;
+TSV includes ascending motif interval bounds, local/genomic strand and endpoints.
+
+Choose one existing score kind for the whole panel. `llr_bits` is the sum of
+log2(model base probability / background base probability). GENtle's separately
+named `true_log_odds_bits` uses per-base odds ratios. Quantile variants and
+`*_background_tail_log10` variants are not raw log-odds scores: tail scores use
+a negative log10 background-tail probability and the existing 0.95 quantile
+display threshold. The report retains background, pseudocount, quantization,
+random-seed and threshold metadata. No existing scoring formula is changed.
+
+Raw arrays are stored before optional negative clipping. A positive-only figure
+therefore does not redefine the inputs to correlations. Ambiguous-base windows
+are `null`, not zero. The last motif-length-minus-one bases have no complete
+window and are visibly unscored, never stretched across the axis.
+
+Rows default to independent numeric scales with labeled units. Equal heights
+across matrices or TSS pages do not establish equal scores. Shared scales require
+`calibration_state: cross_source_calibrated`, a `calibration_id` and a lowercase
+`calibration_sha256`; prose alone is insufficient. This records the caller's
+explicit calibration declaration, not independently proven comparability.
+PFM-derived logos show information content, not a fabricated consensus.
+
+Within-factor comparisons use common valid start coordinates, independently for
+forward/forward and reverse/reverse. Pearson and Spearman consume unclipped,
+unsmoothed scores; Spearman uses average ranks for ties. Reports include paired
+and excluded counts. Insufficient or constant signals have undefined values
+and reasons, not a misleading zero correlation. Maximum scores and separated
+ranked peaks are distinct; `top_hit_count` controls the latter.
+
+## Outputs And Limits
+
+`gentle.tss_tfbs_profiles.v1` retains matrix counts and digests, actual registry
+source bindings, input digests, reference geometry, raw arrays, maxima, peaks,
+comparisons, scoring policy, input source revision, profile-producer executable
+digest and lockfile digest. JSON preserves floating-point score bits on replay.
+Bundle checks
+establish internal consistency only: independent prepared-reference sequence
+verification is explicitly not assessed in this version.
+
+Exports include a complete `report.json`, per-gene data and pages, long-form
+TSV, comparisons, index, methods README and
+`gentle.tss_tfbs_profile_receipt.v1`. SVG is rendered from the report; optional
+PNG and single-page raster-backed PDF use the existing in-process renderer.
+Pages default to one TSS with full-size rows; `--panels-per-page` is bounded to
+1..32. Very tall exports may exceed raster limits rather than silently shrink.
+
+Publication uses a fresh staging directory and verifies output hashes before
+publishing. Failure or cancellation does not leave a success receipt. Receipts
+bind inputs, outputs, producer/exporter revision, executable, lockfile and
+rendering metadata, including fonts actually used for PNG/PDF glyphs. SVG text
+also depends on the viewer's fonts; cross-host byte identity is not promised.
+Receipts are integrity records, not digital signatures or
+proof of biological correctness. The receipt does not hash itself.
+
+Input and output sizes are bounded; computation allows at most 4096 TSS windows,
+256 matrices of up to 64 columns, and ten million strand/position scores per
+request. Larger jobs must be split explicitly; oversized matrices are rejected.
+Predictions are not measured binding, occupancy, affinity or promoter activity.
+Matrix correlation is not evidence of co-regulation or a preferred model.
+The real input checks pass for 58 TSS records, all 13 selected windows and
+30 pinned matrices. Full committed-producer scoring, export and visual acceptance
+of those five genes remain pending, as do optional smoothing, independent
+reference extraction checks and a native configuration wizard.
+
+## Developer Verification
+
+Focused tests keep scientific values, malformed inputs, rendering and adapter
+consent separate:
+
+```sh
+cargo test --locked -p gentle-protocol --lib tss_profiles
+cargo test --locked -p gentle-engine --lib tss_profiles
+cargo test --locked -p gentle-render --lib tss_profiles
+cargo test --locked --no-default-features --lib tss_ -- --test-threads=1
+cargo test --locked --no-default-features --lib tfbs_track_panel::tests
+cargo test --locked --no-default-features --lib svg_png::tests
+cargo test --locked --no-default-features --lib svg_pdf::tests
+```
+
+The real-bundle reader check is deliberately ignored by ordinary tests: it needs
+the original files rather than a download hidden inside a test. Materialize the
+three documented input paths from `a106cbbd5223f8c4be55a7d846b8416bc4b3ae33`
+under a separate directory, preserving `docs/examples/regulatory_region_comparison/`,
+then run:
+
+```sh
+GENTLE_TSS_REAL_INPUTS=/absolute/path/to/materialized-inputs \
+  cargo test --locked --no-default-features --lib \
+  target_real_58_tsss_and_13_selected_read_only_acceptance -- --ignored
+```
+
+This checks all 58 records, transcript memberships and 13 selection joins. It is
+not a substitute for generating and visually reviewing the five-gene outputs on
+the final producer revision. The full release and native GUI gates remain with
+the release auditor.

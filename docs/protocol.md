@@ -1,5 +1,15 @@
 # GENtle Engine Protocol (Draft v1)
 
+## Accession-Pinned TSS Profiles
+
+`ComputeTssTfbsProfiles {request, export?}` validates a transcript-oriented
+FASTA bundle and a strict, exact-version JASPAR panel. It returns
+`tss_tfbs_profiles` (`gentle.tss_tfbs_profiles.v1`) and, when requested,
+`tss_tfbs_profile_receipt`. `ExportTssTfbsProfiles {report, request}` renders
+that same report without rescoring. Source sequences remain unchanged; optional
+filesystem publication is an external effect requiring normal adapter consent.
+See [inputs, coordinate conventions, scores and audit limits](tss_tfbs_profiles.md).
+
 ## Measured Gel Images (`.11` Development)
 
 - `ImportGelImage { request: { image_id, path, tiff_page? } }` stores original

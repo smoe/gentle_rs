@@ -2,7 +2,7 @@
 
 use serde::Deserialize;
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     fs,
     sync::{LazyLock, RwLock},
 };
@@ -68,6 +68,8 @@ pub struct TfQueryResolution {
 #[derive(Debug, Clone, Deserialize)]
 struct TfMotifSnapshot {
     schema: String,
+    #[serde(default)]
+    source: Option<serde_json::Value>,
     motifs: Vec<TfMotifRecord>,
 }
 
@@ -194,6 +196,10 @@ fn catalog_group_by_query(query: &str) -> Option<crate::gene_groups::LoadedGeneG
 pub struct TfMotifDb {
     motifs: Vec<TfMotif>,
     by_key: HashMap<String, usize>,
+    source_sha256: String,
+    source_url: Option<String>,
+    invalid_pfm_ids: BTreeSet<String>,
+    exact_entries: BTreeMap<String, Vec<Option<String>>>,
 }
 
 fn iupac_counts(letter: char) -> [f64; 4] {
@@ -233,6 +239,10 @@ fn consensus_from_matrix_counts(matrix_counts: &[[f64; 4]]) -> String {
 }
 
 impl TfMotifDb {
+    #[cfg(test)]
+    pub(crate) fn from_json_for_test(text: &str) -> Option<Self> {
+        Self::from_json(text)
+    }
     fn bundled_jaspar_pfm_matrix(pfm: &BundledJasparPfmRows) -> Option<Vec<[f64; 4]>> {
         let len = pfm.a.len();
         if len == 0 || pfm.c.len() != len || pfm.g.len() != len || pfm.t.len() != len {
@@ -314,8 +324,14 @@ impl TfMotifDb {
             LazyLock::new(TfMotifDb::bundled_jaspar_pfm_supplements);
         let mut motifs = Vec::new();
         let mut by_key = HashMap::new();
+        let mut invalid_pfm_ids = BTreeSet::new();
+        let mut exact_entries = BTreeMap::<String, Vec<Option<String>>>::new();
         let alias_targets = common_alias_targets();
         for m in snapshot.motifs {
+            exact_entries
+                .entry(m.id.clone())
+                .or_default()
+                .push(m.name.clone());
             let compact_consensus = m.consensus_iupac.trim().to_ascii_uppercase();
             if compact_consensus.is_empty() {
                 continue;
@@ -324,6 +340,16 @@ impl TfMotifDb {
             let original_id_key = normalize_lookup_key(&original_id);
             let name_key = m.name.as_ref().map(|name| normalize_lookup_key(name));
             let pfm_matrix = m.pfm.as_ref().and_then(Self::matrix_from_pfm);
+            if m.pfm.is_some()
+                && pfm_matrix.as_ref().is_none_or(|matrix| {
+                    matrix.iter().any(|column| {
+                        column.iter().any(|x| !x.is_finite() || *x < 0.0)
+                            || column.iter().sum::<f64>() <= 0.0
+                    })
+                })
+            {
+                invalid_pfm_ids.insert(original_id.clone());
+            }
             let supplement = if pfm_matrix.is_none() {
                 PFM_SUPPLEMENTS.get(&original_id_key)
             } else {
@@ -374,7 +400,23 @@ impl TfMotifDb {
                 }
             }
         }
-        Some(Self { motifs, by_key })
+        Some(Self {
+            motifs,
+            by_key,
+            source_sha256: crate::digest_utils::sha256_hex_bytes(text.as_bytes()),
+            source_url: snapshot
+                .source
+                .and_then(|source| source.as_str().map(str::to_owned))
+                .filter(|source| {
+                    reqwest::Url::parse(source).is_ok_and(|url| {
+                        matches!(url.scheme(), "http" | "https")
+                            && url.username().is_empty()
+                            && url.password().is_none()
+                    })
+                }),
+            invalid_pfm_ids,
+            exact_entries,
+        })
     }
 
     fn try_load_path(path: &str) -> Option<Self> {
@@ -408,6 +450,81 @@ impl TfMotifDb {
 
     pub fn resolve_cloned(&self, token: &str) -> Option<TfMotif> {
         self.resolve(token).cloned()
+    }
+
+    /// Exact versioned lookup for audited panels. Never uses aliases or consensus fallback.
+    pub(crate) fn resolve_exact_full_pfm(&self, id: &str) -> Result<TfMotif, String> {
+        let entry_names = self.exact_entries.get(id);
+        if entry_names.map(Vec::len) != Some(1) {
+            return Err(format!(
+                "Matrix {id}: expected one exact registry entry, found {}",
+                entry_names.map_or(0, Vec::len)
+            ));
+        }
+        let matches = self
+            .motifs
+            .iter()
+            .filter(|motif| motif.id == id)
+            .collect::<Vec<_>>();
+        if matches.len() != 1 {
+            return Err(format!(
+                "Matrix {id}: expected one exact registry entry, found {}",
+                matches.len()
+            ));
+        }
+        let motif = matches[0];
+        if entry_names.and_then(|names| names.first()) != Some(&motif.name) {
+            return Err(format!(
+                "Matrix {id}: exact registry name must not require whitespace normalization"
+            ));
+        }
+        if !motif.has_full_pfm
+            || self.invalid_pfm_ids.contains(id)
+            || motif.matrix_counts.is_empty()
+            || motif.matrix_counts.iter().any(|column| {
+                column.iter().any(|x| !x.is_finite() || *x < 0.0)
+                    || !column.iter().sum::<f64>().is_finite()
+                    || column.iter().sum::<f64>() <= 0.0
+            })
+        {
+            return Err(format!("Matrix {id}: valid full PFM required"));
+        }
+        Ok(motif.clone())
+    }
+
+    /// Bind every possible PFM source in this immutable snapshot, including supplements.
+    pub(crate) fn strict_source_bindings(
+        &self,
+    ) -> (
+        Vec<gentle_protocol::tss_profiles::TssInputBinding>,
+        Option<String>,
+    ) {
+        use gentle_protocol::tss_profiles::TssInputBinding;
+        let binding = |role: &str, name: &str, bytes: &[u8]| TssInputBinding {
+            role: role.into(),
+            name: name.into(),
+            sha256: crate::digest_utils::sha256_hex_bytes(bytes),
+        };
+        (
+            vec![
+                TssInputBinding {
+                    role: "active_registry".into(),
+                    name: "jaspar.motifs.json".into(),
+                    sha256: self.source_sha256.clone(),
+                },
+                binding(
+                    "pfm_supplement",
+                    "bundled_jaspar.motifs.json",
+                    BUILTIN_TF_MOTIFS_JSON.as_bytes(),
+                ),
+                binding(
+                    "pfm_supplement",
+                    "jaspar_2022.json",
+                    LEGACY_JASPAR_PFM_JSON.as_bytes(),
+                ),
+            ],
+            self.source_url.clone(),
+        )
     }
 
     pub fn motif_summaries(&self) -> Vec<TfMotifSummary> {

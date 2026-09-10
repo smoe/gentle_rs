@@ -12324,6 +12324,8 @@ Error: `{err}`"
                 promoter_module_assessment: None,
                 feature_location_edit_report: None,
                 feature_record_curation_report: None,
+                tss_tfbs_profiles: None,
+                tss_tfbs_profile_receipt: None,
                 gel_image: None,
                 gel_image_analysis: None,
             });

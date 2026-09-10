@@ -8833,14 +8833,17 @@ fn primer_selection_provenance_is_bounded_visible_and_report_fingerprinted() {
         graph.annotation_candidates.len(),
         report.rejected_near_misses.len()
     );
-    let overlay = crate::dna_display::ConstructReasoningOverlay::from_graph(graph);
-    assert_eq!(overlay.evidence.len(), report.rejected_near_misses.len());
-    assert!(overlay.evidence.iter().all(|row| {
-        row.context_tags
-            .iter()
-            .any(|tag| tag == "rejected_near_miss")
-            && !row.context_tags.iter().any(|tag| tag == "excluded_region")
-    }));
+    #[cfg(feature = "desktop-gui")]
+    {
+        let overlay = crate::dna_display::ConstructReasoningOverlay::from_graph(graph);
+        assert_eq!(overlay.evidence.len(), report.rejected_near_misses.len());
+        assert!(overlay.evidence.iter().all(|row| {
+            row.context_tags
+                .iter()
+                .any(|tag| tag == "rejected_near_miss")
+                && !row.context_tags.iter().any(|tag| tag == "excluded_region")
+        }));
+    }
     assert_eq!(
         engine
             .construct_reasoning_graph_snapshot_status(graph)
@@ -9113,14 +9116,17 @@ fn qpcr_selection_provenance_is_additive_bounded_and_report_fingerprinted() {
         graph.annotation_candidates.len(),
         report.rejected_near_misses.len()
     );
-    let overlay = crate::dna_display::ConstructReasoningOverlay::from_graph(graph);
-    assert_eq!(overlay.evidence.len(), report.rejected_near_misses.len());
-    assert!(overlay.evidence.iter().all(|row| {
-        row.context_tags
-            .iter()
-            .any(|tag| tag == "rejected_near_miss")
-            && !row.context_tags.iter().any(|tag| tag == "excluded_region")
-    }));
+    #[cfg(feature = "desktop-gui")]
+    {
+        let overlay = crate::dna_display::ConstructReasoningOverlay::from_graph(graph);
+        assert_eq!(overlay.evidence.len(), report.rejected_near_misses.len());
+        assert!(overlay.evidence.iter().all(|row| {
+            row.context_tags
+                .iter()
+                .any(|tag| tag == "rejected_near_miss")
+                && !row.context_tags.iter().any(|tag| tag == "excluded_region")
+        }));
+    }
     assert!(graph.decisions.iter().all(|decision| {
         decision.parameters_json["score_model"].as_str() == Some(QPCR_ASSAY_SCORE_MODEL)
             && decision.parameters_json["score_terms"].is_array()

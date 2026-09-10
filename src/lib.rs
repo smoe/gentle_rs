@@ -214,8 +214,14 @@ pub mod target_rescue;
 pub mod test_support;
 /// TF-motif registry and matching support.
 pub mod tf_motifs;
+/// Typed TFBS track-panel inputs and strict TSS policy adaptation.
+pub mod tfbs_track_panel;
 /// Process-local tool-path override registry.
 pub mod tool_overrides;
+/// Strict, digest-bound TSS FASTA bundle validation.
+pub mod tss_fasta_bundle;
+/// Atomic, report-driven TSS profile exports and receipts.
+pub mod tss_profile_export;
 /// Closed semantic-control catalog used by typed tutorial GUI acceptance contracts.
 pub mod tutorial_gui_semantics;
 /// UCSC RepeatMasker (`rmsk`) table resource contracts and indexing guidance.

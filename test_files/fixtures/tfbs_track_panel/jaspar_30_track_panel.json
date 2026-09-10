@@ -1,0 +1,725 @@
+{
+  "schema": "gentle.jaspar_target_panel.v1",
+  "tracks": [
+    {
+      "track_id": "tp53_ma0106_3_jaspar_2026",
+      "label": "TP53 JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA0106.3"
+      ],
+      "factors": [
+        {
+          "factor_id": "TP53",
+          "factor_label": "TP53"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#7b2cbf",
+      "display_order": 1
+    },
+    {
+      "track_id": "tp63_ma0525_2_jaspar_2026",
+      "label": "TP63 JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA0525.2"
+      ],
+      "factors": [
+        {
+          "factor_id": "TP63",
+          "factor_label": "TP63"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#ca6702",
+      "display_order": 2
+    },
+    {
+      "track_id": "tp73_ma0861_2_jaspar_2026",
+      "label": "TP73 JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA0861.2"
+      ],
+      "factors": [
+        {
+          "factor_id": "TP73",
+          "factor_label": "TP73"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#005f73",
+      "display_order": 3
+    },
+    {
+      "track_id": "sp1_ma0079_5_jaspar_2026",
+      "label": "SP1 JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA0079.5"
+      ],
+      "factors": [
+        {
+          "factor_id": "SP1",
+          "factor_label": "SP1"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#ae2012",
+      "display_order": 4
+    },
+    {
+      "track_id": "cggbp1_ma2538_1_jaspar_2026",
+      "label": "CGGBP1 JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA2538.1"
+      ],
+      "factors": [
+        {
+          "factor_id": "CGGBP1",
+          "factor_label": "CGGBP1"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#1b4332",
+      "display_order": 5
+    },
+    {
+      "track_id": "helt_ma2628_1_jaspar_2026",
+      "label": "HELT JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA2628.1"
+      ],
+      "factors": [
+        {
+          "factor_id": "HELT",
+          "factor_label": "HELT"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#2a9d8f",
+      "display_order": 6
+    },
+    {
+      "track_id": "irf9_ma0653_1_jaspar_2026",
+      "label": "IRF9 JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA0653.1"
+      ],
+      "factors": [
+        {
+          "factor_id": "IRF9",
+          "factor_label": "IRF9"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#6a4c93",
+      "display_order": 7
+    },
+    {
+      "track_id": "prox1_ma0794_1_jaspar_2026",
+      "label": "PROX1 JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA0794.1"
+      ],
+      "factors": [
+        {
+          "factor_id": "PROX1",
+          "factor_label": "PROX1"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#8a5a44",
+      "display_order": 8
+    },
+    {
+      "track_id": "foxf2_ma0030_2_jaspar_2026",
+      "label": "FOXF2 JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA0030.2"
+      ],
+      "factors": [
+        {
+          "factor_id": "FOXF2",
+          "factor_label": "FOXF2"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#e63946",
+      "display_order": 9
+    },
+    {
+      "track_id": "mybl2_ma0777_1_jaspar_2026",
+      "label": "MYBL2 JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA0777.1"
+      ],
+      "factors": [
+        {
+          "factor_id": "MYBL2",
+          "factor_label": "MYBL2"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#3f37c9",
+      "display_order": 10
+    },
+    {
+      "track_id": "plag1_ma0163_1_jaspar_2026",
+      "label": "PLAG1 JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA0163.1"
+      ],
+      "factors": [
+        {
+          "factor_id": "PLAG1",
+          "factor_label": "PLAG1"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#457b9d",
+      "display_order": 11
+    },
+    {
+      "track_id": "stat1_ma0137_4_jaspar_2026",
+      "label": "STAT1 JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA0137.4"
+      ],
+      "factors": [
+        {
+          "factor_id": "STAT1",
+          "factor_label": "STAT1"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#2b9348",
+      "display_order": 12
+    },
+    {
+      "track_id": "patz1_ma1961_2_jaspar_2026",
+      "label": "PATZ1 JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA1961.2"
+      ],
+      "factors": [
+        {
+          "factor_id": "PATZ1",
+          "factor_label": "PATZ1"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#bc6c25",
+      "display_order": 13
+    },
+    {
+      "track_id": "elk4_ma0076_3_jaspar_2026",
+      "label": "ELK4 JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA0076.3"
+      ],
+      "factors": [
+        {
+          "factor_id": "ELK4",
+          "factor_label": "ELK4"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#0077b6",
+      "display_order": 14
+    },
+    {
+      "track_id": "rest_ma0138_3_jaspar_2026",
+      "label": "REST JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA0138.3"
+      ],
+      "factors": [
+        {
+          "factor_id": "REST",
+          "factor_label": "REST"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#d00000",
+      "display_order": 15
+    },
+    {
+      "track_id": "lmx1b_ma0703_3_jaspar_2026",
+      "label": "LMX1B JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA0703.3"
+      ],
+      "factors": [
+        {
+          "factor_id": "LMX1B",
+          "factor_label": "LMX1B"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#606c38",
+      "display_order": 16
+    },
+    {
+      "track_id": "pou2f2_ma0507_3_jaspar_2026",
+      "label": "POU2F2 JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA0507.3"
+      ],
+      "factors": [
+        {
+          "factor_id": "POU2F2",
+          "factor_label": "POU2F2"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#dda15e",
+      "display_order": 17
+    },
+    {
+      "track_id": "tfap2c_ma0524_3_jaspar_2026",
+      "label": "TFAP2C JASPAR PWM (MA0524.3)",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA0524.3"
+      ],
+      "factors": [
+        {
+          "factor_id": "TFAP2C",
+          "factor_label": "TFAP2C"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#9c6644",
+      "display_order": 18
+    },
+    {
+      "track_id": "tfap2c_ma0814_3_jaspar_2026",
+      "label": "TFAP2C JASPAR PWM (MA0814.3)",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA0814.3"
+      ],
+      "factors": [
+        {
+          "factor_id": "TFAP2C",
+          "factor_label": "TFAP2C"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#b56576",
+      "display_order": 19
+    },
+    {
+      "track_id": "tfap2c_ma0815_1_jaspar_2026",
+      "label": "TFAP2C JASPAR PWM (MA0815.1)",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA0815.1"
+      ],
+      "factors": [
+        {
+          "factor_id": "TFAP2C",
+          "factor_label": "TFAP2C"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#6d597a",
+      "display_order": 20
+    },
+    {
+      "track_id": "zbed1_ma0749_2_jaspar_2026",
+      "label": "ZBED1 JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA0749.2"
+      ],
+      "factors": [
+        {
+          "factor_id": "ZBED1",
+          "factor_label": "ZBED1"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#118ab2",
+      "display_order": 21
+    },
+    {
+      "track_id": "tgif2_ma0797_1_jaspar_2026",
+      "label": "TGIF2 JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA0797.1"
+      ],
+      "factors": [
+        {
+          "factor_id": "TGIF2",
+          "factor_label": "TGIF2"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#588157",
+      "display_order": 22
+    },
+    {
+      "track_id": "gata5_ma0766_3_jaspar_2026",
+      "label": "GATA5 JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA0766.3"
+      ],
+      "factors": [
+        {
+          "factor_id": "GATA5",
+          "factor_label": "GATA5"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#e76f51",
+      "display_order": 23
+    },
+    {
+      "track_id": "hes7_ma0822_1_jaspar_2026",
+      "label": "HES7 JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA0822.1"
+      ],
+      "factors": [
+        {
+          "factor_id": "HES7",
+          "factor_label": "HES7"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#8338ec",
+      "display_order": 24
+    },
+    {
+      "track_id": "klf15_ma1513_2_jaspar_2026",
+      "label": "KLF15 JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA1513.2"
+      ],
+      "factors": [
+        {
+          "factor_id": "KLF15",
+          "factor_label": "KLF15"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#3a86ff",
+      "display_order": 25
+    },
+    {
+      "track_id": "nfkb2_ma0778_2_jaspar_2026",
+      "label": "NFKB2 JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA0778.2"
+      ],
+      "factors": [
+        {
+          "factor_id": "NFKB2",
+          "factor_label": "NFKB2"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#ff006e",
+      "display_order": 26
+    },
+    {
+      "track_id": "pou2f1_ma0785_2_jaspar_2026",
+      "label": "POU2F1 JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA0785.2"
+      ],
+      "factors": [
+        {
+          "factor_id": "POU2F1",
+          "factor_label": "POU2F1"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#4361ee",
+      "display_order": 27
+    },
+    {
+      "track_id": "satb1_ma1963_2_jaspar_2026",
+      "label": "SATB1 JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA1963.2"
+      ],
+      "factors": [
+        {
+          "factor_id": "SATB1",
+          "factor_label": "SATB1"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#7209b7",
+      "display_order": 28
+    },
+    {
+      "track_id": "irf2_ma0051_2_jaspar_2026",
+      "label": "IRF2 JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA0051.2"
+      ],
+      "factors": [
+        {
+          "factor_id": "IRF2",
+          "factor_label": "IRF2"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#0081a7",
+      "display_order": 29
+    },
+    {
+      "track_id": "mef2b_ma0660_1_jaspar_2026",
+      "label": "MEF2B JASPAR PWM",
+      "provider_kind": "jaspar_pwm",
+      "source_ids": [
+        "MA0660.1"
+      ],
+      "factors": [
+        {
+          "factor_id": "MEF2B",
+          "factor_label": "MEF2B"
+        }
+      ],
+      "score_kind": "llr_background_tail_log10",
+      "calibration_state": "matrix_specific",
+      "calibration_statement": "JASPAR 2026 CORE matrix-specific PWM score; not calibrated as biochemical affinity.",
+      "strand_policy": "both",
+      "clip_negative": true,
+      "display_threshold": 0,
+      "top_hit_count": 5,
+      "scale_mode": "independent",
+      "color_hint": "#f07167",
+      "display_order": 30
+    }
+  ]
+}

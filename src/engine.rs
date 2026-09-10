@@ -1321,6 +1321,8 @@ mod region_homology;
 mod regulatory_fragment_panel;
 #[path = "engine/analysis/tata_boxes.rs"]
 mod tata_boxes;
+#[path = "engine/analysis/tss_profiles.rs"]
+mod tss_profiles;
 pub(crate) use region_homology::validate_genomic_region_homology_report;
 #[path = "engine/analysis/regulatory_partners.rs"]
 mod regulatory_partners;
@@ -3230,6 +3232,15 @@ impl BlastRunOptions {
 /// rely on `GentleEngine::apply` for execution. This preserves one deterministic
 /// behavior surface and avoids adapter-specific biology logic branches.
 pub enum Operation {
+    ComputeTssTfbsProfiles {
+        request: Box<gentle_protocol::tss_profiles::ComputeTssProfilesRequest>,
+        #[serde(default)]
+        export: Option<gentle_protocol::tss_profiles::ExportTssProfilesRequest>,
+    },
+    ExportTssTfbsProfiles {
+        report: Box<gentle_protocol::tss_profiles::TssProfileReport>,
+        request: gentle_protocol::tss_profiles::ExportTssProfilesRequest,
+    },
     ImportGelImage {
         request: gentle_protocol::gel_image::GelImageImportRequest,
     },
@@ -9872,6 +9883,8 @@ impl GentleEngine {
         if matches!(
             op,
             Operation::SaveFile { .. }
+                | Operation::ComputeTssTfbsProfiles { .. }
+                | Operation::ExportTssTfbsProfiles { .. }
                 | Operation::InspectGelImageAnalysis { .. }
                 | Operation::ExportGelImageAnalysis { .. }
                 | Operation::PreviewFeatureLocationEdit { .. }

@@ -2,6 +2,14 @@
 
 This page documents the current graphical interface of GENtle.
 
+### Accession-Pinned TSS Profiles
+
+The existing Shell accepts `features tss-tfbs-profiles` and
+`features tss-tfbs-profiles-export`, using the shared engine and exporting
+readable SVG/PNG/PDF documents. See the [offline example](tss_tfbs_profiles.md).
+This first development slice has no dedicated native setup wizard. It does
+not replace the existing locus-evidence viewer or change its historical figures.
+
 ### Measured Gel Images (`.11` Development)
 
 Open **Patterns -> Gel Image Analysis...**, the command palette, or

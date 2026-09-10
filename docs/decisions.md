@@ -1,5 +1,27 @@
 # GENtle Decisions
 
+## Accession-Pinned TSS Document Invariants
+
+Status: active
+
+Strict TSS profile documents resolve exact, versioned full PFMs once, retaining
+the actual input/matrix/source digests. Alias expansion and consensus fallback
+remain available only to older permissive paths. Transcript-oriented FASTA
+windows use one checked transform for local window starts, TSS offsets and
+genomic coordinates; a negative genomic strand never triggers a second sequence
+reversal. Missing windows are not measured zero scores. Raw computation and
+display clipping are distinct, and report-only rendering cannot rescore data.
+Within-factor correlation compares model outputs, not binding or co-regulation.
+Bundle consistency is not independent reference authenticity. Existing target
+export manifests bind their checksum inventory, not the reverse. Whole-string
+genome/dataset expectations and the input source revision remain separate from
+the scoring producer. FASTA/manifest transcript sets must be equal; integrated
+selection memberships need only be a subset, joined by promoter ID and checked
+TSS identity, not by different-length sequence hashes or intervals. Repeated DNA
+at distinct loci is retained with a warning. Saved score JSON must round-trip
+floating-point bits exactly so export-only replay does not change results. See the
+[portable contract and explicit limits](tss_tfbs_profiles.md).
+
 ## 2026-08-01: derive web and print gene-set reports from one record
 
 Publication-style multi-gene analyses use one portable manifest and one

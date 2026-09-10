@@ -1,5 +1,32 @@
 # GENtle Changelog
 
+## 2026-09-10 - Accession-pinned TSS profile documents
+
+- Added a shared, report-owned TSS profile workflow with exact versioned JASPAR
+  matrix resolution, both-strand scoring, independent row scales, readable logos,
+  transcript-relative axes, pagination and within-factor matrix comparisons.
+  Raw scores remain separate from display clipping; unavailable windows remain
+  null. GUI Shell, CLI and typed operations/MCP share the same implementation.
+- Reads the existing target-TSS export and integrated-selection formats with
+  exact reference expectations, checksums and strand-aware geometry. Selection
+  transcript memberships are subsets; FASTA/manifest memberships must be equal.
+  Identical DNA at distinct loci is retained with a warning, as requested.
+  Read-only checks pass for the real 58 TSS records, 13 selected windows and
+  30 pinned matrices. These checks do not establish reference authenticity or
+  replace Glen's committed-producer, five-gene scoring and visual acceptance.
+- Added atomic JSON/TSV/SVG/PNG/raster-PDF exports, report-only replay and receipts
+  binding input/source/producer identities, outputs and actual raster font faces.
+  Enabled the existing JSON parser's exact floating-point round-trip feature
+  after replay exposed a one-bit score change; no dependency version changed.
+  Existing score formulas and historical locus renderers remain unchanged.
+- Two existing primer tests needed their GUI-only assertions feature-gated so
+  the headless verification build could compile; scientific assertions remain
+  unconditional. The required parity-table regeneration also picks up the
+  already-landed gel-image routes, without adding new gel behavior. Native TSS
+  wizard support, full real-data replay and release acceptance remain separate;
+  the `.10` release gate is unchanged. See the [workflow and verification
+  commands](tss_tfbs_profiles.md) and [implementation plan](tss_tfbs_profile_plan.md).
+
 ## 2026-09-10 - Worked MCP and Feature Editor tutorials
 
 - Added two offline, hand-written walkthroughs over existing operations: MCP

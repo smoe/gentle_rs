@@ -13,6 +13,8 @@ pub mod protein_gel;
 pub mod protocol_cartoon;
 mod region_homology;
 mod regulatory_partners;
+/// Paginated, report-only TSS profiles with matrix-specific scales and PFM logos.
+pub mod tss_profiles;
 
 pub use feature_expert::{
     GeneLocusEvidenceOverlay, GeneLocusEvidenceOverlayLegendItem, GeneLocusEvidenceOverlayRow,

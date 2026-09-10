@@ -1,0 +1,14 @@
+{
+  "schema": "gentle.tss_profile_selection.v1",
+  "reference": {
+    "genome_id": "synthetic-genome-v1",
+    "assembly": "synthetic-assembly-v1",
+    "annotation_release": "synthetic-annotation-v1"
+  },
+  "selected": [
+    {
+      "promoter_id": "synthetic-minus",
+      "gene_id": "synthetic-gene-minus"
+    }
+  ]
+}

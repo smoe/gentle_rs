@@ -1,5 +1,14 @@
 # GENtle CLI Manual
 
+## Accession-Pinned TSS Profiles
+
+`features tss-tfbs-profiles` validates a pinned FASTA bundle and exact JASPAR
+panel, computes both orientations and publishes audited profile documents.
+`features tss-tfbs-profiles-export` consumes an existing report without rescoring.
+See [complete offline commands and input requirements](tss_tfbs_profiles.md).
+These shared-parser routes also work in the GUI Shell and through typed MCP
+`op`; output directories are fresh and writes require normal confirmation.
+
 ## Measured Gel Images (`.11` Development)
 
 `gel-image import|save-draft|analyze|export REQUEST_JSON_OR_@FILE` and

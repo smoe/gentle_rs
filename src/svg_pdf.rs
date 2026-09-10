@@ -8,7 +8,10 @@
 use serde::Serialize;
 use std::path::Path;
 
-use crate::svg_png::{SvgPngRenderOptions, render_svg_file_to_png_bytes};
+use crate::svg_png::{
+    SvgPngRenderBytes, SvgPngRenderOptions, SvgUsedFontIdentity, render_svg_file_to_png_bytes,
+    render_svg_file_to_png_bytes_audited,
+};
 
 /// Machine-readable summary of one deterministic SVG-to-PDF conversion.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -63,6 +66,27 @@ pub fn render_svg_file_to_pdf(
     render_svg_file_to_pdf_with_links(input_path, output_path, options, &[], &[])
 }
 
+/// Render a raster-backed PDF plus path-free identities of layout-used fonts.
+///
+/// Font evidence comes from the same SVG-to-PNG conversion whose pixels are
+/// embedded into the PDF, not a second parse. Unreadable used fonts fail before
+/// writing the PDF; no positioned glyphs means an empty font inventory. The
+/// existing summary and PDF bytes retain their legacy shape and defaults.
+pub fn render_svg_file_to_pdf_audited(
+    input_path: &Path,
+    output_path: &Path,
+    options: SvgPngRenderOptions,
+) -> Result<(SvgPdfRenderSummary, Vec<SvgUsedFontIdentity>), String> {
+    render_svg_file_to_pdf_impl(
+        input_path,
+        output_path,
+        options,
+        &[],
+        &[],
+        render_svg_file_to_png_bytes_audited,
+    )
+}
+
 /// Renders one SVG file into a single-page raster-backed PDF with validated
 /// URI annotations. `allowed_hosts` uses exact host matching.
 pub fn render_svg_file_to_pdf_with_links(
@@ -72,6 +96,30 @@ pub fn render_svg_file_to_pdf_with_links(
     links: &[SvgPdfUriLink],
     allowed_hosts: &[&str],
 ) -> Result<SvgPdfRenderSummary, String> {
+    render_svg_file_to_pdf_impl(
+        input_path,
+        output_path,
+        options,
+        links,
+        allowed_hosts,
+        |input, options| {
+            render_svg_file_to_png_bytes(input, options).map(|rendered| (rendered, Vec::new()))
+        },
+    )
+    .map(|(summary, _)| summary)
+}
+
+fn render_svg_file_to_pdf_impl(
+    input_path: &Path,
+    output_path: &Path,
+    options: SvgPngRenderOptions,
+    links: &[SvgPdfUriLink],
+    allowed_hosts: &[&str],
+    render_png: impl FnOnce(
+        &Path,
+        SvgPngRenderOptions,
+    ) -> Result<(SvgPngRenderBytes, Vec<SvgUsedFontIdentity>), String>,
+) -> Result<(SvgPdfRenderSummary, Vec<SvgUsedFontIdentity>), String> {
     if input_path.as_os_str().is_empty() {
         return Err("svg-pdf requires INPUT.svg".to_string());
     }
@@ -99,7 +147,7 @@ pub fn render_svg_file_to_pdf_with_links(
             return Err("svg-pdf URI link rectangles must be finite and positive".to_string());
         }
     }
-    let rendered_bytes = render_svg_file_to_png_bytes(input_path, options)?;
+    let (rendered_bytes, fonts) = render_png(input_path, options)?;
     let page_width_pt = rendered_bytes.width as f32 * 72.0 / 96.0;
     let page_height_pt = rendered_bytes.height as f32 * 72.0 / 96.0;
     let points_per_source_px = options.scale * 72.0 / 96.0;
@@ -127,18 +175,21 @@ pub fn render_svg_file_to_pdf_with_links(
     std::fs::write(output_path, pdf)
         .map_err(|e| format!("Could not write PDF '{}': {e}", output_path.display()))?;
 
-    Ok(SvgPdfRenderSummary {
-        input_path: input_path.to_string_lossy().into_owned(),
-        output_path: output_path.to_string_lossy().into_owned(),
-        scale: format!("{}", options.scale),
-        drop_dotplot_metadata: options.drop_dotplot_metadata,
-        width: rendered_bytes.width,
-        height: rendered_bytes.height,
-        font_face_count: rendered_bytes.font_face_count,
-        page_width_pt: format!("{page_width_pt:.2}"),
-        page_height_pt: format!("{page_height_pt:.2}"),
-        uri_link_count: pdf_links.len(),
-    })
+    Ok((
+        SvgPdfRenderSummary {
+            input_path: input_path.to_string_lossy().into_owned(),
+            output_path: output_path.to_string_lossy().into_owned(),
+            scale: format!("{}", options.scale),
+            drop_dotplot_metadata: options.drop_dotplot_metadata,
+            width: rendered_bytes.width,
+            height: rendered_bytes.height,
+            font_face_count: rendered_bytes.font_face_count,
+            page_width_pt: format!("{page_width_pt:.2}"),
+            page_height_pt: format!("{page_height_pt:.2}"),
+            uri_link_count: pdf_links.len(),
+        },
+        fonts,
+    ))
 }
 
 fn validate_https_uri(uri: &str, allowed_hosts: &[&str]) -> Result<(), String> {
@@ -293,6 +344,91 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::tempdir;
+
+    #[test]
+    fn audited_pdf_keeps_legacy_bytes_summary_and_exact_embedded_font_audit() {
+        use crate::svg_png::audit_test_support::{ALPHA, render};
+        use std::cell::Cell;
+
+        let temp = tempdir().unwrap();
+        let input = temp.path().join("synthetic-text.svg");
+        let output = temp.path().join("synthetic-text.pdf");
+        let svg = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><text y="18" font-family="{ALPHA}">AAAA</text></svg>"#
+        );
+        fs::write(&input, &svg).unwrap();
+        for scale in [1.0, 2.0] {
+            let options = SvgPngRenderOptions {
+                scale,
+                drop_dotplot_metadata: false,
+            };
+            let (legacy, no_fonts) =
+                render_svg_file_to_pdf_impl(&input, &output, options, &[], &[], |_, options| {
+                    render(&svg, options, false)
+                })
+                .unwrap();
+            assert!(no_fonts.is_empty());
+            let legacy_bytes = fs::read(&output).unwrap();
+            let calls = Cell::new(0);
+            let (audited, fonts) =
+                render_svg_file_to_pdf_impl(&input, &output, options, &[], &[], |_, options| {
+                    calls.set(calls.get() + 1);
+                    render(&svg, options, true)
+                })
+                .unwrap();
+            assert_eq!(
+                calls.get(),
+                1,
+                "PDF must use a single audited rasterization"
+            );
+            assert_eq!(legacy, audited);
+            assert_eq!(
+                serde_json::to_value(&legacy).unwrap(),
+                serde_json::to_value(&audited).unwrap()
+            );
+            assert_eq!(legacy_bytes, fs::read(&output).unwrap());
+            let (png, expected_fonts) = render(&svg, options, true).unwrap();
+            assert_eq!(fonts, expected_fonts);
+            assert_eq!(fonts.len(), 1);
+            assert_eq!(
+                legacy_bytes,
+                png_bytes_to_single_page_pdf(&png.bytes, &[]).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn public_audited_pdf_preserves_legacy_output_for_an_svg_without_glyphs() {
+        let temp = tempdir().unwrap();
+        let input = temp.path().join("shapes.svg");
+        let output = temp.path().join("shapes.pdf");
+        fs::write(&input, r#"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="10" height="10"/></svg>"#).unwrap();
+        let options = SvgPngRenderOptions::default();
+        let legacy = render_svg_file_to_pdf(&input, &output, options).unwrap();
+        let bytes = fs::read(&output).unwrap();
+        let (audited, fonts) = render_svg_file_to_pdf_audited(&input, &output, options).unwrap();
+        assert_eq!(legacy, audited);
+        assert_eq!(bytes, fs::read(&output).unwrap());
+        assert!(fonts.is_empty());
+    }
+
+    #[test]
+    fn failed_font_audit_does_not_write_a_pdf() {
+        let temp = tempdir().unwrap();
+        let input = temp.path().join("input.svg");
+        let output = temp.path().join("must-not-exist.pdf");
+        let error = render_svg_file_to_pdf_impl(
+            &input,
+            &output,
+            SvgPngRenderOptions::default(),
+            &[],
+            &[],
+            |_, _| Err("Could not audit SVG used font: font bytes are unreadable".into()),
+        )
+        .unwrap_err();
+        assert!(error.contains("unreadable"));
+        assert!(!output.exists());
+    }
 
     #[test]
     fn render_svg_file_to_pdf_embeds_one_image_page() {

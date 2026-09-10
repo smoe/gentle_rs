@@ -227,6 +227,7 @@ pub use gentle_shell::{
 // execution contracts stay in this file so GUI Shell and CLI shell keep one
 // visible behavior surface.
 mod command_parsers;
+mod tss_profiles;
 use command_parsers::*;
 
 const CLONING_PATTERN_FILE_SCHEMA: &str = "gentle.cloning_patterns.v1";
@@ -64495,11 +64496,15 @@ fn execute_cache_command(
 }
 
 #[inline(never)]
-fn execute_op_command(engine: &mut GentleEngine, payload: &str) -> Result<ShellRunResult, String> {
+fn execute_op_command(
+    engine: &mut GentleEngine,
+    payload: &str,
+    options: &ShellExecutionOptions,
+) -> Result<ShellRunResult, String> {
     let json_text = parse_json_payload(payload)?;
     let op: Operation =
         serde_json::from_str(&json_text).map_err(|e| format!("Invalid operation JSON: {e}"))?;
-    // Image records can be large; these operations have explicit mutation semantics
+    // Images and immutable reports can be large; these operations have explicit mutation semantics
     // and must not serialize the entire project twice just to detect a change.
     if matches!(
         &op,
@@ -64508,6 +64513,8 @@ fn execute_op_command(engine: &mut GentleEngine, payload: &str) -> Result<ShellR
             | Operation::AnalyzeGelImage { .. }
             | Operation::InspectGelImageAnalysis { .. }
             | Operation::ExportGelImageAnalysis { .. }
+            | Operation::ComputeTssTfbsProfiles { .. }
+            | Operation::ExportTssTfbsProfiles { .. }
     ) {
         let state_changed = matches!(
             &op,
@@ -64515,7 +64522,17 @@ fn execute_op_command(engine: &mut GentleEngine, payload: &str) -> Result<ShellR
                 | Operation::AnalyzeGelImage { .. }
                 | Operation::SaveGelImageDraft { .. }
         );
-        let result = engine.apply(op).map_err(|error| error.to_string())?;
+        let result = if matches!(
+            &op,
+            Operation::ComputeTssTfbsProfiles { .. } | Operation::ExportTssTfbsProfiles { .. }
+        ) {
+            engine.apply_with_progress(op, |progress| {
+                forward_shell_progress(options, progress).unwrap_or(false)
+            })
+        } else {
+            engine.apply(op)
+        }
+        .map_err(|error| error.to_string())?;
         return Ok(ShellRunResult {
             state_changed,
             output: json!({ "result": result }),
@@ -67123,7 +67140,7 @@ fn execute_shell_command_with_options_dispatch_inner(
         return execute_ui_command(engine, command, options);
     }
     if let ShellCommand::Op { payload } = command {
-        return execute_op_command(engine, payload);
+        return execute_op_command(engine, payload, options);
     }
     if let ShellCommand::Workflow { payload } = command {
         return execute_workflow_command(engine, payload);
@@ -68810,7 +68827,7 @@ fn execute_shell_command_with_options_inner(
         ShellCommand::SetParameter { .. } | ShellCommand::DisplayVisibility { .. } => {
             execute_configuration_command(engine, command)?
         }
-        ShellCommand::Op { payload } => execute_op_command(engine, payload)?,
+        ShellCommand::Op { payload } => execute_op_command(engine, payload, options)?,
         ShellCommand::Workflow { payload } => execute_workflow_command(engine, payload)?,
     };
     Ok(result)

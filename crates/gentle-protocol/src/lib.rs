@@ -27,6 +27,8 @@ pub mod region_homology;
 pub mod regulatory_partners;
 pub mod reporter;
 pub mod tata_boxes;
+/// Accession-pinned, transcript-oriented TSS TFBS profile documents.
+pub mod tss_profiles;
 
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Value, json};
@@ -5438,6 +5440,8 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "ImportGelImage",
     "AnalyzeGelImage",
     "SaveGelImageDraft",
+    "ComputeTssTfbsProfiles",
+    "ExportTssTfbsProfiles",
     "InspectGelImageAnalysis",
     "ExportGelImageAnalysis",
     "RenderProteinGelSvg",
@@ -7210,7 +7214,10 @@ fn infer_command_mutation(path: &str, operations: &[String]) -> CapabilityMutati
 }
 
 fn infer_engine_operation_mutation(operation: &str) -> CapabilityMutation {
-    if operation.starts_with("Fetch")
+    if matches!(
+        operation,
+        "ComputeTssTfbsProfiles" | "ExportTssTfbsProfiles"
+    ) || operation.starts_with("Fetch")
         || operation.starts_with("PrepareGenome")
         || operation.starts_with("PrepareCutRun")
         || operation.starts_with("ReadAcquire")

@@ -40100,6 +40100,8 @@ impl GentleEngine {
             feature_record_curation_report: None,
             gel_image: None,
             gel_image_analysis: None,
+            tss_tfbs_profiles: None,
+            tss_tfbs_profile_receipt: None,
         };
 
         if matches!(
@@ -40181,6 +40183,32 @@ impl GentleEngine {
             self.apply_arrangement_rack_and_ladder_operation(op, &mut result)?;
         } else {
             match op {
+                Operation::ComputeTssTfbsProfiles { request, export } => {
+                    if let Some(export) = &export {
+                        crate::tss_profile_export::preflight_tss_export(export)?;
+                    }
+                    let report = self.compute_tss_profiles(&request, on_progress)?;
+                    if let Some(export) = export {
+                        let receipt =
+                            Self::export_tss_profile_report(&report, &export, on_progress)?;
+                        result.tss_tfbs_profile_receipt = Some(Box::new(receipt));
+                    }
+                    result.messages.push(format!(
+                        "Computed {} TSS profiles with {} exact matrices per TSS; {}",
+                        report.windows.len(),
+                        report.panel_resolution.matrices.len(),
+                        report.verification
+                    ));
+                    result.tss_tfbs_profiles = Some(Box::new(report));
+                }
+                Operation::ExportTssTfbsProfiles { report, request } => {
+                    let receipt = Self::export_tss_profile_report(&report, &request, on_progress)?;
+                    result.messages.push(format!(
+                        "Exported {} TSS profiles on {} pages",
+                        receipt.tss_count, receipt.page_count
+                    ));
+                    result.tss_tfbs_profile_receipt = Some(Box::new(receipt));
+                }
                 Operation::ImportGelImage { .. }
                 | Operation::SaveGelImageDraft { .. }
                 | Operation::AnalyzeGelImage { .. }

@@ -2,6 +2,22 @@
    "commands": [
       {
          "aliases": [],
+         "engine_operations": ["ComputeTssTfbsProfiles"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "features tss-tfbs-profiles",
+         "summary": "Validate a pinned TSS FASTA bundle and exact JASPAR panel, score both orientations, and publish a new audited profile directory.",
+         "usage": "features tss-tfbs-profiles --manifest FILE --panel FILE --expected-genome-id ID --output-dir DIR [--fasta FILE ...] [--selection FILE] [--expected-assembly ID] [--expected-annotation-release ID] [--expected-dataset-id ID] [--formats svg,png,pdf] [--scale-mode independent|shared] [--panels-per-page N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["ExportTssTfbsProfiles"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "features tss-tfbs-profiles-export",
+         "summary": "Re-render an existing portable TSS profile report without reading sequences or rescoring matrices.",
+         "usage": "features tss-tfbs-profiles-export --report FILE --output-dir DIR [--formats svg,png,pdf] [--scale-mode independent|shared] [--panels-per-page N]"
+      },
+      {
+         "aliases": [],
          "engine_operations": ["SaveGelImageDraft"],
          "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
          "path": "gel-image save-draft",

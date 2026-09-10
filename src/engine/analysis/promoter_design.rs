@@ -13,7 +13,7 @@ impl GentleEngine {
     pub(crate) const PROMOTER_COHORT_DIVERGENCE_SIMILARITY_THRESHOLD: f64 = 0.25;
     pub(crate) const PROMOTER_COHORT_CONCORDANCE_SIMILARITY_THRESHOLD: f64 = 0.75;
 
-    fn emit_tfbs_score_track_progress(
+    pub(super) fn emit_tfbs_score_track_progress(
         on_progress: &mut dyn FnMut(OperationProgress) -> bool,
         seq_id: &str,
         motif_id: &str,
@@ -94,7 +94,7 @@ impl GentleEngine {
             })
     }
 
-    fn tfbs_score_track_presented_value(
+    pub(super) fn tfbs_score_track_presented_value(
         llr_bits: f64,
         llr_quantile: f64,
         true_log_odds_bits: f64,
@@ -477,7 +477,7 @@ impl GentleEngine {
         smoothed
     }
 
-    fn pearson_correlation(left: &[f64], right: &[f64]) -> f64 {
+    pub(super) fn pearson_correlation(left: &[f64], right: &[f64]) -> f64 {
         let len = left.len().min(right.len());
         if len < 2 {
             return 0.0;
@@ -526,7 +526,7 @@ impl GentleEngine {
         ranks
     }
 
-    fn spearman_correlation(left: &[f64], right: &[f64]) -> f64 {
+    pub(super) fn spearman_correlation(left: &[f64], right: &[f64]) -> f64 {
         let len = left.len().min(right.len());
         if len < 2 {
             return 0.0;
@@ -765,7 +765,7 @@ impl GentleEngine {
         })
     }
 
-    fn collect_tfbs_score_track_background_scores(
+    pub(super) fn collect_tfbs_score_track_background_scores(
         random_background: &[u8],
         llr_matrix: &[[f64; 4]],
         true_log_odds_matrix: &[[f64; 4]],
@@ -818,7 +818,7 @@ impl GentleEngine {
         ))
     }
 
-    fn summarize_tfbs_score_track_normalization_reference(
+    pub(super) fn summarize_tfbs_score_track_normalization_reference(
         underlying_background_scores: &[f64],
         observed_peak_underlying_score: f64,
         modeled_distribution: Option<&ModeledTfbsScoreDistribution>,

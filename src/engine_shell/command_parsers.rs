@@ -2309,6 +2309,12 @@ fn parse_promoter_artifact_manifest_entry_json(
 }
 
 pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if matches!(
+        tokens.get(1).map(String::as_str),
+        Some("tss-tfbs-profiles" | "tss-tfbs-profiles-export")
+    ) {
+        return super::tss_profiles::parse_tss_profiles_command(tokens);
+    }
     if tokens.len() < 2 {
         return Err(
             "features requires a subcommand: formula, edit-location, create, delete, split, merge, query, export-bed, repeat-query, repeat-overlaps, materialize-repeats, encode-ccre-overlaps, materialize-encode-ccres, ensembl-regulation-overlaps, materialize-ensembl-regulation, repeat-cohort, window-cohort-tfbs, promoter-evidence-matrix, promoter-isoform-comparison, promoter-expression-evidence, promoter-artifact-manifest, tfbs-summary, tfbs-score-tracks-svg, tfbs-track-similarity, tfbs-score-track-correlation-svg, tfbs-scan, genomic-motif-evidence, restriction-scan"

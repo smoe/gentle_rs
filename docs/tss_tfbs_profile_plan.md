@@ -1,12 +1,85 @@
 # Accession-Pinned TSS TFBS Profile Documents
 
-Status: proposed implementation plan, not an implemented capability.
+Status: core implementation and focused verification complete; Glen's committed-
+producer five-gene replay and release acceptance are not yet signed off.
 Prepared: 2026-09-10. Inspection baseline: local `main` at `45a9f574`;
 the relevant Rust sources match development HEAD `76ac480a`.
 This proposal does not change the `.10` release gate. Schedule new capability
 work separately unless the release owner explicitly brings it into scope.
 Claude supplied the initial W1-W10 decomposition; this revised plan has not
 received a separate Claude review.
+
+## Revised Input Programme, 2026-09-10
+
+The later Claude/Glen work programme identifies input revision
+`a106cbbd5223f8c4be55a7d846b8416bc4b3ae33`. It is available as a Git object but
+is not an ancestor of this checkout. Read its named inputs without merging that
+branch or changing historical figures. Implementation was rebased onto local
+`main` at `a0574f96b0b9e700ec0b2918586da3ba295f5398`.
+
+The following clarifications supersede the original missing-input assumptions:
+
+- Read the existing `gentle.target_tss_fasta_export.v1` format. Its manifest
+  binds `SHA256SUMS`, and both bind each FASTA; the outer profile receipt binds
+  the manifest bytes and its `source_revision`. Require independently supplied,
+  whole-string genome, assembly and dataset expectations. Do not derive a release
+  by parsing words from a genome name; absent separate release metadata stays null.
+- Read the real panel's `tracks[]` with per-track policies. The generic parsed
+  input can express mixed score kinds; this TSS computation/rendering path must
+  reject mixed score/clip grammar and any unsupported settings explicitly.
+- Join the existing regulatory selection's `promoterome_id` to `promoter_id`.
+  Require matching gene, chromosome, TSS and strand, and subset transcript
+  membership. Selection and display windows deliberately have different lengths
+  and sequence hashes; those are not join keys. FASTA/manifest transcript sets,
+  in contrast, must be equal. Carry the supplied CUT&RUN factor/criterion into
+  labels and conservative selected-panel legends, never a hard-coded factor.
+- Steffen explicitly confirmed retaining identical DNA at distinct locations
+  with a warning. This overrides the revised W2's unconditional rejection.
+- Keep the new report layout in `gentle-render`, without rewriting the historical
+  locus renderer. Use the existing in-process PNG/PDF path with actual used-font
+  digests; do not invent external-renderer commands or require a PATH executable.
+
+Read-only inspection confirms the input manifest lists 31/6/4/5/12 TSSs and
+109/17/15/13/20 distinct transcripts for CD44/TGFB1/SERPINE1/PATZ1/TP73, the
+panel has 30 tracks/28 factors, and the selection contains 13 records. These are
+input facts, not evidence that the new full scientific replay has passed.
+
+## Verification Snapshot, 2026-09-10
+
+The implementation diff on rebased main `a0574f96` was checked on macOS arm64
+with Rust `1.99.0-beta.4` (`948ec4e1e`) and Cargo `1.99.0-beta.4` (`5f94df478`).
+These are development checks, not a frozen-release acceptance receipt:
+
+| Check | Result |
+| --- | --- |
+| Root headless `tss_` suite | 92 passed; two explicit opt-in tests ignored |
+| `gentle-protocol` complete library suite | 68 passed |
+| `gentle-engine` complete library suite | 13 passed |
+| `gentle-render` complete library suite | 126 passed; visual-output helper ignored |
+| Raw panel parser/resolution | 8 passed, including all 30 real matrix accessions |
+| Opt-in real bundle/selection reader | Passed: 58 TSSs and all 13 selections |
+| PNG/PDF helpers | 10 / 6 passed, including legacy pixel/byte compatibility |
+| MCP module | 39 passed, including consent and no-write failures |
+| Existing motif resolver / score-track renderer | 11 / 4 passed |
+| Generated GUI/CLI/MCP parity matrix | Freshness test passed |
+| Default-feature `cargo check --locked --offline -q` | Passed |
+| Formatting and whitespace checks | Passed |
+
+Root tests used `CARGO_PROFILE_TEST_DEBUG=0`, `CARGO_INCREMENTAL=0` and one
+compiler worker. Direct test-binary runs kept the repository's 16 MiB
+`RUST_MIN_STACK` setting. Parity freshness ran the unchanged integration test
+with the freshly compiled protocol library, without building every root binary.
+The tiny typed-operation smoke generated all three visual formats and verified
+exact report-only replay after deleting its copied source inputs. Synthetic
+plus/minus/layout examples were inspected; they do not validate real promoters.
+The old score-track renderer's bytes are unchanged from the rebase baseline.
+
+Stages A-E are implemented through the shared operations and GUI Shell. Stage F
+remains open: no standalone CLI binary smoke, full workspace/tutorial/release
+suite, native GUI acceptance or full real five-gene scoring/render replay is
+claimed by these development checks. The source formats, adapter differences,
+input policy override and in-process raster choice are documented above and in
+the [workflow guide](tss_tfbs_profiles.md); no historical figure was regenerated.
 
 ## Objective
 
@@ -44,10 +117,10 @@ New links from those reports are a separate follow-up.
   transcript memberships. Reuse its identity/geometry semantics, not a second
   definition of a promoter.
 
-The exact panel JSON, five FASTAs, bundle manifest/checksums, selection file,
-and the referenced decisions Q1-Q3 were not supplied with W1-W10 and were not
-found in this checkout. The numerical real-data acceptance claims below remain
-unverified until those inputs are provided.
+The exact inputs were unavailable during the initial plan. The revision above
+now locates them and resolves Q1-Q3. Stage F still requires a committed producer,
+fresh output directory and exact-revision verification rather than inferred
+acceptance from input counts.
 
 ## Contract Decisions Before Coding
 
@@ -63,7 +136,7 @@ unverified until those inputs are provided.
   taxon metadata; matching capitalization alone is not species verification.
 - Preserve all declared panel settings. Unknown or unsupported settings fail
   explicitly instead of being silently ignored. Freeze the JSON structure only
-  after inspecting Glen's actual `gentle.jaspar_target_panel.v1` example.
+  against Glen's inspected `gentle.jaspar_target_panel.v1` example.
 - Recommended Q3 answer: v1 requires one explicit score kind throughout the
   panel. Mixed kinds fail with the conflicting track IDs. Do not silently split
   or convert the panel. Per-track mixed units can be a later additive feature.
@@ -150,7 +223,7 @@ unverified until those inputs are provided.
 
 ### A. Freeze Inputs And The Portable Contract (W1, W2, W6/W9 Definitions)
 
-Obtain the missing files and settle Q1-Q3 as above. Document the panel, bundle,
+Use the pinned files and Q1-Q3 resolutions above. Document the panel, bundle,
 selection, result, comparison and receipt records before building exporters.
 Add tiny, clearly synthetic plus/minus fixtures with provenance. Implement exact
 panel resolution and bundle validation, including actual source bindings.

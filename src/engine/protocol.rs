@@ -5356,6 +5356,10 @@ pub struct Workflow {
 /// for which sequence windows/views may need refresh after an operation.
 pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tss_tfbs_profiles: Option<Box<gentle_protocol::tss_profiles::TssProfileReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tss_tfbs_profile_receipt: Option<Box<gentle_protocol::tss_profiles::TssProfileReceipt>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gel_image: Option<gentle_protocol::gel_image::GelImageDescriptor>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gel_image_analysis: Option<Box<gentle_protocol::gel_image::GelImageAnalysisReport>>,

@@ -2838,6 +2838,11 @@ impl GentleEngine {
         let mut push = |path: &str| Self::push_unique_token(&mut paths, path);
         match op {
             Operation::ExportGelImageAnalysis { request } => push(&request.path),
+            Operation::ComputeTssTfbsProfiles {
+                export: Some(request),
+                ..
+            }
+            | Operation::ExportTssTfbsProfiles { request, .. } => push(&request.output_dir),
             Operation::SaveFile { path, .. }
             | Operation::RenderSequenceSvg { path, .. }
             | Operation::RenderDotplotSvg { path, .. }

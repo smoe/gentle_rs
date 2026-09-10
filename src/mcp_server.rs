@@ -1384,6 +1384,8 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
             "gel-image analyze",
             "gel-image inspect",
             "gel-image export",
+            "features tss-tfbs-profiles",
+            "features tss-tfbs-profiles-export",
             "regions create",
             "regions capture",
             "regions list",
@@ -4871,6 +4873,49 @@ mod tests {
             .and_then(Value::as_str)
             .unwrap_or_default();
         assert!(text.contains("confirm=true"));
+    }
+
+    #[test]
+    fn tss_profiles_mcp_requires_consent_and_fails_without_writes() {
+        let temp = tempdir().unwrap();
+        let state = temp.path().join("project.json");
+        let output = temp.path().join("profiles");
+        let mut request = json!({
+            "jsonrpc":"2.0", "id":1, "method":"tools/call",
+            "params":{"name":"op", "arguments":{
+                "state_path":state.to_string_lossy(),
+                "operation":{"ComputeTssTfbsProfiles":{
+                    "request":{
+                        "manifest":temp.path().join("missing-manifest.json").to_string_lossy(),
+                        "panel":temp.path().join("missing-panel.json").to_string_lossy(),
+                        "expected_genome_id":"synthetic"
+                    },
+                    "export":{"output_dir":output.to_string_lossy()}
+                }}
+            }}
+        });
+        let denied = run_single(DEFAULT_MCP_STATE_PATH, request.clone());
+        assert_eq!(
+            denied.pointer("/result/isError").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert!(denied.to_string().contains("confirm=true"));
+        assert!(!state.exists());
+        assert!(!output.exists());
+        request["params"]["arguments"]["confirm"] = true.into();
+        let failed = run_single(DEFAULT_MCP_STATE_PATH, request);
+        assert_eq!(
+            failed.pointer("/result/isError").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert!(!state.exists());
+        assert!(!output.exists());
+        for path in [
+            "features tss-tfbs-profiles",
+            "features tss-tfbs-profiles-export",
+        ] {
+            assert!(tool_command_paths("op").contains(&path));
+        }
     }
 
     #[test]
