@@ -1,0 +1,16 @@
+{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "feature_editor_gui_cli",
+  "title": "Curate Annotations with Preview, Apply and Undo (Offline)",
+  "catalog": {
+    "order": 60,
+    "path": "docs/tutorial/02-05_feature_editor_gui_cli.md",
+    "type": "gui_cli_walkthrough",
+    "status": "manual/hybrid",
+    "source": "hand_written_markdown",
+    "audiences": ["gui_first", "cli_first", "sequence_analysis"],
+    "notes": "Synthetic Feature Editor exercise covering Location, Create, Split, Merge and Delete, review-only overlaps/shared identifiers, stale previews and unchanged DNA. CLI regressions do not substitute for live GUI acceptance.",
+    "group": "02",
+    "group_position": 5
+  }
+}

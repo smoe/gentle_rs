@@ -1320,6 +1320,48 @@
           "capture_date": "2026-09-09"
         }
       ]
+    },
+    {
+      "id": "mcp_offline_roundtrip",
+      "title": "Discover MCP Tools and Verify a Shared GENtle Result (Offline)",
+      "path": "docs/tutorial/01-03_mcp_offline_roundtrip.md",
+      "group": "01",
+      "group_label": "Getting Started & Interfaces",
+      "group_order": 1,
+      "group_position": 3,
+      "decimal_id": "01.03",
+      "type": "cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "mcp_users",
+        "cli_first",
+        "contributors"
+      ],
+      "notes": "Offline worked MCP discovery, explicit confirmation, typed operation and CLI/shared-shell report comparison on synthetic DNA. No model, API key or GUI acceptance claim.",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-10"
+    },
+    {
+      "id": "feature_editor_gui_cli",
+      "title": "Curate Annotations with Preview, Apply and Undo (Offline)",
+      "path": "docs/tutorial/02-05_feature_editor_gui_cli.md",
+      "group": "02",
+      "group_label": "Sequence Basics & Lineage",
+      "group_order": 2,
+      "group_position": 5,
+      "decimal_id": "02.05",
+      "type": "gui_cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "sequence_analysis"
+      ],
+      "notes": "Synthetic Feature Editor exercise covering Location, Create, Split, Merge and Delete, review-only overlaps/shared identifiers, stale previews and unchanged DNA. CLI regressions do not substitute for live GUI acceptance.",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-10"
     }
   ]
 }

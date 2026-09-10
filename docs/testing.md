@@ -132,6 +132,24 @@ cargo run --bin gentle_examples_docs -- tutorial-catalog-check
 cargo test workflow_examples -- --test-threads=1
 ```
 
+Hand-written [MCP](tutorial/01-03_mcp_offline_roundtrip.md) and
+[Feature Editor](tutorial/02-05_feature_editor_gui_cli.md) walkthroughs have
+separate offline command regressions:
+
+```sh
+cargo build --offline --locked --bin gentle_cli --bin gentle_mcp
+GENTLE_TUTORIAL_BIN_DIR="$PWD/target/debug" \
+  python3 -m unittest scripts.test_tutorial_walkthroughs
+```
+
+Without `GENTLE_TUTORIAL_BIN_DIR`, binary-dependent tests explicitly skip; with
+it set, missing tools, confirmation errors and command/report drift fail. The
+MCP companion preserves raw messages and compares every report field except
+four named invocation-identity fields. The feature exercise checks preview
+non-mutation, stale-lock rejection, curation geometry/qualifiers and unchanged
+DNA after reopening. Neither is a live GUI acceptance claim. These hand-written
+guides are catalog entries, not new generated-manifest chapters.
+
 `tutorial-check` regenerates tutorial outputs in a temp directory and compares
 byte-for-byte with committed files under `docs/tutorial/generated`. On failure,
 it prints a paste-ready tutorial feedback context with the chapter id, source

@@ -1,5 +1,21 @@
 # GENtle Changelog
 
+## 2026-09-10 - Worked MCP and Feature Editor tutorials
+
+- Added two offline, hand-written walkthroughs over existing operations: MCP
+  discovery/confirmation/report parity, and Feature Editor Location/Create/
+  Delete/Split/Merge with preview locks, coordinate conventions, review-only
+  overlaps/shared identifiers and unchanged DNA. Tiny synthetic inputs and
+  real-binary regression companions make the command path reproducible without
+  implying live GUI acceptance. The MCP teaching helper retains raw transport
+  evidence and compares scientific fields while preserving separate invocation
+  metadata. Neither guide adds a new engine route or generated chapter.
+- Linked existing transcript-primer, vendor, sequencing, cryptic-splicing and
+  saved-region coverage instead of duplicating it. Marked the old presentation
+  coverage audit as historical and documented the current inventory workflow
+  so resolved work is not mistaken for new tutorial gaps. Human scientific and
+  Feature Editor GUI sign-off remain separate checks for Glen.
+
 ## 2026-09-10 - Candidate-bound tutorial acceptance
 
 - Added an external, offline tutorial acceptance coordinator for Glen: derived

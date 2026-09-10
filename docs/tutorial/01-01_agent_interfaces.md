@@ -24,6 +24,11 @@ You can open this page inside GENtle from:
 Protocol-level details live in `docs/agent_interface.md` and
 `docs/protocol.md`. This page is the practical walk-through.
 
+For a complete offline MCP exercise without an AI provider, follow
+[Discover MCP Tools and Verify a Shared GENtle Result](./01-03_mcp_offline_roundtrip.md).
+It retains real MCP messages, demonstrates refusal without confirmation, and
+compares one scientific report with the CLI/shared-shell routes.
+
 ## 1) The mental model
 
 GENtle has one deterministic execution core.

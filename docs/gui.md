@@ -84,6 +84,9 @@ this as a confidence map for the current GUI surface.
   evidence without changing related annotations. Split/Merge reject
   nested/fuzzy locations, gaps, overlaps, and metadata conflicts rather than
   guessing a biological repair.
+  The [offline Feature Editor tutorial](tutorial/02-05_feature_editor_gui_cli.md)
+  walks through every tab on a 120 bp synthetic starter, including preview
+  invalidation, unchanged DNA and save/reopen checks.
 
 ### Exploratory / not yet first choice
 

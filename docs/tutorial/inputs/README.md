@@ -3,6 +3,32 @@
 This folder contains small committed local inputs used by GUI tutorials and
 manual contributor checks.
 
+## MCP Roundtrip and Feature Editor
+
+Files added on 2026-09-10:
+
+- `mcp_restriction_operation.json`: a hand-authored `FindRestrictionSites`
+  request, using `GAATTC` followed by `GGATCC`, linear topology, and just EcoRI
+  and BamHI. Recreate by concatenating those two recognition motifs and retaining
+  the request fields as shown in the JSON; no external sequence is involved.
+- `mcp_roundtrip.py`: a standard-library teaching client for tutorial `01.03`.
+  It invokes only the supplied GENtle binaries, retains framed messages and
+  outputs, and compares engine reports without implementing sequence analysis.
+- `feature_editor_demo.gb`: a hand-crafted 120-base sequence, exactly
+  `ACGT` repeated 30 times. Its three invented features in order are a forward
+  gene at 11..100 (`gene=DEMO`), a forward misc_feature at 21..40
+  (`label=segment_A`, `gene=DEMO`), and a reverse misc_feature at 61..80
+  (`label=reverse_control`, `gene=CONTROL`). Coordinates here are 1-based and
+  inclusive; qualifier order is part of the fixture. Recreate the GenBank
+  record from this definition; do not add an extra source feature, which would
+  change the teaching indices. It is not a biological gene model.
+
+Used by the [MCP walkthrough](../01-03_mcp_offline_roundtrip.md),
+[Feature Editor walkthrough](../02-05_feature_editor_gui_cli.md), and
+`scripts/test_tutorial_walkthroughs.py`. Replay with the commands in those
+guides; all state/results belong in new temporary directories. No private
+study records or external reference data are used.
+
 ## Cryptic-Splicing Structural-Screen Demo
 
 File:

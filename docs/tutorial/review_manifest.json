@@ -3,6 +3,24 @@
   "warn_after_months": 12,
   "entries": [
     {
+      "tutorial_id": "mcp_offline_roundtrip",
+      "tutorial_kind": "guided_walkthrough",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": "2026-09-10",
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
+      "tutorial_id": "feature_editor_gui_cli",
+      "tutorial_kind": "guided_walkthrough",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": "2026-09-10",
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
       "tutorial_id": "generated_hub",
       "tutorial_kind": "guided_walkthrough",
       "tutorial_status": "active",

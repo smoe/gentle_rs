@@ -11,7 +11,8 @@ Machine-readable catalog source:
 - review metadata:
   - [`docs/tutorial/review_manifest.json`](./review_manifest.json)
 - presentation-overhaul audit:
-  - [`docs/tutorial/coverage_audit.md`](./coverage_audit.md)
+  - [`docs/tutorial/coverage_audit.md`](./coverage_audit.md) (historical snapshot,
+    not the current gap list)
 
 `review_manifest.json` is hand-maintained tutorial review metadata, not test
 fixture data from an external source. It is deterministically recreated from
@@ -31,6 +32,41 @@ GENtle has two tutorial tracks:
 Use the guided walkthroughs first when you want a human teaching path. Use the
 executable reference chapters when you want to run or inspect the exact
 workflow operations behind a topic.
+
+### Find Existing Coverage Before Proposing a New Chapter
+
+The catalog includes hand-written guides and reference pages as well as generated
+chapters. The executable manifest has a different purpose: it lists chapters
+backed by executable source metadata, including a few with a hand-written GUI
+companion. Absence from that manifest alone does not mean a tutorial is missing.
+Do not add a hand-written page to it merely to increase a count.
+
+For a current, non-executing inventory, run from the checkout being reviewed:
+
+```sh
+python3 scripts/tutorial_acceptance.py inventory --output /tmp/gentle-tutorial-coverage.json
+```
+
+Read the exact revision alongside its coverage rows. Catalog presence, workflow
+replay, live GUI completion and human biological review are separate facts. The
+inventory reports unexecuted work as `not_run`; it is not a release verdict.
+Archived reviews and withdrawn artifacts are useful history, not instructions
+to reimplement work that has since landed.
+
+Common destinations already available here:
+
+- [Transcript-aware PATZ1 endpoint/SYBR primer panels](./generated/chapters/04-06_patz1_transcript_assay_panels_cli.md),
+  alongside [primer-pair determination](./generated/chapters/04-02_pcr_selection_batch_primer_pairs_offline.md).
+- [Metabion handoff](./09-01_metabion_external_service_handoff_gui_cli.md) and
+  [GeneArt handoff](./09-02_geneart_external_service_handoff_gui_cli.md).
+- [Sequencing confirmation: CLI](./10-01_sequencing_confirmation_trace_cli.md)
+  and [GUI](./10-02_sequencing_confirmation_gui.md).
+- [Cryptic-splicing evidence](./07-03_cryptic_splicing_evidence_cli_gui.md), a
+  hand-written walkthrough, and [portable genomic regions](./generated/chapters/08-10_portable_genomic_regions_offline.md).
+
+The two new worked guides below fill different teaching needs: MCP transport
+and report parity, and deliberate annotation curation. Neither claims automated
+GUI coverage that has not been run.
 
 ## Start Here
 
@@ -75,6 +111,7 @@ Tutorial numbers now describe the topic group first and the learning position se
 
 - `01.01` [GENtle Agent Assistant and Agent Interfaces Tutorial](./01-01_agent_interfaces.md) - reference; status `manual/reference`; review `unreviewed` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: Practical guide for the in-app Agent Assistant, provider quick starts, reviewed shared-shell suggestions, CLI/shared shell, MCP, and external coding agents.
 - `01.02` [Contribute to GENtle development](./generated/chapters/01-02_contribute_to_gentle_development.md) - executable reference; status `generated+checked/human-pending`; review `unreviewed` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.
+- `01.03` [Discover MCP Tools and Verify a Shared GENtle Result (Offline)](./01-03_mcp_offline_roundtrip.md) - guided CLI/MCP; status `manual/hybrid`; Codex readability/command review, human review pending. Discovery, confirmation refusal, a typed operation, and CLI/shared-shell report parity on synthetic DNA.
 - `reference` [GENtle Tutorial (Generated)](./generated/README.md) - reference hub; status `generated+checked`; review `unreviewed` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: Generated from docs/tutorial/sources plus executable workflows; validated by tutorial-check.
 - `reference` [GENtle Tutorial Landscape Overview](./landscape_overview.md) - reference; status `manual/reference`; review `unreviewed` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: Graphical overview of current tutorial dependencies, roadmap-grounded additions, and heuristic human-feedback intensity.
 
@@ -84,6 +121,7 @@ Tutorial numbers now describe the topic group first and the learning position se
 - `02.02` [Stateless Sequence Inspection Tutorial](./02-02_stateless_sequence_inspection_gui_cli.md) - guided GUI/CLI; status `manual/hybrid`; review `unreviewed` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: Parity walkthrough for direct restriction-site, TFBS hit, and TFBS score-track inspection from pasted or local DNA without first creating project state.
 - `02.03` [Retrieve a cDNA and Compare It Against the Genomic Sequence (Dotplot Tutorial)](./02-03_tp73_cdna_genomic_dotplot_gui.md) - guided GUI; status `manual`; review `unreviewed` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: Screenshot-backed manual tutorial for cDNA-vs-genomic comparison.
 - `02.04` [Compare TP73 cDNA against TP73 genomic context via dotplot (online)](./generated/chapters/02-04_tp73_cdna_genomic_dotplot_online.md) - executable reference; status `generated+checked/human-pending`; review `unreviewed` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.
+- `02.05` [Curate Annotations with Preview, Apply and Undo (Offline)](./02-05_feature_editor_gui_cli.md) - guided GUI/CLI; status `manual/hybrid`; Codex readability/command review, human and live GUI review pending. Location/Create/Delete/Split/Merge, coordinate conventions, shared-identifier review and unchanged DNA.
 
 ### Cloning & Assembly
 

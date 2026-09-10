@@ -1,9 +1,12 @@
 # Tutorial Coverage Audit
 
+**Historical snapshot, not a current work plan.** The numbering/grouping work
+discussed below has since landed. Preserve this page as the 2026-05-22 review
+record; do not interpret its proposed actions or old counts as outstanding
+tasks. For current coverage use [the tutorial catalog and inventory](./README.md#find-existing-coverage-before-proposing-a-new-chapter).
+
 Phase 0 audit for the tutorial presentation overhaul. This page is a
-review gate, not a schema migration. Do not assign decimal ids, rename files,
-or regroup menus until the decisions at the end of this page have been signed
-off.
+record of the then-pending review gate, not a new schema migration request.
 
 Generated from repository inspection on 2026-05-22.
 
