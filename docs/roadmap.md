@@ -300,8 +300,8 @@ must remain explicit, inspectable proposals with confirmation before mutation.
 Useful work here improves proposal formats, evidence records, reproducible
 cohort comparisons, and rollback paths for state patches; defer autonomous
 wet-lab conclusions or unconfirmed mutations.
-
 ## Parking Lot
+- Accession-pinned, transcript-oriented [TSS TFBS profile documents](tss_tfbs_profile_plan.md): proposed staged plan; obtain Glen's panel/bundle/selection inputs before implementation, without changing the `.10` gate.
 - Give TP73 Simple-PCR live acceptance a representative small fixture or bounded fast preset; exact interactive defaults exceed the ten-minute smoke budget.
 - Replace whole-transcriptome FASTA materialization in UniProt linked-transcript
   inventory construction with indexed/streaming retrieval, and expose bounded
