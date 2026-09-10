@@ -19,21 +19,25 @@ use std::ops::Range;
 use svg::Node;
 use svg::node::element::{Circle, Group, Line, Path, Rectangle, Text, Title};
 
-const PAGE_WIDTH: f64 = 1560.0;
-const MAX_PAGE_HEIGHT: f64 = 10_000.0;
+// Match the canonical locus-evidence page and its shared genomic plot frame.
+// This keeps detailed TSS pages horizontally registered with the context page
+// when both are viewed as one paginated report.
+const PAGE_WIDTH: f64 = 1400.0;
+const MAX_PAGE_HEIGHT: f64 = 11_200.0;
 const MAX_PANELS_PER_PAGE: usize = 32;
-const MARGIN: f64 = 40.0;
+const MARGIN: f64 = 34.0;
 const TEXT_WIDTH: f64 = PAGE_WIDTH - 2.0 * MARGIN;
-const LABEL_WIDTH: f64 = 380.0;
-const PLOT_LEFT: f64 = 540.0;
-const PLOT_WIDTH: f64 = PAGE_WIDTH - MARGIN - PLOT_LEFT;
+const LABEL_WIDTH: f64 = 205.0;
+const PLOT_LEFT: f64 = 255.0;
+const PLOT_RIGHT: f64 = 1050.0;
+const PLOT_WIDTH: f64 = PLOT_RIGHT - PLOT_LEFT;
 const PLOT_TOP: f64 = 24.0;
 const PLOT_HEIGHT: f64 = 128.0;
 const MIN_ROW_HEIGHT: f64 = 224.0;
 const ROW_GAP: f64 = 16.0;
 const PANEL_GAP: f64 = 28.0;
 const LOGO_COLUMNS: usize = 20;
-const LOGO_COLUMN_WIDTH: f64 = 16.0;
+const LOGO_COLUMN_WIDTH: f64 = 8.5;
 const LOGO_HEIGHT: f64 = 64.0;
 const LOGO_SEGMENT_HEIGHT: f64 = 90.0;
 const COLORS: [&str; 6] = [
@@ -61,7 +65,7 @@ pub struct TssRenderedPage {
 /// nonempty statement. This checks the supplied binding, not its scientific merit.
 ///
 /// `panels_per_page` must be 1..=32 and is an upper bound, not a request to shrink
-/// rows. Pages are 1560 pixels wide and at most 10,000 pixels tall (62.4 MB for a
+/// rows. Pages are 1400 pixels wide and at most 11,200 pixels tall (62.7 MB for a
 /// single RGBA raster at native size; higher raster scales require their own
 /// budget). Oversized TSSs continue at whole-row/comparison boundaries, repeating
 /// their identity and axes. A single indivisible block that cannot fit is an error.
@@ -178,6 +182,8 @@ pub fn render_tss_profile_pages(
                 .set("data-scale-mode", scale_name(scale))
                 .set("data-page-number", page_index + 1)
                 .set("data-page-count", page_count)
+                .set("data-gentle-plot-left", PLOT_LEFT)
+                .set("data-gentle-plot-right", PLOT_RIGHT)
                 .add(
                     Title::new(format!(
                         "{} TSS profiles, page {} of {}",
@@ -827,10 +833,10 @@ impl<'a> RowLayout<'a> {
         index: usize,
     ) -> Result<Self, String> {
         let spec = &matrix.specification;
-        let label = TextBlock::new(&spec.label, LABEL_WIDTH, 16.0);
+        let label = TextBlock::new(&spec.label, LABEL_WIDTH, 15.0);
         let identity = TextBlock::new(
             &format!(
-                "{} | factor: {}\n{} bp | {}\n{}",
+                "{} | {}\n{} bp | {}\n{}",
                 spec.source_id,
                 spec.factor_id,
                 track.motif_length_bp,
@@ -838,7 +844,7 @@ impl<'a> RowLayout<'a> {
                 score_units(&report.panel_resolution.panel.score_kind)?,
             ),
             LABEL_WIDTH,
-            13.0,
+            12.0,
         );
         let valid = |scores: &[Option<f64>]| scores.iter().flatten().count();
         let terminal = window.record.geometry.length().expect("validated geometry")
@@ -1017,8 +1023,8 @@ impl<'a> RowLayout<'a> {
                     .set("stroke-width", 0.8),
             );
             row.append(
-                text_node(PLOT_LEFT - 14.0, yy + 4.0, &number(value), 13.0)
-                    .set("text-anchor", "end")
+                text_node(PLOT_RIGHT + 8.0, yy + 4.0, &number(value), 13.0)
+                    .set("text-anchor", "start")
                     .set("data-role", "score-tick")
                     .set("data-value", value),
             );
@@ -1784,6 +1790,10 @@ mod tests {
                     reverse_geometry(&mut report);
                 }
                 let page = &render(&report)[0];
+                let root = &tags(&page.svg, "svg")[0];
+                assert_close(numeric(root, "width"), 1400.0);
+                assert_close(numeric(root, "data-gentle-plot-left"), 255.0);
+                assert_close(numeric(root, "data-gentle-plot-right"), 1050.0);
                 let geometry = &report.windows[0].record.geometry;
                 let axis = LocalAxis {
                     length: upstream + 1 + downstream,
@@ -2081,7 +2091,7 @@ mod tests {
         assert!(
             logos
                 .iter()
-                .all(|logo| numeric(logo, "data-column-width") >= 16.0)
+                .all(|logo| numeric(logo, "data-column-width") >= 8.0)
         );
         assert_eq!(tags(&page.svg, "pfm-letter").len(), 45 * 4);
         assert!(!page.svg.contains("NEVER_RENDER_THIS_CONSENSUS"));
@@ -2196,7 +2206,8 @@ mod tests {
             }
         }
         for tick in tags(&page.svg, "score-tick") {
-            assert!(numeric(&tick, "x") - numeric(&tick, "textLength") > MARGIN + LABEL_WIDTH);
+            assert!(numeric(&tick, "x") >= PLOT_RIGHT);
+            assert!(numeric(&tick, "x") + numeric(&tick, "textLength") <= PAGE_WIDTH - MARGIN);
         }
     }
 

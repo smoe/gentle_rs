@@ -11,7 +11,7 @@ use gentle::{
         DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, GentleEngine, Operation,
         RenderSvgMode,
     },
-    svg_pdf::render_svg_file_to_pdf,
+    svg_pdf::{render_svg_file_to_pdf, render_svg_files_to_pdf},
     svg_png::{SvgPngRenderOptions, render_svg_file_to_png},
 };
 use std::path::Path;
@@ -21,6 +21,7 @@ use super::*;
 const RENDERING_COMMANDS: &[&str] = &[
     "svg-png",
     "svg-pdf",
+    "svg-pdf-set",
     "render-svg",
     "render-dotplot-svg",
     "render-rna-svg",
@@ -41,6 +42,7 @@ pub(super) fn handle_rendering_family(
     match command {
         "svg-png" => handle_svg_png(args, cmd_idx),
         "svg-pdf" => handle_svg_pdf(args, cmd_idx),
+        "svg-pdf-set" => handle_svg_pdf_set(args, cmd_idx),
         "render-svg" => handle_render_svg(args, cmd_idx, state_path),
         "render-dotplot-svg" => handle_render_dotplot_svg(args, cmd_idx, state_path),
         "render-rna-svg" => handle_render_rna_svg(args, cmd_idx, state_path),
@@ -138,6 +140,61 @@ fn handle_svg_pdf(args: &[String], cmd_idx: usize) -> Result<(), String> {
         },
     )?;
     print_json(&svg_pdf_summary_json(&summary))
+}
+
+fn handle_svg_pdf_set(args: &[String], cmd_idx: usize) -> Result<(), String> {
+    if args.len() <= cmd_idx + 2 {
+        usage();
+        return Err(
+            "svg-pdf-set requires: OUTPUT.pdf INPUT.svg [INPUT.svg ...] [--scale N] [--drop-dotplot-metadata]"
+                .to_string(),
+        );
+    }
+    let output = &args[cmd_idx + 1];
+    let mut inputs = Vec::new();
+    let mut scale = 1.0f32;
+    let mut drop_dotplot_metadata = false;
+    let mut idx = cmd_idx + 2;
+    while idx < args.len() {
+        match args[idx].as_str() {
+            "--scale" => {
+                if idx + 1 >= args.len() {
+                    return Err("Missing N after --scale".to_string());
+                }
+                scale = args[idx + 1]
+                    .parse::<f32>()
+                    .map_err(|e| format!("Could not parse --scale '{}': {e}", args[idx + 1]))?;
+                idx += 2;
+            }
+            "--drop-dotplot-metadata" => {
+                drop_dotplot_metadata = true;
+                idx += 1;
+            }
+            value if value.starts_with("--") => {
+                return Err(format!("Unknown option '{}' for svg-pdf-set", value));
+            }
+            value => {
+                inputs.push(Path::new(value));
+                idx += 1;
+            }
+        }
+    }
+    if inputs.is_empty() {
+        return Err("svg-pdf-set requires at least one INPUT.svg".to_string());
+    }
+    ensure_parent_dir(output)?;
+    let summary = render_svg_files_to_pdf(
+        &inputs,
+        Path::new(output),
+        SvgPngRenderOptions {
+            scale,
+            drop_dotplot_metadata,
+        },
+    )?;
+    print_json(
+        &serde_json::to_value(summary)
+            .map_err(|e| format!("Could not serialize svg-pdf-set summary: {e}"))?,
+    )
 }
 
 fn handle_render_svg(args: &[String], cmd_idx: usize, state_path: &str) -> Result<(), String> {
@@ -362,6 +419,7 @@ mod tests {
     fn rendering_command_filter_recognizes_moved_routes() {
         assert!(is_rendering_command("svg-png"));
         assert!(is_rendering_command("svg-pdf"));
+        assert!(is_rendering_command("svg-pdf-set"));
         assert!(is_rendering_command("render-rna-svg"));
         assert!(is_rendering_command("rna-info"));
         assert!(!is_rendering_command("protocol-cartoon"));
@@ -375,6 +433,17 @@ mod tests {
         assert_eq!(
             err,
             "svg-png requires: INPUT.svg OUTPUT.png [--scale N] [--drop-dotplot-metadata]"
+        );
+    }
+
+    #[test]
+    fn svg_pdf_set_requires_output_and_at_least_one_input() {
+        let args = argv(&["gentle_cli", "svg-pdf-set", "combined.pdf"]);
+        let err = handle_rendering_family("svg-pdf-set", &args, 1, ".gentle_state.json")
+            .expect_err("missing input must fail");
+        assert_eq!(
+            err,
+            "svg-pdf-set requires: OUTPUT.pdf INPUT.svg [INPUT.svg ...] [--scale N] [--drop-dotplot-metadata]"
         );
     }
 

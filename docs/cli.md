@@ -5309,6 +5309,11 @@ Rendering export commands:
     rendered RGB image into a one-page PDF.
   - Intended for documentation and bench-facing handoff bundles that need a
     PDF copy of an existing SVG export without adding new drawing semantics.
+- `svg-pdf-set OUTPUT.pdf INPUT.svg [INPUT.svg ...] [--scale N] [--drop-dotplot-metadata]`
+  - Renders each ordered SVG as one page in a single lossless raster-backed PDF.
+  - Pages retain their own dimensions; locus-context and detailed profile pages
+    are not concatenated onto an unsafe extra-tall canvas.
+  - The JSON summary records every input page, dimensions and font-face count.
 - `render-svg SEQ_ID linear|circular OUTPUT.svg`
   - Calls engine operation `RenderSequenceSvg`.
   - Linear exports honor the current stored linear viewport when one is set,
