@@ -3,6 +3,13 @@
 These screenshots come from the exact live-green three-tutorial Linux run at
 GENtle revision `3de4803aa7cd4f960b01f71af8a7b4b272b7d576`.
 
+These are intentionally revision-pinned historical teaching captures, not
+acceptance evidence for today's HEAD. `--check` verifies archive integrity only.
+For new runs, the [candidate-bound tutorial gate](../../testing.md#62-candidate-bound-tutorial-gate-for-external-auditors)
+derives a verified selection automatically and supports explicit staging into a
+new review directory before any repository update. The legacy manual selection
+procedure below remains available for historical archives.
+
 For every selected checkpoint, the directory retains:
 
 - an untouched X11-root `*.raw.png` capture;

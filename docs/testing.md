@@ -486,9 +486,10 @@ namespace instead of assuming that `/proc/1/ns/net` is readable. Use repeated
 `--chapter ID` instead of `--profile` for a bounded chapter set. `smoke`
 currently contains Simple PCR, branch/reverse-complement, and BamHI/EcoRI digest
 contracts.
-`offline-core` and `full` become meaningful only as chapters gain
-complete typed acceptance metadata. Online chapters must remain explicit and
-authorized.
+Profiles select exactly their declared contracts, not a cumulative tier.
+`offline-core` currently contains the conservation/promoter-similarity view-only
+chapter; inspecting its prepared result does not prove a new BLAST computation.
+`full` has no contracts yet. Online chapters remain explicit and authorized.
 
 The two cloning contracts start from load-only workflows
 `branch_gui_starter` and `digest_gui_starter`, not completed results.
@@ -549,6 +550,131 @@ the direction is typed and wheel repetitions are limited to 1..=20. Navigation
 is recorded in the same action ledger rather than occurring as a hidden runner
 convenience. The default compute timeout is ten minutes; exceeding it is a
 product-performance result, not a coordinate or focus harness gap.
+
+### 6.2 Candidate-bound tutorial gate for external auditors
+
+Glen can run the tutorial gate on his Linux host; it does not require a GitHub
+GUI job. The gate does not fetch, build, install tools, change the source tree,
+publish screenshots, repair code, or execute commands interpreted from prose.
+Its verdict is **Linux/X11 offline tutorial acceptance**, not whole-release
+approval, private biological acceptance, or proof of macOS/Windows behavior.
+
+First inspect coverage, offline on any host, without launching GENtle:
+
+```bash
+python3 scripts/tutorial_acceptance.py inventory --output /tmp/tutorial-coverage.json
+```
+
+`gentle.tutorial_acceptance_coverage.v1` joins the existing generated catalog,
+manifest and workflow definitions. It distinguishes `gui_scientific`,
+`gui_view_only`, `workflow_only`, `manual_uncovered`, and `reference`. Workflow
+test modes and required-file availability remain separate from GUI coverage.
+Every inventory row starts `execution_status: not_run`; source metadata,
+historical review labels and file availability are not passes. The inventory
+is derived, not another authoring catalog: add contracts to tutorial source
+units and regenerate through the existing helper. Chapters without GUI
+contracts remain visible, including manual walkthroughs without an oracle.
+
+For acceptance, freeze a full commit SHA, use a clean checkout, and build all
+three binaries from it with the command in section 6.1. `--gentle`,
+`--gentle-cli`, and `--examples-docs` can select pinned binaries outside the
+checkout. All three must report the exact candidate in `--version`; the
+documentation helper now supports that flag too. Bind their bytes, not just
+their names. Store all evidence outside the checkout in a **new** directory.
+Use a separate clean worktree when the development checkout holds private
+analysis files; do not remove those files merely to satisfy the gate.
+
+Run both populated profiles inside the isolated X11 session:
+
+```bash
+export CANDIDATE_SHA=FULL_40_CHARACTER_COMMIT_SHA
+export ACCEPTANCE_DIR=/absolute/private/path/to/new-tutorial-run
+xvfb-run -a -s "-screen 0 1600x1000x24" \
+  sh -c 'openbox >"${ACCEPTANCE_DIR}.openbox.log" 2>&1 & \
+    parent_netns=$(readlink /proc/self/ns/net) && \
+    exec unshare --user --map-root-user --net -- \
+      python3 scripts/tutorial_acceptance.py run \
+        --repo-root . --candidate "$CANDIDATE_SHA" \
+        --profile smoke --profile offline-core \
+        --evidence-dir "$ACCEPTANCE_DIR" \
+        --parent-network-namespace "$parent_netns"'
+```
+
+The coordinator runs the fixed `tutorial-catalog-check`,
+`tutorial-manifest-check`, and `tutorial-check` commands, then delegates the
+exact ordered chapter set to the existing X11 runner. Fresh HOME/XDG/temp
+directories and cleared inherited `GENTLE_*`/API-key settings apply to helper
+checks too. Offline namespace enforcement is mandatory before workflow checks;
+environment flags alone do not prove network isolation. No online or private
+study route is enabled by this coordinator.
+
+`gentle.tutorial_acceptance_candidate.v1` binds the full revision, lockfile,
+catalog/manifest hashes, three binary hashes and version output, selected
+contracts, starter/oracle workflow hashes and declared input-file hashes.
+Candidate identity is checked again during and after execution. The report
+`gentle.tutorial_acceptance.v1` retains checks, exact command arguments, exit
+codes, output bytes/hashes, required chapter results, and the underlying GUI
+report/ledger references. Missing tools, missing automation support, interruption,
+failed scientific checks and unexecuted chapters cannot become a green result.
+The existing step timeout policies are unchanged. Termination unwinds the GUI
+runner so its separate application process is stopped and receipts survive.
+
+The final evidence check requires every selected chapter and step, the correct
+starter/oracle distinction, typed verifier outcomes, saved project/oracle
+hashes, and the candidate/contract/snapshot/raw-image bindings. A passing run
+derives `selection.json` from the retained declared screenshot checkpoints;
+no manual revision update is necessary. Recheck retained evidence offline:
+
+```bash
+python3 scripts/tutorial_acceptance.py verify \
+  --candidate "$CANDIDATE_SHA" \
+  --candidate-binding "$ACCEPTANCE_DIR/candidate.json" \
+  --evidence-dir "$ACCEPTANCE_DIR/gui"
+```
+
+This is an integrity/binding check of externally produced receipts, not a
+replacement for Glen observing the tutorial, inspecting screenshots or deciding
+whether its language is understandable. Cryptographic hashes do not certify
+that an untrusted producer told the truth. Retain the candidate JSON/hash with
+the run report in the auditor's evidence archive.
+
+Screenshot staging is a separate explicit command after review:
+
+```bash
+python3 scripts/publish_tutorial_gui_screenshots.py \
+  --evidence-root "$ACCEPTANCE_DIR/gui" \
+  --selection "$ACCEPTANCE_DIR/selection.json" \
+  --candidate-binding "$ACCEPTANCE_DIR/candidate.json" \
+  --expected-revision "$CANDIDATE_SHA" \
+  --output-root "$ACCEPTANCE_DIR/review-images"
+```
+
+Strict staging revalidates the full run, accepts only verified checkpoints,
+and refuses an existing output directory. A human may narrow the selection
+for teaching, never add unverified steps. Nothing updates repository screenshots
+or sends private data anywhere automatically. Review/sanitize captures before
+public use; even a synthetic GUI can reveal host/display details.
+
+The publisher's existing `--check` remains **archive integrity only**. Historical
+teaching images may remain explicitly pinned to an older revision; they are
+not current-candidate proof. Do not compare their revision to moving HEAD:
+committing screenshots itself changes HEAD. New candidate acceptance must use
+new receipts for the explicitly frozen candidate.
+
+For a repair, retain the failed directory, fix on a development branch, freeze
+and rebuild the next candidate, and rerun into a new directory. Optional
+`--supersedes /path/to/prior/tutorial-acceptance-report.json` retains the prior
+report hash; it never imports old passes or changes approval authority. Private
+resource/biological tests remain separately authorized on copied state, with
+their own data/index fingerprints and verdict. A green offline tutorial gate
+must not be reported as a completed private specificity study.
+
+Offline regression tests (synthetic receipts, no X11 capture):
+
+```bash
+python3 -m unittest scripts.test_tutorial_acceptance \
+  scripts.test_tutorial_gui_acceptance scripts.test_publish_tutorial_gui_screenshots
+```
 
 ## 6. Practical implementation order
 

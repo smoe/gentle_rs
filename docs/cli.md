@@ -44,7 +44,8 @@ GENtle currently provides seven binaries:
   feature `js-interface`)
 - `gentle_lua`: interactive Lua shell (optional build target; requires feature
   `lua-interface`)
-- `gentle_examples_docs`: generates adapter snippets and tutorial artifacts from canonical protocol examples
+- `gentle_examples_docs`: generates adapter snippets and tutorial artifacts from canonical protocol examples;
+  `--version` reports the shared package/build/source identity for candidate-bound acceptance
 - `gentle_mcp`: MCP stdio server (guarded mutating + UI-intent parity baseline;
   includes standardized capability discovery via `tools/list`,
   `capabilities`, and `help`)

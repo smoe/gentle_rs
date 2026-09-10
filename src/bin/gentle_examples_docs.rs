@@ -43,6 +43,7 @@ enum Mode {
 #[derive(Debug)]
 struct CliArgs {
     show_help: bool,
+    show_version: bool,
     mode: Mode,
     source_dir: String,
     example_output_dir: String,
@@ -70,6 +71,7 @@ impl Default for CliArgs {
     fn default() -> Self {
         Self {
             show_help: false,
+            show_version: false,
             mode: Mode::ExampleGenerate,
             source_dir: DEFAULT_WORKFLOW_EXAMPLE_DIR.to_string(),
             example_output_dir: DEFAULT_WORKFLOW_SNIPPET_DIR.to_string(),
@@ -97,7 +99,7 @@ impl Default for CliArgs {
 
 fn usage() {
     eprintln!(
-        "Usage:\n  \
+        "Usage:\n  gentle_examples_docs --version\n  \
 gentle_examples_docs [generate] [--source DIR] [--output DIR]\n  \
 gentle_examples_docs --check [--source DIR]\n  \
 gentle_examples_docs svg-png INPUT.svg OUTPUT.png [--scale N] [--drop-dotplot-metadata]\n  \
@@ -137,6 +139,10 @@ fn parse_args(args: &[String]) -> Result<CliArgs, String> {
         match args[idx].as_str() {
             "--help" | "-h" => {
                 parsed.show_help = true;
+                idx += 1;
+            }
+            "--version" | "-V" => {
+                parsed.show_version = true;
                 idx += 1;
             }
             "--check" => {
@@ -802,6 +808,10 @@ fn main() {
         usage();
         return;
     }
+    if parsed.show_version {
+        println!("{}", gentle::about::version_cli_text());
+        return;
+    }
 
     let result = run_selected_mode_on_expanded_stack(parsed);
     if let Err(e) = result {
@@ -813,6 +823,14 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::{Mode, parse_args};
+
+    #[test]
+    fn version_probe_does_not_select_a_workflow() {
+        for flag in ["--version", "-V"] {
+            let parsed = parse_args(&[flag.to_string()]).expect("version flag");
+            assert!(parsed.show_version);
+        }
+    }
 
     #[test]
     fn parse_svg_png_mode_with_cleanup_flag() {
