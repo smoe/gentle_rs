@@ -46,9 +46,29 @@ def require(condition: bool, message: str) -> None:
         raise SystemExit(message)
 
 
-def publish(evidence_root: Path, selection_path: Path, output_root: Path) -> None:
+def publish(evidence_root: Path, selection_path: Path, output_root: Path,
+            candidate_path: Path | None = None, expected_revision: str | None = None) -> None:
     selection = load_json(selection_path)
     require(selection.get("schema") == SELECTION_SCHEMA, "unsupported selection schema")
+    require(bool(selection.get("chapters")), "empty screenshot selection")
+    candidate_binding = None
+    if candidate_path is not None or expected_revision is not None:
+        require(candidate_path is not None and expected_revision is not None,
+                "use --candidate-binding and --expected-revision together")
+        if __package__:
+            from . import tutorial_acceptance_evidence as acceptance
+        else:
+            import tutorial_acceptance_evidence as acceptance
+        candidate = load_json(candidate_path)
+        require(candidate.get("source_revision") == expected_revision, "candidate revision mismatch")
+        eligible = acceptance.verify_gui_run(evidence_root, candidate)
+        allowed = {(row["chapter_id"], step) for row in eligible["chapters"] for step in row["checkpoints"]}
+        chosen = [(row["chapter_id"], step) for row in selection["chapters"] for step in row["checkpoints"]]
+        require(bool(chosen) and len(chosen) == len(set(chosen)) and set(chosen) <= allowed,
+                "selection includes duplicate or unverified checkpoints")
+        require(selection.get("source_revision") == expected_revision, "selection revision mismatch")
+        require(not output_root.exists(), "stage candidate screenshots in a new directory before review")
+        candidate_binding = {"sha256": sha256_file(candidate_path), "verification": "passed"}
     report_path = evidence_root / "acceptance-report.json"
     report = load_json(report_path)
     require(report.get("status") == "pass", "source acceptance run is not green")
@@ -100,7 +120,7 @@ def publish(evidence_root: Path, selection_path: Path, output_root: Path) -> Non
                 shutil.copyfile(source, target)
                 files.append(
                     {
-                        "path": target.as_posix(),
+                        "path": (target.relative_to(output_root) if candidate_binding else target).as_posix(),
                         "sha256": sha256_file(target),
                         "size_bytes": target.stat().st_size,
                     }
@@ -123,6 +143,9 @@ def publish(evidence_root: Path, selection_path: Path, output_root: Path) -> Non
     manifest = {
         "schema": PUBLICATION_SCHEMA,
         "source_revision": expected_revision,
+        "evidence_role": "revision_pinned_capture_not_current_head_acceptance",
+        "candidate_binding": candidate_binding,
+        "path_base": "publication_directory" if candidate_binding else "legacy_recorded_path",
         "gentle_binary_sha256": shared_binary_hash,
         "capture_date": selection["capture_date"],
         "acceptance_report": {
@@ -144,9 +167,13 @@ def check(output_root: Path) -> None:
     manifest_path = output_root / "publication-manifest.json"
     manifest = load_json(manifest_path)
     require(manifest.get("schema") == PUBLICATION_SCHEMA, "unsupported publication schema")
+    require(bool(manifest.get("checkpoints")), "publication has no screenshot checkpoints")
     for checkpoint in manifest["checkpoints"]:
         for file_row in checkpoint["files"]:
             path = Path(file_row["path"])
+            if manifest.get("path_base") == "publication_directory":
+                path = (output_root / path).resolve()
+                require(path.is_relative_to(output_root.resolve()), "published path escapes bundle")
             require(path.is_file(), f"missing published screenshot file: {path}")
             require(sha256_file(path) == file_row["sha256"], f"hash mismatch: {path}")
             require(path.stat().st_size == file_row["size_bytes"], f"size mismatch: {path}")
@@ -171,12 +198,17 @@ def main() -> None:
         default=Path("docs/screenshots/tutorial_gui_acceptance"),
     )
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--candidate-binding", type=Path)
+    parser.add_argument("--expected-revision")
     args = parser.parse_args()
     if args.check:
+        require(args.candidate_binding is None and args.expected_revision is None,
+                "--check verifies archive integrity only; use tutorial_acceptance.py verify for candidate evidence")
         check(args.output_root)
         return
     require(args.evidence_root is not None, "--evidence-root is required when publishing")
-    publish(args.evidence_root, args.selection, args.output_root)
+    publish(args.evidence_root, args.selection, args.output_root,
+            args.candidate_binding, args.expected_revision)
     check(args.output_root)
 
 

@@ -782,6 +782,16 @@ contract and exposes read-only semantic state, while an isolated external
 runner owns input delivery, evidence collection, and the final acceptance
 verdict.
 
+Candidate tutorial acceptance binds an explicitly frozen revision, helper/GUI/CLI
+binary hashes, source contracts and fixture inputs. A derived coverage inventory
+is not an execution verdict. Reference/manual and view-only chapters cannot
+silently count as scientific GUI passes. External auditors may run the gate
+outside hosted CI; private biological acceptance remains separately authorized.
+Historical screenshot integrity is distinct from current-candidate acceptance.
+Repairs produce new immutable run receipts, optionally referencing the failed
+report by hash; they never combine passes across revisions. Publishing captures
+remains an explicit reviewed action, not a side effect of a green test.
+
 Semantic rectangles use egui logical client-area coordinates, not native
 root-screen coordinates. Before emitting X11 input or annotating a retained
 screenshot, the external runner must bind the owning semantic viewport to one

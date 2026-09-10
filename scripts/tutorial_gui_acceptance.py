@@ -2287,11 +2287,6 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
         path = getattr(parsed, field)
         path = (parsed.repo_root / path).resolve() if not path.is_absolute() else path.resolve()
         setattr(parsed, field, path)
-    parsed.xdotool = resolve_tool(parsed.xdotool, "xdotool", required=True)
-    parsed.xdpyinfo = resolve_tool(parsed.xdpyinfo, "xdpyinfo", required=True)
-    parsed.xprop = resolve_tool(parsed.xprop, "xprop", required=True)
-    parsed.xwininfo = resolve_tool(parsed.xwininfo, "xwininfo", required=True)
-    parsed.scrot = resolve_tool(parsed.scrot, "scrot", required=False)
     parsed.timeouts = {
         timeout_class: getattr(parsed, f"timeout_{timeout_class}")
         for timeout_class in TIMEOUT_DEFAULTS
@@ -2308,6 +2303,12 @@ def validate_runtime(args: argparse.Namespace, manifest: dict[str, Any]) -> list
         raise AcceptanceFailure(
             "missing_dependency", "DISPLAY is unset; run this under Xvfb/X11"
         )
+    # Resolve after parsing so missing tools still leave a retained failure report.
+    args.xdotool = resolve_tool(args.xdotool, "xdotool", required=True)
+    args.xdpyinfo = resolve_tool(args.xdpyinfo, "xdpyinfo", required=True)
+    args.xprop = resolve_tool(args.xprop, "xprop", required=True)
+    args.xwininfo = resolve_tool(args.xwininfo, "xwininfo", required=True)
+    args.scrot = resolve_tool(args.scrot, "scrot", required=False)
     window_manager = detect_window_manager(args.xprop)
     if not window_manager.get("available"):
         raise AcceptanceFailure(
@@ -2385,11 +2386,11 @@ def main(argv: Iterable[str] | None = None) -> int:
         atomic_write_json(args.evidence_dir / "acceptance-report.json", report)
         print(json.dumps(report, indent=2, sort_keys=True))
         return 0 if status == "pass" else 1
-    except AcceptanceFailure as error:
+    except (AcceptanceFailure, KeyboardInterrupt) as error:
         report = {
             "schema": RUN_SCHEMA,
             "status": "fail",
-            "failure_class": error.failure_class,
+            "failure_class": getattr(error, "failure_class", "interrupted"),
             "message": str(error),
         }
         evidence_dir = None if args is None else args.evidence_dir
@@ -2401,4 +2402,10 @@ def main(argv: Iterable[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    def interrupt(_signal: int, _frame: object) -> None:
+        raise KeyboardInterrupt
+
+    for sig in (signal.SIGTERM, getattr(signal, "SIGHUP", None)):
+        if sig is not None:
+            signal.signal(sig, interrupt)
     raise SystemExit(main())

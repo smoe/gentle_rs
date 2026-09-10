@@ -1,6 +1,6 @@
 # GENtle Roadmap
 
-Last session: 2026-09-09 - `.10` remains unreleased pending Glen's verdict and
+Last session: 2026-09-10 - `.10` remains unreleased pending Glen's verdict and
 release-owner approval of the exact candidate. A tag alone is not acceptance.
 
 Purpose: fast session orientation. This file answers "what next?" and should be
@@ -309,9 +309,9 @@ wet-lab conclusions or unconfirmed mutations.
 - Extend the feature-gated semantic GUI test identifier registry beyond the
   bounded TP73/PATZ1 DNA-viewer, Splicing Expert, and Agent Assistant release
   controls as additional native acceptance stories require it.
-- Retain live Linux/Xvfb replay for the PCR, branch/reverse-complement and digest
-  acceptance contracts; add a fourth representative chapter before promoting
-  broader `offline-core` coverage. Headless oracle tests are not live GUI proof.
+- Have Glen run the candidate-bound tutorial gate for `smoke` plus conservation's
+  view-only `offline-core`; extend typed coverage next to Gibson and dotplot.
+  Retain separate private biological verdicts; headless tests are not live GUI proof.
 - Then extend context-labelled GUI/CLI/agent tutorial actions; defer skill
   activation and inverse discovery until readiness is safeguarded.
 - Optional OS credential-store persistence for Agent Assistant API keys.

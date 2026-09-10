@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-09-10 - Candidate-bound tutorial acceptance
+
+- Added an external, offline tutorial acceptance coordinator for Glen: derived
+  coverage inventory, explicit frozen candidate and three-binary identity checks,
+  fixed source/artifact checks and Linux/X11 delegation, retained failure receipts,
+  and exact checkpoint/project/screenshot binding. The documentation helper now
+  exposes the shared `--version` identity. Green runs derive screenshot choices;
+  explicit candidate-verified staging does not overwrite earlier captures or
+  publish private material. Historical screenshot integrity remains a separate
+  check, not current acceptance. Repairs can reference an earlier failed report
+  by hash without reusing its passes. Synthetic offline regressions exercise the
+  contract; live Linux acceptance and broader GUI coverage remain with Glen.
+
+- The acceptance freshness check exposed stale promoter-reporter tutorial maps
+  after the restriction-recognition correction. Regenerated only the two affected
+  SVGs, their chapter label summaries and artifact hashes. The tutorial's
+  workflows, synthetic sequences and biological interpretation are unchanged;
+  these maps now include the corrected IUPAC/reverse-strand restriction sites.
+
 ## 2026-09-09 - Promoterome preparation and ordered similarity inspection
 
 - Refined the locus-report genomic overview: chromosome-qualified endpoint

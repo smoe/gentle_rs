@@ -119,7 +119,7 @@ cargo run --bin gentle_cli -- --state /tmp/gentle-promoter-panel-state.json op '
 
 *Figure: Circular map of the explicitly synthetic MCS-layout vector used to exercise exact-vector validation; this is not pGL4.10. Regenerate with `cargo run --bin gentle_examples_docs -- tutorial-generate`.*
 
-> SVG text labels: `GENTLE_SYNTHETIC_MCS (GENTLE_SYNTHETIC_MCS.1) | 240 bp | MCS | luc2_demo | 9 BsrI | 11 HapII, MnoI, MspI | 12 HpaII | 13 SthI`. If the embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.
+> SVG text labels: `GENTLE_SYNTHETIC_MCS (GENTLE_SYNTHETIC_MCS.1) | 240 bp | MCS | luc2_demo | 9 BsrI | 11 HapII, MnoI, MspI | 11 Cfr10 | 12 HpaII`. If the embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.
 
 ### Step 4: Click Plan panel; confirm the vector validation is verified, the selected mot...
 
@@ -137,7 +137,7 @@ cargo run --bin gentle_cli -- --state /tmp/gentle-promoter-panel-state.json shel
 
 *Figure: Linear map of the 151 bp synthetic promoter-fragment input. Regenerate with `cargo run --bin gentle_examples_docs -- tutorial-generate`.*
 
-> SVG text labels: `MaeII | SphI | Cfr9I,XcyI | HapII,MnoI,MspI | XmaI | HpaII | SmaI | SfaNI`. If the embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.
+> SVG text labels: `MaeII | TthI | NspHI,SphI | AquI,BstSI,Cfr9I,NspIII,NspSAI,XcyI | HapII,MnoI,MspI | AvaI,SecI,XmaI | HpaII | SmaI`. If the embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.
 
 ### Step 5: Review the shared cloning strategy, primer readiness, exact output paths, war...
 
@@ -197,13 +197,13 @@ cat /tmp/gentle-promoter-reporter-panel-demo-products/synthetic_tp73_demo_panel.
 
   - Embedded above near Step 4; kept here as an audit link.
 
-> SVG text labels: `MaeII | SphI | Cfr9I,XcyI | HapII,MnoI,MspI | XmaI | HpaII | SmaI | SfaNI`. If this embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.
+> SVG text labels: `MaeII | TthI | NspHI,SphI | AquI,BstSI,Cfr9I,NspIII,NspSAI,XcyI | HapII,MnoI,MspI | AvaI,SecI,XmaI | HpaII | SmaI`. If this embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.
 
 - [`artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.synthetic_vector.svg`](../artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.synthetic_vector.svg)
 
   - Embedded above near Step 3; kept here as an audit link.
 
-> SVG text labels: `GENTLE_SYNTHETIC_MCS (GENTLE_SYNTHETIC_MCS.1) | 240 bp | MCS | luc2_demo | 9 BsrI | 11 HapII, MnoI, MspI | 12 HpaII | 13 SthI`. If this embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.
+> SVG text labels: `GENTLE_SYNTHETIC_MCS (GENTLE_SYNTHETIC_MCS.1) | 240 bp | MCS | luc2_demo | 9 BsrI | 11 HapII, MnoI, MspI | 11 Cfr10 | 12 HpaII`. If this embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.
 
 
 ## Tutorial Provenance
