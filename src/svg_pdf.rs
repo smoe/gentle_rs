@@ -39,6 +39,27 @@ pub struct SvgPdfRenderSummary {
     pub uri_link_count: usize,
 }
 
+/// Machine-readable summary of one page in a deterministic multi-page PDF.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SvgPdfSetPageSummary {
+    pub input_path: String,
+    pub width: u32,
+    pub height: u32,
+    pub font_face_count: usize,
+    pub page_width_pt: String,
+    pub page_height_pt: String,
+}
+
+/// Machine-readable summary of a deterministic multi-page SVG-to-PDF conversion.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SvgPdfSetRenderSummary {
+    pub output_path: String,
+    pub scale: String,
+    pub drop_dotplot_metadata: bool,
+    pub page_count: usize,
+    pub pages: Vec<SvgPdfSetPageSummary>,
+}
+
 /// One URI hotspot expressed in the source SVG's CSS-pixel coordinate system.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SvgPdfUriLink {
@@ -65,6 +86,61 @@ pub fn render_svg_file_to_pdf(
     options: SvgPngRenderOptions,
 ) -> Result<SvgPdfRenderSummary, String> {
     render_svg_file_to_pdf_with_links(input_path, output_path, options, &[], &[])
+}
+
+/// Renders ordered SVG files into one lossless raster-backed multi-page PDF.
+///
+/// Every input remains a separate page at its own dimensions. This is intended
+/// for composite scientific reports whose context and detailed panels have
+/// different page heights; it never concatenates or rescales pages to a common
+/// canvas.
+pub fn render_svg_files_to_pdf(
+    input_paths: &[&Path],
+    output_path: &Path,
+    options: SvgPngRenderOptions,
+) -> Result<SvgPdfSetRenderSummary, String> {
+    if input_paths.is_empty() {
+        return Err("svg-pdf-set requires at least one INPUT.svg".to_string());
+    }
+    if output_path.as_os_str().is_empty() {
+        return Err("svg-pdf-set requires OUTPUT.pdf".to_string());
+    }
+    if !(options.scale.is_finite() && options.scale > 0.0) {
+        return Err(format!(
+            "svg-pdf-set requires a positive finite scale value, got {}",
+            options.scale
+        ));
+    }
+
+    let mut rendered = Vec::with_capacity(input_paths.len());
+    let mut pages = Vec::with_capacity(input_paths.len());
+    for input_path in input_paths {
+        if input_path.as_os_str().is_empty() {
+            return Err("svg-pdf-set input paths must not be empty".to_string());
+        }
+        let page = render_svg_file_to_png_bytes(input_path, options)?;
+        let page_width_pt = page.width as f32 * 72.0 / 96.0;
+        let page_height_pt = page.height as f32 * 72.0 / 96.0;
+        pages.push(SvgPdfSetPageSummary {
+            input_path: input_path.to_string_lossy().into_owned(),
+            width: page.width,
+            height: page.height,
+            font_face_count: page.font_face_count,
+            page_width_pt: format!("{page_width_pt:.2}"),
+            page_height_pt: format!("{page_height_pt:.2}"),
+        });
+        rendered.push(page.bytes);
+    }
+    let pdf = png_pages_to_pdf(&rendered)?;
+    std::fs::write(output_path, pdf)
+        .map_err(|e| format!("Could not write PDF '{}': {e}", output_path.display()))?;
+    Ok(SvgPdfSetRenderSummary {
+        output_path: output_path.to_string_lossy().into_owned(),
+        scale: format!("{}", options.scale),
+        drop_dotplot_metadata: options.drop_dotplot_metadata,
+        page_count: pages.len(),
+        pages,
+    })
 }
 
 /// Render a raster-backed PDF plus path-free identities of layout-used fonts.
@@ -326,6 +402,101 @@ fn png_bytes_to_single_page_pdf(png_bytes: &[u8], links: &[PdfUriLink]) -> Resul
     Ok(pdf)
 }
 
+fn png_pages_to_pdf(png_pages: &[Vec<u8>]) -> Result<Vec<u8>, String> {
+    if png_pages.is_empty() {
+        return Err("multi-page PDF requires at least one rendered page".to_string());
+    }
+    struct Page {
+        width: u32,
+        height: u32,
+        compressed_rgb: Vec<u8>,
+    }
+    let mut pages = Vec::with_capacity(png_pages.len());
+    for png in png_pages {
+        let image = image::load_from_memory(png)
+            .map_err(|e| format!("Could not decode rendered PNG for PDF embedding: {e}"))?
+            .to_rgb8();
+        let (width, height) = image.dimensions();
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+        encoder
+            .write_all(image.as_raw())
+            .map_err(|e| format!("Could not compress PDF page image: {e}"))?;
+        pages.push(Page {
+            width,
+            height,
+            compressed_rgb: encoder
+                .finish()
+                .map_err(|e| format!("Could not finish PDF page compression: {e}"))?,
+        });
+    }
+
+    let mut pdf = Vec::new();
+    pdf.extend_from_slice(b"%PDF-1.4\n");
+    let mut offsets = Vec::new();
+    push_pdf_object(
+        &mut pdf,
+        &mut offsets,
+        b"<< /Type /Catalog /Pages 2 0 R >>".as_slice(),
+    );
+    let kids = (0..pages.len())
+        .map(|index| format!("{} 0 R", 3 + index * 3))
+        .collect::<Vec<_>>()
+        .join(" ");
+    push_pdf_object(
+        &mut pdf,
+        &mut offsets,
+        format!("<< /Type /Pages /Kids [{kids}] /Count {} >>", pages.len()).as_bytes(),
+    );
+    for (index, page) in pages.iter().enumerate() {
+        let page_object = 3 + index * 3;
+        let image_object = page_object + 1;
+        let content_object = page_object + 2;
+        let width_pt = page.width as f32 * 72.0 / 96.0;
+        let height_pt = page.height as f32 * 72.0 / 96.0;
+        push_pdf_object(
+            &mut pdf,
+            &mut offsets,
+            format!(
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {width_pt:.2} {height_pt:.2}] /Resources << /XObject << /Im0 {image_object} 0 R >> >> /Contents {content_object} 0 R >>"
+            )
+            .as_bytes(),
+        );
+        push_pdf_stream_object(
+            &mut pdf,
+            &mut offsets,
+            format!(
+                "<< /Type /XObject /Subtype /Image /Width {} /Height {} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length {} >>",
+                page.width,
+                page.height,
+                page.compressed_rgb.len()
+            )
+            .as_bytes(),
+            &page.compressed_rgb,
+        );
+        let content = format!("q\n{width_pt:.2} 0 0 {height_pt:.2} 0 0 cm\n/Im0 Do\nQ\n");
+        push_pdf_stream_object(
+            &mut pdf,
+            &mut offsets,
+            format!("<< /Length {} >>", content.len()).as_bytes(),
+            content.as_bytes(),
+        );
+    }
+    let xref_offset = pdf.len();
+    pdf.extend_from_slice(format!("xref\n0 {}\n", offsets.len() + 1).as_bytes());
+    pdf.extend_from_slice(b"0000000000 65535 f \n");
+    for offset in &offsets {
+        pdf.extend_from_slice(format!("{offset:010} 00000 n \n").as_bytes());
+    }
+    pdf.extend_from_slice(
+        format!(
+            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n",
+            offsets.len() + 1
+        )
+        .as_bytes(),
+    );
+    Ok(pdf)
+}
+
 fn push_pdf_object(pdf: &mut Vec<u8>, offsets: &mut Vec<usize>, body: &[u8]) {
     offsets.push(pdf.len());
     let object_number = offsets.len();
@@ -417,6 +588,67 @@ mod tests {
             let offset: usize = entry.split_whitespace().next().unwrap().parse().unwrap();
             assert!(pdf[offset..].starts_with(format!("{} 0 obj\n", i + 1).as_bytes()));
         }
+    }
+
+    #[test]
+    fn multi_page_pdf_preserves_order_dimensions_and_lossless_streams() {
+        let mut pngs = Vec::new();
+        for (width, height, colour) in [
+            (20, 10, image::Rgb([12, 34, 56])),
+            (13, 27, image::Rgb([210, 180, 30])),
+        ] {
+            let image = image::RgbImage::from_pixel(width, height, colour);
+            let mut png = Cursor::new(Vec::new());
+            image.write_to(&mut png, image::ImageFormat::Png).unwrap();
+            pngs.push(png.into_inner());
+        }
+        let pdf = png_pages_to_pdf(&pngs).unwrap();
+        let text = String::from_utf8_lossy(&pdf);
+        assert!(text.contains("/Kids [3 0 R 6 0 R] /Count 2"));
+        assert!(text.contains("/MediaBox [0 0 15.00 7.50]"));
+        assert!(text.contains("/MediaBox [0 0 9.75 20.25]"));
+        assert_eq!(text.matches("/Filter /FlateDecode").count(), 2);
+        assert_eq!(text.matches("/Type /Page /Parent").count(), 2);
+        assert_eq!(pdf, png_pages_to_pdf(&pngs).unwrap());
+    }
+
+    #[test]
+    fn public_multi_page_renderer_keeps_each_svg_as_one_page() {
+        let temp = tempdir().unwrap();
+        let first = temp.path().join("context.svg");
+        let second = temp.path().join("detail.svg");
+        let output = temp.path().join("combined.pdf");
+        fs::write(
+            &first,
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="#ffffff"/></svg>"##,
+        )
+        .unwrap();
+        fs::write(
+            &second,
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="30" height="50"><rect width="30" height="50" fill="#0f766e"/></svg>"##,
+        )
+        .unwrap();
+        let summary = render_svg_files_to_pdf(
+            &[first.as_path(), second.as_path()],
+            &output,
+            SvgPngRenderOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(summary.page_count, 2);
+        assert_eq!((summary.pages[0].width, summary.pages[0].height), (40, 20));
+        assert_eq!((summary.pages[1].width, summary.pages[1].height), (30, 50));
+        let pdf = fs::read(output).unwrap();
+        assert!(String::from_utf8_lossy(&pdf).contains("/Count 2"));
+    }
+
+    #[test]
+    fn multi_page_renderer_rejects_empty_input_without_writing() {
+        let temp = tempdir().unwrap();
+        let output = temp.path().join("must-not-exist.pdf");
+        let error =
+            render_svg_files_to_pdf(&[], &output, SvgPngRenderOptions::default()).unwrap_err();
+        assert!(error.contains("at least one INPUT.svg"));
+        assert!(!output.exists());
     }
 
     #[test]
