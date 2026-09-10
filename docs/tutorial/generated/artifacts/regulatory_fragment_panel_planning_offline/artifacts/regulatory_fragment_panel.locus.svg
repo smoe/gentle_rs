@@ -11,10 +11,10 @@ Gene locus evidence display: transcript/CDS geometry, predicted TF binding score
 </text>
 <line stroke="#64748b" stroke-width="1" x1="255" x2="1050" y1="108" y2="108"/>
 <text fill="#64748b" font-family="monospace" font-size="9" x="255" y="102">
-101121158
+chr7:101121158
 </text>
-<text fill="#64748b" font-family="monospace" font-size="9" x="982" y="102">
-101139263
+<text fill="#64748b" font-family="monospace" font-size="9" text-anchor="end" x="1050" y="102">
+chr7:101139263
 </text>
 <text data-gentle-transcript-legend="title" fill="#334155" font-family="sans-serif" font-size="10" font-weight="bold" x="34" y="128">
 Legend (annotation-derived transcript features)
@@ -36,10 +36,10 @@ annotated start codon
 <text fill="#475569" font-family="sans-serif" font-size="9" x="761" y="150">
 annotated stop codon
 </text>
-<line data-gentle-genomic-scale-bar="true" data-gentle-scale-bp="1000" stroke="#334155" stroke-width="2" x1="255" x2="298.90808" y1="108" y2="108"/>
-<line data-gentle-genomic-scale-bar="left-tick" data-gentle-scale-bp="1000" stroke="#334155" stroke-width="2" x1="255" x2="255" y1="103" y2="113"/>
-<line data-gentle-genomic-scale-bar="right-tick" data-gentle-scale-bp="1000" stroke="#334155" stroke-width="2" x1="298.90808" x2="298.90808" y1="103" y2="113"/>
-<text data-gentle-genomic-scale-bar="label" data-gentle-scale-bp="1000" fill="#334155" font-family="monospace" font-size="9" text-anchor="middle" x="276.95404" y="99">
+<line data-gentle-genomic-scale-bar="true" data-gentle-scale-bp="1000" stroke="#334155" stroke-width="2" x1="630.54596" x2="674.45404" y1="108" y2="108"/>
+<line data-gentle-genomic-scale-bar="left-tick" data-gentle-scale-bp="1000" stroke="#334155" stroke-width="2" x1="630.54596" x2="630.54596" y1="103" y2="113"/>
+<line data-gentle-genomic-scale-bar="right-tick" data-gentle-scale-bp="1000" stroke="#334155" stroke-width="2" x1="674.45404" x2="674.45404" y1="103" y2="113"/>
+<text data-gentle-genomic-scale-bar="label" data-gentle-scale-bp="1000" fill="#334155" font-family="monospace" font-size="9" text-anchor="middle" x="652.5" y="99">
 1000 bp
 </text>
 <text fill="#1f2937" font-family="sans-serif" font-size="13" font-weight="bold" x="34" y="188">

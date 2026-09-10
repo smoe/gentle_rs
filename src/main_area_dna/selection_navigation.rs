@@ -179,6 +179,7 @@ mod tests {
 
     #[test]
     fn selection_navigation_buttons_work_after_manual_formula_application() {
+        let _language = crate::i18n::TestLanguageGuard::new(crate::i18n::UiLanguage::EnGb);
         let mut area = area();
         area.set_linear_viewport(7000, 600);
         area.selection_formula_text = "=150 .. 950".into();

@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-09-10 - Gel introspection and GUI/tutorial regression repairs
+
+- Completed gel-image shell/operation fact annotations and report readiness.
+  Saved drafts remain distinct from validated sizing reports; exports retain
+  their external-write confirmation requirement. Added the same missing
+  annotations for the newly landed TSS-profile operations without pretending
+  their supplied report files are persisted project records.
+- Added complete parser-only gel requests and a temporary synthetic TSS report
+  to glossary smoke coverage, preserving strict runtime validation. Flag tests
+  retain quoted paths. CLI documentation now spells out every gel command.
+- Isolated English-label GUI tests from concurrent language changes with a
+  scoped, test-only language override. Configuration-width coverage now measures
+  stability after egui's initial sizing passes, while retaining its absolute
+  width bound and tightening the settled-frame tolerance.
+- Regenerated only the three stale locus SVG tutorial snapshots and their
+  checksums after the chromosome-label/centred-scale renderer change. Evidence
+  geometry, teaching text and review dates are unchanged; exact snapshot
+  comparisons and scientific assertions remain in place.
+
 ## 2026-09-10 - Accession-pinned TSS profile documents
 
 - Added a shared, report-owned TSS profile workflow with exact versioned JASPAR

@@ -128,6 +128,10 @@ pub(crate) fn set_current_language(language: UiLanguage) {
 }
 
 pub(crate) fn current_language() -> UiLanguage {
+    #[cfg(test)]
+    if let Some(language) = TEST_LANGUAGE.with(std::cell::Cell::get) {
+        return language;
+    }
     current_language_cell()
         .read()
         .map(|guard| *guard)
@@ -136,6 +140,35 @@ pub(crate) fn current_language() -> UiLanguage {
 
 pub(crate) fn tr(key: &str) -> String {
     translate(current_language(), key)
+}
+
+#[cfg(test)]
+thread_local! {
+    static TEST_LANGUAGE: std::cell::Cell<Option<UiLanguage>> = const { std::cell::Cell::new(None) };
+}
+
+/// Keep rendered labels stable while other GUI tests change the application language.
+#[cfg(test)]
+pub(crate) struct TestLanguageGuard {
+    previous: Option<UiLanguage>,
+    _thread_bound: std::marker::PhantomData<std::rc::Rc<()>>,
+}
+
+#[cfg(test)]
+impl TestLanguageGuard {
+    pub(crate) fn new(language: UiLanguage) -> Self {
+        Self {
+            previous: TEST_LANGUAGE.with(|current| current.replace(Some(language))),
+            _thread_bound: std::marker::PhantomData,
+        }
+    }
+}
+
+#[cfg(test)]
+impl Drop for TestLanguageGuard {
+    fn drop(&mut self) {
+        TEST_LANGUAGE.with(|current| current.set(self.previous));
+    }
 }
 
 fn parse_catalog(language: UiLanguage) -> BTreeMap<String, String> {
@@ -185,6 +218,23 @@ fn translate(language: UiLanguage, key: &str) -> String {
 mod tests {
     use super::*;
     use std::collections::BTreeSet;
+
+    #[test]
+    fn test_language_override_is_nested_and_thread_local() {
+        let _language = TestLanguageGuard::new(UiLanguage::DeDe);
+        assert_eq!(tr("menu.file"), "Datei");
+        std::thread::spawn(|| {
+            let _language = TestLanguageGuard::new(UiLanguage::EnGb);
+            assert_eq!(tr("menu.file"), "File");
+        })
+        .join()
+        .unwrap();
+        {
+            let _nested = TestLanguageGuard::new(UiLanguage::EnGb);
+            assert_eq!(tr("menu.file"), "File");
+        }
+        assert_eq!(tr("menu.file"), "Datei");
+    }
 
     fn placeholders(value: &str) -> BTreeSet<String> {
         let mut found = BTreeSet::new();

@@ -4645,6 +4645,7 @@ fn selection_formula_applies_current_selection_range() {
 
 #[test]
 fn selection_formula_inline_controls_apply_button_resolves_formula() {
+    let _language = crate::i18n::TestLanguageGuard::new(crate::i18n::UiLanguage::EnGb);
     let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(120)).expect("sequence");
     dna.features_mut().push(Feature {
         kind: "CDS".into(),

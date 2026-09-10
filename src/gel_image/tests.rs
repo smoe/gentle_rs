@@ -399,6 +399,126 @@ fn shared_shell_routes_match_typed_engine_and_read_only_inspection() {
 }
 
 #[test]
+fn introspection_distinguishes_drafts_from_validated_reports() {
+    let (image, request) = fixture();
+    let mut engine = GentleEngine::new();
+    engine
+        .state_mut()
+        .gel_images
+        .images
+        .insert("gel".into(), Arc::new(image));
+    engine
+        .apply(Operation::SaveGelImageDraft {
+            request: Arc::new(request.clone()),
+        })
+        .unwrap();
+    let shell = |engine: &mut GentleEngine, line: &str| {
+        let tokens = line
+            .split_whitespace()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        execute_shell_command(engine, &parse_shell_tokens(&tokens).unwrap())
+            .unwrap()
+            .output
+    };
+    let descriptors = shell(&mut engine, "introspect capabilities");
+    for (ids, mutating, confirmation) in [
+        (["gel-image import", "ImportGelImage"], "true", true),
+        (["gel-image save-draft", "SaveGelImageDraft"], "true", true),
+        (["gel-image analyze", "AnalyzeGelImage"], "true", true),
+        (
+            ["gel-image inspect", "InspectGelImageAnalysis"],
+            "false",
+            false,
+        ),
+        (
+            ["gel-image export", "ExportGelImageAnalysis"],
+            "external",
+            true,
+        ),
+    ] {
+        for id in ids {
+            let descriptor = descriptors["capabilities"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|row| row["id"] == id)
+                .unwrap();
+            assert_eq!(descriptor["annotation_status"], "fact_annotated", "{id}");
+            assert_eq!(descriptor["mutating"], mutating, "{id}");
+            assert_eq!(descriptor["requires_confirmation"], confirmation, "{id}");
+            if id == "gel-image save-draft" || id == "SaveGelImageDraft" {
+                assert!(
+                    descriptor["effects"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .all(|effect| effect["fact"] != "report.exists")
+                );
+            }
+        }
+    }
+    let facts = shell(&mut engine, "introspect facts");
+    assert!(
+        !facts["facts"]["project"]["facts"]
+            .as_array()
+            .expect("project facts")
+            .iter()
+            .any(|fact| fact["fact"] == "report.exists" && fact["subject"]["id"] == "sizing")
+    );
+    for capability in [
+        "gel-image inspect",
+        "InspectGelImageAnalysis",
+        "gel-image export",
+        "ExportGelImageAnalysis",
+    ] {
+        let result = shell(
+            &mut engine,
+            &format!("introspect readiness {capability} --arg REPORT_ID=sizing"),
+        );
+        assert_eq!(
+            result["readiness"][0]["readiness"], "unknown",
+            "a draft is not report evidence: {capability}"
+        );
+    }
+    engine
+        .apply(Operation::AnalyzeGelImage {
+            request: Box::new(request),
+        })
+        .unwrap();
+    let facts = shell(&mut engine, "introspect facts");
+    assert!(
+        facts["facts"]["project"]["facts"]
+            .as_array()
+            .expect("project facts")
+            .iter()
+            .any(|fact| fact["fact"] == "report.exists"
+                && fact["subject"]["id"] == "sizing"
+                && fact["value"] == "gel_image_analysis"
+                && fact["basis"]["report_kind"] == "gel_image_analysis")
+    );
+    for capability in [
+        "gel-image inspect",
+        "InspectGelImageAnalysis",
+        "gel-image export",
+        "ExportGelImageAnalysis",
+    ] {
+        let result = shell(
+            &mut engine,
+            &format!("introspect readiness {capability} --arg REPORT_ID=sizing"),
+        );
+        assert_eq!(result["readiness"][0]["readiness"], "ready", "{capability}");
+    }
+    for capability in ["gel-image analyze", "AnalyzeGelImage"] {
+        let result = shell(
+            &mut engine,
+            &format!("introspect verify-effects {capability} --arg REPORT_ID=sizing"),
+        );
+        assert_eq!(result["verified"], true, "{capability}");
+    }
+}
+
+#[test]
 fn export_rejects_edited_report_and_tracks_external_write_for_safety() {
     let (image, request) = fixture();
     let mut engine = GentleEngine::new();

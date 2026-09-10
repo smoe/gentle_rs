@@ -17220,6 +17220,14 @@ fn introspection_report_fact(report_id: impl Into<String>, report_kind: &str) ->
 fn push_introspection_report_facts(graph: &mut ProjectFactGraph, engine: &GentleEngine) {
     graph.facts.extend(
         engine
+            .state()
+            .gel_images
+            .analyses
+            .keys()
+            .map(|id| introspection_report_fact(id.clone(), "gel_image_analysis")),
+    );
+    graph.facts.extend(
+        engine
             .list_primer_design_reports()
             .into_iter()
             .map(|row| introspection_report_fact(row.report_id, "primer_design")),
@@ -20598,6 +20606,76 @@ fn genomic_region_capability_descriptor(
     })
 }
 
+fn gel_image_capability_descriptor(id: &str) -> Value {
+    match id {
+        "gel-image inspect" | "InspectGelImageAnalysis" => {
+            return report_show_operation_descriptor(
+                id,
+                "gel_image_analysis",
+                "Inspect a persisted gel-image sizing report without changing project state.",
+            );
+        }
+        "gel-image export" | "ExportGelImageAnalysis" => {
+            let mut descriptor = report_export_operation_descriptor(
+                id,
+                "gel_image_analysis",
+                "GelImageExportRequest.path: new JSON, TSV or SVG file; never overwrite",
+                "Export a gel-image report after revalidating its original image and calibration; not an undoable project edit.",
+            );
+            descriptor["mutating"] = json!("external");
+            descriptor["requires_confirmation"] = json!(true);
+            return descriptor;
+        }
+        _ => {}
+    }
+    let (request, effect, description) = match id {
+        "gel-image import" | "ImportGelImage" => (
+            "GelImageImportRequest: image_id, local path and optional TIFF page",
+            json!({"effect_kind": "must_on_success", "description": "Persist the validated original image bytes, content hash and preview; no sizing analysis is implied."}),
+            "Import a measured gel image into project state without assigning lanes or estimating band sizes.",
+        ),
+        "gel-image save-draft" | "SaveGelImageDraft" => (
+            "GelImageAnalysisRequest: existing image ID/hash and editable lane, ladder and sample assignments",
+            json!({"effect_kind": "must_on_success", "description": "Persist an editable image-bound draft; incomplete calibration is allowed and is not a validated report."}),
+            "Save manual gel assignments after image/hash and draft checks; does not establish calibrated sizing results.",
+        ),
+        "gel-image analyze" | "AnalyzeGelImage" => (
+            "GelImageAnalysisRequest: new report ID, existing image ID/hash, lanes, confirmed ladder and sample bands",
+            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "gel_image_analysis", "effect_kind": "must_on_success"}),
+            "Validate the image hash, assignments and calibration, then persist an auditable gel-image sizing report; never extrapolate beyond the ladder.",
+        ),
+        _ => unreachable!("unknown gel-image capability"),
+    };
+    json!({
+        "id": id, "kind": "operation", "mutating": "true",
+        "requires_confirmation": true,
+        "args": [{"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": request},
+            {"name": "REPORT_ID", "required": false, "subject_kind": "report", "detail": "analysis request report_id, used for post-run effect verification"}],
+        "reads": [], "effects": [effect], "precondition_expr": {"all": []},
+        "description": description, "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn tss_profile_capability_descriptor(id: &str, compute: bool) -> Value {
+    json!({
+        "id": id, "kind": "operation", "mutating": "external",
+        "requires_confirmation": true,
+        "args": [
+            {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": if compute {
+                "ComputeTssProfilesRequest: bound FASTA/manifest, exact matrix panel and reference expectations; optional export for typed operations"
+            } else { "Supplied TssTfbsProfilesReport plus ExportTssProfilesRequest; no persisted project report is required" }},
+            {"name": "OUTPUT_DIRECTORY", "required": id != "ComputeTssTfbsProfiles", "subject_kind": "other", "detail": "new export directory, required by shell routes and export-only operations"}
+        ],
+        "reads": [], "precondition_expr": {"all": []},
+        "effects": [{"fact": "artifact.written", "subject": {"arg": "OUTPUT_DIRECTORY"}, "effect_kind": "external_handoff"}],
+        "description": if compute {
+            "Validate accession-pinned inputs and score TSS profiles without changing project state. Optional typed-operation export writes a bound artifact bundle; shell computation always exports."
+        } else { "Validate and export a supplied TSS profile report without rescoring or changing project state." },
+        "annotation_status": "fact_annotated", "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn tata_capability_descriptor(id: &str, mutating: bool) -> Value {
     json!({
         "id": id, "kind": "operation", "mutating": if mutating { "true" } else { "false" },
@@ -20931,6 +21009,20 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         tata_capability_descriptor("ScreenTataBoxes", false),
         tata_capability_descriptor("promoters tata-materialize", true),
         tata_capability_descriptor("MaterializeTataBoxFeatures", true),
+        gel_image_capability_descriptor("gel-image import"),
+        gel_image_capability_descriptor("ImportGelImage"),
+        gel_image_capability_descriptor("gel-image save-draft"),
+        gel_image_capability_descriptor("SaveGelImageDraft"),
+        gel_image_capability_descriptor("gel-image analyze"),
+        gel_image_capability_descriptor("AnalyzeGelImage"),
+        gel_image_capability_descriptor("gel-image inspect"),
+        gel_image_capability_descriptor("InspectGelImageAnalysis"),
+        gel_image_capability_descriptor("gel-image export"),
+        gel_image_capability_descriptor("ExportGelImageAnalysis"),
+        tss_profile_capability_descriptor("features tss-tfbs-profiles", true),
+        tss_profile_capability_descriptor("ComputeTssTfbsProfiles", true),
+        tss_profile_capability_descriptor("features tss-tfbs-profiles-export", false),
+        tss_profile_capability_descriptor("ExportTssTfbsProfiles", false),
         json!({
             "id": "gene_isoform_assay_publication",
             "kind": "operation",
@@ -30711,7 +30803,23 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "promoters tata-screen"
         | "ScreenTataBoxes"
         | "promoters tata-materialize"
-        | "MaterializeTataBoxFeatures" => Some(vec![]),
+        | "MaterializeTataBoxFeatures"
+        | "gel-image import"
+        | "ImportGelImage"
+        | "gel-image save-draft"
+        | "SaveGelImageDraft"
+        | "gel-image analyze"
+        | "AnalyzeGelImage"
+        | "features tss-tfbs-profiles"
+        | "ComputeTssTfbsProfiles"
+        | "features tss-tfbs-profiles-export"
+        | "ExportTssTfbsProfiles" => Some(vec![]),
+        "gel-image inspect"
+        | "InspectGelImageAnalysis"
+        | "gel-image export"
+        | "ExportGelImageAnalysis" => Some(vec![
+            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "gel_image_analysis"}),
+        ]),
         "DigestContainer" | "LigationContainer" | "FilterContainerByMolecularWeight" => Some(vec![
             json!({"fact": "container.exists", "subject": {"arg": "CONTAINER_ID"}}),
         ]),

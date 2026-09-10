@@ -11,10 +11,10 @@ Gene locus evidence display: transcript/CDS geometry, predicted TF binding score
 </text>
 <line stroke="#64748b" stroke-width="1" x1="255" x2="1050" y1="108" y2="108"/>
 <text fill="#64748b" font-family="monospace" font-size="9" x="255" y="102">
-31326038
+chr22:31326038
 </text>
-<text fill="#64748b" font-family="monospace" font-size="9" x="982" y="102">
-31325801
+<text fill="#64748b" font-family="monospace" font-size="9" text-anchor="end" x="1050" y="102">
+chr22:31325801
 </text>
 <text data-gentle-transcript-legend="title" fill="#334155" font-family="sans-serif" font-size="10" font-weight="bold" x="34" y="128">
 Legend (annotation-derived transcript features)

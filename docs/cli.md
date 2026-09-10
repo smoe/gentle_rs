@@ -11,15 +11,26 @@ These shared-parser routes also work in the GUI Shell and through typed MCP
 
 ## Measured Gel Images (`.11` Development)
 
-`gel-image import|save-draft|analyze|export REQUEST_JSON_OR_@FILE` and
-`gel-image inspect REPORT_ID` share typed engine operations with GUI Shell and
-MCP `op`. They size manually confirmed bands in bp or apparent kDa, not band
+The following routes share typed engine operations with GUI Shell and MCP `op`:
+
+- `gel-image import REQUEST_JSON_OR_@FILE`
+- `gel-image save-draft REQUEST_JSON_OR_@FILE`
+- `gel-image analyze REQUEST_JSON_OR_@FILE`
+- `gel-image inspect REPORT_ID`
+- `gel-image export REQUEST_JSON_OR_@FILE`
+
+They size manually confirmed bands in bp or apparent kDa, not band
 intensity or concentration. See [measured-gel sizing](gel_image_analysis.md)
 for requests, original-image retention, calibration limits and exports.
 `save-draft` retains incomplete `GelImageAnalysisRequest` assignments without
 creating a measurement. The GUI editor uses the same operation. Its shared
 window intent is `ui open|focus|close gel-image-editor`; headless hosts return
 the intent rather than opening a native window.
+
+Introspection describes these routes and their confirmation requirements.
+Only validated analyses contribute `report.exists` (`gel_image_analysis`);
+imported images and saved drafts are not sizing reports. Report readiness is
+advisory: execution still validates the original image hash and calibration.
 
 
 TATA-box evidence is available through

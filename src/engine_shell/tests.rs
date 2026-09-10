@@ -713,6 +713,7 @@ fn sample_value_for_usage_token(flag: &str, token: &str) -> String {
         "--feature-boundary" => "any".to_string(),
         "--feature-geometry" => "feature_span".to_string(),
         "--fragment-max-parts" => "0".to_string(),
+        "--formats" => "svg".to_string(),
         "--geometry" => "repeat_midpoint".to_string(),
         "--input-port" => "input:sequence".to_string(),
         "--kind" => "gene".to_string(),
@@ -879,6 +880,27 @@ fn command_tokens_from_glossary_usage(path: &str, usage: &str) -> Vec<String> {
 
 fn smoke_command_override(path: &str) -> Option<&'static str> {
     match path {
+        // Hand-crafted parser fixtures only; execution still validates image and calibration.
+        "gel-image import" => {
+            Some(r#"gel-image import '{"image_id":"demo","path":"synthetic.png"}'"#)
+        }
+        "gel-image save-draft" => Some(concat!(
+            "gel-image save-draft '",
+            r#"{"report_id":"demo","image_id":"demo","image_sha256":"sha256:parser-only","#,
+            r#""size_kind":"linear_dna_bp","migration":"down","lanes":[],"#,
+            r#""ladder":{"lane_id":"ladder","label":"Synthetic","source":"parser-only","bands":[]},"sample_bands":[]}"#,
+            "'",
+        )),
+        "gel-image analyze" => Some(concat!(
+            "gel-image analyze '",
+            r#"{"report_id":"demo","image_id":"demo","image_sha256":"sha256:parser-only","#,
+            r#""size_kind":"linear_dna_bp","migration":"down","lanes":[],"#,
+            r#""ladder":{"lane_id":"ladder","label":"Synthetic","source":"parser-only","bands":[]},"sample_bands":[]}"#,
+            "'",
+        )),
+        "gel-image export" => {
+            Some(r#"gel-image export '{"report_id":"demo","path":"out.json","format":"json"}'"#)
+        }
         "promoters tata-materialize" => Some(
             r#"promoters tata-materialize '{"screen":{"seq_id":"demo"},"expected_report_sha256":"sha256:parser-only","row_ids":["synthetic"]}'"#,
         ),
@@ -979,7 +1001,37 @@ fn smoke_command_override(path: &str) -> Option<&'static str> {
     }
 }
 
-fn smoke_command_line_for_glossary_command(command: &GlossaryCommandFixture) -> String {
+fn smoke_command_line_for_glossary_command(
+    command: &GlossaryCommandFixture,
+    scratch: &Path,
+) -> String {
+    if command.path == "features tss-tfbs-profiles-export" {
+        // Parser-only synthetic report, deliberately without measured/scored windows.
+        // Runtime export must still validate its content and provenance.
+        let report = serde_json::json!({
+            "schema": gentle_protocol::tss_profiles::REPORT_SCHEMA,
+            "reference": {"genome_id": "synthetic", "assembly": "synthetic"},
+            "panel_resolution": {
+                "panel": {
+                    "schema": gentle_protocol::tss_profiles::PANEL_SCHEMA,
+                    "panel_id": "synthetic", "label": "Parser fixture",
+                    "score_kind": "llr_bits", "clip_negative": false,
+                    "calibration_state": "matrix_specific", "calibration_statement": "None",
+                    "top_hit_count": 1, "factors": []
+                },
+                "panel_sha256": "parser-only", "registry_sources": [], "matrices": []
+            },
+            "inputs": [], "windows": [], "producer_revision": "parser-only",
+            "lockfile_sha256": "parser-only", "score_policy": {},
+            "verification": "parser-only", "warnings": [], "non_claims": "No analysis"
+        });
+        let path = scratch.join("synthetic-tss-report.json");
+        fs::write(&path, serde_json::to_vec(&report).unwrap()).unwrap();
+        return format!(
+            "features tss-tfbs-profiles-export --report {} --output-dir out",
+            quote_shell_arg(&path.to_string_lossy())
+        );
+    }
     if let Some(line) = smoke_command_override(&command.path) {
         return line.to_string();
     }
@@ -1064,7 +1116,23 @@ fn shell_command_line_with_option(base: &str, flag: &str, value: Option<&str>) -
     if let Some(value) = value {
         tokens.push(value.to_string());
     }
-    Some(tokens.join(" "))
+    Some(
+        tokens
+            .iter()
+            .map(|token| quote_shell_arg(token))
+            .collect::<Vec<_>>()
+            .join(" "),
+    )
+}
+
+#[test]
+fn glossary_flag_smoke_preserves_quoted_file_paths() {
+    let base =
+        "features tss-tfbs-profiles-export --report 'report with spaces.json' --output-dir out";
+    let line = shell_command_line_with_option(base, "--formats", Some("svg,pdf")).unwrap();
+    let mut expected = split_shell_words(base).unwrap();
+    expected.extend(["--formats".into(), "svg,pdf".into()]);
+    assert_eq!(split_shell_words(&line).unwrap(), expected);
 }
 
 fn add_required_glossary_flag_companion(path: &str, flag: &str, line: &mut String) {
@@ -1085,13 +1153,14 @@ fn add_required_glossary_flag_companion(path: &str, flag: &str, line: &mut Strin
 #[test]
 fn glossary_cli_usage_smoke_commands_parse() {
     let glossary = glossary_fixture();
+    let scratch = tempdir().expect("parser fixture directory");
     let mut failures = Vec::new();
     for command in glossary
         .commands
         .iter()
         .filter(|entry| is_cli_glossary_command(entry) && !skip_glossary_parse_smoke(&entry.path))
     {
-        let line = smoke_command_line_for_glossary_command(command);
+        let line = smoke_command_line_for_glossary_command(command, scratch.path());
         if let Err(error) = parse_shell_line(&line) {
             failures.push(format!(
                 "{}\n  usage: {}\n  smoke: {}\n  error: {}",
@@ -1109,13 +1178,14 @@ fn glossary_cli_usage_smoke_commands_parse() {
 #[test]
 fn glossary_cli_usage_flags_parse_one_by_one() {
     let glossary = glossary_fixture();
+    let scratch = tempdir().expect("parser fixture directory");
     let mut failures = Vec::new();
     for command in glossary
         .commands
         .iter()
         .filter(|entry| is_cli_glossary_command(entry) && !skip_glossary_parse_smoke(&entry.path))
     {
-        let base = smoke_command_line_for_glossary_command(command);
+        let base = smoke_command_line_for_glossary_command(command, scratch.path());
         for (flag, value) in option_flags_from_usage(&command.usage) {
             if skip_glossary_flag_parse(&command.path, &flag) {
                 continue;
@@ -29493,6 +29563,22 @@ fn execute_introspect_capabilities_projects_full_registry_with_fact_annotations(
     let out = execute_shell_command(&mut engine, &cmd).expect("execute introspect capabilities");
 
     let capabilities = out.output["capabilities"].as_array().expect("capabilities");
+    for id in [
+        "features tss-tfbs-profiles",
+        "ComputeTssTfbsProfiles",
+        "features tss-tfbs-profiles-export",
+        "ExportTssTfbsProfiles",
+    ] {
+        let descriptor = capabilities.iter().find(|row| row["id"] == id).unwrap();
+        assert_eq!(descriptor["annotation_status"], "fact_annotated", "{id}");
+        assert_eq!(descriptor["mutating"], "external", "{id}");
+        assert_eq!(descriptor["requires_confirmation"], true, "{id}");
+        assert_eq!(descriptor["effects"][0]["fact"], "artifact.written", "{id}");
+        assert!(
+            descriptor["reads"].as_array().unwrap().is_empty(),
+            "{id} validates supplied files, not a persisted project report"
+        );
+    }
     assert!(
         capabilities.len() > 100,
         "introspection should project the shared registry, not only the hand-annotated slice"

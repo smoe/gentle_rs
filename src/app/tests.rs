@@ -11001,6 +11001,7 @@ fn agent_assistant_content_scrolls_on_small_viewport() {
 
 #[test]
 fn embedded_configuration_graphics_window_width_stays_bounded_across_frames() {
+    let _language = crate::i18n::TestLanguageGuard::new(UiLanguage::EnGb);
     let ctx = egui::Context::default();
     ctx.set_embed_viewports(true);
     let mut app = GENtleApp::default();
@@ -11011,7 +11012,7 @@ fn embedded_configuration_graphics_window_width_stays_bounded_across_frames() {
     let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1200.0, 900.0));
     let mut widths = Vec::new();
 
-    for _ in 0..4 {
+    for _ in 0..6 {
         ctx.begin_pass(egui::RawInput {
             screen_rect: Some(screen_rect),
             ..Default::default()
@@ -11027,10 +11028,13 @@ fn embedded_configuration_graphics_window_width_stays_bounded_across_frames() {
     }
 
     let max_width = widths.iter().copied().fold(0.0, f32::max);
-    let min_width = widths.iter().copied().fold(f32::INFINITY, f32::min);
     assert!(widths.iter().all(|width| *width > 0.0), "widths={widths:?}");
     assert!(max_width <= 820.0, "widths={widths:?}");
-    assert!(max_width - min_width <= 8.0, "widths={widths:?}");
+    // egui first measures content and window chrome; test stability after that sizing pass.
+    let settled = &widths[2..];
+    let settled_max = settled.iter().copied().fold(0.0, f32::max);
+    let settled_min = settled.iter().copied().fold(f32::INFINITY, f32::min);
+    assert!(settled_max - settled_min <= 1.0, "widths={widths:?}");
 }
 
 #[test]
