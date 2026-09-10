@@ -833,10 +833,10 @@ impl<'a> RowLayout<'a> {
         index: usize,
     ) -> Result<Self, String> {
         let spec = &matrix.specification;
-        let label = TextBlock::new(&spec.label, LABEL_WIDTH, 16.0);
+        let label = TextBlock::new(&spec.label, LABEL_WIDTH, 15.0);
         let identity = TextBlock::new(
             &format!(
-                "{} | factor: {}\n{} bp | {}\n{}",
+                "{} | {}\n{} bp | {}\n{}",
                 spec.source_id,
                 spec.factor_id,
                 track.motif_length_bp,
@@ -844,7 +844,7 @@ impl<'a> RowLayout<'a> {
                 score_units(&report.panel_resolution.panel.score_kind)?,
             ),
             LABEL_WIDTH,
-            13.0,
+            12.0,
         );
         let valid = |scores: &[Option<f64>]| scores.iter().flatten().count();
         let terminal = window.record.geometry.length().expect("validated geometry")
