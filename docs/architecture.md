@@ -1175,6 +1175,7 @@ Current baseline:
   - `ui focus TARGET ...`
   - `ui open recent-project ITEM_ID`
   - `ui open tutorial-project CHAPTER_ID`
+  - `ui open tutorial-guide TUTORIAL_ID`
   - `ui open configuration [SECTION]`
   - `ui focus configuration [SECTION]`
   - `ui close configuration`
@@ -1413,12 +1414,21 @@ GENtle now provides a shared agent-assistance bridge across GUI and CLI shell:
     - missing/unreadable documents become typed request warnings rather than
       silent omissions or filesystem searches.
   - an optional GUI-only `x_gui_context` extension containing bounded mirrors
-    of the live host's recent-project rows, executable tutorial catalog, and
-    Configuration sections:
+    of the live host's recent-project rows, executable tutorial catalog,
+    tutorial guides/references, deterministic prompt-matched recommendations,
+    and Configuration sections:
     - recent projects expose an opaque id, path-free display metadata, file
       availability/size/time, and an exact host intent command,
-    - tutorial rows retain chapter/example identity, summary, tier, online and
-      review status, with explicit truncation metadata,
+    - executable tutorial rows retain chapter/example identity, summary, tier,
+      use cases, objectives, concepts, prerequisites, expected outcomes,
+      GUI-acceptance profile, online and review status,
+    - guide/reference rows retain catalog identity and an exact Help-opening
+      command without exposing repository paths,
+    - a bounded lexical shortlist is computed before provider invocation from
+      the current request, using recent user turns only to resolve a
+      context-light follow-up; it reports matched terms and fields, remains a
+      retrieval score rather than biological confidence, and does not replace
+      the longer-term context-labelled action graph,
     - Configuration rows provide exact tab-opening commands; opening a tab does
       not itself change credentials, executable paths, or other global state.
 - The system prompt embeds an engine-generated fact vocabulary and a compact

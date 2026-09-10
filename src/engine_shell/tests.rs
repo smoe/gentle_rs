@@ -39129,6 +39129,14 @@ fn parse_ui_open_and_prepared_commands() {
         }
         other => panic!("unexpected command: {other:?}"),
     }
+    match parse_shell_line("ui open tutorial-guide agent_interfaces")
+        .expect("parse ui open tutorial guide")
+    {
+        ShellCommand::UiTutorialGuide { tutorial_id } => {
+            assert_eq!(tutorial_id, "agent_interfaces")
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
     match parse_shell_line("ui open configuration agent-systems")
         .expect("parse ui open configuration")
     {
@@ -39147,6 +39155,8 @@ fn parse_ui_open_and_prepared_commands() {
     }
     assert!(parse_shell_line("ui focus recent-project recent-a1b2c3").is_err());
     assert!(parse_shell_line("ui open tutorial-project").is_err());
+    assert!(parse_shell_line("ui open tutorial-guide").is_err());
+    assert!(parse_shell_line("ui close tutorial-guide agent_interfaces").is_err());
     assert!(parse_shell_line("ui close configuration graphics").is_err());
 
     let open = parse_shell_line("ui open prepared-references --genome-id \"Human GRCh38\"")
@@ -39585,6 +39595,19 @@ fn execute_gui_host_catalog_intents_preserves_stable_item_ids_and_sections() {
     assert_eq!(
         tutorial.output["ui_intent"]["chapter_id"].as_str(),
         Some("08-08-promoter-orthologs")
+    );
+
+    let guide = execute_shell_command(
+        &mut engine,
+        &ShellCommand::UiTutorialGuide {
+            tutorial_id: "agent_interfaces".to_string(),
+        },
+    )
+    .expect("execute tutorial-guide intent");
+    assert!(!guide.state_changed);
+    assert_eq!(
+        guide.output["ui_intent"]["tutorial_id"].as_str(),
+        Some("agent_interfaces")
     );
 
     let configuration = execute_shell_command(

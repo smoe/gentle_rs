@@ -134,19 +134,21 @@ use crate::{
     about,
     agent_bridge::{
         AGENT_ALLOW_WEB_RESEARCH_ENV, AGENT_ATTACHMENT_SCHEMA, AGENT_BASE_URL_ENV,
-        AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_GUI_TUTORIAL_PROJECT_LIMIT,
-        AGENT_MAX_RESPONSE_BYTES_ENV, AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV,
-        AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV, ANTHROPIC_API_KEY_AUTH_HINT,
-        ANTHROPIC_API_KEY_ENV, AgentAttachmentSummary, AgentConversation, AgentConversationTurn,
-        AgentExecutionIntent, AgentGuiConfigurationSection, AgentGuiContext, AgentGuiRecentProject,
-        AgentGuiTutorialProject, AgentInvocationOutcome, AgentRequestAttachment, AgentResponse,
-        AgentScreenshotRequest, AgentSystemSpec, AgentSystemTransport,
-        DEFAULT_AGENT_SYSTEM_CATALOG_PATH, MISTRAL_API_KEY_AUTH_HINT, MISTRAL_API_KEY_ENV,
-        OPENAI_API_KEY_ENV, OPENAI_BILLING_URL, OPENAI_COMPAT_UNSPECIFIED_MODEL, OPENAI_USAGE_URL,
-        agent_explicit_local_document_paths, agent_path_is_supported_local_document,
-        agent_system_availability, anthropic_api_key_kind_warning,
-        build_agent_introspection_context, invoke_agent_support_with_gui_context_and_attachments,
-        is_pi_local_agent_system, load_agent_system_catalog,
+        AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_GUI_TUTORIAL_GUIDE_LIMIT,
+        AGENT_GUI_TUTORIAL_PROJECT_LIMIT, AGENT_MAX_RESPONSE_BYTES_ENV, AGENT_MAX_RETRIES_ENV,
+        AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV,
+        ANTHROPIC_API_KEY_AUTH_HINT, ANTHROPIC_API_KEY_ENV, AgentAttachmentSummary,
+        AgentConversation, AgentConversationTurn, AgentExecutionIntent,
+        AgentGuiConfigurationSection, AgentGuiContext, AgentGuiRecentProject,
+        AgentGuiTutorialGuide, AgentGuiTutorialProject, AgentInvocationOutcome,
+        AgentRequestAttachment, AgentResponse, AgentScreenshotRequest, AgentSystemSpec,
+        AgentSystemTransport, DEFAULT_AGENT_SYSTEM_CATALOG_PATH, MISTRAL_API_KEY_AUTH_HINT,
+        MISTRAL_API_KEY_ENV, OPENAI_API_KEY_ENV, OPENAI_BILLING_URL,
+        OPENAI_COMPAT_UNSPECIFIED_MODEL, OPENAI_USAGE_URL, agent_explicit_local_document_paths,
+        agent_path_is_supported_local_document, agent_system_availability, agent_tutorial_query,
+        anthropic_api_key_kind_warning, build_agent_introspection_context,
+        invoke_agent_support_with_gui_context_and_attachments, is_pi_local_agent_system,
+        load_agent_system_catalog, rank_agent_gui_tutorials,
     },
     agent_help::{AgentHelpCaptureEvent, AgentHelpCaptureFailure, take_capture_events},
     agent_transport::{
@@ -1195,6 +1197,12 @@ struct TutorialProjectEntry {
     human_reviewed_at: Option<String>,
     human_reviewer: Option<String>,
     review_stale: bool,
+    use_cases: Vec<String>,
+    learning_objectives: Vec<String>,
+    concepts: Vec<String>,
+    prerequisites: Vec<String>,
+    expected_outcomes: Vec<String>,
+    gui_acceptance_profile: Option<String>,
     tier: TutorialTier,
     example: WorkflowExample,
     repo_root: PathBuf,
@@ -5703,7 +5711,9 @@ Error: `{err}`"
                 .filter(|target| {
                     !matches!(
                         target,
-                        UiIntentTarget::RecentProject | UiIntentTarget::TutorialProject
+                        UiIntentTarget::RecentProject
+                            | UiIntentTarget::TutorialProject
+                            | UiIntentTarget::TutorialGuide
                     )
                 })
                 .map(CommandPaletteEntry::ui_intent),
@@ -7494,6 +7504,16 @@ Error: `{err}`"
                 )
             })?;
             let review_entry = review_by_id.get(&chapter.id);
+            let gui_acceptance_profile = chapter.gui_acceptance.as_ref().map(|acceptance| {
+                match acceptance.profile {
+                    crate::workflow_examples::TutorialGuiAcceptanceProfile::Smoke => "smoke",
+                    crate::workflow_examples::TutorialGuiAcceptanceProfile::OfflineCore => {
+                        "offline-core"
+                    }
+                    crate::workflow_examples::TutorialGuiAcceptanceProfile::Full => "full",
+                }
+                .to_string()
+            });
             entries.push(TutorialProjectEntry {
                 chapter_id: chapter.id,
                 chapter_order: chapter.order,
@@ -7511,6 +7531,12 @@ Error: `{err}`"
                 review_stale: review_entry
                     .map(|entry| entry.review_stale)
                     .unwrap_or(false),
+                use_cases: chapter.use_cases,
+                learning_objectives: chapter.learning_objectives,
+                concepts: chapter.concepts,
+                prerequisites: chapter.prerequisites,
+                expected_outcomes: chapter.step_expectations,
+                gui_acceptance_profile,
                 tier: chapter.tier,
                 example,
                 repo_root: repo_root.clone(),

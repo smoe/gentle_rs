@@ -312,8 +312,9 @@ wet-lab conclusions or unconfirmed mutations.
 - Have Glen run the candidate-bound tutorial gate for `smoke` plus conservation's
   view-only `offline-core`; extend typed coverage next to Gibson and dotplot.
   Retain separate private biological verdicts; the new MCP/Feature Editor guides need Glen's review, not inferred GUI passes.
-- Then extend context-labelled GUI/CLI/agent tutorial actions; defer skill
-  activation and inverse discovery until readiness is safeguarded.
+- Extend the deterministic inner-agent tutorial shortlist into context-labelled
+  GUI/CLI/agent tutorial actions; defer skill activation and inverse discovery
+  until readiness is safeguarded.
 - Optional OS credential-store persistence for Agent Assistant API keys.
 - Separate opt-in inner coding-agent mode for Codex, Pi, or comparable local
   harnesses, with explicit workspace scope, tool permissions, diff review,

@@ -1687,6 +1687,9 @@ pub enum ShellCommand {
     UiTutorialProject {
         chapter_id: String,
     },
+    UiTutorialGuide {
+        tutorial_id: String,
+    },
     UiConfiguration {
         action: UiIntentAction,
         section: UiConfigurationSection,
@@ -9224,6 +9227,9 @@ impl ShellCommand {
             }
             Self::UiTutorialProject { chapter_id } => {
                 format!("request GUI open for tutorial project '{chapter_id}'")
+            }
+            Self::UiTutorialGuide { tutorial_id } => {
+                format!("request GUI open for tutorial guide '{tutorial_id}'")
             }
             Self::UiConfiguration { action, section } => format!(
                 "request GUI {} for Configuration section '{}'",
@@ -17357,6 +17363,19 @@ fn push_introspection_view_facts(graph: &mut ProjectFactGraph, engine: &GentleEn
     });
 }
 
+pub(crate) fn push_ui_host_availability_fact(
+    graph: &mut ProjectFactGraph,
+    ui_host_available: bool,
+) {
+    graph.facts.push(ProjectFact {
+        fact: "ui.host_available".to_string(),
+        domain: ProjectFactDomain::View,
+        subject: introspection_fact_subject(FactSubjectKind::Ui, "host"),
+        value: Some(json!(ui_host_available)),
+        ..ProjectFact::default()
+    });
+}
+
 fn introspection_project_graph(
     engine: &GentleEngine,
     restriction_reports: &[RestrictionSiteScanReport],
@@ -17366,13 +17385,7 @@ fn introspection_project_graph(
     push_introspection_report_facts(&mut graph, engine);
     push_introspection_config_facts(&mut graph, engine);
     push_introspection_view_facts(&mut graph, engine);
-    graph.facts.push(ProjectFact {
-        fact: "ui.host_available".to_string(),
-        domain: ProjectFactDomain::View,
-        subject: introspection_fact_subject(FactSubjectKind::Ui, "host"),
-        value: Some(json!(ui_host_available)),
-        ..ProjectFact::default()
-    });
+    push_ui_host_availability_fact(&mut graph, ui_host_available);
     graph.facts.push(ProjectFact {
         fact: "view.viewport".to_string(),
         domain: ProjectFactDomain::View,
@@ -40045,6 +40058,36 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 ));
             }
             Ok(ShellCommand::UiTutorialProject { chapter_id })
+        }
+        action_raw
+            if tokens.len() >= 3
+                && UiIntentAction::parse(action_raw).is_some()
+                && UiIntentTarget::parse(&tokens[2]) == Some(UiIntentTarget::TutorialGuide) =>
+        {
+            let action = UiIntentAction::parse(action_raw)
+                .expect("checked ui intent action before parsing tutorial-guide intent");
+            if !UiIntentTarget::TutorialGuide
+                .actions()
+                .iter()
+                .any(|candidate| *candidate == action.as_str())
+            {
+                return Err(format!(
+                    "ui {} does not support target tutorial-guide",
+                    action.as_str()
+                ));
+            }
+            if tokens.len() != 4 {
+                return Err(format!(
+                    "ui {action_raw} tutorial-guide requires TUTORIAL_ID"
+                ));
+            }
+            let tutorial_id = tokens[3].trim().to_string();
+            if tutorial_id.is_empty() {
+                return Err(format!(
+                    "ui {action_raw} tutorial-guide TUTORIAL_ID must not be empty"
+                ));
+            }
+            Ok(ShellCommand::UiTutorialGuide { tutorial_id })
         }
         action_raw
             if tokens.len() >= 3
@@ -66224,6 +66267,7 @@ fn execute_ui_command(
                         "ui close TARGET",
                         "ui open recent-project ITEM_ID",
                         "ui open tutorial-project CHAPTER_ID",
+                        "ui open tutorial-guide TUTORIAL_ID",
                         "ui open configuration [SECTION]",
                         "ui focus configuration [SECTION]",
                         "ui close configuration",
@@ -66240,6 +66284,7 @@ fn execute_ui_command(
                         "prepared-references target accepts query flags to resolve selected_genome_id; explicit --genome-id overrides query selection.",
                         "recent-project ITEM_ID values are opaque GUI-host tokens; CLI/MCP can record the intent but cannot discover private recent-project paths.",
                         "tutorial-project CHAPTER_ID values come from the GUI-host tutorial catalog.",
+                        "tutorial-guide TUTORIAL_ID values come from the GUI-host tutorial guide/reference catalog.",
                         "configuration SECTION values are external-applications, agent-systems, microarrays, graphics, or language.",
                         "target_details rows carry stable titles, menu paths, keywords, and optional arguments for discoverability surfaces such as the GUI command palette and MCP clients.",
                         "target_metadata is retained as a compatibility alias for older command-catalog clients."
@@ -66294,6 +66339,19 @@ fn execute_ui_command(
                 },
                 "applied": false,
                 "message": "UI intent recorded; building a tutorial project requires GUI host integration."
+            }),
+        }),
+        ShellCommand::UiTutorialGuide { tutorial_id } => Ok(ShellRunResult {
+            state_changed: false,
+            output: json!({
+                "schema": "gentle.ui_tutorial_guide_intent.v1",
+                "ui_intent": {
+                    "action": "open",
+                    "target": "tutorial-guide",
+                    "tutorial_id": tutorial_id
+                },
+                "applied": false,
+                "message": "UI intent recorded; opening a tutorial guide requires GUI host integration."
             }),
         }),
         ShellCommand::UiConfiguration { action, section } => {
@@ -67239,6 +67297,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::UiIntent { .. }
             | ShellCommand::UiRecentProject { .. }
             | ShellCommand::UiTutorialProject { .. }
+            | ShellCommand::UiTutorialGuide { .. }
             | ShellCommand::UiConfiguration { .. }
             | ShellCommand::UiSequenceWindow { .. }
             | ShellCommand::UiSequenceSelection { .. }
@@ -67934,6 +67993,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::UiIntent { .. }
         | ShellCommand::UiRecentProject { .. }
         | ShellCommand::UiTutorialProject { .. }
+        | ShellCommand::UiTutorialGuide { .. }
         | ShellCommand::UiConfiguration { .. }
         | ShellCommand::UiSequenceWindow { .. }
         | ShellCommand::UiSequenceSelection { .. }

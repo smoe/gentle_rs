@@ -652,7 +652,7 @@ fn tool_list() -> Value {
                     },
                     "item_id": {
                         "type": "string",
-                        "description": "Opaque recent-project id or tutorial chapter id, required for those GUI-host targets."
+                        "description": "Opaque recent-project id, tutorial chapter id, or tutorial catalog id, required for those GUI-host targets."
                     },
                     "section": {
                         "type": "string",
@@ -3345,7 +3345,10 @@ fn ui_intent_tool_result(default_state_path: &str, arguments: &Value) -> Value {
             Err(err) => tool_result_text(err, "text", true),
         };
     }
-    if matches!(target.as_str(), "recent-project" | "tutorial-project") {
+    if matches!(
+        target.as_str(),
+        "recent-project" | "tutorial-project" | "tutorial-guide"
+    ) {
         let item_id = match required_string_arg(&args, "item_id") {
             Ok(value) => value,
             Err(err) => return tool_result_text(err, "text", true),
@@ -5601,6 +5604,7 @@ mod tests {
         for (target, item_id) in [
             ("recent-project", "recent-deadbeef"),
             ("tutorial-project", "simple_pcr_selection_gui"),
+            ("tutorial-guide", "agent_interfaces"),
         ] {
             let mcp_host_item_intent = run_tool(
                 DEFAULT_MCP_STATE_PATH,

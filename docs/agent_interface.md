@@ -35,8 +35,44 @@ Plain-language note used in this file:
 ## First run from an empty project
 
 When GENtle opens with an empty project, the inner Agent Assistant should be
-treated as a command-suggestion layer, not as a database client that already
-knows the current project. Start with a small, observable loop:
+treated as a goal-directed workflow guide with controlled execution, not as a
+database client that already knows the current project. A useful introduction
+is conceptually:
+
+> I understand GENtle's documented menus, fields, buttons, shared commands,
+> tutorials, and workflows. I can invoke the same underlying functionality
+> through GENtle's parity interfaces without needing to imitate every mouse
+> click literally. Tell me the scientific outcome you want, the data you have,
+> and the constraints of your laboratory. I can find and adapt an established
+> workflow, suggest a justified improvement, or compose a new reviewable path
+> from GENtle's registered capabilities.
+
+The parity promise concerns functionality rather than synthetic pixel clicks.
+GUI, CLI, GUI scripting, and agent routes should project the same shared engine
+capabilities. User confirmation, file selection, credentials, and other safety
+boundaries can still require human input. If a documented GUI action lacks an
+equivalent parser-valid route, that is a parity gap to report and repair, not a
+normal manual-only exception. The agent must neither hide that gap nor claim
+that it performed the action.
+
+The introduction also does not present the selected model's prior biological
+knowledge as verified evidence. Model knowledge can help interpret traditional
+molecular-biology language, but its quality depends on the provider/model and
+must remain distinguishable from GENtle results and supplied evidence.
+
+The intended collaboration is therefore:
+
+1. The user describes the desired biological outcome, available inputs, and
+   local constraints in their normal technical language.
+2. The agent compares that intent with established tutorials and workflows,
+   then proposes the closest reviewed path rather than merely listing commands.
+3. It binds the abstract workflow inputs to user-supplied data, calls out
+   assumptions and confirmations, and may suggest a better route with reasons.
+4. If no existing path fits, it composes registered capabilities into a new
+   reviewable path or identifies a concrete missing engine capability. It does
+   not invent an executable command.
+
+Start the technical setup with a small, observable loop:
 
 1. Open `Configuration -> Agent Systems`.
 2. Choose the provider profile (`Local Model`, `Codex Local`, OpenAI, Claude,
@@ -97,6 +133,7 @@ size/time, and an opaque id; only the live GUI can resolve that id:
 ```text
 ui open recent-project RECENT_ITEM_ID
 ui open tutorial-project CHAPTER_ID
+ui open tutorial-guide TUTORIAL_ID
 ui open configuration agent-systems
 ui open configuration microarrays
 ```
@@ -105,6 +142,34 @@ These remain reviewed UI intents. A missing recent file is listed as
 unavailable, a stale id fails closed, and opening Configuration only navigates
 to the selected tab. The user still applies credentials, executable paths, and
 other global settings through the existing Configuration confirmation model.
+Executable tutorial rows include use cases, learning objectives, concepts,
+prerequisites, expected outcomes, network requirements, GUI-acceptance profile,
+and review state. The GUI context also includes the non-project walkthroughs
+and operational references from the tutorial catalog. Their exact
+`ui open tutorial-guide ...` commands open the text in GENtle's Help window;
+they do not build a worked project.
+
+Before invoking the model, GENtle compares the current request with those
+bounded catalogs. When that request is context-light, it also uses up to three
+recent user messages so a follow-up such as “which tutorial fits that?” retains
+the scientific goal; a new specific goal supersedes older interests. It
+supplies at most five
+`tutorial_recommendations`, each with matched terms/fields and a deterministic
+`relevance_score`. This is a text-retrieval score, not a biological-confidence
+claim. The inner agent should normally explain and offer the one to three
+closest rows, use their exact commands, state prerequisites, and distinguish a
+worked project from reading material. Reviewed, non-stale, offline material is
+preferred only when relevance is otherwise comparable. If the shortlist is
+empty because the interest is still broad, one short clarifying question is
+preferable to guessing or dumping the entire catalog. Explicit requests to
+list the catalog can still use the complete bounded project/guide rows.
+
+Within Agent Assistant, a suggestion guarded by `ui.host_available` is checked
+against the live GUI host as well as the project fact graph. Consequently, a
+catalog-supplied tutorial command is runnable on the same GUI instance after
+confirmation; it is not incorrectly disabled merely because the project is
+empty. Headless agent calls do not acquire this live-GUI readiness and retain
+their existing behavior.
 Headless `agents ask` calls do not invent a GUI recent-project catalog; they can
 still parse and report the same intent commands for a future GUI host.
 

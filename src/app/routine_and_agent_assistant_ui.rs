@@ -1615,9 +1615,9 @@ impl GENtleApp {
                 ));
             }
         };
-        let evaluation = match self.engine.read() {
-            Ok(engine) => engine.evaluate_fact_expression(&expression, &[]),
-            Err(_) => {
+        let evaluation = match self.agent_suggestion_fact_evaluation(&expression) {
+            Some(evaluation) => evaluation,
+            None => {
                 return Some(
                     "Cannot verify preconditions while the project state is unavailable."
                         .to_string(),
@@ -2320,11 +2320,14 @@ impl GENtleApp {
             let _attachment_files = worker_attachment_files;
             let _ = tx.send(AgentAskTaskMessage::Status {
                 job_id,
-                message: "Building recent-project, tutorial, and Configuration context".to_string(),
+                message: "Building recent-project, tutorial-guidance, and Configuration context"
+                    .to_string(),
             });
-            let gui_context = GENtleApp::build_agent_gui_context_from(
+            let tutorial_query = agent_tutorial_query(&prompt, Some(&conversation));
+            let gui_context = GENtleApp::build_agent_gui_context_for_query(
                 &recent_project_paths,
                 current_project_path.as_deref(),
+                &tutorial_query,
             );
             let request_context = if include_state_summary {
                 let _ = tx.send(AgentAskTaskMessage::Status {
@@ -2804,6 +2807,9 @@ impl GENtleApp {
         if let ShellCommand::UiTutorialProject { chapter_id } = command {
             return Some(self.apply_tutorial_project_intent(chapter_id));
         }
+        if let ShellCommand::UiTutorialGuide { tutorial_id } = command {
+            return Some(self.apply_tutorial_guide_intent(tutorial_id));
+        }
         if let ShellCommand::UiConfiguration { action, section } = command {
             return Some(self.apply_configuration_intent(*action, *section));
         }
@@ -2887,6 +2893,10 @@ impl GENtleApp {
                     "Tutorial-project UI intent requires a chapter id from the tutorial catalog"
                         .to_string();
             }
+            UiIntentTarget::TutorialGuide => {
+                self.app_status =
+                    "Tutorial-guide UI intent requires an id from the tutorial catalog".to_string();
+            }
             UiIntentTarget::Configuration => self.open_configuration_dialog(),
             UiIntentTarget::PreparedReferences => self.open_reference_genome_inspector_dialog(),
             UiIntentTarget::PrepareReferenceGenome => self.open_reference_genome_prepare_dialog(),
@@ -2916,9 +2926,18 @@ impl GENtleApp {
         format!("recent-{}", &digest[..16.min(digest.len())])
     }
 
+    #[cfg(test)]
     pub(super) fn build_agent_gui_context_from(
         recent_project_paths: &[String],
         current_project_path: Option<&str>,
+    ) -> AgentGuiContext {
+        Self::build_agent_gui_context_for_query(recent_project_paths, current_project_path, "")
+    }
+
+    pub(super) fn build_agent_gui_context_for_query(
+        recent_project_paths: &[String],
+        current_project_path: Option<&str>,
+        tutorial_query: &str,
     ) -> AgentGuiContext {
         let current_project_path = current_project_path.map(Self::normalize_project_path);
         let recent_projects = recent_project_paths
@@ -2971,9 +2990,15 @@ impl GENtleApp {
             recent_projects,
             ..AgentGuiContext::default()
         };
+        let mut tutorial_project_ids = HashSet::new();
         match Self::load_tutorial_project_entries() {
             Ok(entries) => {
                 context.tutorial_project_count = entries.len();
+                tutorial_project_ids.extend(
+                    entries
+                        .iter()
+                        .map(|entry| entry.chapter_id.trim().to_string()),
+                );
                 context.tutorial_projects = entries
                     .into_iter()
                     .take(AGENT_GUI_TUTORIAL_PROJECT_LIMIT)
@@ -2997,6 +3022,12 @@ impl GENtleApp {
                             online: entry.example.test_mode == ExampleTestMode::Online,
                             review_status: entry.review_status,
                             review_stale: entry.review_stale,
+                            use_cases: entry.use_cases,
+                            learning_objectives: entry.learning_objectives,
+                            concepts: entry.concepts,
+                            prerequisites: entry.prerequisites,
+                            expected_outcomes: entry.expected_outcomes,
+                            gui_acceptance_profile: entry.gui_acceptance_profile,
                         }
                     })
                     .collect();
@@ -3010,6 +3041,54 @@ impl GENtleApp {
                 .warnings
                 .push(format!("Could not load the GUI tutorial catalog: {err}")),
         }
+        match Self::resolve_runtime_doc_path(
+            crate::workflow_examples::DEFAULT_TUTORIAL_CATALOG_PATH,
+        )
+        .ok_or_else(|| "Could not locate the tutorial discovery catalog".to_string())
+        .and_then(|path| crate::workflow_examples::load_tutorial_catalog(&path))
+        {
+            Ok(catalog) => {
+                let guides = catalog
+                    .entries
+                    .into_iter()
+                    .filter(|entry| !tutorial_project_ids.contains(entry.id.as_str()))
+                    .collect::<Vec<_>>();
+                context.tutorial_guide_count = guides.len();
+                context.tutorial_guides = guides
+                    .into_iter()
+                    .take(AGENT_GUI_TUTORIAL_GUIDE_LIMIT)
+                    .map(|entry| {
+                        let tutorial_id = entry.id;
+                        AgentGuiTutorialGuide {
+                            open_command: format!("ui open tutorial-guide {tutorial_id}"),
+                            tutorial_id,
+                            display_label: Self::tutorial_display_label(
+                                entry.decimal_id.as_deref(),
+                                None,
+                                &entry.title,
+                            ),
+                            decimal_id: entry.decimal_id,
+                            title: entry.title,
+                            summary: entry.notes,
+                            group: entry.group_label,
+                            entry_type: entry.entry_type,
+                            status: entry.status,
+                            audiences: entry.audiences,
+                            review_status: entry.review_status,
+                            review_stale: entry.review_stale,
+                        }
+                    })
+                    .collect();
+                context.included_tutorial_guide_count = context.tutorial_guides.len();
+                context.omitted_tutorial_guide_count = context
+                    .tutorial_guide_count
+                    .saturating_sub(context.included_tutorial_guide_count);
+                context.tutorial_guides_truncated = context.omitted_tutorial_guide_count > 0;
+            }
+            Err(err) => context.warnings.push(format!(
+                "Could not load the GUI tutorial guide catalog: {err}"
+            )),
+        }
         context.configuration_sections = UiConfigurationSection::all()
             .iter()
             .copied()
@@ -3020,6 +3099,7 @@ impl GENtleApp {
                 open_command: format!("ui open configuration {}", section.as_str()),
             })
             .collect();
+        rank_agent_gui_tutorials(&mut context, tutorial_query);
         context
     }
 
@@ -3065,6 +3145,36 @@ impl GENtleApp {
         format!("ui intent open 'tutorial-project' '{title}' ({chapter_id})")
     }
 
+    fn apply_tutorial_guide_intent(&mut self, tutorial_id: &str) -> String {
+        let tutorial_id = tutorial_id.trim();
+        let Some(catalog_path) =
+            Self::resolve_runtime_doc_path(crate::workflow_examples::DEFAULT_TUTORIAL_CATALOG_PATH)
+        else {
+            return "ui intent open 'tutorial-guide' could not locate the tutorial catalog"
+                .to_string();
+        };
+        let catalog = match crate::workflow_examples::load_tutorial_catalog(&catalog_path) {
+            Ok(catalog) => catalog,
+            Err(err) => {
+                return format!(
+                    "ui intent open 'tutorial-guide' could not load the tutorial catalog: {err}"
+                );
+            }
+        };
+        let Some(entry) = catalog.entries.iter().find(|entry| entry.id == tutorial_id) else {
+            return format!(
+                "ui intent open 'tutorial-guide' found no current tutorial '{tutorial_id}'"
+            );
+        };
+        let title = entry.title.clone();
+        match self.open_help_tutorial_path(&entry.path, &entry.title, &entry.notes) {
+            Ok(()) => format!("ui intent open 'tutorial-guide' '{title}' ({tutorial_id})"),
+            Err(err) => {
+                format!("ui intent open 'tutorial-guide' could not open '{tutorial_id}': {err}")
+            }
+        }
+    }
+
     fn apply_configuration_intent(
         &mut self,
         action: UiIntentAction,
@@ -3107,7 +3217,9 @@ impl GENtleApp {
             UiIntentTarget::OpenSequence => {
                 return "ui intent close 'open-sequence' is not applicable; use ui close sequence-window SEQ_ID for DNA viewers".to_string();
             }
-            UiIntentTarget::RecentProject | UiIntentTarget::TutorialProject => {
+            UiIntentTarget::RecentProject
+            | UiIntentTarget::TutorialProject
+            | UiIntentTarget::TutorialGuide => {
                 return format!(
                     "ui intent close '{}' is not applicable; opening a project is an action, not a persistent dialog",
                     target.as_str()
@@ -7327,9 +7439,20 @@ impl GENtleApp {
     ) -> Option<String> {
         let expression =
             serde_json::from_value::<crate::engine::FactExpression>(expr.clone()).ok()?;
-        let engine = self.engine.read().ok()?;
-        let evaluation = engine.evaluate_fact_expression(&expression, &[]);
+        let evaluation = self.agent_suggestion_fact_evaluation(&expression)?;
         Some(crate::agent_bridge::agent_fact_readiness_label(&evaluation))
+    }
+
+    fn agent_suggestion_fact_evaluation(
+        &self,
+        expression: &crate::engine::FactExpression,
+    ) -> Option<crate::engine::FactEvaluationResult> {
+        let engine = self.engine.read().ok()?;
+        let mut graph = engine.project_fact_graph();
+        crate::engine_shell::push_ui_host_availability_fact(&mut graph, true);
+        Some(GentleEngine::evaluate_fact_expression_against_graph(
+            expression, &graph,
+        ))
     }
 
     pub(super) fn routine_assistant_is_gibson_family(routine: &CloningRoutineCatalogRow) -> bool {

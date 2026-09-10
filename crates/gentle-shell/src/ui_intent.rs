@@ -124,6 +124,7 @@ pub enum UiIntentTarget {
     OpenSequence,
     RecentProject,
     TutorialProject,
+    TutorialGuide,
     Configuration,
     PreparedReferences,
     PrepareReferenceGenome,
@@ -145,6 +146,7 @@ const UI_INTENT_TARGETS: [UiIntentTarget; UiIntentTarget::COUNT] = [
     UiIntentTarget::OpenSequence,
     UiIntentTarget::RecentProject,
     UiIntentTarget::TutorialProject,
+    UiIntentTarget::TutorialGuide,
     UiIntentTarget::Configuration,
     UiIntentTarget::PreparedReferences,
     UiIntentTarget::PrepareReferenceGenome,
@@ -200,10 +202,15 @@ const UI_INTENT_ARGUMENT_LATEST: UiIntentArgument = UiIntentArgument {
     required: false,
     detail: "Prefer the latest matching prepared reference when deterministic selection is available.",
 };
-const UI_INTENT_ARGUMENT_ITEM_ID: UiIntentArgument = UiIntentArgument {
+const UI_INTENT_ARGUMENT_RECENT_OR_CHAPTER_ID: UiIntentArgument = UiIntentArgument {
     name: "item_id",
     required: true,
     detail: "Opaque recent-project id or stable tutorial chapter id supplied by the GUI host context.",
+};
+const UI_INTENT_ARGUMENT_TUTORIAL_ID: UiIntentArgument = UiIntentArgument {
+    name: "item_id",
+    required: true,
+    detail: "Stable tutorial catalog id supplied by the GUI host context.",
 };
 const UI_INTENT_ARGUMENT_CONFIGURATION_SECTION: UiIntentArgument = UiIntentArgument {
     name: "section",
@@ -224,7 +231,9 @@ const UI_INTENT_OPTIONAL_ARGUMENTS_PREPARED_REFERENCES: [&str; 7] = [
 ];
 const UI_INTENT_ARGUMENTS_DEFAULT: [UiIntentArgument; 1] = [UI_INTENT_ARGUMENT_GENOME_ID];
 const UI_INTENT_ARGUMENTS_NONE: [UiIntentArgument; 0] = [];
-const UI_INTENT_ARGUMENTS_ITEM_ID: [UiIntentArgument; 1] = [UI_INTENT_ARGUMENT_ITEM_ID];
+const UI_INTENT_ARGUMENTS_RECENT_OR_CHAPTER_ID: [UiIntentArgument; 1] =
+    [UI_INTENT_ARGUMENT_RECENT_OR_CHAPTER_ID];
+const UI_INTENT_ARGUMENTS_TUTORIAL_ID: [UiIntentArgument; 1] = [UI_INTENT_ARGUMENT_TUTORIAL_ID];
 const UI_INTENT_ARGUMENTS_CONFIGURATION: [UiIntentArgument; 1] =
     [UI_INTENT_ARGUMENT_CONFIGURATION_SECTION];
 const UI_INTENT_ARGUMENTS_PREPARED_REFERENCES: [UiIntentArgument; 7] = [
@@ -262,7 +271,7 @@ pub struct UiIntentTargetCatalogRow {
 
 impl UiIntentTarget {
     /// Number of stable UI-intent destinations.
-    pub const COUNT: usize = 18;
+    pub const COUNT: usize = 19;
 
     /// Stable catalog order used by shell, MCP, and GUI discoverability.
     pub fn all() -> &'static [Self] {
@@ -280,6 +289,9 @@ impl UiIntentTarget {
                 Some(Self::RecentProject)
             }
             "tutorial-project" | "tutorial_project" | "tutorial" => Some(Self::TutorialProject),
+            "tutorial-guide" | "tutorial_guide" | "tutorial-doc" | "tutorial_doc" => {
+                Some(Self::TutorialGuide)
+            }
             "configuration" | "settings" | "preferences" => Some(Self::Configuration),
             "prepared-references" | "prepared_references" | "prepared" => {
                 Some(Self::PreparedReferences)
@@ -338,6 +350,7 @@ impl UiIntentTarget {
             Self::OpenSequence => "open-sequence",
             Self::RecentProject => "recent-project",
             Self::TutorialProject => "tutorial-project",
+            Self::TutorialGuide => "tutorial-guide",
             Self::Configuration => "configuration",
             Self::PreparedReferences => "prepared-references",
             Self::PrepareReferenceGenome => "prepare-reference-genome",
@@ -362,6 +375,7 @@ impl UiIntentTarget {
             Self::OpenSequence => "Open Sequence",
             Self::RecentProject => "Open Recent Project",
             Self::TutorialProject => "Open Tutorial Project",
+            Self::TutorialGuide => "Open Tutorial Guide",
             Self::Configuration => "Configuration",
             Self::PreparedReferences => "Prepared References",
             Self::PrepareReferenceGenome => "Prepare Reference Genome",
@@ -395,6 +409,9 @@ impl UiIntentTarget {
                 "Open one project from the GUI host's bounded recent-project list."
             }
             Self::TutorialProject => "Build and open one chapter from GENtle's tutorial catalog.",
+            Self::TutorialGuide => {
+                "Open one guided walkthrough or reference page from GENtle's tutorial catalog."
+            }
             Self::Configuration => "Open or focus a specific global Configuration section.",
             Self::PreparedReferences => "Inspect prepared reference/helper genome installations.",
             Self::PrepareReferenceGenome => "Download/index the selected reference genome.",
@@ -434,6 +451,7 @@ impl UiIntentTarget {
             Self::OpenSequence => "open sequence import file fasta genbank snapgene embl xml",
             Self::RecentProject => "open recent previous saved project continue",
             Self::TutorialProject => "open tutorial example demo chapter project",
+            Self::TutorialGuide => "open tutorial guide walkthrough reference learn help",
             Self::Configuration => {
                 "configuration settings preferences tools agents arrays graphics language"
             }
@@ -471,6 +489,7 @@ impl UiIntentTarget {
             | Self::RecentProject
             | Self::TutorialProject
             | Self::AgentAssistant => "File",
+            Self::TutorialGuide => "Help",
             Self::Configuration => "Settings",
             Self::FeatureLocationEditor => "Edit",
             Self::PcrDesign | Self::SequencingConfirmation | Self::GelImageEditor => "Patterns",
@@ -490,7 +509,9 @@ impl UiIntentTarget {
     pub fn actions(self) -> &'static [&'static str] {
         match self {
             Self::OpenSequence => &UI_INTENT_FILE_PICKER_ACTION_NAMES,
-            Self::RecentProject | Self::TutorialProject => &UI_INTENT_OPEN_ACTION_NAMES,
+            Self::RecentProject | Self::TutorialProject | Self::TutorialGuide => {
+                &UI_INTENT_OPEN_ACTION_NAMES
+            }
             Self::Configuration | Self::GelImageEditor => &UI_INTENT_ACTION_NAMES,
             Self::PreparedReferences
             | Self::PrepareReferenceGenome
@@ -513,9 +534,10 @@ impl UiIntentTarget {
         match self {
             Self::PreparedReferences => &UI_INTENT_OPTIONAL_ARGUMENTS_PREPARED_REFERENCES,
             Self::Configuration => &UI_INTENT_OPTIONAL_ARGUMENTS_CONFIGURATION,
-            Self::RecentProject | Self::TutorialProject | Self::GelImageEditor => {
-                &UI_INTENT_OPTIONAL_ARGUMENTS_NONE
-            }
+            Self::RecentProject
+            | Self::TutorialProject
+            | Self::TutorialGuide
+            | Self::GelImageEditor => &UI_INTENT_OPTIONAL_ARGUMENTS_NONE,
             Self::FeatureLocationEditor | Self::SavedGenomicRegions => {
                 &UI_INTENT_OPTIONAL_ARGUMENTS_NONE
             }
@@ -527,7 +549,10 @@ impl UiIntentTarget {
     pub fn arguments(self) -> &'static [UiIntentArgument] {
         match self {
             Self::PreparedReferences => &UI_INTENT_ARGUMENTS_PREPARED_REFERENCES,
-            Self::RecentProject | Self::TutorialProject => &UI_INTENT_ARGUMENTS_ITEM_ID,
+            Self::RecentProject | Self::TutorialProject => {
+                &UI_INTENT_ARGUMENTS_RECENT_OR_CHAPTER_ID
+            }
+            Self::TutorialGuide => &UI_INTENT_ARGUMENTS_TUTORIAL_ID,
             Self::Configuration => &UI_INTENT_ARGUMENTS_CONFIGURATION,
             Self::FeatureLocationEditor | Self::SavedGenomicRegions | Self::GelImageEditor => {
                 &UI_INTENT_ARGUMENTS_NONE
@@ -584,6 +609,10 @@ mod tests {
         ("previous_project", UiIntentTarget::RecentProject),
         ("tutorial-project", UiIntentTarget::TutorialProject),
         ("tutorial", UiIntentTarget::TutorialProject),
+        ("tutorial-guide", UiIntentTarget::TutorialGuide),
+        ("tutorial_guide", UiIntentTarget::TutorialGuide),
+        ("tutorial-doc", UiIntentTarget::TutorialGuide),
+        ("tutorial_doc", UiIntentTarget::TutorialGuide),
         ("configuration", UiIntentTarget::Configuration),
         ("settings", UiIntentTarget::Configuration),
         ("prepared-references", UiIntentTarget::PreparedReferences),
@@ -698,6 +727,7 @@ mod tests {
             | UiIntentTarget::OpenSequence
             | UiIntentTarget::RecentProject
             | UiIntentTarget::TutorialProject
+            | UiIntentTarget::TutorialGuide
             | UiIntentTarget::Configuration
             | UiIntentTarget::PreparedReferences
             | UiIntentTarget::PrepareReferenceGenome
@@ -736,6 +766,7 @@ mod tests {
             UiIntentTarget::OpenSequence,
             UiIntentTarget::RecentProject,
             UiIntentTarget::TutorialProject,
+            UiIntentTarget::TutorialGuide,
             UiIntentTarget::Configuration,
             UiIntentTarget::PreparedReferences,
             UiIntentTarget::PrepareReferenceGenome,
@@ -799,7 +830,8 @@ mod tests {
 
     #[test]
     fn ui_intent_catalog_rows_are_complete() {
-        let known_menus = BTreeSet::from(["Edit", "File", "Genome", "Patterns", "Settings"]);
+        let known_menus =
+            BTreeSet::from(["Edit", "File", "Genome", "Help", "Patterns", "Settings"]);
         for target in UiIntentTarget::all() {
             let row = target.catalog_row();
             assert!(!row.title.trim().is_empty());

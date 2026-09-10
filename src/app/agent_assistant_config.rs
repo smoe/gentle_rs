@@ -304,7 +304,12 @@ Context policy:
 - If an operand such as QUERY, ID, SEQ_ID, ENTRY_ID, PATH, or SPECIES is unclear, ask instead of guessing.
 
 Output wanted:
-- 5-8 bullets about what you can help with inside GENtle.
+- Begin assistant_message with a concise, plain-language role overview, then use 4-7 bullets for concrete examples.
+- Explain that you understand GENtle's documented menus, entry fields, buttons, shared commands, tutorials, and workflows, and can invoke the same underlying functionality through GENtle's parity interfaces without imitating every mouse click literally.
+- State that GUI, CLI, GUI scripting, and agent routes project shared engine capabilities. Safety confirmations still apply; if a documented GUI action lacks an equivalent parser-valid route, report a parity gap rather than accepting it as manual-only or pretending it ran.
+- Invite the user to describe the scientific outcome, available data, and important laboratory constraints in their own technical language.
+- Explain that tutorials/workflows are adaptable starting paths: you can find a close match, bind it to supplied data, suggest justified improvements, or compose a new reviewable path from registered GENtle capabilities.
+- State briefly that molecular-biology knowledge depends on the selected model and is advisory; distinguish model reasoning from GENtle results and supplied evidence.
 - 2-4 safe suggested_commands using GENtle shared-shell commands only.
 - Each suggested command needs a clear title as the user intent and preconditions[] when it depends on state.
 - Each suggested command should include expected_outcomes[] describing what should be observable if the command succeeds; these are expected effects, not guarantees.
@@ -312,7 +317,10 @@ Output wanted:
 - For negative requirements such as "no EcoRI site", require or produce a positive proof fact such as restriction_site.absent based on a complete scan; do not infer absence from missing features.
 - On an empty or unknown project, prefer orientation/open/retrieve commands first; do not suggest feature scans as runnable first actions.
 - Include Configuration among useful starting actions when x_gui_context is available.
-- Use x_gui_context as the authoritative list of recent projects, tutorial projects, and Configuration sections; use exact open_command values from its rows.
+- Use x_gui_context as the authoritative list of recent projects, executable tutorial projects, tutorial guides/references, and Configuration sections; use exact open_command values from its rows.
+- If the user's interests are already clear, use tutorial_recommendations and recommend only its 1-3 most relevant rows with a short reason tied to matched_terms/matched_fields and prerequisites. relevance_score is a retrieval score, not biological confidence.
+- Distinguish executable_project rows, which build a worked project, from guide/reference rows, which open teaching text. Prefer reviewed, non-stale, offline material when relevance is comparable, and identify online, unknown-network, or stale-review choices.
+- If the user asks about tutorials without saying what they want to learn or do, ask one concise interest question instead of listing the whole catalog.
 - Mark runnable suggestions execution="ask"; use execution="chat" only for purely explanatory rows that should not run.
 - Mention that external database/network actions require explicit confirmation.
 
@@ -334,7 +342,8 @@ Follow-up demo command after a sequence exists:
 
 Continuing earlier work:
 - If x_gui_context contains recent_projects, list those rows and use the selected row's exact `ui open recent-project ITEM_ID` command.
-- If x_gui_context contains tutorial_projects, list those rows instead of claiming that no tutorial projects are known.
+- If x_gui_context contains tutorial_recommendations, use those rows rather than independently guessing a tutorial. An executable_project uses its exact `ui open tutorial-project CHAPTER_ID` command; a guide/reference uses its exact `ui open tutorial-guide TUTORIAL_ID` command.
+- Use tutorial_projects and tutorial_guides only when the user explicitly asks to inspect the broader catalog. Never invent a chapter/tutorial id.
 - Use `ui open configuration SECTION` from configuration_sections to put the user on the relevant settings tab; opening it does not itself change credentials or paths.
 - If no recent row matches, suggest GUI path `File -> Open Project...` or `File -> Open Recent Project...` and report any x_gui_context warning.
 - If the user supplies an exact saved project path, tell them to open it through `File -> Open Project...` or by launching GENtle with that project path.
@@ -623,6 +632,21 @@ mod tests {
             "structured"
         ));
         assert!(agent_prompt_template_text("compact_intro").contains("shared-shell"));
+        assert!(
+            agent_prompt_template_text("compact_intro").contains("plain-language role overview")
+        );
+        assert!(
+            agent_prompt_template_text("compact_intro").contains(
+                "scientific outcome, available data, and important laboratory constraints"
+            )
+        );
+        assert!(agent_prompt_template_text("compact_intro").contains("adaptable starting paths"));
+        assert!(agent_prompt_template_text("compact_intro").contains("parity interfaces"));
+        assert!(agent_prompt_template_text("compact_intro").contains("report a parity gap"));
+        assert!(
+            agent_prompt_template_text("compact_intro")
+                .contains("knowledge depends on the selected model")
+        );
         assert!(agent_prompt_template_text("compact_intro").contains("not filesystem files"));
         assert!(agent_prompt_template_text("compact_intro").contains("Do not describe /list"));
         assert!(
@@ -657,6 +681,21 @@ mod tests {
             agent_prompt_template_text("compact_intro").contains("ui open recent-project ITEM_ID")
         );
         assert!(agent_prompt_template_text("compact_intro").contains("tutorial_projects"));
+        assert!(agent_prompt_template_text("compact_intro").contains("1-3 most relevant rows"));
+        assert!(agent_prompt_template_text("compact_intro").contains("tutorial_recommendations"));
+        assert!(agent_prompt_template_text("compact_intro").contains("tutorial_guides"));
+        assert!(
+            agent_prompt_template_text("compact_intro")
+                .contains("reviewed, non-stale, offline material")
+        );
+        assert!(
+            agent_prompt_template_text("compact_intro")
+                .contains("ui open tutorial-project CHAPTER_ID")
+        );
+        assert!(
+            agent_prompt_template_text("compact_intro")
+                .contains("ui open tutorial-guide TUTORIAL_ID")
+        );
         assert!(
             agent_prompt_template_text("compact_intro").contains("ui open configuration SECTION")
         );

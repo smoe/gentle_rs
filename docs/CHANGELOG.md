@@ -1,5 +1,34 @@
 # GENtle Changelog
 
+## 2026-09-10 - Runnable and interest-guided Agent Assistant tutorials
+
+- Fixed Agent Assistant suggestion readiness so `ui.host_available`
+  preconditions are evaluated against the live GUI host. Exact
+  `ui open tutorial-project ...` suggestions no longer lose their Run action
+  merely because the current project is empty; headless behavior is unchanged.
+- Instructed inner agents to rank one to three catalogued tutorials after the
+  user describes an interest, explain the match, prefer reviewed non-stale
+  offline material when otherwise comparable, and ask a concise question
+  instead of dumping the catalog when the intent is still broad.
+- Extended the GUI-only tutorial context with use cases, objectives, concepts,
+  prerequisites, expected outcomes, and GUI-acceptance profiles. It now also
+  exposes non-project walkthroughs/references and a deterministic top-five
+  shortlist matched against the current request plus recent user intent. Match
+  terms and fields explain retrieval; the score is not biological confidence.
+- Added the path-free `ui open tutorial-guide TUTORIAL_ID` shared-shell/MCP
+  intent. A live GUI resolves the stable catalog id and opens that teaching
+  page in Help, while `ui open tutorial-project CHAPTER_ID` remains the route
+  that builds a worked tutorial project.
+- Reframed the first reply around scientific goals, supplied data and local lab
+  constraints. The assistant now presents tutorials as adaptable starting
+  paths, distinguishes model knowledge from engine evidence, and explains that
+  GUI, CLI, scripting, and agent surfaces project shared functionality. Missing
+  projections are reported as parity gaps rather than manual-only exceptions.
+- Added deterministic host-readiness, tutorial retrieval, catalog-dispatch,
+  and prompt-policy regressions. The card check only adds the in-process
+  GUI-host fact and does not perform external tool or filesystem probes during
+  repaint.
+
 ## 2026-09-10 - Lossless PDF compression and concise TSS CLI output
 
 - Replaced uncompressed PDF RGB streams with lossless FlateDecode/zlib using

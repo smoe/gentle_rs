@@ -1928,6 +1928,35 @@ fn agent_suggestion_fact_readiness_uses_loaded_project_state() {
 }
 
 #[test]
+fn agent_suggestion_gui_host_precondition_keeps_tutorial_command_runnable() {
+    let app = GENtleApp::default();
+    let suggestion = AgentSuggestedCommand {
+        title: Some("Open cloning tutorial".to_string()),
+        preconditions: vec!["GUI host is available".to_string()],
+        precondition_expr: Some(serde_json::json!({
+            "all": [{ "fact": "ui.host_available" }]
+        })),
+        expected_outcomes: vec!["The tutorial project opens.".to_string()],
+        expected_effects: vec![],
+        rationale: None,
+        command: "ui open tutorial-project load_and_digest_pgex".to_string(),
+        execution: AgentExecutionIntent::Ask,
+    };
+
+    assert_eq!(
+        app.agent_suggestion_fact_readiness(
+            suggestion
+                .precondition_expr
+                .as_ref()
+                .expect("host precondition")
+        )
+        .as_deref(),
+        Some("ready")
+    );
+    assert_eq!(app.agent_suggestion_live_blocker(&suggestion), None);
+}
+
+#[test]
 fn agent_suggestion_preconditions_block_execution_until_project_fact_is_ready() {
     let mut app = GENtleApp::default();
     let suggestion = AgentSuggestedCommand {
@@ -6569,7 +6598,9 @@ fn command_palette_includes_shared_ui_intent_entries() {
     for target in UiIntentTarget::all() {
         if matches!(
             target,
-            UiIntentTarget::RecentProject | UiIntentTarget::TutorialProject
+            UiIntentTarget::RecentProject
+                | UiIntentTarget::TutorialProject
+                | UiIntentTarget::TutorialGuide
         ) {
             assert!(
                 !entries.iter().any(|entry| {
@@ -6848,6 +6879,7 @@ fn assert_command_palette_ui_intent_side_effect(app: &GENtleApp, target: UiInten
         UiIntentTarget::OpenSequence
         | UiIntentTarget::RecentProject
         | UiIntentTarget::TutorialProject
+        | UiIntentTarget::TutorialGuide
         | UiIntentTarget::PreparedReferences
         | UiIntentTarget::AgentAssistant => {
             panic!(
@@ -8339,6 +8371,22 @@ fn agent_gui_context_mirrors_recent_tutorial_and_configuration_catalogs() {
             .iter()
             .any(|entry| entry.chapter_id == "tp63_anchor_extension_online")
     );
+    let digest_tutorial = context
+        .tutorial_projects
+        .iter()
+        .find(|entry| entry.chapter_id == "load_and_digest_pgex")
+        .expect("digest tutorial project");
+    assert!(!digest_tutorial.use_cases.is_empty());
+    assert!(!digest_tutorial.learning_objectives.is_empty());
+    assert!(!digest_tutorial.concepts.is_empty());
+    assert!(!digest_tutorial.prerequisites.is_empty());
+    assert!(context.tutorial_guide_count > 0);
+    assert!(context.tutorial_guides.iter().any(|entry| {
+        entry.tutorial_id == "agent_interfaces"
+            && entry.entry_type == "operational_reference"
+            && entry.open_command == "ui open tutorial-guide agent_interfaces"
+    }));
+    assert!(context.tutorial_recommendations.is_empty());
     assert_eq!(
         context.configuration_sections.len(),
         UiConfigurationSection::all().len()
@@ -8347,6 +8395,30 @@ fn agent_gui_context_mirrors_recent_tutorial_and_configuration_catalogs() {
         section.section_id == "agent-systems"
             && section.open_command == "ui open configuration agent-systems"
     }));
+}
+
+#[test]
+fn agent_gui_context_ranks_relevant_tutorials_deterministically() {
+    let context = GENtleApp::build_agent_gui_context_for_query(
+        &[],
+        None,
+        "I want to digest a plasmid with BamHI and EcoRI before cloning.",
+    );
+
+    let first = context
+        .tutorial_recommendations
+        .first()
+        .expect("prompt-matched tutorial recommendation");
+    assert_eq!(first.rank, 1);
+    assert_eq!(first.tutorial_id, "load_and_digest_pgex");
+    assert_eq!(first.kind, "executable_project");
+    assert_eq!(
+        first.open_command,
+        "ui open tutorial-project load_and_digest_pgex"
+    );
+    assert!(first.relevance_score > 0);
+    assert!(first.matched_terms.iter().any(|term| term == "digest"));
+    assert!(first.matched_fields.iter().any(|field| field == "title"));
 }
 
 #[test]
@@ -8382,6 +8454,16 @@ fn agent_gui_intents_open_recent_project_and_exact_configuration_section() {
         app.configuration_tab,
         ConfigurationTab::Microarrays
     ));
+
+    let guide_summary = app
+        .try_apply_shell_ui_intent(&ShellCommand::UiTutorialGuide {
+            tutorial_id: "agent_interfaces".to_string(),
+        })
+        .expect("tutorial guide is a GUI intent");
+    assert!(guide_summary.contains("agent_interfaces"));
+    assert!(app.show_help_dialog);
+    assert_eq!(app.help_doc, HelpDoc::Tutorial);
+    assert!(app.help_tutorial_title.contains("Agent"));
 }
 
 #[test]

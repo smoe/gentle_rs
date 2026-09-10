@@ -5082,6 +5082,8 @@ Shell/engine quick-install contracts:
       viewer without mutating the sequence record)
     - `recent-project` (requires the opaque GUI-host `item_id`; open only)
     - `tutorial-project` (requires the catalog `item_id`/chapter id; open only)
+    - `tutorial-guide` (requires the stable tutorial-catalog `item_id`; open
+      only; opens a walkthrough/reference in the GUI Help window)
     - `configuration` (optional `section`: `external-applications`,
       `agent-systems`, `microarrays`, `graphics`, or `language`)
     - `prepared-references`
@@ -5100,6 +5102,7 @@ Shell/engine quick-install contracts:
       - `ui open TARGET ...`, `ui focus TARGET ...`,
         `ui open recent-project ITEM_ID`,
         `ui open tutorial-project CHAPTER_ID`,
+        `ui open tutorial-guide TUTORIAL_ID`,
         `ui open|focus configuration [SECTION]`,
         `ui open sequence-window SEQ_ID`, `ui focus sequence-window SEQ_ID`,
         `ui close TARGET`, or `ui close sequence-window SEQ_ID`
@@ -5113,7 +5116,8 @@ Shell/engine quick-install contracts:
   - result:
     - generic structured payload schema: `gentle.ui_intent.v1`
     - specialized schemas: `gentle.ui_recent_project_intent.v1`,
-      `gentle.ui_tutorial_project_intent.v1`, and
+      `gentle.ui_tutorial_project_intent.v1`,
+      `gentle.ui_tutorial_guide_intent.v1`, and
       `gentle.ui_configuration_intent.v1`
     - fields include `ui_intent`, `selected_genome_id`, optional
       `prepared_query`, `applied=false`, and deterministic `message`
@@ -5874,7 +5878,50 @@ Agent request payload schema (`gentle.agent_request.v1`):
         "online": false,
         "review_status": "reviewed",
         "review_stale": false,
+        "use_cases": ["Choose primers for a bounded PCR target."],
+        "learning_objectives": ["Inspect a primer-pair design report."],
+        "concepts": ["primer_design"],
+        "prerequisites": ["A DNA template is available."],
+        "expected_outcomes": ["A reviewable primer-pair report is available."],
+        "gui_acceptance_profile": "smoke",
         "open_command": "ui open tutorial-project simple_pcr_selection_gui"
+      }
+    ],
+    "tutorial_guide_count": 1,
+    "included_tutorial_guide_count": 1,
+    "omitted_tutorial_guide_count": 0,
+    "tutorial_guides_truncated": false,
+    "tutorial_guides": [
+      {
+        "tutorial_id": "agent_interfaces",
+        "display_label": "GENtle Agent Assistant and Agent Interfaces Tutorial",
+        "title": "GENtle Agent Assistant and Agent Interfaces Tutorial",
+        "summary": "Choose and operate an agent interface.",
+        "entry_type": "operational_reference",
+        "status": "manual/reference",
+        "audiences": ["agent_users"],
+        "review_status": "unreviewed",
+        "review_stale": false,
+        "open_command": "ui open tutorial-guide agent_interfaces"
+      }
+    ],
+    "tutorial_recommendation_query_terms": ["agent", "interface"],
+    "tutorial_recommendations": [
+      {
+        "rank": 1,
+        "tutorial_id": "agent_interfaces",
+        "kind": "operational_reference",
+        "title": "GENtle Agent Assistant and Agent Interfaces Tutorial",
+        "summary": "Choose and operate an agent interface.",
+        "relevance_score": 24,
+        "matched_terms": ["agent", "interface"],
+        "matched_fields": ["title"],
+        "online": null,
+        "review_status": "unreviewed",
+        "review_stale": false,
+        "prerequisites": [],
+        "expected_outcomes": [],
+        "open_command": "ui open tutorial-guide agent_interfaces"
       }
     ],
     "configuration_sections": [
@@ -5984,22 +6031,37 @@ in queries or URLs.
 `x_gui_context` is an optional, backward-compatible extension attached by the
 live GUI Agent Assistant even when project-state injection is disabled. It
 mirrors the current recent-project menu, generated executable tutorial catalog,
-and global Configuration sections. Recent rows expose a deterministic opaque
+remaining tutorial guides/references, prompt-matched recommendations, and
+global Configuration sections. Recent rows expose a deterministic opaque
 `item_id`, filename and parent label, 1-based menu position, existence,
 size/time metadata, current-project status, and an exact `open_command`.
 Absolute recent-project paths are not sent. Only the live GUI host can resolve
 `ui open recent-project ITEM_ID`, and it rechecks both the current list and file
 existence before opening. Stale or unknown ids fail closed.
 
-Tutorial rows carry chapter/example identity, title/summary, group/tier,
-online status, review metadata, and exact chapter-opening commands. Total,
-included, omitted, and truncation fields prevent a provider from interpreting
-a bounded list as complete. Configuration rows use the shared five-section
-vocabulary. Their commands only navigate to the existing tab; credentials,
-executable paths, and other global values continue through GENtle's visible
-Apply/Cancel model. Headless/CLI requests omit `x_gui_context` because they have
-no live private GUI host catalog, while the same commands remain parser-valid
-intent records for CLI and MCP.
+Executable tutorial rows carry chapter/example identity, title/summary,
+group/tier, use cases, learning objectives, concepts, prerequisites, expected
+outcomes, GUI-acceptance profile, online status, review metadata, and exact
+project-opening commands. Guide/reference rows carry stable catalog identity,
+audience and review metadata, and an exact `ui open tutorial-guide ...` command
+that opens teaching text without building a worked project. Total, included,
+omitted, and truncation fields prevent a provider from interpreting either
+bounded list as complete.
+
+Before provider invocation, GENtle token-matches the current request against
+those rows. For a context-light follow-up it also considers up to three recent
+user messages; an already-specific current request supersedes older interests.
+It emits at most five
+`tutorial_recommendations`. Each result names the matching terms and metadata
+fields. `relevance_score` is deterministic retrieval evidence, not biological
+confidence. An empty shortlist means the current intent was too broad or did
+not match; the agent should ask a focused question rather than inventing an id.
+Configuration rows use the shared five-section vocabulary. Their commands only
+navigate to the existing tab; credentials, executable paths, and other global
+values continue through GENtle's visible Apply/Cancel model. Headless/CLI
+requests omit `x_gui_context` because they have no live private GUI host
+catalog, while the same commands remain parser-valid intent records for CLI
+and MCP.
 
 `x_local_documents` is an optional, backward-compatible extension generated
 when the current prompt explicitly contains an absolute path to a supported

@@ -3337,8 +3337,17 @@ Behavior:
     size, modification time, current-project flag, and exact `open_command`
   - `tutorial_projects[]` comes from the same generated tutorial manifest used
     by `File -> Open Tutorial Project...`, including chapter/example identity,
-    title/summary, group/tier, online status, review status, and explicit
-    truncation counts
+    title/summary, group/tier, use cases, learning objectives, concepts,
+    prerequisites, expected outcomes, GUI-acceptance profile, online status,
+    review status, and explicit truncation counts
+  - `tutorial_guides[]` contains the remaining catalogued walkthroughs and
+    references with exact `ui open tutorial-guide TUTORIAL_ID` commands; these
+    open teaching text in Help rather than constructing a worked project
+  - `tutorial_recommendations[]` is a deterministic shortlist of at most five
+    rows matched against the current request, with recent user intent used for
+    context-light follow-ups; every row reports its retrieval score, matched
+    terms/fields, prerequisites, and exact command. The score is not biological
+    confidence
   - `configuration_sections[]` covers External Applications, Agent Systems,
     Microarrays, Graphics, and Language with exact `ui open configuration
     SECTION` commands
@@ -3349,13 +3358,32 @@ Behavior:
     mutation; existing Apply/Cancel and credential handling remain in force
 - optional `Allow auto execute` only applies to suggestions marked with `auto`
 - suggestion cards with `precondition_expr` are evaluated against the live
-  engine fact graph on every frame; an unmet or unknown precondition dims the
-  complete card and disables `Run` until it becomes satisfied
+  project fact graph plus the current GUI-host availability on every frame; an
+  unmet or unknown precondition dims the complete card and disables `Run`
+  until it becomes satisfied
+  - `ui.host_available` is therefore true in the live Agent Assistant window,
+    so exact tutorial/configuration commands from `x_gui_context` remain
+    runnable after confirmation even when the current project is empty
   - the same fact gate is checked again immediately before manual or automatic
     execution, so stale UI state and `execution=auto` cannot bypass it
   - a downstream card can therefore remain visible while an earlier command
     creates its required sequence/report, then become runnable without asking
     the agent for a replacement response
+- after the user states an interest, GENtle ranks the tutorial catalog before
+  contacting the model; the agent should offer only one to three rows from
+  that shortlist with short reasons and ask one focused question when no row
+  matches. Reviewed, non-stale, offline material is preferred when relevance
+  is comparable
+- introductory replies describe Agent Assistant as a goal-directed workflow
+  guide before listing commands: it knows the documented GUI controls and can
+  invoke their underlying functionality through shared parity interfaces,
+  bind tutorials to user data and lab constraints, and compose a new
+  reviewable path when no established workflow fits
+  - parity concerns the underlying action, not literal mouse-click emulation;
+    missing GUI/CLI/script/agent projections are parity gaps to report and fix
+  - confirmations and other safety boundaries continue to require the user
+  - biological knowledge supplied by the selected model remains advisory and
+    distinct from GENtle results, supplied evidence, and confirmed constraints
 - successful conversation turns are shown in chronological order and stored as
   `gentle.agent_conversation.v1` metadata with the current project
   - the next request receives the 12 most recent turns, so ephemeral transports

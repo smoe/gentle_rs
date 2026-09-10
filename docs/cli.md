@@ -2981,6 +2981,7 @@ Shared shell command:
     - `ui focus TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]`
     - `ui open recent-project ITEM_ID`
     - `ui open tutorial-project CHAPTER_ID`
+    - `ui open tutorial-guide TUTORIAL_ID`
     - `ui open configuration [external-applications|agent-systems|microarrays|graphics|language]`
     - `ui focus configuration [external-applications|agent-systems|microarrays|graphics|language]`
     - `ui close configuration`
@@ -6492,13 +6493,17 @@ projects. The agent contract forbids transmitting sequences, local paths,
 credentials, personal data, or confidential project details.
 
 GUI-originated Agent Assistant requests additionally carry a bounded
-`x_gui_context` with the live recent-project list, generated tutorial catalog,
-and Configuration sections. The CLI parser and MCP expose the corresponding
-UI-intent commands, but a headless `agents ask` process has no private GUI
+`x_gui_context` with the live recent-project list, executable tutorial
+projects, tutorial guides/references, a deterministic prompt-matched tutorial
+shortlist, and Configuration sections. The shortlist uses the current request
+and, for a context-light follow-up, up to three recent user messages. It reports
+matched terms/fields and is a retrieval aid rather than a biological-confidence
+score. The CLI parser and MCP expose the
+corresponding UI-intent commands, including `ui open tutorial-guide
+TUTORIAL_ID`, but a headless `agents ask` process has no private GUI
 recent-project list and therefore cannot resolve an opaque recent item id by
-itself. Tutorial chapter ids and Configuration section names remain stable;
-the actual open/focus action is applied only when a GUI host receives the
-intent.
+itself. Tutorial ids and Configuration section names remain stable; the actual
+open/focus action is applied only when a GUI host receives the intent.
 
 When an `agents ask` prompt explicitly names a supported absolute text-document
 path, the shared request builder includes bounded UTF-8 content as
