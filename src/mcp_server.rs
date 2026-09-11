@@ -1422,6 +1422,7 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
             "features ensembl-regulation-overlaps",
             "features materialize-ensembl-regulation",
             "features genomic-motif-evidence",
+            "features promoter-cofactors",
             "collections run digest",
             "primers specificity-plan",
             "primers specificity-import",

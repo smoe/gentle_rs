@@ -1,5 +1,12 @@
 # GENtle CLI Manual
 
+## Promoter Cofactors
+
+`features promoter-cofactors REQUEST_JSON_OR_@FILE` queries a local reduced
+collaborator package through the same read-only engine used by the GUI. It does
+not impersonate the complete-scan provider or require a loaded genome. See
+[request examples, availability and limits](promoter_cofactor_browser.md).
+
 ## Accession-Pinned TSS Profiles
 
 `features tss-tfbs-profiles` validates a pinned FASTA bundle and exact JASPAR

@@ -2,6 +2,14 @@
 
 This page documents the current graphical interface of GENtle.
 
+### Promoter Cofactors
+
+**File > Promoter Cofactors...** and the matching command-palette entry open a
+background-loaded collaborator-package browser, independent of loaded genomes.
+It compares TA/DN cohort statistics and inspects strongest-per-band motif hits,
+sample support/depth and promoter/gene ownership. See the
+[wet-lab walkthrough and limits](promoter_cofactor_browser.md).
+
 ### Accession-Pinned TSS Profiles
 
 The existing Shell accepts `features tss-tfbs-profiles` and

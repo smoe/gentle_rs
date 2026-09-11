@@ -5559,6 +5559,9 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    QueryPromoterCofactors {
+        request: gentle_protocol::promoter_cofactors::PromoterCofactorRequest,
+    },
     QueryGenomicMotifEvidence {
         request: GenomicMotifEvidenceRequest,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -9980,6 +9983,7 @@ impl GentleEngine {
                 | Operation::RenderMultiGenePromoterTfbsSvg { .. }
                 | Operation::ScanTfbsHits { .. }
                 | Operation::QueryGenomicMotifEvidence { .. }
+                | Operation::QueryPromoterCofactors { .. }
                 | Operation::InspectJasparEntry { .. }
                 | Operation::SummarizeJasparEntries { .. }
                 | Operation::ResolveTfQueries { .. }

@@ -232,6 +232,12 @@ const GUI_PROMINENT_GLOSSARY_ENTRIES: &[GuiProminentGlossaryEntry] = &[
         ui_intent_target: None,
     },
     GuiProminentGlossaryEntry {
+        glossary_path: "features promoter-cofactors",
+        menu_path: "File > Promoter Cofactors...",
+        palette_title: "Promoter Cofactors",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
         glossary_path: "regions create",
         menu_path: "Genome > Saved Genomic Regions...",
         palette_title: "Saved Genomic Regions",

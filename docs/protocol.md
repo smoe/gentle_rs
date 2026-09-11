@@ -1,5 +1,17 @@
 # GENtle Engine Protocol (Draft v1)
 
+## Reduced Promoter-Cofactor Packages
+
+`QueryPromoterCofactors {request}` returns optional `OpResult.promoter_cofactors`
+with schema `gentle.promoter_cofactor_query.v1`. It is read-only and shares
+`features promoter-cofactors REQUEST_JSON_OR_@FILE` across interfaces. Typed
+queries cover inspection, rankings, requested candidates, anchors, per-anchor
+detail and promoter relationships. Original statistical diagnostics are retained
+alongside typed estimates, coverage states, file hashes and effective requests.
+Physical anchors, promoter memberships and many-to-many gene ownership are
+separate. Legacy operation results deserialize with this field absent.
+See [coordinate, sparse-zero and runtime contracts](promoter_cofactor_browser.md).
+
 ## Accession-Pinned TSS Profiles
 
 `ComputeTssTfbsProfiles {request, export?}` validates a transcript-oriented

@@ -1,5 +1,21 @@
 # GENtle Changelog
 
+## 2026-09-11 - Read-only promoter cofactor packages
+
+- Added a distinct reduced-package reader, never masquerading as a complete
+  genomic motif scan. It verifies completion, exact assembly and streamed file
+  hashes and executes bounded GENtle-owned Parquet queries, not supplied SQL.
+- Added shared inspection, rankings, candidate availability, anchor/detail and
+  promoter/gene queries. Cohort significance stays separate from site evidence;
+  sparse zeros require covered anchor/motif/band scope. Raw score precision,
+  strand ties, sample identity and many-to-many ownership remain explicit.
+- Added a background GUI browser with TA/DN estimates, confidence intervals,
+  original adjusted significance, frequency denominators, source species and
+  genomic-region navigation. No genome or DuckDB becomes a startup dependency.
+- Added synthetic contracts/Parquet regressions and a wet-lab/programmatic
+  walkthrough. Annotated GenBank/EMBL exports, mutagenesis proposals and raw
+  coverage-block projection are separate follow-ups, not part of this reader.
+
 ## 2026-09-11 - Locus evidence on detailed TSS profile pages
 
 - Added optional, shared-engine `--context-manifest` enrichment for computed or

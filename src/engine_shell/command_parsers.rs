@@ -2322,6 +2322,30 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
         );
     }
     match tokens[1].as_str() {
+        "promoter-cofactors" => {
+            if tokens.len() != 3 {
+                return Err("features promoter-cofactors REQUEST_JSON_OR_@FILE".into());
+            }
+            let raw = if let Some(path) = tokens[2].strip_prefix('@') {
+                let mut bytes = Vec::new();
+                use std::io::Read;
+                std::fs::File::open(path)
+                    .map_err(|e| e.to_string())?
+                    .take(1024 * 1024 + 1)
+                    .read_to_end(&mut bytes)
+                    .map_err(|e| e.to_string())?;
+                if bytes.len() > 1024 * 1024 {
+                    return Err("Request exceeds 1 MiB".into());
+                }
+                String::from_utf8(bytes).map_err(|e| e.to_string())?
+            } else {
+                tokens[2].clone()
+            };
+            let request = serde_json::from_str(&raw)
+                .map_err(|e| format!("Invalid promoter-cofactor request: {e}"))?;
+            crate::promoter_cofactors::validate_request(&request)?;
+            Ok(ShellCommand::FeaturesPromoterCofactors { request })
+        }
         "formula" | "resolve-formula" | "resolve_formula" => {
             if tokens.len() < 4 {
                 return Err(

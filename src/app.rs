@@ -55,6 +55,8 @@ pub use window_registry::{GuiProminentGlossaryEntry, gui_prominent_glossary_entr
 
 #[path = "app/jaspar_expert.rs"]
 mod jaspar_expert;
+#[path = "app/promoter_cofactors_ui.rs"]
+mod promoter_cofactors_ui;
 
 #[path = "app/history_ui.rs"]
 mod history_ui;
@@ -983,6 +985,7 @@ pub struct GENtleApp {
     show_routine_assistant_dialog: bool,
     show_agent_assistant_dialog: bool,
     show_jaspar_expert_dialog: bool,
+    cofactor_browser: promoter_cofactors_ui::CofactorBrowser,
     pcr_design_seq_id: String,
     sequencing_confirmation_seq_id: String,
     jaspar_expert_filter: String,
@@ -2545,6 +2548,7 @@ enum CommandPaletteAction {
     OpenCrypticSplicingScreen,
     OpenTataBoxes,
     OpenPrecomputedGenomicMotifEvidence,
+    OpenPromoterCofactors,
     OpenGenomicRegionConservation,
     OpenEvidencePreparation,
     OpenPlanning,
@@ -2902,6 +2906,7 @@ impl Default for GENtleApp {
             show_routine_assistant_dialog: false,
             show_agent_assistant_dialog: false,
             show_jaspar_expert_dialog: false,
+            cofactor_browser: Default::default(),
             pcr_design_seq_id: String::new(),
             sequencing_confirmation_seq_id: String::new(),
             jaspar_expert_filter: String::new(),
@@ -5623,6 +5628,12 @@ Error: `{err}`"
                 action: CommandPaletteAction::OpenPrecomputedGenomicMotifEvidence,
             },
             CommandPaletteEntry {
+                title: "Promoter Cofactors".into(),
+                detail: "Inspect a local reduced JASPAR/TP73 collaborator package".into(),
+                keywords: "jaspar tp73 cofactor promoter odds ratio duckdb parquet".into(),
+                action: CommandPaletteAction::OpenPromoterCofactors,
+            },
+            CommandPaletteEntry {
                 title: "Genomic Region Conservation".to_string(),
                 detail: "Choose a saved genomic region for local homology screening and conserved-module assessment"
                     .to_string(),
@@ -5759,6 +5770,7 @@ Error: `{err}`"
             CommandPaletteAction::OpenPrecomputedGenomicMotifEvidence => {
                 self.open_precomputed_genomic_motif_evidence()
             }
+            CommandPaletteAction::OpenPromoterCofactors => self.cofactor_browser.open = true,
             CommandPaletteAction::OpenGenomicRegionConservation => {
                 self.open_genomic_region_conservation()
             }
@@ -12312,6 +12324,7 @@ Error: `{err}`"
                 window_cohort_tfbs: None,
                 tfbs_hit_scan: None,
                 genomic_motif_evidence: None,
+                promoter_cofactors: None,
                 restriction_site_scan: None,
                 jaspar_remote_metadata_snapshot: None,
                 jaspar_catalog_report: None,
@@ -16711,6 +16724,10 @@ Error: `{err}`"
                     .clicked()
                 {
                     self.open_jaspar_expert_dialog();
+                    ui.close();
+                }
+                if ui.button("Promoter Cofactors...").clicked() {
+                    self.cofactor_browser.open = true;
                     ui.close();
                 }
                 if ui
@@ -25701,6 +25718,7 @@ impl GENtleApp {
                 self.render_pcr_design_dialog(ctx);
                 self.render_sequencing_confirmation_dialog(ctx);
                 self.render_jaspar_expert_dialog(ctx);
+                self.render_promoter_cofactor_browser(ctx);
                 self.render_planning_dialog(ctx);
                 self.render_routine_assistant_dialog(ctx);
                 self.render_agent_assistant_dialog(ctx);
