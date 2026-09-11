@@ -5313,7 +5313,10 @@ Rendering export commands:
   - Renders each ordered SVG as one page in a single lossless raster-backed PDF.
   - Pages retain their own dimensions; locus-context and detailed profile pages
     are not concatenated onto an unsafe extra-tall canvas.
-  - The JSON summary records every input page, dimensions and font-face count.
+  - The JSON summary records every input page, dimensions, available font-face
+    count and actual used-font identities/hashes from that page's rasterization.
+    It also declares lossless PDF image encoding. Failed font auditing prevents
+    PDF publication; SVGs are never silently rendered through an unaudited fallback.
 - `render-svg SEQ_ID linear|circular OUTPUT.svg`
   - Calls engine operation `RenderSequenceSvg`.
   - Linear exports honor the current stored linear viewport when one is set,

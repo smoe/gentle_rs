@@ -46,6 +46,10 @@ pub struct SvgPdfSetPageSummary {
     pub width: u32,
     pub height: u32,
     pub font_face_count: usize,
+    /// Layout-used faces from this page's single rasterization, not all loaded fonts.
+    pub font_identities: Vec<SvgUsedFontIdentity>,
+    pub font_identity_status: &'static str,
+    pub font_digest_convention: &'static str,
     pub page_width_pt: String,
     pub page_height_pt: String,
 }
@@ -56,6 +60,7 @@ pub struct SvgPdfSetRenderSummary {
     pub output_path: String,
     pub scale: String,
     pub drop_dotplot_metadata: bool,
+    pub pdf_image_encoding: &'static str,
     pub page_count: usize,
     pub pages: Vec<SvgPdfSetPageSummary>,
 }
@@ -99,6 +104,23 @@ pub fn render_svg_files_to_pdf(
     output_path: &Path,
     options: SvgPngRenderOptions,
 ) -> Result<SvgPdfSetRenderSummary, String> {
+    render_svg_files_to_pdf_impl(
+        input_paths,
+        output_path,
+        options,
+        render_svg_file_to_png_bytes_audited,
+    )
+}
+
+fn render_svg_files_to_pdf_impl(
+    input_paths: &[&Path],
+    output_path: &Path,
+    options: SvgPngRenderOptions,
+    mut render_png: impl FnMut(
+        &Path,
+        SvgPngRenderOptions,
+    ) -> Result<(SvgPngRenderBytes, Vec<SvgUsedFontIdentity>), String>,
+) -> Result<SvgPdfSetRenderSummary, String> {
     if input_paths.is_empty() {
         return Err("svg-pdf-set requires at least one INPUT.svg".to_string());
     }
@@ -118,7 +140,7 @@ pub fn render_svg_files_to_pdf(
         if input_path.as_os_str().is_empty() {
             return Err("svg-pdf-set input paths must not be empty".to_string());
         }
-        let page = render_svg_file_to_png_bytes(input_path, options)?;
+        let (page, font_identities) = render_png(input_path, options)?;
         let page_width_pt = page.width as f32 * 72.0 / 96.0;
         let page_height_pt = page.height as f32 * 72.0 / 96.0;
         pages.push(SvgPdfSetPageSummary {
@@ -126,6 +148,10 @@ pub fn render_svg_files_to_pdf(
             width: page.width,
             height: page.height,
             font_face_count: page.font_face_count,
+            font_identities,
+            font_identity_status: "glyph_used_font_sources_recorded",
+            font_digest_convention:
+                "sha256(complete font source/container bytes); face_index recorded separately",
             page_width_pt: format!("{page_width_pt:.2}"),
             page_height_pt: format!("{page_height_pt:.2}"),
         });
@@ -138,6 +164,7 @@ pub fn render_svg_files_to_pdf(
         output_path: output_path.to_string_lossy().into_owned(),
         scale: format!("{}", options.scale),
         drop_dotplot_metadata: options.drop_dotplot_metadata,
+        pdf_image_encoding: "FlateDecode (lossless zlib-compressed RGB)",
         page_count: pages.len(),
         pages,
     })
@@ -648,6 +675,81 @@ mod tests {
         let error =
             render_svg_files_to_pdf(&[], &output, SvgPngRenderOptions::default()).unwrap_err();
         assert!(error.contains("at least one INPUT.svg"));
+        assert!(!output.exists());
+    }
+
+    #[test]
+    fn multi_page_pdf_audits_exact_fonts_in_each_embedded_raster() {
+        use crate::svg_png::audit_test_support::{ALPHA, render};
+        let temp = tempdir().unwrap();
+        let output = temp.path().join("audited.pdf");
+        let svgs = [
+            format!(r#"<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><text y="18" font-family="{ALPHA}">AAAA</text></svg>"#),
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="30"><rect width="10" height="10"/></svg>"#.into(),
+        ];
+        let mut calls = 0;
+        let mut rasters = Vec::new();
+        let mut expected_fonts = Vec::new();
+        let summary = render_svg_files_to_pdf_impl(
+            &[Path::new("text.svg"), Path::new("shapes.svg")],
+            &output,
+            SvgPngRenderOptions::default(),
+            |_, options| {
+                let result = render(&svgs[calls], options, true)?;
+                rasters.push(result.0.bytes.clone());
+                expected_fonts.push(result.1.clone());
+                calls += 1;
+                Ok(result)
+            },
+        )
+        .unwrap();
+        assert_eq!(calls, 2);
+        assert_eq!(
+            fs::read(&output).unwrap(),
+            png_pages_to_pdf(&rasters).unwrap()
+        );
+        assert_eq!(
+            summary.pdf_image_encoding,
+            "FlateDecode (lossless zlib-compressed RGB)"
+        );
+        for (page, fonts) in summary.pages.iter().zip(expected_fonts) {
+            assert_eq!(page.font_identities, fonts);
+            assert_eq!(
+                page.font_identity_status,
+                "glyph_used_font_sources_recorded"
+            );
+        }
+        assert_eq!(summary.pages[0].font_identities.len(), 1);
+        assert!(summary.pages[1].font_identities.is_empty());
+    }
+
+    #[test]
+    fn multi_page_font_audit_failure_does_not_publish_partial_pdf() {
+        let temp = tempdir().unwrap();
+        let output = temp.path().join("failed.pdf");
+        let mut calls = 0;
+        let error = render_svg_files_to_pdf_impl(
+            &[Path::new("one.svg"), Path::new("two.svg")],
+            &output,
+            SvgPngRenderOptions::default(),
+            |_, _| {
+                calls += 1;
+                if calls == 2 {
+                    return Err("unreadable used font on second page".into());
+                }
+                Ok((
+                    SvgPngRenderBytes {
+                        bytes: Vec::new(),
+                        width: 1,
+                        height: 1,
+                        font_face_count: 0,
+                    },
+                    Vec::new(),
+                ))
+            },
+        )
+        .unwrap_err();
+        assert!(error.contains("unreadable used font"));
         assert!(!output.exists());
     }
 

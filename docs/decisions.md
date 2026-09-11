@@ -29,6 +29,14 @@ successful exports, with an explicit full-JSON opt-in. Compute-only results
 remain complete when there is no persisted report. GUI/MCP and the shared
 engine contract are unchanged, and verification non-claims remain visible.
 
+Resolved TF query tokens remain matrix accessions through shared scoring, even
+when several PFMs share one factor name. Integrated reports compare the bound
+locus JSON's resolved accessions with the TSS detail panel before composition.
+Multi-page raster PDFs audit actual used fonts per page, just like single-page
+exports. Compositor outputs are staged before publication, with a receipt-last
+completion marker and rollback on caught failures; this does not claim a single
+atomic transaction across multiple output paths or protection from power loss.
+
 ## 2026-08-01: derive web and print gene-set reports from one record
 
 Publication-style multi-gene analyses use one portable manifest and one

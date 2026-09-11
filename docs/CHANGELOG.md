@@ -1,5 +1,27 @@
 # GENtle Changelog
 
+## 2026-09-10 - Integrated TSS composition and review hardening
+
+- Merged Glen's exact `8fd677c2` contribution before applying review fixes:
+  aligned locus/detail PDF pages, selected-TSS FASTAs and a bound compositor.
+- Fixed shared TF query expansion to retain resolved matrix accessions for
+  exact, all-motif and family queries. Re-resolving the factor name had collapsed
+  the three TFAP2C overview tracks onto one matrix; scores must be regenerated,
+  not relabeled. Added accession/score regressions using the bundled PFMs.
+- Hardened compositor joins against actual FASTA bases, transcript memberships,
+  strand-aware intervals, reference metadata and a required receipt-bound locus
+  JSON. Its resolved JASPAR accessions must match the detail panel, rejecting
+  the known stale overview instead of recomposing it as if validated.
+- Retained TSS continuation pages while exporting each selected FASTA once.
+  Staged all outputs, published the receipt last without replacing existing
+  files, and added failure/rollback/race regressions. Caught errors leave no
+  unreceipted outputs from the invocation; crash recovery remains explicit.
+- Restored exact per-page used-font auditing in multi-page PDFs without changing
+  their lossless pixels or dimensions. Added font-identity and failure regressions.
+- The published real-data replacement remains pending Glen's private input
+  replay; no updated PDF, independent reference validation or release acceptance
+  is claimed by these source fixes. See the compositor's regeneration checklist.
+
 ## 2026-09-10 - Runnable and interest-guided Agent Assistant tutorials
 
 - Fixed Agent Assistant suggestion readiness so `ui.host_available`

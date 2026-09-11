@@ -4572,16 +4572,18 @@ impl GentleEngine {
             if matches!(trimmed.to_ascii_uppercase().as_str(), "ALL" | "*") {
                 for summary in crate::tf_motifs::list_motif_summaries() {
                     if seen.insert(summary.id.clone()) {
-                        expanded.push(summary.name.unwrap_or(summary.id));
+                        expanded.push(summary.id);
                     }
                 }
                 continue;
             }
             if tf_motifs::resolve_motif_definition(trimmed).is_some() {
-                let (tf_id, tf_name, _consensus, _matrix_counts) =
+                let (tf_id, _tf_name, _consensus, _matrix_counts) =
                     Self::resolve_tf_motif_for_scoring(trimmed)?;
                 if seen.insert(tf_id.clone()) {
-                    expanded.push(tf_name.unwrap_or(tf_id));
+                    // Names are not unique across matrix accessions. Retain the
+                    // resolved ID so downstream scoring cannot resolve another PFM.
+                    expanded.push(tf_id);
                 }
                 continue;
             }
@@ -4620,10 +4622,10 @@ impl GentleEngine {
                     } else {
                         matched.motif_id
                     };
-                let (tf_id, tf_name, _consensus, _matrix_counts) =
+                let (tf_id, _tf_name, _consensus, _matrix_counts) =
                     Self::resolve_tf_motif_for_scoring(&candidate_token)?;
                 if seen.insert(tf_id.clone()) {
-                    expanded.push(tf_name.unwrap_or(tf_id));
+                    expanded.push(tf_id);
                 }
             }
         }

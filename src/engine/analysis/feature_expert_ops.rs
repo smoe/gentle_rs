@@ -16478,6 +16478,87 @@ impl GentleEngine {
 }
 
 #[cfg(test)]
+mod gene_locus_matrix_identity_tests {
+    use super::*;
+
+    #[test]
+    fn tf_query_expansion_preserves_accessions_for_exact_all_and_family_queries() {
+        let _guard = crate::tf_motifs::test_registry_lock()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        crate::tf_motifs::reload_builtin_for_test();
+        let ids = ["MA0524.3", "MA0814.3", "MA0815.1"].map(str::to_string);
+        assert_eq!(GentleEngine::expand_tf_query_tokens(&ids).unwrap(), ids);
+        for query in ["ALL", "TFAP2"] {
+            let expanded = GentleEngine::expand_tf_query_tokens(&[query.into()]).unwrap();
+            for id in &ids {
+                assert!(expanded.contains(id), "{query} lost {id}");
+            }
+            for id in expanded {
+                assert_eq!(
+                    GentleEngine::resolve_tf_motif_for_scoring(&id).unwrap().0,
+                    id
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn gene_locus_tfap2c_tracks_keep_distinct_pinned_matrices_and_scores() {
+        let _guard = crate::tf_motifs::test_registry_lock()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        crate::tf_motifs::reload_builtin_for_test();
+        // Hand-crafted DNA, not a genomic fixture; the three PFMs are the
+        // accession-pinned records in the existing bundled JASPAR registry.
+        let dna =
+            DNAsequence::from_sequence(&"GCCCCAGGGCATGCCTGAGGCTGCCCTGAGGGCA".repeat(3)).unwrap();
+        let mut state = ProjectState::default();
+        state.sequences.insert("synthetic".into(), dna.clone());
+        let engine = GentleEngine::from_state(state);
+        let mut tracks = Vec::new();
+        for id in ["MA0524.3", "MA0814.3", "MA0815.1"] {
+            let request = GeneLocusRegulatoryScoreTrackRequest {
+                track_id: format!("tfap2c_{id}"),
+                label: format!("TFAP2C ({id})"),
+                source_ids: vec![id.into()],
+                score_kind: "llr_bits".into(),
+                clip_negative: false,
+                ..Default::default()
+            };
+            let mut result = engine
+                .gene_locus_jaspar_regulatory_tracks(
+                    "synthetic",
+                    &dna,
+                    1,
+                    dna.len(),
+                    None,
+                    &request,
+                )
+                .unwrap();
+            assert_eq!(result.len(), 1);
+            let track = result.remove(0);
+            assert_eq!(track.source_ids, vec![id]);
+            assert_eq!(track.provider_version.as_deref(), Some(id));
+            assert_eq!(
+                track.window_length_bp,
+                GentleEngine::resolve_tf_motif_for_scoring(id)
+                    .unwrap()
+                    .3
+                    .len()
+            );
+            tracks.push(track);
+        }
+        for left in 0..tracks.len() {
+            for right in left + 1..tracks.len() {
+                assert_ne!(tracks[left].forward_scores, tracks[right].forward_scores);
+                assert_ne!(tracks[left].reverse_scores, tracks[right].reverse_scores);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
 mod gene_locus_probe_effect_tests {
     use super::*;
 

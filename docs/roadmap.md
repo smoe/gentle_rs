@@ -70,7 +70,7 @@ Release cut line:
 - Packaging needs CI proof; [tag reconciliation](release.md#candidate-approval) needs explicit owner authorization.
 
 Pre-release finishing scope:
-
+- Have Glen [regenerate the five-gene TSS bundle](integrated_locus_tss_profiles.md#refreshing-the-september-10-bundle): `8fd677c2` has a TFAP2C overview mismatch; require bound locus JSON, distinct accessions and audited PDF/FASTA receipts.
 - Run TP73/PATZ1 and promoter-matrix GUI smoke, including cancellation; obtain canonical
   CD44/TGFB1/SERPINE1 region sets before real-candidate analysis, never infer missing ROIs.
 - Repeat the copied-state IRF9/Q00978 acceptance and require the one-assay panel
@@ -86,8 +86,7 @@ Pre-release finishing scope:
 2. Run the `.10` ledger: locked tests, script build/entrypoints, tutorial/parity, IRF9/Q00978,
    benchmarks, circular ORF/feature regressions and TP73/PATZ1 TFBS/reporter/CUT&RUN/locus proofs with exact JASPAR 2026 PFMs.
 3. Run [build-only CI packaging](release.md#build-only-candidate-verification) at the same SHA; retain receipts before approval.
-4. Have Glen refresh the `a5b01843` lane-validation receipt using native interval/score comparison and catalog-bound assembly checks against original inputs; preserve the verified figures unless those checks expose a mismatch.
-   Validate the [candidate-first view and peak-centred follow-up](cofactor_candidate_interface_plan.md); keep offline-safe regeneration, live Conservation/partner-evidence proof and ClawBio compatibility pending removal review.
+4. Have Glen refresh the `a5b01843` receipt with native interval/score and catalog-bound assembly checks; preserve verified figures unless mismatched. Validate the [candidate-first view and peak-centred follow-up](cofactor_candidate_interface_plan.md); keep offline regeneration, live Conservation/partner-evidence proof and ClawBio compatibility pending removal review.
 5. Validate DuckDB real-Parquet boundaries/limits and scan filters; address GUI
    staleness when the selected package changes.
 

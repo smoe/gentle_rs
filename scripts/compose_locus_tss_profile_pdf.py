@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 from typing import Any
@@ -24,6 +25,7 @@ TARGET_FASTA_SCHEMA = "gentle.target_tss_fasta_export.v1"
 LOCUS_PAGE_WIDTH = 1400.0
 LOCUS_PLOT_LEFT = 255.0
 LOCUS_PLOT_RIGHT = 1050.0
+FONT_IDENTITY_STATUS = "glyph_used_font_sources_recorded"
 
 
 def require(condition: bool, message: str) -> None:
@@ -113,6 +115,7 @@ def parse_fasta(path: Path) -> dict[str, dict[str, str]]:
             require("=" in piece, "FASTA header contains an unkeyed field")
             key, value = piece.split("=", 1)
             require(key and key not in fields, "FASTA header contains duplicate fields")
+            require(key not in {"header", "sequence"}, "FASTA header uses a reserved field")
             fields[key] = value
         promoter_id = fields.get("promoter_id")
         require(promoter_id and promoter_id not in records,
@@ -120,11 +123,14 @@ def parse_fasta(path: Path) -> dict[str, dict[str, str]]:
         sequence = "".join(sequence_lines).upper()
         require(sequence and all(base in "ACGTN" for base in sequence),
                 f"FASTA {promoter_id} contains unsupported sequence symbols")
+        sequence_digest = hashlib.sha256(sequence.encode("ascii")).hexdigest()
+        require(sequence_digest == normalized_digest(fields.get("sequence_sha256")),
+                f"FASTA {promoter_id} sequence digest does not match its bases")
         records[promoter_id] = {
+            **fields,
             "header": header,
             "sequence": sequence,
-            "sequence_sha256": hashlib.sha256(sequence.encode("ascii")).hexdigest(),
-            **fields,
+            "sequence_sha256": sequence_digest,
         }
         header = None
         sequence_lines = []
@@ -146,10 +152,17 @@ def selected_fasta(
     manifest_path: Path,
     tss_receipt: dict[str, Any],
     bindings: list[dict[str, Any]],
+    reference: dict[str, Any],
 ) -> tuple[str, dict[str, Any]]:
     manifest = read_json(manifest_path)
     require(manifest.get("schema") == TARGET_FASTA_SCHEMA,
             "unexpected target TSS FASTA manifest schema")
+    require(manifest.get("upstream_bp") == 500 and manifest.get("downstream_bp") == 200
+            and manifest.get("sequence_orientation") == "transcript_5prime_to_3prime",
+            "selected FASTA requires transcript-oriented -500/+200 source windows")
+    assembly = reference.get("assembly")
+    require(assembly and manifest.get("assembly_id") == assembly,
+            "FASTA manifest and TSS report assembly disagree")
     bound_input(tss_receipt, "bundle_manifest", manifest_path.name, manifest_path)
     checksums = manifest_path.parent / "SHA256SUMS"
     require(checksums.is_file(), "target TSS FASTA checksum inventory is missing")
@@ -166,6 +179,8 @@ def selected_fasta(
     files = [item for item in manifest.get("files", []) if item.get("gene_symbol") == gene]
     require(len(files) == 1, f"FASTA manifest must contain exactly one {gene} file")
     file_row = files[0]
+    require(Path(file_row["filename"]).name == file_row["filename"],
+            "target FASTA must be a direct file in the bound bundle")
     fasta_path = manifest_path.parent / file_row["filename"]
     require(fasta_path.is_file() and fasta_path.parent == manifest_path.parent,
             "target FASTA must be a direct file in the bound bundle")
@@ -176,7 +191,10 @@ def selected_fasta(
             "FASTA hash does not match the checksum inventory")
     bound_input(tss_receipt, "fasta", fasta_path.name, fasta_path)
     records = parse_fasta(fasta_path)
-    manifest_records = {item["promoter_id"]: item for item in file_row.get("records", [])}
+    rows = file_row.get("records", [])
+    manifest_records = {item["promoter_id"]: item for item in rows}
+    require(len(manifest_records) == len(rows) and set(manifest_records) == set(records),
+            "FASTA/manifest promoter IDs must be unique and equal")
     require(len(manifest_records) == file_row.get("record_count") == len(records),
             "FASTA manifest record count or promoter IDs disagree")
 
@@ -187,10 +205,16 @@ def selected_fasta(
                 f"selected promoter {promoter_id} is absent from the bound FASTA")
         record = records[promoter_id]
         declared = manifest_records[promoter_id]
+        require(record.get("gene_symbol") == gene and record.get("assembly") == assembly,
+                f"selected promoter {promoter_id} gene/assembly mismatch")
+        require(record.get("window") == "minus500_plus200"
+                and record.get("orientation") == "transcript_5prime_to_3prime",
+                f"selected promoter {promoter_id} window/orientation mismatch")
         require(record["sequence_sha256"] == binding["sequence_sha256"]
                 == normalized_digest(declared.get("sequence_sha256")),
                 f"selected promoter {promoter_id} sequence digest mismatch")
-        require(record.get("gene_id") == binding["gene_id"] == declared.get("gene_id"),
+        require(record.get("gene_id") == binding["gene_id"] == declared.get("gene_id")
+                == file_row.get("gene_id"),
                 f"selected promoter {promoter_id} gene binding mismatch")
         require(record.get("chromosome") == binding["chromosome"]
                 == declared.get("chromosome"),
@@ -202,6 +226,21 @@ def selected_fasta(
                 f"selected promoter {promoter_id} TSS mismatch")
         require(len(record["sequence"]) == declared.get("sequence_length_bp") == 701,
                 f"selected promoter {promoter_id} is not a 701-bp window")
+        tss = binding["tss_1based"]
+        expected_span = (tss - 500, tss + 200) if binding["strand"] == "+" else (tss - 200, tss + 500)
+        span = re.fullmatch(r"([1-9][0-9]*)-([1-9][0-9]*)", record.get("genomic_1based", ""))
+        require(span is not None and expected_span[0] > 0
+                and tuple(map(int, span.groups())) == expected_span
+                == (binding["start_1based"], binding["end_1based"])
+                == (declared.get("genomic_start_1based"), declared.get("genomic_end_1based")),
+                f"selected promoter {promoter_id} genomic span mismatch")
+        transcript_lists = [record.get("transcripts", "").split(","),
+                            binding["transcripts"], declared.get("transcript_ids", [])]
+        require(all(isinstance(ids, list) and ids
+                    and all(isinstance(item, str) and item.strip() for item in ids)
+                    and len(set(ids)) == len(ids) for ids in transcript_lists)
+                and set(transcript_lists[0]) == set(transcript_lists[1]) == set(transcript_lists[2]),
+                f"selected promoter {promoter_id} transcript membership mismatch")
         output.append(">" + record["header"] + "\n")
         sequence = record["sequence"]
         output.extend(sequence[index:index + 80] + "\n" for index in range(0, len(sequence), 80))
@@ -261,8 +300,10 @@ def select_pages(
     require(len(genes) == 1, f"TSS index must contain exactly one {gene} entry")
     chosen: list[tuple[int, Path]] = []
     covered: set[str] = set()
+    seen_pages: set[Path] = set()
     for page in genes[0].get("pages", []):
         ids = page.get("promoter_ids", [])
+        require(len(ids) == len(set(ids)), "detail page repeats a promoter ID")
         overlap = [promoter_id for promoter_id in ids if promoter_id in order]
         if not overlap:
             continue
@@ -271,22 +312,122 @@ def select_pages(
         svgs = [name for name in page.get("files", []) if name.endswith(".svg")]
         require(len(svgs) == 1, "selected detail page must bind exactly one SVG")
         path = tss_dir / svgs[0]
+        require(path.resolve() not in seen_pages, "detail index repeats the same SVG page")
+        seen_pages.add(path.resolve())
         require(path.is_file(), f"selected detail SVG is missing: {path}")
         bound_output(tss_receipt, svgs[0], path)
         first = min(order[promoter_id] for promoter_id in overlap)
         chosen.append((first, path))
-        for promoter_id in overlap:
-            require(promoter_id not in covered, "selected TSS appears on multiple detail pages")
-            covered.add(promoter_id)
+        # Continuation pages keep index order; FASTA bindings remain one per TSS.
+        covered.update(overlap)
     require(covered == set(order), "selected detail pages do not cover the exact selected TSS set")
     chosen.sort(key=lambda row: row[0])
     bindings.sort(key=lambda row: order[row["promoter_id"]])
     return [path for _, path in chosen], bindings
 
 
+def validate_locus_join(
+    locus: dict[str, Any], root: dict[str, str], gene: str,
+    report: dict[str, Any], bindings: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    require(locus.get("schema") == LOCUS_SVG_SCHEMA and locus.get("gene_symbol") == gene,
+            "locus report schema/gene mismatch")
+    require(locus.get("panel_id") and root.get("data-gentle-panel-id") == locus["panel_id"],
+            "locus SVG/report panel mismatch")
+    evidence = locus.get("isoform_evidence", {})
+    reference = report.get("reference", {})
+    require(evidence.get("assembly")
+            and evidence["assembly"] in {reference.get("assembly"), reference.get("genome_id")},
+            "locus/TSS reference assembly mismatch")
+    chromosome = str(evidence.get("chromosome", "")).removeprefix("chr")
+    require(chromosome and all(str(row["chromosome"]).removeprefix("chr") == chromosome
+                              and row["strand"] == locus.get("gene_strand") for row in bindings),
+            "locus/TSS chromosome or strand mismatch")
+    matrices = report.get("panel_resolution", {}).get("matrices", [])
+    require(matrices, "TSS report has no resolved matrix identities")
+    matrix_bindings = []
+    for matrix in matrices:
+        spec = matrix["specification"]
+        source = spec["source_id"]
+        matches = [track for track in locus.get("regulatory_score_tracks", [])
+                   if track.get("provider_kind") == "jaspar_pwm"
+                   and track.get("source_ids") == [source]
+                   and track.get("provider_version") == source]
+        require(len(matches) == 1,
+                f"locus overview must contain exactly one resolved {source} matrix track; "
+                "regenerate it with accession-preserving scoring")
+        matrix_bindings.append({"source_id": source, "locus_track_id": matches[0]["track_id"]})
+    return matrix_bindings
+
+
+def publish_composite(
+    receipt: dict[str, Any], page_paths: list[Path], fasta_text: str,
+    gentle_cli: Path, output_pdf: Path, output_fasta: Path, output_receipt: Path,
+) -> dict[str, Any]:
+    outputs = (output_pdf, output_fasta, output_receipt)
+    partials = tuple(path.with_name(path.name + ".partial") for path in outputs)
+    require(not any(os.path.lexists(path) for path in (*outputs, *partials)),
+            "output or stale partial output/receipt exists")
+    for path in outputs:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    owned_partials: list[Path] = []
+    published: list[Path] = []
+    try:
+        for path in partials:
+            with path.open("xb"):
+                pass
+            owned_partials.append(path)
+        partial_pdf, partial_fasta, partial_receipt = partials
+        partial_fasta.write_text(fasta_text, encoding="ascii")
+        command = [str(gentle_cli), "svg-pdf-set", str(partial_pdf),
+                   *[str(path) for path in page_paths]]
+        result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=900)
+        summary = json.loads(result.stdout)
+        require(summary.get("page_count") == len(page_paths)
+                and len(summary.get("pages", [])) == len(page_paths),
+                "multi-page renderer returned the wrong page count")
+        for page in summary["pages"]:
+            require(page.get("font_identity_status") == FONT_IDENTITY_STATUS
+                    and isinstance(page.get("font_identities"), list),
+                    "multi-page renderer lacks used-font audit; rebuild gentle_cli")
+            for font in page["font_identities"]:
+                normalized_digest(font.get("sha256"))
+                require(font.get("families") and font.get("post_script_name")
+                        and isinstance(font.get("face_index"), int) and font["face_index"] >= 0,
+                        "multi-page renderer returned an incomplete used-font identity")
+        require(partial_pdf.is_file() and partial_pdf.stat().st_size > 0,
+                "multi-page renderer produced no PDF")
+        require(partial_fasta.is_file() and partial_fasta.stat().st_size > 0,
+                "selected-TSS FASTA export produced no records")
+        receipt["producer"]["renderer_summary"] = summary
+        receipt["output"].update({
+            "pdf_sha256": sha256(partial_pdf), "pdf_bytes": partial_pdf.stat().st_size,
+            "selected_tss_fasta_sha256": sha256(partial_fasta),
+            "selected_tss_fasta_bytes": partial_fasta.stat().st_size,
+        })
+        partial_receipt.write_text(
+            json.dumps(receipt, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        # Publish without overwriting racing outputs. The receipt is the last
+        # commit marker; caught failures roll back only files created here.
+        for partial, output in zip(partials, outputs):
+            os.link(partial, output)
+            published.append(output)
+    except BaseException:
+        for output in reversed(published):
+            output.unlink(missing_ok=True)
+        raise
+    finally:
+        for path in owned_partials:
+            path.unlink(missing_ok=True)
+    return receipt
+
+
 def compose(args: argparse.Namespace) -> dict[str, Any]:
     locus_svg = args.locus_svg.resolve()
     locus_receipt_path = args.locus_receipt.resolve()
+    locus_report_path = args.locus_report.resolve()
     tss_report_path = args.tss_report.resolve()
     tss_index_path = args.tss_index.resolve()
     tss_receipt_path = args.tss_receipt.resolve()
@@ -308,6 +449,9 @@ def compose(args: argparse.Namespace) -> dict[str, Any]:
     require(locus_receipt.get("gene") == args.gene, "locus receipt belongs to another gene")
     bound_output(locus_receipt, locus_svg.name, locus_svg)
     root, bands = locus_bands(locus_svg)
+    locus_report = read_json(locus_report_path)
+    require(normalized_digest(locus_receipt.get("inputs", {}).get("locus_report"))
+            == sha256(locus_report_path), "locus report hash mismatch")
 
     tss_report = read_json(tss_report_path)
     tss_index = read_json(tss_index_path)
@@ -323,41 +467,16 @@ def compose(args: argparse.Namespace) -> dict[str, Any]:
     detail_pages, bindings = select_pages(
         args.gene, tss_report, tss_index, tss_dir, tss_receipt, bands,
     )
+    locus_matrix_bindings = validate_locus_join(locus_report, root, args.gene, tss_report, bindings)
     for detail_page in detail_pages:
         width, left, right = svg_frame(detail_page)
         require(width == LOCUS_PAGE_WIDTH
                 and left == LOCUS_PLOT_LEFT and right == LOCUS_PLOT_RIGHT,
                 "selected TSS page does not share the canonical locus horizontal frame")
     fasta_text, fasta_binding = selected_fasta(
-        args.gene, tss_manifest_path, tss_receipt, bindings,
+        args.gene, tss_manifest_path, tss_receipt, bindings, tss_report.get("reference", {}),
     )
     page_paths = [locus_svg, *detail_pages]
-    output_pdf.parent.mkdir(parents=True, exist_ok=True)
-    output_fasta.parent.mkdir(parents=True, exist_ok=True)
-    partial_pdf = output_pdf.with_name(output_pdf.name + ".partial")
-    partial_fasta = output_fasta.with_name(output_fasta.name + ".partial")
-    require(not partial_pdf.exists() and not partial_fasta.exists(),
-            "stale partial output exists")
-    partial_fasta.write_text(fasta_text, encoding="ascii")
-    command = [str(gentle_cli), "svg-pdf-set", str(partial_pdf),
-               *[str(path) for path in page_paths]]
-    try:
-        result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=900)
-        summary = json.loads(result.stdout)
-        require(summary.get("page_count") == len(page_paths),
-                "multi-page renderer returned the wrong page count")
-        require(partial_pdf.is_file() and partial_pdf.stat().st_size > 0,
-                "multi-page renderer produced no PDF")
-        require(partial_fasta.is_file() and partial_fasta.stat().st_size > 0,
-                "selected-TSS FASTA export produced no records")
-        os.replace(partial_pdf, output_pdf)
-        os.replace(partial_fasta, output_fasta)
-    except Exception:
-        for partial in (partial_pdf, partial_fasta):
-            if partial.exists():
-                partial.unlink()
-        raise
-
     receipt = {
         "schema": OUTPUT_SCHEMA,
         "gene_symbol": args.gene,
@@ -367,9 +486,11 @@ def compose(args: argparse.Namespace) -> dict[str, Any]:
         "page_count": len(page_paths),
         "selected_tss_count": len(bindings),
         "selected_tss_bindings": bindings,
+        "locus_matrix_bindings": locus_matrix_bindings,
         "inputs": {
             "locus_svg": {"path": str(locus_svg), "sha256": sha256(locus_svg)},
             "locus_receipt": {"path": str(locus_receipt_path), "sha256": sha256(locus_receipt_path)},
+            "locus_report": {"path": str(locus_report_path), "sha256": sha256(locus_report_path)},
             "tss_report": {"path": str(tss_report_path), "sha256": sha256(tss_report_path)},
             "tss_index": {"path": str(tss_index_path), "sha256": sha256(tss_index_path)},
             "tss_receipt": {"path": str(tss_receipt_path), "sha256": sha256(tss_receipt_path)},
@@ -377,11 +498,7 @@ def compose(args: argparse.Namespace) -> dict[str, Any]:
         },
         "output": {
             "pdf": str(output_pdf),
-            "pdf_sha256": sha256(output_pdf),
-            "pdf_bytes": output_pdf.stat().st_size,
             "selected_tss_fasta": str(output_fasta),
-            "selected_tss_fasta_sha256": sha256(output_fasta),
-            "selected_tss_fasta_bytes": output_fasta.stat().st_size,
         },
         "selected_tss_fasta_binding": fasta_binding,
         "horizontal_alignment": {
@@ -396,7 +513,6 @@ def compose(args: argparse.Namespace) -> dict[str, Any]:
             "revision": args.producer_revision,
             "gentle_cli": str(gentle_cli),
             "gentle_cli_sha256": sha256(gentle_cli),
-            "renderer_summary": summary,
         },
         "locus_panel_id": root.get("data-gentle-panel-id"),
         "score_policy": tss_report.get("score_policy"),
@@ -404,12 +520,8 @@ def compose(args: argparse.Namespace) -> dict[str, Any]:
         "verification": tss_report.get("verification"),
         "non_claims": tss_report.get("non_claims"),
     }
-    payload = json.dumps(receipt, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
-    partial_receipt = output_receipt.with_name(output_receipt.name + ".partial")
-    require(not partial_receipt.exists(), "stale partial receipt exists")
-    partial_receipt.write_text(payload)
-    os.replace(partial_receipt, output_receipt)
-    return receipt
+    return publish_composite(receipt, page_paths, fasta_text, gentle_cli,
+                             output_pdf, output_fasta, output_receipt)
 
 
 def parse_args() -> argparse.Namespace:
@@ -417,6 +529,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gene", required=True)
     parser.add_argument("--locus-svg", type=Path, required=True)
     parser.add_argument("--locus-receipt", type=Path, required=True)
+    parser.add_argument("--locus-report", type=Path, required=True)
     parser.add_argument("--tss-report", type=Path, required=True)
     parser.add_argument("--tss-index", type=Path, required=True)
     parser.add_argument("--tss-receipt", type=Path, required=True)
