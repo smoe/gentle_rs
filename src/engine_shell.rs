@@ -20678,7 +20678,8 @@ fn tss_profile_capability_descriptor(id: &str, compute: bool) -> Value {
             {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": if compute {
                 "ComputeTssProfilesRequest: bound FASTA/manifest, exact matrix panel and reference expectations; optional export for typed operations"
             } else { "Supplied TssTfbsProfilesReport plus ExportTssProfilesRequest; no persisted project report is required" }},
-            {"name": "OUTPUT_DIRECTORY", "required": id != "ComputeTssTfbsProfiles", "subject_kind": "other", "detail": "new export directory, required by shell routes and export-only operations"}
+            {"name": "OUTPUT_DIRECTORY", "required": id != "ComputeTssTfbsProfiles", "subject_kind": "other", "detail": "new export directory, required by shell routes and export-only operations"},
+            {"name": "CONTEXT_MANIFEST", "required": false, "subject_kind": "other", "detail": "--context-manifest FILE, or context_manifest on ExportTssProfilesRequest: gentle.tss_detail_context_inputs.v1 with exact reference, gene IDs and hash-bound locus JSON/full locus FASTA/optional TATA report. Adds aligned CUT&RUN and annotation evidence without rescoring; omitted for source-free re-export of an enriched report."}
         ],
         "reads": [], "precondition_expr": {"all": []},
         "effects": [{"fact": "artifact.written", "subject": {"arg": "OUTPUT_DIRECTORY"}, "effect_kind": "external_handoff"}],

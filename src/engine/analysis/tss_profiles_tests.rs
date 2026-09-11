@@ -910,6 +910,7 @@ fn comparison_track(
 
 fn comparison_window(tracks: Vec<TssProfileTrack>) -> TssProfileWindow {
     TssProfileWindow {
+        detail_context: None,
         record: record("comparison", TssStrand::Minus, 100, "ACGTACG", false).0,
         selected: false,
         selection_evidence: None,
@@ -1245,6 +1246,7 @@ fn two_tss_three_matrix_producer_exports_preserve_scores_pairs_and_receipt_bindi
     let receipt = crate::tss_profile_export::export_tss_profiles(
         &report,
         &ExportTssProfilesRequest {
+            context_manifest: None,
             output_dir: directory.to_string_lossy().into_owned(),
             rendering: TssProfileRenderOptions::default(),
             formats: vec![TssExportFormat::Svg],
@@ -1544,6 +1546,7 @@ fn typed_compute_and_report_only_replay_export_all_formats_without_source_change
     let computed_output = output_root.join("computed");
     let replay_output = output_root.join("replayed");
     let export_request = |path: &std::path::Path| ExportTssProfilesRequest {
+        context_manifest: None,
         output_dir: path.to_string_lossy().into_owned(),
         rendering: TssProfileRenderOptions::default(),
         formats: vec![

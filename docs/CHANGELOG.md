@@ -1,5 +1,22 @@
 # GENtle Changelog
 
+## 2026-09-11 - Locus evidence on detailed TSS profile pages
+
+- Added optional, shared-engine `--context-manifest` enrichment for computed or
+  previously exported TSS profiles. Exact file, sequence, reference and interval
+  checks bind the supplied locus, full locus FASTA and optional TATA report.
+- Detailed pages now align CUT&RUN/chromatin intervals, sample/control states,
+  transcript exons, CDS spans, annotated translation boundaries and separately
+  classified TATA evidence with the existing TF-score axis. Cropped signal keeps
+  the source scale; missing data is not zero or biological absence.
+- Enriched JSON retains the projected evidence and input hashes for SVG/PNG/PDF
+  replay without original context files or TF rescoring. The PDF compositor
+  rejects mismatched detail/overview locus hashes. Score-only exports and
+  their defaults remain unchanged.
+- Added synthetic strand, corruption, missing-evidence, rollback, replay and
+  compositor coverage plus an offline context example. Glen's private CUT&RUN
+  bundle has not been rerun by this implementation.
+
 ## 2026-09-10 - Integrated TSS composition and review hardening
 
 - Merged Glen's exact `8fd677c2` contribution before applying review fixes:

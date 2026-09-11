@@ -10,6 +10,16 @@ that same report without rescoring. Source sequences remain unchanged; optional
 filesystem publication is an external effect requiring normal adapter consent.
 See [inputs, coordinate conventions, scores and audit limits](tss_tfbs_profiles.md).
 
+The optional export `request.context_manifest` names
+`gentle.tss_detail_context_inputs.v1`. Shared engine composition binds the exact
+locus report, loaded-sequence FASTA and optional TATA report before populating
+`windows[].detail_context` (`gentle.tss_detail_context.v1`). This additive field
+is omitted on old/score-only reports; no score or comparison changes. The
+enriched report and receipt are the authoritative exports; a replay request
+omits the resolved manifest path. Context provenance, missing states and clipped
+genomic-to-local geometry are shared across adapters, not computed in Python or
+the SVG renderer. See [context inputs and validation](tss_tfbs_profiles.md#cutrun-gene-structure-and-tata-context).
+
 ## Measured Gel Images (`.11` Development)
 
 - `ImportGelImage { request: { image_id, path, tiff_page? } }` stores original

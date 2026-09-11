@@ -19,6 +19,9 @@ use std::ops::Range;
 use svg::Node;
 use svg::node::element::{Circle, Group, Line, Path, Rectangle, Text, Title};
 
+#[path = "tss_profiles_context.rs"]
+mod context;
+
 // Match the canonical locus-evidence page and its shared genomic plot frame.
 // This keeps detailed TSS pages horizontally registered with the context page
 // when both are viewed as one paginated report.
@@ -316,6 +319,7 @@ fn validate_report(
             ));
         }
         let mut seen = BTreeSet::new();
+        context::validate(window)?;
         for track in &window.tracks {
             let matrix = matrices
                 .get(track.accession.as_str())
@@ -1355,6 +1359,7 @@ struct WindowLayout<'a> {
     intro: TextBlock,
     legend: TextBlock,
     axis: AxisLayout,
+    context: Option<context::ContextLayout<'a>>,
     rows: Vec<RowLayout<'a>>,
     comparison_header: TextBlock,
     comparisons: Vec<TextBlock>,
@@ -1472,6 +1477,10 @@ impl<'a> WindowLayout<'a> {
             intro,
             legend,
             axis: AxisLayout::new(geometry),
+            context: window
+                .detail_context
+                .as_ref()
+                .map(context::ContextLayout::new),
             rows,
             comparison_header,
             comparisons,
@@ -1480,7 +1489,16 @@ impl<'a> WindowLayout<'a> {
     }
 
     fn header_height(&self) -> f64 {
-        self.intro.height() + 12.0 + 24.0 + self.legend.height() + 16.0 + self.axis.height()
+        self.intro.height()
+            + 12.0
+            + 24.0
+            + self.legend.height()
+            + 16.0
+            + self.axis.height()
+            + self
+                .context
+                .as_ref()
+                .map_or(0.0, |context| context.height())
     }
 
     fn fragment_height(&self, fragment: &Fragment) -> f64 {
@@ -1589,6 +1607,10 @@ impl<'a> WindowLayout<'a> {
         y += self.legend.height() + 16.0;
         self.axis.draw(&mut group, y);
         y += self.axis.height();
+        if let Some(context) = &self.context {
+            group.append(context.draw(y, self.axis.axis, &self.window.record.geometry));
+            y += context.height();
+        }
         for row in &self.rows[fragment.rows.clone()] {
             group.append(row.draw(y, self.axis.axis, &self.window.record.geometry, self.clip));
             y += row.height + ROW_GAP;
@@ -1689,6 +1711,7 @@ mod tests {
             },
             inputs: vec![],
             windows: vec![TssProfileWindow {
+                detail_context: None,
                 record: TssRecord {
                     promoter_id: "synthetic_tss_1".into(),
                     gene_id: "SYNTH_GENE_ID".into(),

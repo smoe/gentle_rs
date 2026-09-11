@@ -40187,10 +40187,13 @@ impl GentleEngine {
                     if let Some(export) = &export {
                         crate::tss_profile_export::preflight_tss_export(export)?;
                     }
-                    let report = self.compute_tss_profiles(&request, on_progress)?;
+                    let mut report = self.compute_tss_profiles(&request, on_progress)?;
                     if let Some(export) = export {
-                        let receipt =
+                        let (enriched, receipt) =
                             Self::export_tss_profile_report(&report, &export, on_progress)?;
+                        if let Some(enriched) = enriched {
+                            report = enriched;
+                        }
                         result.tss_tfbs_profile_receipt = Some(Box::new(receipt));
                     }
                     result.messages.push(format!(
@@ -40202,7 +40205,8 @@ impl GentleEngine {
                     result.tss_tfbs_profiles = Some(Box::new(report));
                 }
                 Operation::ExportTssTfbsProfiles { report, request } => {
-                    let receipt = Self::export_tss_profile_report(&report, &request, on_progress)?;
+                    let (_, receipt) =
+                        Self::export_tss_profile_report(&report, &request, on_progress)?;
                     result.messages.push(format!(
                         "Exported {} TSS profiles on {} pages",
                         receipt.tss_count, receipt.page_count

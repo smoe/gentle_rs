@@ -45,6 +45,121 @@ source sequences. Both are conservatively classified as external effects,
 because they may publish files. Input availability and scientific compatibility
 are validated at execution, not inferred from an empty project's readiness.
 
+## CUT&RUN, Gene Structure And TATA Context
+
+Add `--context-manifest FILE` to either command above to put context on each
+matching gene's **detailed TSS pages**, immediately above its TF scores. This
+is optional: old reports and commands retain their score-only layout. A context
+entry applies to all the gene's TSS windows, including unselected ones; selected
+pages can still be assembled into the integrated per-gene PDF.
+
+The shared engine reads a hash-bound locus report, its full source-locus FASTA,
+and an optional TATA screen. It does not rerun TF scoring, call peaks, retrieve
+data or change the project. The details show:
+
+- CUT&RUN/chromatin lanes and their sample/control labels, retaining the source
+  locus's scale and raw interval scores. Cropping does not renormalize a signal.
+  Values beyond a fixed source scale are clipped visually but retained in JSON.
+  Gaps and missing controls are labelled, never filled with measured zeros.
+- Exons for the exact TSS transcript members, with biological exon ordinals,
+  thicker CDS intervals, and green translation-start / red translation-stop
+  markers when the source annotation supplies them. Other transcript models
+  remain in the full locus overview. Markers outside this window are not moved
+  into it; unknown CDS geometry is not reconstructed by finding an arbitrary ATG.
+  Source ranges classified as inferred ORFs or lacking a coding classification
+  are explicitly warned about, not displayed as annotated CDS.
+- TATA **source annotations**, **TBP predictions**, and **EPD classifications**
+  as separate evidence rows. An EPD classification marks its TSS, not an inferred
+  exact TATA interval. No supplied screen, or no reported row in this window,
+  does not establish TATA absence.
+
+All tracks use the same transcript-oriented 5'-to-3' axis as the TF scores,
+including decreasing genomic coordinates for negative-strand genes. The context
+and its provenance repeat on continuation pages. Large contexts fail the existing
+readable-page limits explicitly instead of silently dropping lanes.
+
+For a fully offline demonstration, after the first example above:
+
+```sh
+gentle_cli features tss-tfbs-profiles-export \
+  --report tss-example/report.json \
+  --context-manifest test_files/fixtures/tss_profiles/context/manifest.json \
+  --output-dir tss-context-example --formats svg,png,pdf
+```
+
+Only the synthetic minus-strand gene gets context in this example. Its 11-base
+window, exon/CDS markers, signal and three TATA evidence types are software
+fixtures, not biological findings. See the [context fixture provenance](../test_files/fixtures/tss_profiles/context/README.md).
+
+For real data, prepare a manifest with this structure; replace every placeholder
+with the exact values from the existing TSS/locus reports and input-file hashes:
+
+```json
+{
+  "schema": "gentle.tss_detail_context_inputs.v1",
+  "reference": {
+    "genome_id": "EXACT_GENOME_ID",
+    "assembly": "EXACT_ASSEMBLY",
+    "annotation_release": null
+  },
+  "genes": [{
+    "gene_id": "EXACT_GENE_ID_FROM_TSS_REPORT",
+    "locus_report": {"path": "gene.locus.json", "sha256": "FILE_SHA256"},
+    "locus_fasta": {"path": "gene.locus.fa", "sha256": "FILE_SHA256"},
+    "tata_report": {"path": "gene.tata.json", "sha256": "FILE_SHA256"}
+  }]
+}
+```
+
+Paths resolve relative to the manifest (explicit absolute paths also work).
+Hash exact file bytes with `shasum -a 256` or Linux `sha256sum`. The full locus
+FASTA must contain one uppercase IUPAC DNA record in the **loaded sequence's**
+orientation, matching `sequence_binding` in the locus report. This is not the
+short TSS FASTA. Export it from the same loaded DNA sequence that produced the
+locus report; do not independently retrieve a potentially different version.
+The engine slices that sequence and compares the oriented bases with every
+matching TSS record's SHA-256 before attaching any context. It also checks gene
+symbol, explicit gene ID selection, chromosome, anchor strand, interval and
+reference labels. Exact versioned transcript IDs are used, without alias guessing.
+
+The manifest `reference` must equal the TSS report's reference, including a
+declared annotation release. If a release is declared, the locus must agree.
+If it is null, no release is invented from a genome ID. For compatibility with
+existing locus composers, `isoform_evidence.assembly` may equal either the exact
+TSS assembly or its exact genome ID. Leading `chr` is the only chromosome-label
+normalization. Hash/geometry agreement is consistency evidence, not independent
+authentication of a reference or an experimental sample.
+
+Generate a TATA report using the existing [TATA screen](tata_box_evidence.md),
+on that same loaded sequence, for example in the shared Shell:
+
+```text
+op '{"SaveFile":{"seq_id":"EXACT_LOCUS_SEQ_ID","path":"gene.locus.fa","format":"Fasta"}}'
+promoters tata-screen '{"seq_id":"EXACT_LOCUS_SEQ_ID"}' --output gene.tata.json
+```
+
+Review the screen's TSS restrictions and thresholds; supply explicit TSSs or
+opt into an unrestricted scan only when intended. Omit `tata_report` when no
+screen is available. Do not replace that state with an empty synthetic report.
+The context resolver checks the TATA report's own content hash, sequence hash
+and complete genome anchor. Its source warnings and classification remain visible.
+
+The enriched `report.json` stores `windows[].detail_context`
+(`gentle.tss_detail_context.v1`), original genomic intervals, clipped local
+intervals, source metadata and file digests. The export receipt includes these
+context inputs. Subsequent export of that report needs **no context manifest or
+source files**; all original TF scores and comparisons are retained. To change
+context, enrich the original score-only report into a fresh directory. An
+already attached context is never silently replaced. No approval or checkpoint
+binding is weakened.
+
+For Glen's existing reports: use the same locus JSON that supplies the overview,
+including its CUT&RUN groups; attach it with the matching source FASTA and optional
+TATA report, then give the new report/index/receipt paths to the
+[integrated PDF composer](integrated_locus_tss_profiles.md). The composer rejects
+an enriched detail page whose locus-report hash differs from the overview's.
+This does not rescore the expensive TF tracks or rewrite the existing export.
+
 ## CLI Output
 
 After a successful export, CLI stdout contains

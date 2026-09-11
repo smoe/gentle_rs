@@ -11,7 +11,8 @@ pub(super) fn parse_tss_profiles_command(tokens: &[String]) -> Result<ShellComma
     while index < tokens.len() {
         let flag = tokens[index].as_str();
         let allowed = match flag {
-            "--output-dir" | "--formats" | "--scale-mode" | "--panels-per-page" => true,
+            "--output-dir" | "--formats" | "--scale-mode" | "--panels-per-page"
+            | "--context-manifest" => true,
             "--report" => export_only,
             "--manifest"
             | "--panel"
@@ -79,6 +80,7 @@ pub(super) fn parse_tss_profiles_command(tokens: &[String]) -> Result<ShellComma
         }
     }
     let export = ExportTssProfilesRequest {
+        context_manifest: values.get("--context-manifest").cloned(),
         output_dir: required("--output-dir")?,
         rendering: TssProfileRenderOptions {
             scale_mode,
@@ -189,6 +191,76 @@ mod tests {
             Some("synthetic-assembly")
         );
         assert!(request.expected_annotation_release.is_none());
+    }
+
+    #[test]
+    fn tss_profiles_parser_forwards_context_for_compute_and_report_only_export() {
+        for id in [
+            "features tss-tfbs-profiles",
+            "ComputeTssTfbsProfiles",
+            "features tss-tfbs-profiles-export",
+            "ExportTssTfbsProfiles",
+        ] {
+            let descriptor = tss_profile_capability_descriptor(
+                id,
+                !id.contains("export") && id != "ExportTssTfbsProfiles",
+            );
+            assert!(
+                descriptor["args"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|arg| arg["name"] == "CONTEXT_MANIFEST" && arg["required"] == false)
+            );
+        }
+        let parsed = parse("features tss-tfbs-profiles --manifest m --panel p --expected-genome-id g --output-dir out --context-manifest context.json").unwrap();
+        let ShellCommand::Op { payload } = parsed else {
+            panic!("typed operation");
+        };
+        let Operation::ComputeTssTfbsProfiles { export, .. } =
+            serde_json::from_str(&payload).unwrap()
+        else {
+            panic!("compute");
+        };
+        assert_eq!(
+            export.unwrap().context_manifest.as_deref(),
+            Some("context.json")
+        );
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("report.json");
+        std::fs::write(
+            &path,
+            serde_json::to_vec(&crate::tss_profile_export::tests::synthetic_report()).unwrap(),
+        )
+        .unwrap();
+        let tokens = [
+            "features",
+            "tss-tfbs-profiles-export",
+            "--report",
+            path.to_str().unwrap(),
+            "--output-dir",
+            "out",
+            "--context-manifest",
+            "context with spaces.json",
+        ]
+        .map(str::to_string);
+        let ShellCommand::Op { payload } = parse_tss_profiles_command(&tokens).unwrap() else {
+            panic!("typed export");
+        };
+        let Operation::ExportTssTfbsProfiles { request, .. } =
+            serde_json::from_str(&payload).unwrap()
+        else {
+            panic!("export");
+        };
+        assert_eq!(
+            request.context_manifest.as_deref(),
+            Some("context with spaces.json")
+        );
+        assert!(
+            parse("features tss-tfbs-profiles --context-manifest a --context-manifest b")
+                .unwrap_err()
+                .contains("Duplicate")
+        );
     }
     #[test]
     fn tss_profiles_parser_rejects_unknown_missing_and_duplicate_options() {

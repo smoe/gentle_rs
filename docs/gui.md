@@ -9,6 +9,10 @@ The existing Shell accepts `features tss-tfbs-profiles` and
 readable SVG/PNG/PDF documents. See the [offline example](tss_tfbs_profiles.md).
 This first development slice has no dedicated native setup wizard. It does
 not replace the existing locus-evidence viewer or change its historical figures.
+The same Shell commands accept `--context-manifest FILE` to align CUT&RUN,
+exon/CDS structure, annotated translation boundaries and TATA evidence above the
+detail-page scores. No new wizard is required; see the
+[offline context example](tss_tfbs_profiles.md#cutrun-gene-structure-and-tata-context).
 
 ### Measured Gel Images (`.11` Development)
 

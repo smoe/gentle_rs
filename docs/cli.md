@@ -8,6 +8,9 @@ panel, computes both orientations and publishes audited profile documents.
 See [complete offline commands and input requirements](tss_tfbs_profiles.md).
 These shared-parser routes also work in the GUI Shell and through typed MCP
 `op`; output directories are fresh and writes require normal confirmation.
+Both accept `--context-manifest FILE` for sequence-verified CUT&RUN/chromatin,
+exon/CDS/translation-marker and TATA rows on detailed pages, without rescoring.
+See the [context example and input contract](tss_tfbs_profiles.md#cutrun-gene-structure-and-tata-context).
 
 The CLI prints an export summary, not the full scored report, for these routes
 (also through `shell`, direct JSON `op`, and JSON `workflow`). It retains artifact

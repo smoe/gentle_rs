@@ -11,6 +11,11 @@ families without rescoring either one:
 The output is one PDF per gene. The context SVG is page 1. Selected TSS pages
 follow in the deterministic order of the scored report, retaining all continuation
 pages for a tall TSS. Each selected TSS still contributes only one FASTA record.
+Detailed pages can now also carry cropped CUT&RUN/chromatin, exon/CDS structure,
+annotated translation markers and separately classified TATA evidence. Attach
+the [hash-bound context manifest](tss_tfbs_profiles.md#cutrun-gene-structure-and-tata-context)
+through the shared TSS export operation before composing this PDF. When detail
+context is present, it must bind the exact same locus JSON as the overview.
 Other annotated TSSs
 remain in the complete TSS supplement. Every page is 1400 pixels wide and every
 detailed score axis uses the locus renderer's exact x=255..1050 plot frame, so

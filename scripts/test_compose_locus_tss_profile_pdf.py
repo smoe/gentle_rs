@@ -467,6 +467,23 @@ class CompositeLocusTssPdfTests(unittest.TestCase):
                 target.compose(self.args())
         self.assert_no_outputs()
 
+    def test_detail_context_must_bind_the_same_locus_as_the_overview(self):
+        report = json.loads(self.report.read_text())
+        report["windows"][0]["detail_context"] = {
+            "schema": "gentle.tss_detail_context.v1",
+            "locus_report_sha256": "f" * 64,
+        }
+        self.report.write_text(json.dumps(report))
+        self.rebind()
+        with self.assertRaisesRegex(ValueError, "different locus reports"):
+            target.compose(self.args())
+        self.assert_no_outputs()
+        report["windows"][0]["detail_context"]["locus_report_sha256"] = digest(self.locus_report)
+        self.report.write_text(json.dumps(report))
+        self.rebind()
+        with mock.patch.object(target.subprocess, "run", side_effect=self.fake_run):
+            target.compose(self.args())
+
 
 if __name__ == "__main__":
     unittest.main()

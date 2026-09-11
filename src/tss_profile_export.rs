@@ -1208,6 +1208,13 @@ fn input_bindings(report: &TssProfileReport) -> Result<Vec<TssInputBinding>, Eng
         .inputs
         .iter()
         .chain(&report.panel_resolution.registry_sources)
+        .chain(
+            report
+                .windows
+                .iter()
+                .filter_map(|w| w.detail_context.as_ref())
+                .flat_map(|c| &c.bindings),
+        )
     {
         let key = (binding.role.clone(), binding.name.clone());
         if bindings
@@ -1756,6 +1763,11 @@ pub fn export_tss_profiles_with_cancel(
     should_continue: &mut dyn FnMut() -> bool,
 ) -> Result<TssProfileReceipt, EngineError> {
     checkpoint(should_continue)?;
+    if request.context_manifest.is_some() {
+        return Err(invalid(
+            "Resolve context_manifest through the shared TSS export operation before rendering",
+        ));
+    }
     preflight_tss_export(request)?;
     validate_tss_profile_report(report)?;
     validate_rendering(report, request)?;
@@ -1790,6 +1802,7 @@ pub fn export_tss_profiles_with_cancel(
     inventory.json(REPORT_FILE, report)?;
     let report_sha256 = inventory.hashes[REPORT_FILE].clone();
     let portable_request = ExportTssProfilesRequest {
+        context_manifest: None,
         output_dir: ".".into(),
         rendering: request.rendering.clone(),
         formats: request.formats.clone(),
@@ -2208,14 +2221,14 @@ pub fn read_and_verify_tss_profile_receipt(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     // Entirely hand-crafted export-contract fixture, recreated by this function.
     // These invented matrices, scores and reference labels are NOT JASPAR data
     // or scorer acceptance evidence. They exercise serialization, coordinates,
     // rendering and receipts only; no external test_files/tests fixtures are used.
-    fn synthetic_report() -> TssProfileReport {
+    pub(crate) fn synthetic_report() -> TssProfileReport {
         let factors = [
             ("MA0001.1", "SYNTH_A", "Synthetic A version 1"),
             ("MA0001.2", "SYNTH_A", "Synthetic A version 2"),
@@ -2344,6 +2357,7 @@ mod tests {
                 method: "Pearson and Spearman; same local strand; raw unclipped scores; no smoothing; common valid starts".into(),
             }).collect();
             TssProfileWindow {
+                detail_context: None,
                 record: TssRecord {
                     promoter_id: promoter.into(), gene_id: gene.into(), gene_symbol: symbol.into(),
                     geometry: TssGeometry { chromosome: "synthetic-contig".into(), strand, tss_1based: start + 2,
@@ -2426,6 +2440,7 @@ mod tests {
 
     fn request(root: &Path, name: &str) -> ExportTssProfilesRequest {
         ExportTssProfilesRequest {
+            context_manifest: None,
             output_dir: root.join(name).to_str().unwrap().into(),
             rendering: TssProfileRenderOptions::default(),
             formats: vec![TssExportFormat::Svg],
@@ -3341,6 +3356,7 @@ mod tests {
         let (_temp, root) = temporary_root();
         let output = root.join("pdf-export");
         let request = ExportTssProfilesRequest {
+            context_manifest: None,
             output_dir: output.to_str().unwrap().into(),
             rendering: TssProfileRenderOptions::default(),
             formats: vec![TssExportFormat::Pdf],
@@ -3378,6 +3394,7 @@ mod tests {
         let output_dir = std::env::var("GENTLE_TSS_EXPORT_EXAMPLE_DIR")
             .expect("set GENTLE_TSS_EXPORT_EXAMPLE_DIR");
         let request = ExportTssProfilesRequest {
+            context_manifest: None,
             output_dir,
             rendering: TssProfileRenderOptions::default(),
             formats: vec![

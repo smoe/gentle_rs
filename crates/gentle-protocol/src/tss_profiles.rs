@@ -11,6 +11,9 @@ pub const BUNDLE_SCHEMA: &str = "gentle.tss_fasta_bundle.v1";
 pub const SELECTION_SCHEMA: &str = "gentle.tss_profile_selection.v1";
 pub const REPORT_SCHEMA: &str = "gentle.tss_tfbs_profiles.v1";
 pub const RECEIPT_SCHEMA: &str = "gentle.tss_tfbs_profile_receipt.v1";
+pub const CONTEXT_INPUT_SCHEMA: &str = "gentle.tss_detail_context_inputs.v1";
+pub const CONTEXT_SCHEMA: &str = "gentle.tss_detail_context.v1";
+pub const CONTEXT_NON_CLAIMS: &str = "Context is projected from explicitly bound locus and TATA reports. CUT&RUN/chromatin source scores are not TF-model scores; an interval gap is not a measured zero. Exons, CDSs and translation boundaries are annotation-derived, not demonstrated expression or translation. TATA annotations, TBP predictions and promoter classifications are distinct; missing evidence is not biological absence. Sequence agreement checks these inputs, not independent reference authenticity.";
 pub const NON_CLAIMS: &str = "JASPAR tracks are sequence-model predictions, not measured binding, affinity, occupancy, cofactor interaction, promoter activity or functional regulation. Cross-matrix magnitudes are not comparable without a documented calibration. Annotated transcript starts are TSS candidates, not experimentally established initiation sites. Correlation compares model outputs, not biological correctness or co-regulation. A factor also appearing as a target gene does not establish autoregulation.";
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -281,6 +284,139 @@ pub struct TssProfileWindow {
     pub selection_evidence: Option<TssSelectionEvidence>,
     pub tracks: Vec<TssProfileTrack>,
     pub comparisons: Vec<TssMatrixComparison>,
+    /// Optional, sequence-verified context on this exact transcript-oriented axis.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail_context: Option<TssDetailContext>,
+}
+
+/// Caller-reviewed file identity. Relative paths resolve beside the context manifest.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TssContextFile {
+    pub path: String,
+    pub sha256: String,
+}
+
+/// One full, locally oriented locus sequence and the reports produced from it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TssContextSource {
+    pub gene_id: String,
+    pub locus_report: TssContextFile,
+    pub locus_fasta: TssContextFile,
+    #[serde(default)]
+    pub tata_report: Option<TssContextFile>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TssContextManifest {
+    pub schema: String,
+    pub reference: TssReference,
+    pub genes: Vec<TssContextSource>,
+}
+
+/// Original genomic interval plus its clipped projection; never stretched to fit.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TssContextSpan {
+    pub genomic_start_1based: u64,
+    pub genomic_end_1based: u64,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub clipped: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TssContextExon {
+    pub number_5prime_to_3prime: usize,
+    pub span: TssContextSpan,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TssContextCodon {
+    pub kind: crate::isoform_evidence::GeneLocusCodonKind,
+    pub position_0based: usize,
+    pub genomic_position_1based: u64,
+    pub basis: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TssContextTranscript {
+    pub transcript_id: String,
+    pub label: String,
+    pub genomic_strand: TssStrand,
+    pub exons: Vec<TssContextExon>,
+    pub cds: Vec<TssContextSpan>,
+    pub codons: Vec<TssContextCodon>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TssContextSignal {
+    pub interval_id: String,
+    pub span: TssContextSpan,
+    pub score: Option<f64>,
+    pub label: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TssContextOccupancyLane {
+    pub group_id: String,
+    pub group_label: String,
+    pub scale_mode: crate::isoform_evidence::GeneLocusOccupancyScaleMode,
+    pub lane_id: String,
+    pub label: String,
+    pub state: crate::isoform_evidence::GeneLocusOccupancyLaneState,
+    pub role: crate::isoform_evidence::GeneLocusOccupancyLaneRole,
+    pub source_id: String,
+    pub source_sha256: Option<String>,
+    pub source_kind: String,
+    pub condition: Option<String>,
+    pub cell_line: Option<String>,
+    pub assay: Option<String>,
+    pub mark: Option<String>,
+    pub factor: Option<String>,
+    /// Inherit the locus scale, never independently normalize a cropped window.
+    pub display_abs_max_score: f64,
+    pub intervals: Vec<TssContextSignal>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TssContextTataRow {
+    /// Original source-local geometry and evidence class remain inspectable.
+    pub evidence: crate::tata_boxes::TataBoxEvidenceRow,
+    pub span: TssContextSpan,
+    pub genomic_strand: TssStrand,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TssContextTata {
+    pub report_id: String,
+    pub report_sha256: String,
+    pub motif_id: Option<String>,
+    pub matrix_sha256: Option<String>,
+    pub score_policy: String,
+    pub epd_status: String,
+    pub rows: Vec<TssContextTataRow>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TssDetailContext {
+    pub schema: String,
+    pub promoter_id: String,
+    pub geometry: TssGeometry,
+    pub window_sequence_sha256: String,
+    pub locus_seq_id: String,
+    pub locus_sequence_sha256: String,
+    pub locus_report_sha256: String,
+    pub annotation_release: Option<String>,
+    pub bindings: Vec<TssInputBinding>,
+    pub transcripts: Vec<TssContextTranscript>,
+    pub occupancy: Vec<TssContextOccupancyLane>,
+    /// None means not supplied, never a negative TATA finding.
+    pub tata: Option<TssContextTata>,
+    pub warnings: Vec<String>,
+    pub non_claims: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -357,6 +493,10 @@ impl Default for TssProfileRenderOptions {
 #[serde(deny_unknown_fields)]
 pub struct ExportTssProfilesRequest {
     pub output_dir: String,
+    /// Optional input enrichment before rendering, without recomputing TF scores.
+    /// Shared engine operations resolve this path; exported replay requests omit it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_manifest: Option<String>,
     #[serde(default)]
     pub rendering: TssProfileRenderOptions,
     #[serde(default = "svg_format")]

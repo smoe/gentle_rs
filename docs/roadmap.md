@@ -70,7 +70,7 @@ Release cut line:
 - Packaging needs CI proof; [tag reconciliation](release.md#candidate-approval) needs explicit owner authorization.
 
 Pre-release finishing scope:
-- Have Glen [regenerate the five-gene TSS bundle](integrated_locus_tss_profiles.md#refreshing-the-september-10-bundle): `8fd677c2` has a TFAP2C overview mismatch; require bound locus JSON, distinct accessions and audited PDF/FASTA receipts.
+- Have Glen [regenerate the five-gene TSS bundle](integrated_locus_tss_profiles.md#refreshing-the-september-10-bundle): `8fd677c2` has a TFAP2C overview mismatch; require bound locus JSON, distinct accessions and audited PDF/FASTA receipts. Include [detailed-page context](tss_tfbs_profiles.md#cutrun-gene-structure-and-tata-context) from the same CUT&RUN/locus report and source FASTA, with optional TATA evidence; real-data acceptance remains pending.
 - Run TP73/PATZ1 and promoter-matrix GUI smoke, including cancellation; obtain canonical
   CD44/TGFB1/SERPINE1 region sets before real-candidate analysis, never infer missing ROIs.
 - Repeat the copied-state IRF9/Q00978 acceptance and require the one-assay panel

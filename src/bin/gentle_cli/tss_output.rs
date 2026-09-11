@@ -249,6 +249,7 @@ mod tests {
         let reexport = Operation::ExportTssTfbsProfiles {
             report: result.tss_tfbs_profiles.unwrap(),
             request: gentle_protocol::tss_profiles::ExportTssProfilesRequest {
+                context_manifest: None,
                 output_dir: root.join("reexport").to_str().unwrap().into(),
                 rendering: Default::default(),
                 formats: vec![gentle_protocol::tss_profiles::TssExportFormat::Svg],

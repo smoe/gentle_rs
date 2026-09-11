@@ -7,6 +7,9 @@ use super::*;
 use crate::digest_utils::sha256_hex_bytes;
 use gentle_protocol::tss_profiles::*;
 
+#[path = "tss_profiles_context.rs"]
+mod context;
+
 #[cfg(test)]
 #[path = "tss_profiles_tests.rs"]
 mod tests;
@@ -66,22 +69,51 @@ impl GentleEngine {
         report: &TssProfileReport,
         request: &ExportTssProfilesRequest,
         on_progress: &mut dyn FnMut(OperationProgress) -> bool,
-    ) -> Result<TssProfileReceipt, EngineError> {
-        crate::tss_profile_export::export_tss_profiles_with_cancel(report, request, &mut || {
-            Self::emit_tfbs_score_track_progress(
-                on_progress,
-                &report.panel_resolution.panel.label,
-                "",
-                1,
-                1,
-                1,
-                1,
-                "document export",
-                "validating, rendering and staging a complete output set",
-                0,
-                1,
-            )
-        })
+    ) -> Result<(Option<TssProfileReport>, TssProfileReceipt), EngineError> {
+        let mut enriched = None;
+        if let Some(path) = &request.context_manifest {
+            let mut report = report.clone();
+            let label = report.panel_resolution.panel.label.clone();
+            context::attach(&mut report, Path::new(path), &mut || {
+                Self::emit_tfbs_score_track_progress(
+                    on_progress,
+                    &label,
+                    "",
+                    1,
+                    1,
+                    1,
+                    1,
+                    "TSS context",
+                    "verifying source hashes and projecting locus evidence",
+                    0,
+                    1,
+                )
+            })?;
+            enriched = Some(report);
+        }
+        let report = enriched.as_ref().unwrap_or(report);
+        let mut resolved = request.clone();
+        resolved.context_manifest = None;
+        let receipt = crate::tss_profile_export::export_tss_profiles_with_cancel(
+            report,
+            &resolved,
+            &mut || {
+                Self::emit_tfbs_score_track_progress(
+                    on_progress,
+                    &report.panel_resolution.panel.label,
+                    "",
+                    1,
+                    1,
+                    1,
+                    1,
+                    "document export",
+                    "validating, rendering and staging a complete output set",
+                    0,
+                    1,
+                )
+            },
+        )?;
+        Ok((enriched, receipt))
     }
 
     /// Resolve an immutable panel using exact IDs; no runtime alias/family routing.
@@ -208,6 +240,7 @@ impl GentleEngine {
             .records
             .iter()
             .map(|(record, _, selected)| TssProfileWindow {
+                detail_context: None,
                 record: record.clone(),
                 selected: *selected,
                 selection_evidence: bundle.selection_evidence.get(&record.promoter_id).cloned(),

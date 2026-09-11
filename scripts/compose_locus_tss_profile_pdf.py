@@ -329,6 +329,7 @@ def select_pages(
 def validate_locus_join(
     locus: dict[str, Any], root: dict[str, str], gene: str,
     report: dict[str, Any], bindings: list[dict[str, Any]],
+    locus_sha256: str,
 ) -> list[dict[str, Any]]:
     require(locus.get("schema") == LOCUS_SVG_SCHEMA and locus.get("gene_symbol") == gene,
             "locus report schema/gene mismatch")
@@ -343,6 +344,13 @@ def validate_locus_join(
     require(chromosome and all(str(row["chromosome"]).removeprefix("chr") == chromosome
                               and row["strand"] == locus.get("gene_strand") for row in bindings),
             "locus/TSS chromosome or strand mismatch")
+    selected_ids = {row["promoter_id"] for row in bindings}
+    for window in report.get("windows", []):
+        context = window.get("detail_context")
+        if context is not None and window.get("record", {}).get("promoter_id") in selected_ids:
+            require(context.get("schema") == "gentle.tss_detail_context.v1"
+                    and normalized_digest(context.get("locus_report_sha256")) == locus_sha256,
+                    "detail context and overview bind different locus reports")
     matrices = report.get("panel_resolution", {}).get("matrices", [])
     require(matrices, "TSS report has no resolved matrix identities")
     matrix_bindings = []
@@ -467,7 +475,8 @@ def compose(args: argparse.Namespace) -> dict[str, Any]:
     detail_pages, bindings = select_pages(
         args.gene, tss_report, tss_index, tss_dir, tss_receipt, bands,
     )
-    locus_matrix_bindings = validate_locus_join(locus_report, root, args.gene, tss_report, bindings)
+    locus_matrix_bindings = validate_locus_join(locus_report, root, args.gene, tss_report, bindings,
+                                               sha256(locus_report_path))
     for detail_page in detail_pages:
         width, left, right = svg_frame(detail_page)
         require(width == LOCUS_PAGE_WIDTH
