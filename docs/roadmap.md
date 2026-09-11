@@ -1,6 +1,6 @@
 # GENtle Roadmap
 
-Last session: 2026-09-10 - `.10` remains unreleased pending Glen's verdict and
+Last session: 2026-09-11 - `.10` remains unreleased pending Glen's verdict and
 release-owner approval of the exact candidate. A tag alone is not acceptance.
 
 Purpose: fast session orientation. This file answers "what next?" and should be
@@ -179,11 +179,10 @@ Keep the next synthetic-biology bridge slices in this order:
    capabilities, and local inventory. Emit score components and rejection
    reasons; do not silently codon-optimize or create constructs.
 
-MCP follow-up: the typed `tools/list` surface is curated rather than a
-one-command/one-tool mirror. Keep `docs/agent_interface.md` as the exclusion
-ledger for shell commands without dedicated MCP tools, and promote a command to
-a route-specific MCP tool only when its JSON input/output schema and
-mutating/external safety semantics are stable.
+MCP follow-up: `tools/list` is curated, not a one-command/one-tool mirror.
+Keep `docs/agent_interface.md` as the exclusion ledger; add tools only with
+stable typed schemas and mutating/external safety semantics. Prioritize the
+remaining parity-matrix gaps by user workflow, not tool counts or exclusions.
 
 ## Phase B: Cloning Routine Standardization
 
@@ -310,7 +309,8 @@ wet-lab conclusions or unconfirmed mutations.
   controls as additional native acceptance stories require it.
 - Have Glen run the candidate-bound tutorial gate for `smoke` plus conservation's
   view-only `offline-core`; extend typed coverage next to Gibson and dotplot.
-  Retain separate private biological verdicts; the new MCP/Feature Editor guides need Glen's review, not inferred GUI passes.
+  MCP/Feature Editor, transcript-assay, vendor and trace guides need Glen's review; keep biological verdicts separate.
+- Extend the transcript follow-up with provenance-complete array evidence for positive differential selection and approved-study execution.
 - Extend the deterministic inner-agent tutorial shortlist into context-labelled
   GUI/CLI/agent tutorial actions; defer skill activation and inverse discovery
   until readiness is safeguarded.

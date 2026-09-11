@@ -142,6 +142,19 @@ GENTLE_TUTORIAL_BIN_DIR="$PWD/target/debug" \
   python3 -m unittest scripts.test_tutorial_walkthroughs
 ```
 
+For the transcript-assay follow-up and existing vendor/trace guides, use the
+same already-built binary directory (no downloads or builds inside the tests):
+
+```bash
+GENTLE_TUTORIAL_BIN_DIR=/absolute/path/to/binary/directory \
+  python3 -m unittest scripts.test_transcript_assay_followup_tutorial scripts.test_specialist_tutorials
+```
+
+These exercises are not live GUI acceptance, real BLAST/vendor execution, or
+scientific approval. The transcript guide preserves the synthetic fixture's
+missing differential-threshold provenance instead of manufacturing a positive
+selection result.
+
 Without `GENTLE_TUTORIAL_BIN_DIR`, binary-dependent tests explicitly skip; with
 it set, missing tools, confirmation errors and command/report drift fail. The
 MCP companion preserves raw messages and compares every report field except

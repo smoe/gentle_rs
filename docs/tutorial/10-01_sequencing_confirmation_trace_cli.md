@@ -56,24 +56,65 @@ By the end, you should have confirmed all of these:
 - the target support ids now refer to the imported trace id
 - JSON and TSV exports come from the same stored report
 
+## Format and Scientific Limits
+
+`seq-trace import` detects content, not the filename extension: ABI/AB1 uses
+`ABIF` magic bytes and SCF uses `.scf` magic bytes. Renaming a file is not format
+conversion. Use this evidence import route, not ordinary sequence `LoadFile`,
+for chromatograms.
+
+ABI import preserves file-supplied `PBAS` calls, optional `PCON` confidence
+bytes, `PLOC` peaks, and available channel arrays. Missing confidence or peak
+arrays produce warnings; import does not invent quality values. SCF import
+also reads called bases, peaks, channels and clip metadata, selecting the
+called base's confidence byte from the four supplied values (the maximum for
+an ambiguous call). These are source values, not newly calibrated qualities.
+
+There is no committed public SCF fixture in this repository. Existing SCF tests
+construct synthetic bytes in
+[`src/engine/io/sequencing_traces.rs`](../../src/engine/io/sequencing_traces.rs)
+and [`src/engine_shell/tests.rs`](../../src/engine_shell/tests.rs). With your own
+reviewed local SCF file, repeat Steps 3-4 with its path and a fresh trace ID;
+expect `format = scf`, but do not expect the AB1 demo's confirmation verdict.
+
+Confirmation aligns existing called bases; it does not re-call peaks, edit
+chromatograms, automatically quality-trim reads, or interpret mixed peaks as
+validated allele fractions. Full-span/junction support uses alignment identity
+and target coverage, not a quality-weighted consensus. Variant/checkpoint
+classification can mark ambiguous calls or supplied confidence minima below
+`20` as `low_confidence_or_ambiguous`; absent confidence is not proof of high
+quality and does not itself trigger that threshold.
+
+This expected sequence was copied from the same trace: agreement is a software
+plumbing check, not independent biological validation. `confirmed` means the
+requested targets passed the selected rules, not whole-plasmid correctness,
+sample purity, clinical suitability, or experimental success. Inspect coverage,
+discrepancies and missing evidence before drawing scientific conclusions.
+
 ## Step 1: Pick a Dedicated State File
 
-Use a temporary state path so the tutorial does not interfere with your normal
-CLI project state.
+Run Bash commands from the repository root using an already-built CLI from
+this checkout. Set `GENTLE_CLI` to an absolute binary path if needed. Stop if
+the executable check fails; this walkthrough does not build it.
 
 ```bash
-STATE=/tmp/gentle_seq_trace_tutorial.gentle.json
-rm -f "$STATE"
+GENTLE_CLI="${GENTLE_CLI:-$PWD/target/debug/gentle_cli}"
+test -x "$GENTLE_CLI"
+RUN_DIR=$(mktemp -d "${TMPDIR:-/tmp}/gentle-seq-trace.XXXXXX") || exit 1
+STATE="$RUN_DIR/tutorial.gentle.json"
+printf 'Tutorial files: %s\n' "$RUN_DIR"
 ```
 
-Everything below uses that same `--state "$STATE"` path.
+Keep this shell open. Everything below uses the same `--state "$STATE"` path.
+All inputs are local and all outputs remain under this fresh directory. Do not
+delete a fixed state file or reuse an export path to restart the tutorial.
 
 ## Step 2: Load the Expected Construct
 
 Import the tiny expected construct under one stable sequence id:
 
 ```bash
-cargo run --bin gentle_cli -- --state "$STATE" op '{"LoadFile":{"path":"docs/tutorial/inputs/sequencing_confirmation_trace_demo_construct.fa","as_id":"trace_demo_construct"}}' --confirm
+"$GENTLE_CLI" --state "$STATE" op '{"LoadFile":{"path":"docs/tutorial/inputs/sequencing_confirmation_trace_demo_construct.fa","as_id":"trace_demo_construct"}}' --confirm
 ```
 
 What to verify:
@@ -85,7 +126,7 @@ What to verify:
 Optional quick summary:
 
 ```bash
-cargo run --bin gentle_cli -- --state "$STATE" state-summary
+"$GENTLE_CLI" --state "$STATE" state-summary
 ```
 
 ## Step 3: Import the Bundled ABI/AB1 Trace
@@ -93,10 +134,11 @@ cargo run --bin gentle_cli -- --state "$STATE" state-summary
 Import the public bundled AB1 fixture into the sequencing-trace evidence store:
 
 ```bash
-cargo run --bin gentle_cli -- --state "$STATE" shell 'seq-trace import test_files/fixtures/sequencing_confirmation/3100.ab1 --trace-id abi_demo_trace'
+"$GENTLE_CLI" --state "$STATE" shell 'seq-trace import test_files/fixtures/sequencing_confirmation/3100.ab1 --trace-id abi_demo_trace'
 ```
 
-What to verify:
+Read the `import_report` object in the command's JSON output (the full record
+is also returned under `trace`). What to verify:
 
 - `trace_id` is `abi_demo_trace`
 - `format` is `abi_ab1`
@@ -109,21 +151,27 @@ What to verify:
 List the imported traces:
 
 ```bash
-cargo run --bin gentle_cli -- --state "$STATE" shell 'seq-trace list'
+"$GENTLE_CLI" --state "$STATE" shell 'seq-trace list'
 ```
 
 Then inspect the specific record:
 
 ```bash
-cargo run --bin gentle_cli -- --state "$STATE" shell 'seq-trace show abi_demo_trace'
+"$GENTLE_CLI" --state "$STATE" shell 'seq-trace show abi_demo_trace'
 ```
 
-What to look for:
+What to look for under the output's `trace` object:
 
 - `called_bases` is present and long
 - `called_base_confidence_values` and `peak_locations` are populated
 - `sample_name` is the file-derived ABI sample label
 - `channel_summaries` reports four processed channels
+
+The first 48 calls include low confidence values. At 1-based base 24 the file
+supplies `9`, so the GUI companion's baseline-derived expected-edit checkpoint
+is insufficient evidence even though this CLI's alignment-only junction can
+be confirmed. Do not interpret populated confidence arrays as uniformly good
+quality or replace their values to force a positive verdict.
 
 This is the important separation point:
 
@@ -134,18 +182,20 @@ This is the important separation point:
 
 Now run `seq-confirm` using the imported trace directly as evidence.
 
-This tutorial uses one explicit junction target centered at base `24` of the
-`48 bp` construct:
+This tutorial uses one explicit junction target at boundary `24` (0-based
+left-end position, between 1-based bases 24 and 25). Flank `12` covers
+`[12, 36)` in 0-based, end-exclusive coordinates, or bases 13-36 in 1-based
+coordinates. This is a synthetic checkpoint, not a demonstrated cloning join.
 
 ```bash
-cargo run --bin gentle_cli -- --state "$STATE" shell 'seq-confirm run trace_demo_construct --trace-id abi_demo_trace --junction 24 --junction-flank 12 --report-id trace_demo_confirm'
+"$GENTLE_CLI" --state "$STATE" shell 'seq-confirm run trace_demo_construct --trace-id abi_demo_trace --junction 24 --junction-flank 12 --report-id trace_demo_confirm'
 ```
 
 What to verify:
 
 - the command succeeds without any `--reads` input
 - the report id is `trace_demo_confirm`
-- overall status is `confirmed`
+- `report.overall_status` is `confirmed`
 - the target status is `confirmed`
 - `support_read_ids` contains `abi_demo_trace`
 
@@ -157,13 +207,19 @@ This is the new behavior the tutorial is meant to exercise:
 
 ## Step 6: Inspect the Stored Confirmation Report
 
+Because an explicit junction was supplied, this CLI run does not automatically
+add a full-span target. Omit the junction flags in a separate run with a fresh
+report ID to request the default full span. The GUI companion also adds a
+baseline-derived intended-edit checkpoint; the reports need not have the same
+target count.
+
 Show the persisted report:
 
 ```bash
-cargo run --bin gentle_cli -- --state "$STATE" shell 'seq-confirm show-report trace_demo_confirm'
+"$GENTLE_CLI" --state "$STATE" shell 'seq-confirm show-report trace_demo_confirm'
 ```
 
-What to look for in the report payload:
+What to look for under the `report` object:
 
 - `trace_ids` contains `abi_demo_trace`
 - `read_seq_ids` is empty in this trace-only example
@@ -179,19 +235,20 @@ record without inventing a second confirmation report family.
 Export the stored report as JSON:
 
 ```bash
-cargo run --bin gentle_cli -- --state "$STATE" shell 'seq-confirm export-report trace_demo_confirm /tmp/trace_demo_confirm.json'
+"$GENTLE_CLI" --state "$STATE" shell "seq-confirm export-report trace_demo_confirm \"$RUN_DIR/trace_demo_confirm.json\""
 ```
 
 Export the target-support TSV:
 
 ```bash
-cargo run --bin gentle_cli -- --state "$STATE" shell 'seq-confirm export-support-tsv trace_demo_confirm /tmp/trace_demo_confirm.tsv'
+"$GENTLE_CLI" --state "$STATE" shell "seq-confirm export-support-tsv trace_demo_confirm \"$RUN_DIR/trace_demo_confirm.tsv\""
 ```
 
 What to verify:
 
-- `/tmp/trace_demo_confirm.json` contains the same report id and `trace_ids`
-- `/tmp/trace_demo_confirm.tsv` includes the `junction_1` row
+- `$RUN_DIR/trace_demo_confirm.json` contains the report itself, without the
+  shell response's outer `report` wrapper, and the same report id and `trace_ids`
+- `$RUN_DIR/trace_demo_confirm.tsv` includes the `junction_1` row
 - the TSV support column contains `abi_demo_trace`
 
 ## Optional Negative Control
@@ -200,13 +257,17 @@ The bundled `fake.ab1` file is intentionally malformed. Importing it should
 fail deterministically:
 
 ```bash
-cargo run --bin gentle_cli -- --state "$STATE" shell 'seq-trace import test_files/fixtures/sequencing_confirmation/fake.ab1 --trace-id fake_trace'
+"$GENTLE_CLI" --state "$STATE" shell 'seq-trace import test_files/fixtures/sequencing_confirmation/fake.ab1 --trace-id fake_trace'
 ```
 
 Expected outcome:
 
 - the command fails with a deterministic input/format error
 - the existing `abi_demo_trace` record remains intact
+
+Run `seq-trace list` again: only `abi_demo_trace` should be present. An explicit
+trace ID can replace a previous record on successful import, so use fresh IDs
+for different evidence files rather than treating IDs as append-only.
 
 ## Engine / Shell Mapping
 

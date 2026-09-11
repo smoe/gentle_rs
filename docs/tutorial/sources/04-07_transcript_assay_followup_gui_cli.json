@@ -1,0 +1,22 @@
+{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "transcript_assay_followup_gui_cli",
+  "title": "Follow Up Transcript Assays: RT Primer Pools, Differential Junctions and Specificity",
+  "catalog": {
+    "order": 61,
+    "path": "docs/tutorial/04-07_transcript_assay_followup_gui_cli.md",
+    "type": "gui_cli_walkthrough",
+    "status": "manual/hybrid",
+    "source": "hand_written_markdown",
+    "audiences": [
+      "gui_first",
+      "cli_first",
+      "primer_design",
+      "transcript_analysis",
+      "wet_lab_biologists"
+    ],
+    "notes": "Offline synthetic PATZ1 follow-up after qPCR exon junctions and transcript panels: terminal-exon RT primer pool geometry, differential junction selection and missing threshold provenance, transcript-assay specificity planning/finalization, and gene-isoform study orchestration with two separate approval stages. GUI PCR Designer and shared Shell continuation; deterministic Python fixture checks and optional supplied-binary replay. External manifest-backed specificity is optional and not executed; no vendor submission, validated assay, or human scientific/GUI approval is claimed.",
+    "group": "04",
+    "group_position": 7
+  }
+}

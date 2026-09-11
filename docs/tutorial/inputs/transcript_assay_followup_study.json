@@ -1,0 +1,23 @@
+{
+  "schema": "gentle.gene_isoform_assay_study_plan_request.v1",
+  "plan_id": "transcript_assay_followup_study",
+  "label": "Synthetic PATZ1 planning and missing-threshold review, not laboratory approval",
+  "isoform_evidence_path": "test_files/fixtures/transcript_assay_panel/patz1/patz1_assay_isoform_evidence.json",
+  "expected_isoform_evidence_sha256": "sha256:267a8fc00da8fea653dd440259987b20fc68422554cfed8bbff61809d4eeaaf5",
+  "junction_evidence": [
+    {
+      "input_kind": "probe_region_evidence_interpretation",
+      "path": "test_files/fixtures/isoform_evidence/patz1/patz1_probe_evidence.json",
+      "expected_sha256": "sha256:11e2a7b4cbb83af5868902b1834ecbfe6c5e7ddb80e521c1060abf7a4d8418a9"
+    }
+  ],
+  "policy": {
+    "short_min_amplicon_bp": 30,
+    "short_max_amplicon_bp": 120,
+    "min_abs_regional_effect": 0.5
+  },
+  "profile_override": {
+    "selected_profile": "targeted_junction_validation",
+    "reason": "Bound this synthetic planning exercise to a common control and a junction panel; retain the automatic recommendation and missing evidence separately."
+  }
+}

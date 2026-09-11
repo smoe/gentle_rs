@@ -57,6 +57,8 @@ Common destinations already available here:
 
 - [Transcript-aware PATZ1 endpoint/SYBR primer panels](./generated/chapters/04-06_patz1_transcript_assay_panels_cli.md),
   alongside [primer-pair determination](./generated/chapters/04-02_pcr_selection_batch_primer_pairs_offline.md).
+- [RT pools, differential junctions, specificity and study planning](./04-07_transcript_assay_followup_gui_cli.md)
+  joins these steps while keeping incomplete evidence and execution approval explicit.
 - [Metabion handoff](./09-01_metabion_external_service_handoff_gui_cli.md) and
   [GeneArt handoff](./09-02_geneart_external_service_handoff_gui_cli.md).
 - [Sequencing confirmation: CLI](./10-01_sequencing_confirmation_trace_cli.md)
@@ -143,6 +145,8 @@ Tutorial numbers now describe the topic group first and the learning position se
 - `04.05` [Guide oligo export (CSV + protocol)](./generated/chapters/04-05_guides_export_csv_and_protocol.md) - executable reference; status `generated+checked/human-pending`; review `unreviewed` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.
 - `04.06` [Design PATZ1 Endpoint and SYBR Transcript Panels from the CLI](./generated/chapters/04-06_patz1_transcript_assay_panels_cli.md) - executable reference; status `generated+checked/human-pending`; review `codex_reviewed` - Codex 2026-07-21 - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: CLI-first endpoint RT-PCR band-matrix and primer-only SYBR junction-panel design through the complete shared operation contract.
 
+- `04.07` [RT Pools, Differential Junctions, Specificity and Study Planning](./04-07_transcript_assay_followup_gui_cli.md) - guided GUI/CLI; status `manual/hybrid`; Codex source review, human and live GUI review pending. Bounded synthetic follow-up with explicit missing evidence and separate planning/execution approvals.
+
 ### Genome Context & Coordinates
 
 - `05.01` [Find and extend the right genomic target (local catalog)](./generated/chapters/05-01_find_and_extend_genomic_target_local_catalog.md) - executable reference; status `generated+checked/human-pending`; review `unreviewed` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.
@@ -174,14 +178,14 @@ Tutorial numbers now describe the topic group first and the learning position se
 
 ### External Services & Handoffs
 
-- `09.01` [Prepare a Metabion Handoff from Shared External-Service Contracts](./09-01_metabion_external_service_handoff_gui_cli.md) - guided GUI/CLI; status `manual/hybrid`; review `unreviewed` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: Safe handoff rehearsal for Metabion oligo and m-block requests through the shared provider catalog, preflight, and quote bundle contracts; no vendor submission.
-- `09.02` [Prepare a GeneArt Handoff from Shared External-Service Contracts](./09-02_geneart_external_service_handoff_gui_cli.md) - guided GUI/CLI; status `manual/hybrid`; review `unreviewed` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: Safe GeneArt cloned-gene and protein-expression quote-handoff rehearsal through the shared provider catalog, preflight, quote bundle, and return_spec contracts; no vendor submission.
+- `09.01` [Prepare a Metabion Handoff from Shared External-Service Contracts](./09-01_metabion_external_service_handoff_gui_cli.md) - guided GUI/CLI; status `manual/hybrid`; review `codex_reviewed` (2026-09-11); human/live GUI review pending - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: Safe handoff rehearsal for Metabion oligo and m-block requests through the shared provider catalog, preflight, and quote bundle contracts; no vendor submission.
+- `09.02` [Prepare a GeneArt Handoff from Shared External-Service Contracts](./09-02_geneart_external_service_handoff_gui_cli.md) - guided GUI/CLI; status `manual/hybrid`; review `codex_reviewed` (2026-09-11); human/live GUI review pending - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: Safe GeneArt cloned-gene and protein-expression quote-handoff rehearsal through the shared provider catalog, preflight, quote bundle, and return_spec contracts; no vendor submission.
 - `09.03` [Plan a High-Yield Protein-Expression Handoff](./09-03_protein_expression_handoff_cli.md) - guided CLI; status `manual/hybrid`; review `unreviewed` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: CLI/agent walkthrough for turning an underspecified high-yield protein-production request into a read-only GENtle handoff report with explicit chassis, route, missing-question, and GeneArt preflight scaffolding.
 
 ### Sequencing Confirmation & QC
 
-- `10.01` [Confirm a Construct from an Imported Sequencing Trace (CLI Tutorial)](./10-01_sequencing_confirmation_trace_cli.md) - guided CLI; status `manual/hybrid`; review `unreviewed` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: Hands-on local walkthrough for seq-trace import, trace-aware seq-confirm run, and shared report export.
-- `10.02` [Inspect an Imported Sequencing Trace and Confirm a Construct (GUI Tutorial)](./10-02_sequencing_confirmation_gui.md) - guided GUI; status `manual/hybrid`; review `unreviewed` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: GUI-first walkthrough for raw trace import, baseline-aware confirmation, chromatogram inspection, and lineage reopen.
+- `10.01` [Confirm a Construct from an Imported Sequencing Trace (CLI Tutorial)](./10-01_sequencing_confirmation_trace_cli.md) - guided CLI; status `manual/hybrid`; review `codex_reviewed` (2026-09-11); human/live GUI review pending - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: Hands-on local walkthrough for seq-trace import, trace-aware seq-confirm run, and shared report export.
+- `10.02` [Inspect an Imported Sequencing Trace and Confirm a Construct (GUI Tutorial)](./10-02_sequencing_confirmation_gui.md) - guided GUI; status `manual/hybrid`; review `codex_reviewed` (2026-09-11); human/live GUI review pending - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: GUI-first walkthrough for raw trace import, baseline-aware confirmation, chromatogram inspection, and lineage reopen.
 
 ## Confidence Map
 
@@ -299,6 +303,7 @@ Use the review badge to decide what kind of feedback is most useful:
 2. Replay its endpoint operation through `primers design-transcript-assay-panel @FILE` and inspect the first-end x terminal-end band matrix
 3. Replay its required-junction SYBR operation and confirm that no internal probe is created
 4. Use one explicit `--state` project to list, show, and export both persisted reports before adapting the operations to real transcript annotations
+5. Continue with [04.07](./04-07_transcript_assay_followup_gui_cli.md) for RT pools, selection evidence, external specificity and approved study planning
 
 ### Path B3: TFBS similarity sign-off
 

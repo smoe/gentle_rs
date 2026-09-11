@@ -11,9 +11,11 @@
     "audiences": [
       "cli_first",
       "sequence_analysis",
+      "agent_users",
+      "clawbio",
       "contributors"
     ],
-    "notes": "Hands-on local walkthrough for seq-trace import, trace-aware seq-confirm run, and shared report export.",
+    "notes": "Offline Sanger sequencing trace tutorial: seq-trace import/list/show, seq-confirm run --trace-id, show-report and JSON/TSV exports using existing 3100.ab1, fake.ab1 and 48 bp construct fixtures with fresh state. ABI/AB1 and SCF import use magic bytes; SCF coverage is synthetic-only, not a bundled public SCF walkthrough. File-supplied confidence is not quality-weighted consensus or independent biological validation. Prerequisite: already-built gentle_cli. Open with ui open tutorial-guide sequencing_confirmation_trace_cli. codex source review 2026-09-11 against code 32875224 and this revised source: scoped workflow clarity, links and nonclaims reviewed for wet-lab biologists and inner agents; not binary execution sign-off, live GUI acceptance or human scientific approval. Structured review records remain in the separate review manifest.",
     "group": "10",
     "group_position": 1
   }

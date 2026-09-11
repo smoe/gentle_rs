@@ -480,6 +480,45 @@ Key properties:
   proposal-digest approval are separate gates; neither substitutes for the other.
 - UI-intent tools are currently non-mutating query/intent routes
 
+#### Primer reports and panel specificity
+
+`primer_reports` projects the shared primer report routes with a bounded
+`family` (`primer`, `qpcr`, `transcript_assay_panel`, or
+`transcript_assay_fallback`) and `action` (`list`, `show`, or `export`).
+`list` needs neither an id nor confirmation. `show` requires `report_id`
+(the `execution_id` for fallback reports). `export` also requires `path` and
+explicit `confirm: true`. Export never modifies the project, but writes a file.
+`state_path` is optional on all three tools below. Unknown or inapplicable
+arguments fail instead of silently changing what is inspected.
+
+```json
+{"name":"primer_reports","arguments":{"family":"transcript_assay_panel","action":"list"}}
+```
+
+`transcript_assay_specificity_plan` requires `panel_report_id`,
+`target_genome_id`, `output_dir`, and `confirm: true`. It prepares the shared
+whole-panel BLAST handoff and execution-manifest template, but does not run
+BLAST. Optional fields mirror the shell thresholds with underscores:
+`max_target_amplicon_bp` or separate `readiness_max_amplicon_bp` and
+`exploratory_max_amplicon_bp`; `report_detail`, `full_alignment`,
+`min_primer_coverage_fraction`, `max_3prime_mismatches`, `three_prime_window_bp`,
+`min_total_mismatches_to_unintended_target`, `max_hits_per_primer`,
+`allow_same_gene_splice_variants`, `avoid_known_variants`, `avoid_rmsk_repeats`,
+`avoid_low_complexity`, `catalog_path`, and `cache_dir`.
+`reviewed_off_target_allowlist` accepts the structured JSON array, not a path.
+Omitted fields retain shared engine defaults; conflicting ceiling forms fail.
+
+`transcript_assay_specificity_finalize` requires `handoff_path`, the structured
+`execution_manifest` object, and `confirm: true`; optional `path` exports the
+acceptance report. It validates the same hashes, completeness, database and
+panel identity as the shell. Only complete assessments are persisted;
+`incomplete` remains distinct from `not_assessed`, `specificity_fail`, and
+`pass`. It does not execute commands from a manifest. Confirmation is checked
+before loading state or accessing report files for either handoff tool.
+
+These three tools cover fourteen shared command paths. This is a scoped parity
+extension, not an unrestricted shell tool or a claim that all MCP gaps are closed.
+
 #### Intentionally MCP-excluded shell commands
 
 `tools/list` exposes the curated typed MCP surface, not every shared shell
@@ -692,17 +731,9 @@ an agent has selected a deterministic operation.
 - `primers execute-gene-isoform-study-workflow-batch`
 - `primers design-qpcr`
 - `primers experimental-handoff` (the typed `BuildExperimentalAssayHandoff` operation remains available through the generic MCP `op` tool)
-- `primers export-qpcr-report`
-- `primers export-report`
 - `primers export-restriction-cloning-handoff`
-- `primers export-transcript-assay-fallback`
-- `primers export-transcript-assay-panel`
 - `primers import-external-pairs`
-- `primers list-qpcr-reports`
-- `primers list-reports`
 - `primers list-restriction-cloning-handoffs`
-- `primers list-transcript-assay-fallbacks`
-- `primers list-transcript-assay-panels`
 - `primers primerbank search`
 - `primers primerbank show`
 - `primers primerbank test-cdna`
@@ -713,13 +744,7 @@ an agent has selected a deterministic operation.
 - `primers seed-from-feature`
 - `primers seed-from-splicing`
 - `primers seed-restriction-cloning-handoff`
-- `primers show-qpcr-report`
-- `primers show-report`
 - `primers show-restriction-cloning-handoff`
-- `primers show-transcript-assay-fallback`
-- `primers show-transcript-assay-panel`
-- `primers transcript-assay-specificity-plan`
-- `primers transcript-assay-specificity-finalize`
 - `primers test-cdna-pcr`
 - `primers test-cdna-qpcr`
 - `primers test-cdna-qpcr-fasta`

@@ -15860,6 +15860,81 @@ fn transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_o
         assert_eq!(planned_transcript_ids, expected_transcript_ids);
     }
     let pass_manifest = transcript_assay_specificity_execution_manifest(&pass_handoff, true);
+    // Exercise the MCP adapter on an independent copy of the same synthetic
+    // panel. Its handoff and finalization must use the shared biological path.
+    let mcp_state_path = root.join("mcp-panel.json");
+    engine
+        .state()
+        .save_to_path(mcp_state_path.to_str().unwrap())
+        .unwrap();
+    let mcp_call = |name: &str, arguments: serde_json::Value| {
+        let result = crate::mcp_server::mcp_tool_call_for_capability_surface_tests(
+            mcp_state_path.to_str().unwrap(),
+            name,
+            arguments,
+        );
+        assert_ne!(result["isError"], true, "{name}: {result}");
+        serde_json::from_str::<serde_json::Value>(result["content"][0]["text"].as_str().unwrap())
+            .unwrap()
+    };
+    let before_mcp_plan = fs::read(&mcp_state_path).unwrap();
+    let mcp_plan = mcp_call(
+        "transcript_assay_specificity_plan",
+        serde_json::json!({
+            "panel_report_id":"panel_external_pass", "target_genome_id":"ToyGenome",
+            "output_dir":root.join("mcp-pass"), "catalog_path":catalog,
+            "max_3prime_mismatches":5, "full_alignment":"disabled", "confirm":true
+        }),
+    );
+    assert_eq!(fs::read(&mcp_state_path).unwrap(), before_mcp_plan);
+    let mcp_handoff: TranscriptAssayPanelSpecificityHandoff =
+        serde_json::from_value(mcp_plan["handoff"].clone()).unwrap();
+    assert_eq!(
+        mcp_handoff.selected_assay_count,
+        pass_handoff.selected_assay_count
+    );
+    assert_eq!(
+        mcp_handoff.policy.readiness_max_target_amplicon_bp,
+        pass_handoff.policy.readiness_max_target_amplicon_bp
+    );
+    let mcp_manifest = transcript_assay_specificity_execution_manifest(&mcp_handoff, true);
+    let mcp_acceptance_path = root.join("mcp-acceptance.json");
+    let mcp_finalized = mcp_call(
+        "transcript_assay_specificity_finalize",
+        serde_json::json!({
+            "handoff_path":mcp_handoff.handoff_path, "execution_manifest":mcp_manifest,
+            "path":mcp_acceptance_path, "confirm":true
+        }),
+    );
+    assert_eq!(mcp_finalized["acceptance"]["status"], "pass");
+    assert_eq!(mcp_finalized["acceptance"]["accepted"], true);
+    let exported_acceptance: serde_json::Value =
+        serde_json::from_slice(&fs::read(&mcp_acceptance_path).unwrap()).unwrap();
+    assert_eq!(exported_acceptance, mcp_finalized["acceptance"]);
+    assert_ne!(fs::read(&mcp_state_path).unwrap(), before_mcp_plan);
+    let mcp_reopened = mcp_call(
+        "primer_reports",
+        serde_json::json!({
+            "family":"transcript_assay_panel", "action":"show", "report_id":"panel_external_pass"
+        }),
+    );
+    assert_eq!(
+        mcp_reopened["report"]["specificity_acceptance"]["status"],
+        "pass"
+    );
+    let panel_export_path = root.join("mcp-panel-export.json");
+    let before_export = fs::read(&mcp_state_path).unwrap();
+    mcp_call(
+        "primer_reports",
+        serde_json::json!({
+            "family":"transcript_assay_panel", "action":"export", "report_id":"panel_external_pass",
+            "path":panel_export_path, "confirm":true
+        }),
+    );
+    let exported_panel: serde_json::Value =
+        serde_json::from_slice(&fs::read(panel_export_path).unwrap()).unwrap();
+    assert_eq!(exported_panel, mcp_reopened["report"]);
+    assert_eq!(fs::read(&mcp_state_path).unwrap(), before_export);
     let pass_finalize = execute_shell_command(
         &mut engine,
         &ShellCommand::PrimersTranscriptAssaySpecificityFinalize {

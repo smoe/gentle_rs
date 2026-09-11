@@ -41,6 +41,8 @@ const SERVER_TITLE: &str = "GENtle MCP";
 const MAX_MCP_CONTENT_LENGTH_BYTES: usize = 8 * 1024 * 1024;
 const MAX_MCP_JSON_DEPTH: usize = 96;
 
+mod primer_tools;
+
 pub const DEFAULT_MCP_STATE_PATH: &str = ".gentle_state.json";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1244,6 +1246,9 @@ fn tool_list() -> Value {
             }
         }));
     }
+    if let Some(items) = tools.as_array_mut() {
+        items.extend(primer_tools::descriptors());
+    }
     project_mcp_tools_from_registry(&mut tools);
     if let Some(items) = tools.as_array_mut() {
         annotate_tool_descriptors(items);
@@ -1360,13 +1365,19 @@ fn tool_mutating_descriptor(name: &str) -> Value {
         | "promoter_reporter_panel_materialize"
         | "construct_reasoning_run_inspection_action"
         | "construct_reasoning_set_annotation_status"
-        | "construct_reasoning_write_annotation" => Value::Bool(true),
-        "gene_isoform_assay_publication" => Value::String("external".to_string()),
+        | "construct_reasoning_write_annotation"
+        | "transcript_assay_specificity_finalize" => Value::Bool(true),
+        "gene_isoform_assay_publication"
+        | "primer_reports"
+        | "transcript_assay_specificity_plan" => Value::String("external".to_string()),
         _ => Value::Bool(false),
     }
 }
 
 fn tool_command_paths(name: &str) -> &'static [&'static str] {
+    if let Some(paths) = primer_tools::command_paths(name) {
+        return paths;
+    }
     match name {
         "capabilities" => &["capabilities"],
         "state_summary" => &["state-summary"],
@@ -3582,6 +3593,11 @@ fn workflow_tool_result(default_state_path: &str, arguments: &Value) -> Value {
 
 fn tool_call_result(default_state_path: &str, params: ToolCallParams) -> Value {
     match params.name.trim() {
+        "primer_reports"
+        | "transcript_assay_specificity_plan"
+        | "transcript_assay_specificity_finalize" => {
+            primer_tools::call(default_state_path, params.name.trim(), &params.arguments)
+        }
         "capabilities" => tool_result_json(json!(GentleEngine::capabilities()), false),
         "state_summary" => {
             let args = params.arguments.as_object().cloned().unwrap_or_default();

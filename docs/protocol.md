@@ -9718,6 +9718,15 @@ External BLAST handoff for wrapper-owned execution:
 
 Whole-panel external specificity acceptance:
 
+- MCP exposes these same shared-shell contracts as
+  `transcript_assay_specificity_plan` and
+  `transcript_assay_specificity_finalize`, both requiring explicit
+  `confirm: true`. The plan writes handoff files without executing BLAST;
+  finalization accepts a structured execution-manifest object and persists
+  only complete assessments. Stored primer/qPCR/panel/fallback reports are
+  also accessible through `primer_reports` (`list`, `show`, `export`);
+  only export requires confirmation. See the [MCP field contract](agent_interface.md#primer-reports-and-panel-specificity).
+
 - `primers transcript-assay-specificity-plan PANEL_REPORT_ID --target-genome
   GENOME_ID --output-dir DIR` emits
   `gentle.transcript_assay_panel_specificity_handoff.v1`. It binds the current

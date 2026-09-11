@@ -3,6 +3,41 @@
 This folder contains small committed local inputs used by GUI tutorials and
 manual contributor checks.
 
+## Transcript-Assay Follow-Up
+
+`transcript_assay_followup_rt_pool.json` and
+`transcript_assay_followup_study.json` are hand-authored synthetic teaching
+requests, added on 2026-09-11. They contain no new biological measurements or
+claimed human approvals. They are consumed by the shared primer commands in
+[tutorial 04.07](../04-07_transcript_assay_followup_gui_cli.md) and
+`scripts/test_transcript_assay_followup_tutorial.py`.
+
+Recreate the RT request using the adapter `ACTTGCCTGTCGCTCTATCTTC` from
+`terminal_exon_rt_primer_pool_request` in `src/engine/tests.rs`, a 22 nt variable
+segment, a 40 bp window, five retained candidates, and ordered PATZ1-201 then
+PATZ1-202 targets at engine feature 1 of `patz1_transcript_assay_demo`.
+The adapter is a test value, not a validated chemistry recommendation.
+
+Recreate the study request by binding the unchanged isoform ledger and probe
+evidence paths/hashes shown in its JSON, setting the short product range to
+30..120 bp and the planning effect threshold to 0.5, and explicitly selecting
+`targeted_junction_validation` with the teaching reason shown there. Other
+policy fields are deliberately omitted so normalization exposes the engine's
+effective defaults before approval. This planning threshold does not retrofit
+threshold provenance into the older probe-evidence report.
+
+All sequence/evidence is reused, not copied: see
+[`test_files/fixtures/transcript_assay_panel/patz1/README.md`](../../../test_files/fixtures/transcript_assay_panel/patz1/README.md)
+and
+[`test_files/fixtures/isoform_evidence/patz1/README.md`](../../../test_files/fixtures/isoform_evidence/patz1/README.md).
+The synthetic 240 bp minus-strand locus has 120/80/100 nt mature transcripts;
+its GRCh38-like coordinates do not make it an authentic human reference.
+The canonical `patz1_endpoint_sybr_transcript_assay_panel_offline` workflow
+and its existing generated reports provide the tutorial's junction/panel
+observations. No new interpreted report, sequence, or execution manifest is
+fabricated here. Test recreation/replay commands are in the tutorial; runtime
+state and exports go only to temporary directories.
+
 ## MCP Roundtrip and Feature Editor
 
 Files added on 2026-09-10:

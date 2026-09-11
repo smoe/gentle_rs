@@ -163,12 +163,13 @@
       "audiences": [
         "cli_first",
         "sequence_analysis",
+        "agent_users",
+        "clawbio",
         "contributors"
       ],
-      "notes": "Hands-on local walkthrough for seq-trace import, trace-aware seq-confirm run, and shared report export.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Offline Sanger sequencing trace tutorial: seq-trace import/list/show, seq-confirm run --trace-id, show-report and JSON/TSV exports using existing 3100.ab1, fake.ab1 and 48 bp construct fixtures with fresh state. ABI/AB1 and SCF import use magic bytes; SCF coverage is synthetic-only, not a bundled public SCF walkthrough. File-supplied confidence is not quality-weighted consensus or independent biological validation. Prerequisite: already-built gentle_cli. Open with ui open tutorial-guide sequencing_confirmation_trace_cli. codex source review 2026-09-11 against code 32875224 and this revised source: scoped workflow clarity, links and nonclaims reviewed for wet-lab biologists and inner agents; not binary execution sign-off, live GUI acceptance or human scientific approval. Structured review records remain in the separate review manifest.",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-11"
     },
     {
       "id": "sequencing_confirmation_gui",
@@ -185,12 +186,13 @@
       "audiences": [
         "gui_first",
         "sequence_analysis",
+        "agent_users",
+        "clawbio",
         "contributors"
       ],
-      "notes": "GUI-first walkthrough for raw trace import, baseline-aware confirmation, chromatogram inspection, and lineage reopen.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Offline Sanger sequencing confirmation GUI tutorial: Patterns -> Sequencing Confirmation..., Raw Trace Import, ABI/AB1 evidence, baseline/reference intended-edit checkpoints, chromatogram curves, lineage reopen, Save Project and JSON/TSV export. Prerequisites: already-built GUI, bundled 3100.ab1 and construct/baseline FASTA pair. The matching base-24 call has confidence 9: expect low_confidence_or_ambiguous and overall insufficient_evidence, not an intended-edit confirmation. SCF import exists but public SCF fixture coverage is absent; no invented qualities, peak re-calling, automatic quality trimming or independent biological validation. No uncovered-gap or primer-overlay exercise. Open with ui open tutorial-guide sequencing_confirmation_gui. codex source review 2026-09-11 against code 32875224 and this revised source: scoped workflow clarity, UI labels, links and nonclaims reviewed for wet-lab biologists and inner agents; not live GUI acceptance, binary execution sign-off or human scientific approval. Structured review records remain in the separate review manifest.",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-11"
     },
     {
       "id": "rna_read_batch_gene_support_cli",
@@ -275,10 +277,9 @@
         "agent_users",
         "cloning_planning"
       ],
-      "notes": "Safe handoff rehearsal for Metabion oligo and m-block requests through the shared provider catalog, preflight, and quote bundle contracts; no vendor submission.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Offline external-service tutorial for Metabion DNA oligos, primers, probes and m-block fragments: Services -> External Services..., services providers doctor/list, project-preflight, project-quote, JSON/CSV/email/WOP handoff exports. Prerequisites: bundled DEMO_DO_NOT_ORDER requests and an already-built CLI/GUI. Local eligibility is not vendor acceptance, pricing or ordering; no network or submission. Open with ui open tutorial-guide metabion_external_service_handoff_gui_cli. codex source review 2026-09-11 against code 32875224 and this revised source: scoped workflow clarity, links and nonclaims reviewed for wet-lab biologists and inner agents; not live GUI acceptance, binary execution sign-off or human scientific approval. Structured review records remain in the separate review manifest.",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-11"
     },
     {
       "id": "geneart_external_service_handoff_gui_cli",
@@ -300,10 +301,9 @@
         "cloning_planning",
         "protein_workflows"
       ],
-      "notes": "Safe GeneArt cloned-gene and protein-expression quote-handoff rehearsal through the shared provider catalog, preflight, quote bundle, and return_spec contracts; no vendor submission.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Offline external-service tutorial for GeneArt cloned-gene synthesis and protein-expression handoff: Services -> External Services..., services providers doctor/list, project-preflight, project-quote and bundle exports. Prerequisites: bundled DEMO_DO_NOT_ORDER requests and an already-built CLI/GUI. return_spec requests are not guaranteed payload materialization; no codon optimization, vendor pricing, network or ordering. Open with ui open tutorial-guide geneart_external_service_handoff_gui_cli. codex source review 2026-09-11 against code 32875224 and this revised source: scoped workflow clarity, links and nonclaims reviewed for wet-lab biologists and inner agents; not live GUI acceptance, binary execution sign-off or human scientific approval. Structured review records remain in the separate review manifest.",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-11"
     },
     {
       "id": "protein_expression_handoff_cli",
@@ -1362,6 +1362,29 @@
       "notes": "Synthetic Feature Editor exercise covering Location, Create, Split, Merge and Delete, review-only overlaps/shared identifiers, stale previews and unchanged DNA. CLI regressions do not substitute for live GUI acceptance.",
       "review_status": "codex_reviewed",
       "codex_reviewed_at": "2026-09-10"
+    },
+    {
+      "id": "transcript_assay_followup_gui_cli",
+      "title": "Follow Up Transcript Assays: RT Primer Pools, Differential Junctions and Specificity",
+      "path": "docs/tutorial/04-07_transcript_assay_followup_gui_cli.md",
+      "group": "04",
+      "group_label": "Primers, PCR & qPCR",
+      "group_order": 4,
+      "group_position": 7,
+      "decimal_id": "04.07",
+      "type": "gui_cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "primer_design",
+        "transcript_analysis",
+        "wet_lab_biologists"
+      ],
+      "notes": "Offline synthetic PATZ1 follow-up after qPCR exon junctions and transcript panels: terminal-exon RT primer pool geometry, differential junction selection and missing threshold provenance, transcript-assay specificity planning/finalization, and gene-isoform study orchestration with two separate approval stages. GUI PCR Designer and shared Shell continuation; deterministic Python fixture checks and optional supplied-binary replay. External manifest-backed specificity is optional and not executed; no vendor submission, validated assay, or human scientific/GUI approval is claimed.",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-11"
     }
   ]
 }

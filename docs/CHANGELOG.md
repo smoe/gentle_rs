@@ -17,6 +17,34 @@
   compositor coverage plus an offline context example. Glen's private CUT&RUN
   bundle has not been rerun by this implementation.
 
+## 2026-09-11 - Tutorial follow-up and primer MCP reachability
+
+- Added an offline synthetic PATZ1 walkthrough joining terminal-exon RT pools,
+  differential-junction selection audits, panel specificity handoffs and
+  normalized gene-isoform study planning. It distinguishes shared terminal-exon
+  priming from isoform specificity, missing threshold provenance from negative
+  evidence, and planning approval from execution approval. Added bounded
+  request fixtures, provenance and optional supplied-binary replay tests.
+- Revised the already-existing Metabion/GeneArt and sequencing-confirmation
+  guides rather than duplicating them: fresh isolated output directories,
+  current commands/GUI labels, explicit offline handoff limitations, trace
+  format distinctions and regression companions. Their catalog descriptions
+  support interest-guided discovery; Codex review is not human GUI acceptance.
+- Corrected the trace tutorial's expected SNP verdict: the fixture's stored
+  confidence is 9, below the engine threshold of 20, so a matching called base
+  remains low-confidence/insufficient evidence rather than a confirmed edit.
+  Called-base span/junction support is not quality-weighted construct validation.
+- Added bounded MCP `primer_reports` inspection/export and whole-panel
+  `transcript_assay_specificity_plan` / `transcript_assay_specificity_finalize`
+  adapters over the existing shell parser/executor. Fourteen command paths now
+  have real MCP routes; remaining parity gaps are not relabelled as covered.
+  Writes require confirmation before file/state access, and complete panel
+  finalization persists the shared scientific result. Added refusal, argument,
+  shared-policy, export and persisted-result regressions.
+- Pi's review did not supersede the release gate: Glen's original-input
+  CUT&RUN receipt, corrected five-gene TSS regeneration and exact-candidate
+  biological/GUI acceptance remain open. No release-readiness verdict is implied.
+
 ## 2026-09-10 - Integrated TSS composition and review hardening
 
 - Merged Glen's exact `8fd677c2` contribution before applying review fixes:

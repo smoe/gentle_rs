@@ -5748,6 +5748,24 @@ const MCP_TOOL_NAMES: &[(&str, &str, &str, CapabilityMutation)] = &[
         CapabilityMutation::ReadOnly,
     ),
     (
+        "primer_reports",
+        "Primer Reports",
+        "List, inspect, or explicitly export stored primer, qPCR, transcript-assay panel, and fallback reports through shared shell routes.",
+        CapabilityMutation::External,
+    ),
+    (
+        "transcript_assay_specificity_plan",
+        "Transcript Assay Specificity Plan",
+        "Prepare a confirmed whole-panel local BLAST handoff without executing BLAST through the shared shell route.",
+        CapabilityMutation::External,
+    ),
+    (
+        "transcript_assay_specificity_finalize",
+        "Transcript Assay Specificity Finalize",
+        "Validate external process evidence and persist complete whole-panel specificity assessments through the shared shell route after explicit confirmation.",
+        CapabilityMutation::Mutating,
+    ),
+    (
         "promoter_reporter_panel_plan",
         "Promoter Reporter Panel Plan",
         "Build a read-only, content-addressed promoter-reporter panel proposal through the shared `promoters panel-plan` shell contract.",
@@ -5942,6 +5960,20 @@ const MCP_TOOL_NAMES: &[(&str, &str, &str, CapabilityMutation)] = &[
 ];
 
 const MCP_PROMINENT_GLOSSARY_COMMAND_PATHS: &[&str] = &[
+    "primers list-reports",
+    "primers show-report",
+    "primers export-report",
+    "primers list-qpcr-reports",
+    "primers show-qpcr-report",
+    "primers export-qpcr-report",
+    "primers list-transcript-assay-panels",
+    "primers show-transcript-assay-panel",
+    "primers export-transcript-assay-panel",
+    "primers list-transcript-assay-fallbacks",
+    "primers show-transcript-assay-fallback",
+    "primers export-transcript-assay-fallback",
+    "primers transcript-assay-specificity-plan",
+    "primers transcript-assay-specificity-finalize",
     "capabilities",
     "state-summary",
     "agents list",
