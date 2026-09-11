@@ -19939,7 +19939,7 @@ fn transcript_assay_cdna_similarity_map_descriptor(id: &str, description: &str) 
 }
 
 fn transcript_assay_specificity_plan_descriptor(id: &str, description: &str) -> Value {
-    pool_artifact_descriptor_with_readiness(
+    let mut descriptor = pool_artifact_descriptor_with_readiness(
         id,
         description,
         vec![
@@ -19953,11 +19953,20 @@ fn transcript_assay_specificity_plan_descriptor(id: &str, description: &str) -> 
         json!({"all": [
             {"fact": "report.exists", "subject": {"arg": "PANEL_REPORT_ID"}, "equals": "transcript_assay_panel"}
         ]}),
-    )
+    );
+    if id == "transcript_assay_specificity_plan" {
+        descriptor["mutating"] = json!("external");
+        descriptor["requires_confirmation"] = json!(true);
+        descriptor["args"].as_array_mut().unwrap().push(json!({
+            "name": "CONFIRM", "required": true, "subject_kind": "other",
+            "detail": "MCP confirm=true is required before reading state or writing the handoff"
+        }));
+    }
+    descriptor
 }
 
 fn transcript_assay_specificity_finalize_descriptor(id: &str, description: &str) -> Value {
-    json!({
+    let mut descriptor = json!({
         "id": id,
         "kind": "operation",
         "mutating": "true",
@@ -19987,7 +19996,15 @@ fn transcript_assay_specificity_finalize_descriptor(id: &str, description: &str)
         "description": description,
         "annotation_status": "fact_annotated",
         "registry": registry_metadata_for_introspection(id)
-    })
+    });
+    if id == "transcript_assay_specificity_finalize" {
+        descriptor["requires_confirmation"] = json!(true);
+        descriptor["args"].as_array_mut().unwrap().push(json!({
+            "name": "CONFIRM", "required": true, "subject_kind": "other",
+            "detail": "MCP confirm=true is required before reading evidence or persisting results"
+        }));
+    }
+    descriptor
 }
 
 fn transcript_assay_specificity_redesign_descriptor(id: &str, description: &str) -> Value {
@@ -21347,9 +21364,17 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "primers transcript-assay-specificity-plan",
             "Prepare one aggregate external BLAST handoff covering every selected assay in a persisted transcript panel.",
         ),
+        transcript_assay_specificity_plan_descriptor(
+            "transcript_assay_specificity_plan",
+            "Prepare the shared whole-panel BLAST handoff through MCP after explicit confirmation; does not execute BLAST.",
+        ),
         transcript_assay_specificity_finalize_descriptor(
             "primers transcript-assay-specificity-finalize",
             "Validate one aggregate execution manifest, classify each assay, and atomically attach only a complete panel verdict.",
+        ),
+        transcript_assay_specificity_finalize_descriptor(
+            "transcript_assay_specificity_finalize",
+            "Validate shared execution evidence and persist only complete panel assessments through MCP after explicit confirmation; success does not imply a passing biological verdict.",
         ),
         transcript_assay_specificity_redesign_descriptor(
             "primers transcript-assay-specificity-redesign",
@@ -25200,6 +25225,29 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "description": "Compose existing engine-owned transcript, exon-coordinate, and oligo-scoring services into one persisted ordered terminal-exon RT-primer-pool report.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("DesignTerminalExonRtPrimerPool")
+        }),
+        json!({
+            "id": "primer_reports",
+            "kind": "operation",
+            "mutating": "external",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "FAMILY", "required": true, "subject_kind": "other", "detail": "MCP family: primer, qpcr, transcript_assay_panel, or transcript_assay_fallback"},
+                {"name": "ACTION", "required": true, "subject_kind": "other", "detail": "MCP action: list, show, or export"},
+                {"name": "REPORT_ID", "required": false, "subject_kind": "report", "detail": "Required for show/export; execution_id for a fallback. Not supplied for list."},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "MCP path, required only for export"},
+                {"name": "CONFIRM", "required": false, "subject_kind": "other", "detail": "MCP confirm=true is required only for export; list/show need no approval"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "description": "Show/export read the selected family report; list has no individual report prerequisite."}
+            ],
+            "effects": [
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "may_on_success", "description": "Only action=export writes an external report file, after explicit confirmation; list/show do not write."}
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Dispatch stored-report list/show/export through fixed shared shell routes without mutating project state. The dispatcher has no unconditional project precondition; use the selected shell route for family/action-specific report readiness. Confirmation metadata conservatively covers export, not list/show.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primer_reports")
         }),
         json!({
             "id": "primers list-reports",

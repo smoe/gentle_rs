@@ -6653,6 +6653,15 @@ Shared-shell routes:
     `annotation_status: "registry_only"` without invented readiness semantics.
     The payload labels this as
     `annotation_scope: "registry_with_fact_annotated_slice"`.
+  - MCP `transcript_assay_specificity_plan` and
+    `transcript_assay_specificity_finalize` reuse the corresponding shell fact
+    contracts with explicit MCP confirmation. `primer_reports` is an
+    action-dependent dispatcher: listing requires no individual report, while
+    show/export use the selected family's stored-report checks. Its external
+    mutation/confirmation classification conservatively covers export only;
+    list/show do not write or require approval. Query the underlying shell
+    route for family/action-specific readiness; the generic dispatcher's empty
+    project precondition does not validate an arbitrary report ID or path.
   - The top-level `introspect facts`, `introspect capabilities`,
     `introspect readiness`, `introspect verify-effects`, `introspect runtime`,
     and `introspect all`

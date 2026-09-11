@@ -1,5 +1,15 @@
 # GENtle Changelog
 
+## 2026-09-11 - Primer MCP introspection annotations
+
+- Added missing fact descriptors for `primer_reports`,
+  `transcript_assay_specificity_plan` and
+  `transcript_assay_specificity_finalize`, retaining the full-registry checks.
+- Reused the shell specificity preconditions/effects with MCP confirmation,
+  and described conditional report export without claiming unconditional
+  writes or a biological pass. Added descriptor-level regression coverage;
+  execution and scientific policy are unchanged.
+
 ## 2026-09-11 - Locus evidence on detailed TSS profile pages
 
 - Added optional, shared-engine `--context-manifest` enrichment for computed or

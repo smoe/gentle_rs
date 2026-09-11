@@ -32107,6 +32107,82 @@ fn collect_fact_names_from_introspection_value(
 }
 
 #[test]
+fn execute_introspect_primer_mcp_contracts_preserve_shared_semantics() {
+    let mut engine = GentleEngine::default();
+    let command = parse_shell_line("introspect capabilities").unwrap();
+    let result = execute_shell_command(&mut engine, &command).unwrap();
+    assert!(!result.state_changed);
+    let rows = result.output["capabilities"].as_array().unwrap();
+    let descriptor = |id: &str| rows.iter().find(|row| row["id"] == id).unwrap();
+
+    for (tool, shell, mutation) in [
+        (
+            "transcript_assay_specificity_plan",
+            "primers transcript-assay-specificity-plan",
+            "external",
+        ),
+        (
+            "transcript_assay_specificity_finalize",
+            "primers transcript-assay-specificity-finalize",
+            "true",
+        ),
+    ] {
+        let mcp = descriptor(tool);
+        let shared = descriptor(shell);
+        assert_eq!(mcp["annotation_status"], "fact_annotated", "{tool}");
+        assert_eq!(mcp["mutating"], mutation, "{tool}");
+        assert_eq!(mcp["requires_confirmation"], true, "{tool}");
+        assert_eq!(shared["requires_confirmation"], false, "{shell}");
+        for field in ["reads", "effects", "precondition_expr"] {
+            assert_eq!(mcp[field], shared[field], "{tool}: {field}");
+        }
+        assert!(mcp["registry"].is_object(), "{tool}");
+        assert!(
+            mcp["args"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|arg| arg["name"] == "CONFIRM" && arg["required"] == true)
+        );
+    }
+    let plan = descriptor("transcript_assay_specificity_plan");
+    assert_eq!(
+        plan["precondition_expr"]["all"][0],
+        json!({
+            "fact": "report.exists", "subject": {"arg": "PANEL_REPORT_ID"},
+            "equals": "transcript_assay_panel"
+        })
+    );
+    let finalize = descriptor("transcript_assay_specificity_finalize");
+    assert!(
+        finalize["effects"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|effect| effect["effect_kind"] == "may_on_success")
+    );
+
+    let reports = descriptor("primer_reports");
+    assert_eq!(reports["annotation_status"], "fact_annotated");
+    assert_eq!(reports["mutating"], "external");
+    assert_eq!(reports["requires_confirmation"], true);
+    assert_eq!(reports["precondition_expr"], json!({"all": []}));
+    for name in ["REPORT_ID", "OUTPUT_PATH", "CONFIRM"] {
+        assert!(
+            reports["args"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|arg| arg["name"] == name && arg["required"] == false),
+            "{name}"
+        );
+    }
+    assert_eq!(reports["reads"][0]["fact"], "report.exists");
+    assert_eq!(reports["effects"][0]["fact"], "artifact.written");
+    assert_eq!(reports["effects"][0]["effect_kind"], "may_on_success");
+}
+
+#[test]
 fn execute_introspect_all_capability_section_has_full_fact_annotations() {
     let mut engine = GentleEngine::default();
 
