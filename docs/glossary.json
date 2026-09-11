@@ -4365,6 +4365,14 @@
       },
       {
          "aliases": [],
+         "engine_operations": ["QueryPromoterCofactors"],
+         "interfaces": ["cli-shell", "gui-shell", "gui-menu", "mcp", "cli-direct"],
+         "path": "features promoter-cofactors",
+         "summary": "Browse validated reduced promoter-cofactor packages: cohort rankings, availability, anchors, strongest-per-band evidence and promoter ownership. No complete scan or site-level significance claim.",
+         "usage": "features promoter-cofactors REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
          "engine_operations": [
             "BuildExperimentalAssayHandoff"
          ],

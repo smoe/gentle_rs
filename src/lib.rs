@@ -138,6 +138,8 @@ pub mod pool_gel;
 pub mod primer_variants;
 /// PrimerBank search, provenance records, and HTML parsing helpers.
 pub mod primerbank;
+/// Optional reduced promoter-cofactor package validation and bounded queries.
+pub mod promoter_cofactors;
 /// Protease digest definitions and helpers.
 pub mod protease;
 /// Protein molecular-weight gel model and rendering primitives.

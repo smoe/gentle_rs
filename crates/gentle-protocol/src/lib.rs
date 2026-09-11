@@ -23,6 +23,7 @@ pub mod genomic_motif_evidence;
 pub mod genomic_regions;
 pub mod isoform_evidence;
 pub mod orthologs;
+pub mod promoter_cofactors;
 pub mod region_homology;
 pub mod regulatory_partners;
 pub mod reporter;
@@ -5641,6 +5642,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "MaterializePromoterReporterPanel",
     "ScanTfbsHits",
     "QueryGenomicMotifEvidence",
+    "QueryPromoterCofactors",
     "InspectJasparEntry",
     "SummarizeJasparEntries",
     "ResolveTfQueries",
@@ -7321,6 +7323,7 @@ fn inline_operand_ok_for_operation(operation: &str) -> Option<bool> {
         | "ScanTfbsHits"
         | "AlignSequences" => Some(true),
         "QueryGenomicMotifEvidence" => Some(false),
+        "QueryPromoterCofactors" => Some(false),
         "RenderSequenceSvg"
         | "RenderRnaStructureSvg"
         | "RenderTfbsScoreTrackCorrelationSvg"

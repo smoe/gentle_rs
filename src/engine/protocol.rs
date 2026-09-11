@@ -5535,6 +5535,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub genomic_motif_evidence: Option<GenomicMotifEvidenceReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_cofactors: Option<gentle_protocol::promoter_cofactors::PromoterCofactorReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub restriction_site_scan: Option<RestrictionSiteScanReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub jaspar_remote_metadata_snapshot: Option<JasparRemoteMetadataSnapshot>,

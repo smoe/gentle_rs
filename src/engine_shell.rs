@@ -2491,6 +2491,9 @@ pub enum ShellCommand {
         max_hits: Option<usize>,
         path: Option<String>,
     },
+    FeaturesPromoterCofactors {
+        request: gentle_protocol::promoter_cofactors::PromoterCofactorRequest,
+    },
     FeaturesGenomicMotifEvidence {
         request: GenomicMotifEvidenceRequest,
         path: Option<String>,
@@ -11352,6 +11355,9 @@ impl ShellCommand {
                         .unwrap_or_else(|| "none".to_string()),
                     path.as_deref().unwrap_or("-"),
                 )
+            }
+            Self::FeaturesPromoterCofactors { request } => {
+                format!("query promoter cofactors: {:?}", request.query)
             }
             Self::FeaturesGenomicMotifEvidence { request, path } => {
                 let target = match &request.target {
@@ -23417,6 +23423,24 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("QueryGenomicMotifEvidence")
         }),
+        json!({
+            "id": "features promoter-cofactors", "kind": "shell_command", "mutating": "false",
+            "requires_confirmation": false,
+            "args": [{"name":"REQUEST_JSON_OR_@FILE","required":true,"subject_kind":"other","detail":"Bounded collaborator-package query; not a complete genome scan"}],
+            "reads": [], "effects": [], "precondition_expr": {"all": []},
+            "description": "Inspect or query a validated local promoter cofactor package, retaining coverage limits and original cohort statistics.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("features promoter-cofactors")
+        }),
+        json!({
+            "id": "QueryPromoterCofactors", "kind": "operation", "mutating": "false",
+            "requires_confirmation": false,
+            "args": [{"name":"REQUEST","required":true,"subject_kind":"other","detail":"Typed reduced-package query"}],
+            "reads": [], "effects": [], "precondition_expr": {"all": []},
+            "description": "Read-only promoter cofactor package query with integrity, assembly, coverage, row and runtime bounds.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("QueryPromoterCofactors")
+        }),
         sequence_optional_artifact_operation_descriptor(
             "features tfbs-scan",
             "false",
@@ -30939,6 +30963,8 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "collections run tfbs-scan"
         | "features genomic-motif-evidence"
         | "QueryGenomicMotifEvidence"
+        | "features promoter-cofactors"
+        | "QueryPromoterCofactors"
         | "DigestCollection"
         | "collections run digest"
         | "CreateGeneSetPool"
@@ -60581,6 +60607,17 @@ fn execute_feature_scan_command(
                 }),
             })
         }
+        ShellCommand::FeaturesPromoterCofactors { request } => {
+            let result = engine
+                .apply(Operation::QueryPromoterCofactors {
+                    request: request.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({"report": result.promoter_cofactors, "result": result}),
+            })
+        }
         ShellCommand::FeaturesGenomicMotifEvidence { request, path } => {
             let op_result = engine
                 .apply(Operation::QueryGenomicMotifEvidence {
@@ -67184,6 +67221,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::FeaturesTfbsScoreTrackCorrelationSvg { .. }
             | ShellCommand::FeaturesTfbsScan { .. }
             | ShellCommand::FeaturesGenomicMotifEvidence { .. }
+            | ShellCommand::FeaturesPromoterCofactors { .. }
             | ShellCommand::FeaturesRepeatQuery { .. }
             | ShellCommand::FeaturesRepeatOverlaps { .. }
             | ShellCommand::FeaturesMaterializeRepeats { .. }
@@ -67532,6 +67570,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::FeaturesTfbsScoreTrackCorrelationSvg { .. }
         | ShellCommand::FeaturesTfbsScan { .. }
         | ShellCommand::FeaturesGenomicMotifEvidence { .. }
+        | ShellCommand::FeaturesPromoterCofactors { .. }
         | ShellCommand::FeaturesRepeatQuery { .. }
         | ShellCommand::FeaturesRepeatOverlaps { .. }
         | ShellCommand::FeaturesMaterializeRepeats { .. }

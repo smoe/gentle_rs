@@ -458,6 +458,45 @@ fn query_json(
         .map_err(|error| format!("DuckDB returned invalid JSON: {error}"))
 }
 
+/// Execute only caller-constructed SQL, without opening a package database or
+/// reading DuckDB initialization files. Reuses the bounded process supervisor.
+pub(crate) fn query_local_parquet_json(
+    executable: &str,
+    query: Option<&str>,
+    timeout: Duration,
+) -> Result<Vec<Value>, String> {
+    let mut command = Command::new(executable);
+    if let Some(query) = query {
+        command.args(["-no-init", "-batch", "-json", ":memory:", "-c"]);
+        command.arg(format!(
+            "SET threads=2; SET memory_limit='512MB'; SET max_temp_directory_size='0B'; \
+             SET autoinstall_known_extensions=false; SET autoload_known_extensions=false; {query}"
+        ));
+    } else {
+        command.arg("--version");
+    }
+    let result = bounded_command_output(&mut command, timeout, 8 * 1024 * 1024)?;
+    if result.stdout_truncated || result.stderr_truncated {
+        return Err("DuckDB output exceeded the 8 MiB bound".into());
+    }
+    if !result.output.status.success() {
+        return Err(format!(
+            "DuckDB status {:?}: {}",
+            result.output.status.code(),
+            String::from_utf8_lossy(&result.output.stderr)
+        ));
+    }
+    if query.is_none() {
+        return Ok(vec![Value::String(
+            String::from_utf8_lossy(&result.output.stdout).trim().into(),
+        )]);
+    }
+    if result.output.stdout.iter().all(u8::is_ascii_whitespace) {
+        return Ok(vec![]);
+    }
+    serde_json::from_slice(&result.output.stdout).map_err(|e| format!("Invalid DuckDB JSON: {e}"))
+}
+
 fn path_is_within(root: &Path, candidate: &Path) -> bool {
     candidate.starts_with(root)
 }

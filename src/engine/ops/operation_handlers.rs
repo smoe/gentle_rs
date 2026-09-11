@@ -38723,6 +38723,14 @@ impl GentleEngine {
                 }
                 result.tfbs_hit_scan = Some(report);
             }
+            Operation::QueryPromoterCofactors { request } => {
+                let report = crate::promoter_cofactors::query(&request)
+                    .map_err(EngineError::invalid_input)?;
+                if let Some(message) = &report.diagnostic {
+                    result.warnings.push(message.clone());
+                }
+                result.promoter_cofactors = Some(report);
+            }
             Operation::QueryGenomicMotifEvidence { request, path } => {
                 let regions = match &request.target {
                     GenomicMotifEvidenceTarget::AnchoredSequence {
@@ -40059,6 +40067,7 @@ impl GentleEngine {
             window_cohort_tfbs: None,
             tfbs_hit_scan: None,
             genomic_motif_evidence: None,
+            promoter_cofactors: None,
             restriction_site_scan: None,
             jaspar_remote_metadata_snapshot: None,
             jaspar_catalog_report: None,
@@ -40144,6 +40153,7 @@ impl GentleEngine {
                 | Operation::SummarizeTfbsTrackSimilarity { .. }
                 | Operation::ScanTfbsHits { .. }
                 | Operation::QueryGenomicMotifEvidence { .. }
+                | Operation::QueryPromoterCofactors { .. }
         ) {
             self.apply_feature_scan_operation(op, run_id, &mut result, on_progress)?;
         } else if matches!(
@@ -50145,7 +50155,8 @@ impl GentleEngine {
                 | op @ Operation::SummarizeMultiGenePromoterTfbs { .. }
                 | op @ Operation::SummarizeTfbsTrackSimilarity { .. }
                 | op @ Operation::ScanTfbsHits { .. }
-                | op @ Operation::QueryGenomicMotifEvidence { .. } => {
+                | op @ Operation::QueryGenomicMotifEvidence { .. }
+                | op @ Operation::QueryPromoterCofactors { .. } => {
                     self.apply_feature_scan_operation(op, run_id, &mut result, on_progress)?;
                 }
                 Operation::SummarizeJasparEntries {
