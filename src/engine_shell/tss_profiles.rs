@@ -50,7 +50,8 @@ pub(super) fn parse_tss_profiles_command(tokens: &[String]) -> Result<ShellComma
         .map(|raw| match raw.as_str() {
             "shared" => Ok(TssScaleMode::Shared),
             "independent" => Ok(TssScaleMode::Independent),
-            _ => Err("--scale-mode must be shared or independent".to_string()),
+            "shared_across_tss" => Ok(TssScaleMode::SharedAcrossTss),
+            _ => Err("--scale-mode must be shared, independent or shared_across_tss".to_string()),
         })
         .transpose()?;
     let panels_per_page = values
@@ -140,7 +141,7 @@ mod tests {
     }
     #[test]
     fn tss_profiles_parser_keeps_repeated_fasta_and_exact_reference() {
-        let parsed=parse("features tss-tfbs-profiles --manifest m.json --panel p.json --expected-genome-id ref --fasta a.fa --fasta b.fa --output-dir out --formats svg,pdf").unwrap();
+        let parsed=parse("features tss-tfbs-profiles --manifest m.json --panel p.json --expected-genome-id ref --fasta a.fa --fasta b.fa --output-dir out --formats svg,pdf --scale-mode shared_across_tss").unwrap();
         let ShellCommand::Op { payload } = parsed else {
             panic!("typed operation")
         };
@@ -151,7 +152,12 @@ mod tests {
         };
         assert_eq!(request.fasta, vec!["a.fa", "b.fa"]);
         assert_eq!(request.expected_genome_id, "ref");
-        assert_eq!(export.unwrap().formats.len(), 2);
+        let export = export.unwrap();
+        assert_eq!(export.formats.len(), 2);
+        assert_eq!(
+            export.rendering.scale_mode,
+            Some(TssScaleMode::SharedAcrossTss)
+        );
     }
 
     #[test]

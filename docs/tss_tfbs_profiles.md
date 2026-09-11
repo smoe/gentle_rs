@@ -293,19 +293,74 @@ named `true_log_odds_bits` uses per-base odds ratios. Quantile variants and
 `*_background_tail_log10` variants are not raw log-odds scores: tail scores use
 a negative log10 background-tail probability and the existing 0.95 quantile
 display threshold. The report retains background, pseudocount, quantization,
-random-seed and threshold metadata. No existing scoring formula is changed.
+random-seed and threshold metadata. Raw PWM scores and the pseudocount policy
+are unchanged by the September 11 tail-calculation correction below. Neither a
+tail probability nor a quantile is a biochemical binding probability.
+The existing quantile display gate still suppresses lower-ranked tail-track
+values to zero: such zeros do not mean `Ptail=1` or absence of binding. Exported
+`raw_score` means the selected `score_kind` before negative clipping, **not**
+necessarily LLR bits. Tail-only arrays are insufficient to recover original
+bit scores; recompute those from the bound sequence and PFM when needed.
+
+### Inclusive Background Tails
+
+`uniform_iid_quantized_conservative_survival_v2` models independent uniform
+A/C/G/T windows. Each column score is rounded to 0.001 bits for the dynamic
+program. Let `E` be the sum of the largest absolute rounding error in each
+column, plus a floating-point summation guard. For an observed **raw** sum `s`,
+the reported inclusive tail sums bins `q >= s - E`. Every sequence with raw
+score at least `s` is included. Near the threshold, additional sequences can be
+included: this is a conservative **upper bound on Ptail**, hence a lower bound
+on `-log10(Ptail)`, not an exact continuous-score distribution. The discretization
+part of `E` is at most `motif_length * 0.0005` bits. Midrank background quantiles
+use the same uncertainty interval; they are approximate ranks, not tail scores.
+
+Survival masses are accumulated from the high end in log space, never as
+`1 - CDF`. Motifs longer than 500 bases also use log-domain dynamic-program
+masses. The significance score has no artificial 300 cap. A separately exported
+linear probability can still underflow below the representable f64 range;
+its log score remains finite. Ordinary floating-point rounding remains, and
+the model is not a GC-matched genome, multiple-testing correction or affinity
+model. For any achievable length-L word, significance cannot exceed
+`L * log10(4)` (up to floating-point tolerance).
+
+Regression example, exact bundled TP73 **MA0861.2**:
+`ACATGTCTGGACATGT` retains raw LLR **19.543680326691 bits**. Its unique maximum
+has inclusive `Ptail = 4^-16 = 2.328306436539e-10`, scoring **9.632959861247**,
+instead of the old false zero tail and display score 300.
 
 Raw arrays are stored before optional negative clipping. A positive-only figure
 therefore does not redefine the inputs to correlations. Ambiguous-base windows
 are `null`, not zero. The last motif-length-minus-one bases have no complete
 window and are visibly unscored, never stretched across the axis.
 
-Rows default to independent numeric scales with labeled units. Equal heights
-across matrices or TSS pages do not establish equal scores. Shared scales require
+Rows default to independent numeric scales with labeled units and an upfront
+`SCALE` notice on every TSS/continuation. Equal heights across matrices or TSS
+pages do not establish equal scores. `--scale-mode shared_across_tss` gives each
+exact accession one numeric range across **all windows in the supplied report**,
+all genes, selected and unselected, and both strands. A peak of 2 then occupies
+1% of a 0..200 axis when that same accession reaches 200 elsewhere. Other
+matrices retain separate ranges; no cross-matrix calibration is implied.
+The effective choice is bound by `export-request.json`, `receipt.json` rendering
+options and SVG `data-scale-mode`; the panel default remains in `report.json`.
+For the same comparison on re-export, use the complete report, not a per-gene
+subset: changing the supplied window set can change the common range.
+
+The older `--scale-mode shared` shares a range across matrices **within each
+TSS only**, not across TSSs. Cross-matrix shared scales require
 `calibration_state: cross_source_calibrated`, a `calibration_id` and a lowercase
 `calibration_sha256`; prose alone is insufficient. This records the caller's
 explicit calibration declaration, not independently proven comparability.
 PFM-derived logos show information content, not a fabricated consensus.
+
+Compressed gene-locus overviews use one unconnected min/max whisker and mean
+mark per pixel bucket, separately for forward/reverse scores. For repeating
+`[0,0,0,5]` buckets the range is 0..5 and mean 1.25, not a connected plateau at
+5. Native-resolution samples remain connected, with gaps at missing values.
+Labels identify this aggregation. Means summarize displayed scores, not binding
+occupancy. Whiskers describe finite samples in a bucket,
+not confidence intervals or exact subpixel peak locations; missing samples are
+not measured zero. Original arrays remain available in JSON for zoom/reanalysis.
 
 Within-factor comparisons use common valid start coordinates, independently for
 forward/forward and reverse/reverse. Pearson and Spearman consume unclipped,
@@ -313,6 +368,60 @@ unsmoothed scores; Spearman uses average ranks for ties. Reports include paired
 and excluded counts. Insufficient or constant signals have undefined values
 and reasons, not a misleading zero correlation. Maximum scores and separated
 ranked peaks are distinct; `top_hit_count` controls the latter.
+
+## Rescoring Existing Reports
+
+Re-export alone cannot correct stored background-derived values. Rescore original
+sequence/PFM inputs for `gentle.tss_tfbs_profiles.v1` with background-tail or
+background-quantile score kinds; regenerate maxima, ranked peaks and comparisons
+as well. New reports record `score_policy.modeled_tail_method`. Missing metadata
+is visibly warned about on re-export; existing scores are not repaired in place.
+
+The same shared calculation supplies `TfbsScoreTrackReport`
+(`gentle.tfbs_score_tracks.v1`), its normalization references,
+`gentle.window_cohort_tfbs.v1`, `gentle.promoter_cohort_comparison.v1`, and
+JASPAR-derived tracks embedded in `gentle.gene_locus_evidence_display.v1` and
+reporter-comparison reports. Regenerate
+these background-derived tracks and dependent decisions from their original
+requests and exact sequence/matrix bindings. Even raw-bit track reports need
+refreshed **normalization-reference statistics** if those statistics are used;
+their raw LLR/log-odds arrays do not change. Externally supplied scores are not
+rescored by GENtle and require their producer's policy audit. Reports with only
+raw-bit/empirical-quantile arrays and no affected background statistics need only
+a presentation re-export for the scale/bucket changes. CUT&RUN signal, geometry,
+FASTA, and PFM logos are not numerically changed by this fix.
+
+Committed tutorial outputs also retain older normalization references in
+`promoter_design_artifact_slice_offline`, `promoter_gene_set_ortholog_cohort_offline`
+and `gene_set_ortholog_promoter_cohorts_offline`. They were deliberately not
+overwritten in this correction; an explicit reviewed tutorial regeneration is
+needed before treating generated-artifact freshness as a release pass.
+
+The private original five-gene scored inputs are not available in this checkout.
+The published PDF/selected-FASTA bundle is not enough to reconstruct all TSSs,
+matrices and source context. Glen should use the original hash-bound manifest,
+full FASTA inputs, exact panel and selection, with the corrected binary:
+
+```sh
+gentle_cli features tss-tfbs-profiles \
+  --manifest /absolute/path/to/original/manifest.json \
+  --panel /absolute/path/to/original/panel.json \
+  --selection /absolute/path/to/original/selection.json \
+  --expected-genome-id 'EXACT_ORIGINAL_GENOME_ID' \
+  --expected-assembly 'EXACT_ORIGINAL_ASSEMBLY' \
+  --scale-mode shared_across_tss --formats svg,png,pdf \
+  --output-dir /absolute/path/to/new-rescored-bundle
+```
+
+Add the original annotation-release/dataset checks and FASTA overrides if the
+original request supplied them. Keep accession versions and PFM hashes fixed;
+do not substitute newly downloaded matrices. Regenerate affected locus TFBS
+tracks first, keeping their original source evidence; then supply the newly
+hash-bound `--context-manifest` and follow the
+[integrated report regeneration checklist](integrated_locus_tss_profiles.md#refreshing-the-september-10-bundle).
+Use a fresh destination; retain the old report/receipts for comparison. Verify
+the scoring-method marker, matrix/sequence hashes, TP73 maximum regression,
+both strands and common numeric ranges before publishing replacement figures.
 
 ## Outputs And Limits
 

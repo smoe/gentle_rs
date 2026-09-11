@@ -54263,7 +54263,7 @@ fn apply_summarize_tfbs_score_tracks_operation_returns_score_track_payload() {
         assert_eq!(normalization.background_model, "uniform_random_dna");
         assert_eq!(
             normalization.chance_model,
-            "quantized_iid_uniform_window_dp"
+            GentleEngine::TFBS_MODELED_TAIL_METHOD
         );
         assert!(normalization.p99_score >= normalization.p95_score);
         assert!(normalization.observed_peak_delta_from_p99.is_finite());

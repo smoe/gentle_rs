@@ -182,6 +182,7 @@ impl TfbsTrackPanel {
             scale_mode: match first.scale_mode.as_str() {
                 "independent" => TssScaleMode::Independent,
                 "shared" => TssScaleMode::Shared,
+                "shared_across_tss" => TssScaleMode::SharedAcrossTss,
                 value => return Err(unsupported("scale_mode", value)),
             },
             strand_policy: match first.strand_policy.as_str() {
@@ -457,6 +458,17 @@ mod tests {
         }
         let raw: TfbsTrackPanel = serde_json::from_value(synthetic_panel()).unwrap();
         raw.require_homogeneous_score_grammar().unwrap();
+    }
+
+    #[test]
+    fn adaptation_accepts_same_matrix_shared_across_tss_without_cross_matrix_calibration() {
+        let mut value = synthetic_panel();
+        for track in value["tracks"].as_array_mut().unwrap() {
+            track["scale_mode"] = json!("shared_across_tss");
+        }
+        let panel = parse(&value).unwrap();
+        assert_eq!(panel.scale_mode, TssScaleMode::SharedAcrossTss);
+        assert_eq!(panel.calibration_state, TssCalibrationState::MatrixSpecific);
     }
 
     #[test]

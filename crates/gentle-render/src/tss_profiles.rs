@@ -79,6 +79,26 @@ pub fn render_tss_profile_pages(
     options: &TssProfileRenderOptions,
 ) -> Result<Vec<TssRenderedPage>, String> {
     let scale = validate_report(report, options)?;
+    let across_tss = if scale == TssScaleMode::SharedAcrossTss {
+        let mut tracks = BTreeMap::<&str, Vec<&TssProfileTrack>>::new();
+        for track in report.windows.iter().flat_map(|window| &window.tracks) {
+            tracks.entry(&track.accession).or_default().push(track);
+        }
+        tracks
+            .into_iter()
+            .map(|(id, tracks)| {
+                (
+                    id,
+                    ScoreRange::from_tracks(
+                        tracks.into_iter(),
+                        report.panel_resolution.panel.clip_negative,
+                    ),
+                )
+            })
+            .collect()
+    } else {
+        BTreeMap::new()
+    };
     let footer = footer_block(report, scale);
     let mut genes: Vec<Vec<&TssProfileWindow>> = Vec::new();
     let mut gene_indices = BTreeMap::new();
@@ -110,7 +130,7 @@ pub fn render_tss_profile_pages(
             .iter()
             .enumerate()
             .map(|(index, window)| {
-                WindowLayout::new(report, window, scale, index + 1, windows.len())
+                WindowLayout::new(report, window, scale, &across_tss, index + 1, windows.len())
             })
             .collect::<Result<Vec<_>, _>>()?;
         let mut fragments = Vec::new();
@@ -411,6 +431,21 @@ fn scale_name(scale: TssScaleMode) -> &'static str {
     match scale {
         TssScaleMode::Independent => "independent",
         TssScaleMode::Shared => "shared",
+        TssScaleMode::SharedAcrossTss => "shared_across_tss",
+    }
+}
+
+fn scale_description(scale: TssScaleMode) -> &'static str {
+    match scale {
+        TssScaleMode::Independent => {
+            "Independent: each matrix/TSS auto-scaled; equal heights are NOT equal scores."
+        }
+        TssScaleMode::Shared => {
+            "Shared across matrices within this TSS only; ranges differ between TSSs."
+        }
+        TssScaleMode::SharedAcrossTss => {
+            "Same accession: shared range across ALL report TSSs and both strands; different matrices remain independent."
+        }
     }
 }
 
@@ -458,6 +493,7 @@ fn footer_block(report: &TssProfileReport, scale: TssScaleMode) -> TextBlock {
     text.push_str(match scale {
         TssScaleMode::Independent => "Independent matrix-specific ranges, recomputed per TSS. Equal trace heights across rows or TSS pages do not mean equal scores.\n",
         TssScaleMode::Shared => "Shared range within each TSS, recomputed for each TSS; not a common range across TSS pages.\n",
+        TssScaleMode::SharedAcrossTss => "One range per exact matrix accession across all report TSS windows (selected and unselected, all genes) and both strands. Different matrices remain independently scaled.\n",
     });
     let _ = writeln!(
         text,
@@ -488,6 +524,12 @@ fn footer_block(report: &TssProfileReport, scale: TssScaleMode) -> TextBlock {
     text.push_str("Full per-matrix normalization references are embedded in SVG row titles and retained in the source report.\n");
     for (key, value) in &report.score_policy {
         let _ = writeln!(text, "Score policy {key}: {value}");
+    }
+    if (panel.score_kind.contains("background_tail")
+        || panel.score_kind.contains("background_quantile"))
+        && !report.score_policy.contains_key("modeled_tail_method")
+    {
+        text.push_str("WARNING: legacy/unversioned background scoring; rescore original inputs before interpreting tail significance. Re-export does NOT repair stored scores.\n");
     }
     let _ = writeln!(text, "Verification: {}", report.verification);
     for warning in &report.warnings {
@@ -1378,6 +1420,7 @@ impl<'a> WindowLayout<'a> {
         report: &'a TssProfileReport,
         window: &'a TssProfileWindow,
         scale: TssScaleMode,
+        across_tss: &BTreeMap<&str, ScoreRange>,
         position: usize,
         count: usize,
     ) -> Result<Self, String> {
@@ -1396,7 +1439,10 @@ impl<'a> WindowLayout<'a> {
                 } else {
                     "Unselected"
                 });
-        let mut intro = format!("TSS window {position} of {count} | {selection_label}");
+        let mut intro = format!(
+            "TSS window {position} of {count} | {selection_label}\nSCALE: {}",
+            scale_description(scale)
+        );
         if let Some(evidence) = evidence {
             let _ = write!(intro, "\n{}", evidence.legend);
         }
@@ -1446,10 +1492,12 @@ impl<'a> WindowLayout<'a> {
             .enumerate()
             .map(|(index, matrix)| {
                 let track = by_accession[matrix.specification.source_id.as_str()];
-                let range = if scale == TssScaleMode::Shared {
-                    shared
-                } else {
-                    ScoreRange::from_tracks(std::iter::once(track), panel.clip_negative)
+                let range = match scale {
+                    TssScaleMode::Shared => shared,
+                    TssScaleMode::SharedAcrossTss => across_tss[track.accession.as_str()],
+                    TssScaleMode::Independent => {
+                        ScoreRange::from_tracks(std::iter::once(track), panel.clip_negative)
+                    }
                 };
                 RowLayout::new(report, window, matrix, track, range, index)
             })
@@ -1939,6 +1987,66 @@ mod tests {
     }
 
     #[test]
+    fn shared_across_tss_ranges_include_other_genes_unselected_windows_and_both_strands() {
+        let mut report = fixture(5, 3, 2);
+        for (index, track) in report.windows[0].tracks.iter_mut().enumerate() {
+            track
+                .forward_scores
+                .fill(Some(if index == 0 { 2.0 } else { 7.0 }));
+            track.reverse_scores.fill(Some(0.0));
+        }
+        let mut other = report.windows[0].clone();
+        other.record.promoter_id = "other-tss".into();
+        other.record.gene_id = "other-gene".into();
+        other.selected = false;
+        other.tracks[0].reverse_scores.fill(Some(200.0));
+        report.windows.push(other);
+        let before = serde_json::to_value(&report).unwrap();
+        let options = TssProfileRenderOptions {
+            scale_mode: Some(TssScaleMode::SharedAcrossTss),
+            panels_per_page: 1,
+        };
+        let pages = render_tss_profile_pages(&report, &options).unwrap();
+        assert_eq!(pages.len(), 2);
+        for page in &pages {
+            let rows = tags(&page.svg, "matrix-row");
+            assert_eq!(numeric(&rows[0], "data-y-max"), 200.0);
+            assert_eq!(numeric(&rows[1], "data-y-max"), 7.0);
+            assert!(page.svg.contains("SCALE:"));
+            assert!(page.svg.contains("shared_across_tss"));
+        }
+        assert_eq!(before, serde_json::to_value(&report).unwrap());
+        assert!(
+            serde_json::to_string(&options)
+                .unwrap()
+                .contains("shared_across_tss")
+        );
+    }
+
+    #[test]
+    fn legacy_tail_report_reexport_warns_without_repairing_values() {
+        let mut report = fixture(5, 3, 1);
+        report.panel_resolution.panel.score_kind = "llr_background_tail_log10".into();
+        report.panel_resolution.panel.factors[0].score_kind =
+            Some("llr_background_tail_log10".into());
+        report.panel_resolution.matrices[0].specification.score_kind =
+            Some("llr_background_tail_log10".into());
+        report.windows[0].tracks[0].forward_scores.fill(Some(300.0));
+        let before = serde_json::to_value(&report).unwrap();
+        let pages = render_tss_profile_pages(&report, &TssProfileRenderOptions::default()).unwrap();
+        assert!(
+            pages[0]
+                .svg
+                .contains("legacy/unversioned background scoring")
+        );
+        assert_eq!(
+            numeric(&tags(&pages[0].svg, "matrix-row")[0], "data-y-max"),
+            300.0
+        );
+        assert_eq!(before, serde_json::to_value(report).unwrap());
+    }
+
+    #[test]
     fn shared_ranges_require_typed_exact_calibration_not_units_or_prose() {
         let mut report = fixture(5, 3, 2);
         let shared = TssProfileRenderOptions {
@@ -2167,9 +2275,15 @@ mod tests {
             .record
             .transcripts
             .push("synthetic_transcript_".repeat(50));
-        let layout =
-            WindowLayout::new(&report, &report.windows[0], TssScaleMode::Independent, 1, 1)
-                .unwrap();
+        let layout = WindowLayout::new(
+            &report,
+            &report.windows[0],
+            TssScaleMode::Independent,
+            &BTreeMap::new(),
+            1,
+            1,
+        )
+        .unwrap();
         assert!(layout.rows[0].label.lines.len() > 5);
         assert!(layout.axis.tiers >= 2);
         for row in &layout.rows {

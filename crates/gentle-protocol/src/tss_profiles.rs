@@ -151,9 +151,13 @@ pub struct TssSelectedRecord {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum TssScaleMode {
+    /// A separate matrix-specific range in each TSS window.
     #[default]
     Independent,
+    /// One range across matrices within each TSS; requires cross-source calibration.
     Shared,
+    /// One range per exact accession across all report windows and both strands.
+    SharedAcrossTss,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

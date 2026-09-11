@@ -1195,6 +1195,109 @@ fn exported_tsv_rows(text: &str) -> Vec<BTreeMap<&str, &str>> {
 }
 
 #[test]
+fn tp73_maximum_tail_survives_shared_engine_and_exported_tss_profile() {
+    // Actual accession/PFM from the committed JASPAR registry; maximizing and
+    // ambiguous words in synthetic TSS geometry, not a human promoter fixture.
+    let registry =
+        TfMotifDb::from_json_for_test(include_str!("../../../assets/jaspar.motifs.json")).unwrap();
+    let mut input_panel = panel(
+        &["MA0861.2"],
+        TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+    );
+    input_panel.factors[0].factor_id = "TP73".into();
+    let sequence = "ACATGTCTGGACATGT";
+    let resolution = resolve(input_panel, &registry);
+    let (llr, _) = GentleEngine::prepare_scoring_matrices(&resolution.matrices[0].matrix_counts);
+    assert!(
+        (GentleEngine::score_matrix_window(sequence.as_bytes(), &llr).unwrap() - 19.543680326691)
+            .abs()
+            < 1e-11
+    );
+    let report = engine_with_sentinel()
+        .compute_verified_tss_profiles(
+            bundle(vec![
+                record("tp73-maximum", TssStrand::Plus, 1000, sequence, true),
+                record(
+                    "tp73-ambiguous",
+                    TssStrand::Minus,
+                    2000,
+                    "NCATGTCTGGACATGT",
+                    false,
+                ),
+            ]),
+            resolution,
+            &mut |_| true,
+        )
+        .unwrap();
+    let track = &report
+        .windows
+        .iter()
+        .find(|w| w.record.promoter_id == "tp73-maximum")
+        .unwrap()
+        .tracks[0];
+    assert!((track.forward_scores[0].unwrap() - 9.632959861247).abs() < 1e-11);
+    assert!(
+        (track.normalization_reference["observed_peak_modeled_tail_probability"]
+            .as_f64()
+            .unwrap()
+            / 4.0_f64.powi(-16)
+            - 1.0)
+            .abs()
+            < 1e-12
+    );
+    for window in &report.windows {
+        for value in window.tracks[0]
+            .forward_scores
+            .iter()
+            .chain(&window.tracks[0].reverse_scores)
+            .flatten()
+        {
+            assert!(*value <= 16.0 * 4.0_f64.log10() + 1e-11);
+        }
+        if window.record.promoter_id == "tp73-ambiguous" {
+            assert_eq!(window.tracks[0].forward_scores, [None]);
+            assert_eq!(window.tracks[0].reverse_scores, [None]);
+        }
+    }
+    assert_eq!(
+        report.score_policy["modeled_tail_method"],
+        GentleEngine::TFBS_MODELED_TAIL_METHOD
+    );
+    let scratch = tempfile::tempdir().unwrap();
+    let directory = std::fs::canonicalize(scratch.path())
+        .unwrap()
+        .join("tp73-tail-export");
+    let receipt = crate::tss_profile_export::export_tss_profiles(
+        &report,
+        &ExportTssProfilesRequest {
+            context_manifest: None,
+            output_dir: directory.to_string_lossy().into_owned(),
+            rendering: TssProfileRenderOptions {
+                scale_mode: Some(TssScaleMode::SharedAcrossTss),
+                panels_per_page: 1,
+            },
+            formats: vec![TssExportFormat::Svg],
+        },
+    )
+    .unwrap();
+    crate::tss_profile_export::verify_tss_profile_receipt(&directory, &receipt).unwrap();
+    assert_eq!(
+        receipt.rendering.scale_mode,
+        Some(TssScaleMode::SharedAcrossTss)
+    );
+    assert_eq!(
+        std::fs::read(directory.join("report.json")).unwrap(),
+        serde_json::to_vec(&report).unwrap()
+    );
+    for file in receipt.outputs.keys().filter(|name| name.ends_with(".svg")) {
+        let svg = std::fs::read_to_string(directory.join(file)).unwrap();
+        assert!(svg.contains("shared_across_tss"));
+        assert!(svg.contains("9.633"));
+        assert!(!svg.contains("legacy/unversioned background scoring"));
+    }
+}
+
+#[test]
 fn two_tss_three_matrix_producer_exports_preserve_scores_pairs_and_receipt_bindings() {
     let (registry_bytes, registry) = three_matrix_registry();
     let mut input_panel = panel(&IDS, TfbsScoreTrackValueKind::LlrBits);

@@ -21,6 +21,10 @@ The same Shell commands accept `--context-manifest FILE` to align CUT&RUN,
 exon/CDS structure, annotated translation boundaries and TATA evidence above the
 detail-page scores. No new wizard is required; see the
 [offline context example](tss_tfbs_profiles.md#cutrun-gene-structure-and-tata-context).
+Use `--scale-mode shared_across_tss` for the same accession's common Y range
+across all supplied TSSs and both strands. Each page states its scale policy;
+independent scaling remains the default. Older background-tail score reports
+need [rescoring, not just re-export](tss_tfbs_profiles.md#rescoring-existing-reports).
 
 ### Measured Gel Images (`.11` Development)
 
@@ -1238,7 +1242,9 @@ Feature tree grouping:
     background-tail probability derived from an LLR, not the raw log-odds
     score. Negative source samples remain auditable in report JSON but are
     floored at zero in the figure, and negative site/threshold labels are not
-    drawn
+    drawn. Compressed SVG/PNG/PDF overview traces use unconnected pixel-bucket
+    min/max whiskers and mean marks, separately for each strand, rather than
+    joining maxima into a misleading plateau; the aggregation is labelled
     The interactive inspector uses the same bounds and score-family labels;
     negative and missing samples interrupt traces rather than connecting
     across unevaluated positions. It does not change stored scores or thresholds

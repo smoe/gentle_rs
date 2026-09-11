@@ -381,6 +381,9 @@ impl GentleEngine {
         }
         let score_policy = BTreeMap::from([
             ("background".into(), "uniform_iid_ACGT_0.25".into()),
+            ("modeled_tail_method".into(), Self::TFBS_MODELED_TAIL_METHOD.into()),
+            ("modeled_tail_approximation".into(),
+                "inclusive_survival_upper_bound; sum_of_max_per_column_rounding_errors_plus_float_guard; log_survival_not_1_minus_cdf".into()),
             (
                 "pseudocount".into(),
                 "pad_columns_to_max_total_then_add_max_total_times_1e-9_per_base".into(),

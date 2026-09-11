@@ -299,7 +299,7 @@ Useful work here improves proposal formats, evidence records, reproducible
 cohort comparisons, and rollback paths for state patches; defer autonomous
 wet-lab conclusions or unconfirmed mutations.
 ## Parking Lot
-- Accession-pinned [TSS TFBS profiles](tss_tfbs_profiles.md): Glen to repeat exact-candidate PDF size/pixel/hash and compact-stdout acceptance after the presentation fixes; his `44b73e4a` five-gene audit does not cover newer builds. Keep the `.10` gate; native wizard and independent reference verification remain follow-ups.
+- Accession-pinned [TSS TFBS profiles](tss_tfbs_profiles.md#rescoring-existing-reports): Glen to rescore original five-gene inputs after the inclusive-tail correction, then repeat PDF pixel/hash, shared-scale and sparse-peak acceptance; the `44b73e4a` audit does not cover this scoring method. Keep the `.10` gate; native wizard and independent reference verification remain follow-ups.
 - Give TP73 Simple-PCR live acceptance a representative small fixture or bounded fast preset; exact interactive defaults exceed the ten-minute smoke budget.
 - Replace whole-transcriptome FASTA materialization in UniProt linked-transcript
   inventory construction with indexed/streaming retrieval, and expose bounded

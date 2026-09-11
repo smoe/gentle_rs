@@ -18,6 +18,10 @@ These shared-parser routes also work in the GUI Shell and through typed MCP
 Both accept `--context-manifest FILE` for sequence-verified CUT&RUN/chromatin,
 exon/CDS/translation-marker and TATA rows on detailed pages, without rescoring.
 See the [context example and input contract](tss_tfbs_profiles.md#cutrun-gene-structure-and-tata-context).
+Both commands accept `--scale-mode independent|shared|shared_across_tss`.
+The last mode shares one accession's range across all supplied TSSs and both
+strands, without cross-matrix calibration. See [scores, scaling and required
+rescoring of older tail reports](tss_tfbs_profiles.md#scores-and-geometry).
 
 The CLI prints an export summary, not the full scored report, for these routes
 (also through `shell`, direct JSON `op`, and JSON `workflow`). It retains artifact

@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-09-11 - Conservative TFBS tails and comparable TSS traces
+
+- Corrected accumulated quantization error and cancellation in modeled
+  inclusive background tails. Direct log survival preserves very small tails;
+  raw PWM scores and existing smoothing remain unchanged. Exact TP73 MA0861.2
+  maximum now scores 9.632959861247 rather than 300. Reports version the
+  approximation; existing scientific outputs are never silently rescored.
+- Added per-accession `shared_across_tss` display ranges across all report
+  windows/both strands, prominent scale notices and preserved export policy.
+  Compressed locus traces use separate-strand range/mean glyphs without joining
+  bucket maxima. Original arrays and negative-display policy remain unchanged.
+- Added exhaustive, tiny-tail, actual-PFM, shared-engine/export and renderer
+  regressions. Documented approximation limits and original-input regeneration;
+  private five-gene rescoring/publication acceptance remains Glen's follow-up.
+
 ## 2026-09-11 - Primer MCP introspection annotations
 
 - Added missing fact descriptors for `primer_reports`,

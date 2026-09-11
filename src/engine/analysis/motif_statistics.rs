@@ -18,6 +18,8 @@ pub(super) struct ModeledTfbsScoreDistribution {
     pub theoretical_min_score: f64,
     pub theoretical_max_score: f64,
     cumulative_bins: Vec<(i32, f64, f64)>,
+    rounding_error_bits: f64,
+    survival_log_probabilities: Vec<f64>,
 }
 
 impl ModeledTfbsScoreDistribution {
@@ -25,7 +27,7 @@ impl ModeledTfbsScoreDistribution {
         if self.cumulative_bins.is_empty() {
             return 0.0;
         }
-        let threshold = score + 0.5 * self.quantum_bits;
+        let threshold = score + self.rounding_error_bits;
         let partition_idx = self
             .cumulative_bins
             .partition_point(|(bin, _, _)| (*bin as f64 * self.quantum_bits) <= threshold);
@@ -40,7 +42,7 @@ impl ModeledTfbsScoreDistribution {
         if self.cumulative_bins.is_empty() {
             return 0.0;
         }
-        let threshold = score - 0.5 * self.quantum_bits;
+        let threshold = score - self.rounding_error_bits;
         let partition_idx = self
             .cumulative_bins
             .partition_point(|(bin, _, _)| (*bin as f64 * self.quantum_bits) < threshold);
@@ -58,12 +60,22 @@ impl ModeledTfbsScoreDistribution {
     }
 
     pub fn modeled_tail_probability(&self, score: f64) -> f64 {
-        (1.0 - self.cumulative_probability_below_score(score)).clamp(0.0, 1.0)
+        self.tail_log_probability(score).exp()
     }
 
     pub fn modeled_tail_log10(&self, score: f64) -> f64 {
-        let tail = self.modeled_tail_probability(score).max(1e-300);
-        -tail.log10()
+        -self.tail_log_probability(score) / std::f64::consts::LN_10
+    }
+
+    fn tail_log_probability(&self, score: f64) -> f64 {
+        // If raw S >= observed, rounded Q >= observed - sum(column errors).
+        // Including that whole bin gives an upper bound on the inclusive tail,
+        // not an overstatement of significance. Never subtract a CDF from one.
+        let threshold = score - self.rounding_error_bits;
+        let index = self
+            .cumulative_bins
+            .partition_point(|(bin, _, _)| *bin as f64 * self.quantum_bits < threshold);
+        self.survival_log_probabilities[index].min(0.0)
     }
 
     pub fn score_at_quantile(&self, quantile: f64) -> f64 {
@@ -79,6 +91,15 @@ impl ModeledTfbsScoreDistribution {
     }
 }
 
+fn log_add_probability(a: f64, b: f64) -> f64 {
+    let hi = a.max(b);
+    if hi == f64::NEG_INFINITY {
+        hi
+    } else {
+        hi + (a.min(b) - hi).exp().ln_1p()
+    }
+}
+
 impl GentleEngine {
     pub(super) fn tfbs_cancelled_error(context: &str) -> EngineError {
         EngineError {
@@ -89,6 +110,8 @@ impl GentleEngine {
     }
 
     pub(super) const TFBS_MODELED_SCORE_QUANTUM_BITS: f64 = 1e-3;
+    pub(super) const TFBS_MODELED_TAIL_METHOD: &str =
+        "uniform_iid_quantized_conservative_survival_v2";
 
     pub(super) fn smooth_probability_matrix(matrix_counts: &[[f64; 4]]) -> Vec<[f64; 4]> {
         if matrix_counts.is_empty() {
@@ -212,14 +235,44 @@ impl GentleEngine {
     pub(super) fn modeled_tfbs_score_distribution(
         score_matrix: &[[f64; 4]],
     ) -> Option<ModeledTfbsScoreDistribution> {
-        if score_matrix.is_empty() {
+        if score_matrix.is_empty()
+            || score_matrix
+                .iter()
+                .flatten()
+                .any(|score| !score.is_finite())
+        {
             return None;
         }
         let (theoretical_min_score, theoretical_max_score) =
             Self::motif_score_theoretical_bounds(score_matrix)?;
         let quantum_bits = Self::TFBS_MODELED_SCORE_QUANTUM_BITS;
         let quantize = |score: f64| -> i32 { (score / quantum_bits).round() as i32 };
-        let mut support = std::collections::HashMap::<i32, f64>::from([(0_i32, 1.0_f64)]);
+        let rounding_error_bits = score_matrix
+            .iter()
+            .map(|column| {
+                column
+                    .iter()
+                    .map(|score| (score - quantize(*score) as f64 * quantum_bits).abs())
+                    .fold(0.0_f64, f64::max)
+            })
+            .sum::<f64>();
+        // Also cover floating-point accumulation in raw sums, bounds and Q*q.
+        let magnitude = score_matrix
+            .iter()
+            .map(|column| {
+                column
+                    .iter()
+                    .map(|score| score.abs())
+                    .fold(0.0_f64, f64::max)
+            })
+            .sum::<f64>()
+            .max(1.0);
+        let rounding_error_bits =
+            rounding_error_bits + 8.0 * f64::EPSILON * score_matrix.len() as f64 * magnitude;
+        // Short-motif masses are dyadic and safely representable. Long motifs
+        // use log masses so even a unique >500-base maximum cannot underflow.
+        let logarithmic = score_matrix.len() > 500;
+        let mut support = vec![(0_i32, if logarithmic { 0.0 } else { 1.0 })];
         for column in score_matrix {
             let quantized_column = column.map(quantize);
             let mut next = std::collections::HashMap::<i32, f64>::with_capacity(
@@ -227,19 +280,31 @@ impl GentleEngine {
             );
             for (partial_score, probability) in &support {
                 for quantized_score in quantized_column {
-                    *next
-                        .entry(partial_score.saturating_add(quantized_score))
-                        .or_insert(0.0) += probability * 0.25;
+                    let entry = next
+                        .entry(partial_score.checked_add(quantized_score)?)
+                        .or_insert(if logarithmic { f64::NEG_INFINITY } else { 0.0 });
+                    if logarithmic {
+                        *entry = log_add_probability(*entry, probability - 4.0_f64.ln());
+                    } else {
+                        *entry += probability * 0.25;
+                    }
                 }
             }
-            support = next;
+            support = next.into_iter().collect();
+            support.sort_by_key(|(bin, _)| *bin);
         }
-        let mut bins = support.into_iter().collect::<Vec<_>>();
-        bins.sort_by_key(|(score_bin, _)| *score_bin);
+        let mut survival_log_probabilities = vec![f64::NEG_INFINITY; support.len() + 1];
+        for (index, (_, mass)) in support.iter().enumerate().rev() {
+            survival_log_probabilities[index] = log_add_probability(
+                if logarithmic { *mass } else { mass.ln() },
+                survival_log_probabilities[index + 1],
+            );
+        }
         let mut cumulative_probability = 0.0_f64;
-        let cumulative_bins = bins
+        let cumulative_bins = support
             .into_iter()
-            .map(|(score_bin, probability)| {
+            .map(|(score_bin, mass)| {
+                let probability = if logarithmic { mass.exp() } else { mass };
                 cumulative_probability += probability;
                 (score_bin, probability, cumulative_probability)
             })
@@ -249,6 +314,8 @@ impl GentleEngine {
             theoretical_min_score,
             theoretical_max_score,
             cumulative_bins,
+            rounding_error_bits,
+            survival_log_probabilities,
         })
     }
 
@@ -385,6 +452,94 @@ impl GentleEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Hand-crafted score matrices, not empirical PFMs. Exhaustively recreate
+    // their uniform-background oracle by summing all 4^L possible words.
+    fn enumerate_scores(matrix: &[[f64; 4]]) -> Vec<f64> {
+        let mut scores = vec![0.0];
+        for column in matrix {
+            scores = scores
+                .into_iter()
+                .flat_map(|score| column.map(|v| score + v))
+                .collect();
+        }
+        scores.sort_by(f64::total_cmp);
+        scores
+    }
+
+    #[test]
+    fn inclusive_survival_matches_exhaustive_short_motifs_and_tied_maxima() {
+        for matrix in [
+            vec![[0.0, 1.0, 1.0, -1.0]; 4],
+            vec![[0.00049, 0.80049, 0.90049, 1.00049]; 3],
+            vec![[0.0; 4]; 5],
+        ] {
+            let scores = enumerate_scores(&matrix);
+            let model = GentleEngine::modeled_tfbs_score_distribution(&matrix).unwrap();
+            let mut previous = 1.0_f64;
+            for &score in &scores {
+                // Include arithmetic ties to within the same floating-point guard.
+                let exact = scores.iter().filter(|s| **s >= score - 1e-12).count() as f64
+                    / scores.len() as f64;
+                let tail = model.modeled_tail_probability(score);
+                assert!((tail - exact).abs() < 1e-12, "{score}: {tail} != {exact}");
+                assert!(tail <= previous + 1e-15);
+                previous = tail;
+                assert!(
+                    model.modeled_tail_log10(score)
+                        <= matrix.len() as f64 * 4.0_f64.log10() + 1e-12
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn quantized_survival_is_conservative_when_distinct_raw_scores_share_bins() {
+        let matrix = vec![[0.0001, 0.0002, 0.0003, 0.0004]; 4];
+        let scores = enumerate_scores(&matrix);
+        let model = GentleEngine::modeled_tfbs_score_distribution(&matrix).unwrap();
+        for &score in &scores {
+            let exact = scores.iter().filter(|s| **s >= score).count() as f64 / scores.len() as f64;
+            assert!(model.modeled_tail_probability(score) + 1e-14 >= exact);
+        }
+        assert_eq!(model.modeled_tail_log10(*scores.last().unwrap()), 0.0);
+    }
+
+    #[test]
+    fn long_motif_rounding_and_tiny_survival_do_not_inflate_significance() {
+        for length in [16, 80, 500, 600] {
+            let matrix = vec![[1.00049, 0.0, 0.0, 0.0]; length];
+            let score = GentleEngine::score_matrix_window(&vec![b'A'; length], &matrix).unwrap();
+            let model = GentleEngine::modeled_tfbs_score_distribution(&matrix).unwrap();
+            let expected = length as f64 * 4.0_f64.log10();
+            assert!((model.modeled_tail_log10(score) - expected).abs() < 1e-9);
+            if length <= 500 {
+                let expected_tail = 4.0_f64.powi(-(length as i32));
+                assert!((model.modeled_tail_probability(score) / expected_tail - 1.0).abs() < 1e-9);
+            }
+            assert_eq!(
+                GentleEngine::score_matrix_window(&vec![b'N'; length], &matrix),
+                None
+            );
+            assert_eq!(GentleEngine::score_matrix_window(b"R", &matrix), None);
+        }
+    }
+
+    #[test]
+    fn tp73_ma0861_2_maximum_has_inclusive_four_to_minus_sixteen_tail() {
+        // Exact bundled JASPAR PFM; no active/user registry or network lookup.
+        let db = crate::tf_motifs::TfMotifDb::from_json_for_test(include_str!(
+            "../../../assets/jaspar.motifs.json"
+        ))
+        .unwrap();
+        let motif = db.resolve_exact_full_pfm("MA0861.2").unwrap();
+        let (matrix, _) = GentleEngine::prepare_scoring_matrices(&motif.matrix_counts);
+        let score = GentleEngine::score_matrix_window(b"ACATGTCTGGACATGT", &matrix).unwrap();
+        assert!((score - 19.543680326691).abs() < 1e-11);
+        let model = GentleEngine::modeled_tfbs_score_distribution(&matrix).unwrap();
+        assert!((model.modeled_tail_probability(score) / 4.0_f64.powi(-16) - 1.0).abs() < 1e-12);
+        assert!((model.modeled_tail_log10(score) - 9.632959861247).abs() < 1e-11);
+    }
 
     #[test]
     fn modeled_tfbs_score_distribution_tracks_bounds_and_nonzero_tail() {

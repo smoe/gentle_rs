@@ -21,6 +21,14 @@ FASTA bundle and a strict, exact-version JASPAR panel. It returns
 that same report without rescoring. Source sequences remain unchanged; optional
 filesystem publication is an external effect requiring normal adapter consent.
 See [inputs, coordinate conventions, scores and audit limits](tss_tfbs_profiles.md).
+`TssScaleMode` additionally accepts `shared_across_tss`: one range per exact
+accession over the entire supplied report and both strands, without equating
+different matrices. Export requests/receipts bind the selected mode. New score
+reports mark `score_policy.modeled_tail_method` with
+`uniform_iid_quantized_conservative_survival_v2`; raw PWM scoring/pseudocounts
+are unchanged. Inclusive tails conservatively cover accumulated per-column
+rounding error and use direct log survival, not `1-CDF`. See the
+[numerical contract and regeneration procedure](tss_tfbs_profiles.md#inclusive-background-tails).
 
 The optional export `request.context_manifest` names
 `gentle.tss_detail_context_inputs.v1`. Shared engine composition binds the exact
@@ -4395,7 +4403,10 @@ external coding agent runtime, see:
     `true_log_odds_background_tail_log10` as `-log10 Ptail`; these values are
     modeled background-tail probabilities derived from the respective bit
     scores, not raw log-odds ratios. Consequently a raw-bit threshold such as
-    `-1` must not be transferred numerically to a tail-score view
+    `-1` must not be transferred numerically to a tail-score view.
+    Compressed score traces retain separate strands and use unconnected
+    pixel-bucket min/max whiskers with mean marks instead of connected maxima.
+    Aggregation is labelled; source vectors are unchanged
   - `scale_bar` stores the resolved `hidden`, deterministic `auto`, or exact
     positive `fixed` policy. The renderer derives its geometry from the same
     locus transform and exposes stable SVG scale attributes

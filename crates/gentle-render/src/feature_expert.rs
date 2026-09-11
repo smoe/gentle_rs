@@ -4461,8 +4461,9 @@ fn add_locus_regulatory_y_axis(
 }
 
 fn locus_regulatory_path(
-    track: &GeneLocusRegulatoryScoreTrack,
     scores: &[f64],
+    track_start_0based: usize,
+    stride_bp: usize,
     plot_left: f32,
     plot_right: f32,
     x_for: &impl Fn(usize) -> f32,
@@ -4480,21 +4481,40 @@ fn locus_regulatory_path(
     let mut data = Data::new();
     let mut point_count = 0usize;
     for (bucket, values) in scores.chunks(bucket_width).enumerate() {
-        let score = values
+        let finite = values
             .iter()
             .copied()
             .filter(|value| value.is_finite())
             .map(|value| value.max(display_min))
-            .max_by(f64::total_cmp)
-            .unwrap_or(display_min);
+            .collect::<Vec<_>>();
+        if finite.is_empty() {
+            point_count = 0;
+            continue;
+        }
         let source_index = bucket.saturating_mul(bucket_width);
-        let local_position = track
-            .track_start_0based
-            .saturating_add(source_index.saturating_mul(track.stride_bp.max(1)))
+        let local_position = track_start_0based
+            .saturating_add(source_index.saturating_mul(stride_bp.max(1)))
             .saturating_add(1);
         let x = x_for(local_position);
-        let fraction = ((score - display_min) / scale_span).clamp(0.0, 1.0) as f32;
-        let y = lane_top + lane_height - fraction * lane_height;
+        let fractions = finite
+            .iter()
+            .map(|score| ((score - display_min) / scale_span).clamp(0.0, 1.0));
+        if bucket_width > 1 {
+            let min = fractions.clone().fold(1.0_f64, f64::min);
+            let max = fractions.clone().fold(0.0_f64, f64::max);
+            let mean = fractions.sum::<f64>() / finite.len() as f64;
+            let y_for = |fraction: f64| lane_top + lane_height - fraction as f32 * lane_height;
+            // Separate whiskers preserve peaks without inventing a plateau
+            // between bucket maxima. The mean mark exposes sparse occupancy.
+            data = data
+                .move_to((x, y_for(min)))
+                .line_to((x, y_for(max)))
+                .move_to((x - 0.25, y_for(mean)))
+                .line_to((x + 0.25, y_for(mean)));
+            point_count += 1;
+            continue;
+        }
+        let y = lane_top + lane_height - fractions.clone().next().unwrap() as f32 * lane_height;
         data = if point_count == 0 {
             data.move_to((x, y))
         } else {
@@ -4502,7 +4522,7 @@ fn locus_regulatory_path(
         };
         point_count += 1;
     }
-    (point_count > 0).then_some(data)
+    (!data.is_empty()).then_some(data)
 }
 
 fn locus_probe_class_label(probe_class: GeneLocusProbeClass) -> &'static str {
@@ -6759,7 +6779,7 @@ pub fn render_gene_locus_evidence_with_overlay(
                         ),
                 )
                 .add(
-                    Text::new("F solid | R dashed")
+                    Text::new("F solid | R dashed; pixel bins: range + mean")
                         .set("x", 52)
                         .set("y", lane_top + 13.0)
                         .set("font-family", "monospace")
@@ -6789,8 +6809,9 @@ pub fn render_gene_locus_evidence_with_overlay(
                 display_max,
             );
             if let Some(data) = locus_regulatory_path(
-                track,
                 &track.forward_scores,
+                track.track_start_0based,
+                track.stride_bp,
                 plot_left,
                 plot_right,
                 &x_for,
@@ -6804,18 +6825,32 @@ pub fn render_gene_locus_evidence_with_overlay(
                         .set("d", data)
                         .set("fill", "none")
                         .set("stroke", color)
-                        .set("stroke-width", 1.7)
+                        .set(
+                            "stroke-width",
+                            if track.forward_scores.len()
+                                > (plot_right - plot_left).round() as usize
+                            {
+                                0.6
+                            } else {
+                                1.7
+                            },
+                        )
                         .set(
                             "data-gentle-regulatory-score-track",
                             track.track_id.as_str(),
                         )
                         .set("data-gentle-regulatory-provider", provider)
+                        .set(
+                            "data-gentle-regulatory-aggregation",
+                            "pixel_min_max_mean_or_native_points",
+                        )
                         .set("data-gentle-regulatory-strand", "forward"),
                 );
             }
             if let Some(data) = locus_regulatory_path(
-                track,
                 &track.reverse_scores,
+                track.track_start_0based,
+                track.stride_bp,
                 plot_left,
                 plot_right,
                 &x_for,
@@ -6829,13 +6864,26 @@ pub fn render_gene_locus_evidence_with_overlay(
                         .set("d", data)
                         .set("fill", "none")
                         .set("stroke", color)
-                        .set("stroke-width", 1.5)
+                        .set(
+                            "stroke-width",
+                            if track.reverse_scores.len()
+                                > (plot_right - plot_left).round() as usize
+                            {
+                                0.6
+                            } else {
+                                1.5
+                            },
+                        )
                         .set("stroke-dasharray", "5,3")
                         .set(
                             "data-gentle-regulatory-score-track",
                             track.track_id.as_str(),
                         )
                         .set("data-gentle-regulatory-provider", provider)
+                        .set(
+                            "data-gentle-regulatory-aggregation",
+                            "pixel_min_max_mean_or_native_points",
+                        )
                         .set("data-gentle-regulatory-strand", "reverse"),
                 );
             }
@@ -6942,14 +6990,10 @@ pub fn render_gene_locus_evidence_with_overlay(
     {
         let y = motif_top + index as f32 * motif_pitch;
         let baseline = y + 25.0;
-        let scores = track
+        let observed_max = track
             .forward_scores
             .iter()
-            .zip(track.reverse_scores.iter())
-            .map(|(forward, reverse)| forward.max(*reverse).max(0.0))
-            .collect::<Vec<_>>();
-        let observed_max = scores
-            .iter()
+            .chain(&track.reverse_scores)
             .copied()
             .filter(|value| value.is_finite())
             .max_by(f64::total_cmp)
@@ -6962,7 +7006,7 @@ pub fn render_gene_locus_evidence_with_overlay(
         doc = doc
             .add(
                 Text::new(format!(
-                    "{} {} | {} | threshold {}",
+                    "{} {} | {} | threshold {} | F solid/R dashed; pixel bins: range + mean",
                     track.motif_id,
                     track.motif_name.as_deref().unwrap_or(""),
                     track.score_kind,
@@ -6999,42 +7043,43 @@ pub fn render_gene_locus_evidence_with_overlay(
             0.0,
             display_max,
         );
-        if !scores.is_empty() {
-            let bucket_count = (plot_right - plot_left).round().max(1.0) as usize;
-            let bucket_width = scores.len().div_ceil(bucket_count).max(1);
-            let sampled = scores
-                .chunks(bucket_width)
-                .enumerate()
-                .map(|(bucket, values)| {
-                    let score = values
-                        .iter()
-                        .copied()
-                        .filter(|value| value.is_finite())
-                        .map(|value| value.max(0.0))
-                        .max_by(f64::total_cmp)
-                        .unwrap_or(0.0);
-                    let source_index = bucket.saturating_mul(bucket_width);
-                    (source_index, score)
-                })
-                .collect::<Vec<_>>();
-            let mut data = Data::new();
-            for (sample_index, (source_index, score)) in sampled.iter().enumerate() {
-                let local_position = track.track_start_0based + source_index + 1;
-                let x = x_for(local_position);
-                let normalized = (*score / display_max) as f32;
-                let score_y = baseline - normalized.clamp(0.0, 1.0) * 28.0;
-                data = if sample_index == 0 {
-                    data.move_to((x, score_y))
-                } else {
-                    data.line_to((x, score_y))
-                };
-            }
+        for (strand, scores, dash) in [
+            ("forward", &track.forward_scores, "none"),
+            ("reverse", &track.reverse_scores, "5,3"),
+        ] {
+            let Some(data) = locus_regulatory_path(
+                scores,
+                track.track_start_0based,
+                1,
+                plot_left,
+                plot_right,
+                &x_for,
+                baseline - 28.0,
+                28.0,
+                0.0,
+                display_max,
+            ) else {
+                continue;
+            };
             doc = doc.add(
                 Path::new()
                     .set("d", data)
                     .set("fill", "none")
                     .set("stroke", "#be123c")
-                    .set("stroke-width", 1.4),
+                    .set("stroke-dasharray", dash)
+                    .set(
+                        "data-gentle-regulatory-aggregation",
+                        "pixel_min_max_mean_or_native_points",
+                    )
+                    .set("data-gentle-regulatory-strand", strand)
+                    .set(
+                        "stroke-width",
+                        if scores.len() > (plot_right - plot_left).round() as usize {
+                            0.6
+                        } else {
+                            1.4
+                        },
+                    ),
             );
         }
         for hit in track
@@ -8197,6 +8242,50 @@ mod tests {
         assert!(svg.contains("data-gentle-conservation-section=\"true\""));
         assert!(svg.contains("data-gentle-conservation-block=\"conserved_block_demo\""));
         assert!(svg.contains("data-gentle-homology-report-sha256=\"sha256:homology\""));
+    }
+
+    #[test]
+    fn compressed_regulatory_trace_preserves_sparse_peaks_without_joining_maxima() {
+        // Synthetic four-base buckets: equal maxima, only 1/4 nonzero samples.
+        let scores = [0.0, 0.0, 0.0, 5.0].repeat(3);
+        let before = scores.clone();
+        let path = svg::node::Value::from(
+            locus_regulatory_path(
+                &scores,
+                0,
+                1,
+                0.0,
+                3.0,
+                &|position| (position - 1) as f32 / 4.0,
+                0.0,
+                20.0,
+                0.0,
+                5.0,
+            )
+            .unwrap(),
+        )
+        .to_string();
+        assert_eq!(
+            path,
+            "M0,20 L0,0 M-0.25,15 L0.25,15 M1,20 L1,0 M0.75,15 L1.25,15 M2,20 L2,0 M1.75,15 L2.25,15"
+        );
+        assert_eq!(scores, before);
+        let absent = locus_regulatory_path(
+            &[f64::NAN; 12],
+            0,
+            1,
+            0.0,
+            3.0,
+            &|p| p as f32,
+            0.0,
+            20.0,
+            0.0,
+            5.0,
+        );
+        assert!(
+            absent.is_none(),
+            "missing samples must not become zero signal"
+        );
     }
 
     #[test]

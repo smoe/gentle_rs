@@ -62,11 +62,11 @@ impl GentleEngine {
         }))
     }
 
-    fn tfbs_background_tail_log10(tail_probability: f64, modeled_quantile: f64) -> f64 {
+    fn tfbs_background_tail_log10(tail_log10: f64, modeled_quantile: f64) -> f64 {
         if modeled_quantile < Self::TFBS_BACKGROUND_TAIL_SHOW_QUANTILE {
             return 0.0;
         }
-        -tail_probability.max(1e-300).log10()
+        tail_log10
     }
 
     fn tfbs_modeled_background_quantile(
@@ -79,18 +79,21 @@ impl GentleEngine {
             .unwrap_or_else(|| Self::empirical_quantile(empirical_background_sorted_scores, score))
     }
 
-    fn tfbs_modeled_background_tail_probability(
+    fn tfbs_modeled_background_tail_log10(
         score: f64,
         modeled_distribution: Option<&ModeledTfbsScoreDistribution>,
         empirical_background_sorted_scores: &[f64],
     ) -> f64 {
         modeled_distribution
-            .map(|distribution| distribution.modeled_tail_probability(score))
+            .map(|distribution| distribution.modeled_tail_log10(score))
             .unwrap_or_else(|| {
-                let quantile = Self::empirical_quantile(empirical_background_sorted_scores, score);
-                (1.0 - quantile)
-                    .max(1.0 / empirical_background_sorted_scores.len().max(1) as f64)
-                    .clamp(0.0, 1.0)
+                let below =
+                    empirical_background_sorted_scores.partition_point(|value| *value < score);
+                let tail = empirical_background_sorted_scores
+                    .len()
+                    .saturating_sub(below)
+                    .max(1);
+                -(tail as f64 / empirical_background_sorted_scores.len().max(1) as f64).log10()
             })
     }
 
@@ -129,12 +132,12 @@ impl GentleEngine {
                     llr_modeled_distribution,
                     llr_background_sorted_scores,
                 );
-                let tail_probability = Self::tfbs_modeled_background_tail_probability(
+                let tail_log10 = Self::tfbs_modeled_background_tail_log10(
                     llr_bits,
                     llr_modeled_distribution,
                     llr_background_sorted_scores,
                 );
-                Self::tfbs_background_tail_log10(tail_probability, quantile)
+                Self::tfbs_background_tail_log10(tail_log10, quantile)
             }
             TfbsScoreTrackValueKind::TrueLogOddsBits => {
                 Self::promoter_design_clip_score(true_log_odds_bits, clip_negative)
@@ -158,12 +161,12 @@ impl GentleEngine {
                     true_log_odds_modeled_distribution,
                     true_log_odds_background_sorted_scores,
                 );
-                let tail_probability = Self::tfbs_modeled_background_tail_probability(
+                let tail_log10 = Self::tfbs_modeled_background_tail_log10(
                     true_log_odds_bits,
                     true_log_odds_modeled_distribution,
                     true_log_odds_background_sorted_scores,
                 );
-                Self::tfbs_background_tail_log10(tail_probability, quantile)
+                Self::tfbs_background_tail_log10(tail_log10, quantile)
             }
         }
     }
@@ -854,7 +857,7 @@ impl GentleEngine {
             .unwrap_or_else(|| distribution.max_score.max(observed_peak_underlying_score));
         Some(TfbsScoreTrackNormalizationReference {
             background_model: "uniform_random_dna".to_string(),
-            chance_model: "quantized_iid_uniform_window_dp".to_string(),
+            chance_model: Self::TFBS_MODELED_TAIL_METHOD.to_string(),
             random_sequence_length_bp: DEFAULT_TFBS_SCORE_TRACK_RANDOM_SEQUENCE_LENGTH_BP,
             random_seed: DEFAULT_TFBS_SCORE_TRACK_RANDOM_SEED,
             sample_count: distribution.sample_count,
