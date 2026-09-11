@@ -1,0 +1,374 @@
+<svg aria-labelledby="tss-page-title" data-gentle-plot-left="255" data-gentle-plot-right="1050" data-page-count="1" data-page-number="1" data-scale-mode="shared_across_tss" data-score-kind="llr_bits" fill="#233441" font-family="monospace" font-size="14" height="1354" role="img" viewBox="0 0 1400 1354" width="1400" xmlns="http://www.w3.org/2000/svg">
+<title id="tss-page-title">SYNPLUS TSS profiles, page 1 of 1</title>
+<g>
+<rect fill="#ffffff" height="1354" width="1400"/>
+<g data-height="27" data-role="gene-title" data-width="1332" data-x="34" data-y="34">
+<text font-size="22" lengthAdjust="spacingAndGlyphs" textLength="408.31999999999994" x="34" y="56">
+SYNPLUS | synthetic-gene-plus
+</text>
+</g>
+<g data-height="76" data-role="page-header" data-width="1332" data-x="34" data-y="73">
+<text font-size="14" lengthAdjust="spacingAndGlyphs" textLength="277.7600000000001" x="34" y="87">
+TSS TFBS profiles | page 1 of 1
+</text>
+<text font-size="14" lengthAdjust="spacingAndGlyphs" textLength="1102.080000000002" x="34" y="106">
+Panel synthetic-window-arnt-shared-scale-v1: Synthetic plus/minus windows with one pinned Arnt matrix | 1 resolved matrices
+</text>
+<text font-size="14" lengthAdjust="spacingAndGlyphs" textLength="913.9200000000012" x="34" y="125">
+Reference: synthetic-genome-v1 | assembly: synthetic-assembly-v1 | annotation: synthetic-annotation-v1
+</text>
+<text font-size="14" lengthAdjust="spacingAndGlyphs" textLength="707.8400000000004" x="34" y="144">
+Panel SHA-256: 4c42f474dfaf00ed0280d8297086443f7ba2ed8b4551c819bcdd031820603991
+</text>
+</g>
+<g data-height="665" data-promoter-id="synthetic-plus" data-role="tss-panel" data-selected="false" data-y="177">
+<g data-height="114" data-role="tss-identity" data-width="1332" data-x="34" data-y="177">
+<text font-size="14" lengthAdjust="spacingAndGlyphs" textLength="268.8000000000001" x="34" y="191">
+TSS window 1 of 1 | Unselected
+</text>
+<text font-size="14" lengthAdjust="spacingAndGlyphs" textLength="1030.4000000000017" x="34" y="210">
+SCALE: Same accession: shared range across ALL report TSSs and both strands; different matrices remain independent.
+</text>
+<text font-size="14" lengthAdjust="spacingAndGlyphs" textLength="215.04000000000013" x="34" y="229">
+Promoter: synthetic-plus
+</text>
+<text font-size="14" lengthAdjust="spacingAndGlyphs" textLength="672.0000000000002" x="34" y="248">
+Annotated TSS: synthetic_chr:100 (+) | stored interval: 97..107 (ascending)
+</text>
+<text font-size="14" lengthAdjust="spacingAndGlyphs" textLength="492.7999999999996" x="34" y="267">
+Transcripts (2): synthetic.plus.tx2, synthetic.plus.tx1
+</text>
+<text font-size="14" lengthAdjust="spacingAndGlyphs" textLength="734.7200000000005" x="34" y="286">
+Sequence SHA-256: 4d9e77a90f447ff950a881a2fbcc85ba3ad70805f4b27ef66d9ab0adb611cb46
+</text>
+</g>
+<text data-role="track-page-caption" font-size="14" lengthAdjust="spacingAndGlyphs" textLength="188.1600000000001" x="34" y="317">
+Matrix rows 1..1 of 1
+</text>
+<g data-height="72" data-role="strand-coordinate-legend" data-width="1332" data-x="34" data-y="327">
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="632.3200000000004" x="34" y="340">
+Transcript-oriented sequence: 5'-to-3' left to right; genomic labels ascend.
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="915.2000000000021" x="34" y="358">
+Solid: motif-local + / genomic +. Dashed: motif-local - / genomic -. Black vertical rule: 0 bp, annotated TSS.
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="898.560000000002" x="34" y="376">
+Every point is a motif-window START on the common sequence axis (not a center or reverse-motif 5' endpoint).
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="1048.3200000000027" x="34" y="394">
+Gray: terminal positions without a full motif window. Amber and path gaps: unavailable windows (including N), not zero scores.
+</text>
+</g>
+<line stroke="#8296a0" x1="255" x2="1050" y1="415" y2="415"/>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="241.27999999999986" x="34" y="436">
+TSS-relative motif start (bp)
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="183.0399999999999" x="34" y="455">
+Genomic base (1-based)
+</text>
+<line stroke="#526b79" x1="255" x2="255" y1="415" y2="421"/>
+<text data-axis-x="255" data-label-width="16.64" data-local-start="0" data-role="relative-tick" data-value="-3" font-size="13" font-weight="normal" lengthAdjust="spacingAndGlyphs" text-anchor="middle" textLength="16.64" x="263.32" y="436">
+-3
+</text>
+<text data-axis-x="255" data-label-width="16.64" data-local-start="0" data-role="genomic-tick" data-value="97" font-size="13" font-weight="normal" lengthAdjust="spacingAndGlyphs" text-anchor="middle" textLength="16.64" x="263.32" y="455">
+97
+</text>
+<line stroke="#526b79" x1="334.5" x2="334.5" y1="415" y2="421"/>
+<text data-axis-x="334.5" data-label-width="16.64" data-local-start="1" data-role="relative-tick" data-value="-2" font-size="13" font-weight="normal" lengthAdjust="spacingAndGlyphs" text-anchor="middle" textLength="16.64" x="334.5" y="436">
+-2
+</text>
+<text data-axis-x="334.5" data-label-width="16.64" data-local-start="1" data-role="genomic-tick" data-value="98" font-size="13" font-weight="normal" lengthAdjust="spacingAndGlyphs" text-anchor="middle" textLength="16.64" x="334.5" y="455">
+98
+</text>
+<line stroke="#526b79" x1="414" x2="414" y1="415" y2="421"/>
+<text data-axis-x="414" data-label-width="16.64" data-local-start="2" data-role="relative-tick" data-value="-1" font-size="13" font-weight="normal" lengthAdjust="spacingAndGlyphs" text-anchor="middle" textLength="16.64" x="414" y="436">
+-1
+</text>
+<text data-axis-x="414" data-label-width="16.64" data-local-start="2" data-role="genomic-tick" data-value="99" font-size="13" font-weight="normal" lengthAdjust="spacingAndGlyphs" text-anchor="middle" textLength="16.64" x="414" y="455">
+99
+</text>
+<line stroke="#526b79" x1="493.5" x2="493.5" y1="415" y2="421"/>
+<text data-axis-x="493.5" data-label-width="24.96" data-local-start="3" data-role="relative-tick" data-value="0" font-size="13" font-weight="bold" lengthAdjust="spacingAndGlyphs" text-anchor="middle" textLength="8.32" x="493.5" y="436">
+0
+</text>
+<text data-axis-x="493.5" data-label-width="24.96" data-local-start="3" data-role="genomic-tick" data-value="100" font-size="13" font-weight="bold" lengthAdjust="spacingAndGlyphs" text-anchor="middle" textLength="24.96" x="493.5" y="455">
+100
+</text>
+<line stroke="#526b79" x1="573" x2="573" y1="415" y2="421"/>
+<text data-axis-x="573" data-label-width="24.96" data-local-start="4" data-role="relative-tick" data-value="+1" font-size="13" font-weight="normal" lengthAdjust="spacingAndGlyphs" text-anchor="middle" textLength="16.64" x="573" y="436">
++1
+</text>
+<text data-axis-x="573" data-label-width="24.96" data-local-start="4" data-role="genomic-tick" data-value="101" font-size="13" font-weight="normal" lengthAdjust="spacingAndGlyphs" text-anchor="middle" textLength="24.96" x="573" y="455">
+101
+</text>
+<line stroke="#526b79" x1="652.5" x2="652.5" y1="415" y2="421"/>
+<text data-axis-x="652.5" data-label-width="24.96" data-local-start="5" data-role="relative-tick" data-value="+2" font-size="13" font-weight="normal" lengthAdjust="spacingAndGlyphs" text-anchor="middle" textLength="16.64" x="652.5" y="436">
++2
+</text>
+<text data-axis-x="652.5" data-label-width="24.96" data-local-start="5" data-role="genomic-tick" data-value="102" font-size="13" font-weight="normal" lengthAdjust="spacingAndGlyphs" text-anchor="middle" textLength="24.96" x="652.5" y="455">
+102
+</text>
+<line stroke="#526b79" x1="732" x2="732" y1="415" y2="421"/>
+<text data-axis-x="732" data-label-width="24.96" data-local-start="6" data-role="relative-tick" data-value="+3" font-size="13" font-weight="normal" lengthAdjust="spacingAndGlyphs" text-anchor="middle" textLength="16.64" x="732" y="436">
++3
+</text>
+<text data-axis-x="732" data-label-width="24.96" data-local-start="6" data-role="genomic-tick" data-value="103" font-size="13" font-weight="normal" lengthAdjust="spacingAndGlyphs" text-anchor="middle" textLength="24.96" x="732" y="455">
+103
+</text>
+<line stroke="#526b79" x1="811.5" x2="811.5" y1="415" y2="421"/>
+<text data-axis-x="811.5" data-label-width="24.96" data-local-start="7" data-role="relative-tick" data-value="+4" font-size="13" font-weight="normal" lengthAdjust="spacingAndGlyphs" text-anchor="middle" textLength="16.64" x="811.5" y="436">
++4
+</text>
+<text data-axis-x="811.5" data-label-width="24.96" data-local-start="7" data-role="genomic-tick" data-value="104" font-size="13" font-weight="normal" lengthAdjust="spacingAndGlyphs" text-anchor="middle" textLength="24.96" x="811.5" y="455">
+104
+</text>
+<line stroke="#526b79" x1="891" x2="891" y1="415" y2="421"/>
+<text data-axis-x="891" data-label-width="24.96" data-local-start="8" data-role="relative-tick" data-value="+5" font-size="13" font-weight="normal" lengthAdjust="spacingAndGlyphs" text-anchor="middle" textLength="16.64" x="891" y="436">
++5
+</text>
+<text data-axis-x="891" data-label-width="24.96" data-local-start="8" data-role="genomic-tick" data-value="105" font-size="13" font-weight="normal" lengthAdjust="spacingAndGlyphs" text-anchor="middle" textLength="24.96" x="891" y="455">
+105
+</text>
+<line stroke="#526b79" x1="970.5" x2="970.5" y1="415" y2="421"/>
+<text data-axis-x="970.5" data-label-width="24.96" data-local-start="9" data-role="relative-tick" data-value="+6" font-size="13" font-weight="normal" lengthAdjust="spacingAndGlyphs" text-anchor="middle" textLength="16.64" x="970.5" y="436">
++6
+</text>
+<text data-axis-x="970.5" data-label-width="24.96" data-local-start="9" data-role="genomic-tick" data-value="106" font-size="13" font-weight="normal" lengthAdjust="spacingAndGlyphs" text-anchor="middle" textLength="24.96" x="970.5" y="455">
+106
+</text>
+<line stroke="#526b79" x1="1050" x2="1050" y1="415" y2="421"/>
+<text data-axis-x="1050" data-label-width="24.96" data-local-start="10" data-role="relative-tick" data-value="+7" font-size="13" font-weight="normal" lengthAdjust="spacingAndGlyphs" text-anchor="middle" textLength="16.64" x="1037.52" y="436">
++7
+</text>
+<text data-axis-x="1050" data-label-width="24.96" data-local-start="10" data-role="genomic-tick" data-value="107" font-size="13" font-weight="normal" lengthAdjust="spacingAndGlyphs" text-anchor="middle" textLength="24.96" x="1037.52" y="455">
+107
+</text>
+<g data-accession="MA0004.1" data-display-order="1" data-height="245" data-matrix-sha256="64b5dcdb8dec059a43ad95819d9eca9d40abeb136cb0735421b4cba15badc4f9" data-matrix-version="1" data-role="matrix-row" data-y="477" data-y-max="0" data-y-min="-167.38411715854224">
+<title>MA0004.1; matrix SHA-256 64b5dcdb8dec059a43ad95819d9eca9d40abeb136cb0735421b4cba15badc4f9; normalization reference (stored, not recomputed): {"background_model":"uniform_random_dna","chance_model":"uniform_iid_quantized_conservative_survival_v2","mean_score":-109.32893351810704,"observed_peak_delta_from_p95":-89.61869239222986,"observed_peak_delta_from_p99":-117.26769239222986,"observed_peak_empirical_quantile":0.15772788639431973,"observed_peak_modeled_quantile":0.138427734375,"observed_peak_modeled_tail_log10":0.05485274606211635,"observed_peak_modeled_tail_probability":0.8813476562500001,"p95_score":-50.19,"p99_score":-22.541,"positive_fraction":0.001025051252562628,"random_seed":6072614073404772913,"random_sequence_length_bp":100000,"sample_count":199990,"stddev_score":32.714880868452845,"theoretical_max_score":11.604071298136954,"theoretical_min_score":-167.38411715854224}</title>
+<rect fill="#f8fafb" height="245" rx="4" width="1356" x="22" y="477"/>
+<g data-height="40" data-role="matrix-label" data-width="205" data-x="34" data-y="493">
+<text font-size="15" lengthAdjust="spacingAndGlyphs" textLength="134.39999999999998" x="34" y="508">
+Arnt synthetic
+</text>
+<text font-size="15" lengthAdjust="spacingAndGlyphs" textLength="134.39999999999998" x="34" y="528">
+teaching trace
+</text>
+</g>
+<g data-height="51" data-role="matrix-identity-units" data-width="205" data-x="34" data-y="541">
+<text font-size="12" lengthAdjust="spacingAndGlyphs" textLength="115.20000000000005" x="34" y="553">
+MA0004.1 | Arnt
+</text>
+<text font-size="12" lengthAdjust="spacingAndGlyphs" textLength="115.20000000000005" x="34" y="570">
+6 bp | llr_bits
+</text>
+<text font-size="12" lengthAdjust="spacingAndGlyphs" textLength="199.68000000000012" x="34" y="587">
+bits (matrix-specific LLR)
+</text>
+</g>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="224.63999999999987" x="34" y="609">
+PFM information logo (bits)
+</text>
+<g data-accession="MA0004.1" data-column-width="8.5" data-first-position="1" data-role="pfm-logo">
+<line stroke="#cad8df" stroke-width="0.7" x1="66" x2="117" y1="682" y2="682"/>
+<text font-size="12" lengthAdjust="spacingAndGlyphs" text-anchor="end" textLength="7.68" x="58" y="686">
+0
+</text>
+<line stroke="#cad8df" stroke-width="0.7" x1="66" x2="117" y1="650" y2="650"/>
+<text font-size="12" lengthAdjust="spacingAndGlyphs" text-anchor="end" textLength="7.68" x="58" y="654">
+1
+</text>
+<line stroke="#cad8df" stroke-width="0.7" x1="66" x2="117" y1="618" y2="618"/>
+<text font-size="12" lengthAdjust="spacingAndGlyphs" text-anchor="end" textLength="7.68" x="58" y="622">
+2
+</text>
+<g data-information-bits="1.2780719051126377" data-position-1based="1" data-role="pfm-column">
+<path d="M0 100 L36 0 H64 L100 100 H76 L68 76 H32 L24 100 Z M40 54 H60 L50 23 Z" data-base="A" data-bits="0.25561438102252754" data-role="pfm-letter" fill="#18814b" fill-rule="evenodd" transform="translate(67.0000 673.8203) scale(0.065000 0.081796602)">
+<title>Position 1: A, count 4, information 0.2556 bits</title>
+</path>
+<path d="M98 16 L82 34 C73 25 66 22 54 22 C34 22 24 32 24 50 C24 68 34 78 54 78 C66 78 74 74 82 65 L98 82 C84 96 72 100 52 100 C18 100 0 81 0 50 C0 19 18 0 52 0 C72 0 86 6 98 16 Z" data-base="C" data-bits="1.0224575240901101" data-role="pfm-letter" fill="#2873bc" fill-rule="evenodd" transform="translate(67.0000 641.1017) scale(0.065000 0.327186408)">
+<title>Position 1: C, count 16, information 1.0225 bits</title>
+</path>
+</g>
+<text font-size="12" lengthAdjust="spacingAndGlyphs" text-anchor="middle" textLength="7.68" x="70.25" y="699">
+1
+</text>
+<g data-information-bits="1.7136030428840439" data-position-1based="2" data-role="pfm-column">
+<path d="M98 16 L82 34 C73 25 66 22 54 22 C34 22 24 32 24 50 C24 68 34 78 54 78 C63 78 70 76 76 72 V62 H54 V43 H100 V84 C86 96 72 100 52 100 C18 100 0 81 0 50 C0 19 18 0 52 0 C72 0 86 6 98 16 Z" data-base="G" data-bits="0.0856801521442022" data-role="pfm-letter" fill="#a97900" fill-rule="evenodd" transform="translate(75.5000 679.2582) scale(0.065000 0.027417649)">
+<title>Position 2: G, count 1, information 0.0857 bits</title>
+</path>
+<path d="M0 100 L36 0 H64 L100 100 H76 L68 76 H32 L24 100 Z M40 54 H60 L50 23 Z" data-base="A" data-bits="1.6279228907398418" data-role="pfm-letter" fill="#18814b" fill-rule="evenodd" transform="translate(75.5000 627.1647) scale(0.065000 0.520935325)">
+<title>Position 2: A, count 19, information 1.6279 bits</title>
+</path>
+</g>
+<g data-information-bits="2" data-position-1based="3" data-role="pfm-column">
+<path d="M98 16 L82 34 C73 25 66 22 54 22 C34 22 24 32 24 50 C24 68 34 78 54 78 C66 78 74 74 82 65 L98 82 C84 96 72 100 52 100 C18 100 0 81 0 50 C0 19 18 0 52 0 C72 0 86 6 98 16 Z" data-base="C" data-bits="2" data-role="pfm-letter" fill="#2873bc" fill-rule="evenodd" transform="translate(84.0000 618.0000) scale(0.065000 0.640000000)">
+<title>Position 3: C, count 20, information 2 bits</title>
+</path>
+</g>
+<g data-information-bits="2" data-position-1based="4" data-role="pfm-column">
+<path d="M98 16 L82 34 C73 25 66 22 54 22 C34 22 24 32 24 50 C24 68 34 78 54 78 C63 78 70 76 76 72 V62 H54 V43 H100 V84 C86 96 72 100 52 100 C18 100 0 81 0 50 C0 19 18 0 52 0 C72 0 86 6 98 16 Z" data-base="G" data-bits="2" data-role="pfm-letter" fill="#a97900" fill-rule="evenodd" transform="translate(92.5000 618.0000) scale(0.065000 0.640000000)">
+<title>Position 4: G, count 20, information 2 bits</title>
+</path>
+</g>
+<g data-information-bits="2" data-position-1based="5" data-role="pfm-column">
+<path d="M0 0 H100 V23 H62 V100 H38 V23 H0 Z" data-base="T" data-bits="2" data-role="pfm-letter" fill="#c93f45" fill-rule="evenodd" transform="translate(101.0000 618.0000) scale(0.065000 0.640000000)">
+<title>Position 5: T, count 20, information 2 bits</title>
+</path>
+</g>
+<text font-size="12" lengthAdjust="spacingAndGlyphs" text-anchor="middle" textLength="7.68" x="104.25" y="699">
+5
+</text>
+<g data-information-bits="2" data-position-1based="6" data-role="pfm-column">
+<path d="M98 16 L82 34 C73 25 66 22 54 22 C34 22 24 32 24 50 C24 68 34 78 54 78 C63 78 70 76 76 72 V62 H54 V43 H100 V84 C86 96 72 100 52 100 C18 100 0 81 0 50 C0 19 18 0 52 0 C72 0 86 6 98 16 Z" data-base="G" data-bits="2" data-role="pfm-letter" fill="#a97900" fill-rule="evenodd" transform="translate(109.5000 618.0000) scale(0.065000 0.640000000)">
+<title>Position 6: G, count 20, information 2 bits</title>
+</path>
+</g>
+<text font-size="12" lengthAdjust="spacingAndGlyphs" text-anchor="middle" textLength="7.68" x="112.75" y="699">
+6
+</text>
+</g>
+<rect fill="#ffffff" height="128" stroke="#b4c3ca" width="795" x="255" y="501"/>
+<rect data-local-end-exclusive="11" data-local-start="6" data-role="terminal-unscored" fill="#dfe6ea" height="128" width="357.75" x="692.25" y="501">
+<title>Unscored base positions 6..10; no complete 6-bp motif window</title>
+</rect>
+<rect data-local-end-exclusive="5" data-local-start="0" data-local-strand="+" data-role="unavailable-windows" fill="#eacb80" fill-opacity="0.26" height="128" width="357.75" x="255" y="501">
+<title>Unavailable motif-local + windows (including ambiguous bases), not zero scores</title>
+</rect>
+<rect data-local-end-exclusive="5" data-local-start="0" data-local-strand="-" data-role="unavailable-windows" fill="#eacb80" fill-opacity="0.26" height="128" width="357.75" x="255" y="501">
+<title>Unavailable motif-local - windows (including ambiguous bases), not zero scores</title>
+</rect>
+<line stroke="#d5dfe4" stroke-width="0.8" x1="255" x2="1050" y1="629" y2="629"/>
+<text data-role="score-tick" data-value="-167.38411715854224" font-size="13" lengthAdjust="spacingAndGlyphs" text-anchor="start" textLength="74.88" x="1058" y="633">
+-167.3841
+</text>
+<line stroke="#d5dfe4" stroke-width="0.8" x1="255" x2="1050" y1="565" y2="565"/>
+<text data-role="score-tick" data-value="-83.69205857927112" font-size="13" lengthAdjust="spacingAndGlyphs" text-anchor="start" textLength="66.56" x="1058" y="569">
+-83.6921
+</text>
+<line stroke="#d5dfe4" stroke-width="0.8" x1="255" x2="1050" y1="501" y2="501"/>
+<text data-role="score-tick" data-value="0" font-size="13" lengthAdjust="spacingAndGlyphs" text-anchor="start" textLength="8.32" x="1058" y="505">
+0
+</text>
+<line data-role="zero-score-rule" stroke="#81939c" stroke-dasharray="3 3" x1="255" x2="1050" y1="501" y2="501"/>
+<path d="M 652.5000 607.9128" data-coordinate="motif_window_start_0based" data-genomic-strand="+" data-local-strand="+" data-role="score-trace" fill="none" stroke="#0072B2" stroke-dasharray="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/>
+<path d="M 652.5000 629.0000" data-coordinate="motif_window_start_0based" data-genomic-strand="-" data-local-strand="-" data-role="score-trace" fill="none" stroke="#0072B2" stroke-dasharray="6 4" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/>
+<line data-role="tss-rule-halo" stroke="#ffffff" stroke-width="5.5" x1="493.5" x2="493.5" y1="501" y2="629"/>
+<line data-relative-bp="0" data-role="tss-rule" stroke="#172e3c" stroke-width="2.5" x1="493.5" x2="493.5" y1="501" y2="629">
+<title>0 bp: annotated transcript-start candidate</title>
+</line>
+<g>
+<g>
+<circle cx="652.5" cy="607.9128477061848" data-genomic-strand="+" data-local-start="5" data-local-strand="+" data-role="isolated-score" fill="#0072B2" r="2.2" stroke="#0072B2" stroke-width="1.5"/>
+</g>
+<g>
+<circle cx="652.5" cy="629" data-genomic-strand="-" data-local-start="5" data-local-strand="-" data-role="isolated-score" fill="#ffffff" r="2.2" stroke="#0072B2" stroke-width="1.5"/>
+</g>
+</g>
+<g data-height="54" data-role="matrix-score-notes" data-width="795" data-x="255" data-y="653">
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="632.3200000000004" x="255" y="666">
+Valid starts: local + 1/6; local - 1/6; gray terminal positions: 5 unscored.
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="557.4399999999999" x="255" y="684">
+Raw maxima: local + -139.8087 at +2 bp; local - -167.3841 at +2 bp.
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="715.5200000000009" x="255" y="702">
+Background: uniform_random_dna | model: uniform_iid_quantized_conservative_survival_v2
+</text>
+</g>
+</g>
+<g data-height="57" data-role="comparison-header" data-width="1332" data-x="34" data-y="738">
+<text font-size="14" lengthAdjust="spacingAndGlyphs" textLength="286.7200000000001" x="34" y="752">
+WITHIN-FACTOR MATRIX COMPARISONS
+</text>
+<text font-size="14" lengthAdjust="spacingAndGlyphs" textLength="1245.4400000000026" x="34" y="771">
+Stored results on common valid window starts; metric methods retain strand, clipping and smoothing policies. Visual clipping/scaling is not
+</text>
+<text font-size="14" lengthAdjust="spacingAndGlyphs" textLength="636.1600000000001" x="34" y="790">
+reapplied. Correlation does not identify a biologically correct matrix.
+</text>
+</g>
+<g data-height="19" data-role="matrix-comparison" data-width="1332" data-x="34" data-y="807">
+<text font-size="14" lengthAdjust="spacingAndGlyphs" textLength="967.6800000000014" x="34" y="821">
+No within-factor comparison pairs reported. A single-matrix factor has zero pairs, not a failed correlation.
+</text>
+</g>
+</g>
+<g data-height="450" data-role="calibration-nonclaims-footer" data-width="1332" data-x="34" data-y="870">
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="249.59999999999985" x="34" y="883">
+CALIBRATION AND INTERPRETATION
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="1223.0400000000013" x="34" y="901">
+One range per exact matrix accession across all report TSS windows (selected and unselected, all genes) and both strands. Different matrices remain
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="174.7199999999999" x="34" y="919">
+independently scaled.
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="507.51999999999964" x="34" y="937">
+Calibration state: matrix_specific | ID: none | SHA-256: none
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="965.1200000000024" x="34" y="955">
+Statement: Sequence-model scores for a synthetic teaching fixture; not binding evidence or cross-matrix calibration.
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="624.0000000000003" x="34" y="973">
+Display: raw scores, including negatives. Stored comparisons are unchanged.
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="1214.7200000000014" x="34" y="991">
+PFM logos: p(base) * [2 - Shannon entropy] bits; uniform DNA reference, no pseudocount or small-sample correction. Logo bits are not track scores.
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="881.9200000000019" x="34" y="1009">
+Full per-matrix normalization references are embedded in SVG row titles and retained in the source report.
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="474.23999999999967" x="34" y="1027">
+Score policy ambiguous_windows: unavailable_null_not_zero
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="382.71999999999974" x="34" y="1045">
+Score policy background: uniform_iid_ACGT_0.25
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="341.1199999999998" x="34" y="1063">
+Score policy background_length_bp: 100000
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="407.6799999999997" x="34" y="1081">
+Score policy background_seed: 6072614073404772913
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="399.35999999999973" x="34" y="1099">
+Score policy background_tail_show_quantile: 0.95
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="865.2800000000018" x="34" y="1117">
+Score policy correlation_signal: unclipped_declared_score_kind; no_smoothing; common_valid_window_starts
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="332.7999999999998" x="34" y="1135">
+Score policy modeled_quantum_bits: 0.001
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="1306.2400000000007" x="34" y="1153">
+Score policy modeled_tail_approximation: inclusive_survival_upper_bound; sum_of_max_per_column_rounding_errors_plus_float_guard; log_survival_not_1_minus_cdf
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="665.6000000000006" x="34" y="1171">
+Score policy modeled_tail_method: uniform_iid_quantized_conservative_survival_v2
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="740.480000000001" x="34" y="1189">
+Score policy pseudocount: pad_columns_to_max_total_then_add_max_total_times_1e-9_per_base
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="615.6800000000003" x="34" y="1207">
+Verification: bundle_consistency_verified; prepared_reference_not_assessed
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="1314.5600000000006" x="34" y="1225">
+Warning: Bundle hashes and internal consistency verified only; reference genome/annotation authenticity and genomic sequence extraction were not independently
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="316.1599999999998" x="34" y="1243">
+verified. No downloads were performed.
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="1281.2800000000009" x="34" y="1261">
+JASPAR tracks are sequence-model predictions, not measured binding, affinity, occupancy, cofactor interaction, promoter activity or functional regulation.
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="1289.6000000000008" x="34" y="1279">
+Cross-matrix magnitudes are not comparable without a documented calibration. Annotated transcript starts are TSS candidates, not experimentally established
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="1314.5600000000006" x="34" y="1297">
+initiation sites. Correlation compares model outputs, not biological correctness or co-regulation. A factor also appearing as a target gene does not establish
+</text>
+<text font-size="13" lengthAdjust="spacingAndGlyphs" textLength="124.79999999999995" x="34" y="1315">
+autoregulation.
+</text>
+</g>
+</g>
+</svg>

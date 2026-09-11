@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-09-11 - Motif-score interpretation tutorial
+
+- Added an illustrated wet-lab-facing tutorial from synthetic PFM counts and
+  logos through likelihood-ratio contributions, reverse strands, ambiguous
+  windows and dense promoter/TSS traces, with a formula-complete appendix.
+- Kept the independent `jaspar-mapping` scan, GENtle local scoring and reduced
+  promoter-cofactor package as three explicit provenance paths. Added a
+  machine-checked native-policy comparison table and the corrected TP73
+  MA0861.2 inclusive-tail example.
+- Added a compact, public plus/minus TSS replay using the existing synthetic
+  fixture and `shared_across_tss` scaling. No private package or genome-wide
+  data is committed, and the three older background-normalized tutorial
+  artifacts remain explicitly stale pending separately reviewed rescoring.
+
 ## 2026-09-11 - Conservative TFBS tails and comparable TSS traces
 
 - Corrected accumulated quantization error and cancellation in modeled

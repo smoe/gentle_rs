@@ -1,0 +1,21 @@
+{
+  "schema": "gentle.jaspar_target_panel.v1",
+  "panel_id": "synthetic-window-arnt-shared-scale-v1",
+  "label": "Synthetic plus/minus windows with one pinned Arnt matrix",
+  "score_kind": "llr_bits",
+  "clip_negative": false,
+  "scale_mode": "shared_across_tss",
+  "strand_policy": "both",
+  "calibration_state": "matrix_specific",
+  "calibration_statement": "Sequence-model scores for a synthetic teaching fixture; not binding evidence or cross-matrix calibration.",
+  "top_hit_count": 4,
+  "factors": [
+    {
+      "source_id": "MA0004.1",
+      "factor_id": "Arnt",
+      "label": "Arnt synthetic teaching trace",
+      "display_order": 1,
+      "color_hint": "#0072B2"
+    }
+  ]
+}

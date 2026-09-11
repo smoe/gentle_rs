@@ -1,0 +1,11 @@
+producer	matrix	formula	pseudocount	word	score_bits	meaning
+jaspar-mapping educational replay	synthetic-4bp	log2_relative_risk	1	ACGT	5.110430314654	sequence-model likelihood ratio
+jaspar-mapping educational replay	synthetic-4bp	log_odds	1	ACGT	8.865918814552	per-base odds-ratio sum
+GENtle policy educational replay	synthetic-4bp	llr_bits	adaptive-padding-plus-epsilon	ACGT	6.326997449211	sequence-model likelihood ratio
+GENtle policy educational replay	synthetic-4bp	true_log_odds_bits	adaptive-padding-plus-epsilon	ACGT	12.784634781151	per-base odds-ratio sum
+jaspar-mapping educational replay	synthetic-4bp	log2_relative_risk	1	ACGC	3.110430314654	sequence-model likelihood ratio
+GENtle policy educational replay	synthetic-4bp	llr_bits	adaptive-padding-plus-epsilon	ACGC	3.519642539520	sequence-model likelihood ratio
+jaspar-mapping educational replay	synthetic-4bp	log2_relative_risk	1	TCGA	-0.059494686788	sequence-model likelihood ratio
+GENtle policy educational replay	synthetic-4bp	llr_bits	adaptive-padding-plus-epsilon	TCGA	-26.055782221383	sequence-model likelihood ratio
+GENtle 8b7b6b47	MA0861.2	llr_bits	adaptive-padding-plus-epsilon	ACATGTCTGGACATGT	19.543680326691	current bundled TP73 maximum
+GENtle 8b7b6b47	MA0861.2	llr_background_tail_log10	uniform_iid_quantized_conservative_survival_v2	ACATGTCTGGACATGT	9.632959861247	minus log10 inclusive single-window background tail

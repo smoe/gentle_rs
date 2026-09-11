@@ -1322,6 +1322,28 @@
       ]
     },
     {
+      "id": "motif_logo_to_promoter_trace",
+      "title": "From a motif logo to a promoter trace: what does the score mean?",
+      "path": "docs/tutorial/08-13_motif_logo_to_promoter_trace.md",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 13,
+      "decimal_id": "08.13",
+      "type": "gui_cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "regulatory_analysis",
+        "contributors"
+      ],
+      "notes": "Illustrated, executable explanation of motif matrices, independent scanner scores, GENtle dense TSS traces, background-tail scores, scaling and reduced promoter-cofactor summaries.",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-11"
+    },
+    {
       "id": "mcp_offline_roundtrip",
       "title": "Discover MCP Tools and Verify a Shared GENtle Result (Offline)",
       "path": "docs/tutorial/01-03_mcp_offline_roundtrip.md",

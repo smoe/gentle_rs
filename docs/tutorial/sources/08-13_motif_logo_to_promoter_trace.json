@@ -1,0 +1,21 @@
+{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "motif_logo_to_promoter_trace",
+  "title": "From a motif logo to a promoter trace: what does the score mean?",
+  "catalog": {
+    "order": 55,
+    "path": "docs/tutorial/08-13_motif_logo_to_promoter_trace.md",
+    "type": "gui_cli_walkthrough",
+    "status": "manual/hybrid",
+    "source": "hand_written_markdown",
+    "audiences": [
+      "gui_first",
+      "cli_first",
+      "regulatory_analysis",
+      "contributors"
+    ],
+    "notes": "Illustrated, executable explanation of motif matrices, independent scanner scores, GENtle dense TSS traces, background-tail scores, scaling and reduced promoter-cofactor summaries.",
+    "group": "08",
+    "group_position": 13
+  }
+}
