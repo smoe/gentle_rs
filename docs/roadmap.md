@@ -83,8 +83,8 @@ Pre-release finishing scope:
 
 1. Have Glen recheck three introductory GUI chapters plus promoter-similarity navigation and
    TATA evidence review/materialization at the merged SHA, retaining outcomes/screenshots.
-2. Run the `.10` ledger: locked tests, script build/entrypoints, tutorial/parity, IRF9/Q00978,
-   benchmarks, circular ORF/feature regressions and TP73/PATZ1 TFBS/reporter/CUT&RUN/locus proofs with exact JASPAR 2026 PFMs.
+2. Run the `.10` ledger: locked tests, script build/entrypoints, tutorial/parity, IRF9/Q00978, benchmarks, circular ORF/feature regressions and TP73/PATZ1 TFBS/reporter/CUT&RUN/locus proofs with exact JASPAR 2026 PFMs.
+   Refresh the three older datasets listed in [TSS profile rescoring](tss_tfbs_profiles.md#rescoring-existing-reports); keep tutorial 08.13's live GUI capture and real Parquet acceptance separate from offline figures and mocked tests.
 3. Run [build-only CI packaging](release.md#build-only-candidate-verification) at the same SHA; retain receipts before approval.
 4. Have Glen refresh the `a5b01843` receipt with native interval/score and catalog-bound assembly checks; preserve verified figures unless mismatched. Validate the [candidate-first view and peak-centred follow-up](cofactor_candidate_interface_plan.md); keep offline regeneration, live Conservation/partner-evidence proof and ClawBio compatibility pending removal review.
 5. Have Glen validate the [promoter-cofactor browser](promoter_cofactor_browser.md), live navigation and interpretation; keep raw coverage-block/annotation export separate.

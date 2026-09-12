@@ -1,5 +1,22 @@
 # GENtle Changelog
 
+## 2026-09-12 - Discoverable motif-score tutorial and reviewed examples
+
+- Integrated Glen's tutorial `0668ed93` and expanded its source/catalog summary
+  for PWM/PSSM, JASPAR TFBS scores, pseudocounts, background tails, TP73 and
+  shared-scale TSS questions. The existing inner-agent retrieval path supplies
+  the exact guide-opening command; no new ranking or scoring logic is added.
+- Added a GUI-context regression for seven scoring questions, including an
+  empty project, and source/catalog metadata checks. Recorded this Codex review
+  separately from human scientific approval and live GUI acceptance.
+- Corrected the teaching diagram's aligned sites and information-content
+  stacks, and tested both against its synthetic PFM. Worked tables now carry
+  explicit units instead of labelling a log10 tail score as bits.
+- Made tutorial output paths and its optional CLI replay portable to macOS
+  without weakening symlink guards. Corrected the mock-DuckDB verification
+  claim; real Parquet and GUI-capture acceptance remain separate. Original
+  receipt-bound reports and older background-derived outputs are unchanged.
+
 ## 2026-09-11 - Motif-score interpretation tutorial
 
 - Added an illustrated wet-lab-facing tutorial from synthetic PFM counts and

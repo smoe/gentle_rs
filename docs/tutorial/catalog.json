@@ -1323,7 +1323,7 @@
     },
     {
       "id": "motif_logo_to_promoter_trace",
-      "title": "From a motif logo to a promoter trace: what does the score mean?",
+      "title": "Explain a PWM/PSSM score versus binding affinity: TP73 and TSS promoter traces",
       "path": "docs/tutorial/08-13_motif_logo_to_promoter_trace.md",
       "group": "08",
       "group_label": "Regulatory, TFBS & Reporter Design",
@@ -1339,9 +1339,9 @@
         "regulatory_analysis",
         "contributors"
       ],
-      "notes": "Illustrated, executable explanation of motif matrices, independent scanner scores, GENtle dense TSS traces, background-tail scores, scaling and reduced promoter-cofactor summaries.",
+      "notes": "Learn PWM/PSSM position weight and position-specific scoring matrices, PFM counts and motif logos. Explain JASPAR TFBS match scores, pseudocounts, log odds, raw LLR bits, relative scores, quantiles and inclusive background tail probability; distinguish sequence preference from binding affinity, occupancy and reporter activity. Explain why the TP73 MA0861.2 score 300 was wrong and reproduce the corrected 9.632959861247 tail score. Compare promoter/TSS traces with shared scales and interpret sparse peaks. Covers jaspar-mapping imports and reduced promoter-cofactor packages. Offline teaching guide: no loaded project required; replay needs a built GENtle CLI, with the independent scanner optional.",
       "review_status": "codex_reviewed",
-      "codex_reviewed_at": "2026-09-11"
+      "codex_reviewed_at": "2026-09-12"
     },
     {
       "id": "mcp_offline_roundtrip",

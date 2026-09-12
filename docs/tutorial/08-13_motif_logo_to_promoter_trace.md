@@ -1,4 +1,6 @@
-# From a motif logo to a promoter trace: what does the score mean?
+# Explain a PWM/PSSM score versus binding affinity: TP73 and TSS promoter traces
+
+From a motif logo to a promoter trace: what does the score mean?
 
 This tutorial is for readers who know promoters and transcription factors but
 have not had to audit motif statistics. It starts with four synthetic columns,
@@ -32,8 +34,14 @@ formula instead of trusting the acronym.
 
 A motif logo summarizes a column. Letter heights reflect base frequency and
 the stack height usually reflects information content in bits. A logo does not
-show the score of one candidate word. To score `ACGT`, select one entry from
-each column and add its contribution:
+show the score of one candidate word.
+
+The figure uses coloured information stacks instead of letter glyphs. For its
+unsmoothed synthetic counts, `IC = 2 - H(p)` and each base contributes
+`p(base) * IC` bits of height; no finite-sample correction is applied. The
+heights are calculated, not scaled from an arbitrary consensus font size.
+
+To score `ACGT`, select one entry from each column and add its contribution:
 
 ```text
 W(x) = Σᵢ log₂(pᵢ(xᵢ) / q(xᵢ))
@@ -81,16 +89,20 @@ coverage and producer policy, then presents the package-native `score`,
 `pwm_relative_score` and `score_mode`. It does **not** silently recompute a
 retained hit using GENtle's local smoothing.
 
-The repository's synthetic import regression builds a two-row package with a
+The repository's mocked import regression returns a two-row response with a
 source row such as `MA0525.2`, interval `12..20`, strand `+`, `score=3.25`,
 `pwm_relative_score=0.91`, and `score_mode=log2_relative_risk`. GENtle returns
-those values in `GenomicMotifEvidenceHit` unchanged. Exercise that public,
-non-private path with:
+those values in `GenomicMotifEvidenceHit` unchanged. This uses a fake DuckDB
+executable and placeholder files, not a real Parquet reader. Exercise that
+provider-contract test with:
 
 ```sh
-GENTLE_TEST_DUCKDB=/usr/bin/duckdb \
-  cargo test --locked --lib genomic_motif_evidence -- --test-threads=1 --nocapture
+cargo test --locked --lib genomic_motif_evidence -- --test-threads=1 --nocapture
 ```
+
+`GENTLE_TEST_DUCKDB` does not enable a real import in this test module. Real
+DuckDB/Parquet package acceptance is a separate check; a passing mock must not
+be reported as that acceptance.
 
 A minimal scanner-side replay uses the committed synthetic FASTA, matching
 `.fai`, four-column PFM and an explicit policy. From the `jaspar-mapping`
@@ -122,10 +134,12 @@ both orientations, and retains forward/reverse arrays. This is fresh local
 scoring, not interpolation between imported sparse hits.
 
 The existing synthetic TSS fixture contains plus- and minus-strand windows.
-Start with an empty output directory (no GENtle project state is required) and
-run it from the repository root with the newly built CLI:
+No GENtle project state is required. From the repository root with the newly
+built CLI, choose a fresh output destination under a physical directory. The
+exporter deliberately refuses symlink ancestors (including `/tmp` on macOS):
 
 ```sh
+OUTPUT_PARENT="$(pwd -P)"
 gentle_cli features tss-tfbs-profiles \
   --manifest test_files/fixtures/tss_profiles/manifest.json \
   --panel docs/tutorial/reproducibility/motif_logo_to_promoter_trace/shared_across_tss_panel.json \
@@ -133,7 +147,7 @@ gentle_cli features tss-tfbs-profiles \
   --expected-genome-id synthetic-genome-v1 \
   --expected-assembly synthetic-assembly-v1 \
   --expected-annotation-release synthetic-annotation-v1 \
-  --output-dir /tmp/gentle-motif-score-tutorial \
+  --output-dir "$OUTPUT_PARENT/gentle-motif-score-tutorial" \
   --formats svg
 ```
 
@@ -161,8 +175,8 @@ scores:
 
 ```sh
 gentle_cli features tss-tfbs-profiles-export \
-  --report /tmp/gentle-motif-score-tutorial/report.json \
-  --output-dir /tmp/gentle-motif-score-tutorial-shared \
+  --report "$OUTPUT_PARENT/gentle-motif-score-tutorial/report.json" \
+  --output-dir "$OUTPUT_PARENT/gentle-motif-score-tutorial-shared" \
   --formats svg --scale-mode shared_across_tss
 ```
 
@@ -345,6 +359,14 @@ parameters for both score-producing implementations.
   assumptions/calibration; they do not provide measured Kd.
 
 ### Verification boundary
+
+The inner Agent Assistant discovers this guide from its catalog title and
+summary, not by reading the whole chapter in advance. Try "Explain PWM",
+"What do JASPAR TFBS match scores mean?" or "Compare TSS promoter traces with
+shared scales". Its recommendation uses
+`ui open tutorial-guide motif_logo_to_promoter_trace`, opening this guide
+without creating a project or scoring sequences. The metadata states the
+offline prerequisites and does not promise measured binding affinity.
 
 `scripts/test_motif_score_tutorial.py` checks the educational calculations,
 the corrected TP73 values, source/catalog links, matrix pin and synthetic

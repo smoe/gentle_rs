@@ -15,6 +15,7 @@ import re
 import subprocess
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -55,7 +56,15 @@ class MotifScoreTutorialSourceTests(unittest.TestCase):
         self.assertEqual((source["catalog"]["group"],
                           source["catalog"]["group_position"]), ("08", 13))
         self.assertEqual(source["catalog"]["status"], "manual/hybrid")
+        catalog = json.loads((ROOT / "docs/tutorial/catalog.json").read_text(encoding="utf-8"))
+        entry, = [row for row in catalog["entries"] if row["id"] == source["id"]]
+        self.assertEqual(entry["notes"], source["catalog"]["notes"])
+        self.assertEqual(entry["title"], source["title"])
+        for term in ["PWM/PSSM", "JASPAR", "TFBS", "pseudocounts", "tail probability",
+                     "binding affinity", "TP73", "no loaded project required"]:
+            self.assertIn(term, entry["notes"])
         text = TUTORIAL.read_text(encoding="utf-8")
+        self.assertEqual(text.splitlines()[0], f'# {source["title"]}')
         for target in re.findall(r"\]\(([^)]+)\)", text):
             if "://" not in target:
                 self.assertTrue((TUTORIAL.parent / target.split("#")[0]).exists(), target)
@@ -82,14 +91,36 @@ class MotifScoreTutorialSourceTests(unittest.TestCase):
                 score("TCGA", "llr", "gentle"),
         }
         found = {(row["producer"], row["formula"], row["word"]):
-                 float(row["score_bits"]) for row in rows}
+                 float(row["score"]) for row in rows}
         for key, value in expected.items():
             self.assertAlmostEqual(found[key], value, places=11, msg=str(key))
         tp73 = [row for row in rows if row["matrix"] == "MA0861.2"]
         self.assertEqual(len(tp73), 2)
-        self.assertAlmostEqual(float(tp73[0]["score_bits"]), 19.543680326691, places=11)
-        self.assertAlmostEqual(float(tp73[1]["score_bits"]),
+        self.assertAlmostEqual(float(tp73[0]["score"]), 19.543680326691, places=11)
+        self.assertAlmostEqual(float(tp73[1]["score"]),
                                -math.log10(4.0 ** -16), places=11)
+        for row in rows:
+            expected_units = ("-log10(probability)" if row["formula"].endswith("tail_log10")
+                              else "bits")
+            self.assertEqual(row["units"], expected_units)
+
+    def test_teaching_diagram_sites_and_information_match_the_pfm(self):
+        svg = ET.parse(REPRO / "motif_to_score.svg").getroot()
+        sites = [node.text for node in svg.find(".//*[@id='aligned-sites']")]
+        self.assertEqual(len(sites), 10)
+        for position, counts in enumerate(COUNTS):
+            self.assertEqual([sum(word[position] == base for word in sites)
+                              for base in "ACGT"], counts)
+        stacks = svg.find(".//*[@id='information-stacks']")
+        scale = float(stacks.attrib["data-pixels-per-bit"])
+        heights = {(int(node.attrib["data-position"]), node.attrib["data-base"]):
+                   float(node.attrib["height"]) for node in stacks}
+        for position, counts in enumerate(COUNTS, 1):
+            probabilities = [count / sum(counts) for count in counts]
+            ic = 2 + sum(p * math.log2(p) for p in probabilities if p)
+            for base, p in zip("ACGT", probabilities):
+                self.assertAlmostEqual(heights.get((position, base), 0),
+                                       scale * p * ic, delta=0.0001)
 
     def test_fixture_integrity_orientations_and_matrix_pin(self):
         manifest = json.loads((FIXTURE / "manifest.json").read_text(encoding="utf-8"))
@@ -157,7 +188,7 @@ class MotifScoreTutorialReplayTests(unittest.TestCase):
         suffix = ".exe" if os.name == "nt" else ""
         cli = Path(BIN_DIR).resolve() / f"gentle_cli{suffix}"
         with tempfile.TemporaryDirectory(prefix="gentle-motif-score-tutorial-") as tmp:
-            output = Path(tmp) / "output"
+            output = Path(tmp).resolve() / "output"
             command = [str(cli), "features", "tss-tfbs-profiles",
                        "--manifest", str(FIXTURE / "manifest.json"),
                        "--fasta", str(FIXTURE / "plus.fa"),

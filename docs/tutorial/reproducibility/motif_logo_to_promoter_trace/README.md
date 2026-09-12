@@ -6,6 +6,13 @@ synthetic. The counts, in A/C/G/T order by column, are
 tutorial on 2026-09-11 and carry no biological claim or third-party sequence
 license. `worked_scores.tsv` is recreated by the formulae printed in the
 tutorial and checked by `scripts/test_motif_score_tutorial.py`.
+The table separates `score` from `units`: log2 weights use bits, while the
+background-tail transformation uses `-log10(probability)`. The diagram's ten
+sites are seven copies of `ACGT`, then `AAGA`, `CGCC` and `GTTG`; recounting them
+recreates the PFM. Its information stacks use unsmoothed `p=count/10`,
+`IC=2+sum(p*log2(p))` and base heights `50*p*IC` pixels, with zero bases omitted.
+These are teaching illustrations, not a reconstruction of biological training
+sequences.
 
 `synthetic_4bp.pfm`, `tiny.fa` and `tiny.fa.fai` are the minimal independent
 scanner inputs. The FASTA contains `ACGTACGCTCGAACGT` on a single line and the

@@ -8422,6 +8422,69 @@ fn agent_gui_context_ranks_relevant_tutorials_deterministically() {
 }
 
 #[test]
+fn agent_gui_context_recommends_motif_score_tutorial_from_catalog_metadata() {
+    for (query, expected_term) in [
+        ("Explain PWM", "pwm"),
+        ("Explain PSSM", "pssm"),
+        ("What do JASPAR TFBS match scores mean?", "jaspar"),
+        (
+            "Explain pseudocounts and inclusive background tail probability",
+            "pseudocounts",
+        ),
+        (
+            "Is TP73 binding affinity the same as a motif score?",
+            "affinity",
+        ),
+        ("Compare TSS promoter traces with shared scales", "shared"),
+        ("Why was the TP73 score 300 wrong?", "300"),
+    ] {
+        let context = GENtleApp::build_agent_gui_context_for_query(&[], None, query);
+        let guide = context
+            .tutorial_guides
+            .iter()
+            .find(|entry| entry.tutorial_id == "motif_logo_to_promoter_trace")
+            .expect("motif guide is included in the bounded inner-agent catalog");
+        assert_eq!(guide.decimal_id.as_deref(), Some("08.13"));
+        assert!(guide.summary.contains("PWM/PSSM"));
+        assert!(guide.summary.contains("no loaded project required"));
+        // Broad biological queries may also match a worked project. The prompt
+        // contract asks the agent to recommend the 1-3 most relevant entries.
+        let recommendation = context
+            .tutorial_recommendations
+            .iter()
+            .take(3)
+            .find(|entry| entry.tutorial_id == guide.tutorial_id)
+            .unwrap_or_else(|| panic!("guide missing from top three for query: {query}"));
+        if matches!(expected_term, "pwm" | "pssm") {
+            assert_eq!(recommendation.rank, 1, "query: {query}");
+        }
+        assert_eq!(
+            recommendation.open_command,
+            "ui open tutorial-guide motif_logo_to_promoter_trace"
+        );
+        assert_eq!(recommendation.kind, "gui_cli_walkthrough");
+        assert!(
+            recommendation
+                .matched_fields
+                .iter()
+                .any(|field| field == "summary")
+        );
+        assert!(
+            recommendation
+                .matched_terms
+                .iter()
+                .any(|term| term == expected_term),
+            "query: {query}"
+        );
+        let payload = serde_json::to_value(&context).expect("serialize inner-agent context");
+        assert_eq!(
+            payload["tutorial_recommendations"][recommendation.rank - 1]["open_command"],
+            recommendation.open_command
+        );
+    }
+}
+
+#[test]
 fn agent_gui_intents_open_recent_project_and_exact_configuration_section() {
     let temp = tempdir().unwrap();
     let project_path = temp.path().join("previous.gentle.json");
