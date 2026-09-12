@@ -369,7 +369,7 @@ wet-lab conclusions or unconfirmed mutations.
 - `.11` measured gels: [ladder catalogs, reviewed peak detection and real-image/native-editor performance acceptance](gel_image_analysis.md#remaining-work); excluded from `.10`.
 - Weekly/monthly maintenance chore automation rollout from
   [`maintenance_chore_plan.md`](maintenance_chore_plan.md).
-- Browser/WebAssembly frontend portability after core/headless contracts settle.
+- First regular release: local-first GENtle server with optional browser interaction and shared project/job ownership; deferred beyond internal releases, with WebAssembly portability considered separately.
 - Expand the landed policy-driven collection surface beyond promoter
   derivation, primer specificity, construct-reasoning inspection,
   restriction-site and TFBS hit scanning,

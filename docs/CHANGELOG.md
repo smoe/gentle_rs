@@ -1,5 +1,11 @@
 # GENtle Changelog
 
+## 2026-09-12 - Web interface release horizon
+
+- Reserved the local-first server with optional browser interaction for the
+  first regular release, rather than internal `.11` scope. This is a scheduling
+  decision, not an implementation or acceptance claim; the `.10` gate is unchanged.
+
 ## 2026-09-12 - Discoverable motif-score tutorial and reviewed examples
 
 - Integrated Glen's tutorial `0668ed93` and expanded its source/catalog summary
