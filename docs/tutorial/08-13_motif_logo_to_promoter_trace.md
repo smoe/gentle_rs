@@ -157,8 +157,17 @@ For a typed workflow example of inline dense TFBS scoring, see
 [`tfbs_track_similarity_stateless_offline.json`](../examples/workflows/tfbs_track_similarity_stateless_offline.json);
 the multi-page TSS document command above remains a shared-Shell/CLI operation.
 The diagrams on this page are generated teaching illustrations, not screenshots
-of controls. A live GUI Shell capture was not made for this patch; therefore no
-image is presented as GUI acceptance.
+of nonexistent controls. A later publication-safe manual/hybrid walkthrough ran
+this exact public plus/minus fixture through the live GUI Shell:
+
+![Public synthetic TSS-profile command in the live GUI Shell](../screenshots/motif_logo_to_promoter_trace_manual/gui-shell-result.raw.png)
+
+The [capture evidence](../screenshots/motif_logo_to_promoter_trace_manual/evidence.json)
+binds the exact candidate, GUI binary, fixture inputs, output receipt, untouched
+raw capture and semantic snapshot. It records two windows, both strands,
+`MA0004.1`, `shared_across_tss` scaling and ambiguous-window nulls. This is a
+manual/hybrid checkpoint, not an automated GUI acceptance contract. It used no
+private input and did not invoke the inner agent.
 
 The exact shared-engine replay committed with this tutorial produced these two
 receipt-bound SVG pages:
