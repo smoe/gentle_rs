@@ -3422,6 +3422,19 @@ Behavior:
     before closing it without saving
   - `Clear Conversation` removes the stored turns and latest response
 - `Ask Agent` runs in background and reports status in `Background Jobs`
+- The next project-context request includes bounded, session-only execution
+  receipts. Blocked, failed, partially successful, dispatched, running and
+  completed actions remain distinct. Ensembl metadata retrieval followed by a
+  failed sequence import is `partial`; starting a BLAST job is not completion.
+  Deferred UI actions remain `dispatched` until separately inspected. Feedback
+  does not yet poll all GUI/background activities automatically.
+  - Receipts send hashes and typed outcomes, not raw command outputs or errors.
+    Inspect current results with GENtle's read-only commands.
+  - At most 100 receipts are retained, including rejections; suggestions are
+    correlated with the latest 12 turns. Project switches and Clear Conversation
+    discard them. Saving a project does not persist them.
+  - Recording a receipt cannot mark a project dirty or clear redo. Later edits
+    can require rechecking a result without erasing its historical completion.
 - when an accepted UI intent is opening a DNA Sequence Viewer, Agent Assistant
   shows that opening state until deferred sequence loading and the first
   content paint complete; the sequence loading placeholder polls at a bounded

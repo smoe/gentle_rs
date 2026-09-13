@@ -4669,7 +4669,23 @@ mod tests {
                 "plan": plan
             }),
         );
-        assert_eq!(response["result"]["structuredContent"], expected);
+        let mut actual = response["result"]["structuredContent"].clone();
+        let mut expected = expected;
+        // These are separate executions; occurrence identities differ, evidence must not.
+        for field in ["receipt_id", "session_id"] {
+            for result in [&actual, &expected] {
+                assert!(crate::agent_feedback::agent_context_id_is_valid(
+                    result["feedback"][field]
+                        .as_str()
+                        .expect("receipt identity")
+                ));
+            }
+            assert_ne!(actual["feedback"][field], expected["feedback"][field]);
+            actual["feedback"].as_object_mut().unwrap().remove(field);
+            expected["feedback"].as_object_mut().unwrap().remove(field);
+        }
+        assert_eq!(actual["feedback"]["status"], "completed");
+        assert_eq!(actual, expected);
     }
 
     #[test]

@@ -49206,10 +49206,33 @@ struct AgentSuggestedExecutionReport {
     state_changed: bool,
     error: Option<String>,
     output: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    feedback: Option<crate::agent_feedback::AgentExecutionReceipt>,
 }
 
 pub(crate) const AGENT_HISTORY_CONFIRMATION_REQUIRED: &str =
     "Undo/redo suggestions require explicit user confirmation and cannot be auto-executed";
+
+fn bind_agent_execution_reports(
+    invocation: &crate::agent_bridge::AgentInvocationOutcome,
+    rows: &mut [AgentSuggestedExecutionReport],
+) -> BTreeMap<String, usize> {
+    let turn_id = invocation
+        .request
+        .get("x_request_id")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let mut counts = BTreeMap::new();
+    for row in rows {
+        if let Some(receipt) = &mut row.feedback {
+            receipt.turn_id = turn_id.clone();
+            *counts
+                .entry(receipt.status.as_str().to_string())
+                .or_default() += 1;
+        }
+    }
+    counts
+}
 
 fn should_execute_agent_suggestion(
     index_1based: usize,
@@ -49238,8 +49261,12 @@ fn execute_agent_suggested_commands(
     allow_auto_exec: bool,
     options: &ShellExecutionOptions,
 ) -> (bool, Vec<AgentSuggestedExecutionReport>) {
+    use crate::agent_feedback::{
+        AgentExecutionReceipt, AgentExecutionRevision, AgentExecutionStatus, new_agent_context_id,
+    };
     let mut changed = false;
     let mut rows: Vec<AgentSuggestedExecutionReport> = vec![];
+    let session_id = new_agent_context_id();
     let nested_options = ShellExecutionOptions {
         allow_screenshots: options.allow_screenshots,
         allow_agent_commands: false,
@@ -49254,122 +49281,80 @@ fn execute_agent_suggested_commands(
             execute_indices,
             allow_auto_exec,
         );
-        if trigger.is_none() {
-            rows.push(AgentSuggestedExecutionReport {
-                index: index_1based,
-                command: suggestion.command.clone(),
-                execution_intent: suggestion.execution.as_str().to_string(),
-                trigger: "none".to_string(),
-                executed: false,
-                ok: true,
-                state_changed: false,
-                error: None,
-                output: None,
-            });
-            continue;
-        }
-        let command_text = suggestion.command.trim().to_string();
-        if command_text.is_empty() {
-            rows.push(AgentSuggestedExecutionReport {
-                index: index_1based,
-                command: suggestion.command.clone(),
-                execution_intent: suggestion.execution.as_str().to_string(),
-                trigger: trigger.unwrap_or("unknown").to_string(),
-                executed: false,
-                ok: false,
-                state_changed: false,
-                error: Some("Suggested command is empty".to_string()),
-                output: None,
-            });
-            continue;
-        }
-        let parsed = match parse_shell_line(&command_text) {
-            Ok(command) => command,
-            Err(err) => {
-                rows.push(AgentSuggestedExecutionReport {
-                    index: index_1based,
-                    command: command_text,
-                    execution_intent: suggestion.execution.as_str().to_string(),
-                    trigger: trigger.unwrap_or("unknown").to_string(),
-                    executed: true,
-                    ok: false,
-                    state_changed: false,
-                    error: Some(format!("Could not parse suggested command: {err}")),
-                    output: None,
-                });
-                continue;
-            }
+        let before = Some(AgentExecutionRevision::capture(engine));
+        let mut row = AgentSuggestedExecutionReport {
+            index: index_1based,
+            command: suggestion.command.trim().to_string(),
+            execution_intent: suggestion.execution.as_str().to_string(),
+            trigger: trigger.unwrap_or("none").to_string(),
+            executed: false,
+            ok: false,
+            state_changed: false,
+            error: None,
+            output: None,
+            feedback: None,
         };
-        if trigger == Some("allow_auto_exec")
-            && matches!(
-                parsed,
-                ShellCommand::HistoryUndo | ShellCommand::HistoryRedo
-            )
-        {
-            rows.push(AgentSuggestedExecutionReport {
-                index: index_1based,
-                command: command_text,
-                execution_intent: suggestion.execution.as_str().to_string(),
-                trigger: trigger.unwrap_or("unknown").to_string(),
-                executed: true,
-                ok: false,
-                state_changed: false,
-                error: Some(AGENT_HISTORY_CONFIRMATION_REQUIRED.to_string()),
-                output: None,
-            });
-            continue;
-        }
-        if matches!(
-            parsed,
-            ShellCommand::AgentsAsk { .. }
-                | ShellCommand::AgentsPlan { .. }
-                | ShellCommand::AgentsExecutePlan { .. }
-        ) {
-            rows.push(AgentSuggestedExecutionReport {
-                index: index_1based,
-                command: command_text,
-                execution_intent: suggestion.execution.as_str().to_string(),
-                trigger: trigger.unwrap_or("unknown").to_string(),
-                executed: true,
-                ok: false,
-                state_changed: false,
-                error: Some(
-                    "Agent-to-agent assistant/planner execution is blocked for suggested commands"
-                        .to_string(),
-                ),
-                output: None,
-            });
-            continue;
-        }
-        match execute_shell_command_with_options(engine, &parsed, &nested_options) {
-            Ok(run) => {
-                changed |= run.state_changed;
-                rows.push(AgentSuggestedExecutionReport {
-                    index: index_1based,
-                    command: command_text,
-                    execution_intent: suggestion.execution.as_str().to_string(),
-                    trigger: trigger.unwrap_or("unknown").to_string(),
-                    executed: true,
-                    ok: true,
-                    state_changed: run.state_changed,
-                    error: None,
-                    output: Some(run.output),
-                });
+        let mut status = AgentExecutionStatus::NotRun;
+        // A rejected proposal was not dispatched, regardless of why it was rejected.
+        if trigger.is_some() {
+            match parse_shell_line(&row.command) {
+                Err(err) => {
+                    status = AgentExecutionStatus::Blocked;
+                    row.error = Some(format!("Could not parse suggested command: {err}"));
+                }
+                Ok(parsed) => {
+                    if trigger == Some("allow_auto_exec")
+                        && matches!(
+                            parsed,
+                            ShellCommand::HistoryUndo | ShellCommand::HistoryRedo
+                        )
+                    {
+                        status = AgentExecutionStatus::Blocked;
+                        row.error = Some(AGENT_HISTORY_CONFIRMATION_REQUIRED.to_string());
+                    } else if matches!(
+                        parsed,
+                        ShellCommand::AgentsAsk { .. }
+                            | ShellCommand::AgentsPlan { .. }
+                            | ShellCommand::AgentsExecutePlan { .. }
+                    ) {
+                        status = AgentExecutionStatus::Blocked;
+                        row.error = Some("Agent-to-agent assistant/planner execution is blocked for suggested commands".to_string());
+                    } else {
+                        row.executed = true;
+                        match execute_shell_command_with_options(engine, &parsed, &nested_options) {
+                            Ok(run) => {
+                                status = AgentExecutionStatus::from_shell_output(&run.output);
+                                row.ok = true;
+                                row.state_changed = run.state_changed;
+                                row.output = Some(run.output);
+                            }
+                            Err(err) => {
+                                status = AgentExecutionStatus::Failed;
+                                row.error = Some(err);
+                            }
+                        }
+                    }
+                }
             }
-            Err(err) => {
-                rows.push(AgentSuggestedExecutionReport {
-                    index: index_1based,
-                    command: command_text,
-                    execution_intent: suggestion.execution.as_str().to_string(),
-                    trigger: trigger.unwrap_or("unknown").to_string(),
-                    executed: true,
-                    ok: false,
-                    state_changed: false,
-                    error: Some(err),
-                    output: None,
-                });
-            }
+        } else {
+            row.ok = true; // Legacy meaning: no dispatch error, not completion.
         }
+        let after = Some(AgentExecutionRevision::capture(engine));
+        row.state_changed |= before
+            .zip(after)
+            .is_some_and(|(a, b)| a.mutation != b.mutation);
+        let mut feedback = AgentExecutionReceipt::new(&row.command, status, before, after);
+        feedback.session_id = session_id.clone();
+        feedback.suggestion_index = Some(index_1based);
+        if let Some(output) = &row.output {
+            feedback.bind_output(output);
+        }
+        if let Some(error) = &row.error {
+            feedback.bind_error(error);
+        }
+        row.feedback = Some(feedback);
+        changed |= row.state_changed;
+        rows.push(row);
     }
     (changed, rows)
 }
@@ -49914,7 +49899,7 @@ fn execute_agents_ask_command(
         .copied()
         .filter(|idx| *idx >= 1 && *idx <= suggested_count)
         .collect::<BTreeSet<_>>();
-    let (state_changed, execution_reports) = execute_agent_suggested_commands(
+    let (state_changed, mut execution_reports) = execute_agent_suggested_commands(
         engine,
         &suggested,
         execute_all,
@@ -49922,6 +49907,7 @@ fn execute_agents_ask_command(
         allow_auto_exec,
         options,
     );
+    let execution_status_counts = bind_agent_execution_reports(&invocation, &mut execution_reports);
     let executed_count = execution_reports.iter().filter(|row| row.executed).count();
     let executed_error_count = execution_reports
         .iter()
@@ -49956,6 +49942,7 @@ fn execute_agents_ask_command(
                 "auto_suggestion_count": auto_suggestion_count,
                 "executed_count": executed_count,
                 "executed_error_count": executed_error_count,
+                "execution_status_counts": execution_status_counts,
             },
             "executions": execution_reports
         }),
@@ -67990,7 +67977,7 @@ fn execute_shell_command_with_options_inner(
                 .copied()
                 .filter(|idx| *idx >= 1 && *idx <= suggested_count)
                 .collect::<BTreeSet<_>>();
-            let (state_changed, execution_reports) = execute_agent_suggested_commands(
+            let (state_changed, mut execution_reports) = execute_agent_suggested_commands(
                 engine,
                 &suggested,
                 *execute_all,
@@ -67998,6 +67985,8 @@ fn execute_shell_command_with_options_inner(
                 *allow_auto_exec,
                 options,
             );
+            let execution_status_counts =
+                bind_agent_execution_reports(&invocation, &mut execution_reports);
             let executed_count = execution_reports.iter().filter(|row| row.executed).count();
             let executed_error_count = execution_reports
                 .iter()
@@ -68032,6 +68021,7 @@ fn execute_shell_command_with_options_inner(
                         "auto_suggestion_count": auto_suggestion_count,
                         "executed_count": executed_count,
                         "executed_error_count": executed_error_count,
+                        "execution_status_counts": execution_status_counts,
                     },
                     "executions": execution_reports
                 }),

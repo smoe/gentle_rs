@@ -23980,7 +23980,11 @@ fn execute_agent_suggestions_require_explicit_confirmation_for_history_transitio
     assert!(!changed);
     assert!(!engine.state().display.show_features);
     assert_eq!(reports.len(), 1);
-    assert!(reports[0].executed);
+    assert!(!reports[0].executed);
+    assert_eq!(
+        reports[0].feedback.as_ref().expect("receipt").status,
+        crate::agent_feedback::AgentExecutionStatus::Blocked
+    );
     assert!(!reports[0].ok);
     assert_eq!(
         reports[0].error.as_deref(),
@@ -24039,6 +24043,53 @@ fn execute_agent_suggestions_allows_blast_shell_route() {
     assert!(
         !error.contains("blocked in this context"),
         "BLAST route should be executable in suggested-command context: {error}"
+    );
+}
+
+#[test]
+fn agent_feedback_headless_distinguishes_blocked_failed_and_unexecuted() {
+    use crate::agent_feedback::AgentExecutionStatus;
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let suggestions = [
+        "synthetic_invalid_command",
+        "agents ask builtin_echo --prompt test",
+        "op {}",
+        "state-summary",
+    ]
+    .into_iter()
+    .map(|command| crate::agent_bridge::AgentSuggestedCommand {
+        command: command.into(),
+        execution: AgentExecutionIntent::Ask,
+        ..Default::default()
+    })
+    .collect::<Vec<_>>();
+    let (_, rows) = execute_agent_suggested_commands(
+        &mut engine,
+        &suggestions,
+        false,
+        &BTreeSet::from([1, 2, 3]),
+        false,
+        &ShellExecutionOptions::default(),
+    );
+    assert!(!rows[0].executed);
+    assert!(!rows[1].executed);
+    assert_eq!(
+        rows[0].feedback.as_ref().expect("receipt").status,
+        AgentExecutionStatus::Blocked
+    );
+    assert_eq!(
+        rows[1].feedback.as_ref().expect("receipt").status,
+        AgentExecutionStatus::Blocked
+    );
+    assert!(rows[2].executed, "valid route must reach the executor");
+    assert_eq!(
+        rows[2].feedback.as_ref().expect("receipt").status,
+        AgentExecutionStatus::Failed
+    );
+    assert!(!rows[3].executed);
+    assert_eq!(
+        rows[3].feedback.as_ref().expect("receipt").status,
+        AgentExecutionStatus::NotRun
     );
 }
 

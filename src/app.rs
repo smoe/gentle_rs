@@ -149,7 +149,7 @@ use crate::{
         OPENAI_COMPAT_UNSPECIFIED_MODEL, OPENAI_USAGE_URL, agent_explicit_local_document_paths,
         agent_path_is_supported_local_document, agent_system_availability, agent_tutorial_query,
         anthropic_api_key_kind_warning, build_agent_introspection_context,
-        invoke_agent_support_with_gui_context_and_attachments, is_pi_local_agent_system,
+        invoke_agent_support_with_execution_feedback, is_pi_local_agent_system,
         load_agent_system_catalog, rank_agent_gui_tutorials,
     },
     agent_help::{AgentHelpCaptureEvent, AgentHelpCaptureFailure, take_capture_events},
@@ -1166,6 +1166,7 @@ pub struct GENtleApp {
     agent_last_invocation: Option<AgentInvocationOutcome>,
     agent_conversation: AgentConversation,
     agent_execution_log: Vec<AgentCommandExecutionRecord>,
+    agent_execution_session_id: String,
     agent_last_command_output: Option<AgentCommandOutput>,
     agent_pending_image_attachment: Option<AgentPendingImageAttachment>,
     agent_help_capture_failure: Option<AgentHelpCaptureFailure>,
@@ -2130,6 +2131,7 @@ struct AgentCommandExecutionRecord {
     state_changed: bool,
     summary: String,
     executed_at_unix_ms: u128,
+    feedback: Option<crate::agent_feedback::AgentExecutionReceipt>,
 }
 
 #[derive(Clone)]
@@ -3090,6 +3092,7 @@ impl Default for GENtleApp {
             agent_last_invocation: None,
             agent_conversation: AgentConversation::default(),
             agent_execution_log: vec![],
+            agent_execution_session_id: crate::agent_feedback::new_agent_context_id(),
             agent_last_command_output: None,
             agent_pending_image_attachment: None,
             agent_help_capture_failure: None,
@@ -7363,6 +7366,7 @@ Error: `{err}`"
         self.agent_last_invocation = None;
         self.agent_conversation = AgentConversation::default();
         self.agent_execution_log.clear();
+        self.agent_execution_session_id = crate::agent_feedback::new_agent_context_id();
         self.agent_last_command_output = None;
         self.agent_pending_image_attachment = None;
         self.agent_help_capture_failure = None;
@@ -16028,6 +16032,7 @@ Error: `{err}`"
         self.agent_last_invocation = None;
         self.agent_conversation = AgentConversation::default();
         self.agent_execution_log.clear();
+        self.agent_execution_session_id = crate::agent_feedback::new_agent_context_id();
         self.agent_last_command_output = None;
         self.agent_pending_image_attachment = None;
         self.agent_help_capture_failure = None;

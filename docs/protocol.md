@@ -5764,6 +5764,53 @@ Transport notes:
 
 Agent request payload schema (`gentle.agent_request.v1`):
 
+Additive execution/context fields:
+
+- `x_request_id` is an opaque session-generated identifier, copied to a new
+  conversation turn's optional `turn_id`. Legacy turns without an id remain
+  readable and do not acquire invented execution evidence.
+- `x_introspection` retains complete `fact_type_counts`. Its bounded projection
+  visits fact types round-robin, omits known configuration aliases and caps
+  canonical configuration rows at eight. `included_fact_type_counts`,
+  `omitted_config_alias_count` and `selection_rule` explain the selection; the
+  complete graph and readiness evaluation are unchanged. The limit is still
+  128. Missing facts remain unknown, not false. Legacy projections have
+  `selection_rule=legacy_unspecified` when no rule was recorded.
+- Optional `x_execution_feedback` uses `gentle.agent_execution_feedback.v1`:
+  `session_id`, `current_revision`, `omitted_receipt_count`, and up to 100 `rows`.
+  Each row has a `receipt` and `applicability`. Receipts bind the originating
+  turn/suggestion index, exact command hash, optional output/error/job-id hashes,
+  before/after execution/mutation/structural revisions and a typed status:
+  `not_run`, `blocked`, `failed`, `partial`, `dispatched`, `running`, `cancelled`,
+  or `completed`. Hashes cover local records; raw commands, outputs and errors
+  are not copied into this extension. An unchanged structural revision is not
+  a revalidation of external resources or scientific acceptance gates.
+- GUI feedback is in memory only, scoped to the current project session and
+  the latest 12 conversation turns (direct prompt commands have no turn id).
+  Clearing conversation or switching projects clears feedback. Disabling
+  project context omits feedback. Recording receipts does not touch project
+  metadata, dirty state, approvals, or undo/redo.
+- Historical `completed` stays completed after edits; applicability becomes
+  `recheck_required` when the structural revision differs or is unavailable.
+  `same_structural_revision` is deliberately narrower than "still valid".
+  Deferred UI actions are `dispatched`; known BLAST job envelopes preserve
+  their actual lifecycle. A later status query supplies a new observation,
+  correlated by job-id hash, rather than rewriting an earlier receipt.
+- `agents ask` execution rows expose additive `feedback`, and the summary has
+  `execution_status_counts`. A parse/policy rejection now correctly has
+  `executed=false`; legacy `ok=true` for an unrequested action or successfully
+  dispatched job does not establish completion. Headless requests remain
+  stateless; previous receipts are not automatically injected into later calls.
+- Successful stored-plan results also include `feedback`. Hosts needing both
+  success and failure receipts can use the shared
+  `execute_agent_plan_candidate_with_feedback` API. The existing fallible
+  executor and CLI error behavior are preserved; errors are not converted into
+  successful results. No response-v1 or approval-schema change is involved.
+
+Only host-observed completion establishes that a command finished. It never
+establishes scientific success, order readiness, or permission to execute again.
+Missing feedback means unavailable evidence, not proof that nothing ran.
+
 ```json
 {
   "schema": "gentle.agent_request.v1",

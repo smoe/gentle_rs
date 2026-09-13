@@ -1553,7 +1553,7 @@ fn agent_prompt_direct_shell_command_executes_without_agent_roundtrip() {
 
     assert!(
         app.agent_status
-            .contains("Prompt command: success - showing the current project summary below"),
+            .contains("Prompt command: completed - showing the current project summary below"),
         "unexpected status: {}",
         app.agent_status
     );
@@ -1565,6 +1565,10 @@ fn agent_prompt_direct_shell_command_executes_without_agent_roundtrip() {
     assert_eq!(entry.trigger, "prompt");
     assert_eq!(entry.command, "/list");
     assert!(entry.ok);
+    assert_eq!(
+        entry.feedback.as_ref().expect("execution receipt").status,
+        crate::agent_feedback::AgentExecutionStatus::Completed
+    );
     assert!(!entry.state_changed);
     let output = app
         .agent_last_command_output
@@ -1589,7 +1593,7 @@ fn agent_prompt_help_opens_shell_help_and_retains_structured_output() {
     assert_eq!(app.help_doc, HelpDoc::Shell);
     assert!(
         app.agent_status
-            .contains("Prompt command: success - opened Help > Shell Commands"),
+            .contains("Prompt command: completed - opened Help > Shell Commands"),
         "unexpected status: {}",
         app.agent_status
     );
@@ -1828,6 +1832,119 @@ fn agent_ensembl_fetch_followup_imports_gene_sequence() {
             .contains_key("fus_live")
     );
     assert!(!app.lineage_cache_valid);
+}
+
+#[test]
+fn agent_feedback_partial_import_and_async_start_are_not_successful_completion() {
+    use crate::agent_feedback::{AgentExecutionRevision, AgentExecutionStatus};
+    let mut app = GENtleApp::default();
+    let before = Some(AgentExecutionRevision::capture(
+        &app.engine.read().expect("engine"),
+    ));
+    let command = parse_shell_line("ensembl-gene fetch ENSG00000089280 --entry-id missing_entry")
+        .expect("fetch command");
+    // Metadata retrieval succeeded, but the requested import cannot find its entry.
+    let run = ShellRunResult {
+        state_changed: true,
+        output: serde_json::json!({"result":{"messages":[]}}),
+    };
+    app.finish_agent_shell_run(
+        before,
+        1,
+        "Suggestion #1",
+        "ensembl-gene fetch",
+        "manual",
+        &command,
+        run,
+        true,
+    );
+    let entry = app.agent_execution_log.last().expect("import receipt");
+    assert!(!entry.ok);
+    assert!(entry.summary.starts_with("partial"));
+    assert!(entry.summary.contains("sequence import failed"));
+    assert_eq!(
+        entry.feedback.as_ref().expect("feedback").status,
+        AgentExecutionStatus::Partial
+    );
+    assert!(
+        entry.state_changed,
+        "do not conceal the successful metadata step"
+    );
+
+    let run = ShellRunResult {
+        state_changed: false,
+        output: serde_json::json!({
+            "schema":"gentle.blast_async_start.v1", "job":{"state":"queued","job_id":"synthetic_job"}
+        }),
+    };
+    app.finish_agent_shell_run(
+        before,
+        2,
+        "Suggestion #2",
+        "genomes blast-async start",
+        "manual",
+        &ShellCommand::StateSummary,
+        run,
+        true,
+    );
+    let entry = app.agent_execution_log.last().expect("async receipt");
+    assert!(!entry.ok);
+    assert_eq!(
+        entry.feedback.as_ref().expect("feedback").status,
+        AgentExecutionStatus::Running
+    );
+    assert!(entry.summary.starts_with("running"));
+}
+
+#[test]
+fn agent_feedback_all_log_paths_are_bounded_and_do_not_clear_redo() {
+    use crate::agent_feedback::AgentExecutionStatus;
+    let mut app = GENtleApp::default();
+    app.engine
+        .write()
+        .expect("engine")
+        .apply(Operation::SetDisplayVisibility {
+            target: crate::engine::DisplayTarget::Features,
+            visible: false,
+        })
+        .expect("edit");
+    app.execute_agent_prompt_command("/undo");
+    let state_before =
+        serde_json::to_value(app.engine.read().expect("engine").state()).expect("state");
+    let revision_before = app.engine.read().expect("engine").mutation_revision();
+    for _ in 0..110 {
+        app.execute_agent_prompt_command("invalid_synthetic_command");
+    }
+    assert_eq!(app.agent_execution_log.len(), 100);
+    assert!(
+        app.agent_execution_log
+            .iter()
+            .all(|row| row.feedback.as_ref().expect("receipt").status
+                == AgentExecutionStatus::Blocked)
+    );
+    assert_eq!(
+        state_before,
+        serde_json::to_value(app.engine.read().expect("engine").state()).expect("state")
+    );
+    assert_eq!(
+        revision_before,
+        app.engine.read().expect("engine").mutation_revision()
+    );
+    app.execute_agent_prompt_command("/redo");
+    assert!(app.agent_execution_log.last().expect("redo survived").ok);
+}
+
+#[test]
+fn agent_feedback_conversation_clear_rotates_session_and_discards_receipts() {
+    let mut app = GENtleApp::default();
+    app.execute_agent_prompt_command("/list");
+    assert_eq!(app.agent_execution_log.len(), 1);
+    assert!(app.agent_last_command_output.is_some());
+    let previous_session = app.agent_execution_session_id.clone();
+    app.clear_agent_conversation();
+    assert_ne!(app.agent_execution_session_id, previous_session);
+    assert!(app.agent_execution_log.is_empty());
+    assert!(app.agent_last_command_output.is_none());
 }
 
 #[test]
@@ -11095,6 +11212,7 @@ fn agent_assistant_content_scrolls_on_small_viewport() {
         .join("\n");
     for idx in 0..3 {
         app.agent_conversation.push_turn(AgentConversationTurn {
+            turn_id: None,
             user_message: format!("stored user question {idx} with enough text to wrap"),
             response: AgentResponse {
                 schema: "gentle.agent_response.v1".to_string(),
@@ -13036,6 +13154,7 @@ fn activate_test_agent_screenshot_request(
         reason: "Inspect the visible controls and feature colours.".to_string(),
     };
     app.agent_conversation.push_turn(AgentConversationTurn {
+        turn_id: None,
         user_message: "Why is this window difficult to interpret?".to_string(),
         response: AgentResponse {
             schema: "gentle.agent_response.v1".to_string(),
@@ -13380,6 +13499,7 @@ fn agent_conversation_reloads_from_project_metadata_without_credentials() {
     let conversation = AgentConversation {
         schema: crate::agent_bridge::AGENT_CONVERSATION_SCHEMA.to_string(),
         turns: vec![AgentConversationTurn {
+            turn_id: None,
             user_message: "Use mus_musculus.".to_string(),
             response: AgentResponse {
                 schema: "gentle.agent_response.v1".to_string(),

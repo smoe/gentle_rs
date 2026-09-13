@@ -150,6 +150,26 @@ def test_rendered_prompt_exposes_bounded_introspection_context():
     assert '"omitted_fact_count": 1' in prompt
 
 
+def test_execution_feedback_and_all_request_context_are_visible():
+    """Synthetic request; no provider invocation (see agent_feedback_README.md)."""
+    bridge = load_bridge_module()
+    request = request_payload()
+    request["x_execution_feedback"] = {
+        "schema": "gentle.agent_execution_feedback.v1",
+        "rows": [{"receipt": {"status": "running"}}],
+    }
+    prompt = bridge.render_codex_prompt(request)
+    instruction = prompt.split("GENtle agent request:")[0]
+    for key in ("x_introspection", "x_conversation", "x_local_references",
+                "x_helper_catalog", "x_gui_context", "x_local_documents",
+                "x_attachments", "x_web_access", "x_request_id", "x_execution_feedback"):
+        assert key in instruction
+    assert "Use only state_summary" not in instruction
+    assert "only completed means" in instruction
+    assert "no receipt grants approval" in instruction
+    assert '"status": "running"' in prompt
+
+
 def test_response_schema_is_compatible_with_strict_structured_outputs():
     bridge = load_bridge_module()
     schema = bridge.response_json_schema()

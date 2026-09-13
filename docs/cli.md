@@ -6512,6 +6512,13 @@ recent conversation, so a short follow-up such as “verify that vector” retai
 the earlier vector context. This catalog is consulted before web research and
 does not imply that a sequence is loaded in the current project.
 
+`agents ask` execution rows include typed, hash-bound `feedback` and an
+`execution_status_counts` summary. `executed=false` includes commands rejected
+before dispatch. Starting an asynchronous job does not mean the analysis
+completed; inspect its status/result separately. CLI invocations remain
+stateless and do not automatically recall previous execution receipts. See the
+[agent request contract](protocol.md) for GUI session feedback and privacy limits.
+
 For Pi Local, `--allow-web-research` adds `x_web_access.enabled=true`. Pi may
 search the public web and read arbitrary public HTTP/HTTPS text pages, not just
 an allowlist of scientific domains. Localhost, private/reserved networks, URL

@@ -311,17 +311,17 @@ wet-lab conclusions or unconfirmed mutations.
   view-only `offline-core`; extend typed coverage next to Gibson and dotplot.
   MCP/Feature Editor, transcript-assay, vendor and trace guides need Glen's review; keep biological verdicts separate.
 - Extend the transcript follow-up with provenance-complete array evidence for positive differential selection and approved-study execution.
-- Extend the deterministic inner-agent tutorial shortlist into context-labelled
-  GUI/CLI/agent tutorial actions; defer skill activation and inverse discovery
-  until readiness is safeguarded.
+- Extend inner-agent context with explained prompt/viewport relevance,
+  readiness-bound tutorial actions, deferred-job observation and explicit
+  headless receipt replay; keep approvals and undo history unchanged.
+  Defer skill activation and inverse discovery until readiness is safeguarded.
 - Optional OS credential-store persistence for Agent Assistant API keys.
 - Separate opt-in inner coding-agent mode for Codex, Pi, or comparable local
   harnesses, with explicit workspace scope, tool permissions, diff review,
   bounded tests, and rollback. Do not inherit Agent Assistant command-execution
   permissions or present model prose as an applied source change.
 - Optional tiny generation probe for quota verification.
-- Implement the opt-in native-Mistral inner-agent conformance routine described
-  in `docs/testing.md`; self-skip unless `MISTRAL_API_KEY` is supplied.
+- Implement opt-in Mistral conformance (`docs/testing.md`); skip without `MISTRAL_API_KEY`.
 - Audit restriction-catalog cut offsets (especially Type IIS) and extend usage annotations beyond REBASE; recheck older cloning absence/uniqueness claims before laboratory use.
 - Floating restriction-site detail popover/window if the Description panel is
   too easy to miss.

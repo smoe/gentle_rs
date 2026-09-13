@@ -333,6 +333,17 @@ readiness operation must rerun the canonical validator/planner against current
 state and preserve `not_supplied` separately from `blocked`; otherwise an old
 fact could incorrectly authorize a changed proposal.
 
+Agent-context projection must retain complete fact counts and explicit omission
+metadata, without altering the canonical fact graph or treating omitted facts
+as false. Execution feedback is host-observed evidence, not model-authored
+conversation or authorization. Receipt history and current applicability are
+separate: a completed command can need rechecking after edits; equal project
+revisions do not validate changed external files. Session receipts must not be
+persisted through metadata writes that would clear redo or change dirty state.
+Model-facing receipts contain bounded typed outcomes and hashes, not raw
+commands, result bodies, or error strings. Successful dispatch is not background
+job completion, GUI presentation, or scientific acceptance.
+
 ## DEC-025: Legacy SHA-1 Download Verification Uses External Tools
 
 Status: active

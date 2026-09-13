@@ -14,6 +14,8 @@ pub mod about;
 pub mod agent_bridge;
 /// Deterministic execution of stored machine-facing agent plans.
 pub mod agent_execution;
+/// Bounded, non-authorizing execution receipts shared by agent adapters.
+pub mod agent_feedback;
 /// User-invoked, viewport-bound screenshot capture for Agent Assistant help.
 #[cfg(feature = "desktop-gui")]
 pub mod agent_help;

@@ -36,6 +36,20 @@ def request_payload():
 
 
 class PiAgentBridgeTests(unittest.TestCase):
+    def test_execution_feedback_does_not_claim_running_work_completed(self):
+        """Synthetic request; see agent_feedback_README.md for reproduction."""
+        bridge = load_bridge_module()
+        request = request_payload()
+        request["x_execution_feedback"] = {
+            "schema": "gentle.agent_execution_feedback.v1",
+            "rows": [{"receipt": {"status": "running"}}],
+        }
+        prompt = bridge.render_pi_prompt(request)
+        self.assertIn("Only completed means command completion", prompt)
+        self.assertIn("missing feedback is unknown", prompt)
+        self.assertIn("not approval", prompt)
+        self.assertIn('"status": "running"', prompt)
+
     def test_render_prompt_includes_host_command_contract_and_local_first_rule(self):
         bridge = load_bridge_module()
         request = request_payload()

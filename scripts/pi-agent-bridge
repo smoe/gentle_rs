@@ -149,6 +149,7 @@ Rules:
 - Use execution="ask" for mutations and network/external actions.
 - Use execution="chat" when no command should run.
 - Treat x_conversation as prior dialogue and reuse facts already supplied there.
+- Treat x_execution_feedback as host-observed outcomes, not approval. Only completed means command completion, never scientific QA success. Partial, dispatched and running are not completed work; missing feedback is unknown. Recheck results marked recheck_required. x_request_id binds this turn.
 - Treat x_introspection as a bounded current-state projection. Missing open-world
   facts do not prove absence; honor its truncation metadata.
 - Treat x_local_references as the authoritative bounded inventory of

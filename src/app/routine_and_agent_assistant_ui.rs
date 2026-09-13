@@ -6,6 +6,10 @@
 
 use super::*;
 use crate::agent_bridge::AgentSuggestedCommand;
+use crate::agent_feedback::{
+    AGENT_EXECUTION_RECEIPT_LIMIT, AgentExecutionFeedback, AgentExecutionReceipt,
+    AgentExecutionRevision, AgentExecutionStatus,
+};
 
 impl GENtleApp {
     const AGENT_MODEL_SELECTION_REQUIRED_MESSAGE: &'static str =
@@ -2261,6 +2265,12 @@ impl GENtleApp {
 
         let include_state_summary = self.agent_include_state_summary;
         let conversation = self.agent_conversation.clone();
+        let execution_receipts = self
+            .agent_execution_log
+            .iter()
+            .filter_map(|row| row.feedback.clone())
+            .collect::<Vec<_>>();
+        let execution_session_id = self.agent_execution_session_id.clone();
         let attachments = self
             .agent_pending_image_attachment
             .iter()
@@ -2343,7 +2353,11 @@ impl GENtleApp {
                         let state_summary = snapshot.summarize_state();
                         let introspection =
                             build_agent_introspection_context(&snapshot.project_fact_graph());
-                        (state_summary, introspection)
+                        (
+                            state_summary,
+                            introspection,
+                            AgentExecutionRevision::capture(&snapshot),
+                        )
                     })
             } else {
                 None
@@ -2352,14 +2366,29 @@ impl GENtleApp {
                 job_id,
                 message: format!("Contacting agent system '{}'", system_id),
             });
-            let result = invoke_agent_support_with_gui_context_and_attachments(
+            let turn_ids = conversation
+                .turns
+                .iter()
+                .rev()
+                .take(crate::agent_bridge::AGENT_CONVERSATION_CONTEXT_MAX_TURNS)
+                .filter_map(|turn| turn.turn_id.clone())
+                .collect();
+            let execution_feedback = request_context.as_ref().map(|(_, _, revision)| {
+                AgentExecutionFeedback::project(
+                    &execution_session_id,
+                    Some(*revision),
+                    &execution_receipts,
+                    &turn_ids,
+                )
+            });
+            let result = invoke_agent_support_with_execution_feedback(
                 Some(catalog_path.as_str()),
                 &system_id,
                 &prompt,
-                request_context.as_ref().map(|(summary, _)| summary),
+                request_context.as_ref().map(|(summary, _, _)| summary),
                 request_context
                     .as_ref()
-                    .map(|(_, introspection)| introspection),
+                    .map(|(_, introspection, _)| introspection),
                 Some(&conversation),
                 Some(&gui_context),
                 &attachments,
@@ -2368,6 +2397,7 @@ impl GENtleApp {
                 } else {
                     Some(&env_overrides)
                 },
+                execution_feedback.as_ref(),
             );
             let _ = tx.send(AgentAskTaskMessage::Done { job_id, result });
         });
@@ -2407,6 +2437,9 @@ impl GENtleApp {
         self.invalidate_agent_screenshot_state(None);
         self.agent_conversation = AgentConversation::default();
         self.agent_last_invocation = None;
+        self.agent_execution_log.clear();
+        self.agent_execution_session_id = crate::agent_feedback::new_agent_context_id();
+        self.agent_last_command_output = None;
         self.agent_pending_image_attachment = None;
         self.agent_help_capture_failure = None;
         self.persist_agent_conversation_to_state();
@@ -2434,22 +2467,25 @@ impl GENtleApp {
         suggestion: &AgentSuggestedCommand,
         trigger: &str,
     ) {
+        let before = self.agent_execution_revision();
         if let Some(reason) = self.agent_suggestion_live_blocker(suggestion) {
             let source_label = format!("Suggestion #{index_1based}");
             self.agent_status = format!("{source_label} not run: {reason}");
-            self.agent_execution_log.push(AgentCommandExecutionRecord {
-                index_1based,
-                command: suggestion.command.trim().to_string(),
-                trigger: trigger.to_string(),
-                ok: false,
-                state_changed: false,
-                summary: reason,
-                executed_at_unix_ms: Self::now_unix_ms(),
-            });
-            if self.agent_execution_log.len() > 100 {
-                let drain = self.agent_execution_log.len() - 100;
-                self.agent_execution_log.drain(0..drain);
-            }
+            self.record_agent_execution(
+                before,
+                AgentExecutionStatus::Blocked,
+                AgentCommandExecutionRecord {
+                    index_1based,
+                    command: suggestion.command.trim().to_string(),
+                    trigger: trigger.to_string(),
+                    ok: false,
+                    state_changed: false,
+                    summary: reason,
+                    executed_at_unix_ms: Self::now_unix_ms(),
+                    feedback: None,
+                },
+                None,
+            );
             return;
         }
         self.execute_agent_suggested_command(index_1based, &suggestion.command, trigger);
@@ -2466,6 +2502,7 @@ impl GENtleApp {
         command_text: &str,
         trigger: &str,
     ) {
+        let before = self.agent_execution_revision();
         self.agent_last_command_output = None;
         let trimmed = command_text.trim();
         if trimmed.is_empty() {
@@ -2476,34 +2513,42 @@ impl GENtleApp {
             && let Some(hint) = Self::agent_prompt_bare_absolute_path_hint(trimmed)
         {
             self.agent_status = hint.clone();
-            self.agent_execution_log.push(AgentCommandExecutionRecord {
-                index_1based,
-                command: trimmed.to_string(),
-                trigger: trigger.to_string(),
-                ok: false,
-                state_changed: false,
-                summary: hint,
-                executed_at_unix_ms: Self::now_unix_ms(),
-            });
-            if self.agent_execution_log.len() > 100 {
-                let drain = self.agent_execution_log.len() - 100;
-                self.agent_execution_log.drain(0..drain);
-            }
+            self.record_agent_execution(
+                before,
+                AgentExecutionStatus::Blocked,
+                AgentCommandExecutionRecord {
+                    index_1based,
+                    command: trimmed.to_string(),
+                    trigger: trigger.to_string(),
+                    ok: false,
+                    state_changed: false,
+                    summary: hint,
+                    executed_at_unix_ms: Self::now_unix_ms(),
+                    feedback: None,
+                },
+                None,
+            );
             return;
         }
         let command = match parse_shell_line(trimmed) {
             Ok(command) => command,
             Err(err) => {
                 self.agent_status = format!("{source_label} parse error: {err}");
-                self.agent_execution_log.push(AgentCommandExecutionRecord {
-                    index_1based,
-                    command: trimmed.to_string(),
-                    trigger: trigger.to_string(),
-                    ok: false,
-                    state_changed: false,
-                    summary: format!("parse error: {err}"),
-                    executed_at_unix_ms: Self::now_unix_ms(),
-                });
+                self.record_agent_execution(
+                    before,
+                    AgentExecutionStatus::Blocked,
+                    AgentCommandExecutionRecord {
+                        index_1based,
+                        command: trimmed.to_string(),
+                        trigger: trigger.to_string(),
+                        ok: false,
+                        state_changed: false,
+                        summary: format!("parse error: {err}"),
+                        executed_at_unix_ms: Self::now_unix_ms(),
+                        feedback: None,
+                    },
+                    None,
+                );
                 return;
             }
         };
@@ -2515,15 +2560,21 @@ impl GENtleApp {
         {
             let summary = AGENT_HISTORY_CONFIRMATION_REQUIRED.to_string();
             self.agent_status = format!("{source_label} rejected: {summary}");
-            self.agent_execution_log.push(AgentCommandExecutionRecord {
-                index_1based,
-                command: trimmed.to_string(),
-                trigger: trigger.to_string(),
-                ok: false,
-                state_changed: false,
-                summary,
-                executed_at_unix_ms: Self::now_unix_ms(),
-            });
+            self.record_agent_execution(
+                before,
+                AgentExecutionStatus::Blocked,
+                AgentCommandExecutionRecord {
+                    index_1based,
+                    command: trimmed.to_string(),
+                    trigger: trigger.to_string(),
+                    ok: false,
+                    state_changed: false,
+                    summary,
+                    executed_at_unix_ms: Self::now_unix_ms(),
+                    feedback: None,
+                },
+                None,
+            );
             return;
         }
         if matches!(
@@ -2535,15 +2586,21 @@ impl GENtleApp {
             self.agent_status = format!(
                 "{source_label} rejected: agent-to-agent 'agents ...' commands are blocked"
             );
-            self.agent_execution_log.push(AgentCommandExecutionRecord {
-                index_1based,
-                command: trimmed.to_string(),
-                trigger: trigger.to_string(),
-                ok: false,
-                state_changed: false,
-                summary: "agent-to-agent agents command blocked".to_string(),
-                executed_at_unix_ms: Self::now_unix_ms(),
-            });
+            self.record_agent_execution(
+                before,
+                AgentExecutionStatus::Blocked,
+                AgentCommandExecutionRecord {
+                    index_1based,
+                    command: trimmed.to_string(),
+                    trigger: trigger.to_string(),
+                    ok: false,
+                    state_changed: false,
+                    summary: "agent-to-agent agents command blocked".to_string(),
+                    executed_at_unix_ms: Self::now_unix_ms(),
+                    feedback: None,
+                },
+                None,
+            );
             return;
         }
         if matches!(
@@ -2557,37 +2614,45 @@ impl GENtleApp {
             };
             let summary = self.app_status.clone();
             self.agent_status = format!("{source_label}: {summary}");
-            self.agent_execution_log.push(AgentCommandExecutionRecord {
-                index_1based,
-                command: trimmed.to_string(),
-                trigger: trigger.to_string(),
-                ok: state_changed,
-                state_changed,
-                summary,
-                executed_at_unix_ms: Self::now_unix_ms(),
-            });
-            if self.agent_execution_log.len() > 100 {
-                let drain = self.agent_execution_log.len() - 100;
-                self.agent_execution_log.drain(0..drain);
-            }
+            self.record_agent_execution(
+                before,
+                if state_changed {
+                    AgentExecutionStatus::Completed
+                } else {
+                    AgentExecutionStatus::Blocked
+                },
+                AgentCommandExecutionRecord {
+                    index_1based,
+                    command: trimmed.to_string(),
+                    trigger: trigger.to_string(),
+                    ok: state_changed,
+                    state_changed,
+                    summary,
+                    executed_at_unix_ms: Self::now_unix_ms(),
+                    feedback: None,
+                },
+                None,
+            );
             return;
         }
         let suppress_auto_open = Self::agent_command_suppresses_auto_open(trimmed, &command);
         if let Some(summary) = self.try_apply_shell_ui_intent(&command) {
             self.agent_status = format!("{source_label}: {summary}");
-            self.agent_execution_log.push(AgentCommandExecutionRecord {
-                index_1based,
-                command: trimmed.to_string(),
-                trigger: trigger.to_string(),
-                ok: true,
-                state_changed: false,
-                summary,
-                executed_at_unix_ms: Self::now_unix_ms(),
-            });
-            if self.agent_execution_log.len() > 100 {
-                let drain = self.agent_execution_log.len() - 100;
-                self.agent_execution_log.drain(0..drain);
-            }
+            self.record_agent_execution(
+                before,
+                AgentExecutionStatus::Dispatched,
+                AgentCommandExecutionRecord {
+                    index_1based,
+                    command: trimmed.to_string(),
+                    trigger: trigger.to_string(),
+                    ok: true,
+                    state_changed: false,
+                    summary,
+                    executed_at_unix_ms: Self::now_unix_ms(),
+                    feedback: None,
+                },
+                None,
+            );
             return;
         }
         let options = ShellExecutionOptions {
@@ -2596,133 +2661,214 @@ impl GENtleApp {
             progress_callback: None,
         };
         let run = {
-            let mut guard = self.engine.write().unwrap();
-            execute_shell_command_with_options(&mut guard, &command, &options)
+            match self.engine.write() {
+                Ok(mut guard) => execute_shell_command_with_options(&mut guard, &command, &options),
+                Err(_) => Err("Project engine lock is unavailable".to_string()),
+            }
         };
         match run {
-            Ok(run) => {
-                if run.state_changed {
-                    self.lineage_cache_valid = false;
-                }
-                let mut opened_seq_ids = if matches!(command, ShellCommand::LoadFile { .. }) {
-                    Self::agent_sequence_ids_from_shell_output(&run.output)
-                } else {
-                    Vec::new()
-                };
-                let mut extra_summary: Option<String> = match &command {
-                    ShellCommand::Help { topic, .. } => {
-                        self.open_help_doc(HelpDoc::Shell);
-                        if !topic.is_empty() {
-                            self.help_search_query = topic.join(" ");
-                            self.help_search_selected = 0;
-                            self.refresh_help_search_matches();
-                        }
-                        Some("opened Help > Shell Commands".to_string())
-                    }
-                    ShellCommand::StateSummary => {
-                        Some("showing the current project summary below".to_string())
-                    }
-                    _ => None,
-                };
-                let mut effective_state_changed = run.state_changed;
-                if let ShellCommand::EnsemblGeneFetch { entry_id, .. } = &command {
-                    match self.import_agent_ensembl_gene_fetch_result(entry_id.as_deref(), &run) {
-                        Ok(imported_seq_ids) if !imported_seq_ids.is_empty() => {
-                            effective_state_changed = true;
-                            opened_seq_ids.extend(imported_seq_ids.iter().cloned());
-                            extra_summary = Some(format!(
-                                "imported Ensembl gene sequence {}",
-                                imported_seq_ids.join(", ")
-                            ));
-                        }
-                        Ok(_) => {
-                            extra_summary = Some(
-                                "stored Ensembl gene metadata; no sequence was imported"
-                                    .to_string(),
-                            );
-                        }
-                        Err(err) => {
-                            extra_summary = Some(format!(
-                                "stored Ensembl gene metadata; sequence import failed: {err}"
-                            ));
-                        }
-                    }
-                }
-                let mut opened_seq_ids_unique = Vec::new();
-                for seq_id in opened_seq_ids {
-                    if !opened_seq_ids_unique.contains(&seq_id) {
-                        opened_seq_ids_unique.push(seq_id);
-                    }
-                }
-                if !suppress_auto_open {
-                    for seq_id in &opened_seq_ids_unique {
-                        self.open_sequence_window(seq_id);
-                    }
-                }
-                let summary = if let Some(extra) = extra_summary {
-                    if opened_seq_ids_unique.is_empty() {
-                        format!("success - {extra}")
-                    } else if suppress_auto_open {
-                        format!(
-                            "success - {extra}; did not open {}",
-                            opened_seq_ids_unique.join(", ")
-                        )
-                    } else {
-                        format!(
-                            "success - {extra}; opened {}",
-                            opened_seq_ids_unique.join(", ")
-                        )
-                    }
-                } else if effective_state_changed {
-                    if opened_seq_ids_unique.is_empty() {
-                        "success - executed (state changed)".to_string()
-                    } else if suppress_auto_open {
-                        format!(
-                            "success - executed (state changed; did not open {})",
-                            opened_seq_ids_unique.join(", ")
-                        )
-                    } else {
-                        format!(
-                            "success - executed (state changed; opened {})",
-                            opened_seq_ids_unique.join(", ")
-                        )
-                    }
-                } else {
-                    "success - executed".to_string()
-                };
-                self.agent_status = format!("{source_label}: {summary}");
-                self.agent_execution_log.push(AgentCommandExecutionRecord {
-                    index_1based,
-                    command: trimmed.to_string(),
-                    trigger: trigger.to_string(),
-                    ok: true,
-                    state_changed: effective_state_changed,
-                    summary,
-                    executed_at_unix_ms: Self::now_unix_ms(),
-                });
-                self.agent_last_command_output = Some(AgentCommandOutput {
-                    command: trimmed.to_string(),
-                    output: run.output,
-                    state_changed: effective_state_changed,
-                });
-            }
+            Ok(run) => self.finish_agent_shell_run(
+                before,
+                index_1based,
+                source_label,
+                trimmed,
+                trigger,
+                &command,
+                run,
+                suppress_auto_open,
+            ),
             Err(err) => {
                 self.agent_status = format!("{source_label} failed: {err}");
-                self.agent_execution_log.push(AgentCommandExecutionRecord {
-                    index_1based,
-                    command: trimmed.to_string(),
-                    trigger: trigger.to_string(),
-                    ok: false,
-                    state_changed: false,
-                    summary: err,
-                    executed_at_unix_ms: Self::now_unix_ms(),
-                });
+                self.record_agent_execution(
+                    before,
+                    AgentExecutionStatus::Failed,
+                    AgentCommandExecutionRecord {
+                        index_1based,
+                        command: trimmed.to_string(),
+                        trigger: trigger.to_string(),
+                        ok: false,
+                        state_changed: false,
+                        summary: err,
+                        executed_at_unix_ms: Self::now_unix_ms(),
+                        feedback: None,
+                    },
+                    None,
+                );
             }
         }
-        if self.agent_execution_log.len() > 100 {
-            let drain = self.agent_execution_log.len() - 100;
-            self.agent_execution_log.drain(0..drain);
+    }
+
+    pub(super) fn finish_agent_shell_run(
+        &mut self,
+        before: Option<AgentExecutionRevision>,
+        index_1based: usize,
+        source_label: &str,
+        trimmed: &str,
+        trigger: &str,
+        command: &ShellCommand,
+        run: ShellRunResult,
+        suppress_auto_open: bool,
+    ) {
+        let mut outcome_status = AgentExecutionStatus::from_shell_output(&run.output);
+        if run.state_changed {
+            self.lineage_cache_valid = false;
         }
+        let mut opened_seq_ids = if matches!(command, ShellCommand::LoadFile { .. }) {
+            Self::agent_sequence_ids_from_shell_output(&run.output)
+        } else {
+            Vec::new()
+        };
+        let mut extra_summary: Option<String> = match &command {
+            ShellCommand::Help { topic, .. } => {
+                self.open_help_doc(HelpDoc::Shell);
+                if !topic.is_empty() {
+                    self.help_search_query = topic.join(" ");
+                    self.help_search_selected = 0;
+                    self.refresh_help_search_matches();
+                }
+                Some("opened Help > Shell Commands".to_string())
+            }
+            ShellCommand::StateSummary => {
+                Some("showing the current project summary below".to_string())
+            }
+            _ => None,
+        };
+        let mut effective_state_changed = run.state_changed;
+        if let ShellCommand::EnsemblGeneFetch { entry_id, .. } = &command {
+            match self.import_agent_ensembl_gene_fetch_result(entry_id.as_deref(), &run) {
+                Ok(imported_seq_ids) if !imported_seq_ids.is_empty() => {
+                    effective_state_changed = true;
+                    opened_seq_ids.extend(imported_seq_ids.iter().cloned());
+                    extra_summary = Some(format!(
+                        "imported Ensembl gene sequence {}",
+                        imported_seq_ids.join(", ")
+                    ));
+                }
+                Ok(_) => {
+                    outcome_status = outcome_status.after_sequence_import(false);
+                    extra_summary =
+                        Some("stored Ensembl gene metadata; no sequence was imported".to_string());
+                }
+                Err(err) => {
+                    outcome_status = outcome_status.after_sequence_import(false);
+                    extra_summary = Some(format!(
+                        "stored Ensembl gene metadata; sequence import failed: {err}"
+                    ));
+                }
+            }
+        }
+        let mut opened_seq_ids_unique = Vec::new();
+        for seq_id in opened_seq_ids {
+            if !opened_seq_ids_unique.contains(&seq_id) {
+                opened_seq_ids_unique.push(seq_id);
+            }
+        }
+        if !suppress_auto_open {
+            for seq_id in &opened_seq_ids_unique {
+                self.open_sequence_window(seq_id);
+            }
+        }
+        let label = outcome_status.as_str();
+        let summary = if let Some(extra) = extra_summary {
+            if opened_seq_ids_unique.is_empty() {
+                format!("{label} - {extra}")
+            } else if suppress_auto_open {
+                format!(
+                    "{label} - {extra}; did not open {}",
+                    opened_seq_ids_unique.join(", ")
+                )
+            } else {
+                format!(
+                    "{label} - {extra}; opening {}",
+                    opened_seq_ids_unique.join(", ")
+                )
+            }
+        } else if effective_state_changed {
+            if opened_seq_ids_unique.is_empty() {
+                format!("{label} - executed (state changed)")
+            } else if suppress_auto_open {
+                format!(
+                    "{label} - executed (state changed; did not open {})",
+                    opened_seq_ids_unique.join(", ")
+                )
+            } else {
+                format!(
+                    "{label} - executed (state changed; opening {})",
+                    opened_seq_ids_unique.join(", ")
+                )
+            }
+        } else {
+            label.to_string()
+        };
+        self.agent_status = format!("{source_label}: {summary}");
+        self.record_agent_execution(
+            before,
+            outcome_status,
+            AgentCommandExecutionRecord {
+                index_1based,
+                command: trimmed.to_string(),
+                trigger: trigger.to_string(),
+                ok: outcome_status == AgentExecutionStatus::Completed,
+                state_changed: effective_state_changed,
+                summary,
+                executed_at_unix_ms: Self::now_unix_ms(),
+                feedback: None,
+            },
+            Some(&run.output),
+        );
+        self.agent_last_command_output = Some(AgentCommandOutput {
+            command: trimmed.to_string(),
+            output: run.output,
+            state_changed: effective_state_changed,
+        });
+    }
+
+    fn agent_execution_revision(&self) -> Option<AgentExecutionRevision> {
+        self.engine
+            .read()
+            .ok()
+            .map(|engine| AgentExecutionRevision::capture(&engine))
+    }
+
+    fn record_agent_execution(
+        &mut self,
+        before: Option<AgentExecutionRevision>,
+        status: AgentExecutionStatus,
+        mut record: AgentCommandExecutionRecord,
+        output: Option<&serde_json::Value>,
+    ) {
+        let after = self.agent_execution_revision();
+        let mut receipt = AgentExecutionReceipt::new(&record.command, status, before, after);
+        receipt.session_id = self.agent_execution_session_id.clone();
+        if record.index_1based > 0 {
+            receipt.suggestion_index = Some(record.index_1based);
+            receipt.turn_id = self
+                .agent_conversation
+                .turns
+                .last()
+                .and_then(|turn| turn.turn_id.clone());
+        }
+        if let Some(output) = output {
+            receipt.bind_output(output);
+        }
+        if matches!(
+            status,
+            AgentExecutionStatus::Blocked
+                | AgentExecutionStatus::Failed
+                | AgentExecutionStatus::Partial
+        ) {
+            receipt.bind_error(&record.summary);
+        }
+        record.state_changed |= before
+            .zip(after)
+            .is_some_and(|(a, b)| a.mutation != b.mutation);
+        record.feedback = Some(receipt);
+        self.agent_execution_log.push(record);
+        let excess = self
+            .agent_execution_log
+            .len()
+            .saturating_sub(AGENT_EXECUTION_RECEIPT_LIMIT);
+        self.agent_execution_log.drain(..excess);
     }
 
     pub(super) fn agent_command_suppresses_auto_open(
@@ -3623,6 +3769,11 @@ impl GENtleApp {
                     let response = invocation.response.clone();
                     let completed_at_unix_ms = Self::now_unix_ms();
                     self.agent_conversation.push_turn(AgentConversationTurn {
+                        turn_id: invocation
+                            .request
+                            .get("x_request_id")
+                            .and_then(serde_json::Value::as_str)
+                            .map(str::to_string),
                         user_message: completed_prompt,
                         response: response.clone(),
                         attachments: completed_attachments,
@@ -5810,6 +5961,7 @@ impl GENtleApp {
                 .clicked()
             {
                 self.agent_execution_log.clear();
+                self.agent_execution_session_id = crate::agent_feedback::new_agent_context_id();
                 self.agent_last_command_output = None;
             }
         });
@@ -6087,7 +6239,11 @@ impl GENtleApp {
                                 "{} [{}] {} | {} | changed={} | t={}",
                                 source,
                                 entry.trigger,
-                                if entry.ok { "ok" } else { "error" },
+                                entry
+                                    .feedback
+                                    .as_ref()
+                                    .map(|receipt| receipt.status.as_str())
+                                    .unwrap_or("unavailable"),
                                 entry.command,
                                 entry.state_changed,
                                 entry.executed_at_unix_ms
@@ -6095,7 +6251,14 @@ impl GENtleApp {
                             .wrap(),
                         );
                         ui.add(
-                            egui::Label::new(egui::RichText::new(&entry.summary).small()).wrap(),
+                            egui::Label::new(egui::RichText::new(&entry.summary).small().color(
+                                if entry.ok {
+                                    ui.visuals().text_color()
+                                } else {
+                                    ui.visuals().warn_fg_color
+                                },
+                            ))
+                            .wrap(),
                         );
                     }
                 });

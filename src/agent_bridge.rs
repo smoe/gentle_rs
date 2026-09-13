@@ -1,6 +1,7 @@
 //! Agent-assistant bridge models, transports, and execution guardrails.
 
 use crate::{
+    agent_feedback::{AgentExecutionFeedback, new_agent_context_id},
     engine::{
         EngineStateSummary, FACT_EXPRESSION_SCHEMA, GentleEngine, PROJECT_FACT_GRAPH_SCHEMA,
         ProjectFact, ProjectFactGraph, project_fact_type_specs,
@@ -31,6 +32,7 @@ pub const AGENT_ATTACHMENT_SCHEMA: &str = "gentle.agent_attachment.v1";
 const AGENT_RESPONSE_SCHEMA: &str = "gentle.agent_response.v1";
 pub const AGENT_INTROSPECTION_CONTEXT_SCHEMA: &str = "gentle.agent_introspection_context.v1";
 const AGENT_INTROSPECTION_FACT_LIMIT: usize = 128;
+const AGENT_INTROSPECTION_CONFIG_LIMIT: usize = 8;
 pub const AGENT_LOCAL_REFERENCE_CONTEXT_SCHEMA: &str = "gentle.agent_local_reference_context.v1";
 const AGENT_LOCAL_REFERENCE_LIMIT: usize = 32;
 const AGENT_LOCAL_REFERENCE_WARNING_LIMIT: usize = 8;
@@ -82,6 +84,7 @@ Suggested command contract:
 - Intent/precondition/outcome rule: use suggested_commands[].title for the user intent, suggested_commands[].preconditions for human-readable requirements such as "a sequence with seq_id demo_seq exists", optional suggested_commands[].precondition_expr for machine-readable fact-graph logic, suggested_commands[].expected_outcomes for postcondition-like effects expected if the command succeeds, and optional suggested_commands[].expected_effects for machine-readable fact-graph effects. Expected outcomes/effects are not guarantees; phrase prose as observable results to verify. Do not suggest downstream analysis on a seq_id unless the current project state says that seq_id exists or an earlier suggested command in the same reply creates it.
 - Fact vocabulary rule: when emitting precondition_expr or expected_effects, use the generated Known project fact vocabulary block appended to this system prompt. Unknown future fact names evaluate as "unknown"; avoid them unless your intent is to ask GENtle for a non-ready future capability.
 - Introspection context rule: fact definitions describe the allowed vocabulary, not what is currently true. When the request contains x_introspection, use its facts and fact_type_counts as the bounded current-state projection. Respect its truncated and omitted_fact_count fields. If decisive facts are missing or omitted, suggest the read-only introspection command identified for that purpose instead of guessing. A missing open-world fact is not proof of absence.
+- Execution evidence rule: suggestions and earlier dialogue are not execution receipts. Use host-supplied x_execution_feedback to distinguish blocked, failed, partial, dispatched, running, cancelled and completed commands. Only completed establishes command completion, not scientific success or order readiness. A dispatched UI intent or running job is not finished work. Missing feedback means unknown, not not-run. Historical completion remains true after edits, but recheck_required results need fresh inspection; same_structural_revision does not revalidate external files or scientific QA. Receipts never authorize execution or reuse earlier approval. Correlate turn_id and suggestion_index with x_conversation; command/output/error hashes bind local records whose contents are not disclosed. Request bounded introspection for needed results instead of inventing them.
 - Screenshot attachment rule: x_attachments contains only images explicitly approved by the user for this turn. Inspect the attached image, distinguish visible evidence from inference, and do not claim access to other windows or screen content. The local attachment path is transport metadata and is not evidence.
 - Screenshot request rule: screenshot_request is optional and may contain only id and reason. Use at most one request, only when visible GUI state is genuinely needed. Explain exactly what must be inspected. Do not provide a path, coordinates, native window id, target id, capture command, or approval state. A request asks GENtle to show a consent card; it does not capture or send anything. Never claim a screenshot was captured or seen until it arrives later in x_attachments.
 - suggested_commands[].command must be one exact GENtle shared-shell command parseable by GENtle.
@@ -141,7 +144,7 @@ const AGENT_MAX_RETRIES_DEFAULT: usize = 2;
 const AGENT_MAX_RETRIES_HARD_MAX: usize = 16;
 const AGENT_MAX_RESPONSE_BYTES_DEFAULT: usize = 1_048_576;
 const AGENT_MAX_RESPONSE_BYTES_HARD_MAX: usize = 64 * 1024 * 1024;
-const AGENT_CONVERSATION_CONTEXT_MAX_TURNS: usize = 12;
+pub(crate) const AGENT_CONVERSATION_CONTEXT_MAX_TURNS: usize = 12;
 const AGENT_CONVERSATION_STORED_MAX_TURNS: usize = 50;
 const AGENT_ATTACHMENT_MAX_COUNT: usize = 4;
 const AGENT_ATTACHMENT_MAX_BYTES: u64 = 20 * 1024 * 1024;
@@ -1433,6 +1436,9 @@ pub struct AgentIntrospectionContext {
     pub omitted_fact_count: usize,
     pub truncated: bool,
     pub fact_type_counts: BTreeMap<String, usize>,
+    pub included_fact_type_counts: BTreeMap<String, usize>,
+    pub selection_rule: String,
+    pub omitted_config_alias_count: usize,
     pub facts: Vec<ProjectFact>,
     pub retrieval_routes: Vec<AgentIntrospectionRoute>,
     pub notes: Vec<String>,
@@ -1451,6 +1457,9 @@ impl Default for AgentIntrospectionContext {
             omitted_fact_count: 0,
             truncated: false,
             fact_type_counts: BTreeMap::new(),
+            included_fact_type_counts: BTreeMap::new(),
+            selection_rule: "legacy_unspecified".to_string(),
+            omitted_config_alias_count: 0,
             facts: vec![],
             retrieval_routes: agent_introspection_routes(),
             notes: agent_introspection_notes(),
@@ -1505,12 +1514,46 @@ pub fn build_agent_introspection_context(graph: &ProjectFactGraph) -> AgentIntro
     }
 
     let total_fact_count = graph.facts.len();
-    let facts = graph
-        .facts
-        .iter()
-        .take(AGENT_INTROSPECTION_FACT_LIMIT)
-        .cloned()
-        .collect::<Vec<_>>();
+    let aliases = GentleEngine::project_config_param_alias_names();
+    let mut omitted_config_alias_count = 0;
+    let mut by_type = BTreeMap::<&str, Vec<(String, &ProjectFact)>>::new();
+    for fact in &graph.facts {
+        if fact.fact == "config.param" && aliases.contains(fact.subject.id.as_str()) {
+            omitted_config_alias_count += 1;
+            continue;
+        }
+        by_type
+            .entry(&fact.fact)
+            .or_default()
+            .push((serde_json::to_string(fact).unwrap_or_default(), fact));
+    }
+    for (name, rows) in &mut by_type {
+        rows.sort_by(|a, b| a.0.cmp(&b.0));
+        if *name == "config.param" {
+            rows.truncate(AGENT_INTROSPECTION_CONFIG_LIMIT);
+        }
+    }
+    let mut facts = Vec::new();
+    for ordinal in 0..AGENT_INTROSPECTION_FACT_LIMIT {
+        let before = facts.len();
+        for rows in by_type.values() {
+            if facts.len() == AGENT_INTROSPECTION_FACT_LIMIT {
+                break;
+            }
+            if let Some((_, fact)) = rows.get(ordinal) {
+                facts.push((*fact).clone());
+            }
+        }
+        if before == facts.len() {
+            break;
+        }
+    }
+    let mut included_fact_type_counts = BTreeMap::new();
+    for fact in &facts {
+        *included_fact_type_counts
+            .entry(fact.fact.clone())
+            .or_default() += 1;
+    }
     let included_fact_count = facts.len();
     let omitted_fact_count = total_fact_count.saturating_sub(included_fact_count);
 
@@ -1525,6 +1568,9 @@ pub fn build_agent_introspection_context(graph: &ProjectFactGraph) -> AgentIntro
         omitted_fact_count,
         truncated: omitted_fact_count > 0,
         fact_type_counts,
+        included_fact_type_counts,
+        selection_rule: "round_robin_by_fact_type_config_cap_8_no_aliases".to_string(),
+        omitted_config_alias_count,
         facts,
         retrieval_routes: agent_introspection_routes(),
         notes: agent_introspection_notes(),
@@ -3011,6 +3057,13 @@ struct AgentRequestPayload {
     system_id: String,
     prompt: String,
     sent_at_unix_ms: u128,
+    #[serde(rename = "x_request_id")]
+    request_id: String,
+    #[serde(
+        rename = "x_execution_feedback",
+        skip_serializing_if = "Option::is_none"
+    )]
+    execution_feedback: Option<AgentExecutionFeedback>,
     state_summary: Option<EngineStateSummary>,
     #[serde(rename = "x_introspection", skip_serializing_if = "Option::is_none")]
     introspection: Option<AgentIntrospectionContext>,
@@ -3037,6 +3090,8 @@ impl Default for AgentRequestPayload {
             system_id: String::new(),
             prompt: String::new(),
             sent_at_unix_ms: 0,
+            request_id: String::new(),
+            execution_feedback: None,
             state_summary: None,
             introspection: None,
             conversation: None,
@@ -3141,6 +3196,8 @@ fn agent_response_has_content(response: &AgentResponse) -> bool {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AgentConversationTurn {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub turn_id: Option<String>,
     pub user_message: String,
     pub response: AgentResponse,
     pub attachments: Vec<AgentAttachmentSummary>,
@@ -3152,6 +3209,7 @@ pub struct AgentConversationTurn {
 impl Default for AgentConversationTurn {
     fn default() -> Self {
         Self {
+            turn_id: None,
             user_message: String::new(),
             response: AgentResponse::default(),
             attachments: vec![],
@@ -3195,6 +3253,13 @@ impl AgentConversation {
                     .is_none_or(agent_screenshot_request_is_valid)
         });
         for turn in &mut self.turns {
+            if turn
+                .turn_id
+                .as_deref()
+                .is_some_and(|id| !crate::agent_feedback::agent_context_id_is_valid(id))
+            {
+                turn.turn_id = None;
+            }
             if let Some(request) = turn.response.screenshot_request.as_mut() {
                 request.id = request.id.trim().to_string();
                 request.reason = request.reason.trim().to_string();
@@ -3209,6 +3274,13 @@ impl AgentConversation {
 
     /// Appends one validated turn while enforcing the project retention limit.
     pub fn push_turn(&mut self, mut turn: AgentConversationTurn) {
+        if turn
+            .turn_id
+            .as_deref()
+            .is_some_and(|id| !crate::agent_feedback::agent_context_id_is_valid(id))
+        {
+            turn.turn_id = None;
+        }
         if turn.user_message.trim().is_empty()
             || !agent_response_has_content(&turn.response)
             || turn.response.schema != AGENT_RESPONSE_SCHEMA
@@ -3323,6 +3395,7 @@ fn build_agent_request(
     )
 }
 
+#[cfg(test)]
 fn build_agent_request_with_gui_context(
     system_id: &str,
     prompt: &str,
@@ -3333,6 +3406,33 @@ fn build_agent_request_with_gui_context(
     attachments: &[AgentRequestAttachment],
     web_access: Option<&AgentWebAccessContext>,
 ) -> Result<(AgentRequestPayload, Value, String), String> {
+    build_agent_request_with_feedback(
+        system_id,
+        prompt,
+        state_summary,
+        introspection,
+        conversation,
+        gui_context,
+        attachments,
+        web_access,
+        None,
+    )
+}
+
+fn build_agent_request_with_feedback(
+    system_id: &str,
+    prompt: &str,
+    state_summary: Option<&EngineStateSummary>,
+    introspection: Option<&AgentIntrospectionContext>,
+    conversation: Option<&AgentConversation>,
+    gui_context: Option<&AgentGuiContext>,
+    attachments: &[AgentRequestAttachment],
+    web_access: Option<&AgentWebAccessContext>,
+    execution_feedback: Option<&AgentExecutionFeedback>,
+) -> Result<(AgentRequestPayload, Value, String), String> {
+    if let Some(feedback) = execution_feedback {
+        feedback.validate()?;
+    }
     let local_documents = build_agent_local_documents_context(prompt);
     let conversation = conversation.and_then(AgentConversation::context_window);
     let helper_catalog = build_agent_helper_catalog_context(&agent_helper_catalog_query(
@@ -3344,6 +3444,8 @@ fn build_agent_request_with_gui_context(
         system_id: system_id.trim().to_string(),
         prompt: prompt.to_string(),
         sent_at_unix_ms: now_unix_ms(),
+        request_id: new_agent_context_id(),
+        execution_feedback: execution_feedback.cloned(),
         state_summary: state_summary.cloned(),
         introspection: introspection.cloned(),
         conversation,
@@ -4140,6 +4242,24 @@ fn validate_agent_introspection_context(context: &AgentIntrospectionContext) -> 
         return Err(agent_err(
             AgentBridgeErrorCode::SchemaValidation,
             "agent request 'x_introspection.included_fact_count' must equal facts length",
+        ));
+    }
+    if !context.included_fact_type_counts.is_empty() {
+        let mut included = BTreeMap::new();
+        for fact in &context.facts {
+            *included.entry(fact.fact.clone()).or_default() += 1usize;
+        }
+        if included != context.included_fact_type_counts {
+            return Err(agent_err(
+                AgentBridgeErrorCode::SchemaValidation,
+                "agent request 'x_introspection.included_fact_type_counts' disagrees with facts",
+            ));
+        }
+    }
+    if context.omitted_config_alias_count > context.omitted_fact_count {
+        return Err(agent_err(
+            AgentBridgeErrorCode::SchemaValidation,
+            "agent request 'x_introspection.omitted_config_alias_count' exceeds omitted facts",
         ));
     }
     if context.total_fact_count
@@ -5716,6 +5836,33 @@ pub fn invoke_agent_support_with_gui_context_and_attachments(
     attachments: &[AgentRequestAttachment],
     env_overrides: Option<&HashMap<String, String>>,
 ) -> Result<AgentInvocationOutcome, String> {
+    invoke_agent_support_with_execution_feedback(
+        catalog_path,
+        system_id,
+        prompt,
+        state_summary,
+        introspection,
+        conversation,
+        gui_context,
+        attachments,
+        env_overrides,
+        None,
+    )
+}
+
+/// Optional host-observed execution feedback; never permission to execute commands.
+pub fn invoke_agent_support_with_execution_feedback(
+    catalog_path: Option<&str>,
+    system_id: &str,
+    prompt: &str,
+    state_summary: Option<&EngineStateSummary>,
+    introspection: Option<&AgentIntrospectionContext>,
+    conversation: Option<&AgentConversation>,
+    gui_context: Option<&AgentGuiContext>,
+    attachments: &[AgentRequestAttachment],
+    env_overrides: Option<&HashMap<String, String>>,
+    execution_feedback: Option<&AgentExecutionFeedback>,
+) -> Result<AgentInvocationOutcome, String> {
     if prompt.trim().is_empty() {
         return Err(agent_err(
             AgentBridgeErrorCode::InvalidInput,
@@ -5753,7 +5900,7 @@ pub fn invoke_agent_support_with_gui_context_and_attachments(
         ));
     }
     let web_access = agent_web_access_context(&system)?;
-    let (_payload, request_value, request_json) = build_agent_request_with_gui_context(
+    let (_payload, request_value, request_json) = build_agent_request_with_feedback(
         &system.id,
         prompt,
         state_summary,
@@ -5762,6 +5909,7 @@ pub fn invoke_agent_support_with_gui_context_and_attachments(
         gui_context,
         attachments,
         web_access.as_ref(),
+        execution_feedback,
     )?;
     let remote_request_json = redacted_remote_request_json(&request_value)?;
     let start = std::time::Instant::now();
@@ -6281,6 +6429,7 @@ mod tests {
 
     fn test_conversation_turn(index: usize) -> AgentConversationTurn {
         AgentConversationTurn {
+            turn_id: Some(new_agent_context_id()),
             user_message: format!("user message {index}"),
             response: AgentResponse {
                 schema: AGENT_RESPONSE_SCHEMA.to_string(),
@@ -6923,6 +7072,115 @@ mod tests {
                 .any(|route| { route.command.starts_with("introspect readiness") })
         );
         assert!(context.notes.iter().any(|note| note.contains("open-world")));
+    }
+
+    #[test]
+    fn agent_introspection_budget_keeps_real_project_fact_types_visible() {
+        let mut engine = GentleEngine::from_state(crate::engine::ProjectState::default());
+        engine.state_mut().sequences.insert(
+            "synthetic_sequence".into(),
+            crate::dna_sequence::DNAsequence::from_sequence("ACGTACGT").expect("synthetic DNA"),
+        );
+        let mut graph = engine.project_fact_graph();
+        // A synthetic persisted-report row supplements the real default configuration graph.
+        graph.facts.push(ProjectFact {
+            fact: "report.exists".into(),
+            subject: crate::engine::FactSubject {
+                kind: crate::engine::FactSubjectKind::Report,
+                id: "synthetic_report".into(),
+            },
+            ..ProjectFact::default()
+        });
+        let original = serde_json::to_value(&graph).expect("graph");
+        let context = build_agent_introspection_context(&graph);
+        assert!(context.omitted_config_alias_count > 0);
+        assert!(
+            context
+                .included_fact_type_counts
+                .get("config.param")
+                .copied()
+                .unwrap_or(0)
+                <= 8
+        );
+        for (name, count) in &context.fact_type_counts {
+            if *count > 0 {
+                assert!(
+                    context
+                        .included_fact_type_counts
+                        .get(name)
+                        .copied()
+                        .unwrap_or(0)
+                        > 0,
+                    "missing {name}"
+                );
+            }
+        }
+        assert_eq!(
+            context.fact_type_counts.values().sum::<usize>(),
+            graph.facts.len()
+        );
+        assert!(context.facts.iter().any(|f| f.fact == "report.exists"));
+        assert!(context.facts.iter().any(|f| f.fact == "sequence.exists"));
+        assert_eq!(
+            original,
+            serde_json::to_value(&graph).expect("unchanged graph")
+        );
+        graph.facts.reverse();
+        assert_eq!(context, build_agent_introspection_context(&graph));
+        validate_agent_introspection_context(&context).expect("valid bounded context");
+    }
+
+    #[test]
+    fn agent_request_feedback_is_additive_and_turn_bound() {
+        use crate::agent_feedback::{AgentExecutionReceipt, AgentExecutionStatus};
+        let turn = test_conversation_turn(1);
+        let mut receipt = AgentExecutionReceipt::new(
+            "state-summary",
+            AgentExecutionStatus::Completed,
+            None,
+            None,
+        );
+        receipt.session_id = new_agent_context_id();
+        receipt.turn_id = turn.turn_id.clone();
+        receipt.suggestion_index = Some(1);
+        let feedback = AgentExecutionFeedback::project(
+            &receipt.session_id,
+            None,
+            &[receipt.clone()],
+            &BTreeSet::from([turn.turn_id.clone().expect("turn id")]),
+        );
+        let conversation = AgentConversation {
+            turns: vec![turn],
+            ..AgentConversation::default()
+        };
+        let (_, request, _) = build_agent_request_with_feedback(
+            "builtin_echo",
+            "what happened?",
+            None,
+            None,
+            Some(&conversation),
+            None,
+            &[],
+            None,
+            Some(&feedback),
+        )
+        .expect("request");
+        assert_eq!(
+            request["x_execution_feedback"]["rows"][0]["receipt"]["turn_id"],
+            request["x_conversation"]["turns"][0]["turn_id"]
+        );
+        assert!(
+            request["x_request_id"]
+                .as_str()
+                .is_some_and(|id| id.starts_with("sha256:"))
+        );
+        let (_, legacy, _) = build_agent_request("builtin_echo", "hello", None, None, None, &[])
+            .expect("legacy caller");
+        assert!(legacy.get("x_execution_feedback").is_none());
+        let legacy_turn: AgentConversationTurn =
+            serde_json::from_value(serde_json::json!({"user_message":"legacy"}))
+                .expect("legacy turn");
+        assert!(legacy_turn.turn_id.is_none());
     }
 
     #[test]

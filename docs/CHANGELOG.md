@@ -1,5 +1,26 @@
 # GENtle Changelog
 
+## 2026-09-13 - Grounded inner-agent context and execution feedback
+
+- Replaced first-128 fact truncation with deterministic round-robin selection,
+  a small configuration budget, alias omission and per-type included counts.
+  Canonical facts, readiness rules and total counts are unchanged.
+- Added shared, hash-bound execution receipts and session-only GUI feedback.
+  Parse/policy rejection is not execution; failed Ensembl sequence imports
+  after metadata retrieval are partial, and deferred UI/BLAST jobs are not
+  reported as completed. Historical completion and current applicability are
+  separate. Receipt recording does not mutate project metadata or undo/redo.
+- Headless suggestion results expose receipts and status counts. Stored-plan
+  success results retain additive feedback; a shared fallible-attempt API also
+  exposes failure receipts without converting CLI errors into successes.
+- Kept raw commands/output/errors local instead of adding them to model
+  feedback. Correlation uses session, turn, suggestion and content hashes.
+  Updated Codex/Pi bridge guidance to use all supplied context while keeping
+  scientific QA and approval distinct from command completion.
+- Added offline projection, execution, lifecycle, privacy, history and bridge
+  regressions. Relevance ranking, automatic deferred-job observation and live
+  Mistral conformance remain follow-ups; no model determinism is claimed.
+
 ## 2026-09-13 - Imported Motif Triangles In Detailed TSS Plots
 
 - Added explicit saved DuckDB-query report attachment through both shared TSS

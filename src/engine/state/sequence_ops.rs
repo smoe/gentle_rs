@@ -188,7 +188,7 @@ fn insert_serialized_config_object(
     }
 }
 
-fn insert_config_param_aliases(values: &mut std::collections::BTreeMap<String, serde_json::Value>) {
+fn config_param_aliases() -> &'static [(&'static str, &'static [&'static str])] {
     const ALIASES: &[(&str, &[&str])] = &[
         (
             "genome_anchor_prepared_fallback_policy",
@@ -312,7 +312,21 @@ fn insert_config_param_aliases(values: &mut std::collections::BTreeMap<String, s
             ],
         ),
     ];
-    for (canonical, aliases) in ALIASES {
+    ALIASES
+}
+
+impl GentleEngine {
+    /// Alias names for bounded context projection; canonical facts retain all aliases.
+    pub(crate) fn project_config_param_alias_names() -> std::collections::BTreeSet<&'static str> {
+        config_param_aliases()
+            .iter()
+            .flat_map(|(_, aliases)| aliases.iter().copied())
+            .collect()
+    }
+}
+
+fn insert_config_param_aliases(values: &mut std::collections::BTreeMap<String, serde_json::Value>) {
+    for (canonical, aliases) in config_param_aliases() {
         let Some(value) = values.get(*canonical).cloned() else {
             continue;
         };
