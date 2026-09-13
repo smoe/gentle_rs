@@ -5776,6 +5776,23 @@ Additive execution/context fields:
   complete graph and readiness evaluation are unchanged. The limit is still
   128. Missing facts remain unknown, not false. Legacy projections have
   `selection_rule=legacy_unspecified` when no rule was recorded.
+- Within each fact type, request-aware selection now orders normalized
+  whole-identity matches (`prompt_identity`), shared identifier terms
+  (`prompt_terms`), the host's known active sequence (`active_sequence`), and
+  stable fallback (`round_robin`). Identity fields are `subject.id`, `enzyme`,
+  and `basis.report_id`; sequence bodies, fact values and old conversation are
+  not searched. Identity matching is case-insensitive with punctuation folded
+  to token boundaries, so `seq1` does not match `seq10`. Partial-term matching
+  reuses the helper-catalog stop words and 24-term bound; full-identity matching
+  is not limited to those terms. This is an inspectable retrieval heuristic,
+  not a biological relevance score or a gene/isoform-name resolver.
+  `selection_explanations` binds each retained fact by `fact_index_1based` to
+  its priority, matched terms and fields. `active_sequence_id` is accepted only
+  when that sequence exists in the current graph; no first-open-window or
+  first-project-sequence fallback is inferred. CLI uses the same scorer with
+  no active viewport. Equal-priority ties use canonical fact serialization;
+  facts, evidence/provenance fields, counts and per-type allocation are unchanged.
+  The additive explanation fields default to empty/absent for legacy payloads.
 - Optional `x_execution_feedback` uses `gentle.agent_execution_feedback.v1`:
   `session_id`, `current_revision`, `omitted_receipt_count`, and up to 100 `rows`.
   Each row has a `receipt` and `applicability`. Receipts bind the originating

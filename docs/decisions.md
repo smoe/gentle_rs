@@ -335,7 +335,9 @@ fact could incorrectly authorize a changed proposal.
 
 Agent-context projection must retain complete fact counts and explicit omission
 metadata, without altering the canonical fact graph or treating omitted facts
-as false. Execution feedback is host-observed evidence, not model-authored
+as false. Request relevance may reorder rows within fair per-type allocations,
+but must expose its deterministic reasons and never imply biological importance,
+new facts, or readiness. Execution feedback is host-observed evidence, not model-authored
 conversation or authorization. Receipt history and current applicability are
 separate: a completed command can need rechecking after edits; equal project
 revisions do not validate changed external files. Session receipts must not be

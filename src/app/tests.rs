@@ -1935,6 +1935,66 @@ fn agent_feedback_all_log_paths_are_bounded_and_do_not_clear_redo() {
 }
 
 #[test]
+fn agent_introspection_relevance_uses_known_active_view_in_worker_request() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let catalog_path = tmp.path().join("agents.json");
+    fs::write(&catalog_path, r#"{"schema":"gentle.agent_systems.v1","systems":[{"id":"builtin_echo","label":"Offline fixture","transport":"builtin_echo"}]}"#).expect("synthetic catalog");
+    let mut app = GENtleApp::default();
+    app.agent_catalog_path = catalog_path.display().to_string();
+    app.agent_system_id = "builtin_echo".into();
+    app.agent_prompt = "Please inspect named_target".into();
+    app.agent_include_state_summary = true;
+    let dna = DNAsequence::from_sequence("ACGTACGT").expect("synthetic DNA");
+    for id in ["named_target", "visible_sequence"] {
+        app.engine
+            .write()
+            .expect("engine")
+            .state_mut()
+            .sequences
+            .insert(id.into(), dna.clone());
+    }
+    let viewport_id = egui::ViewportId::from_hash_of("agent_relevance_fixture");
+    let key = GENtleApp::native_menu_key_for_viewport(viewport_id);
+    app.windows.insert(
+        viewport_id,
+        Arc::new(RwLock::new(Window::new_dna_lazy(
+            "visible_sequence".into(),
+            app.engine.clone(),
+        ))),
+    );
+    app.native_window_key_to_viewport.insert(key, viewport_id);
+    app.active_window_menu_key = Some(key);
+    let expected = crate::agent_bridge::build_agent_introspection_context_for_request(
+        &app.engine.read().expect("engine").project_fact_graph(),
+        &app.agent_prompt,
+        Some("visible_sequence"),
+    );
+    app.start_agent_assistant_request();
+    let task = app
+        .agent_task
+        .take()
+        .unwrap_or_else(|| panic!("worker did not start: {}", app.agent_status));
+    let deadline = Instant::now() + Duration::from_secs(15);
+    let invocation = loop {
+        let message = task
+            .receiver
+            .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+            .expect("offline worker should finish");
+        if let AgentAskTaskMessage::Done { result, .. } = message {
+            break result.expect("offline echo request");
+        }
+    };
+    assert_eq!(
+        invocation.request["x_introspection"],
+        serde_json::to_value(expected).expect("projection")
+    );
+    assert_eq!(
+        invocation.request["x_introspection"]["active_sequence_id"],
+        "visible_sequence"
+    );
+}
+
+#[test]
 fn agent_feedback_conversation_clear_rotates_session_and_discards_receipts() {
     let mut app = GENtleApp::default();
     app.execute_agent_prompt_command("/list");

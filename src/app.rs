@@ -148,7 +148,7 @@ use crate::{
         MISTRAL_API_KEY_ENV, OPENAI_API_KEY_ENV, OPENAI_BILLING_URL,
         OPENAI_COMPAT_UNSPECIFIED_MODEL, OPENAI_USAGE_URL, agent_explicit_local_document_paths,
         agent_path_is_supported_local_document, agent_system_availability, agent_tutorial_query,
-        anthropic_api_key_kind_warning, build_agent_introspection_context,
+        anthropic_api_key_kind_warning, build_agent_introspection_context_for_request,
         invoke_agent_support_with_execution_feedback, is_pi_local_agent_system,
         load_agent_system_catalog, rank_agent_gui_tutorials,
     },

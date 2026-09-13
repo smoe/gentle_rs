@@ -3422,6 +3422,12 @@ Behavior:
     before closing it without saving
   - `Clear Conversation` removes the stored turns and latest response
 - `Ask Agent` runs in background and reports status in `Background Jobs`
+- The bounded fact context prioritizes subjects named in the current prompt
+  and, when known, the active DNA window's sequence. It preserves a fair share
+  of every available fact type; included rows carry deterministic selection
+  explanations. A named subject outranks the active view. No sequence is
+  guessed when the active window is not a DNA viewer, and selection priority
+  is not evidence of biological importance or readiness.
 - The next project-context request includes bounded, session-only execution
   receipts. Blocked, failed, partially successful, dispatched, running and
   completed actions remain distinct. Ensembl metadata retrieval followed by a

@@ -23764,6 +23764,48 @@ fn execute_agents_ask_runs_auto_suggestion_when_enabled() {
 }
 
 #[test]
+fn agent_introspection_relevance_reaches_shared_shell_requests() {
+    let tmp = tempdir().expect("tempdir");
+    let catalog_path = tmp.path().join("agents.json");
+    fs::write(&catalog_path, r#"{"schema":"gentle.agent_systems.v1","systems":[{"id":"builtin_echo","label":"Offline fixture","transport":"builtin_echo"}]}"#).expect("synthetic catalog");
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let dna = DNAsequence::from_sequence("ACGTACGT").expect("synthetic DNA");
+    for id in (0..180)
+        .map(|i| format!("background_{i:03}"))
+        .chain(["zzz_target".into()])
+    {
+        engine.state_mut().sequences.insert(id, dna.clone());
+    }
+    let prompt = "Please inspect zzz_target";
+    let expected = crate::agent_bridge::build_agent_introspection_context_for_request(
+        &engine.project_fact_graph(),
+        prompt,
+        None,
+    );
+    let before = serde_json::to_value(engine.state()).expect("state");
+    let command = parse_shell_tokens(&[
+        "agents".into(),
+        "ask".into(),
+        "builtin_echo".into(),
+        "--catalog".into(),
+        catalog_path.display().to_string(),
+        "--prompt".into(),
+        prompt.into(),
+    ])
+    .expect("parse");
+    let out = execute_shell_command(&mut engine, &command).expect("offline echo");
+    assert_eq!(
+        out.output["invocation"]["request"]["x_introspection"],
+        serde_json::to_value(expected).expect("projection")
+    );
+    assert!(!out.state_changed);
+    assert_eq!(
+        before,
+        serde_json::to_value(engine.state()).expect("unchanged state")
+    );
+}
+
+#[test]
 fn execute_agents_ask_omits_introspection_when_state_context_is_disabled() {
     let tmp = tempdir().expect("tempdir");
     let catalog_path = tmp.path().join("agents.json");

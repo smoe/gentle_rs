@@ -1423,6 +1423,27 @@ pub struct AgentIntrospectionRoute {
     pub command: String,
 }
 
+/// Context-selection priority only, never biological evidence or execution readiness.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentFactSelectionPriority {
+    RoundRobin,
+    ActiveSequence,
+    PromptTerms,
+    PromptIdentity,
+}
+
+/// Explains one included fact without copying prompt text or altering the fact itself.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AgentFactSelectionExplanation {
+    pub fact_index_1based: usize,
+    pub priority: AgentFactSelectionPriority,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub matched_terms: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub matched_fields: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct AgentIntrospectionContext {
@@ -1439,6 +1460,8 @@ pub struct AgentIntrospectionContext {
     pub included_fact_type_counts: BTreeMap<String, usize>,
     pub selection_rule: String,
     pub omitted_config_alias_count: usize,
+    pub active_sequence_id: Option<String>,
+    pub selection_explanations: Vec<AgentFactSelectionExplanation>,
     pub facts: Vec<ProjectFact>,
     pub retrieval_routes: Vec<AgentIntrospectionRoute>,
     pub notes: Vec<String>,
@@ -1460,6 +1483,8 @@ impl Default for AgentIntrospectionContext {
             included_fact_type_counts: BTreeMap::new(),
             selection_rule: "legacy_unspecified".to_string(),
             omitted_config_alias_count: 0,
+            active_sequence_id: None,
+            selection_explanations: vec![],
             facts: vec![],
             retrieval_routes: agent_introspection_routes(),
             notes: agent_introspection_notes(),
@@ -1505,6 +1530,80 @@ fn agent_introspection_notes() -> Vec<String> {
 }
 
 pub fn build_agent_introspection_context(graph: &ProjectFactGraph) -> AgentIntrospectionContext {
+    build_agent_introspection_context_for_request(graph, "", None)
+}
+
+fn agent_fact_selection_explanation(
+    fact: &ProjectFact,
+    normalized_prompt: &str,
+    prompt_terms: &BTreeSet<String>,
+    active_sequence_id: Option<&str>,
+) -> AgentFactSelectionExplanation {
+    let mut priority = AgentFactSelectionPriority::RoundRobin;
+    let mut matched_terms = BTreeSet::new();
+    let mut matched_fields = BTreeSet::new();
+    if fact.subject.kind == crate::engine::FactSubjectKind::Sequence
+        && active_sequence_id == Some(fact.subject.id.as_str())
+    {
+        priority = AgentFactSelectionPriority::ActiveSequence;
+        matched_fields.insert("active_sequence_id".to_string());
+    }
+    for (field, text) in [
+        ("subject.id", Some(fact.subject.id.as_str())),
+        ("enzyme", fact.enzyme.as_deref()),
+        (
+            "basis.report_id",
+            fact.basis.as_ref().map(|basis| basis.report_id.as_str()),
+        ),
+    ] {
+        let Some(text) = text else { continue };
+        let normalized = normalize_agent_catalog_text(text);
+        if normalized.chars().filter(|c| c.is_alphanumeric()).count() < 2 {
+            continue;
+        }
+        if normalized_prompt.contains(&format!(" {normalized} ")) {
+            priority = AgentFactSelectionPriority::PromptIdentity;
+            matched_terms.insert(normalized);
+            matched_fields.insert(field.to_string());
+        } else {
+            let terms = agent_helper_query_terms(text)
+                .into_iter()
+                .collect::<BTreeSet<_>>();
+            let matches = terms
+                .intersection(prompt_terms)
+                .cloned()
+                .collect::<Vec<_>>();
+            if !matches.is_empty() {
+                priority = priority.max(AgentFactSelectionPriority::PromptTerms);
+                matched_terms.extend(matches);
+                matched_fields.insert(field.to_string());
+            }
+        }
+    }
+    AgentFactSelectionExplanation {
+        fact_index_1based: 0,
+        priority,
+        matched_terms: matched_terms.into_iter().collect(),
+        matched_fields: matched_fields.into_iter().collect(),
+    }
+}
+
+/// Prioritize prompt-named subjects and a known active sequence within each fact
+/// type's fair allocation. Full fact values and canonical readiness are unchanged.
+pub fn build_agent_introspection_context_for_request(
+    graph: &ProjectFactGraph,
+    prompt: &str,
+    active_sequence_id: Option<&str>,
+) -> AgentIntrospectionContext {
+    let active_sequence_id = active_sequence_id.filter(|id| {
+        graph.facts.iter().any(|fact| {
+            fact.fact == "sequence.exists"
+                && fact.subject.kind == crate::engine::FactSubjectKind::Sequence
+                && fact.subject.id == *id
+        })
+    });
+    let normalized_prompt = format!(" {} ", normalize_agent_catalog_text(prompt));
+    let prompt_terms = agent_helper_query_terms(prompt).into_iter().collect();
     let mut fact_type_counts = project_fact_type_specs()
         .iter()
         .map(|spec| (spec.name.to_string(), 0usize))
@@ -1516,32 +1615,43 @@ pub fn build_agent_introspection_context(graph: &ProjectFactGraph) -> AgentIntro
     let total_fact_count = graph.facts.len();
     let aliases = GentleEngine::project_config_param_alias_names();
     let mut omitted_config_alias_count = 0;
-    let mut by_type = BTreeMap::<&str, Vec<(String, &ProjectFact)>>::new();
+    let mut by_type =
+        BTreeMap::<&str, Vec<(AgentFactSelectionExplanation, String, &ProjectFact)>>::new();
     for fact in &graph.facts {
         if fact.fact == "config.param" && aliases.contains(fact.subject.id.as_str()) {
             omitted_config_alias_count += 1;
             continue;
         }
-        by_type
-            .entry(&fact.fact)
-            .or_default()
-            .push((serde_json::to_string(fact).unwrap_or_default(), fact));
+        by_type.entry(&fact.fact).or_default().push((
+            agent_fact_selection_explanation(
+                fact,
+                &normalized_prompt,
+                &prompt_terms,
+                active_sequence_id,
+            ),
+            serde_json::to_string(fact).unwrap_or_default(),
+            fact,
+        ));
     }
     for (name, rows) in &mut by_type {
-        rows.sort_by(|a, b| a.0.cmp(&b.0));
+        rows.sort_by(|a, b| b.0.priority.cmp(&a.0.priority).then_with(|| a.1.cmp(&b.1)));
         if *name == "config.param" {
             rows.truncate(AGENT_INTROSPECTION_CONFIG_LIMIT);
         }
     }
     let mut facts = Vec::new();
+    let mut selection_explanations = Vec::new();
     for ordinal in 0..AGENT_INTROSPECTION_FACT_LIMIT {
         let before = facts.len();
         for rows in by_type.values() {
             if facts.len() == AGENT_INTROSPECTION_FACT_LIMIT {
                 break;
             }
-            if let Some((_, fact)) = rows.get(ordinal) {
+            if let Some((explanation, _, fact)) = rows.get(ordinal) {
                 facts.push((*fact).clone());
+                let mut explanation = explanation.clone();
+                explanation.fact_index_1based = facts.len();
+                selection_explanations.push(explanation);
             }
         }
         if before == facts.len() {
@@ -1569,8 +1679,11 @@ pub fn build_agent_introspection_context(graph: &ProjectFactGraph) -> AgentIntro
         truncated: omitted_fact_count > 0,
         fact_type_counts,
         included_fact_type_counts,
-        selection_rule: "round_robin_by_fact_type_config_cap_8_no_aliases".to_string(),
+        selection_rule: "round_robin_by_type_prompt_then_active_v1_config_cap_8_no_aliases"
+            .to_string(),
         omitted_config_alias_count,
+        active_sequence_id: active_sequence_id.map(str::to_string),
+        selection_explanations,
         facts,
         retrieval_routes: agent_introspection_routes(),
         notes: agent_introspection_notes(),
@@ -4242,6 +4355,19 @@ fn validate_agent_introspection_context(context: &AgentIntrospectionContext) -> 
         return Err(agent_err(
             AgentBridgeErrorCode::SchemaValidation,
             "agent request 'x_introspection.included_fact_count' must equal facts length",
+        ));
+    }
+    if !context.selection_explanations.is_empty()
+        && (context.selection_explanations.len() != context.facts.len()
+            || context
+                .selection_explanations
+                .iter()
+                .enumerate()
+                .any(|(index, row)| row.fact_index_1based != index + 1))
+    {
+        return Err(agent_err(
+            AgentBridgeErrorCode::SchemaValidation,
+            "agent request 'x_introspection.selection_explanations' must correspond to included facts in order",
         ));
     }
     if !context.included_fact_type_counts.is_empty() {
@@ -7128,6 +7254,176 @@ mod tests {
         graph.facts.reverse();
         assert_eq!(context, build_agent_introspection_context(&graph));
         validate_agent_introspection_context(&context).expect("valid bounded context");
+    }
+
+    #[test]
+    fn agent_introspection_relevance_preserves_budget_and_exact_facts() {
+        use crate::engine::{FactSubject, FactSubjectKind};
+        let mut engine = GentleEngine::from_state(crate::engine::ProjectState::default());
+        let dna = crate::dna_sequence::DNAsequence::from_sequence("ACGTACGT").expect("DNA");
+        for id in (0..180)
+            .map(|i| format!("background_{i:03}"))
+            .chain(["zzz_target".into(), "yyy_active".into()])
+        {
+            engine.state_mut().sequences.insert(id, dna.clone());
+        }
+        let mut graph = engine.project_fact_graph();
+        graph.facts.push(ProjectFact {
+            fact: "report.exists".into(),
+            subject: FactSubject { kind: FactSubjectKind::Report, id: "evidence_report".into() },
+            value: Some(serde_json::json!({"assembly":"synthetic", "release":"fixture", "sha256":"fixture-hash"})),
+            ..ProjectFact::default()
+        });
+        let fallback = build_agent_introspection_context(&graph);
+        assert!(
+            !fallback
+                .facts
+                .iter()
+                .any(|fact| fact.subject.id == "zzz_target")
+        );
+        let ranked = build_agent_introspection_context_for_request(
+            &graph,
+            "Inspect zzz_target and vcf_display_required_info_keys",
+            Some("yyy_active"),
+        );
+        assert_eq!(ranked.fact_type_counts, fallback.fact_type_counts);
+        assert_eq!(
+            ranked.included_fact_type_counts,
+            fallback.included_fact_type_counts
+        );
+        assert_eq!(ranked.omitted_fact_count, fallback.omitted_fact_count);
+        assert_eq!(ranked.facts.len(), AGENT_INTROSPECTION_FACT_LIMIT);
+        assert!(ranked.included_fact_type_counts["config.param"] <= 8);
+        assert!(
+            ranked
+                .facts
+                .iter()
+                .any(|f| f.subject.id == "vcf_display_required_info_keys")
+        );
+        for name in [
+            "sequence.exists",
+            "sequence.length",
+            "sequence.kind",
+            "sequence.circular",
+        ] {
+            let rows = ranked
+                .facts
+                .iter()
+                .filter(|fact| fact.fact == name)
+                .collect::<Vec<_>>();
+            assert_eq!(rows[0].subject.id, "zzz_target");
+            assert_eq!(rows[1].subject.id, "yyy_active");
+        }
+        for (fact, why) in ranked.facts.iter().zip(&ranked.selection_explanations) {
+            assert!(
+                graph.facts.contains(fact),
+                "projection changed a canonical fact"
+            );
+            if fact.subject.id == "zzz_target" {
+                assert_eq!(why.priority, AgentFactSelectionPriority::PromptIdentity);
+                assert!(why.matched_terms.contains(&"zzz target".to_string()));
+                assert!(why.matched_fields.contains(&"subject.id".to_string()));
+            }
+            if fact.subject.id == "yyy_active" {
+                assert_eq!(why.priority, AgentFactSelectionPriority::ActiveSequence);
+            }
+        }
+        validate_agent_introspection_context(&ranked).expect("valid projection");
+        graph.facts.reverse();
+        assert_eq!(
+            serde_json::to_string(&ranked).expect("JSON"),
+            serde_json::to_string(&build_agent_introspection_context_for_request(
+                &graph,
+                "Inspect zzz_target and vcf_display_required_info_keys",
+                Some("yyy_active"),
+            ))
+            .expect("stable JSON")
+        );
+    }
+
+    #[test]
+    fn agent_introspection_relevance_is_not_substring_or_value_search() {
+        use crate::engine::{FactSubject, FactSubjectKind};
+        let graph = ProjectFactGraph {
+            schema: PROJECT_FACT_GRAPH_SCHEMA.into(),
+            facts: ["seq1", "seq10", "other", "sample-marker"]
+                .into_iter()
+                .map(|id| ProjectFact {
+                    fact: "sequence.exists".into(),
+                    subject: FactSubject {
+                        kind: FactSubjectKind::Sequence,
+                        id: id.into(),
+                    },
+                    value: Some(serde_json::json!("seq10 private sequence bytes")),
+                    ..ProjectFact::default()
+                })
+                .collect(),
+        };
+        let ranked = build_agent_introspection_context_for_request(
+            &graph,
+            "Inspect SEQ10",
+            Some("not_loaded"),
+        );
+        assert_eq!(ranked.facts[0].subject.id, "seq10");
+        assert_eq!(
+            ranked.selection_explanations[0].priority,
+            AgentFactSelectionPriority::PromptIdentity
+        );
+        assert!(ranked.active_sequence_id.is_none());
+        assert!(
+            ranked.selection_explanations[1..]
+                .iter()
+                .all(|row| row.priority == AgentFactSelectionPriority::RoundRobin)
+        );
+        let changed = build_agent_introspection_context_for_request(&graph, "Inspect seq1", None);
+        assert_eq!(changed.facts[0].subject.id, "seq1");
+        assert_eq!(
+            changed.selection_explanations[1].priority,
+            AgentFactSelectionPriority::RoundRobin
+        );
+        let unknown =
+            build_agent_introspection_context_for_request(&graph, "Inspect missing_subject", None);
+        assert!(
+            unknown
+                .selection_explanations
+                .iter()
+                .all(|row| row.priority == AgentFactSelectionPriority::RoundRobin)
+        );
+        assert_eq!(
+            unknown.facts,
+            build_agent_introspection_context(&graph).facts
+        );
+        let partial = build_agent_introspection_context_for_request(&graph, "Inspect marker", None);
+        assert_eq!(partial.facts[0].subject.id, "sample-marker");
+        assert_eq!(
+            partial.selection_explanations[0].priority,
+            AgentFactSelectionPriority::PromptTerms
+        );
+        assert_eq!(partial.selection_explanations[0].matched_terms, ["marker"]);
+    }
+
+    #[test]
+    fn agent_introspection_relevance_explanation_is_additive_and_index_bound() {
+        let graph =
+            GentleEngine::from_state(crate::engine::ProjectState::default()).project_fact_graph();
+        let mut context = build_agent_introspection_context_for_request(&graph, "show_tfbs", None);
+        let mut legacy = serde_json::to_value(&context).expect("context");
+        legacy
+            .as_object_mut()
+            .expect("object")
+            .remove("selection_explanations");
+        legacy
+            .as_object_mut()
+            .expect("object")
+            .remove("active_sequence_id");
+        let legacy: AgentIntrospectionContext =
+            serde_json::from_value(legacy).expect("legacy projection");
+        assert!(legacy.selection_explanations.is_empty());
+        validate_agent_introspection_context(&legacy).expect("legacy remains valid");
+        context.selection_explanations[0].fact_index_1based = 2;
+        assert!(validate_agent_introspection_context(&context).is_err());
+        context.selection_explanations.remove(0);
+        assert!(validate_agent_introspection_context(&context).is_err());
     }
 
     #[test]

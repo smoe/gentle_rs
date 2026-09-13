@@ -2264,6 +2264,7 @@ impl GENtleApp {
         }
 
         let include_state_summary = self.agent_include_state_summary;
+        let active_sequence_id = self.active_dna_window_context().map(|(seq_id, _)| seq_id);
         let conversation = self.agent_conversation.clone();
         let execution_receipts = self
             .agent_execution_log
@@ -2351,8 +2352,11 @@ impl GENtleApp {
                     .ok()
                     .map(|snapshot| {
                         let state_summary = snapshot.summarize_state();
-                        let introspection =
-                            build_agent_introspection_context(&snapshot.project_fact_graph());
+                        let introspection = build_agent_introspection_context_for_request(
+                            &snapshot.project_fact_graph(),
+                            &prompt,
+                            active_sequence_id.as_deref(),
+                        );
                         (
                             state_summary,
                             introspection,

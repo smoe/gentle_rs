@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-09-13 - Explained inner-agent fact relevance
+
+- Added request-aware ordering within the existing fair fact budget: named
+  identities/identifier terms, then a known active sequence, then stable
+  fallback. Shared GUI and shell paths use one deterministic scorer; CLI/MCP
+  do not invent an active viewport. Selection explanations preserve exact fact
+  values and evidence fields and do not imply biological relevance or readiness.
+- Kept the 128-fact limit, eight-row configuration cap, complete counts and
+  alias omission. Ranking reads the current prompt only, never stale dialogue,
+  result bodies or sequence bytes. Missing explanation fields remain readable.
+- Added offline flooded-project, identifier-boundary, legacy, shell and GUI
+  worker regressions. Broader helper-catalog relevance, background-job
+  follow-up, headless receipt replay and live-model conformance remain separate.
+
 ## 2026-09-13 - Grounded inner-agent context and execution feedback
 
 - Replaced first-128 fact truncation with deterministic round-robin selection,

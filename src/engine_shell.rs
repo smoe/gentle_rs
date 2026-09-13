@@ -22,7 +22,7 @@ use crate::{
         AGENT_ALLOW_WEB_RESEARCH_ENV, AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV,
         AGENT_MAX_RESPONSE_BYTES_ENV, AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV,
         AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV, AgentExecutionIntent,
-        build_agent_introspection_context, invoke_agent_support_with_request_context,
+        build_agent_introspection_context_for_request, invoke_agent_support_with_request_context,
     },
     agent_execution::execute_agent_plan_candidate,
     agent_planner::{load_agent_plan_from_argument, plan_from_shell_options},
@@ -49822,7 +49822,11 @@ fn execute_agents_ask_command(
     let request_context = if include_state_summary {
         Some((
             engine.summarize_state(),
-            build_agent_introspection_context(&engine.project_fact_graph()),
+            build_agent_introspection_context_for_request(
+                &engine.project_fact_graph(),
+                prompt,
+                None,
+            ),
         ))
     } else {
         None
@@ -67896,7 +67900,11 @@ fn execute_shell_command_with_options_inner(
             let request_context = if *include_state_summary {
                 Some((
                     engine.summarize_state(),
-                    build_agent_introspection_context(&engine.project_fact_graph()),
+                    build_agent_introspection_context_for_request(
+                        &engine.project_fact_graph(),
+                        prompt,
+                        None,
+                    ),
                 ))
             } else {
                 None

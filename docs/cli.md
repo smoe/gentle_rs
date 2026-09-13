@@ -6519,6 +6519,12 @@ completed; inspect its status/result separately. CLI invocations remain
 stateless and do not automatically recall previous execution receipts. See the
 [agent request contract](protocol.md) for GUI session feedback and privacy limits.
 
+Its `x_introspection` projection uses the current prompt to prioritize matching
+subject/report/enzyme identities within the existing per-type fact budget.
+`selection_explanations` records each included fact's priority and matches.
+The shared CLI/MCP path has no active-view assumption; relevance ordering
+neither changes canonical facts nor supplies execution approval.
+
 For Pi Local, `--allow-web-research` adds `x_web_access.enabled=true`. Pi may
 search the public web and read arbitrary public HTTP/HTTPS text pages, not just
 an allowlist of scientific domains. Localhost, private/reserved networks, URL
