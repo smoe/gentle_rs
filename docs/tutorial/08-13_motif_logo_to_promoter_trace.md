@@ -371,13 +371,18 @@ offline prerequisites and does not promise measured binding affinity.
 `scripts/test_motif_score_tutorial.py` checks the educational calculations,
 the corrected TP73 values, source/catalog links, matrix pin and synthetic
 plus/minus fixture. GENtle's existing engine tests exercise the actual scoring
-and export route. The older stored background-normalized artifacts in
+and export route. On 2026-09-13, the synthetic background-normalized artifacts in
 `promoter_design_artifact_slice_offline`,
 `promoter_gene_set_ortholog_cohort_offline`, and
-`gene_set_ortholog_promoter_cohorts_offline` have **not** been silently
-regenerated. They require rescoring from original sequence/PFM inputs;
-presentation-only re-export cannot fix old scores. Imported scanner-native
-scores require their own producer-policy audit.
+`gene_set_ortholog_promoter_cohorts_offline` were explicitly rescored from their
+unchanged local sequence/workflow inputs and bundled matrices. Their dependent
+figures, comparisons and checksums were regenerated, not edited to hide old
+scores. The pre-refresh versions remain in Git at `e489cfaf`; see the
+[regeneration procedure](../tss_tfbs_profiles.md#rescoring-existing-reports).
+The regression also checks the new tail-method marker and finite, bounded
+forward/reverse scores in the committed gene-set reports. This does not refresh
+private five-gene reports. Presentation-only re-export cannot fix their old
+scores, and imported scanner-native scores require their own producer-policy audit.
 
 Passing software tests and checksums establishes implementation consistency,
 not independent scientific validation of a motif's biological interpretation.

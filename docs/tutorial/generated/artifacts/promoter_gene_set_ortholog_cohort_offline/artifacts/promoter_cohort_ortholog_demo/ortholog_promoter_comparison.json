@@ -182,7 +182,7 @@
       "transcript_id": "TX_TP73_HUMAN",
       "tf_id": "MA0079.5",
       "tf_name": "SP1",
-      "max_score": 5.418539921951662,
+      "max_score": 5.418539921951661,
       "peak_position_0based": 0,
       "peak_position_promoter_relative_bp": -40,
       "peak_genomic_position_1based": 111,
@@ -203,7 +203,7 @@
       "transcript_id": "TX_TP73_RAT",
       "tf_id": "MA0079.5",
       "tf_name": "SP1",
-      "max_score": 5.418539921951662,
+      "max_score": 5.418539921951661,
       "peak_position_0based": 0,
       "peak_position_promoter_relative_bp": -40,
       "peak_genomic_position_1based": 111,
@@ -262,7 +262,7 @@
         "TP73",
         "Tp73"
       ],
-      "max_score": 5.418539921951662,
+      "max_score": 5.418539921951661,
       "peak_positions_promoter_relative_bp": [
         -40,
         -40

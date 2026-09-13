@@ -1,5 +1,23 @@
 # GENtle Changelog
 
+## 2026-09-13 - Refresh tutorial artifacts after the TFBS tail correction
+
+- Corrected the generated-tutorial mismatch reported by macOS CI at `e489cfaf`
+  by explicitly rerunning the three synthetic promoter workflows with the
+  corrected shared scorer. Original workflow inputs and bundled matrices are
+  unchanged; dependent figures, comparisons and checksums are regenerated.
+- Refreshed the PATZ1 locus-evidence and portable-regions tutorial SVGs for the
+  same fix's pixel-range/mean presentation and aggregation labels. Their stored
+  report values are unchanged; these two updates are presentation-only.
+  This also addresses the local `tutorial_check_passes_on_committed_tree` and
+  `workflow_examples_patz1_locus_evidence_preserves_visual_evidence_classes`
+  snapshot failures without relaxing either assertion.
+- Added a regression for the committed gene-set reports' corrected tail-method
+  marker and finite, bounded forward/reverse traces. Freshness checks remain
+  strict; no platform exception, relaxed comparison or scoring change is added.
+- Updated stale-output notes with the replay procedure and historical revision.
+  Private five-gene reports, human-review dates and release approval are untouched.
+
 ## 2026-09-12 - Web interface release horizon
 
 - Reserved the local-first server with optional browser interaction for the

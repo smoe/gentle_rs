@@ -60,7 +60,7 @@
       "transcript_id": "TX_HUMAN_TP73",
       "tf_id": "MA0079.5",
       "tf_name": "SP1",
-      "max_score": 5.418539921951662,
+      "max_score": 5.418539921951661,
       "peak_position_0based": 11,
       "peak_position_promoter_relative_bp": -29,
       "peak_genomic_position_1based": 122,
@@ -108,7 +108,7 @@
       "gene_labels": [
         "TP73"
       ],
-      "max_score": 5.418539921951662,
+      "max_score": 5.418539921951661,
       "peak_positions_promoter_relative_bp": [
         -29
       ]
@@ -171,7 +171,7 @@
           "motifs_requested": [
             "SP1"
           ],
-          "global_max_score": 5.418539921951662,
+          "global_max_score": 5.418539921951661,
           "tss_markers": [
             {
               "feature_id": 18446744073709551615,
@@ -354,11 +354,11 @@
               ],
               "track_start_0based": 0,
               "scored_window_count": 43,
-              "max_score": 5.418539921951662,
+              "max_score": 5.418539921951661,
               "max_position_0based": 11,
               "normalization_reference": {
                 "background_model": "uniform_random_dna",
-                "chance_model": "quantized_iid_uniform_window_dp",
+                "chance_model": "uniform_iid_quantized_conservative_survival_v2",
                 "random_sequence_length_bp": 100000,
                 "random_seed": 6072614073404772913,
                 "sample_count": 199984,
@@ -368,9 +368,9 @@
                 "p99_score": -7.6770000000000005,
                 "positive_fraction": 0.0015501240099207937,
                 "observed_peak_empirical_quantile": 1.0,
-                "observed_peak_modeled_quantile": 0.9999961853027344,
-                "observed_peak_modeled_tail_probability": 3.814697265625e-6,
-                "observed_peak_modeled_tail_log10": 5.418539921951662,
+                "observed_peak_modeled_quantile": 0.9999980926513672,
+                "observed_peak_modeled_tail_probability": 3.814697265625001e-6,
+                "observed_peak_modeled_tail_log10": 5.418539921951661,
                 "observed_peak_delta_from_p95": 33.22184167040858,
                 "observed_peak_delta_from_p99": 24.14184167040858,
                 "theoretical_min_score": -65.59698059513059,
@@ -391,9 +391,9 @@
                   "start_0based": 11,
                   "end_0based_exclusive": 20,
                   "is_reverse": false,
-                  "score": 5.418539921951662,
+                  "score": 5.418539921951661,
                   "empirical_quantile": 1.0,
-                  "delta_from_p99": 3.440594261839831
+                  "delta_from_p99": 3.4405942618398306
                 }
               ],
               "forward_scores": [
@@ -406,19 +406,19 @@
                 0.0,
                 0.0,
                 0.0,
-                1.3729822528151137,
-                1.616176747642114,
-                5.418539921951662,
-                1.6405334605281532,
+                1.3729822528151134,
+                1.6124956862035718,
+                5.418539921951661,
+                1.6405334605281514,
                 2.119686845541955,
                 2.1466983154151627,
-                1.616176747642114,
-                5.418539921951662,
-                2.2355549549480798,
-                2.1034096047680597,
-                1.3510227200479863,
+                1.6124956862035718,
+                5.418539921951661,
+                2.235554954948079,
+                2.102569576494744,
+                1.3510227200479858,
                 0.0,
-                1.9475417522907879,
+                1.9475417522907876,
                 0.0,
                 0.0,
                 0.0,
@@ -707,7 +707,7 @@
               "max_score": 0.0,
               "normalization_reference": {
                 "background_model": "uniform_random_dna",
-                "chance_model": "quantized_iid_uniform_window_dp",
+                "chance_model": "uniform_iid_quantized_conservative_survival_v2",
                 "random_sequence_length_bp": 100000,
                 "random_seed": 6072614073404772913,
                 "sample_count": 199984,
@@ -717,9 +717,9 @@
                 "p99_score": -7.6770000000000005,
                 "positive_fraction": 0.0015501240099207937,
                 "observed_peak_empirical_quantile": 0.201176094087527,
-                "observed_peak_modeled_quantile": 0.201873779296875,
-                "observed_peak_modeled_tail_probability": 0.798126220703125,
-                "observed_peak_modeled_tail_log10": 0.09792842115542155,
+                "observed_peak_modeled_quantile": 0.20125579833984375,
+                "observed_peak_modeled_tail_probability": 0.7993621826171875,
+                "observed_peak_modeled_tail_log10": 0.0972564018216879,
                 "observed_peak_delta_from_p95": -30.90865835623212,
                 "observed_peak_delta_from_p99": -39.98865835623212,
                 "theoretical_min_score": -65.59698059513059,
@@ -742,7 +742,7 @@
                   "is_reverse": false,
                   "score": 0.0,
                   "empirical_quantile": 0.9503710296823746,
-                  "delta_from_p99": -1.9779456601118306
+                  "delta_from_p99": -1.9779456601118302
                 }
               ],
               "forward_scores": [
@@ -847,7 +847,7 @@
         "transcript_id": "TX_HUMAN_TP73",
         "tf_id": "MA0079.5",
         "tf_name": "SP1",
-        "max_score": 5.418539921951662,
+        "max_score": 5.418539921951661,
         "peak_position_0based": 11,
         "peak_position_promoter_relative_bp": -29,
         "peak_genomic_position_1based": 122,

@@ -391,11 +391,19 @@ raw-bit/empirical-quantile arrays and no affected background statistics need onl
 a presentation re-export for the scale/bucket changes. CUT&RUN signal, geometry,
 FASTA, and PFM logos are not numerically changed by this fix.
 
-Committed tutorial outputs also retain older normalization references in
+The committed synthetic tutorial outputs in
 `promoter_design_artifact_slice_offline`, `promoter_gene_set_ortholog_cohort_offline`
-and `gene_set_ortholog_promoter_cohorts_offline`. They were deliberately not
-overwritten in this correction; an explicit reviewed tutorial regeneration is
-needed before treating generated-artifact freshness as a release pass.
+and `gene_set_ortholog_promoter_cohorts_offline` were explicitly regenerated on
+2026-09-13 using their unchanged local workflow inputs and bundled matrices,
+after the tail correction in `8b7b6b47`. This refresh includes dependent
+comparisons, SVGs and artifact checksums; it is not a presentation-only repair.
+The same replay refreshed the locus SVGs in `patz1_gene_locus_evidence_offline`
+and `portable_genomic_regions_offline` for the corrected pixel-range/mean
+presentation and aggregation labels; their stored report values are unchanged.
+The pre-refresh artifacts remain in Git at `e489cfaf`. Reproduce and verify with
+`cargo run --locked --bin gentle_examples_docs -- tutorial-generate` and
+`cargo run --locked --bin gentle_examples_docs -- tutorial-check`.
+This synthetic replay does not validate or refresh private scientific reports.
 
 The private original five-gene scored inputs are not available in this checkout.
 The published PDF/selected-FASTA bundle is not enough to reconstruct all TSSs,
