@@ -105,6 +105,13 @@ GenBank, not a renamed FASTA or an EMBL serializer. GENtle can reopen it through
 its normal sequence-file import. The same option works in GUI Shell and typed
 `ExportTssTfbsProfiles` requests (`formats: ["svg", "genbank"]`).
 
+TSS exports use fixed GenBank `LOCUS` columns for linear DNA. The deterministic
+`01-JAN-1970` date is a missing-date placeholder, not an experiment or annotation
+date. Exports made before the LOCUS-column fix in `d37bd427` may trigger parser
+warnings; re-export from the same bound report into a fresh directory and
+regenerate dependent receipts. This changes file bytes and hashes, not sequence,
+annotations or stored scores, and requires no rescoring.
+
 ```sh
 gentle_cli features tss-tfbs-profiles-export \
   --report /path/to/original-score-only/report.json \

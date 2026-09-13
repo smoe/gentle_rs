@@ -1,5 +1,17 @@
 # GENtle Changelog
 
+## 2026-09-13 - Correct annotated TSS GenBank LOCUS columns
+
+- Integrated Glen's `d37bd427` unchanged on its exact `d978b0c4` base. The TSS
+  exporter replaces only the LOCUS line emitted by `gb-io` with fixed-column
+  linear-DNA metadata; sequences, feature bodies and stored scores are untouched.
+- The existing synthetic plus/minus export test now asserts the LOCUS field
+  positions as well as strand/clipping round trips, raw peak scores and report
+  immutability. No parser-warning suppression or weakened validation is added.
+- Documented fresh-directory re-export and receipt refresh for earlier files;
+  the deterministic date remains an explicitly labelled placeholder. Glen's
+  reported real-data QC is not independent local or packaged-release acceptance.
+
 ## 2026-09-13 - Merge Glen's context fix and extend annotated TSS exports
 
 - Merged the complete reviewed Glen branch at `2f3ee696` through `d0762a20`,
