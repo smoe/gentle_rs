@@ -46,6 +46,18 @@ fn span_note(span: &TssContextSpan) -> String {
     )
 }
 
+fn canonical_locus_line(name: &str, length: usize) -> Result<String, EngineError> {
+    if !name.is_ascii() || name.len() > 16 {
+        return Err(invalid(
+            "GenBank LOCUS name must be ASCII and no longer than 16 characters",
+        ));
+    }
+    Ok(format!(
+        "LOCUS       {name:<16} {length:>11} bp    {:<7} {:<8} {:>3} {}\n",
+        "DNA", "linear", "UNK", "01-JAN-1970"
+    ))
+}
+
 pub(super) fn bytes(
     report: &TssProfileReport,
     window: &TssProfileWindow,
@@ -207,6 +219,12 @@ pub(super) fn bytes(
     let mut bytes = Vec::new();
     gb_io::writer::write(&mut bytes, &seq)
         .map_err(|e| io_error("write annotated TSS GenBank", e))?;
+    let first_newline = bytes
+        .iter()
+        .position(|byte| *byte == b'\n')
+        .ok_or_else(|| invalid("GenBank writer omitted the LOCUS line terminator"))?;
+    let locus = canonical_locus_line(seq.name.as_deref().unwrap_or("UNTITLED"), bases.len())?;
+    bytes.splice(..=first_newline, locus.bytes());
     Ok(bytes)
 }
 
@@ -267,6 +285,15 @@ mod tests {
         let before = serde_json::to_vec(&report).unwrap();
         for window in &report.windows {
             let data = bytes(&report, window).unwrap();
+            let locus =
+                std::str::from_utf8(data.split(|byte| *byte == b'\n').next().unwrap()).unwrap();
+            assert_eq!(locus.len(), 79);
+            assert_eq!(&locus[0..12], "LOCUS       ");
+            assert_eq!(&locus[41..43], "bp");
+            assert_eq!(&locus[47..54], "DNA    ");
+            assert_eq!(&locus[55..63], "linear  ");
+            assert_eq!(&locus[64..67], "UNK");
+            assert_eq!(&locus[68..79], "01-JAN-1970");
             let seq = gb_io::reader::SeqReader::new(data.as_slice())
                 .next()
                 .unwrap()
