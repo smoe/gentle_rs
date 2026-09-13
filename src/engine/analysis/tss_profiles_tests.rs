@@ -1270,6 +1270,7 @@ fn tp73_maximum_tail_survives_shared_engine_and_exported_tss_profile() {
     let receipt = crate::tss_profile_export::export_tss_profiles(
         &report,
         &ExportTssProfilesRequest {
+            genomic_motif_evidence: vec![],
             context_manifest: None,
             output_dir: directory.to_string_lossy().into_owned(),
             rendering: TssProfileRenderOptions {
@@ -1349,6 +1350,7 @@ fn two_tss_three_matrix_producer_exports_preserve_scores_pairs_and_receipt_bindi
     let receipt = crate::tss_profile_export::export_tss_profiles(
         &report,
         &ExportTssProfilesRequest {
+            genomic_motif_evidence: vec![],
             context_manifest: None,
             output_dir: directory.to_string_lossy().into_owned(),
             rendering: TssProfileRenderOptions::default(),
@@ -1649,6 +1651,7 @@ fn typed_compute_and_report_only_replay_export_all_formats_without_source_change
     let computed_output = output_root.join("computed");
     let replay_output = output_root.join("replayed");
     let export_request = |path: &std::path::Path| ExportTssProfilesRequest {
+        genomic_motif_evidence: vec![],
         context_manifest: None,
         output_dir: path.to_string_lossy().into_owned(),
         rendering: TssProfileRenderOptions::default(),

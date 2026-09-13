@@ -22,6 +22,9 @@ use svg::node::element::{Circle, Group, Line, Path, Rectangle, Text, Title};
 #[path = "tss_profiles_context.rs"]
 mod context;
 
+#[path = "tss_profiles_motif_evidence.rs"]
+mod motif_evidence;
+
 // Match the canonical locus-evidence page and its shared genomic plot frame.
 // This keeps detailed TSS pages horizontally registered with the context page
 // when both are viewed as one paginated report.
@@ -235,6 +238,7 @@ fn validate_report(
     report: &TssProfileReport,
     options: &TssProfileRenderOptions,
 ) -> Result<TssScaleMode, String> {
+    gentle_protocol::tss_motif_evidence::validate(report)?;
     if !(1..=MAX_PANELS_PER_PAGE).contains(&options.panels_per_page) {
         return Err("panels_per_page must be between 1 and 32".into());
     }
@@ -867,11 +871,13 @@ struct RowLayout<'a> {
     color: String,
     logo_top: f64,
     height: f64,
+    imported: motif_evidence::Lanes<'a>,
+    imported_top: f64,
 }
 
 impl<'a> RowLayout<'a> {
     fn new(
-        report: &TssProfileReport,
+        report: &'a TssProfileReport,
         window: &TssProfileWindow,
         matrix: &'a ResolvedTssMatrix,
         track: &'a TssProfileTrack,
@@ -944,6 +950,8 @@ impl<'a> RowLayout<'a> {
             + matrix.matrix_counts.len().div_ceil(LOGO_COLUMNS) as f64 * LOGO_SEGMENT_HEIGHT
             + 14.0;
         let right_height = PLOT_TOP + PLOT_HEIGHT + 24.0 + notes.height() + 14.0;
+        let imported_top = MIN_ROW_HEIGHT.max(left_height).max(right_height);
+        let imported = motif_evidence::Lanes::new(report, window, &track.accession);
         Ok(Self {
             matrix,
             track,
@@ -953,7 +961,9 @@ impl<'a> RowLayout<'a> {
             range,
             color: matrix_color(matrix, index)?,
             logo_top,
-            height: MIN_ROW_HEIGHT.max(left_height).max(right_height),
+            height: imported_top + imported.height(),
+            imported,
+            imported_top,
         })
     }
 
@@ -989,6 +999,7 @@ impl<'a> RowLayout<'a> {
                 .set("rx", 4)
                 .set("fill", "#f8fafb"),
         );
+        self.imported.draw(&mut row, axis, y + self.imported_top);
         self.label.draw(&mut row, MARGIN, y + 16.0, "matrix-label");
         self.identity.draw(
             &mut row,
@@ -1743,6 +1754,226 @@ mod tests {
     use svg::node::Attributes;
     use svg::parser::Event;
 
+    fn imported_fixture() -> TssProfileReport {
+        use gentle_protocol::genomic_motif_evidence::*;
+        use gentle_protocol::tss_profiles::{TssImportedMotifEvidence, TssInputBinding};
+        let mut report = fixture(10, 10, 1);
+        let g = &report.windows[0].record.geometry;
+        let low = g.start_1based - 1;
+        let hits = [(0, "+", 2.0), (6, "-", 8.0), (19, "+", -1.0)]
+            .into_iter()
+            .map(|(offset, strand, score)| GenomicMotifEvidenceHit {
+                interval_id: "query".into(),
+                chromosome: g.chromosome.clone(),
+                start_0based: low + offset,
+                end_0based_exclusive: low + offset + 3,
+                motif_id: "MA9000.1".into(),
+                strand: strand.into(),
+                score,
+                score_mode: "synthetic_raw_bits".into(),
+                ..Default::default()
+            })
+            .collect::<Vec<_>>();
+        report
+            .imported_motif_evidence
+            .push(TssImportedMotifEvidence {
+                source: TssInputBinding {
+                    role: "genomic_motif_evidence".into(),
+                    name: "synthetic.json".into(),
+                    sha256: "a".repeat(64),
+                },
+                report_sha256: "b".repeat(64),
+                report: GenomicMotifEvidenceReport {
+                    schema: GENOMIC_MOTIF_EVIDENCE_SCHEMA.into(),
+                    report_id: "synthetic-query".into(),
+                    availability: GenomicMotifEvidenceAvailability::Available,
+                    request: GenomicMotifEvidenceRequest {
+                        motif_ids: vec!["MA9000.1".into()],
+                        ..Default::default()
+                    },
+                    provider: Some(GenomicMotifEvidenceProviderProvenance {
+                        genome_id: report.reference.genome_id.clone(),
+                        assembly_name: Some(report.reference.assembly.clone()),
+                        coordinate_mode: "bed_0based_half_open".into(),
+                        score_mode: "synthetic_raw_bits".into(),
+                        run_id: "synthetic".into(),
+                        manifest_sha256: "a".repeat(64),
+                        ..Default::default()
+                    }),
+                    regions: vec![GenomicMotifEvidenceResolvedRegion {
+                        interval_id: "query".into(),
+                        resolved_chromosome: Some(g.chromosome.clone()),
+                        start_0based: low,
+                        end_0based_exclusive: g.end_1based,
+                        compatibility_status:
+                            GenomicMotifEvidenceCompatibilityStatus::ContigGeometryMatchedOnly,
+                        ..Default::default()
+                    }],
+                    motif_coverage: vec![GenomicMotifEvidenceMotifCoverage {
+                        motif_id: "MA9000.1".into(),
+                        status: GenomicMotifEvidenceCoverageStatus::CompleteForPackageRetention,
+                        source_minimum_score: Some(-2.0),
+                        returned_hit_count: hits.len(),
+                        ..Default::default()
+                    }],
+                    returned_hit_count: hits.len(),
+                    hits,
+                    query_complete: true,
+                    ..Default::default()
+                },
+            });
+        report
+    }
+
+    #[test]
+    fn tss_imported_triangles_preserve_footprints_scores_and_both_strand_conventions() {
+        use gentle_protocol::tss_motif_evidence::project;
+        let mut report = imported_fixture();
+        for strand in [TssStrand::Plus, TssStrand::Minus] {
+            report.windows[0].record.geometry.strand = strand;
+            let before = serde_json::to_value(&report).unwrap();
+            let source = &report.imported_motif_evidence[0].report;
+            let projected = project(source, &report.windows[0].record.geometry, "MA9000.1");
+            assert_eq!(projected.len(), 3);
+            if strand == TssStrand::Plus {
+                assert_eq!(
+                    (
+                        projected[0].start,
+                        projected[0].end,
+                        projected[0].local_strand
+                    ),
+                    (0, 3, TssStrand::Plus)
+                );
+                assert_eq!((projected[2].start, projected[2].end), (19, 21));
+            } else {
+                assert_eq!(
+                    (
+                        projected[0].start,
+                        projected[0].end,
+                        projected[0].local_strand
+                    ),
+                    (18, 21, TssStrand::Minus)
+                );
+                assert_eq!((projected[2].start, projected[2].end), (0, 2));
+            }
+            assert!(projected[2].clipped);
+            if strand == TssStrand::Plus {
+                assert_eq!((projected[2].full_start, projected[2].full_end), (19, 22));
+            } else {
+                assert_eq!((projected[2].full_start, projected[2].full_end), (-1, 2));
+            }
+            let svg = &render_tss_profile_pages(&report, &TssProfileRenderOptions::default())
+                .unwrap()[0]
+                .svg;
+            assert_eq!(svg.matches("data-role=\"imported-motif-hit\"").count(), 3);
+            assert!(svg.contains("data-score=\"-1\""));
+            assert!(svg.contains("genomic -"));
+            assert!(svg.contains("score 8"));
+            assert!(svg.contains("footprint clipped at window edge"));
+            assert!(svg.contains("data-score-min=\"-1\""));
+            assert!(svg.contains("data-score-max=\"8\""));
+            let mut heights = vec![];
+            for event in svg::read(svg).unwrap() {
+                if let Event::Tag("polygon", _, attrs) = event
+                    && attrs
+                        .get("data-role")
+                        .is_some_and(|v| v.to_string() == "imported-motif-hit")
+                {
+                    let xy = attrs["points"]
+                        .split_whitespace()
+                        .map(|p| {
+                            let (x, y) = p.split_once(',').unwrap();
+                            (x.parse::<f64>().unwrap(), y.parse::<f64>().unwrap())
+                        })
+                        .collect::<Vec<_>>();
+                    assert!(xy[2].0 > xy[0].0);
+                    assert!(attrs.contains_key("clip-path"));
+                    assert!((xy[2].0 - xy[0].0 - 3.0 * PLOT_WIDTH / 20.0).abs() < 1e-9);
+                    let up = attrs["data-local-strand"] == "+";
+                    assert_eq!(xy[1].1 < xy[0].1, up);
+                    heights.push((xy[1].1 - xy[0].1).abs());
+                }
+            }
+            assert!(heights[1] > heights[0]);
+            assert!((heights[2] - 2.0).abs() < 1e-9);
+            assert_eq!(serde_json::to_value(&report).unwrap(), before);
+        }
+    }
+
+    #[test]
+    fn tss_imported_sparse_and_partial_queries_do_not_imply_continuous_signal_or_absence() {
+        use gentle_protocol::tss_motif_evidence::covers_window;
+        let mut report = imported_fixture();
+        let r = &mut report.imported_motif_evidence[0].report;
+        let mut second = r.regions[0].clone();
+        let low = second.start_0based;
+        r.regions[0].end_0based_exclusive = low + 5;
+        second.interval_id = "second".into();
+        second.start_0based = low + 6;
+        r.regions.push(second);
+        r.hits[1].interval_id = "second".into();
+        r.hits[2].interval_id = "second".into();
+        assert!(!covers_window(r, &report.windows[0].record.geometry));
+        r.truncated = true;
+        r.query_complete = false;
+        let svg =
+            &render_tss_profile_pages(&report, &TssProfileRenderOptions::default()).unwrap()[0].svg;
+        assert!(svg.contains("PARTIAL window coverage"));
+        assert!(svg.contains("truncated true"));
+        assert!(svg.contains("Missing hits are not evidence of absence"));
+        assert!(!svg.contains("data-role=\"imported-motif-path\""));
+        let r = &mut report.imported_motif_evidence[0].report;
+        r.hits.clear();
+        r.returned_hit_count = 0;
+        r.motif_coverage[0].returned_hit_count = 0;
+        let svg =
+            &render_tss_profile_pages(&report, &TssProfileRenderOptions::default()).unwrap()[0].svg;
+        assert!(svg.contains("0 overlapping hit rows"));
+        assert!(!svg.contains("data-role=\"imported-motif-hit\""));
+    }
+
+    #[test]
+    fn tss_imported_triangle_scale_is_shared_across_windows_but_not_with_local_scores() {
+        let mut report = imported_fixture();
+        let mut other = report.windows[0].clone();
+        other.record.promoter_id = "second-tss".into();
+        other.record.geometry.start_1based += 12;
+        other.record.geometry.end_1based += 12;
+        other.record.geometry.tss_1based += 12;
+        report.windows.push(other);
+        let pages = render_tss_profile_pages(&report, &TssProfileRenderOptions::default()).unwrap();
+        assert_eq!(pages.len(), 2);
+        for page in pages {
+            assert!(page.svg.contains("data-score-max=\"8\""));
+            assert!(page.svg.contains("data-score-min=\"-1\""));
+        }
+        report.imported_motif_evidence[0].report.hits[0].score = f64::INFINITY;
+        assert!(render_tss_profile_pages(&report, &TssProfileRenderOptions::default()).is_err());
+    }
+
+    #[test]
+    #[ignore = "Explicit synthetic visual review writer; no scientific artifacts"]
+    fn write_tss_imported_triangle_preview() {
+        let mut report = imported_fixture();
+        let root = std::env::temp_dir().join(format!(
+            "gentle-imported-motif-preview-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        for strand in [TssStrand::Plus, TssStrand::Minus] {
+            report.windows[0].record.geometry.strand = strand;
+            let pages =
+                render_tss_profile_pages(&report, &TssProfileRenderOptions::default()).unwrap();
+            let path = root.join(if strand == TssStrand::Plus {
+                "plus.svg"
+            } else {
+                "minus.svg"
+            });
+            std::fs::write(&path, &pages[0].svg).unwrap();
+            println!("{}", path.display());
+        }
+    }
+
     // Hand-crafted synthetic reports only, recreated by fixture(). No source
     // sequences, biological observations, real accession PFMs or external files
     // are used. They exercise this renderer, not the engine's scoring formulas.
@@ -1783,6 +2014,7 @@ mod tests {
             }
         }).collect();
         TssProfileReport {
+            imported_motif_evidence: vec![],
             schema: REPORT_SCHEMA.into(),
             reference: TssReference {
                 genome_id: "synthetic_genome".into(),

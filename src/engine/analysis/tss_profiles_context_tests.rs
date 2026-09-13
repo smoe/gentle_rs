@@ -487,6 +487,7 @@ fn tss_context_export_is_read_only_hash_bound_and_replays_without_source_files()
     let before = serde_json::to_value(engine.state()).unwrap();
     let output = root.join("output");
     let request = ExportTssProfilesRequest {
+        genomic_motif_evidence: vec![],
         output_dir: output.to_str().unwrap().into(),
         context_manifest: Some(manifest_path.to_str().unwrap().into()),
         rendering: Default::default(),

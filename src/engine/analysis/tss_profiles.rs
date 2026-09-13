@@ -10,6 +10,9 @@ use gentle_protocol::tss_profiles::*;
 #[path = "tss_profiles_context.rs"]
 mod context;
 
+#[path = "tss_profiles_motif_evidence.rs"]
+mod motif_evidence;
+
 #[cfg(test)]
 #[path = "tss_profiles_tests.rs"]
 mod tests;
@@ -91,9 +94,29 @@ impl GentleEngine {
             })?;
             enriched = Some(report);
         }
+        if !request.genomic_motif_evidence.is_empty() {
+            let report = enriched.get_or_insert_with(|| report.clone());
+            let label = report.panel_resolution.panel.label.clone();
+            motif_evidence::attach(report, &request.genomic_motif_evidence, &mut || {
+                Self::emit_tfbs_score_track_progress(
+                    on_progress,
+                    &label,
+                    "",
+                    1,
+                    1,
+                    1,
+                    1,
+                    "imported motif evidence",
+                    "verifying saved query reports without rescoring",
+                    0,
+                    1,
+                )
+            })?;
+        }
         let report = enriched.as_ref().unwrap_or(report);
         let mut resolved = request.clone();
         resolved.context_manifest = None;
+        resolved.genomic_motif_evidence.clear();
         let receipt = crate::tss_profile_export::export_tss_profiles_with_cancel(
             report,
             &resolved,
@@ -416,6 +439,7 @@ impl GentleEngine {
             sha256: resolution.panel_sha256.clone(),
         });
         Ok(TssProfileReport {
+            imported_motif_evidence: vec![],
             schema: REPORT_SCHEMA.into(),
             reference: bundle.reference,
             panel_resolution: resolution,

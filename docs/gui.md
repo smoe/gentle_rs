@@ -22,6 +22,9 @@ exon/CDS structure, annotated translation boundaries and TATA evidence above the
 detail-page scores. No new wizard is required; see the
 [offline context example](tss_tfbs_profiles.md#cutrun-gene-structure-and-tata-context).
 SVG hover details remain available alongside printable coordinate summaries.
+The same Shell routes accept repeated `--genomic-motif-evidence FILE` for
+[imported-hit triangles](tss_tfbs_profiles.md#imported-duckdb-motif-hits) in
+detailed exported plots. This does not replace the native viewer's strip overlay.
 `--formats svg,genbank,embl` also exports [annotated TSS windows](tss_tfbs_profiles.md#annotated-tss-sequences)
 for the normal sequence-file importer; this does not claim a new native TSS viewer.
 Use `--scale-mode shared_across_tss` for the same accession's common Y range

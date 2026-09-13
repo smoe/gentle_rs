@@ -47,6 +47,16 @@ exports one annotated record per promoter through the shared engine, and binds
 the files and promoter-to-file index in the receipt. No scoring or biological
 inference is performed during export. See [annotated TSS sequences](tss_tfbs_profiles.md#annotated-tss-sequences).
 
+Optional `ExportTssProfilesRequest.genomic_motif_evidence: [FILE, ...]` attaches
+saved `gentle.genomic_motif_evidence.v1` reports without querying or rescoring.
+The additive `TssProfileReport.imported_motif_evidence[]` preserves each original
+query plus source-file and canonical-report SHA-256 bindings; legacy reports
+omit the empty field. Replay requests omit resolved paths. Separate triangle
+lanes and `imported-motif-hits.tsv` share the checked genomic-to-local projection,
+raw provider scores, strand and clipping semantics. Available-source/reference,
+region/accession and digest checks fail closed. See [scales, labels, limits and
+non-claims](tss_tfbs_profiles.md#imported-duckdb-motif-hits).
+
 ## Measured Gel Images (`.11` Development)
 
 - `ImportGelImage { request: { image_id, path, tiff_page? } }` stores original

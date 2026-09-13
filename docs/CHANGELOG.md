@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## 2026-09-13 - Imported Motif Triangles In Detailed TSS Plots
+
+- Added explicit saved DuckDB-query report attachment through both shared TSS
+  export routes, preserving original evidence, source hashes and local scores.
+- Detailed matrix rows gain separate score-scaled triangles: base = TFBS span,
+  up/down = displayed strand, with original genomic direction, bp and scores
+  in hover/print labels and a complete receipt-bound hit TSV. Partial spans,
+  clipping, retention floors and truncation remain visible, not negative calls.
+- Added synthetic projection, sparse/partial-query, source rejection, shared
+  scale and export/replay tests. This does not update existing figures or add
+  triangles to the full-locus overview/native viewer; real-package figure
+  acceptance remains a separate regeneration task.
+
 ## 2026-09-13 - Peer GenBank and EMBL Annotated Exports
 
 - Added EMBL to shared `SaveFile`, capability discovery and the viewer export

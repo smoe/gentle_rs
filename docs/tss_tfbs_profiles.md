@@ -45,6 +45,80 @@ source sequences. Both are conservatively classified as external effects,
 because they may publish files. Input availability and scientific compatibility
 are validated at execution, not inferred from an empty project's readiness.
 
+## Imported DuckDB Motif Hits
+
+Both TSS commands accept repeated `--genomic-motif-evidence FILE` arguments.
+Each file is a saved `gentle.genomic_motif_evidence.v1` query report from
+`features genomic-motif-evidence`, not a DuckDB database, dense score array or
+reduced cofactor-package summary. First query the optional jaspar-mapping
+package for the explicit genomic intervals and exact matrix accessions you want;
+then attach those reports when exporting. The export does **not** run DuckDB,
+rescore hits or modify GENtle's local PWM arrays/comparisons.
+
+For each TSS, take the report's `geometry.chromosome` unchanged and query the
+ascending BED interval `[start_1based - 1, end_1based)`, on **both** gene strands.
+Use the report's exact panel accessions and `reference.genome_id`, not factor
+names or a guessed assembly alias. The existing query route is documented in
+the [CLI manual](cli.md); `--path` writes the standalone report required here.
+Retain its limits/coverage diagnostics and narrow or repeat a truncated query
+before treating the retained hit list as complete under its declared policy.
+
+```sh
+gentle_cli features tss-tfbs-profiles-export \
+  --report /path/to/scored/report.json \
+  --genomic-motif-evidence /path/to/cd44.motif-evidence.json \
+  --genomic-motif-evidence /path/to/tgfb1.motif-evidence.json \
+  --output-dir /fresh/tss-with-imported-hits --formats svg,pdf
+```
+
+Each exact matrix gets a **separate imported-hit lane** below its local score
+trace. An upward triangle is a hit on the displayed sequence's forward strand;
+a downward triangle is reverse. On a minus-strand TSS window, genomic `+` thus
+points down. Labels retain **both** local and genomic direction. The triangle's
+base covers the hit's actual base interval. Dashed outlines mark clipping at
+the window edge; labels and TSV retain the full original genomic interval.
+Clipping preserves the original triangle geometry rather than recentering it;
+an off-window apex stays off-window. The apex is the full interval midpoint,
+not a newly inferred binding position.
+
+Height uses the source's **raw score**, on a separate range per source report
+and exact accession, shared across all its TSS windows and both strands. The
+range includes zero and the source report's minimum/maximum retained scores.
+Height maps that range linearly, with a labelled 2-pixel visibility floor for
+the minimum/zero score; a negative score does not reverse the strand triangle.
+These heights are **not** GENtle's background-tail scores, percentiles,
+occupancy, binding probability or cross-provider calibration. Numeric ranges
+and the source score mode are printed alongside the triangles.
+
+All triangles retain SVG hover details with bp span, raw score and direction.
+The first 12 input-order hits per lane also receive numbered printable labels;
+the explicit count prevents that subset from looking complete. Dense hits
+remain separate translucent triangles, never a connected plateau.
+`imported-motif-hits.tsv` lists every displayed hit, including original bp span,
+both strands, raw score/mode, query interval, clipped local span and source hash.
+The original report (including off-window/unselected-matrix hits, thresholds,
+coverage, source hashes and warnings) stays in `report.json`.
+
+Admission requires available query reports with exact genome ID and assembly
+name/accession, internally consistent regions/hits, and matching motif widths
+for the selected matrix versions. Chromosome names are matched exactly: no
+contig aliases, liftover or matrix aliases are inferred. Declared geometry is
+not independent sequence authentication. Partial query coverage, storage floors,
+density limits and row truncation remain conspicuous; no hit is **not** evidence
+of absence. An unqueried matrix/window is labelled, not filled with zero scores.
+
+The engine binds source-file and canonical report hashes. Enriched exports can
+be replayed without the original files by using their `report.json` and omitting
+the attachment options; changed evidence must be attached to the original
+score report and exported into a fresh directory. No old publication is edited.
+Limits are 64 reports, 100,000 total retained rows, 32 MiB per input file and
+64 MiB total new input. Oversized pages fail rather than shrinking labels or
+silently dropping evidence. This slice extends detailed TSS documents and the
+integrated PDFs that use them; it does not retrofit the full-locus overview or
+the interactive DNA viewer's existing strip overlay. GenBank/EMBL feature
+exports remain unchanged: imported hits are retained in the report/TSV and
+plots, not automatically materialized as sequence annotations.
+
 ## CUT&RUN, Gene Structure And TATA Context
 
 Add `--context-manifest FILE` to either command above to put context on each

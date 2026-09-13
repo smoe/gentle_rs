@@ -281,6 +281,7 @@ mod tests {
         let root = fs::canonicalize(temp.path()).unwrap();
         let output = root.join("export");
         let request = ExportTssProfilesRequest {
+            genomic_motif_evidence: vec![],
             output_dir: output.to_str().unwrap().into(),
             context_manifest: None,
             rendering: Default::default(),
@@ -369,6 +370,7 @@ mod tests {
         {
             let output = root.join(format!("formats-{case}"));
             let request = ExportTssProfilesRequest {
+                genomic_motif_evidence: vec![],
                 output_dir: output.to_str().unwrap().into(),
                 context_manifest: None,
                 rendering: Default::default(),
@@ -495,6 +497,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let root = fs::canonicalize(temp.path()).unwrap();
         let request = ExportTssProfilesRequest {
+            genomic_motif_evidence: vec![],
             output_dir: root.join("valid").to_str().unwrap().into(),
             context_manifest: None,
             rendering: Default::default(),

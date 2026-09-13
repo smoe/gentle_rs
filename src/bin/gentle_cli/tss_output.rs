@@ -249,6 +249,7 @@ mod tests {
         let reexport = Operation::ExportTssTfbsProfiles {
             report: result.tss_tfbs_profiles.unwrap(),
             request: gentle_protocol::tss_profiles::ExportTssProfilesRequest {
+                genomic_motif_evidence: vec![],
                 context_manifest: None,
                 output_dir: root.join("reexport").to_str().unwrap().into(),
                 rendering: Default::default(),

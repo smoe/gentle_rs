@@ -7,12 +7,17 @@ pub(super) fn parse_tss_profiles_command(tokens: &[String]) -> Result<ShellComma
     let export_only = tokens.get(1).map(String::as_str) == Some("tss-tfbs-profiles-export");
     let mut values = BTreeMap::new();
     let mut fasta = vec![];
+    let mut genomic_motif_evidence = vec![];
     let mut index = 2;
     while index < tokens.len() {
         let flag = tokens[index].as_str();
         let allowed = match flag {
-            "--output-dir" | "--formats" | "--scale-mode" | "--panels-per-page"
-            | "--context-manifest" => true,
+            "--output-dir"
+            | "--formats"
+            | "--scale-mode"
+            | "--panels-per-page"
+            | "--context-manifest"
+            | "--genomic-motif-evidence" => true,
             "--report" => export_only,
             "--manifest"
             | "--panel"
@@ -34,6 +39,8 @@ pub(super) fn parse_tss_profiles_command(tokens: &[String]) -> Result<ShellComma
             .clone();
         if flag == "--fasta" {
             fasta.push(value);
+        } else if flag == "--genomic-motif-evidence" {
+            genomic_motif_evidence.push(value);
         } else if values.insert(flag.to_string(), value).is_some() {
             return Err(format!("Duplicate option {flag}"));
         }
@@ -83,6 +90,7 @@ pub(super) fn parse_tss_profiles_command(tokens: &[String]) -> Result<ShellComma
         }
     }
     let export = ExportTssProfilesRequest {
+        genomic_motif_evidence,
         context_manifest: values.get("--context-manifest").cloned(),
         output_dir: required("--output-dir")?,
         rendering: TssProfileRenderOptions {
@@ -160,6 +168,31 @@ mod tests {
             export.rendering.scale_mode,
             Some(TssScaleMode::SharedAcrossTss)
         );
+    }
+
+    #[test]
+    fn tss_profiles_parser_keeps_repeated_imported_evidence_and_advertises_it() {
+        let ShellCommand::Op { payload } = parse("features tss-tfbs-profiles --manifest m --panel p --expected-genome-id g --output-dir out --genomic-motif-evidence a.json --genomic-motif-evidence b.json").unwrap() else { panic!("op") };
+        let Operation::ComputeTssTfbsProfiles { export, .. } =
+            serde_json::from_str(&payload).unwrap()
+        else {
+            panic!("compute")
+        };
+        assert_eq!(export.unwrap().genomic_motif_evidence, ["a.json", "b.json"]);
+        for id in [
+            "features tss-tfbs-profiles",
+            "features tss-tfbs-profiles-export",
+            "ComputeTssTfbsProfiles",
+            "ExportTssTfbsProfiles",
+        ] {
+            assert!(
+                tss_profile_capability_descriptor(id, false)["args"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|arg| arg["name"] == "GENOMIC_MOTIF_EVIDENCE")
+            );
+        }
     }
 
     #[test]

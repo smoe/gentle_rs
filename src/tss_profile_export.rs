@@ -31,6 +31,7 @@ const RECEIPT_FILE: &str = "receipt.json";
 const REQUEST_FILE: &str = "export-request.json";
 const README_FILE: &str = "README.md";
 const COMPARISON_FILE: &str = "comparisons.tsv";
+const IMPORTED_HITS_FILE: &str = "imported-motif-hits.tsv";
 const MAX_WINDOWS: usize = 4_096;
 const MAX_MATRICES: usize = 256;
 const MAX_MOTIF_BP: usize = 64;
@@ -349,6 +350,20 @@ fn validate_peak(peak: &TssPeak, scores: &[Option<f64>]) -> Result<(), EngineErr
 /// Every same-factor matrix pair requires both strand comparisons with counts
 /// matching the supplied validity masks. Correlation values are not recomputed.
 pub fn validate_tss_profile_report(report: &TssProfileReport) -> Result<(), EngineError> {
+    gentle_protocol::tss_motif_evidence::validate(report).map_err(invalid)?;
+    for source in &report.imported_motif_evidence {
+        validate_bindings(std::slice::from_ref(&source.source))?;
+        if source.source.role != "genomic_motif_evidence"
+            || source.report_sha256
+                != sha256_hex_bytes(
+                    &serde_json::to_vec(&source.report).map_err(|e| invalid(e.to_string()))?,
+                )
+        {
+            return Err(invalid(
+                "Imported motif evidence content hash or source role mismatch",
+            ));
+        }
+    }
     if report.schema != REPORT_SCHEMA || report.panel_resolution.panel.schema != PANEL_SCHEMA {
         return Err(invalid("unsupported report or panel schema"));
     }
@@ -733,6 +748,8 @@ struct GeneReport<'a> {
     reference: &'a TssReference,
     panel_resolution: &'a TssPanelResolution,
     inputs: &'a [TssInputBinding],
+    #[serde(skip_serializing_if = "<[TssImportedMotifEvidence]>::is_empty")]
+    imported_motif_evidence: &'a [TssImportedMotifEvidence],
     windows: &'a [&'a TssProfileWindow],
     #[serde(skip_serializing_if = "Option::is_none")]
     source: Option<&'a TssBundleSource>,
@@ -753,6 +770,7 @@ impl<'a> GeneReport<'a> {
             reference: &report.reference,
             panel_resolution: &report.panel_resolution,
             inputs: &report.inputs,
+            imported_motif_evidence: &report.imported_motif_evidence,
             windows: &gene.windows,
             source: report.source.as_ref(),
             producer_revision: &report.producer_revision,
@@ -1227,12 +1245,56 @@ impl Inventory<'_> {
     }
 }
 
+fn imported_hits_tsv(report: &TssProfileReport) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::from(
+        "promoter_id\treport_id\tsource_sha256\tquery_interval_id\tmatrix\tchromosome\tgenomic_start_1based\tgenomic_end_1based\tgenomic_strand\tlocal_strand\tvisible_start_0based\tvisible_end_exclusive\tclipped\tscore\tscore_mode\tpwm_relative_score\n",
+    );
+    for window in &report.windows {
+        for source in &report.imported_motif_evidence {
+            for track in &window.tracks {
+                for projected in gentle_protocol::tss_motif_evidence::project(
+                    &source.report,
+                    &window.record.geometry,
+                    &track.accession,
+                ) {
+                    let hit = projected.hit;
+                    let _ = writeln!(
+                        out,
+                        "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                        tsv(&window.record.promoter_id),
+                        tsv(&source.report.report_id),
+                        source.source.sha256,
+                        tsv(&hit.interval_id),
+                        tsv(&hit.motif_id),
+                        tsv(&hit.chromosome),
+                        hit.start_0based + 1,
+                        hit.end_0based_exclusive,
+                        hit.strand,
+                        projected.local_strand.as_str(),
+                        projected.start,
+                        projected.end,
+                        projected.clipped,
+                        hit.score,
+                        tsv(&hit.score_mode),
+                        hit.pwm_relative_score
+                            .map(|s| s.to_string())
+                            .unwrap_or_default()
+                    );
+                }
+            }
+        }
+    }
+    out
+}
+
 fn input_bindings(report: &TssProfileReport) -> Result<Vec<TssInputBinding>, EngineError> {
     let mut bindings = BTreeMap::new();
     for binding in report
         .inputs
         .iter()
         .chain(&report.panel_resolution.registry_sources)
+        .chain(report.imported_motif_evidence.iter().map(|e| &e.source))
         .chain(
             report
                 .windows
@@ -1647,6 +1709,11 @@ fn write_page(
 }
 
 fn readme(report: &TssProfileReport) -> Result<String, EngineError> {
+    let identity_policy = if report.imported_motif_evidence.is_empty() {
+        "No timestamps or staging/host paths enter the result identity."
+    } else {
+        "No new timestamps or staging/destination paths enter the result identity. Original query-provider paths are retained verbatim inside imported evidence and are bound as supplied."
+    };
     let source = report.source.as_ref();
     let assessed = |value: Option<&str>| value.map(tsv).unwrap_or_else(|| "not_assessed".into());
     let provenance = format!(
@@ -1690,6 +1757,9 @@ identities are copied from the report, not independently reverified against orig
     }
     if !report.windows.iter().any(|window| window.selected) {
         descriptions.push_str("No TSS is marked selected in the supplied report.\n");
+    }
+    if !report.imported_motif_evidence.is_empty() {
+        descriptions.push_str("\n## Imported Motif Evidence\n\nThe original saved sparse-package reports are embedded in report.json, bound by source-file and canonical-report SHA-256. No DuckDB query or scoring was performed by export.\n\nTriangle bases cover hit intervals; up/down indicates strand relative to the displayed sequence, not score sign. Genomic direction, full bp spans and raw imported scores are retained. Heights use the separately labelled source/report/matrix range across TSSs, with a 2-pixel visibility floor. They are not local PWM/tail scores or binding probabilities.\n\nEvery triangle has SVG hover details. The first 12 input-order hit rows per lane have printable labels; imported-motif-hits.tsv contains ALL displayed rows, their clipping status and source hashes. No connected line or zero-filled trace is inferred from sparse hits. Missing hits, partial query coverage, retention floors and truncation are not evidence of absence. Declared genome/assembly checks do not independently authenticate sequence bytes.\n");
     }
     Ok(format!(
         "# TSS TFBS Profile Export\n\n\
@@ -1761,7 +1831,7 @@ Producer revision: {}\n\
 Exporter revision: {}\n\
 Receipt executable_sha256 hashes the running exporter executable. Receipt lockfile_sha256 hashes\n\
 the exporter build's embedded Cargo.lock; index.json separately retains the producer lockfile digest.\n\
-No timestamps or staging/host paths enter the result identity. report_sha256 hashes the exact\n\
+{identity_policy} report_sha256 hashes the exact\n\
 compact report.json bytes. The receipt binds all published files except receipt.json itself.\n\
 The index hashes neither itself nor the receipt, avoiding a circular hash. Verification checks\n\
 the complete inventory, file hashes and report bindings; it is not a digital signature or proof\n\
@@ -1792,9 +1862,9 @@ pub fn export_tss_profiles_with_cancel(
     should_continue: &mut dyn FnMut() -> bool,
 ) -> Result<TssProfileReceipt, EngineError> {
     checkpoint(should_continue)?;
-    if request.context_manifest.is_some() {
+    if request.context_manifest.is_some() || !request.genomic_motif_evidence.is_empty() {
         return Err(invalid(
-            "Resolve context_manifest through the shared TSS export operation before rendering",
+            "Resolve context_manifest/genomic_motif_evidence through the shared TSS export operation before rendering",
         ));
     }
     preflight_tss_export(request)?;
@@ -1834,6 +1904,7 @@ pub fn export_tss_profiles_with_cancel(
     inventory.json(REPORT_FILE, report)?;
     let report_sha256 = inventory.hashes[REPORT_FILE].clone();
     let portable_request = ExportTssProfilesRequest {
+        genomic_motif_evidence: vec![],
         context_manifest: None,
         output_dir: ".".into(),
         rendering: request.rendering.clone(),
@@ -1844,6 +1915,9 @@ pub fn export_tss_profiles_with_cancel(
     inventory.write(COMPARISON_FILE, |writer| {
         write_comparisons(writer, report, &report.windows)
     })?;
+    if !report.imported_motif_evidence.is_empty() {
+        inventory.bytes(IMPORTED_HITS_FILE, imported_hits_tsv(report).as_bytes())?;
+    }
     let mut gene_index = Vec::new();
     let mut render_metadata = Vec::new();
     for gene in &genes {
@@ -2170,6 +2244,15 @@ pub fn verify_tss_profile_receipt(
     .into_iter()
     .map(str::to_owned)
     .collect::<BTreeSet<_>>();
+    if !report.imported_motif_evidence.is_empty() {
+        expected.insert(IMPORTED_HITS_FILE.into());
+        if fs::read(output.join(IMPORTED_HITS_FILE))
+            .map_err(|e| io_error("read imported hits TSV", e))?
+            != imported_hits_tsv(&report).as_bytes()
+        {
+            return Err(invalid("Imported hits TSV differs from the bound evidence"));
+        }
+    }
     let mut image_files = BTreeSet::new();
     let mut page_count = 0usize;
     for (entry, gene) in index.genes.iter().zip(&genes) {
@@ -2464,6 +2547,7 @@ pub(crate) mod tests {
             }
         }).collect();
         TssProfileReport {
+            imported_motif_evidence: vec![],
             schema: REPORT_SCHEMA.into(),
             reference: TssReference {
                 genome_id: "synthetic-genome".into(),
@@ -2536,6 +2620,7 @@ pub(crate) mod tests {
 
     fn request(root: &Path, name: &str) -> ExportTssProfilesRequest {
         ExportTssProfilesRequest {
+            genomic_motif_evidence: vec![],
             context_manifest: None,
             output_dir: root.join(name).to_str().unwrap().into(),
             rendering: TssProfileRenderOptions::default(),
@@ -3452,6 +3537,7 @@ pub(crate) mod tests {
         let (_temp, root) = temporary_root();
         let output = root.join("pdf-export");
         let request = ExportTssProfilesRequest {
+            genomic_motif_evidence: vec![],
             context_manifest: None,
             output_dir: output.to_str().unwrap().into(),
             rendering: TssProfileRenderOptions::default(),
@@ -3490,6 +3576,7 @@ pub(crate) mod tests {
         let output_dir = std::env::var("GENTLE_TSS_EXPORT_EXAMPLE_DIR")
             .expect("set GENTLE_TSS_EXPORT_EXAMPLE_DIR");
         let request = ExportTssProfilesRequest {
+            genomic_motif_evidence: vec![],
             context_manifest: None,
             output_dir,
             rendering: TssProfileRenderOptions::default(),

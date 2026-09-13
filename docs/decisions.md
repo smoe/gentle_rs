@@ -891,6 +891,11 @@ contract proves cross-source calibration. In the current providers this is a
 material estimator difference, not merely a naming concern: sparse JASPAR
 packages declare additive per-base pseudocounts while GENtle's local smoother
 uses its own finite-sample estimator, so zero-count cells can diverge sharply.
+Detailed TSS exports may attach saved query reports, retaining source-file and
+canonical-report hashes. Triangle orientation follows the displayed sequence,
+not the sign of the score; original genomic strand remains explicit. Footprints
+are clipped only for display, raw imported scores use their own labelled scale,
+and an unqueried or sparsely retained interval never becomes measured zero.
 Every report states per-motif
 retention-floor completeness, density limiting, row truncation, and genome
 compatibility. Contig aliases and geometry alone may support a

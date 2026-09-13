@@ -18,6 +18,9 @@ These shared-parser routes also work in the GUI Shell and through typed MCP
 Both accept `--context-manifest FILE` for sequence-verified CUT&RUN/chromatin,
 exon/CDS/translation-marker and TATA rows on detailed pages, without rescoring.
 See the [context example and input contract](tss_tfbs_profiles.md#cutrun-gene-structure-and-tata-context).
+Repeat `--genomic-motif-evidence FILE` to attach saved DuckDB-query reports as
+separate [strand/span/score triangle lanes](tss_tfbs_profiles.md#imported-duckdb-motif-hits)
+and a complete imported-hit TSV, without rescoring or querying the package.
 Both commands accept `--scale-mode independent|shared|shared_across_tss`.
 `--formats svg,genbank,embl` additionally exports annotated, sequence-verified TSS
 windows; [requirements and legacy replay](tss_tfbs_profiles.md#annotated-tss-sequences).

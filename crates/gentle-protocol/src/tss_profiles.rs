@@ -433,6 +433,9 @@ pub struct TssProfileReport {
     pub reference: TssReference,
     pub panel_resolution: TssPanelResolution,
     pub inputs: Vec<TssInputBinding>,
+    /// Original sparse-package query reports, never merged into local score arrays.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub imported_motif_evidence: Vec<TssImportedMotifEvidence>,
     pub windows: Vec<TssProfileWindow>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<TssBundleSource>,
@@ -444,6 +447,15 @@ pub struct TssProfileReport {
     pub verification: String,
     pub warnings: Vec<String>,
     pub non_claims: String,
+}
+
+/// A saved DuckDB query result bound by both source-file and canonical report hashes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TssImportedMotifEvidence {
+    pub source: TssInputBinding,
+    pub report_sha256: String,
+    pub report: crate::genomic_motif_evidence::GenomicMotifEvidenceReport,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -507,6 +519,9 @@ pub struct ExportTssProfilesRequest {
     /// Shared engine operations resolve this path; exported replay requests omit it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_manifest: Option<String>,
+    /// Saved GenomicMotifEvidenceReport JSON files. No query or rescoring during export.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub genomic_motif_evidence: Vec<String>,
     #[serde(default)]
     pub rendering: TssProfileRenderOptions,
     #[serde(default = "svg_format")]
