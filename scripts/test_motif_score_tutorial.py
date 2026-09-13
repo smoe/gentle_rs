@@ -150,10 +150,60 @@ class MotifScoreTutorialSourceTests(unittest.TestCase):
                      "shared_across_tss", "float32", "0.95", "4^-16",
                      "prepared package", "binding probability"]:
             self.assertIn(term.lower(), text.lower())
-        for stale in ["promoter_design_artifact_slice_offline",
-                      "promoter_gene_set_ortholog_cohort_offline",
-                      "gene_set_ortholog_promoter_cohorts_offline"]:
-            self.assertIn(stale, text)
+        for refreshed in ["promoter_design_artifact_slice_offline",
+                          "promoter_gene_set_ortholog_cohort_offline",
+                          "gene_set_ortholog_promoter_cohorts_offline"]:
+            self.assertIn(refreshed, text)
+
+    def test_generated_cohort_tracks_use_corrected_background_tails(self):
+        artifacts = ROOT / "docs/tutorial/generated/artifacts"
+        paths = [
+            "promoter_gene_set_ortholog_cohort_offline/artifacts/"
+            "promoter_cohort_ortholog_demo/gene_set_promoter_cohort_comparison.json",
+            "gene_set_ortholog_promoter_cohorts_offline/artifacts/"
+            "promoter_cohort_tutorial.gene_set_promoter_comparison.json",
+        ]
+
+        def score_reports(value):
+            if isinstance(value, dict):
+                if value.get("schema") == "gentle.tfbs_score_tracks.v1":
+                    yield value
+                for child in value.values():
+                    yield from score_reports(child)
+            elif isinstance(value, list):
+                for child in value:
+                    yield from score_reports(child)
+
+        for relative in paths:
+            with self.subTest(report=relative):
+                reports = list(score_reports(json.loads(
+                    (artifacts / relative).read_text(encoding="utf-8"))))
+                self.assertTrue(reports, "expected embedded shared-engine TFBS reports")
+                for report in reports:
+                    self.assertEqual(report["score_kind"], "llr_background_tail_log10")
+                    self.assertTrue(report["tracks"])
+                    for track in report["tracks"]:
+                        reference = track["normalization_reference"]
+                        self.assertEqual(reference["chance_model"],
+                                         "uniform_iid_quantized_conservative_survival_v2")
+                        tail = reference["observed_peak_modeled_tail_probability"]
+                        self.assertGreater(tail, 0.0)
+                        self.assertLessEqual(tail, 1.0)
+                        self.assertAlmostEqual(reference["observed_peak_modeled_tail_log10"],
+                                               -math.log10(tail), places=11)
+                        bound = track["motif_length_bp"] * math.log10(4.0)
+                        for strand in ["forward_scores", "reverse_scores"]:
+                            scores = [value for value in track[strand] if value is not None]
+                            self.assertTrue(scores)
+                            for value in scores:
+                                self.assertTrue(math.isfinite(value))
+                                self.assertGreaterEqual(value, 0.0)
+                                self.assertLessEqual(value, bound + 1e-10)
+
+        svg = (artifacts / "promoter_design_artifact_slice_offline/artifacts/"
+               "tp73_promoter_artifact_demo.tfbs_score_tracks.svg").read_text(encoding="utf-8")
+        self.assertIn("chance_model=uniform_iid_quantized_conservative_survival_v2", svg)
+        self.assertNotIn("chance_model=quantized_iid_uniform_window_dp", svg)
 
     def test_committed_shared_engine_output_is_receipt_bound(self):
         generated = REPRO / "generated"

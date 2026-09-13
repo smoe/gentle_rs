@@ -129,7 +129,7 @@
       "transcript_id": "TX_HUMAN_TP73",
       "tf_id": "MA0079.5",
       "tf_name": "SP1",
-      "max_score": 5.418539921951662,
+      "max_score": 5.418539921951661,
       "peak_position_0based": 11,
       "peak_position_promoter_relative_bp": -29,
       "peak_genomic_position_1based": 122,
@@ -171,7 +171,7 @@
       "gene_labels": [
         "TP73"
       ],
-      "max_score": 5.418539921951662,
+      "max_score": 5.418539921951661,
       "peak_positions_promoter_relative_bp": [
         -29
       ]
