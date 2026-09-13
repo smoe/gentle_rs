@@ -1086,23 +1086,7 @@ impl<'a> RowLayout<'a> {
                 .set("stroke", "#81939c")
                 .set("stroke-dasharray", "3 3"),
         );
-        let mut isolated_points = Group::new();
-        for (strand, scores) in [
-            (TssStrand::Plus, &self.track.forward_scores),
-            (TssStrand::Minus, &self.track.reverse_scores),
-        ] {
-            isolated_points.append(draw_trace(
-                &mut row,
-                scores,
-                self.range,
-                axis,
-                top,
-                &self.color,
-                strand,
-                geometry.strand,
-                clip,
-            ));
-        }
+        // Guides must sit behind data: a halo painted last erases narrow TSS peaks.
         let tss = axis.x(geometry.upstream_bp as f64);
         row.append(
             Line::new()
@@ -1122,11 +1106,81 @@ impl<'a> RowLayout<'a> {
                 .set("x2", tss)
                 .set("y1", top)
                 .set("y2", top + PLOT_HEIGHT)
-                .set("stroke", "#172e3c")
-                .set("stroke-width", 2.5)
+                .set("stroke", "#8296a0")
+                .set("stroke-width", 1.0)
+                .set("stroke-dasharray", "2 4")
                 .add(Title::new("0 bp: annotated transcript-start candidate")),
         );
+        row.append(
+            Line::new()
+                .set("data-role", "tss-top-tick")
+                .set("x1", tss)
+                .set("x2", tss)
+                .set("y1", top - 5.0)
+                .set("y2", top)
+                .set("stroke", "#172e3c")
+                .set("stroke-width", 2.5),
+        );
+        let mut isolated_points = Group::new();
+        for (strand, scores) in [
+            (TssStrand::Plus, &self.track.forward_scores),
+            (TssStrand::Minus, &self.track.reverse_scores),
+        ] {
+            isolated_points.append(draw_trace(
+                &mut row,
+                scores,
+                self.range,
+                axis,
+                top,
+                &self.color,
+                strand,
+                geometry.strand,
+                clip,
+            ));
+        }
         row.append(isolated_points);
+        for (strand, peak) in [
+            (TssStrand::Plus, &self.track.forward_maximum),
+            (TssStrand::Minus, &self.track.reverse_maximum),
+        ] {
+            let Some(peak) = peak else { continue };
+            if clip && peak.score < 0.0 {
+                continue;
+            }
+            let x = axis.x(peak.local_start_0based as f64);
+            let y = self.range.y(display_score(peak.score, clip), top);
+            let mut marker = Group::new()
+                .set("data-role", "score-maximum")
+                .set("data-local-strand", strand.as_str())
+                .set("data-local-start", peak.local_start_0based)
+                .set("data-raw-score", peak.score)
+                .add(Title::new(format!(
+                    "Stored local {} score maximum: {}; not measured binding",
+                    strand.as_str(),
+                    peak_label(Some(peak), geometry)
+                )));
+            if strand == TssStrand::Plus {
+                marker.append(
+                    Circle::new()
+                        .set("cx", x)
+                        .set("cy", y)
+                        .set("r", 3.0)
+                        .set("fill", self.color.as_str()),
+                );
+            } else {
+                marker.append(
+                    Rectangle::new()
+                        .set("x", x - 4.0)
+                        .set("y", y - 4.0)
+                        .set("width", 8)
+                        .set("height", 8)
+                        .set("fill", "none")
+                        .set("stroke", self.color.as_str())
+                        .set("stroke-width", 1.5),
+                );
+            }
+            row.append(marker);
+        }
         self.notes.draw(
             &mut row,
             PLOT_LEFT,
@@ -1140,10 +1194,13 @@ impl<'a> RowLayout<'a> {
 fn peak_label(peak: Option<&TssPeak>, geometry: &TssGeometry) -> String {
     peak.map(|peak| {
         format!(
-            "{} at {:+} bp",
+            "{} at {:+} bp (g {})",
             number(peak.score),
             geometry
                 .relative_at(peak.local_start_0based)
+                .expect("validated peak"),
+            geometry
+                .genomic_at(peak.local_start_0based)
                 .expect("validated peak")
         )
     })
@@ -1466,7 +1523,7 @@ impl<'a> WindowLayout<'a> {
         let intro = TextBlock::new(&intro, TEXT_WIDTH, 14.0);
         let legend = TextBlock::new(
             &format!(
-                "Transcript-oriented sequence: 5'-to-3' left to right; genomic labels {}.\nSolid: motif-local + / genomic {}. Dashed: motif-local - / genomic {}. Black vertical rule: 0 bp, annotated TSS.\nEvery point is a motif-window START on the common sequence axis (not a center or reverse-motif 5' endpoint).\nGray: terminal positions without a full motif window. Amber and path gaps: unavailable windows (including N), not zero scores.",
+                "Transcript-oriented sequence: 5'-to-3' left to right; genomic labels {}.\nSolid: motif-local + / genomic {}. Dashed: motif-local - / genomic {}. Dotted guide/top tick: 0 bp, annotated TSS.\nStored score maxima: filled circle (local +), open square (local -); no new peak calling.\nEvery point is a motif-window START on the common sequence axis (not a center or reverse-motif 5' endpoint).\nGray: terminal positions without a full motif window. Amber and path gaps: unavailable windows (including N), not zero scores.",
                 if geometry.strand == TssStrand::Minus {
                     "descend"
                 } else {
@@ -1807,6 +1864,114 @@ mod tests {
         }
     }
 
+    fn peak_at_tss_fixture(strand: TssStrand) -> TssProfileReport {
+        use gentle_protocol::{isoform_evidence::*, tss_profiles::*};
+        let mut report = fixture(500, 200, 1);
+        report.panel_resolution.panel.clip_negative = true;
+        if strand == TssStrand::Minus {
+            reverse_geometry(&mut report);
+        }
+        let window = &mut report.windows[0];
+        let track = &mut window.tracks[0];
+        track.forward_scores.fill(Some(0.0));
+        track.reverse_scores.fill(Some(0.0));
+        track.forward_scores[500] = Some(10.0);
+        track.reverse_scores[500] = Some(6.0);
+        track.forward_maximum = Some(TssPeak {
+            local_start_0based: 500,
+            score: 10.0,
+        });
+        track.reverse_maximum = Some(TssPeak {
+            local_start_0based: 500,
+            score: 6.0,
+        });
+        let g = &window.record.geometry;
+        let (a, b) = (g.genomic_at(495).unwrap(), g.genomic_at(505).unwrap());
+        let lane = TssContextOccupancyLane {
+            group_id: "synthetic-cutrun".into(),
+            group_label: "Synthetic CUT&RUN".into(),
+            scale_mode: GeneLocusOccupancyScaleMode::Fixed,
+            lane_id: "sample".into(),
+            label: "Synthetic sample".into(),
+            state: GeneLocusOccupancyLaneState::Available,
+            role: GeneLocusOccupancyLaneRole::Experimental,
+            source_id: "synthetic-only".into(),
+            source_sha256: Some("e".repeat(64)),
+            source_kind: "synthetic interval".into(),
+            condition: None,
+            cell_line: None,
+            assay: Some("CUT&RUN".into()),
+            mark: None,
+            factor: Some("SYNTHETIC_FACTOR".into()),
+            display_abs_max_score: 10.0,
+            intervals: vec![TssContextSignal {
+                interval_id: "synthetic-signal".into(),
+                span: TssContextSpan {
+                    genomic_start_1based: a.min(b),
+                    genomic_end_1based: a.max(b),
+                    start_0based: 495,
+                    end_0based_exclusive: 506,
+                    clipped: false,
+                },
+                score: Some(4.0),
+                label: None,
+            }],
+        };
+        let mut missing = lane.clone();
+        missing.lane_id = "control".into();
+        missing.label = "Synthetic missing control".into();
+        missing.source_id = "synthetic-missing".into();
+        missing.state = GeneLocusOccupancyLaneState::NotPrepared;
+        missing.role = GeneLocusOccupancyLaneRole::InputControl;
+        missing.intervals.clear();
+        window.detail_context = Some(TssDetailContext {
+            window_sequence: None,
+            schema: CONTEXT_SCHEMA.into(),
+            promoter_id: window.record.promoter_id.clone(),
+            geometry: g.clone(),
+            window_sequence_sha256: window.record.sequence_sha256.clone(),
+            locus_seq_id: "synthetic-locus".into(),
+            locus_sequence_sha256: "f".repeat(64),
+            locus_report_sha256: "a".repeat(64),
+            annotation_release: None,
+            bindings: vec![TssInputBinding {
+                role: "tss_detail_locus_report".into(),
+                name: "synthetic.json".into(),
+                sha256: "a".repeat(64),
+            }],
+            transcripts: vec![TssContextTranscript {
+                transcript_id: window.record.transcripts[0].clone(),
+                label: "Synthetic cropped exon".into(),
+                genomic_strand: strand,
+                exons: vec![TssContextExon {
+                    number_5prime_to_3prime: 1,
+                    span: TssContextSpan {
+                        genomic_start_1based: if strand == TssStrand::Plus {
+                            g.tss_1based
+                        } else {
+                            g.start_1based - 20
+                        },
+                        genomic_end_1based: if strand == TssStrand::Plus {
+                            g.end_1based + 20
+                        } else {
+                            g.tss_1based
+                        },
+                        start_0based: 500,
+                        end_0based_exclusive: 701,
+                        clipped: true,
+                    },
+                }],
+                cds: vec![],
+                codons: vec![],
+            }],
+            occupancy: vec![lane, missing],
+            tata: None,
+            warnings: vec![],
+            non_claims: CONTEXT_NON_CLAIMS.into(),
+        });
+        report
+    }
+
     fn render(report: &TssProfileReport) -> Vec<TssRenderedPage> {
         render_tss_profile_pages(report, &TssProfileRenderOptions::default()).unwrap()
     }
@@ -1850,6 +2015,99 @@ mod tests {
 
     fn assert_close(actual: f64, expected: f64) {
         assert!((actual - expected).abs() < 0.0002, "{actual} != {expected}");
+    }
+
+    #[test]
+    fn cutrun_context_and_tss_peaks_remain_visible_without_mutating_scores() {
+        for strand in [TssStrand::Plus, TssStrand::Minus] {
+            let report = peak_at_tss_fixture(strand);
+            let before = serde_json::to_vec(&report).unwrap();
+            let svg = &render(&report)[0].svg;
+            let halo = svg.find("data-role=\"tss-rule-halo\"").unwrap();
+            let rule = svg.find("data-role=\"tss-rule\"").unwrap();
+            let traces = svg.find("data-role=\"score-trace\"").unwrap();
+            assert!(
+                halo < rule && rule < traces,
+                "TSS guides must not paint over peaks"
+            );
+            let maxima = tags(svg, "score-maximum");
+            assert_eq!(maxima.len(), 2);
+            for (maximum, score) in maxima.iter().zip([10.0, 6.0]) {
+                assert_eq!(numeric(maximum, "data-local-start"), 500.0);
+                assert_eq!(numeric(maximum, "data-raw-score"), score);
+            }
+            assert!(svg.find("data-role=\"score-maximum\"").unwrap() > traces);
+            let row = tags(svg, "matrix-row").remove(0);
+            let top = numeric(&row, "data-y") + PLOT_TOP;
+            for (trace, expected_score) in tags(svg, "score-trace").iter().zip([10.0, 6.0]) {
+                let points = path_points(trace);
+                assert_close(points[500].1, LocalAxis { length: 701 }.x(500.0));
+                assert_close(
+                    points[500].2,
+                    top + PLOT_HEIGHT * (1.0 - expected_score / 10.0),
+                );
+                assert_close(points[499].2, top + PLOT_HEIGHT);
+                assert_close(points[501].2, top + PLOT_HEIGHT);
+                assert_eq!(
+                    trace["data-coordinate"].to_string(),
+                    "motif_window_start_0based"
+                );
+            }
+            let lanes = tags(svg, "tss-context-occupancy");
+            assert_eq!(lanes.len(), 2);
+            assert_eq!(lanes[1]["data-state"].to_string(), "not_prepared");
+            let interval = tags(svg, "context-occupancy-interval").remove(0);
+            assert_close(numeric(&interval, "height"), 22.0 * 4.0 / 10.0);
+            assert_eq!(numeric(&interval, "data-start-0based"), 495.0);
+            assert_eq!(numeric(&interval, "data-end-0based-exclusive"), 506.0);
+            let mut side = String::new();
+            let mut in_details = false;
+            for event in svg::read(svg).unwrap() {
+                match event {
+                    Event::Tag("g", _, attributes) => {
+                        in_details = attributes
+                            .get("data-role")
+                            .is_some_and(|v| v.to_string() == "context-row-details")
+                    }
+                    Event::Text(text) if in_details => {
+                        side.push_str(text);
+                        side.push(' ');
+                    }
+                    _ => {}
+                }
+            }
+            let g = &report.windows[0].record.geometry;
+            assert!(
+                side.contains(&format!(
+                    "g {}..{}",
+                    g.tss_1based,
+                    g.genomic_at(700).unwrap()
+                )),
+                "{side}"
+            );
+            assert!(side.contains("cropped; source"));
+            assert!(side.contains("not individual read ends"));
+            assert!(svg.split("<title>").skip(1).any(|s| {
+                s.split("</title>")
+                    .next()
+                    .unwrap()
+                    .trim()
+                    .starts_with("Exon 1: genomic")
+            }));
+            assert_eq!(before, serde_json::to_vec(&report).unwrap());
+        }
+        let mut negative = peak_at_tss_fixture(TssStrand::Plus);
+        negative.windows[0].tracks[0]
+            .forward_scores
+            .fill(Some(-2.0));
+        negative.windows[0].tracks[0]
+            .forward_maximum
+            .as_mut()
+            .unwrap()
+            .score = -2.0;
+        let maxima = tags(&render(&negative)[0].svg, "score-maximum");
+        assert_eq!(maxima.len(), 1);
+        assert_eq!(maxima[0]["data-local-strand"].to_string(), "-");
     }
 
     #[test]
@@ -1901,7 +2159,8 @@ mod tests {
                     assert_close(numeric(&rule, "x1"), axis.x(upstream as f64));
                     assert_close(numeric(&rule, "x2"), axis.x(upstream as f64));
                     assert_close(numeric(&rule, "y2") - numeric(&rule, "y1"), PLOT_HEIGHT);
-                    assert!(numeric(&rule, "stroke-width") >= 2.0);
+                    assert_eq!(numeric(&rule, "stroke-width"), 1.0);
+                    assert_eq!(rule["stroke-dasharray"].to_string(), "2 4");
                 }
                 for trace in tags(&page.svg, "score-trace") {
                     let genomic = if trace["data-local-strand"].to_string() == "+" {
@@ -1923,7 +2182,7 @@ mod tests {
         let terminal = tags(&page.svg, "terminal-unscored");
         assert!(
             page.svg.rfind("data-role=\"tss-rule\"").unwrap()
-                > page.svg.rfind("data-role=\"score-trace\"").unwrap()
+                < page.svg.rfind("data-role=\"score-trace\"").unwrap()
         );
         for (index, track) in report.windows[0].tracks.iter().enumerate() {
             let last_start = 9 - track.motif_length_bp;
@@ -2752,6 +3011,8 @@ mod tests {
         let directory = std::env::temp_dir().join("gentle-report-tss-svg-qa");
         std::fs::create_dir_all(&directory).unwrap();
         for (name, mut report) in [
+            ("peak-at-tss-plus", peak_at_tss_fixture(TssStrand::Plus)),
+            ("peak-at-tss-minus", peak_at_tss_fixture(TssStrand::Minus)),
             ("plus", fixture(500, 200, 3)),
             ("minus", fixture(7, 2, 3)),
             ("thirty-rows", fixture(500, 200, 30)),

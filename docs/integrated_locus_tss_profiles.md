@@ -21,10 +21,36 @@ remain in the complete TSS supplement. Every page is 1400 pixels wide and every
 detailed score axis uses the locus renderer's exact x=255..1050 plot frame, so
 context and detail pages remain horizontally registered in a PDF viewer.
 
+In newly rendered locus overviews, each constituent TSS window has a labelled
+row, exact start marker and translucent colour band. Overlapping windows blend;
+the darker area denotes overlap, not stronger CUT&RUN or motif evidence. The
+connected stretch remains an outlined union for similarity lookup and receipt
+joins, not a replacement for the individual starts. Close starts keep their
+actual x positions and separate labels. These changes do not rewrite retained
+SVG/PDF bundles.
+
+The bottom **TSS-local promoterome similarity** insets are not the same view as
+the appended **TSS TFBS detail pages**. The former show regulatory-feature
+similarity. CUT&RUN context beside JASPAR traces is supported on the latter when
+the context manifest is supplied; shading a window in the overview alone does
+not populate context or rescore its DNA.
+
 The composer also writes one selected-TSS FASTA per gene. It contains exactly
 the transcript-oriented -500/+200 records shown on the detailed pages, in the
 same order and with their original bound headers. It is a filtered projection of
 the verified input bundle, not a new genome extraction.
+
+An optional `--output-genbank /fresh/output/GENE_selected_TSS.gb` adds the same
+selected windows as annotated records. First export the TSS report with
+`--formats svg,genbank` and [verified context](tss_tfbs_profiles.md#annotated-tss-sequences).
+The compositor concatenates the already engine-exported records without
+reconstructing annotations. It verifies source file hashes and checks the
+actual GenBank bases against each selected TSS digest. Missing annotated
+records fail explicitly, rather than silently falling back to unannotated DNA.
+The output and its per-record source files are bound in the composite receipt;
+GenBank participates in the same receipt-last staging and rollback as PDF/FASTA.
+Publication pages should offer this `.gb` alongside FASTA, not replace the
+historical bundle or advertise it before regeneration.
 
 The composer fails before publication unless:
 

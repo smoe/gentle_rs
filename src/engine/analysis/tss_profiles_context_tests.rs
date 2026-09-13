@@ -494,6 +494,7 @@ fn tss_context_export_is_read_only_hash_bound_and_replays_without_source_files()
             TssExportFormat::Svg,
             TssExportFormat::Png,
             TssExportFormat::Pdf,
+            TssExportFormat::Genbank,
         ],
     };
     let result = engine
@@ -534,6 +535,37 @@ fn tss_context_export_is_read_only_hash_bound_and_replays_without_source_files()
         assert!(svg.contains(marker), "{marker}");
     }
     assert!(!svg.contains("NaN"));
+    let visible_text = svg::parser::Parser::new(&svg)
+        .filter_map(|event| match event {
+            svg::parser::Event::Text(text) => Some(text),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    let visible_text = visible_text
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(visible_text.contains("cropped"));
+    assert!(visible_text.contains("not individual read ends"));
+    let gb_name = receipt.outputs.keys().find(|n| n.ends_with(".gb")).unwrap();
+    let gb = std::fs::read(output.join(gb_name)).unwrap();
+    let records = gb_io::reader::SeqReader::new(gb.as_slice())
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(records.len(), 1);
+    assert_eq!(
+        sha256_hex_bytes(
+            &records[0]
+                .seq
+                .iter()
+                .map(u8::to_ascii_uppercase)
+                .collect::<Vec<_>>()
+        ),
+        enriched.windows[0].record.sequence_sha256
+    );
+    assert!(records[0].features.iter().any(|f| f.kind == "exon"));
+    assert!(!records[0].features.iter().any(|f| f.kind == "CDS"));
     let mut changed = request.clone();
     changed.output_dir = root.join("bad").to_str().unwrap().into();
     std::fs::write(inputs.join("locus.fa"), b">wrong\nAAAA\n").unwrap();
@@ -556,6 +588,10 @@ fn tss_context_export_is_read_only_hash_bound_and_replays_without_source_files()
     let replay =
         crate::tss_profile_export::export_tss_profiles(&enriched, &replay_request).unwrap();
     assert_eq!(receipt.report_sha256, replay.report_sha256);
+    assert_eq!(
+        gb,
+        std::fs::read(Path::new(&replay_request.output_dir).join(gb_name)).unwrap()
+    );
     assert_eq!(
         std::fs::read(output.join(svg_name)).unwrap(),
         std::fs::read(Path::new(&replay_request.output_dir).join(svg_name)).unwrap()

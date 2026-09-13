@@ -51,6 +51,9 @@ const TARGET_BUNDLE_SCHEMA: &str = "gentle.target_tss_fasta_export.v1";
 const GENERIC_SELECTION_LABEL: &str = "Selected TSS";
 const GENERIC_SELECTION_LEGEND: &str = "Selected according to the supplied report. No descriptive evidence criterion was recorded; this does not establish TSS usage, direct binding or promoter activity.";
 
+#[path = "tss_profile_genbank.rs"]
+mod genbank;
+
 fn invalid(message: impl Into<String>) -> EngineError {
     EngineError::invalid_input(format!("TSS profile export: {}", message.into()))
 }
@@ -358,6 +361,22 @@ pub fn validate_tss_profile_report(report: &TssProfileReport) -> Result<(), Engi
         return Err(invalid("report must contain 1..=4096 TSS windows"));
     }
     validate_reference(&report.reference)?;
+    for window in &report.windows {
+        if let Some(bases) = window
+            .detail_context
+            .as_ref()
+            .and_then(|c| c.window_sequence.as_deref())
+        {
+            if Some(bases.len()) != window.record.geometry.length()
+                || !bases.bytes().all(|b| b"ACGTRYSWKMBDHVN".contains(&b))
+                || sha256_hex_bytes(bases.as_bytes()) != window.record.sequence_sha256
+            {
+                return Err(invalid(
+                    "Stored context bases mismatch their window sequence digest/length",
+                ));
+            }
+        }
+    }
     for (name, value) in [
         ("producer_revision", &report.producer_revision),
         ("verification", &report.verification),
@@ -592,7 +611,7 @@ pub fn validate_tss_profile_report(report: &TssProfileReport) -> Result<(), Engi
 
 fn validate_options(request: &ExportTssProfilesRequest) -> Result<(), EngineError> {
     if request.formats.is_empty()
-        || request.formats.len() > 3
+        || request.formats.len() > 4
         || request
             .formats
             .iter()
@@ -602,7 +621,7 @@ fn validate_options(request: &ExportTssProfilesRequest) -> Result<(), EngineErro
         || request.rendering.panels_per_page > 32
     {
         return Err(invalid(
-            "choose unique SVG/PNG/PDF formats and 1..=32 panels per page",
+            "choose unique SVG/PNG/PDF/GenBank formats and 1..=32 panels per page",
         ));
     }
     Ok(())
@@ -767,6 +786,9 @@ struct GeneIndex {
     scores: String,
     comparisons: String,
     pages: Vec<PageIndex>,
+    /// Promoter ID to one complete, annotated GenBank record.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    genbank: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1684,6 +1706,10 @@ index.json lists genes, TSS memberships, pages and data-file SHA-256 values. Gen
 follow the supplied report; filenames combine safe symbol/ID fragments and a full identity digest.\n\
 The index repeats named source provenance and selected-panel descriptions for cross-gene inspection.\n\
 comparisons.tsv is the cross-gene table; each gene also has its own comparison TSV.\n\n\
+When genbank is requested, index.json maps promoter IDs to annotated .gb records.\n\
+These contain verified transcript-oriented genomic windows, not spliced cDNA or reporter constructs.\n\
+Partial limits, source intervals, raw signal scores and stored motif peaks retain provenance;\n\
+CDS segments do not assert coding phase, and motif predictions are not measured binding.\n\n\
 Score TSV is long-form: one row per sequence-base window start, matrix and local motif strand.\n\
 local_window_start_0based is a start, never a motif center or an inferred motif 5-prime endpoint.\n\
 tss_relative_window_start_bp and genomic_window_start_1based use protocol TssGeometry methods.\n\
@@ -1779,7 +1805,10 @@ pub fn export_tss_profiles_with_cancel(
     validate_pages(
         &pages,
         &genes,
-        request.formats.iter().any(|f| *f != TssExportFormat::Svg),
+        request
+            .formats
+            .iter()
+            .any(|f| matches!(f, TssExportFormat::Png | TssExportFormat::Pdf)),
     )?;
     checkpoint(should_continue)?;
     let executable =
@@ -1827,6 +1856,15 @@ pub fn export_tss_profiles_with_cancel(
             write_comparisons(writer, report, gene.windows.iter().copied())
         })?;
         let mut gene_pages = Vec::new();
+        let mut genbank_files = BTreeMap::new();
+        if request.formats.contains(&TssExportFormat::Genbank) {
+            for (index, window) in gene.windows.iter().enumerate() {
+                checkpoint(should_continue)?;
+                let name = format!("{}.tss-{:04}.gb", gene.stem, index + 1);
+                inventory.bytes(&name, &genbank::bytes(report, window)?)?;
+                genbank_files.insert(window.record.promoter_id.clone(), name);
+            }
+        }
         for page in pages.iter().filter(|page| page.gene_id == gene.id) {
             gene_pages.push(write_page(
                 &mut inventory,
@@ -1850,6 +1888,7 @@ pub fn export_tss_profiles_with_cancel(
             scores: scores_file,
             comparisons: comparisons_file,
             pages: gene_pages,
+            genbank: genbank_files,
         });
     }
     checkpoint(should_continue)?;
@@ -2141,6 +2180,24 @@ pub fn verify_tss_profile_receipt(
             entry.scores.clone(),
             entry.comparisons.clone(),
         ]);
+        let mut expected_genbank = BTreeMap::new();
+        if request.formats.contains(&TssExportFormat::Genbank) {
+            for (index, window) in gene.windows.iter().enumerate() {
+                let name = format!("{}.tss-{:04}.gb", gene.stem, index + 1);
+                if fs::read(output.join(&name)).map_err(|e| io_error("read GenBank", e))?
+                    != genbank::bytes(&report, window)?
+                {
+                    return Err(invalid(
+                        "GenBank is not the exact annotated projection of its TSS report",
+                    ));
+                }
+                expected.insert(name.clone());
+                expected_genbank.insert(window.record.promoter_id.clone(), name);
+            }
+        }
+        if entry.genbank != expected_genbank {
+            return Err(invalid("GenBank index membership mismatch"));
+        }
         let subset: TssProfileReport = read_json(&output.join(&entry.report), MAX_REPORT_BYTES)?;
         if !same_json(&subset, &GeneReport::new(&report, gene))? {
             return Err(invalid(

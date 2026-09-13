@@ -133,7 +133,9 @@ def plot_fixture(strand="+", match_counts=(2,)):
     candidates = {
         "stretches": [{"gene": "TOY", "stretch_id": "TOY_tss_stretch_1",
                        "start_1based": 100, "end_1based": 800,
-                       "tss_windows": [{"strand": strand, "chromosome": "1", "tss_1based": 600}]}],
+                       "tss_windows": [{"strand": strand, "chromosome": "1", "tss_1based": 600,
+                                        "start_1based": 100, "end_1based": 800,
+                                        "transcript_ids": ["TOY1"]}]}],
         "regions": [],
     }
     matches, hsps, summaries = {}, {}, {}
@@ -449,6 +451,62 @@ class FrequencyTests(unittest.TestCase):
                     self.assertEqual(tree.get("viewBox"), f"0 0 1400 {height}")
                     self.assertEqual(tree.find("rect").get("height"), str(height))
 
+    def test_overlapping_windows_keep_colours_markers_and_exact_geometry(self):
+        for strand in ("+", "-"):
+            for distance in (39, 450):
+                with self.subTest(strand=strand, distance=distance), TemporaryDirectory() as tmp:
+                    _, report, base = source_fixture(Path(tmp), strand)
+                    fixture = plot_fixture(strand, match_counts=(0,))
+                    stretch = fixture[0]["stretches"][0]
+                    first = stretch["tss_windows"][0]
+                    first["tss_1based"] = 600 if strand == "+" else 300
+                    second = deepcopy(first)
+                    for key in ("start_1based", "end_1based", "tss_1based"):
+                        second[key] += distance
+                    second["transcript_ids"] = ["TOY2", "TOY3"]
+                    stretch["end_1based"] += distance
+                    stretch["tss_windows"].append(second)
+                    original = deepcopy(fixture[0])
+                    lower, _ = APPEND.append_section(base, "TOY", *fixture)
+                    output, _ = APPEND.add_stretch_overview(lower, "TOY", fixture[0], report)
+                    tree = ET.fromstring(output)
+                    bands = [n for n in tree.iter() if n.get("data-gentle-tss-window-band")]
+                    markers = [n for n in tree.iter() if n.get("data-gentle-tss-marker")]
+                    self.assertEqual(len(bands), 2)
+                    self.assertEqual(len(markers), 2)
+                    self.assertEqual(len({n.get("fill") for n in bands}), 2)
+                    self.assertEqual(len([n for n in tree.iter()
+                                          if n.get("data-gentle-tss-stretch-band")]), 1)
+                    left, right = report["axis_left_genomic_1based"], report["axis_right_genomic_1based"]
+                    for window in stretch["tss_windows"]:
+                        band = next(n for n in bands if int(n.get("data-gentle-tss")) == window["tss_1based"])
+                        marker = next(n for n in markers if n.get("data-gentle-tss") == band.get("data-gentle-tss"))
+                        self.assertEqual(marker.get("stroke"), band.get("fill"))
+                        self.assertEqual(int(band.get("data-gentle-genomic-start")), window["start_1based"])
+                        self.assertEqual(int(band.get("data-gentle-genomic-end")), window["end_1based"])
+                        alpha = float(band.get("fill-opacity"))
+                        self.assertTrue(0 < alpha < 0.25)
+                        self.assertGreater(1 - (1 - alpha)**2, alpha)
+                        expected = 255 + (window["tss_1based"] - left) / (right - left) * 795
+                        self.assertAlmostEqual(float(marker.get("x1")), expected, places=2)
+                    self.assertIn("not stronger biological evidence", output)
+                    self.assertEqual(fixture[0], original)
+                    detail = [n for n in tree.iter() if n.get("data-gentle-detail-tss-marker")]
+                    self.assertEqual(len(detail), 2)
+                    labels = [n for n in tree.iter("text") if ": TSS " in (n.text or "")]
+                    self.assertEqual(len({n.get("y") for n in labels}), 2)
+                    stretch["tss_windows"].reverse()
+                    lower_again, _ = APPEND.append_section(base, "TOY", *fixture)
+                    reordered, _ = APPEND.add_stretch_overview(lower_again, "TOY", fixture[0], report)
+                    self.assertEqual(reordered, output)
+
+    def test_window_shading_refuses_missing_or_inconsistent_coordinates(self):
+        for key, value in [("start_1based", None), ("end_1based", 999), ("tss_1based", 99)]:
+            fixture = plot_fixture()[0]
+            fixture["stretches"][0]["tss_windows"][0][key] = value
+            with self.assertRaisesRegex(ValueError, "TSS window"):
+                APPEND.window_styles(fixture["stretches"])
+
     def test_upper_stretch_references_share_ids_colours_and_bound_axis(self):
         with TemporaryDirectory() as tmp:
             _, report, base = source_fixture(Path(tmp))
@@ -456,7 +514,7 @@ class FrequencyTests(unittest.TestCase):
             # Two separated stretches keep independent labels and rows.
             second = deepcopy(fixture[0]["stretches"][0])
             second.update(stretch_id="TOY_tss_stretch_2", start_1based=1000, end_1based=1200)
-            second["tss_windows"][0]["tss_1based"] = 1100
+            second["tss_windows"][0].update(tss_1based=1100, start_1based=1000, end_1based=1200)
             fixture[0]["stretches"].append(second)
             lower, old_height = APPEND.append_section(base, "TOY", *fixture)
             for left, right in [(1, 10000), (10000, 1)]:
@@ -468,7 +526,10 @@ class FrequencyTests(unittest.TestCase):
                 backgrounds = shifted[0]
                 self.assertEqual(backgrounds.get("data-gentle-tss-stretch-backgrounds"), "true")
                 self.assertEqual(backgrounds.get("pointer-events"), "none")
-                self.assertEqual(len(backgrounds), len(fixture[0]["stretches"]))
+                union_bands = [node for node in backgrounds if node.get("data-gentle-tss-stretch-band")]
+                window_bands = [node for node in backgrounds if node.get("data-gentle-tss-window-band")]
+                self.assertEqual(len(union_bands), len(fixture[0]["stretches"]))
+                self.assertEqual(len(window_bands), 2)
                 similarity = next(node for node in shifted if node.get("data-gentle-panel"))
                 similarity_y = float(similarity.find("text").get("y"))
                 self.assertGreater(height, old_height)
@@ -481,12 +542,12 @@ class FrequencyTests(unittest.TestCase):
                     self.assertEqual(upper_link.get("href"), f"#similarity-{name}")
                     self.assertEqual(lower_link.get("href"), f"#overview-{name}")
                     bar = upper_link.find("rect")
-                    self.assertEqual(bar.get("fill"), lower_link.find("text").get("fill"))
-                    band = backgrounds[index]
+                    self.assertEqual(bar.get("stroke"), lower_link.find("text").get("fill"))
+                    band = union_bands[index]
                     self.assertEqual(band.get("data-gentle-tss-stretch-band"), name)
                     for key in ("x", "width", "fill", "data-gentle-genomic-start", "data-gentle-genomic-end"):
                         self.assertEqual(band.get(key), bar.get(key))
-                    self.assertEqual(band.get("fill-opacity"), "0.12")
+                    self.assertEqual(band.get("fill"), "none")
                     self.assertLess(float(band.get("y")), 110)  # Original transcript lane.
                     self.assertGreater(float(band.get("y")) + float(band.get("height")), 110)
                     self.assertLess(float(band.get("y")) + float(band.get("height")), similarity_y)
@@ -582,7 +643,8 @@ class FrequencyTests(unittest.TestCase):
             "stretches": [{
                 "stretch_id": "G_tss_stretch_1", "gene": "G",
                 "start_1based": 100, "end_1based": 800,
-                "tss_windows": [{"strand": "+", "chromosome": "1", "tss_1based": 600}],
+                "tss_windows": [{"strand": "+", "chromosome": "1", "tss_1based": 600,
+                                 "start_1based": 100, "end_1based": 800}],
             }],
             "regions": [],
         }

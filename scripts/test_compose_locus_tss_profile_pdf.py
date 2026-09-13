@@ -243,6 +243,63 @@ class CompositeLocusTssPdfTests(unittest.TestCase):
             "source_id": "MA9991.1", "locus_track_id": "synthetic_matrix",
         }])
 
+    def genbank_fixture(self):
+        index = json.loads(self.index.read_text())
+        files = {}
+        for promoter, bases in self.sequences.items():
+            file = self.root / f"{promoter}.gb"
+            file.write_text(f"LOCUS       {promoter} 701 bp DNA linear\nFEATURES             Location/Qualifiers\n     misc_feature    501\n                     /label=\"Synthetic TSS\"\nORIGIN\n        1 {bases.lower()}\n//\n")
+            files[promoter] = file.name
+        index["genes"][0]["genbank"] = files
+        self.index.write_text(json.dumps(index))
+        self.write_tss_receipt()
+        receipt = json.loads(self.tss_receipt.read_text())
+        receipt["outputs"].update({name: digest(self.root / name) for name in files.values()})
+        self.tss_receipt.write_text(json.dumps(receipt))
+
+    def test_genbank_selected_records_are_copied_and_receipt_bound(self):
+        self.genbank_fixture()
+        args = self.args()
+        args.output_genbank = self.root / "annotated.gb"
+        with mock.patch.object(target.subprocess, "run", side_effect=self.fake_run):
+            receipt = target.compose(args)
+        self.assertEqual(args.output_genbank.read_bytes(), (self.root / "selected.gb").read_bytes())
+        self.assertEqual(receipt["output"]["selected_tss_genbank_sha256"], digest(args.output_genbank))
+        self.assertEqual(receipt["inputs"]["selected_tss_genbank"][0]["promoter_id"], "selected")
+
+    def test_genbank_missing_tampered_or_wrong_bases_fail_before_publication(self):
+        args = self.args()
+        args.output_genbank = self.root / "annotated.gb"
+        with self.assertRaisesRegex(ValueError, "lacks indexed GenBank"):
+            target.compose(args)
+        self.genbank_fixture()
+        path = self.root / "selected.gb"
+        path.write_text(path.read_text().replace("a" * 701, "t" * 701))
+        with self.assertRaisesRegex(ValueError, "output hash mismatch"):
+            target.compose(args)
+        receipt = json.loads(self.tss_receipt.read_text())
+        receipt["outputs"][path.name] = digest(path)
+        self.tss_receipt.write_text(json.dumps(receipt))
+        with self.assertRaisesRegex(ValueError, "GenBank bases differ"):
+            target.compose(args)
+        self.assert_no_outputs()
+        self.assertFalse(args.output_genbank.exists())
+
+    def test_genbank_publication_failure_rolls_back_whole_new_bundle(self):
+        self.genbank_fixture()
+        args = self.args()
+        args.output_genbank = self.root / "annotated.gb"
+        link = target.os.link
+        def fail_receipt(src, dst):
+            if dst == args.output_receipt.resolve():
+                raise OSError("synthetic receipt failure")
+            return link(src, dst)
+        with mock.patch.object(target.subprocess, "run", side_effect=self.fake_run), mock.patch.object(target.os, "link", side_effect=fail_receipt):
+            with self.assertRaisesRegex(OSError, "synthetic receipt failure"):
+                target.compose(args)
+        self.assert_no_outputs()
+        self.assertFalse(args.output_genbank.exists())
+
     def test_rejects_selected_tss_outside_bound_locus_bands(self):
         value = json.loads(self.report.read_text())
         value["windows"][0]["record"]["geometry"]["tss_1based"] = 2000

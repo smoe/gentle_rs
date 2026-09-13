@@ -253,6 +253,7 @@ fn project(
         )));
     }
     let mut context = TssDetailContext {
+        window_sequence: Some(window_sequence),
         schema: CONTEXT_SCHEMA.into(),
         promoter_id: record.promoter_id.clone(),
         geometry: g.clone(),
@@ -487,6 +488,9 @@ fn project(
             rows,
             warnings: report.warnings.clone(),
         });
+    }
+    if context.transcripts.len() != record.transcripts.len() {
+        context.warnings.push(format!("{}/{} TSS-linked transcript models supplied in locus context; remaining exact transcript identities are unassessed, not absent", context.transcripts.len(), record.transcripts.len()));
     }
     context.warnings.sort();
     context.warnings.dedup();

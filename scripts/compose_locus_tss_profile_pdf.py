@@ -368,11 +368,44 @@ def validate_locus_join(
     return matrix_bindings
 
 
+def selected_genbank(index: dict[str, Any], receipt: dict[str, Any],
+                     directory: Path, gene: str, bindings: list[dict[str, Any]]) -> tuple[bytes, list[dict[str, str]]]:
+    """Concatenate engine-exported records; do not reconstruct feature biology here."""
+    entries = [entry for entry in index["genes"] if entry["gene_symbol"] == gene]
+    require(len(entries) == 1, "GenBank requires one indexed gene")
+    files = entries[0].get("genbank", {})
+    records, sources = [], []
+    for binding in bindings:
+        promoter = binding["promoter_id"]
+        name = files.get(promoter)
+        require(isinstance(name, str) and Path(name).name == name and name.endswith(".gb"),
+                "selected TSS lacks indexed GenBank; re-export with --formats svg,genbank and verified context")
+        path = directory / name
+        require(not path.is_symlink() and path.is_file(), "GenBank must be a direct regular file")
+        bound_output(receipt, name, path)
+        raw = path.read_bytes()
+        text = raw.decode("utf-8")
+        require(text.startswith("LOCUS ") and text.count("\nORIGIN") == 1
+                and text.count("\n//") == 1 and text.rstrip().endswith("//"),
+                "expected one complete engine-exported GenBank record")
+        origin = text.split("\nORIGIN", 1)[1].rsplit("\n//", 1)[0]
+        bases = re.sub(r"[0-9\s]", "", origin).upper()
+        require(bases and set(bases) <= set("ACGTRYSWKMBDHVN")
+                and hashlib.sha256(bases.encode("ascii")).hexdigest() == binding["sequence_sha256"],
+                "GenBank bases differ from the selected TSS sequence")
+        records.append(raw.rstrip() + b"\n")
+        sources.append({"promoter_id": promoter, "path": str(path), "sha256": sha256(path)})
+    return b"".join(records), sources
+
+
 def publish_composite(
     receipt: dict[str, Any], page_paths: list[Path], fasta_text: str,
     gentle_cli: Path, output_pdf: Path, output_fasta: Path, output_receipt: Path,
+    genbank_bytes: bytes | None = None, output_genbank: Path | None = None,
 ) -> dict[str, Any]:
-    outputs = (output_pdf, output_fasta, output_receipt)
+    require((genbank_bytes is None) == (output_genbank is None), "GenBank content/path must be supplied together")
+    outputs = (output_pdf, output_fasta, *((output_genbank,) if output_genbank else ()), output_receipt)
+    require(len(set(outputs)) == len(outputs), "output paths must be distinct")
     partials = tuple(path.with_name(path.name + ".partial") for path in outputs)
     require(not any(os.path.lexists(path) for path in (*outputs, *partials)),
             "output or stale partial output/receipt exists")
@@ -385,8 +418,11 @@ def publish_composite(
             with path.open("xb"):
                 pass
             owned_partials.append(path)
-        partial_pdf, partial_fasta, partial_receipt = partials
+        partial_pdf, partial_fasta, partial_receipt = partials[0], partials[1], partials[-1]
         partial_fasta.write_text(fasta_text, encoding="ascii")
+        if output_genbank:
+            require(bool(genbank_bytes), "empty annotated sequence export")
+            partials[2].write_bytes(genbank_bytes)
         command = [str(gentle_cli), "svg-pdf-set", str(partial_pdf),
                    *[str(path) for path in page_paths]]
         result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=900)
@@ -413,6 +449,10 @@ def publish_composite(
             "selected_tss_fasta_sha256": sha256(partial_fasta),
             "selected_tss_fasta_bytes": partial_fasta.stat().st_size,
         })
+        if output_genbank:
+            receipt["output"].update({"selected_tss_genbank": str(output_genbank),
+                "selected_tss_genbank_sha256": sha256(partials[2]),
+                "selected_tss_genbank_bytes": partials[2].stat().st_size})
         partial_receipt.write_text(
             json.dumps(receipt, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
             encoding="utf-8",
@@ -444,6 +484,8 @@ def compose(args: argparse.Namespace) -> dict[str, Any]:
     output_pdf = args.output_pdf.resolve()
     output_fasta = args.output_fasta.resolve()
     output_receipt = args.output_receipt.resolve()
+    output_genbank = getattr(args, "output_genbank", None)
+    output_genbank = output_genbank.resolve() if output_genbank else None
     gentle_cli = args.gentle_cli.resolve()
     require(len({output_pdf, output_fasta, output_receipt}) == 3,
             "output PDF, FASTA and receipt must be distinct")
@@ -485,6 +527,8 @@ def compose(args: argparse.Namespace) -> dict[str, Any]:
     fasta_text, fasta_binding = selected_fasta(
         args.gene, tss_manifest_path, tss_receipt, bindings, tss_report.get("reference", {}),
     )
+    genbank_bytes, genbank_sources = (selected_genbank(tss_index, tss_receipt, tss_dir, args.gene, bindings)
+                                    if output_genbank else (None, []))
     page_paths = [locus_svg, *detail_pages]
     receipt = {
         "schema": OUTPUT_SCHEMA,
@@ -529,8 +573,10 @@ def compose(args: argparse.Namespace) -> dict[str, Any]:
         "verification": tss_report.get("verification"),
         "non_claims": tss_report.get("non_claims"),
     }
+    if output_genbank:
+        receipt["inputs"]["selected_tss_genbank"] = genbank_sources
     return publish_composite(receipt, page_paths, fasta_text, gentle_cli,
-                             output_pdf, output_fasta, output_receipt)
+                             output_pdf, output_fasta, output_receipt, genbank_bytes, output_genbank)
 
 
 def parse_args() -> argparse.Namespace:
@@ -547,6 +593,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--producer-revision", required=True)
     parser.add_argument("--output-pdf", type=Path, required=True)
     parser.add_argument("--output-fasta", type=Path, required=True)
+    parser.add_argument("--output-genbank", type=Path, help="Optional annotated selected windows from indexed, receipt-bound GenBank exports")
     parser.add_argument("--output-receipt", type=Path, required=True)
     return parser.parse_args()
 

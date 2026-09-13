@@ -1,7 +1,7 @@
 # GENtle Roadmap
 
-Last session: 2026-09-11 - `.10` remains unreleased pending Glen's verdict and
-release-owner approval of the exact candidate. A tag alone is not acceptance.
+Last session: 2026-09-13 - Glen approves preparing a `.10` candidate; final-SHA
+and packaged-binary acceptance and owner publication approval remain pending.
 
 Purpose: fast session orientation. This file answers "what next?" and should be
 readable in under two minutes. Completed work belongs in
@@ -20,7 +20,7 @@ Maintenance invariant:
 
 ## Release Gate
 
-Current candidate: `v0.1.0-internal.10` (unreleased; no green-light claim).
+Current candidate: `v0.1.0-internal.10` (preparation approved, not release acceptance).
 
 Active aim: genome-anchored evidence, transcript-linked promoter recurrence, regulatory-region comparison and approved reporter designs.
 
@@ -70,9 +70,9 @@ Release cut line:
 - Packaging needs CI proof; [tag reconciliation](release.md#candidate-approval) needs explicit owner authorization.
 
 Pre-release finishing scope:
-- Have Glen [regenerate the five-gene TSS bundle](integrated_locus_tss_profiles.md#refreshing-the-september-10-bundle): `8fd677c2` has a TFAP2C overview mismatch; require bound locus JSON, distinct accessions and audited PDF/FASTA receipts. Include [detailed-page context](tss_tfbs_profiles.md#cutrun-gene-structure-and-tata-context) from the same CUT&RUN/locus report and source FASTA, with optional TATA evidence; real-data acceptance remains pending.
+- Glen reports five-gene QC at `7dacf898`; re-export the presentation extensions and [selected GenBank downloads](integrated_locus_tss_profiles.md) before rechecking receipts, genomic feature limits, hover details and raw signal/motif provenance at the merged candidate. Do not replace his September 13 acceptance with synthetic-only evidence.
 - Run TP73/PATZ1 and promoter-matrix GUI smoke, including cancellation; obtain canonical
-  CD44/TGFB1/SERPINE1 region sets before real-candidate analysis, never infer missing ROIs.
+  CD44/TGFB1/SERPINE1 region sets before real-candidate analysis; verify individual overlapping TSS bands, zero-position peaks and supplied detail context, never infer missing ROIs.
 - Repeat the copied-state IRF9/Q00978 acceptance and require the one-assay panel
   to report one of three linked cDNAs and two of four linked records covered,
   with only the true patch record genomically unassessed.

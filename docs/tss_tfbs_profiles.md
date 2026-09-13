@@ -78,6 +78,61 @@ including decreasing genomic coordinates for negative-strand genes. The context
 and its provenance repeat on continuation pages. Large contexts fail the existing
 readable-page limits explicitly instead of silently dropping lanes.
 
+Dense JASPAR traces remain predicted sequence-model scores, not called occupancy
+peaks. The dotted TSS guide and its white backing are drawn **behind** both score
+curves, so a narrow peak exactly at 0 bp is not erased or mistaken for a solid
+full-height reference line. Stored maxima use a filled circle (local +) and open
+square (local -); missing maxima are not inferred, and clipped negative maxima
+are not marked as zero-valued peaks. Solid/dashed strand styles, numeric Y
+scales, null gaps, negative-display policy and raw stored scores are unchanged.
+Re-export into a fresh directory to obtain this rendering;
+historical receipt-bound images are not silently replaced.
+
+SVG hover details are retained. Each context row also has a printable summary
+on its right: visible exon/CDS ranges, translation positions, TATA positions or
+the outer extent and count of supplied signal intervals. Coordinates are
+1-based inclusive and follow the displayed strand-aware axis. Cropped exon
+limits are explicitly distinguished from the original feature ends. A signal
+extent can contain gaps and is not the start/end of an individual read; BigWig
+does not supply individual read alignments. Stored TF-score maxima also show
+their genomic motif-window start beside their TSS-relative position.
+
+## Annotated TSS Sequences
+
+Add `genbank` to `--formats` to export one annotated `.gb` record per TSS, indexed
+by promoter ID in `index.json` and hash-bound in the normal receipt. This is
+GenBank, not a renamed FASTA or an EMBL serializer. GENtle can reopen it through
+its normal sequence-file import. The same option works in GUI Shell and typed
+`ExportTssTfbsProfiles` requests (`formats: ["svg", "genbank"]`).
+
+```sh
+gentle_cli features tss-tfbs-profiles-export \
+  --report /path/to/original-score-only/report.json \
+  --context-manifest /path/to/all-genes.context.json \
+  --output-dir /fresh/tss-annotated --formats svg,genbank
+```
+
+Every exported window requires context with exact, verified transcript-oriented
+bases. New contexts retain those bases, so subsequent report-only replay needs
+no source FASTA. Older contexts without bases remain readable but cannot export
+GenBank; enrich the original score-only report, rather than replacing attached
+evidence. Missing or hash-mismatched DNA fails before publication.
+
+Records retain the TSS, annotated exon ordinals, genomic/source provenance,
+clipped feature limits (`<` / `>`), individual supplied signal intervals and
+their raw scores, TATA evidence classes, and already-stored motif peaks on both
+strands. No new peak calling, threshold selection or scoring occurs. CDS
+segments are labelled `misc_feature`, not asserted to be complete coding
+sequences: this context does not bind their coding phase. GenBank sequence is
+the genomic TSS window, not spliced cDNA or a materialized reporter construct.
+Null signal values, missing lanes, and prediction non-claims remain explicit.
+
+For the integrated report, use the compositor's `--output-genbank` option as
+described [here](integrated_locus_tss_profiles.md). Its selected records match
+the selected FASTA windows, not the full set of scored promoters.
+
+## Context Example
+
 For a fully offline demonstration, after the first example above:
 
 ```sh

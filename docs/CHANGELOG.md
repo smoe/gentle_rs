@@ -1,5 +1,21 @@
 # GENtle Changelog
 
+## 2026-09-13 - Merge Glen's context fix and extend annotated TSS exports
+
+- Merged the complete reviewed Glen branch at `2f3ee696` through `d0762a20`,
+  preserving `7dacf898` assembly checks, tutorial refresh and manual/hybrid GUI
+  evidence with original authorship. This is not final packaged-release acceptance.
+- Kept SVG hover text and added printable side summaries for strand-aware
+  genomic feature limits, cropping and supplied signal extents; BigWig intervals
+  are not labelled individual reads. TF maximum notes now include genomic starts.
+- Added receipt-bound, shared-engine GenBank TSS export using exact stored,
+  hash-verified context DNA and annotations, without rescoring. The compositor
+  can retain selected records beside its FASTA/PDF, with rollback and source
+  hashes. Older contexts fail closed for GenBank until enriched from their
+  original score report. CDS segments do not acquire invented coding phase.
+- Existing public and private PDFs are untouched. New display/sequence exports
+  still need Glen's exact-candidate regeneration and inspection.
+
 ## 2026-09-13 - Refresh tutorial artifacts after the TFBS tail correction
 
 - Corrected the generated-tutorial mismatch reported by macOS CI at `e489cfaf`
@@ -17,6 +33,22 @@
   strict; no platform exception, relaxed comparison or scoring change is added.
 - Updated stale-output notes with the replay procedure and historical revision.
   Private five-gene reports, human-review dates and release approval are untouched.
+
+## 2026-09-13 - Visible overlapping TSS windows and unoccluded score peaks
+
+- Retained connected stretches for similarity/receipt joins while showing each
+  supplied window as a separately labelled, coloured, translucent band and
+  exact TSS marker. Overlap is explicitly not stronger biological evidence.
+  Close detail-axis labels no longer collide; input reordering preserves colours.
+- Moved the shared TSS score guide behind the curves: its opaque white backing
+  could erase narrow peaks precisely at the TSS. The guide is now dotted, with
+  distinct symbols for already-stored strand maxima, not new peak calls.
+  Added synthetic plus/minus
+  coverage for peaks, inherited CUT&RUN scale and missing controls without
+  changing scores, coordinates, selection or normalization.
+- Clarified that context-enabled TSS detail pages and the bottom promoterome
+  similarity insets are distinct views. Existing private/receipt-bound figures
+  are not regenerated or claimed accepted by these presentation changes.
 
 ## 2026-09-12 - Web interface release horizon
 

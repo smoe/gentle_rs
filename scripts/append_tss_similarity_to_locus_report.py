@@ -37,6 +37,31 @@ FEATURE_COLOURS = {
     "open_chromatin_region": "#78d3f8",
 }
 STRETCH_COLOURS = ("#0f766e", "#b45309", "#1d4ed8")
+WINDOW_COLOURS = ("#0072b2", "#d55e00", "#009e73", "#cc79a7", "#e69f00", "#56b4e9")
+
+
+def window_styles(stretches: list[dict[str, Any]]) -> dict[tuple, tuple[str, str]]:
+    """Report-local identities, stable under input reordering; no inferred geometry."""
+    keys = set()
+    for stretch in stretches:
+        for window in stretch["tss_windows"]:
+            key = window_key(window)
+            start, end = window.get("start_1based"), window.get("end_1based")
+            if (not isinstance(start, int) or not isinstance(end, int)
+                    or not stretch["start_1based"] <= start <= key[2] <= end <= stretch["end_1based"]):
+                raise ValueError("TSS window requires explicit, in-stretch start/end coordinates")
+            keys.add(key)
+    ordered = sorted(keys, key=lambda k: (k[0], k[1], k[2] if k[1] == "+" else -k[2]))
+    return {key: (f"TSS{index + 1}", WINDOW_COLOURS[index % len(WINDOW_COLOURS)])
+            for index, key in enumerate(ordered)}
+
+
+def window_key(window: dict[str, Any]) -> tuple:
+    if (window.get("strand") not in {"+", "-"}
+            or not isinstance(window.get("tss_1based"), int)
+            or window["tss_1based"] <= 0 or not window.get("chromosome")):
+        raise ValueError("TSS window requires an explicit chromosome, strand and start")
+    return window["chromosome"], window["strand"], window["tss_1based"]
 
 
 def sha256(path: Path) -> str:
@@ -127,6 +152,7 @@ def add_stretch_overview(svg: str, gene: str, candidates: dict[str, Any],
     stretches = [row for row in candidates["stretches"] if row["gene"] == gene]
     if not heading or not lines or not stretches:
         raise ValueError("base SVG lacks a transcript-model axis for TSS-stretch references")
+    styles = window_styles(stretches)
     frames = {(float(item.get("x1")), float(item.get("x2"))) for item in lines}
     if len(frames) != 1:
         raise ValueError("base SVG has inconsistent transcript-model axes")
@@ -149,7 +175,10 @@ def add_stretch_overview(svg: str, gene: str, candidates: dict[str, Any],
     backgrounds = ['<g data-gentle-tss-stretch-backgrounds="true" pointer-events="none">']
     body = ['<g data-gentle-tss-stretch-overview="true">',
             svg_text(34, y, "TSS stretches: reference for similarity below", size=12, weight="bold")]
-    y += 25
+    y += 18
+    body.append(svg_text(34, y,
+        "Each coloured row/band is one supplied TSS window. Darker/mixed shading is overlap, not stronger biological evidence; tx = transcripts.", size=10))
+    y += 24
     for index, stretch in enumerate(stretches):
         start, end = stretch["start_1based"], stretch["end_1based"]
         if not min(left, right) <= start <= end <= max(left, right):
@@ -162,19 +191,51 @@ def add_stretch_overview(svg: str, gene: str, candidates: dict[str, Any],
             f'<rect data-gentle-tss-stretch-band="{name}" data-gentle-genomic-start="{start}" '
             f'data-gentle-genomic-end="{end}" x="{a:.2f}" y="{band_top:.2f}" '
             f'width="{max(1, b-a):.2f}" height="{band_bottom-band_top:.2f}" '
-            f'fill="{colour}" fill-opacity="0.12"/>'
+            'fill="none"/>'
         )
+        windows = sorted(stretch["tss_windows"], key=lambda w: int(styles[window_key(w)][0][3:]))
         body.extend([
             f'<a id="overview-{name}" href="#similarity-{name}">',
-            svg_text(34, y + 4, stretch["stretch_id"], size=9, family="monospace", fill=colour),
+            svg_text(34, y + 4, f"{stretch['stretch_id']} ({len(windows)} windows)",
+                     size=9, family="monospace", fill=colour),
             f'<line x1="{x0:.2f}" x2="{x1:.2f}" y1="{y}" y2="{y}" stroke="#cbd5e1"/>',
             f'<rect data-gentle-tss-stretch="{name}" data-gentle-genomic-start="{start}" '
             f'data-gentle-genomic-end="{end}" x="{a:.2f}" y="{y-6:.2f}" '
-            f'width="{max(1, b-a):.2f}" height="12" fill="{colour}"/>',
+            f'width="{max(1, b-a):.2f}" height="12" fill="none" stroke="{colour}"/>',
             svg_text(x1 + 20, y + 4, f"{start:,}..{end:,}", size=8, family="monospace"),
             '</a>',
         ])
         y += 26
+        for window in windows:
+            label, window_colour = styles[window_key(window)]
+            start, end, tss = window["start_1based"], window["end_1based"], window["tss_1based"]
+            a, b = sorted(x0 + (position - left) / (right - left) * (x1 - x0)
+                          for position in (start, end))
+            marker = x0 + (tss - left) / (right - left) * (x1 - x0)
+            identity = escape(f"{gene}-{label}", quote=True)
+            geometry = (f'data-gentle-tss-window="{identity}" data-gentle-genomic-start="{start}" '
+                        f'data-gentle-genomic-end="{end}" data-gentle-tss="{tss}"')
+            backgrounds.append(
+                f'<rect {geometry} data-gentle-tss-window-band="{identity}" x="{a:.2f}" '
+                f'y="{band_top:.2f}" width="{max(1, b-a):.2f}" height="{band_bottom-band_top:.2f}" '
+                f'fill="{window_colour}" fill-opacity="0.14"/>'
+            )
+            transcripts = len(set(window.get("transcript_ids", [])))
+            membership = f"; {transcripts} tx" if transcripts else "; tx n/a"
+            body.extend([
+                f'<g data-gentle-tss-window-row="{identity}">',
+                svg_text(34, y + 4, f"{label}: {tss:,} ({window['strand']}){membership}",
+                         size=9, family="monospace", fill=window_colour),
+                f'<line x1="{x0:.2f}" x2="{x1:.2f}" y1="{y}" y2="{y}" stroke="#cbd5e1"/>',
+                f'<rect {geometry} x="{a:.2f}" y="{y-6:.2f}" width="{max(1, b-a):.2f}" '
+                f'height="12" fill="{window_colour}" fill-opacity="0.22" stroke="{window_colour}"/>',
+                f'<line data-gentle-tss-marker="{identity}" data-gentle-tss="{tss}" '
+                f'x1="{marker:.2f}" x2="{marker:.2f}" y1="{y-9:.2f}" y2="{y+9:.2f}" '
+                f'stroke="{window_colour}" stroke-width="2"/>',
+                svg_text(x1 + 20, y + 4, f"{start:,}..{end:,}", size=8, family="monospace"),
+                '</g>',
+            ])
+            y += 26
     body.append('</g>')
     backgrounds.append('</g>')
     shift = math.ceil(y - start_y + 18)
@@ -203,6 +264,7 @@ def append_section(
         raise ValueError("unsupported base SVG geometry")
     old_height = int(root.group(1))
     stretches = [row for row in candidates["stretches"] if row["gene"] == gene]
+    styles = window_styles(stretches)
     regions_by_stretch = {
         stretch["stretch_id"]: [
             row for row in candidates["regions"]
@@ -252,12 +314,18 @@ def append_section(
         ))
         y += 22
         body.append(f'<line x1="255" x2="1050" y1="{y}" y2="{y}" stroke="#64748b" stroke-width="1"/>')
-        for window in stretch["tss_windows"]:
+        # Label starts on separate baselines; near-coincident TSSs retain exact x positions.
+        for index, window in enumerate(sorted(stretch["tss_windows"],
+                                             key=lambda w: int(styles[window_key(w)][0][3:]))):
             x = x_for(window["tss_1based"], stretch, strand)
-            body.append(f'<line x1="{x:.2f}" x2="{x:.2f}" y1="{y-5}" y2="{y+8}" stroke="#111827" stroke-width="1"/>')
-            body.append(svg_text(x, y - 7, f"TSS {window['tss_1based']:,}", size=8,
-                                 fill="#334155", family="monospace", anchor="middle"))
-        y += 20
+            label, colour = styles[window_key(window)]
+            label_y = y + 18 + index * 16
+            body.append(f'<line data-gentle-detail-tss-marker="{escape(gene)}-{label}" '
+                        f'x1="{x:.2f}" x2="{x:.2f}" y1="{y-5}" y2="{label_y+3}" '
+                        f'stroke="{colour}" stroke-width="1"/>')
+            body.append(svg_text(1070, label_y, f"{label}: TSS {window['tss_1based']:,}", size=9,
+                                 fill=colour, family="monospace"))
+        y += 24 + 16 * len(stretch["tss_windows"])
         for region in regions:
             query_id = region["region_id"]
             source = region["source_region"]

@@ -407,6 +407,10 @@ pub struct TssContextTata {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TssDetailContext {
     pub schema: String,
+    /// Exact transcript-oriented bases, verified against window_sequence_sha256.
+    /// Absent on legacy contexts; required for annotated sequence export.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_sequence: Option<String>,
     pub promoter_id: String,
     pub geometry: TssGeometry,
     pub window_sequence_sha256: String,
@@ -466,6 +470,7 @@ pub enum TssExportFormat {
     Svg,
     Png,
     Pdf,
+    Genbank,
 }
 
 fn one_panel() -> usize {

@@ -143,10 +143,79 @@ struct ContextRow<'a> {
 }
 
 impl<'a> ContextRow<'a> {
-    fn new(label: &str, details: &str, content: Content<'a>) -> Self {
+    fn new(label: &str, details: &str, content: Content<'a>, geometry: &TssGeometry) -> Self {
+        let span_label = |span: &TssContextSpan| {
+            let first = geometry
+                .genomic_at(span.start_0based)
+                .expect("validated span");
+            let last = geometry
+                .genomic_at(span.end_0based_exclusive - 1)
+                .expect("validated span");
+            let mut text = format!("g {first}..{last}");
+            if span.clipped {
+                let _ = write!(
+                    text,
+                    " (cropped; source {}..{})",
+                    span.genomic_start_1based, span.genomic_end_1based
+                );
+            }
+            text
+        };
+        let coordinates = match &content {
+            Content::Transcript(t) => {
+                let mut labels: Vec<_> = t
+                    .exons
+                    .iter()
+                    .map(|e| format!("E{}: {}", e.number_5prime_to_3prime, span_label(&e.span)))
+                    .collect();
+                labels.extend(t.cds.iter().map(|s| format!("CDS: {}", span_label(s))));
+                labels.extend(t.codons.iter().map(|c| {
+                    format!(
+                        "Translation {}: g {}",
+                        match c.kind {
+                            GeneLocusCodonKind::Start => "start",
+                            GeneLocusCodonKind::Stop => "stop",
+                        },
+                        c.genomic_position_1based
+                    )
+                }));
+                labels.join("; ")
+            }
+            Content::Occupancy(lane) if !lane.intervals.is_empty() => {
+                let start = lane
+                    .intervals
+                    .iter()
+                    .map(|i| i.span.start_0based)
+                    .min()
+                    .unwrap();
+                let end = lane
+                    .intervals
+                    .iter()
+                    .map(|i| i.span.end_0based_exclusive)
+                    .max()
+                    .unwrap();
+                format!(
+                    "Supplied signal extent: g {}..{}; {} intervals, gaps retained; not individual read ends{}.",
+                    geometry.genomic_at(start).unwrap(),
+                    geometry.genomic_at(end - 1).unwrap(),
+                    lane.intervals.len(),
+                    if lane.intervals.iter().any(|i| i.span.clipped) {
+                        "; cropped to window"
+                    } else {
+                        ""
+                    }
+                )
+            }
+            Content::Tata(row) => span_label(&row.span),
+            _ => String::new(),
+        };
         Self {
             label: TextBlock::new(label, LABEL_WIDTH, 12.0),
-            details: TextBlock::new(details, PAGE_WIDTH - PLOT_RIGHT - MARGIN - 14.0, 11.0),
+            details: TextBlock::new(
+                &format!("{details}\n{coordinates}"),
+                PAGE_WIDTH - PLOT_RIGHT - MARGIN - 14.0,
+                11.0,
+            ),
             content,
         }
     }
@@ -217,7 +286,11 @@ impl<'a> ContextRow<'a> {
                     row.append(
                         rect(cds, center - 8.0, 16.0)
                             .set("fill", "#39758c")
-                            .set("data-role", "context-cds"),
+                            .set("data-role", "context-cds")
+                            .add(Title::new(format!(
+                                "Annotated CDS segment: genomic {}..{}; cropped={}",
+                                cds.genomic_start_1based, cds.genomic_end_1based, cds.clipped
+                            ))),
                     );
                 }
                 for codon in &t.codons {
@@ -312,8 +385,11 @@ impl<'a> ContextRow<'a> {
                                         .to_string(),
                                 )
                                 .add(Title::new(format!(
-                                    "{}; raw score {:?}; inherited |max| {}; {}",
+                                    "{}; genomic {}..{} (1-based inclusive); cropped={}; raw score {:?}; inherited |max| {}; {}; signal interval, not an individual read",
                                     interval.interval_id,
+                                    interval.span.genomic_start_1based,
+                                    interval.span.genomic_end_1based,
+                                    interval.span.clipped,
                                     interval.score,
                                     lane.display_abs_max_score,
                                     interval.label.as_deref().unwrap_or("")
@@ -345,10 +421,13 @@ impl<'a> ContextRow<'a> {
                         .set("data-evidence-id", row.evidence.row_id.as_str())
                         .set("data-genomic-strand", row.genomic_strand.as_str())
                         .add(Title::new(format!(
-                            "{}; {}; genomic strand {}",
+                            "{}; {}; genomic strand {}; genomic {}..{}; cropped={}",
                             row.evidence.label,
                             row.evidence.geometry_kind,
-                            row.genomic_strand.as_str()
+                            row.genomic_strand.as_str(),
+                            row.span.genomic_start_1based,
+                            row.span.genomic_end_1based,
+                            row.span.clipped
                         ))),
                 );
             }
@@ -378,6 +457,7 @@ impl<'a> ContextLayout<'a> {
                     t.genomic_strand.as_str()
                 ),
                 Content::Transcript(t),
+                &c.geometry,
             ));
         }
         if c.transcripts.is_empty() {
@@ -385,6 +465,7 @@ impl<'a> ContextLayout<'a> {
                 "Gene structure",
                 "",
                 Content::Unavailable("Transcript geometry unavailable"),
+                &c.geometry,
             ));
         }
         for lane in &c.occupancy {
@@ -410,6 +491,7 @@ impl<'a> ContextLayout<'a> {
                     lane.display_abs_max_score, lane.source_id
                 ),
                 Content::Occupancy(lane),
+                &c.geometry,
             ));
         }
         if c.occupancy.is_empty() {
@@ -417,6 +499,7 @@ impl<'a> ContextLayout<'a> {
                 "CUT&RUN / chromatin",
                 "",
                 Content::Unavailable("No occupancy lanes supplied"),
+                &c.geometry,
             ));
         }
         if let Some(tata) = &c.tata {
@@ -450,6 +533,7 @@ impl<'a> ContextLayout<'a> {
                     &format!("{kind}\n{}", row.evidence.label),
                     &detail,
                     Content::Tata(row),
+                    &c.geometry,
                 ));
             }
             if tata.rows.is_empty() {
@@ -459,6 +543,7 @@ impl<'a> ContextLayout<'a> {
                     Content::Unavailable(
                         "No reported TATA evidence in this window; not proof of absence",
                     ),
+                    &c.geometry,
                 ));
             }
         } else {
@@ -466,6 +551,7 @@ impl<'a> ContextLayout<'a> {
                 "TATA evidence",
                 "",
                 Content::Unavailable("TATA screen not supplied"),
+                &c.geometry,
             ));
         }
         let mut footer = format!(
@@ -492,7 +578,10 @@ impl<'a> ContextLayout<'a> {
         Self {
             context: c,
             intro: TextBlock::new(
-                "LOCUS CONTEXT ON THE SAME TSS AXIS\nThin boxes: exons; thick boxes: CDS. Translation markers are annotation-backed. Signal heights retain the source-locus scale; gaps are not interpolated. TATA predictions remain separate from annotations and EPD TSS classifications.",
+                &format!(
+                    "LOCUS CONTEXT ON THE SAME TSS AXIS\nThin boxes: exons; thick boxes: CDS. Translation markers are annotation-backed. Signal heights retain the source-locus scale; gaps are not interpolated. TATA predictions remain separate from annotations and EPD TSS classifications.\nPrinted g coordinates: chromosome {}, 1-based inclusive, left-to-right on this axis. Cropped limits are not biological feature ends. Signal extents are not individual read alignments.",
+                    c.geometry.chromosome
+                ),
                 TEXT_WIDTH,
                 13.0,
             ),
