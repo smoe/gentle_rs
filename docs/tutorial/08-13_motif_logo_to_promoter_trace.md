@@ -157,8 +157,17 @@ For a typed workflow example of inline dense TFBS scoring, see
 [`tfbs_track_similarity_stateless_offline.json`](../examples/workflows/tfbs_track_similarity_stateless_offline.json);
 the multi-page TSS document command above remains a shared-Shell/CLI operation.
 The diagrams on this page are generated teaching illustrations, not screenshots
-of controls. A live GUI Shell capture was not made for this patch; therefore no
-image is presented as GUI acceptance.
+of nonexistent controls. A later publication-safe manual/hybrid walkthrough ran
+this exact public plus/minus fixture through the live GUI Shell:
+
+![Public synthetic TSS-profile command in the live GUI Shell](../screenshots/motif_logo_to_promoter_trace_manual/gui-shell-result.raw.png)
+
+The [capture evidence](../screenshots/motif_logo_to_promoter_trace_manual/evidence.json)
+binds the exact candidate, GUI binary, fixture inputs, output receipt, untouched
+raw capture and semantic snapshot. It records two windows, both strands,
+`MA0004.1`, `shared_across_tss` scaling and ambiguous-window nulls. This is a
+manual/hybrid checkpoint, not an automated GUI acceptance contract. It used no
+private input and did not invoke the inner agent.
 
 The exact shared-engine replay committed with this tutorial produced these two
 receipt-bound SVG pages:
@@ -371,13 +380,18 @@ offline prerequisites and does not promise measured binding affinity.
 `scripts/test_motif_score_tutorial.py` checks the educational calculations,
 the corrected TP73 values, source/catalog links, matrix pin and synthetic
 plus/minus fixture. GENtle's existing engine tests exercise the actual scoring
-and export route. The older stored background-normalized artifacts in
+and export route. On 2026-09-13, the synthetic background-normalized artifacts in
 `promoter_design_artifact_slice_offline`,
 `promoter_gene_set_ortholog_cohort_offline`, and
-`gene_set_ortholog_promoter_cohorts_offline` have **not** been silently
-regenerated. They require rescoring from original sequence/PFM inputs;
-presentation-only re-export cannot fix old scores. Imported scanner-native
-scores require their own producer-policy audit.
+`gene_set_ortholog_promoter_cohorts_offline` were explicitly rescored from their
+unchanged local sequence/workflow inputs and bundled matrices. Their dependent
+figures, comparisons and checksums were regenerated, not edited to hide old
+scores. The pre-refresh versions remain in Git at `e489cfaf`; see the
+[regeneration procedure](../tss_tfbs_profiles.md#rescoring-existing-reports).
+The regression also checks the new tail-method marker and finite, bounded
+forward/reverse scores in the committed gene-set reports. This does not refresh
+private five-gene reports. Presentation-only re-export cannot fix their old
+scores, and imported scanner-native scores require their own producer-policy audit.
 
 Passing software tests and checksums establishes implementation consistency,
 not independent scientific validation of a motif's biological interpretation.
