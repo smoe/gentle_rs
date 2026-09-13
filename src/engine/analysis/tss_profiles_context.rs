@@ -206,7 +206,8 @@ fn project(
             .and_then(|n| n.checked_add(1))
             != Some(sequence.len())
         || !matches!(anchor.strand, Some('+') | Some('-'))
-        || anchor.genome_id != reference.genome_id
+        || ![reference.genome_id.as_str(), reference.assembly.as_str()]
+            .contains(&anchor.genome_id.as_str())
         || ![reference.assembly.as_str(), reference.genome_id.as_str()]
             .contains(&evidence.assembly.as_str())
         || chromosome(&anchor.chromosome) != chromosome(&g.chromosome)

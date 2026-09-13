@@ -201,6 +201,62 @@ fn tss_context_projects_transcript_cds_codons_signal_and_tata_in_all_orientation
 }
 
 #[test]
+fn tss_context_accepts_exact_assembly_anchor_but_rejects_catalog_tokens_and_near_matches() {
+    let (record, reference, mut locus, sequence, _) = fixture(TssStrand::Plus, false);
+    let anchor = locus
+        .sequence_binding
+        .as_mut()
+        .unwrap()
+        .genome_anchor
+        .as_mut()
+        .unwrap();
+    anchor.genome_id = reference.assembly.clone();
+    assert!(
+        project(
+            &record,
+            &reference,
+            &locus,
+            &sequence,
+            &"a".repeat(64),
+            vec![],
+            None,
+        )
+        .is_ok()
+    );
+
+    for incompatible in [
+        "synthetic",
+        "assembly",
+        "synthetic-assembl",
+        "Human",
+        "Ensembl",
+        "116",
+    ] {
+        locus
+            .sequence_binding
+            .as_mut()
+            .unwrap()
+            .genome_anchor
+            .as_mut()
+            .unwrap()
+            .genome_id = incompatible.into();
+        assert!(
+            project(
+                &record,
+                &reference,
+                &locus,
+                &sequence,
+                &"a".repeat(64),
+                vec![],
+                None,
+            )
+            .is_err(),
+            "accepted incompatible anchor identifier {incompatible}"
+        );
+    }
+}
+
+#[test]
 fn tss_context_rejects_reference_sequence_geometry_and_tata_corruption() {
     for case in 0..9 {
         let (mut record, mut reference, mut locus, sequence, mut tata) =

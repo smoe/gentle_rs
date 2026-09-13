@@ -126,9 +126,13 @@ The manifest `reference` must equal the TSS report's reference, including a
 declared annotation release. If a release is declared, the locus must agree.
 If it is null, no release is invented from a genome ID. For compatibility with
 existing locus composers, `isoform_evidence.assembly` may equal either the exact
-TSS assembly or its exact genome ID. Leading `chr` is the only chromosome-label
-normalization. Hash/geometry agreement is consistency evidence, not independent
-authentication of a reference or an experimental sample.
+TSS assembly or its exact genome ID. The full-locus anchor's `genome_id` has
+the same exact two alternatives, preserving the distinct catalog and assembly
+identifier layers used by locus preparation. Arbitrary catalog words,
+near-substrings and incompatible assemblies are rejected. Leading `chr` is the
+only chromosome-label normalization. Hash/geometry agreement is consistency
+evidence, not independent authentication of a reference or an experimental
+sample.
 
 Generate a TATA report using the existing [TATA screen](tata_box_evidence.md),
 on that same loaded sequence, for example in the shared Shell:
